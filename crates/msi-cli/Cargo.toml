@@ -1,0 +1,78 @@
+[package]
+name = "msi-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "CLI tool for creating and inspecting Windows Installer (.msi) packages"
+
+[[bin]]
+name = "msi-cli"
+path = "src/main.rs"
+
+[[bin]]
+name = "candle"
+path = "src/bin/candle.rs"
+
+[[bin]]
+name = "light"
+path = "src/bin/light.rs"
+
+[[bin]]
+name = "wix"
+path = "src/bin/wix.rs"
+
+[[bin]]
+name = "dark"
+path = "src/bin/dark.rs"
+
+[[bin]]
+name = "heat"
+path = "src/bin/heat.rs"
+
+[[bin]]
+name = "torch"
+path = "src/bin/torch.rs"
+
+[[bin]]
+name = "pyro"
+path = "src/bin/pyro.rs"
+
+[[bin]]
+name = "lit"
+path = "src/bin/lit.rs"
+
+[[bin]]
+name = "smoke"
+path = "src/bin/smoke.rs"
+
+[[bin]]
+name = "msiinfo"
+path = "src/bin/msiinfo.rs"
+
+[[bin]]
+name = "msibuild"
+path = "src/bin/msibuild.rs"
+
+[[bin]]
+name = "msidump"
+path = "src/bin/msidump.rs"
+
+[[bin]]
+name = "msidiff"
+path = "src/bin/msidiff.rs"
+
+[[bin]]
+name = "msiextract"
+path = "src/bin/msiextract.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+clap = { workspace = true }
+derive_more = { workspace = true }
+msi = { workspace = true }

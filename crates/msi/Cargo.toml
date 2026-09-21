@@ -1,0 +1,18 @@
+[package]
+name = "msi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Comprehensive library for creating and inspecting Windows Installer (.msi) packages"
+
+[lints]
+workspace = true
+
+[dependencies]
+derive_more = { workspace = true }
+libc = { workspace = true }
+rayon = { workspace = true }

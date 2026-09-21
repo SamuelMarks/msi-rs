@@ -1,0 +1,42 @@
+[build-system]
+requires = ["maturin>=1.5,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "msi"
+version = "0.0.1"
+description = "Comprehensive Python library and CLI for creating, configuring, and inspecting Windows Installer (.msi) packages"
+readme = "README.md"
+license = { text = "MIT OR Apache-2.0" }
+authors = [
+    { name = "msi-rs developers" }
+]
+requires-python = ">=3.9"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Rust",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: System :: Installation/Setup",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/samuel/msi-rs"
+Repository = "https://github.com/samuel/msi-rs"
+
+[tool.maturin]
+python-source = "crates/msi-python/python"
+manifest-path = "crates/msi-python/Cargo.toml"
+module-name = "msi._msi"
+features = ["pyo3/extension-module"]
+include = ["crates/msi-python/python/msi/py.typed"]

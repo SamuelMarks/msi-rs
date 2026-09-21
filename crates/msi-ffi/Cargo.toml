@@ -1,0 +1,21 @@
+[package]
+name = "msi-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "C-ABI Foreign Function Interface for creating and inspecting Windows Installer (.msi) packages"
+
+[lib]
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[lints]
+workspace = true
+
+[dependencies]
+derive_more = { workspace = true }
+libc = { workspace = true }
+msi = { workspace = true }

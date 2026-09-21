@@ -1,0 +1,22 @@
+[package]
+name = "msi-gui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Desktop GUI installer for Windows Installer (.msi) packages"
+
+[[bin]]
+name = "msi-gui"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+clap = { workspace = true }
+derive_more = { workspace = true }
+msi = { workspace = true }

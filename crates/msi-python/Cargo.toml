@@ -1,0 +1,26 @@
+[package]
+name = "msi-python"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Native Python bindings for msi-rs Windows Installer toolkit"
+
+[lib]
+name = "_msi"
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+[features]
+default = []
+extension-module = ["pyo3/extension-module"]
+
+[dependencies]
+derive_more = { workspace = true }
+msi = { workspace = true }
+pyo3 = { version = "0.22", features = ["abi3-py39", "auto-initialize"] }
