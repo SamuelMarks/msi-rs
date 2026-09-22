@@ -21,7 +21,7 @@ use crate::execution::script_engine::{
 };
 use crate::package::{Package, ProductVersion};
 use crate::wix::localization::LocalizationCatalog;
-use crate::wix::wixobj::{IntermediateSection, SectionType, Symbol, WixObject};
+use crate::wix::wixobj::{IntermediateSection, Reference, SectionType, Symbol, WixObject};
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
@@ -1533,6 +1533,32 @@ pub struct Linker {
     embedded_cabinets: HashMap<String, Vec<u8>>,
 }
 
+/// Checks whether an unresolved symbol reference is a standard built-in symbol, action,
+/// dialog, property, or UI set.
+///
+/// # Arguments
+///
+/// * `rf` - Symbol reference to test.
+/// * `defined_symbols` - Map of currently defined symbols.
+fn is_special_reference(rf: &Reference, defined_symbols: &HashMap<Symbol, usize>) -> bool {
+    match rf.namespace.as_str() {
+        "Directory" => STANDARD_DIRECTORIES.iter().any(|d| d.id == rf.id),
+        "Action" => {
+            STANDARD_INSTALL_EXECUTE_ACTIONS
+                .iter()
+                .any(|a| a.name == rf.id)
+                || STANDARD_INSTALL_UI_ACTIONS.iter().any(|a| a.name == rf.id)
+                || defined_symbols.contains_key(&Symbol::new("Dialog", &rf.id))
+                || defined_symbols.contains_key(&Symbol::new("CustomAction", &rf.id))
+        }
+        "UI" => rf.id.starts_with("WixUI_") || rf.id == "WixUI",
+        "Property" => {
+            rf.id.starts_with("WIXUI_") || rf.id.starts_with("ARP") || rf.id == "ALLUSERS"
+        }
+        _ => false,
+    }
+}
+
 impl Linker {
     /// Creates a new empty [`Linker`].
     ///
@@ -1873,11 +1899,10 @@ impl Linker {
                 sorted_count += 1;
                 if let Some(neighbors) = graph.get(&node) {
                     for n in neighbors {
-                        if let Some(d) = in_degree.get_mut(n) {
-                            *d -= 1;
-                            if *d == 0 {
-                                queue.push_back(n.clone());
-                            }
+                        let d = in_degree.entry(n.clone()).or_default();
+                        *d -= 1;
+                        if *d == 0 {
+                            queue.push_back(n.clone());
                         }
                     }
                 }
@@ -2378,39 +2403,13 @@ impl Linker {
                     if included_section_indices.insert(target_idx) {
                         queue.push(target_idx);
                     }
-                } else {
-                    // Check if reference is a standard directory or built-in action or standard UI / Property
-                    let is_standard_dir = rf.namespace == "Directory"
-                        && STANDARD_DIRECTORIES.iter().any(|d| d.id == rf.id);
-                    let is_standard_action = rf.namespace == "Action"
-                        && (STANDARD_INSTALL_EXECUTE_ACTIONS
-                            .iter()
-                            .any(|a| a.name == rf.id)
-                            || STANDARD_INSTALL_UI_ACTIONS.iter().any(|a| a.name == rf.id)
-                            || rf.id == "ExecuteAction");
-                    let is_standard_ui =
-                        rf.namespace == "UI" && (rf.id.starts_with("WixUI_") || rf.id == "WixUI");
-                    let is_standard_property = rf.namespace == "Property"
-                        && (rf.id.starts_with("WIXUI_")
-                            || rf.id.starts_with("ARP")
-                            || rf.id == "ALLUSERS");
-                    let is_dialog_or_ca = rf.namespace == "Action"
-                        && (defined_symbols.contains_key(&Symbol::new("Dialog", &rf.id))
-                            || defined_symbols.contains_key(&Symbol::new("CustomAction", &rf.id)));
-
-                    if !is_standard_dir
-                        && !is_standard_action
-                        && !is_standard_ui
-                        && !is_standard_property
-                        && !is_dialog_or_ca
-                    {
-                        return Err(Error::WixLinker {
-                            message: format!(
-                                "unresolved symbol reference '{rf}' in section {:?}",
-                                current_sec.id
-                            ),
-                        });
-                    }
+                } else if !is_special_reference(rf, &defined_symbols) {
+                    return Err(Error::WixLinker {
+                        message: format!(
+                            "unresolved symbol reference '{rf}' in section {:?}",
+                            current_sec.id
+                        ),
+                    });
                 }
             }
         }
@@ -2704,38 +2703,74 @@ impl Linker {
     ///
     /// Returns [`Error::IceValidation`] on the first failing ICE error rule.
     pub fn run_ice_validations(db: &LinkedDatabase) -> Result<()> {
-        let reports = vec![
-            Self::validate_ice01(db),
-            Self::validate_ice02(db),
-            Self::validate_ice03(db),
-            Self::validate_ice04(db),
-            Self::validate_ice05(db),
-            Self::validate_ice06(db),
-            Self::validate_ice07(db),
-            Self::validate_ice08(db),
-            Self::validate_ice09(db),
-            Self::validate_ice18(db),
-            Self::validate_ice20(db),
-            Self::validate_ice30(db),
-            Self::validate_ice33(db),
-            Self::validate_ice38(db),
-            Self::validate_ice61(db),
-            Self::validate_ice80(db),
-            Self::validate_ice99(db),
-            Self::validate_ice101(db),
-            Self::validate_ice103(db),
+        let _ = Self::run_ice_validations_filtered(db, &[], &[])?;
+        Ok(())
+    }
+
+    /// Evaluates Internal Consistency Evaluator (ICE) rules on a [`LinkedDatabase`] with optional filtering.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - The [`LinkedDatabase`] to validate.
+    /// * `selected` - Whitelist of ICE rule names to evaluate (e.g. `["ICE01", "ICE03"]`). If empty, all rules are eligible.
+    /// * `suppressed` - Blacklist of ICE rule names to exclude from evaluation (e.g. `["ICE33"]`).
+    ///
+    /// # Returns
+    ///
+    /// Vector of non-fatal [`IceReport`] warnings if all active rules pass without fatal errors.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::IceValidation`] on the first failing ICE error rule encountered.
+    pub fn run_ice_validations_filtered(
+        db: &LinkedDatabase,
+        selected: &[String],
+        suppressed: &[String],
+    ) -> Result<Vec<IceReport>> {
+        type IceValidator = (&'static str, fn(&LinkedDatabase) -> Option<IceReport>);
+
+        let rules: &[IceValidator] = &[
+            ("ICE01", Self::validate_ice01),
+            ("ICE02", Self::validate_ice02),
+            ("ICE03", Self::validate_ice03),
+            ("ICE04", Self::validate_ice04),
+            ("ICE05", Self::validate_ice05),
+            ("ICE06", Self::validate_ice06),
+            ("ICE07", Self::validate_ice07),
+            ("ICE08", Self::validate_ice08),
+            ("ICE09", Self::validate_ice09),
+            ("ICE18", Self::validate_ice18),
+            ("ICE20", Self::validate_ice20),
+            ("ICE30", Self::validate_ice30),
+            ("ICE33", Self::validate_ice33),
+            ("ICE38", Self::validate_ice38),
+            ("ICE61", Self::validate_ice61),
+            ("ICE80", Self::validate_ice80),
+            ("ICE99", Self::validate_ice99),
+            ("ICE101", Self::validate_ice101),
+            ("ICE103", Self::validate_ice103),
         ];
 
-        for rep in reports.into_iter().flatten() {
-            if rep.is_error {
-                return Err(Error::IceValidation {
-                    ice: rep.ice,
-                    message: rep.message,
-                });
+        let mut reports = Vec::new();
+        for (name, validator) in rules {
+            if !selected.is_empty() && !selected.iter().any(|s| s.eq_ignore_ascii_case(name)) {
+                continue;
+            }
+            if suppressed.iter().any(|s| s.eq_ignore_ascii_case(name)) {
+                continue;
+            }
+            if let Some(rep) = validator(db) {
+                if rep.is_error {
+                    return Err(Error::IceValidation {
+                        ice: rep.ice,
+                        message: rep.message,
+                    });
+                }
+                reports.push(rep);
             }
         }
 
-        Ok(())
+        Ok(reports)
     }
 
     /// ICE01: Verifies that required system and packaging tables exist in the database catalog.
@@ -7761,6 +7796,998 @@ mod tests {
             Some(&FieldValue::String(r"{\rtf1 Custom EULA Text}".to_string()))
         );
 
+        Ok(())
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_linker_remaining_uncovered_paths() -> Result<()> {
+        use std::io::Write;
+
+        // 1. Coverage for on_exit sequence types: "cancel", "error", "suspend"
+        // and relative sequencing queue branch where in_degree transitions to 0,
+        // as well as assigned increment/decrement collision loops and sort fallback.
+        let mut db = LinkedDatabase::new()?;
+        db.add_record(
+            "_WixSequenceRelative",
+            Record::with_fields(vec![
+                FieldValue::String("InstallUISequence".to_string()),
+                FieldValue::String("ActionCancel".to_string()),
+                FieldValue::String("cancel".to_string()),
+                FieldValue::String("OnExit".to_string()),
+            ]),
+        );
+        db.add_record(
+            "_WixSequenceRelative",
+            Record::with_fields(vec![
+                FieldValue::String("InstallUISequence".to_string()),
+                FieldValue::String("ActionError".to_string()),
+                FieldValue::String("error".to_string()),
+                FieldValue::String("OnExit".to_string()),
+            ]),
+        );
+        db.add_record(
+            "_WixSequenceRelative",
+            Record::with_fields(vec![
+                FieldValue::String("InstallUISequence".to_string()),
+                FieldValue::String("ActionSuspend".to_string()),
+                FieldValue::String("suspend".to_string()),
+                FieldValue::String("OnExit".to_string()),
+            ]),
+        );
+        // Add existing records in InstallUISequence so on_exit actions can be updated
+        db.add_record(
+            "InstallUISequence",
+            Record::with_fields(vec![
+                FieldValue::String("ActionCancel".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(0),
+            ]),
+        );
+        db.add_record(
+            "InstallUISequence",
+            Record::with_fields(vec![
+                FieldValue::String("ActionError".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(0),
+            ]),
+        );
+        db.add_record(
+            "InstallUISequence",
+            Record::with_fields(vec![
+                FieldValue::String("ActionSuspend".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(0),
+            ]),
+        );
+        db.add_record(
+            "InstallUISequence",
+            Record::with_fields(vec![
+                FieldValue::String("ActionSuccess".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(0),
+            ]),
+        );
+
+        // Relative constraints chaining for After and Before:
+        // A After B, C After A (tests queue.push_back(*d == 0))
+        // D Before E, F Before D (tests queue.push_back(*d == 0))
+        db.add_record(
+            "_WixSequenceRelative",
+            Record::with_fields(vec![
+                FieldValue::String("InstallUISequence".to_string()),
+                FieldValue::String("ActionA".to_string()),
+                FieldValue::String("ActionB".to_string()),
+                FieldValue::String("After".to_string()),
+            ]),
+        );
+        db.add_record(
+            "_WixSequenceRelative",
+            Record::with_fields(vec![
+                FieldValue::String("InstallUISequence".to_string()),
+                FieldValue::String("ActionC".to_string()),
+                FieldValue::String("ActionA".to_string()),
+                FieldValue::String("After".to_string()),
+            ]),
+        );
+        db.add_record(
+            "_WixSequenceRelative",
+            Record::with_fields(vec![
+                FieldValue::String("InstallUISequence".to_string()),
+                FieldValue::String("ActionC".to_string()),
+                FieldValue::String("ActionB".to_string()),
+                FieldValue::String("After".to_string()),
+            ]),
+        );
+        db.add_record(
+            "_WixSequenceRelative",
+            Record::with_fields(vec![
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        // Colliding sequence for After collision loop:
+        // ActionB base_seq = 1000. ActionA assigned = 1025.
+        // If we also pre-insert sequence 1025 into action_seqs via ActionCollisionAfter,
+        // then ActionA's while loop assigned += 1 will execute!
+        db.add_record(
+            "InstallUISequence",
+            Record::with_fields(vec![
+                FieldValue::String("ActionCollisionAfter".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(1025),
+            ]),
+        );
+        db.add_record(
+            "InstallUISequence",
+            Record::with_fields(vec![
+                FieldValue::String("ActionB".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(1000),
+            ]),
+        );
+        db.add_record(
+            "InstallUISequence",
+            Record::with_fields(vec![
+                FieldValue::String("ActionA".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(1),
+            ]),
+        );
+        db.add_record(
+            "InstallUISequence",
+            Record::with_fields(vec![
+                FieldValue::String("ActionC".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(1),
+            ]),
+        );
+
+        // Before chaining & collision:
+        // ActionD Before ActionE (base 1000 -> assigned 975)
+        // Pre-insert ActionCollisionBefore with sequence 975 to trigger while loop decrement.
+        db.add_record(
+            "_WixSequenceRelative",
+            Record::with_fields(vec![
+                FieldValue::String("InstallUISequence".to_string()),
+                FieldValue::String("ActionD".to_string()),
+                FieldValue::String("ActionE".to_string()),
+                FieldValue::String("Before".to_string()),
+            ]),
+        );
+        db.add_record(
+            "_WixSequenceRelative",
+            Record::with_fields(vec![
+                FieldValue::String("InstallUISequence".to_string()),
+                FieldValue::String("ActionF".to_string()),
+                FieldValue::String("ActionD".to_string()),
+                FieldValue::String("Before".to_string()),
+            ]),
+        );
+        db.add_record(
+            "InstallUISequence",
+            Record::with_fields(vec![
+                FieldValue::String("ActionCollisionBefore".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(975),
+            ]),
+        );
+        db.add_record(
+            "InstallUISequence",
+            Record::with_fields(vec![
+                FieldValue::String("ActionE".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(1000),
+            ]),
+        );
+        db.add_record(
+            "InstallUISequence",
+            Record::with_fields(vec![
+                FieldValue::String("ActionD".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(1),
+            ]),
+        );
+        db.add_record(
+            "InstallUISequence",
+            Record::with_fields(vec![
+                FieldValue::String("ActionF".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(1),
+            ]),
+        );
+
+        // Add a record with non-Short sequence (e.g. Null or String) to test fallback _ => 0 in sort_by
+        db.add_record(
+            "InstallUISequence",
+            Record::with_fields(vec![
+                FieldValue::String("ActionNonShort1".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        db.add_record(
+            "InstallUISequence",
+            Record::with_fields(vec![
+                FieldValue::String("ActionNonShort2".to_string()),
+                FieldValue::Null,
+                FieldValue::String("InvalidSeq".to_string()),
+            ]),
+        );
+        db.add_record(
+            "_WixSequenceRelative",
+            Record::with_fields(vec![
+                FieldValue::String("InstallUISequence".to_string()),
+                FieldValue::String("ActionSuccess".to_string()),
+                FieldValue::String("success".to_string()),
+                FieldValue::String("OnExit".to_string()),
+            ]),
+        );
+        db.add_record(
+            "_WixSequenceRelative",
+            Record::with_fields(vec![
+                FieldValue::String("AdminUISequence".to_string()),
+                FieldValue::String("CustomAdminAction".to_string()),
+                FieldValue::String("CostInitialize".to_string()),
+                FieldValue::String("After".to_string()),
+            ]),
+        );
+
+        Linker::solve_relative_sequences(&mut db)?;
+
+        let mut cycle_db = LinkedDatabase::new()?;
+        cycle_db.add_record(
+            "_WixSequenceRelative",
+            Record::with_fields(vec![
+                FieldValue::String("InstallExecuteSequence".to_string()),
+                FieldValue::String("ActionOne".to_string()),
+                FieldValue::String("ActionTwo".to_string()),
+                FieldValue::String("After".to_string()),
+            ]),
+        );
+        cycle_db.add_record(
+            "_WixSequenceRelative",
+            Record::with_fields(vec![
+                FieldValue::String("InstallExecuteSequence".to_string()),
+                FieldValue::String("ActionTwo".to_string()),
+                FieldValue::String("ActionOne".to_string()),
+                FieldValue::String("After".to_string()),
+            ]),
+        );
+        assert!(Linker::solve_relative_sequences(&mut cycle_db).is_err());
+
+        let ui_seq = db.get_records("InstallUISequence");
+        let find_seq = |act: &str| -> Option<i16> {
+            for r in ui_seq {
+                if let (Some(FieldValue::String(a)), Some(FieldValue::Short(s))) =
+                    (r.get(0), r.get(2))
+                {
+                    if a == act {
+                        return Some(*s);
+                    }
+                }
+            }
+            None
+        };
+        assert_eq!(find_seq("ActionCancel"), Some(-2));
+        assert_eq!(find_seq("ActionError"), Some(-3));
+        assert_eq!(find_seq("ActionSuspend"), Some(-4));
+        assert_eq!(find_seq("ActionSuccess"), Some(-1));
+        assert_eq!(find_seq("ActionA"), Some(1026)); // collided with 1025, incremented to 1026
+        assert_eq!(find_seq("ActionD"), Some(974)); // collided with 975, decremented to 974
+        assert_eq!(find_seq("NonExistentAction"), None);
+
+        // 2. Coverage for WixUIBannerBmp, WixUIDialogBmp, WixUILicenseRtf (.txt and unresolved),
+        // and resolve_source_path branches.
+        let temp_dir = std::env::temp_dir().join("msi_linker_uncovered_test");
+        std::fs::create_dir_all(&temp_dir)?;
+
+        let banner_file = temp_dir.join("banner.bmp");
+        let mut bf = std::fs::File::create(&banner_file)?;
+        bf.write_all(b"BMfakebanner")?;
+
+        let dialog_file = temp_dir.join("dialog.bmp");
+        let mut df = std::fs::File::create(&dialog_file)?;
+        df.write_all(b"BMfakedialog")?;
+
+        let txt_license_file = temp_dir.join("license.txt");
+        let mut lf = std::fs::File::create(&txt_license_file)?;
+        lf.write_all(b"Plain text license agreement.")?;
+
+        let mut linker = Linker::new();
+        linker.set_cab_per_component(true);
+        linker.add_base_dir(&temp_dir);
+
+        let mut var_db = LinkedDatabase::new()?;
+        var_db.add_record(
+            "WixVariable",
+            Record::with_fields(vec![FieldValue::Null, FieldValue::Null]),
+        );
+        var_db.add_record(
+            "WixVariable",
+            Record::with_fields(vec![
+                FieldValue::String("UnusedVar".to_string()),
+                FieldValue::String("UnusedVal".to_string()),
+            ]),
+        );
+        var_db.add_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("TESTPROP".to_string()),
+                FieldValue::String("ValueWith!(wix.WixUILicenseRtf)".to_string()),
+            ]),
+        );
+        var_db.add_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("LOC_PROP".to_string()),
+                FieldValue::String("!(loc.MyLocString)".to_string()),
+            ]),
+        );
+        let mut wxl = crate::wix::localization::WixLocalization::new();
+        wxl.culture = Some("en-US".to_string());
+        wxl.add_string(crate::wix::localization::WixLocString::new(
+            "MyLocString".to_string(),
+            "Resolved Loc String".to_string(),
+            true,
+        ));
+        let mut loc_catalog = LocalizationCatalog::new();
+        loc_catalog.add_document(wxl);
+        linker.set_localization_catalog(loc_catalog);
+        linker.expand_localization_tokens(&mut var_db)?;
+        var_db.add_record(
+            "WixVariable",
+            Record::with_fields(vec![
+                FieldValue::String("WixUIBannerBmp".to_string()),
+                FieldValue::String(banner_file.to_string_lossy().to_string()),
+            ]),
+        );
+        var_db.add_record(
+            "WixVariable",
+            Record::with_fields(vec![
+                FieldValue::String("WixUIDialogBmp".to_string()),
+                FieldValue::String(dialog_file.to_string_lossy().to_string()),
+            ]),
+        );
+        var_db.add_record(
+            "WixVariable",
+            Record::with_fields(vec![
+                FieldValue::String("WixUILicenseRtf".to_string()),
+                FieldValue::String("license.txt".to_string()),
+            ]),
+        );
+        var_db.add_record(
+            "Control",
+            Record::with_fields(vec![
+                FieldValue::String("LicenseAgreementDlg".to_string()),
+                FieldValue::String("AgreementText".to_string()),
+                FieldValue::String("ScrollableText".to_string()),
+                FieldValue::Short(20),
+                FieldValue::Short(60),
+                FieldValue::Short(330),
+                FieldValue::Short(140),
+                FieldValue::Long(7),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        var_db.add_record(
+            "Control",
+            Record::with_fields(vec![
+                FieldValue::String("LicenseAgreementDlg".to_string()),
+                FieldValue::String("ShortControl".to_string()),
+                FieldValue::String("ScrollableText".to_string()),
+                FieldValue::Short(20),
+                FieldValue::Short(60),
+            ]),
+        );
+
+        linker.resolve_wix_variables(&mut var_db);
+        let binaries = var_db.get_records("Binary");
+        assert!(binaries
+            .iter()
+            .any(|r| r.get(0) == Some(&FieldValue::String("WixUIBannerBmp".to_string()))));
+        assert!(binaries
+            .iter()
+            .any(|r| r.get(0) == Some(&FieldValue::String("WixUIDialogBmp".to_string()))));
+        let ctrls = var_db.get_records("Control");
+        assert!(format!("{:?}", ctrls[0].get(9)).contains("Plain text license agreement."));
+
+        // Test WixUIBannerBmp and WixUIDialogBmp error reading file
+        let dir_bmp = temp_dir.join("dir_bmp");
+        std::fs::create_dir_all(&dir_bmp)?;
+        let mut banner_dir_db = LinkedDatabase::new()?;
+        banner_dir_db.add_record(
+            "WixVariable",
+            Record::with_fields(vec![
+                FieldValue::String("WixUIBannerBmp".to_string()),
+                FieldValue::String(dir_bmp.to_string_lossy().to_string()),
+            ]),
+        );
+        banner_dir_db.add_record(
+            "WixVariable",
+            Record::with_fields(vec![
+                FieldValue::String("WixUIDialogBmp".to_string()),
+                FieldValue::String(dir_bmp.to_string_lossy().to_string()),
+            ]),
+        );
+        linker.resolve_wix_variables(&mut banner_dir_db);
+
+        let mut banner_none_db = LinkedDatabase::new()?;
+        banner_none_db.add_record(
+            "WixVariable",
+            Record::with_fields(vec![
+                FieldValue::String("WixUIBannerBmp".to_string()),
+                FieldValue::String("nonexistent_banner_999.bmp".to_string()),
+            ]),
+        );
+        banner_none_db.add_record(
+            "WixVariable",
+            Record::with_fields(vec![
+                FieldValue::String("WixUIDialogBmp".to_string()),
+                FieldValue::String("nonexistent_dialog_999.bmp".to_string()),
+            ]),
+        );
+        linker.resolve_wix_variables(&mut banner_none_db);
+
+        // Test raw RTF and real .rtf extension and non-ScrollableText control
+        let mut var_db_raw_rtf = LinkedDatabase::new()?;
+        var_db_raw_rtf.add_record(
+            "WixVariable",
+            Record::with_fields(vec![
+                FieldValue::String("WixUILicenseRtf".to_string()),
+                FieldValue::String(r"{\rtf1\ansi Raw RTF content}".to_string()),
+            ]),
+        );
+        var_db_raw_rtf.add_record(
+            "Control",
+            Record::with_fields(vec![
+                FieldValue::String("LicenseAgreementDlg".to_string()),
+                FieldValue::String("AgreementText".to_string()),
+                FieldValue::String("ScrollableText".to_string()),
+                FieldValue::Short(20),
+                FieldValue::Short(60),
+                FieldValue::Short(330),
+                FieldValue::Short(140),
+                FieldValue::Long(7),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        linker.resolve_wix_variables(&mut var_db_raw_rtf);
+
+        let rtf_license_file = temp_dir.join("license.rtf");
+        std::fs::write(&rtf_license_file, r"{\rtf1\ansi From file RTF}")?;
+        let mut var_db_rtf_file = LinkedDatabase::new()?;
+        var_db_rtf_file.add_record(
+            "WixVariable",
+            Record::with_fields(vec![
+                FieldValue::String("WixUILicenseRtf".to_string()),
+                FieldValue::String(rtf_license_file.to_string_lossy().to_string()),
+            ]),
+        );
+        var_db_rtf_file.add_record(
+            "Control",
+            Record::with_fields(vec![
+                FieldValue::String("LicenseAgreementDlg".to_string()),
+                FieldValue::String("AgreementText".to_string()),
+                FieldValue::String("ScrollableText".to_string()),
+                FieldValue::Short(20),
+                FieldValue::Short(60),
+                FieldValue::Short(330),
+                FieldValue::Short(140),
+                FieldValue::Long(7),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        var_db_rtf_file.add_record(
+            "Control",
+            Record::with_fields(vec![
+                FieldValue::String("LicenseAgreementDlg".to_string()),
+                FieldValue::String("CancelBtn".to_string()),
+                FieldValue::String("PushButton".to_string()),
+                FieldValue::Short(20),
+                FieldValue::Short(60),
+                FieldValue::Short(330),
+                FieldValue::Short(140),
+                FieldValue::Long(7),
+                FieldValue::Null,
+                FieldValue::String("Cancel".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        var_db_rtf_file.add_record(
+            "Control",
+            Record::with_fields(vec![
+                FieldValue::String("LicenseAgreementDlg".to_string()),
+                FieldValue::String("AgreementText2".to_string()),
+                FieldValue::String("ScrollableText".to_string()),
+                FieldValue::Short(20),
+                FieldValue::Short(60),
+                FieldValue::Short(330),
+                FieldValue::Short(140),
+                FieldValue::Long(7),
+                FieldValue::Null,
+                FieldValue::String("Existing Text".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        linker.resolve_wix_variables(&mut var_db_rtf_file);
+
+        let mut var_db_no_control = LinkedDatabase::new()?;
+        var_db_no_control.add_record(
+            "WixVariable",
+            Record::with_fields(vec![
+                FieldValue::String("WixUILicenseRtf".to_string()),
+                FieldValue::String("any_license_text".to_string()),
+            ]),
+        );
+        linker.resolve_wix_variables(&mut var_db_no_control);
+
+        // Test WixUILicenseRtf fallback when resolve_source_path returns None
+        let mut var_db_unresolved = LinkedDatabase::new()?;
+        var_db_unresolved.add_record(
+            "WixVariable",
+            Record::with_fields(vec![
+                FieldValue::String("WixUILicenseRtf".to_string()),
+                FieldValue::String("non_existent_file_path_12345.rtf".to_string()),
+            ]),
+        );
+        var_db_unresolved.add_record(
+            "Control",
+            Record::with_fields(vec![
+                FieldValue::String("LicenseAgreementDlg".to_string()),
+                FieldValue::String("AgreementText".to_string()),
+                FieldValue::String("ScrollableText".to_string()),
+                FieldValue::Short(20),
+                FieldValue::Short(60),
+                FieldValue::Short(330),
+                FieldValue::Short(140),
+                FieldValue::Long(7),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        linker.resolve_wix_variables(&mut var_db_unresolved);
+        let ctrls_unresolved = var_db_unresolved.get_records("Control");
+        assert_eq!(
+            ctrls_unresolved[0].get(9),
+            Some(&FieldValue::String(
+                "non_existent_file_path_12345.rtf".to_string()
+            ))
+        );
+
+        // Test WixUILicenseRtf map_or_else err branch where file exists (e.g. directory) but read_to_string fails
+        let unreadable_dir = temp_dir.join("dir_as_license");
+        std::fs::create_dir_all(&unreadable_dir)?;
+        let mut var_db_dir_err = LinkedDatabase::new()?;
+        var_db_dir_err.add_record(
+            "WixVariable",
+            Record::with_fields(vec![
+                FieldValue::String("WixUILicenseRtf".to_string()),
+                FieldValue::String(unreadable_dir.to_string_lossy().to_string()),
+            ]),
+        );
+        var_db_dir_err.add_record(
+            "Control",
+            Record::with_fields(vec![
+                FieldValue::String("LicenseAgreementDlg".to_string()),
+                FieldValue::String("AgreementText".to_string()),
+                FieldValue::String("ScrollableText".to_string()),
+                FieldValue::Short(20),
+                FieldValue::Short(60),
+                FieldValue::Short(330),
+                FieldValue::Short(140),
+                FieldValue::Long(7),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        linker.resolve_wix_variables(&mut var_db_dir_err);
+        let ctrls_dir_err = var_db_dir_err.get_records("Control");
+        assert_eq!(
+            ctrls_dir_err[0].get(9),
+            Some(&FieldValue::String(
+                unreadable_dir.to_string_lossy().to_string()
+            ))
+        );
+
+        // 3. Coverage for bind_files_and_pack_cabinets:
+        // - Media record with cab name without '#' prefix (e.g. "cab1.cab" -> format!("#{c}"))
+        // - Media record with non-String cab name (e.g. Null -> format!("#cab{did}.cab"))
+        // - File mapped to disk_id where disk_to_cab does not contain it -> unwrap_or_else fallback
+        let mut bind_db = LinkedDatabase::new()?;
+        let dummy_src_a = temp_dir.join("dummy_a.bin");
+        std::fs::write(&dummy_src_a, b"dummy payload data a")?;
+        let dummy_src_b = temp_dir.join("dummy_b.bin");
+        std::fs::write(&dummy_src_b, b"dummy payload data b")?;
+        let dummy_src_c = temp_dir.join("dummy_c.bin");
+        std::fs::write(&dummy_src_c, b"dummy payload data c")?;
+
+        bind_db.add_record(
+            "WixFile",
+            Record::with_fields(vec![
+                FieldValue::String("FileA".to_string()),
+                FieldValue::String(dummy_src_a.to_string_lossy().to_string()),
+                FieldValue::Short(1),
+            ]),
+        );
+        bind_db.add_record(
+            "WixFile",
+            Record::with_fields(vec![
+                FieldValue::String("FileB".to_string()),
+                FieldValue::String(dummy_src_b.to_string_lossy().to_string()),
+                FieldValue::Short(2),
+            ]),
+        );
+        bind_db.add_record(
+            "WixFile",
+            Record::with_fields(vec![
+                FieldValue::String("FileC".to_string()),
+                FieldValue::String(dummy_src_c.to_string_lossy().to_string()),
+                FieldValue::Short(99), // No Media entry for disk 99
+            ]),
+        );
+
+        // Media disk 1 has cab name without '#': "cab1.cab" -> will become "#cab1.cab"
+        bind_db.add_record(
+            "Media",
+            Record::with_fields(vec![
+                FieldValue::Short(1),
+                FieldValue::Long(10),
+                FieldValue::Null,
+                FieldValue::String("mycab1.cab".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        // Media disk 2 has Null cab name -> will become "#cab2.cab"
+        bind_db.add_record(
+            "Media",
+            Record::with_fields(vec![
+                FieldValue::Short(2),
+                FieldValue::Long(20),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        // Media with Null disk_id to hit if let Some(FieldValue::Short(did)) false branch
+        bind_db.add_record(
+            "Media",
+            Record::with_fields(vec![
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+
+        // Add File table records
+        bind_db.add_record(
+            "File",
+            Record::with_fields(vec![
+                FieldValue::String("FileA".to_string()),
+                FieldValue::String("Comp1".to_string()),
+                FieldValue::String("fileA.bin".to_string()),
+                FieldValue::Long(18),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Short(0),
+                FieldValue::Short(1),
+            ]),
+        );
+        bind_db.add_record(
+            "File",
+            Record::with_fields(vec![
+                FieldValue::String("FileB".to_string()),
+                FieldValue::String("Comp1".to_string()),
+                FieldValue::String("fileB.bin".to_string()),
+                FieldValue::Long(18),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Short(0),
+                FieldValue::Short(2),
+            ]),
+        );
+        bind_db.add_record(
+            "File",
+            Record::with_fields(vec![
+                FieldValue::String("FileC".to_string()),
+                FieldValue::String("Comp1".to_string()),
+                FieldValue::String("fileC.bin".to_string()),
+                FieldValue::Long(18),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Short(0),
+                FieldValue::Short(3),
+            ]),
+        );
+
+        linker.set_cab_per_component(false);
+        linker.bind_files_and_pack_cabinets(&mut bind_db)?;
+        let embedded = linker.embedded_cabinets();
+        assert!(embedded.contains_key("#mycab1.cab"));
+        assert!(embedded.contains_key("#cab2.cab"));
+        assert!(embedded.contains_key("#cab99.cab"));
+
+        // 4. Coverage for solve_symbol_graph:
+        // - Action reference matching ExecuteAction which is in STANDARD_INSTALL_UI_ACTIONS
+        let mut sym_obj = WixObject::new();
+        let mut prod_sec = IntermediateSection::new(
+            SectionType::Product,
+            Some("{33333333-3333-3333-3333-333333333333}".to_string()),
+        );
+        prod_sec.add_symbol(Symbol::new(
+            "Product",
+            "{33333333-3333-3333-3333-333333333333}",
+        ));
+        prod_sec.add_symbol(Symbol::new("CustomAction", "MyCustomAction"));
+        prod_sec.add_symbol(Symbol::new("Dialog", "MyDialogAction"));
+        prod_sec.add_reference(Reference::new("Action", "ExecuteAction"));
+        prod_sec.add_reference(Reference::new("Action", "MyCustomAction"));
+        prod_sec.add_reference(Reference::new("Action", "MyDialogAction"));
+        prod_sec.add_reference(Reference::new("UI", "WixUI"));
+        sym_obj.add_section(prod_sec);
+
+        let mut frag_ui_sec =
+            IntermediateSection::new(SectionType::Fragment, Some("WixUIFrag".to_string()));
+        frag_ui_sec.add_symbol(Symbol::new("UI", "WixUI"));
+        frag_ui_sec.add_reference(Reference::new("UI", "WixUI"));
+        sym_obj.add_section(frag_ui_sec);
+
+        let mut sym_linker = Linker::new();
+        sym_linker.add_object(sym_obj);
+        let solved = sym_linker.solve_symbol_graph()?;
+        assert_eq!(solved.len(), 2);
+
+        let mut test_syms = HashMap::new();
+        test_syms.insert(Symbol::new("Dialog", "MyDialog"), 0);
+        test_syms.insert(Symbol::new("CustomAction", "MyCA"), 1);
+
+        assert!(is_special_reference(
+            &Reference::new("Directory", "TARGETDIR"),
+            &test_syms
+        ));
+        assert!(!is_special_reference(
+            &Reference::new("Directory", "NonStandardDir"),
+            &test_syms
+        ));
+
+        assert!(is_special_reference(
+            &Reference::new("Action", "CostInitialize"),
+            &test_syms
+        ));
+        assert!(is_special_reference(
+            &Reference::new("Action", "ExecuteAction"),
+            &test_syms
+        ));
+        assert!(is_special_reference(
+            &Reference::new("Action", "MyDialog"),
+            &test_syms
+        ));
+        assert!(is_special_reference(
+            &Reference::new("Action", "MyCA"),
+            &test_syms
+        ));
+        assert!(!is_special_reference(
+            &Reference::new("Action", "UnknownAction"),
+            &test_syms
+        ));
+
+        assert!(is_special_reference(
+            &Reference::new("UI", "WixUI_InstallDir"),
+            &test_syms
+        ));
+        assert!(is_special_reference(
+            &Reference::new("UI", "WixUI"),
+            &test_syms
+        ));
+        assert!(!is_special_reference(
+            &Reference::new("UI", "CustomUI"),
+            &test_syms
+        ));
+
+        assert!(is_special_reference(
+            &Reference::new("Property", "WIXUI_INSTALLDIR"),
+            &test_syms
+        ));
+        assert!(is_special_reference(
+            &Reference::new("Property", "ARPNOREPAIR"),
+            &test_syms
+        ));
+        assert!(is_special_reference(
+            &Reference::new("Property", "ALLUSERS"),
+            &test_syms
+        ));
+        assert!(!is_special_reference(
+            &Reference::new("Property", "CUSTOM_PROPERTY"),
+            &test_syms
+        ));
+
+        assert!(!is_special_reference(
+            &Reference::new("Component", "MyComp"),
+            &test_syms
+        ));
+
+        // 5. Coverage for layout_media_and_files multi-cab fallback branches:
+        // - Media record sorting fallback where disk_id is non-Short
+        // - disk_id not in disk_max_seq
+        // - existing_last > 0
+        let mut empty_layout_db = LinkedDatabase::new()?;
+        Linker::layout_media_and_files(&mut empty_layout_db);
+
+        let mut zero_media_db = LinkedDatabase::new()?;
+        zero_media_db.add_record(
+            "_FileDiskId",
+            Record::with_fields(vec![
+                FieldValue::String("FileZero".to_string()),
+                FieldValue::Short(2),
+            ]),
+        );
+        zero_media_db.add_record(
+            "File",
+            Record::with_fields(vec![
+                FieldValue::String("FileZero".to_string()),
+                FieldValue::String("CompZero".to_string()),
+                FieldValue::String("filezero.bin".to_string()),
+                FieldValue::Long(10),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Short(0),
+                FieldValue::Short(1),
+            ]),
+        );
+        zero_media_db.add_record(
+            "Media",
+            Record::with_fields(vec![
+                FieldValue::Short(1),
+                FieldValue::Long(0),
+                FieldValue::Null,
+                FieldValue::String("#cab1.cab".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        zero_media_db.add_record(
+            "Media",
+            Record::with_fields(vec![
+                FieldValue::Short(2),
+                FieldValue::Long(10),
+                FieldValue::Null,
+                FieldValue::String("#cab2.cab".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        Linker::layout_media_and_files(&mut zero_media_db);
+
+        let mut layout_db = LinkedDatabase::new()?;
+        layout_db.add_record(
+            "_FileDiskId",
+            Record::with_fields(vec![FieldValue::Null, FieldValue::Null]),
+        );
+        layout_db.add_record(
+            "_FileDiskId",
+            Record::with_fields(vec![
+                FieldValue::String("FileX".to_string()),
+                FieldValue::Short(1),
+            ]),
+        );
+        layout_db.add_record(
+            "File",
+            Record::with_fields(vec![
+                FieldValue::String("FileX".to_string()),
+                FieldValue::String("CompX".to_string()),
+                FieldValue::String("fileX.bin".to_string()),
+                FieldValue::Long(10),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Short(0),
+                FieldValue::Short(1),
+            ]),
+        );
+        // Media with non-Short disk_id to hit match r.get(0) _ => 1
+        layout_db.add_record(
+            "Media",
+            Record::with_fields(vec![
+                FieldValue::Null,
+                FieldValue::Long(50),
+                FieldValue::Null,
+                FieldValue::String("#cab0.cab".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        // Media with disk_id 2 which has no files, so disk_max_seq has no entry
+        layout_db.add_record(
+            "Media",
+            Record::with_fields(vec![
+                FieldValue::Short(2),
+                FieldValue::Long(100),
+                FieldValue::Null,
+                FieldValue::String("#cab2.cab".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        // Media with disk_id 1
+        layout_db.add_record(
+            "Media",
+            Record::with_fields(vec![
+                FieldValue::Short(1),
+                FieldValue::Long(10),
+                FieldValue::Null,
+                FieldValue::String("#cab1.cab".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+
+        Linker::layout_media_and_files(&mut layout_db);
+        let final_media = layout_db.get_records("Media");
+        assert_eq!(final_media.len(), 3);
+
+        // Clean up temp directory
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        Ok(())
+    }
+
+    /// Tests `run_ice_validations_filtered` with rule selection and suppression.
+    #[test]
+    fn test_run_ice_validations_filtered_whitelist_and_suppression() -> Result<()> {
+        let mut db = LinkedDatabase::new()?;
+        db.add_record(
+            "File",
+            Record::with_fields(vec![
+                FieldValue::String("File1".to_string()),
+                FieldValue::String("Comp1".to_string()),
+                FieldValue::String("file1.txt".to_string()),
+                FieldValue::Long(100),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Short(99), // non-contiguous sequence triggers ICE04
+            ]),
+        );
+
+        // Selecting ICE04 -> should fail with ICE04 error
+        let err = Linker::run_ice_validations_filtered(&db, &["ICE04".to_string()], &[]);
+        assert!(err.is_err());
+
+        // Suppressing ICE04 -> should bypass ICE04 failure
+        let res = Linker::run_ice_validations_filtered(
+            &db,
+            &["ICE04".to_string()],
+            &["ice04".to_string()],
+        );
+        assert!(res.is_ok());
+
+        // Selecting unrelated rule (e.g. ICE99) -> passes
+        let res2 = Linker::run_ice_validations_filtered(&db, &["ICE99".to_string()], &[]);
+        assert!(res2.is_ok());
+
+        // Direct run_ice_validations calls filtered with empty lists -> fails on unsuppressed ICE04
+        assert!(Linker::run_ice_validations(&db).is_err());
         Ok(())
     }
 }

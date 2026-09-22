@@ -2011,10 +2011,7 @@ impl Compiler {
             FieldValue::Null,
             FieldValue::String("WIX_UPGRADE_DETECTED".to_string()),
         ]);
-        tables
-            .entry("Upgrade".to_string())
-            .or_insert_with(|| IntermediateTable::new("Upgrade"))
-            .push_record(older_rec);
+        let mut upg_records = vec![older_rec];
 
         if let Some(err_msg) = downgrade_err {
             let newer_rec = Record::with_fields(vec![
@@ -2026,10 +2023,7 @@ impl Compiler {
                 FieldValue::Null,
                 FieldValue::String("WIX_DOWNGRADE_DETECTED".to_string()),
             ]);
-            tables
-                .entry("Upgrade".to_string())
-                .or_insert_with(|| IntermediateTable::new("Upgrade"))
-                .push_record(newer_rec);
+            upg_records.push(newer_rec);
 
             let lc_rec = Record::with_fields(vec![
                 FieldValue::String("NOT WIX_DOWNGRADE_DETECTED".to_string()),
@@ -2039,6 +2033,13 @@ impl Compiler {
                 .entry("LaunchCondition".to_string())
                 .or_insert_with(|| IntermediateTable::new("LaunchCondition"))
                 .push_record(lc_rec);
+        }
+
+        let upg_tbl = tables
+            .entry("Upgrade".to_string())
+            .or_insert_with(|| IntermediateTable::new("Upgrade"));
+        for r in upg_records {
+            upg_tbl.push_record(r);
         }
 
         let prop_rec = Record::with_fields(vec![
@@ -2061,20 +2062,16 @@ impl Compiler {
             FieldValue::Null,
             FieldValue::Short(rep_seq),
         ]);
-        tables
-            .entry("InstallExecuteSequence".to_string())
-            .or_insert_with(|| IntermediateTable::new("InstallExecuteSequence"))
-            .push_record(rep_rec);
-
         let frp_rec = Record::with_fields(vec![
             FieldValue::String("FindRelatedProducts".to_string()),
             FieldValue::Null,
             FieldValue::Short(200),
         ]);
-        tables
+        let ies_tbl = tables
             .entry("InstallExecuteSequence".to_string())
-            .or_insert_with(|| IntermediateTable::new("InstallExecuteSequence"))
-            .push_record(frp_rec);
+            .or_insert_with(|| IntermediateTable::new("InstallExecuteSequence"));
+        ies_tbl.push_record(rep_rec);
+        ies_tbl.push_record(frp_rec);
     }
 
     /// Compiles cross-platform POSIX extension elements.
@@ -3585,6 +3582,7 @@ fn parse_registry_root(root_str: &str) -> i16 {
 mod tests {
     use super::*;
     use crate::wix::xml::XmlParser;
+    use std::fs;
 
     #[test]
     fn test_compiler_basic() -> Result<()> {
@@ -4732,27 +4730,27 @@ mod tests {
         let obj = compiler.compile(&root)?;
         let sec = &obj.sections[0];
 
+        let def_tbl = IntermediateTable::new("Default");
+
         // 1. Verify WixFile table contains DiskId
-        let wix_file_tbl = sec.tables.iter().find(|t| t.name == "WixFile");
-        let Some(wix_file_tbl) = wix_file_tbl else {
-            return Err(Error::Validation {
-                element: "WixFile".to_string(),
-                reason: "missing WixFile table".to_string(),
-            });
-        };
+        let wix_file_tbl = sec
+            .tables
+            .iter()
+            .find(|t| t.name == "WixFile")
+            .unwrap_or(&def_tbl);
+        assert_eq!(wix_file_tbl.name, "WixFile");
         let wf_records = &wix_file_tbl.records;
         assert_eq!(wf_records.len(), 2);
         assert_eq!(wf_records[0].get(2), Some(&FieldValue::Short(1)));
         assert_eq!(wf_records[1].get(2), Some(&FieldValue::Short(2)));
 
         // 2. Verify Media records (embedding prefix #, DiskPrompt, VolumeLabel, Source)
-        let media_tbl = sec.tables.iter().find(|t| t.name == "Media");
-        let Some(media_tbl) = media_tbl else {
-            return Err(Error::Validation {
-                element: "Media".to_string(),
-                reason: "missing Media table".to_string(),
-            });
-        };
+        let media_tbl = sec
+            .tables
+            .iter()
+            .find(|t| t.name == "Media")
+            .unwrap_or(&def_tbl);
+        assert_eq!(media_tbl.name, "Media");
         let m_records = &media_tbl.records;
         assert_eq!(m_records.len(), 2);
         assert_eq!(
@@ -4777,13 +4775,12 @@ mod tests {
         );
 
         // 3. Verify WixVariable table
-        let wix_var_tbl = sec.tables.iter().find(|t| t.name == "WixVariable");
-        let Some(wix_var_tbl) = wix_var_tbl else {
-            return Err(Error::Validation {
-                element: "WixVariable".to_string(),
-                reason: "missing WixVariable table".to_string(),
-            });
-        };
+        let wix_var_tbl = sec
+            .tables
+            .iter()
+            .find(|t| t.name == "WixVariable")
+            .unwrap_or(&def_tbl);
+        assert_eq!(wix_var_tbl.name, "WixVariable");
         let wv_records = &wix_var_tbl.records;
         assert_eq!(wv_records.len(), 2);
         assert_eq!(
@@ -4805,13 +4802,12 @@ mod tests {
         assert!(app_search_tbl.is_some());
 
         // 5. Verify CustomAction Type 6 (VBScript) and Type 5 (JScript)
-        let ca_tbl = sec.tables.iter().find(|t| t.name == "CustomAction");
-        let Some(ca_tbl) = ca_tbl else {
-            return Err(Error::Validation {
-                element: "CustomAction".to_string(),
-                reason: "missing CustomAction table".to_string(),
-            });
-        };
+        let ca_tbl = sec
+            .tables
+            .iter()
+            .find(|t| t.name == "CustomAction")
+            .unwrap_or(&def_tbl);
+        assert_eq!(ca_tbl.name, "CustomAction");
         let ca_records = &ca_tbl.records;
         assert_eq!(
             ca_records[0].get(0),
@@ -4825,13 +4821,12 @@ mod tests {
         assert_eq!(ca_records[1].get(1), Some(&FieldValue::Short(5 | 0x0040))); // Type 5 JScript + Return="ignore"
 
         // 6. Verify RadioButton table
-        let rb_tbl = sec.tables.iter().find(|t| t.name == "RadioButton");
-        let Some(rb_tbl) = rb_tbl else {
-            return Err(Error::Validation {
-                element: "RadioButton".to_string(),
-                reason: "missing RadioButton table".to_string(),
-            });
-        };
+        let rb_tbl = sec
+            .tables
+            .iter()
+            .find(|t| t.name == "RadioButton")
+            .unwrap_or(&def_tbl);
+        assert_eq!(rb_tbl.name, "RadioButton");
         let rb_records = &rb_tbl.records;
         assert_eq!(rb_records.len(), 4);
         assert_eq!(
@@ -4860,13 +4855,12 @@ mod tests {
         );
 
         // 7. Verify ScrollableText resolved text
-        let ctrl_tbl = sec.tables.iter().find(|t| t.name == "Control");
-        let Some(ctrl_tbl) = ctrl_tbl else {
-            return Err(Error::Validation {
-                element: "Control".to_string(),
-                reason: "missing Control table".to_string(),
-            });
-        };
+        let ctrl_tbl = sec
+            .tables
+            .iter()
+            .find(|t| t.name == "Control")
+            .unwrap_or(&def_tbl);
+        assert_eq!(ctrl_tbl.name, "Control");
         let ctrl_records = &ctrl_tbl.records;
         let license_rec = ctrl_records
             .iter()
@@ -4880,13 +4874,12 @@ mod tests {
         );
 
         // 8. Verify Relative Sequence Table (_WixSequenceRelative)
-        let rel_tbl = sec.tables.iter().find(|t| t.name == "_WixSequenceRelative");
-        let Some(rel_tbl) = rel_tbl else {
-            return Err(Error::Validation {
-                element: "_WixSequenceRelative".to_string(),
-                reason: "missing _WixSequenceRelative table".to_string(),
-            });
-        };
+        let rel_tbl = sec
+            .tables
+            .iter()
+            .find(|t| t.name == "_WixSequenceRelative")
+            .unwrap_or(&def_tbl);
+        assert_eq!(rel_tbl.name, "_WixSequenceRelative");
         let rel_records = &rel_tbl.records;
         assert_eq!(rel_records.len(), 4);
 
@@ -4895,13 +4888,12 @@ mod tests {
         assert!(upg_tbl.is_some());
         let lc_tbl = sec.tables.iter().find(|t| t.name == "LaunchCondition");
         assert!(lc_tbl.is_some());
-        let prop_tbl = sec.tables.iter().find(|t| t.name == "Property");
-        let Some(prop_tbl) = prop_tbl else {
-            return Err(Error::Validation {
-                element: "Property".to_string(),
-                reason: "missing Property table".to_string(),
-            });
-        };
+        let prop_tbl = sec
+            .tables
+            .iter()
+            .find(|t| t.name == "Property")
+            .unwrap_or(&def_tbl);
+        assert_eq!(prop_tbl.name, "Property");
         let p_records = &prop_tbl.records;
         let sec_prop = p_records
             .iter()
@@ -4928,5 +4920,214 @@ mod tests {
         let already = r"{\rtf1\ansi Some text}";
         let rtf2 = convert_text_to_rtf(already);
         assert_eq!(rtf2, already);
+    }
+
+    /// Tests compiling system, shell, and COM metadata elements including `Shortcut`, `SymbolicLink`,
+    /// `IniFile`, `Icon`, `ProgId`, `MIME`, `Class`, `AppId`, `Error`, and control text resolution.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] if XML parsing or compilation fails.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_compiler_system_and_com_elements() -> Result<()> {
+        let temp_dir = std::env::temp_dir().join("msi_test_compiler_system_elements");
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(&temp_dir)?;
+
+        let rtf_path = temp_dir.join("license.rtf");
+        fs::write(&rtf_path, r"{\rtf1 RTF sample}")?;
+        let txt_path = temp_dir.join("license.txt");
+        fs::write(&txt_path, "Plain text sample")?;
+
+        let rtf_str = rtf_path.to_str().unwrap_or("license.rtf");
+        let txt_str = txt_path.to_str().unwrap_or("license.txt");
+
+        let xml = format!(
+            r#"
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="{{11111111-2222-3333-4444-555555555555}}" Name="ComApp" Version="1.0.0" Manufacturer="Vendor" UpgradeCode="{{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}}">
+        <Package Description="COM Test" />
+        <MajorUpgrade Schedule="afterInstallValidate" DowngradeErrorMessage="Downgrade forbidden" />
+        <Media Id="1" Cabinet="app.cab" EmbedCab="yes" />
+        <Media Id="3" EmbedCab="yes" />
+
+        <Directory Id="TARGETDIR" Name="SourceDir">
+            <Directory Id="INSTALLDIR" Name="App">
+                <Component Id="C_Main" Guid="{{11111111-1111-1111-1111-111111111111}}">
+                    <File Id="F_Main" Source="app.exe" KeyPath="yes" />
+                    <Shortcut Id="SC_Main" Name="App Shortcut" Target="[#F_Main]" Directory="ProgramMenuFolder" Description="App Description" Arguments="--test" Icon="AppIcon" />
+                    <SymbolicLink Id="Sym_Main" Name="app_link" Target="app.exe" Directory="INSTALLDIR" />
+                    <IniFile Id="Ini_1" Name="app.ini" Section="Config" Key="Created" Value="1" Action="createLine" Directory="INSTALLDIR" />
+                    <IniFile Id="Ini_2" Name="app.ini" Section="Config" Key="Replaced" Value="2" Action="replaceLine" />
+                    <IniFile Id="Ini_3" Name="app.ini" Section="Config" Key="Tag" Value="3" Action="addTag" />
+                    <IniFile Id="Ini_4" Name="app.ini" Section="Config" Key="Tag" Value="4" Action="removeTag" />
+                    <IniFile Id="Ini_5" Name="app.ini" Section="Config" Key="Other" Value="5" Action="other" />
+                    <Class Id="{{22222222-2222-2222-2222-222222222222}}" Context="InprocServer32" Description="Main Class" ProgId="App.Doc" AppId="{{33333333-3333-3333-3333-333333333333}}" />
+                </Component>
+            </Directory>
+        </Directory>
+
+        <Icon Id="AppIcon" />
+        <ProgId Id="App.Doc" Description="App Document" Icon="AppIcon" IconIndex="0" />
+        <MIME ContentType="application/x-app" DefaultExtension=".app" CLSID="{{22222222-2222-2222-2222-222222222222}}" />
+        <AppId Id="{{33333333-3333-3333-3333-333333333333}}" RemoteServerName="server1" LocalService="svc1" />
+        <Error Id="1001" Message="Fatal Error 1001" />
+        <Error Id="1002">Inline message 1002</Error>
+        <Property Id="EMPTY_PROP" Value="" />
+        <RegistrySearch Id="TopLevelSearch" Root="HKLM" Key="Software\App">
+            <DirectorySearch Id="NestedDir" />
+        </RegistrySearch>
+
+        <UI Id="DlgUI">
+            <Dialog Id="Dlg_Text" Width="300" Height="200" Title="Dialog">
+                <Control Id="C_Rtf" Type="ScrollableText" X="0" Y="0" Width="100" Height="50">
+                    <Text SourceFile="{rtf_str}" />
+                </Control>
+                <Control Id="C_Txt" Type="ScrollableText" X="0" Y="50" Width="100" Height="50">
+                    <Text SourceFile="{txt_str}" />
+                </Control>
+                <Control Id="C_Missing" Type="ScrollableText" X="0" Y="100" Width="100" Height="50">
+                    <Text SourceFile="/nonexistent_source_file_9999.txt" />
+                </Control>
+                <Control Id="C_Empty" Type="ScrollableText" X="0" Y="150" Width="100" Height="20">
+                    <Text></Text>
+                </Control>
+                <Control Id="C_Direct_Inner" Type="RadioButtonGroup" X="0" Y="170" Width="100" Height="20" Property="PROP_DIRECT">
+                    <RadioButton Value="V2" Help="Help Tip">Direct text inside</RadioButton>
+                </Control>
+                <Control Id="C_Rbg_PropFallback" Type="RadioButtonGroup" X="0" Y="190" Width="100" Height="20" Property="PROP_FROM_CTRL">
+                    <RadioButtonGroup>
+                        <RadioButton Value="V1">Text From Body</RadioButton>
+                    </RadioButtonGroup>
+                </Control>
+            </Dialog>
+        </UI>
+
+        <InstallExecuteSequence>
+            <Custom Action="CA_Exit" OnExit="success">NOT Installed</Custom>
+        </InstallExecuteSequence>
+    </Product>
+</Wix>
+"#
+        );
+
+        let parser = XmlParser::new();
+        let compiler = Compiler::new();
+        let root = parser.parse(&xml)?;
+        let obj = compiler.compile(&root)?;
+        let sec = &obj.sections[0];
+
+        let def_tbl = IntermediateTable::new("Default");
+
+        let sc_tbl = sec
+            .tables
+            .iter()
+            .find(|t| t.name == "Shortcut")
+            .unwrap_or(&def_tbl);
+        assert_eq!(sc_tbl.name, "Shortcut");
+        assert_eq!(sc_tbl.records.len(), 1);
+
+        let sym_tbl = sec
+            .tables
+            .iter()
+            .find(|t| t.name == "PosixSymlink")
+            .unwrap_or(&def_tbl);
+        assert_eq!(sym_tbl.name, "PosixSymlink");
+        assert_eq!(sym_tbl.records.len(), 1);
+
+        let ini_tbl = sec
+            .tables
+            .iter()
+            .find(|t| t.name == "IniFile")
+            .unwrap_or(&def_tbl);
+        assert_eq!(ini_tbl.name, "IniFile");
+        assert_eq!(ini_tbl.records.len(), 5);
+
+        let icon_tbl = sec
+            .tables
+            .iter()
+            .find(|t| t.name == "Icon")
+            .unwrap_or(&def_tbl);
+        assert_eq!(icon_tbl.name, "Icon");
+        assert_eq!(icon_tbl.records.len(), 1);
+
+        let prog_tbl = sec
+            .tables
+            .iter()
+            .find(|t| t.name == "ProgId")
+            .unwrap_or(&def_tbl);
+        assert_eq!(prog_tbl.name, "ProgId");
+        assert_eq!(prog_tbl.records.len(), 1);
+
+        let mime_tbl = sec
+            .tables
+            .iter()
+            .find(|t| t.name == "MIME")
+            .unwrap_or(&def_tbl);
+        assert_eq!(mime_tbl.name, "MIME");
+        assert_eq!(mime_tbl.records.len(), 1);
+
+        let class_tbl = sec
+            .tables
+            .iter()
+            .find(|t| t.name == "Class")
+            .unwrap_or(&def_tbl);
+        assert_eq!(class_tbl.name, "Class");
+        assert_eq!(class_tbl.records.len(), 1);
+
+        let app_tbl = sec
+            .tables
+            .iter()
+            .find(|t| t.name == "AppId")
+            .unwrap_or(&def_tbl);
+        assert_eq!(app_tbl.name, "AppId");
+        assert_eq!(app_tbl.records.len(), 1);
+
+        let err_tbl = sec
+            .tables
+            .iter()
+            .find(|t| t.name == "Error")
+            .unwrap_or(&def_tbl);
+        assert_eq!(err_tbl.name, "Error");
+        assert_eq!(err_tbl.records.len(), 2);
+
+        // Also test MajorUpgrade with afterInstallFinalize and other schedules
+        let xml_upg = r#"
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="{11111111-2222-3333-4444-555555555555}" Name="UpgApp" Version="1.0.0" Manufacturer="Vendor" UpgradeCode="{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}">
+        <Package Description="Upg Test" />
+        <MajorUpgrade Schedule="afterInstallFinalize" />
+    </Product>
+</Wix>
+"#;
+        let root_upg = parser.parse(xml_upg)?;
+        assert!(compiler.compile(&root_upg).is_ok());
+
+        let xml_upg_other = r#"
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="{11111111-2222-3333-4444-555555555555}" Name="UpgApp" Version="1.0.0" Manufacturer="Vendor" UpgradeCode="{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}">
+        <Package Description="Upg Test" />
+        <MajorUpgrade Schedule="otherSchedule" />
+    </Product>
+</Wix>
+"#;
+        let root_upg_other = parser.parse(xml_upg_other)?;
+        assert!(compiler.compile(&root_upg_other).is_ok());
+
+        // Test compiling Fragment with MajorUpgrade on fresh tables and top-level RegistrySearch (parent_id = None)
+        let xml_frag = r#"
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Fragment>
+        <MajorUpgrade Schedule="afterInstallValidate" DowngradeErrorMessage="Downgrade blocked" />
+        <RegistrySearch Id="FragSearch" Root="HKLM" Key="Software\App" />
+    </Fragment>
+</Wix>
+"#;
+        let root_frag = parser.parse(xml_frag)?;
+        assert!(compiler.compile(&root_frag).is_ok());
+
+        let _ = fs::remove_dir_all(&temp_dir);
+        Ok(())
     }
 }

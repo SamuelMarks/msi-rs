@@ -775,7 +775,7 @@ LineWithoutEquals
         assert!(xml.contains("db.bin"));
 
         // 3. Verify disk routing
-        assert!(xml.contains(r#"Source=""#) || xml.contains(r#"Source=""#));
+        assert!(xml.contains(r#"Source=""#));
         assert!(xml.contains(r#"DiskId="2""#));
         assert!(xml.contains(r#"DiskId="3""#));
 
@@ -784,5 +784,43 @@ LineWithoutEquals
 
         let _ = fs::remove_dir_all(&temp_dir);
         Ok(())
+    }
+
+    /// Tests the internal `matches_pattern` function across all wildcard, prefix, suffix, and boundary conditions.
+    #[test]
+    fn test_matches_pattern_comprehensive() {
+        // 1. /* patterns
+        assert!(matches_pattern(
+            "cache/runtimes/file.txt",
+            "cache/runtimes/*"
+        ));
+        assert!(matches_pattern("cache/runtimes", "cache/runtimes/*"));
+        assert!(!matches_pattern("other/path/file.txt", "cache/runtimes/*"));
+
+        // 2. /** patterns
+        assert!(matches_pattern("cache/sub/data.bin", "cache/**"));
+        assert!(matches_pattern("cache", "cache/**"));
+        assert!(!matches_pattern("other/file.bin", "cache/**"));
+
+        // 3. *suffix patterns
+        assert!(matches_pattern("file.log", "*.log"));
+        assert!(!matches_pattern("file.txt", "*.log"));
+
+        // 4. Trailing slash / prefix patterns
+        assert!(matches_pattern("docs/readme.md", "docs/"));
+        assert!(matches_pattern("base/docs/readme.md", "docs/"));
+        assert!(!matches_pattern("base/other/readme.md", "docs/"));
+
+        // 5. Fallback matches: exact, starts_with, ends_with, contains, and negative
+        assert!(matches_pattern("app.exe", "app.exe"));
+        assert!(matches_pattern("dir/sub/file.txt", "dir"));
+        assert!(matches_pattern("some/dir/target.bin", "target.bin"));
+        assert!(matches_pattern("top/mid/bottom/file.txt", "mid"));
+        assert!(!matches_pattern("abc/def", "xyz"));
+
+        // 6. Normalizations: ./ prefix and backslashes
+        assert!(matches_pattern("cache/file.txt", "./cache/*"));
+        assert!(matches_pattern("cache\\sub\\file.txt", "cache/*"));
+        assert!(matches_pattern("cache/sub/file.txt", "cache\\*"));
     }
 }

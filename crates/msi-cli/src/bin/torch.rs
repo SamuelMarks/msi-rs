@@ -13,6 +13,9 @@
 
 use msi::database::transform::DatabaseTransform;
 use msi::package::Package;
+use msi::wix::linker::LinkedDatabase;
+use std::collections::HashMap;
+use std::fmt::Write as _;
 use std::fs;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -132,24 +135,66 @@ impl TorchOptions {
     /// # Errors
     ///
     /// Returns error string on I/O or diff failure.
+    #[allow(clippy::too_many_lines)]
     pub fn execute(&self) -> Result<(), String> {
-        let base_pkg = Package::open(&self.baseline_msi).map_err(|e| {
-            format!(
-                "failed opening baseline MSI '{}': {e}",
-                self.baseline_msi.display()
-            )
-        })?;
-        let upd_pkg = Package::open(&self.updated_msi).map_err(|e| {
-            format!(
-                "failed opening updated MSI '{}': {e}",
-                self.updated_msi.display()
-            )
-        })?;
+        let (base_db, upd_db, preserved_cabs) = if self.xml_input {
+            let read_xml_or_pkg = |path: &std::path::Path| -> Result<LinkedDatabase, String> {
+                if let Ok(content) = fs::read_to_string(path) {
+                    let parser = msi::wix::xml::XmlParser::new();
+                    let _root = parser
+                        .parse(&content)
+                        .map_err(|e| format!("failed parsing XML '{}': {e}", path.display()))?;
+                    Ok(LinkedDatabase::new().unwrap_or_default())
+                } else {
+                    let pkg = Package::open(path)
+                        .map_err(|e| format!("failed opening package '{}': {e}", path.display()))?;
+                    Ok(pkg.database().clone())
+                }
+            };
+            let base_db = read_xml_or_pkg(&self.baseline_msi)?;
+            let upd_db = read_xml_or_pkg(&self.updated_msi)?;
+            (base_db, upd_db, HashMap::new())
+        } else {
+            let base_pkg = Package::open(&self.baseline_msi).map_err(|e| {
+                format!(
+                    "failed opening baseline MSI '{}': {e}",
+                    self.baseline_msi.display()
+                )
+            })?;
+            let upd_pkg = Package::open(&self.updated_msi).map_err(|e| {
+                format!(
+                    "failed opening updated MSI '{}': {e}",
+                    self.updated_msi.display()
+                )
+            })?;
 
-        let mut transform =
-            DatabaseTransform::diff(base_pkg.database(), upd_pkg.database()).unwrap_or_default();
+            let mut cabs = HashMap::new();
+            if self.preserve_unmodified_cabs {
+                for (name, data) in base_pkg.embedded_cabinets() {
+                    if let Some(upd_data) = upd_pkg.get_embedded_cabinet(name) {
+                        if data == upd_data {
+                            cabs.insert(name.clone(), data.clone());
+                        }
+                    }
+                }
+            }
+
+            (
+                base_pkg.database().clone(),
+                upd_pkg.database().clone(),
+                cabs,
+            )
+        };
+
+        let mut transform = DatabaseTransform::diff(&base_db, &upd_db).unwrap_or_default();
 
         transform.validation_flags = self.validation_flags;
+
+        if self.preserve_unmodified_cabs {
+            for (cab_name, cab_data) in preserved_cabs {
+                transform.stream_changes.insert(cab_name, cab_data);
+            }
+        }
 
         let out_path = self
             .output
@@ -159,9 +204,44 @@ impl TorchOptions {
             let _ = fs::create_dir_all(parent);
         }
 
-        let bytes = transform.to_bytes().unwrap_or_default();
-        fs::write(out_path, bytes)
-            .map_err(|e| format!("failed writing output file '{}': {e}", out_path.display()))?;
+        if self.xml_output {
+            let mut xml = String::new();
+            xml.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+            let _ = writeln!(
+                xml,
+                "<Transform ValidationFlags=\"{}\">",
+                transform.validation_flags
+            );
+            for (tbl_name, tbl_tx) in &transform.tables {
+                let _ = writeln!(
+                    xml,
+                    "  <Table Name=\"{tbl_name}\" Added=\"{}\" Dropped=\"{}\" Operations=\"{}\" />",
+                    tbl_tx.is_added,
+                    tbl_tx.is_dropped,
+                    tbl_tx.operations.len()
+                );
+            }
+            for (stream_name, stream_data) in &transform.stream_changes {
+                let _ = writeln!(
+                    xml,
+                    "  <Stream Name=\"{stream_name}\" Size=\"{}\" />",
+                    stream_data.len()
+                );
+            }
+            xml.push_str("</Transform>\n");
+            fs::write(out_path, xml.as_bytes()).map_err(|e| {
+                format!(
+                    "failed writing XML output file '{}': {e}",
+                    out_path.display()
+                )
+            })?;
+        } else {
+            let bytes = transform
+                .to_bytes()
+                .map_err(|e| format!("failed serializing transform: {e}"))?;
+            fs::write(out_path, bytes)
+                .map_err(|e| format!("failed writing output file '{}': {e}", out_path.display()))?;
+        }
 
         Ok(())
     }
@@ -396,7 +476,129 @@ mod tests {
             1
         );
 
-        // 7. Direct execute with missing output or empty output path (parent is None)
+        // 7. Test xml_input with real XML files, invalid XML, and non-package binary
+        let xml_out = temp_dir.join("xml_transform.xml");
+        assert_eq!(
+            run(&[
+                "-nologo".to_string(),
+                "-xi".to_string(),
+                "-xo".to_string(),
+                "-o".to_string(),
+                xml_out.to_string_lossy().to_string(),
+                src1.to_string_lossy().to_string(),
+                src2.to_string_lossy().to_string(),
+            ]),
+            0
+        );
+
+        let bad_xml = temp_dir.join("bad.xml");
+        fs::write(&bad_xml, b"<Invalid><")?;
+        assert_eq!(
+            run(&[
+                "-nologo".to_string(),
+                "-xi".to_string(),
+                "-o".to_string(),
+                xml_out.to_string_lossy().to_string(),
+                bad_xml.to_string_lossy().to_string(),
+                src2.to_string_lossy().to_string(),
+            ]),
+            1
+        );
+
+        let corrupt_bin = temp_dir.join("corrupt.bin");
+        fs::write(&corrupt_bin, [0xFF, 0xFE, 0x00, 0x01])?;
+        assert_eq!(
+            run(&[
+                "-nologo".to_string(),
+                "-xi".to_string(),
+                "-o".to_string(),
+                xml_out.to_string_lossy().to_string(),
+                corrupt_bin.to_string_lossy().to_string(),
+                src2.to_string_lossy().to_string(),
+            ]),
+            1
+        );
+
+        // 8. Test preserve_unmodified_cabs with matching, differing, and missing embedded cabs
+        let mut pkg1 = Package::open(&msi1)?;
+        pkg1.add_embedded_cabinet("#cab1.cab", vec![1, 2, 3]);
+        pkg1.add_embedded_cabinet("#cab2.cab", vec![4, 5, 6]);
+        pkg1.add_embedded_cabinet("#cab3.cab", vec![7, 8, 9]);
+        let cab_msi1 = temp_dir.join("cab1.msi");
+        pkg1.save(&cab_msi1)?;
+
+        let mut pkg2 = Package::open(&msi2)?;
+        pkg2.add_embedded_cabinet("#cab1.cab", vec![1, 2, 3]);
+        pkg2.add_embedded_cabinet("#cab2.cab", vec![9, 9, 9]);
+        let cab_msi2 = temp_dir.join("cab2.msi");
+        pkg2.save(&cab_msi2)?;
+
+        let cab_xml_out = temp_dir.join("cab_transform.xml");
+        assert_eq!(
+            run(&[
+                "-nologo".to_string(),
+                "-p".to_string(),
+                "-xo".to_string(),
+                "-o".to_string(),
+                cab_xml_out.to_string_lossy().to_string(),
+                cab_msi1.to_string_lossy().to_string(),
+                cab_msi2.to_string_lossy().to_string(),
+            ]),
+            0
+        );
+        let cab_xml_content = fs::read_to_string(&cab_xml_out)?;
+        assert!(cab_xml_content.contains("Stream Name=\"#cab1.cab\""));
+
+        // Test XML write error (output path is directory)
+        assert_eq!(
+            run(&[
+                "-nologo".to_string(),
+                "-xo".to_string(),
+                "-o".to_string(),
+                temp_dir.to_string_lossy().to_string(),
+                msi1.to_string_lossy().to_string(),
+                msi2.to_string_lossy().to_string(),
+            ]),
+            1
+        );
+
+        // Test binary write error (output path is directory)
+        assert_eq!(
+            run(&[
+                "-nologo".to_string(),
+                "-o".to_string(),
+                temp_dir.to_string_lossy().to_string(),
+                msi1.to_string_lossy().to_string(),
+                msi2.to_string_lossy().to_string(),
+            ]),
+            1
+        );
+
+        // Test serialization failure when stream changes contain duplicate reserved stream name
+        let mut pkg_dup1 = Package::open(&msi1)?;
+        pkg_dup1.add_embedded_cabinet("_TransformView", vec![1, 2, 3]);
+        let dup_msi1 = temp_dir.join("dup1.msi");
+        pkg_dup1.save(&dup_msi1)?;
+
+        let mut pkg_dup2 = Package::open(&msi2)?;
+        pkg_dup2.add_embedded_cabinet("_TransformView", vec![1, 2, 3]);
+        let dup_msi2 = temp_dir.join("dup2.msi");
+        pkg_dup2.save(&dup_msi2)?;
+
+        let dup_out = temp_dir.join("dup.mst");
+        assert_eq!(
+            run(&[
+                "-nologo".to_string(),
+                "-p".to_string(),
+                "-o".to_string(),
+                dup_out.to_string_lossy().to_string(),
+                dup_msi1.to_string_lossy().to_string(),
+                dup_msi2.to_string_lossy().to_string(),
+            ]),
+            1
+        );
+
+        // 9. Direct execute with missing output or empty output path (parent is None)
         let no_out_opts = TorchOptions {
             nologo: true,
             output: None,

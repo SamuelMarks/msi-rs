@@ -381,6 +381,8 @@ pub struct CustomActionExecutor {
     library_loader: super::native_action::NativeLibraryLoader,
     /// Subprocess runner for native executable custom actions.
     subprocess_runner: super::native_action::SubprocessRunner,
+    /// Optional offline execution policy for bare-metal sysroots.
+    offline_policy: Option<crate::execution::bare_metal::OfflineExecutionPolicy>,
 }
 
 impl CustomActionExecutor {
@@ -388,6 +390,32 @@ impl CustomActionExecutor {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Attaches an [`crate::execution::bare_metal::OfflineExecutionPolicy`] for offline sysroots.
+    ///
+    /// # Arguments
+    ///
+    /// * `policy` - Policy governing execution safety and mocking.
+    ///
+    /// # Returns
+    ///
+    /// Updated [`CustomActionExecutor`].
+    #[must_use]
+    pub fn with_offline_policy(
+        mut self,
+        policy: crate::execution::bare_metal::OfflineExecutionPolicy,
+    ) -> Self {
+        self.offline_policy = Some(policy);
+        self
+    }
+
+    /// Returns an optional reference to the attached [`crate::execution::bare_metal::OfflineExecutionPolicy`].
+    #[must_use]
+    pub const fn offline_policy(
+        &self,
+    ) -> Option<&crate::execution::bare_metal::OfflineExecutionPolicy> {
+        self.offline_policy.as_ref()
     }
 
     /// Sets a mock return code for a specific action name (useful for test harnesses).
@@ -441,6 +469,27 @@ impl CustomActionExecutor {
         action: &CustomActionDefinition,
         context: &mut EvaluationContext,
     ) -> Result<u32> {
+        if let Some(ref policy) = self.offline_policy {
+            let disposition = policy.evaluate_action(action.name(), action.raw_type());
+            match disposition {
+                crate::execution::bare_metal::OfflineActionDisposition::SkipWithSuccess => {
+                    return Ok(ERROR_SUCCESS);
+                }
+                crate::execution::bare_metal::OfflineActionDisposition::RejectUnsafe => {
+                    return Err(Error::CustomActionFailed {
+                        action: action.name().to_string(),
+                        reason: format!(
+                            "Custom action '{}' (type 0x{:04X}) rejected by offline execution policy",
+                            action.name(),
+                            action.raw_type()
+                        ),
+                    });
+                }
+                crate::execution::bare_metal::OfflineActionDisposition::ExecuteInChroot
+                | crate::execution::bare_metal::OfflineActionDisposition::ExecuteDirect => {}
+            }
+        }
+
         if let Some(&code) = self.mock_results.get(action.name()) {
             if code != ERROR_SUCCESS {
                 return Err(Error::CustomActionFailed {
@@ -1783,6 +1832,49 @@ mod tests {
             let _ = MsiCloseHandle(h_install);
             Ok(())
         }
+    }
+
+    /// Tests `CustomActionExecutor` integration with `OfflineExecutionPolicy`.
+    #[test]
+    fn test_custom_action_executor_offline_policy() -> Result<()> {
+        use crate::execution::bare_metal::{OfflineActionPolicyMode, OfflineExecutionPolicy};
+
+        let mut context = EvaluationContext::new();
+
+        // 1. StrictReject policy rejects binary/DLL custom action
+        let strict_policy =
+            OfflineExecutionPolicy::new(OfflineActionPolicyMode::StrictReject, "/mnt/target");
+        let executor_strict = CustomActionExecutor::new().with_offline_policy(strict_policy);
+        assert!(executor_strict.offline_policy().is_some());
+
+        let ca_dll = CustomActionDefinition::parse(
+            "UnsafeAction",
+            1, // Dll in binary table
+            "BinaryKey",
+            "EntryPoint",
+        )?;
+        let res_reject = executor_strict.execute(&ca_dll, &mut context);
+        assert!(matches!(res_reject, Err(Error::CustomActionFailed { .. })));
+
+        // 2. SkipWithSuccess skips with ERROR_SUCCESS
+        let skip_policy =
+            OfflineExecutionPolicy::new(OfflineActionPolicyMode::SkipWithSuccess, "/mnt/target");
+        let executor_skip = CustomActionExecutor::new().with_offline_policy(skip_policy);
+        let res_skip = executor_skip.execute(&ca_dll, &mut context);
+        assert_eq!(res_skip, Ok(ERROR_SUCCESS));
+
+        // 3. Safe property action proceeds even in strict mode
+        let ca_prop = CustomActionDefinition::parse(
+            "SetPropAction",
+            51, // Formatted text into property
+            "MY_PROP",
+            "PropertyValue",
+        )?;
+        let res_prop = executor_strict.execute(&ca_prop, &mut context);
+        assert_eq!(res_prop, Ok(ERROR_SUCCESS));
+        assert_eq!(context.get_property("MY_PROP"), Some("PropertyValue"));
+
+        Ok(())
     }
 
     /// Tests `lock_handles` mutex poison recovery.

@@ -250,7 +250,7 @@ impl MbrTable {
 }
 
 /// Full GUID Partition Table manager.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct GptTable {
     /// 128-bit unique disk GUID.
     pub disk_guid: [u8; 16],

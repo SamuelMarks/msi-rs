@@ -355,6 +355,7 @@ impl PyPackageBuilder {
     /// * `target_dir_id` - Directory identifier where the file will install.
     /// * `feature_id` - Feature identifier linking the file's component.
     /// * `component_id` - Optional custom component identifier.
+    /// * `file_id` - Optional custom file identifier.
     ///
     /// # Returns
     ///
@@ -363,13 +364,14 @@ impl PyPackageBuilder {
     /// # Errors
     ///
     /// Returns [`crate::error::IoError`] or [`crate::error::ValidationError`] on failure.
-    #[pyo3(signature = (source_path, target_dir_id, feature_id, component_id = None))]
+    #[pyo3(signature = (source_path, target_dir_id, feature_id, component_id = None, file_id = None))]
     pub fn add_file_from_disk(
         &mut self,
         source_path: &str,
         target_dir_id: String,
         feature_id: String,
         component_id: Option<String>,
+        file_id: Option<String>,
     ) -> PyResult<String> {
         let path = Path::new(source_path);
         let data = fs::read(path).map_err(|e| to_py_err(&msi::Error::Io(e.to_string())))?;
@@ -379,7 +381,7 @@ impl PyPackageBuilder {
             .and_then(|n| n.to_str())
             .unwrap_or("file.bin");
 
-        let file_id = format!("f_{}", sanitize_id(file_name_os));
+        let file_id = file_id.unwrap_or_else(|| format!("f_{}", sanitize_id(file_name_os)));
         let comp_id = component_id.unwrap_or_else(|| format!("c_{}", sanitize_id(file_name_os)));
         let file_key = FileKey::new(file_id.clone()).map_err(|e| to_py_err(&e))?;
 
@@ -866,17 +868,29 @@ mod tests {
                 "TARGETDIR".to_string(),
                 "MainFeat".to_string(),
                 None,
+                None,
             );
             assert!(fid1.is_ok());
 
-            // 2. Add file with explicit component ID
+            // 2. Add file with explicit component ID and explicit file ID
             let fid2 = b.add_file_from_disk(
                 temp_src_str,
                 "TARGETDIR".to_string(),
                 "MainFeat".to_string(),
                 Some("CustomCompId".to_string()),
+                Some("CustomFileId".to_string()),
             );
             assert!(fid2.is_ok());
+
+            // 2b. Empty file ID triggers FileKey validation error
+            let fid_err = b.add_file_from_disk(
+                temp_src_str,
+                "TARGETDIR".to_string(),
+                "MainFeat".to_string(),
+                None,
+                Some(String::new()),
+            );
+            assert!(fid_err.is_err());
 
             // 3. Non-existent file path -> IoError
             assert!(b
@@ -884,7 +898,8 @@ mod tests {
                     "/nonexistent_dir_99999/file.bin",
                     "TARGETDIR".to_string(),
                     "MainFeat".to_string(),
-                    None
+                    None,
+                    None,
                 )
                 .is_err());
 
@@ -897,7 +912,8 @@ mod tests {
                     long_file.to_str().unwrap_or(""),
                     "TARGETDIR".to_string(),
                     "MainFeat".to_string(),
-                    None
+                    None,
+                    None,
                 )
                 .is_ok());
             let _ = fs::remove_file(&long_file);
@@ -908,7 +924,8 @@ mod tests {
                     temp_src.to_str().unwrap_or(""),
                     "TARGETDIR".to_string(),
                     String::new(),
-                    None
+                    None,
+                    None,
                 )
                 .is_err());
 
@@ -963,7 +980,8 @@ mod tests {
                         temp_src.to_str().unwrap_or(""),
                         "TARGETDIR".to_string(),
                         "MainFeat".to_string(),
-                        None
+                        None,
+                        None,
                     )
                     .is_ok());
                 let _ = fs::remove_file(&temp_src);

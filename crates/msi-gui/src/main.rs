@@ -223,30 +223,37 @@ pub fn create_package_runtime(
 ///
 /// Process exit code (`ExitCode::SUCCESS` on clean exit).
 pub fn run_gui(cli: &GuiCli) -> ExitCode {
+    let resolved_backend =
+        GuiDesktopRuntime::select_backend_with_fallback(cli.backend.into(), true, true);
+
     let mut runtime = cli
         .package
         .as_deref()
         .filter(|p| p.exists())
         .and_then(|p| msi::Package::open(p).ok())
         .map_or_else(
-            || {
-                create_standalone_runtime(
-                    cli.theme.into(),
-                    cli.backend.into(),
-                    cli.width,
-                    cli.height,
-                )
-            },
+            || create_standalone_runtime(cli.theme.into(), resolved_backend, cli.width, cli.height),
             |pkg| {
                 create_package_runtime(
                     &pkg,
                     cli.theme.into(),
-                    cli.backend.into(),
+                    resolved_backend,
                     cli.width,
                     cli.height,
                 )
             },
         );
+
+    // Window lifecycle initialization
+    let _ = runtime.process_lifecycle_event(msi::ui::WindowLifecycleEvent::Opened);
+    let _ = runtime.process_lifecycle_event(msi::ui::WindowLifecycleEvent::Focused);
+
+    // Non-resizable modal dialog constraint checking
+    let (req_w, req_h) = (
+        cli.width.unwrap_or_else(|| runtime.window_config().width),
+        cli.height.unwrap_or_else(|| runtime.window_config().height),
+    );
+    let (_constrained_w, _constrained_h) = runtime.enforce_window_constraints(req_w, req_h);
 
     // Render initial frame
     let (_dialog_bounds, _widgets, draw_commands) = runtime.render_frame();
@@ -259,10 +266,13 @@ pub fn run_gui(cli: &GuiCli) -> ExitCode {
     buffer.render_commands(&draw_commands);
 
     // Verify keyboard navigation event processing
-    drop(runtime.process_event(GuiInputEvent::TabNext));
-    drop(runtime.process_event(GuiInputEvent::TabPrev));
-    drop(runtime.process_event(GuiInputEvent::SubmitDefault));
-    drop(runtime.process_event(GuiInputEvent::CancelEscape));
+    let _ = runtime.process_event(GuiInputEvent::TabNext);
+    let _ = runtime.process_event(GuiInputEvent::TabPrev);
+    let _ = runtime.process_event(GuiInputEvent::SubmitDefault);
+    let _ = runtime.process_event(GuiInputEvent::CancelEscape);
+
+    // Window lifecycle shutdown
+    let _ = runtime.process_lifecycle_event(msi::ui::WindowLifecycleEvent::CloseRequested);
 
     ExitCode::SUCCESS
 }

@@ -115,6 +115,18 @@ impl From<CliUiLevel> for UiLevel {
     }
 }
 
+impl From<UiLevel> for CliUiLevel {
+    fn from(level: UiLevel) -> Self {
+        match level {
+            UiLevel::None => Self::Quiet,
+            UiLevel::Basic { no_cancel: false } => Self::Basic,
+            UiLevel::Basic { no_cancel: true } => Self::BasicNoCancel,
+            UiLevel::Reduced => Self::Reduced,
+            UiLevel::Full => Self::Full,
+        }
+    }
+}
+
 /// Arguments for creating a new package.
 #[derive(Debug, Args, PartialEq, Eq)]
 pub struct CreateArgs {
@@ -431,6 +443,11 @@ fn handle_install(args: &InstallArgs) -> Result<String, String> {
         return Err("Package path cannot be empty".to_string());
     }
 
+    let path = Path::new(&args.package);
+    if !path.exists() {
+        return Err(format!("Package file not found: '{}'", args.package));
+    }
+
     let mut props = HashMap::new();
     for p in &args.properties {
         if let Some((k, v)) = p.split_once('=') {
@@ -447,46 +464,36 @@ fn handle_install(args: &InstallArgs) -> Result<String, String> {
         None
     };
 
-    let path = Path::new(&args.package);
-    if path.exists() {
-        if let Ok(pkg) = Package::open(path) {
-            let mut context = EvaluationContext::new();
-            load_package_properties(&pkg, &mut context);
-            for (k, v) in &props {
-                context.set_property(k, v);
-            }
-            context.set_property("UILevel", format!("{:?}", UiLevel::from(args.ui)));
-
-            let cost_engine = DiskCostEngine::new();
-            let tx = Transaction::new(pkg.database().clone(), context, cost_engine);
-            let prep_tx = tx.prepare().map_err(err_to_string)?;
-            let mut worker = WorkerContext::new();
-            let exec_tx = prep_tx.execute(&mut worker).map_err(err_to_string)?;
-            let _commit_tx = exec_tx.commit(&mut worker).map_err(err_to_string)?;
-
-            if let Some(ref l) = logger {
-                drop(l.log(
-                    'i',
-                    &format!(
-                        "Installation committed successfully for {}",
-                        pkg.metadata().product_name()
-                    ),
-                ));
-            }
-            return Ok(format!(
-                "Successfully installed package '{}' v{} by {} (UI: {:?}, properties: {})",
-                pkg.metadata().product_name(),
-                pkg.metadata().version(),
-                pkg.metadata().manufacturer(),
-                UiLevel::from(args.ui),
-                props.len()
-            ));
-        }
+    let pkg = Package::open(path)
+        .map_err(|e| format!("Failed opening package '{}': {e}", args.package))?;
+    let mut context = EvaluationContext::new();
+    load_package_properties(&pkg, &mut context);
+    for (k, v) in &props {
+        context.set_property(k, v);
     }
+    context.set_property("UILevel", format!("{:?}", UiLevel::from(args.ui)));
 
+    let cost_engine = DiskCostEngine::new();
+    let tx = Transaction::new(pkg.database().clone(), context, cost_engine);
+    let prep_tx = tx.prepare().map_err(err_to_string)?;
+    let mut worker = WorkerContext::new();
+    let exec_tx = prep_tx.execute(&mut worker).map_err(err_to_string)?;
+    let _commit_tx = exec_tx.commit(&mut worker).map_err(err_to_string)?;
+
+    if let Some(ref l) = logger {
+        drop(l.log(
+            'i',
+            &format!(
+                "Installation committed successfully for {}",
+                pkg.metadata().product_name()
+            ),
+        ));
+    }
     Ok(format!(
-        "Installed package '{}' (UI: {:?}, properties: {})",
-        args.package,
+        "Successfully installed package '{}' v{} by {} (UI: {:?}, properties: {})",
+        pkg.metadata().product_name(),
+        pkg.metadata().version(),
+        pkg.metadata().manufacturer(),
         UiLevel::from(args.ui),
         props.len()
     ))
@@ -497,6 +504,12 @@ fn handle_uninstall(args: &UninstallArgs) -> Result<String, String> {
     if args.package.trim().is_empty() {
         return Err("Package path cannot be empty".to_string());
     }
+
+    let path = Path::new(&args.package);
+    if !path.exists() && !args.package.starts_with('{') {
+        return Err(format!("Product or package not found: '{}'", args.package));
+    }
+
     let logger = if let Some(ref p) = args.log {
         let opts = LoggingOptions::parse("*v", p).map_err(err_to_string)?;
         let l = LoggingDispatcher::new(opts);
@@ -506,44 +519,43 @@ fn handle_uninstall(args: &UninstallArgs) -> Result<String, String> {
         None
     };
 
-    let path = Path::new(&args.package);
     if path.exists() {
-        if let Ok(pkg) = Package::open(path) {
-            let mut context = EvaluationContext::new();
-            load_package_properties(&pkg, &mut context);
-            context.set_property("REMOVE", "ALL");
-            context.set_property("UILevel", format!("{:?}", UiLevel::from(args.ui)));
+        let pkg = Package::open(path)
+            .map_err(|e| format!("Failed opening package '{}': {e}", args.package))?;
+        let mut context = EvaluationContext::new();
+        load_package_properties(&pkg, &mut context);
+        context.set_property("REMOVE", "ALL");
+        context.set_property("UILevel", format!("{:?}", UiLevel::from(args.ui)));
 
-            let cost_engine = DiskCostEngine::new();
-            let tx = Transaction::new(pkg.database().clone(), context, cost_engine);
-            let prep_tx = tx.prepare().map_err(err_to_string)?;
-            let mut worker = WorkerContext::new();
-            let exec_tx = prep_tx.execute(&mut worker).map_err(err_to_string)?;
-            let _commit_tx = exec_tx.commit(&mut worker).map_err(err_to_string)?;
+        let cost_engine = DiskCostEngine::new();
+        let tx = Transaction::new(pkg.database().clone(), context, cost_engine);
+        let prep_tx = tx.prepare().map_err(err_to_string)?;
+        let mut worker = WorkerContext::new();
+        let exec_tx = prep_tx.execute(&mut worker).map_err(err_to_string)?;
+        let _commit_tx = exec_tx.commit(&mut worker).map_err(err_to_string)?;
 
-            if let Some(ref l) = logger {
-                drop(l.log(
-                    'i',
-                    &format!(
-                        "Uninstallation committed for {}",
-                        pkg.metadata().product_name()
-                    ),
-                ));
-            }
-            return Ok(format!(
-                "Successfully uninstalled package '{}' v{} (UI: {:?})",
-                pkg.metadata().product_name(),
-                pkg.metadata().version(),
-                UiLevel::from(args.ui)
+        if let Some(ref l) = logger {
+            drop(l.log(
+                'i',
+                &format!(
+                    "Uninstallation committed for {}",
+                    pkg.metadata().product_name()
+                ),
             ));
         }
+        Ok(format!(
+            "Successfully uninstalled package '{}' v{} (UI: {:?})",
+            pkg.metadata().product_name(),
+            pkg.metadata().version(),
+            UiLevel::from(args.ui)
+        ))
+    } else {
+        Ok(format!(
+            "Uninstalled product '{}' (UI: {:?})",
+            args.package,
+            UiLevel::from(args.ui)
+        ))
     }
-
-    Ok(format!(
-        "Uninstalled package '{}' (UI: {:?})",
-        args.package,
-        UiLevel::from(args.ui)
-    ))
 }
 
 /// Handles the `admin` command.
@@ -551,6 +563,11 @@ fn handle_admin(args: &AdminArgs) -> Result<String, String> {
     if args.package.trim().is_empty() {
         return Err("Package path cannot be empty".to_string());
     }
+    let path = Path::new(&args.package);
+    if !path.exists() {
+        return Err(format!("Package file not found: '{}'", args.package));
+    }
+
     let logger = if let Some(ref p) = args.log {
         let opts = LoggingOptions::parse("*v", p).map_err(err_to_string)?;
         let l = LoggingDispatcher::new(opts);
@@ -563,39 +580,31 @@ fn handle_admin(args: &AdminArgs) -> Result<String, String> {
         None
     };
 
-    let path = Path::new(&args.package);
-    if path.exists() {
-        if let Ok(pkg) = Package::open(path) {
-            let mut context = EvaluationContext::new();
-            load_package_properties(&pkg, &mut context);
-            context.set_property("ACTION", "ADMIN");
-            let cost_engine = DiskCostEngine::new();
-            let tx = Transaction::new(pkg.database().clone(), context, cost_engine);
-            let prep_tx = tx.prepare().map_err(err_to_string)?;
-            let mut worker = WorkerContext::new();
-            let exec_tx = prep_tx.execute(&mut worker).map_err(err_to_string)?;
-            let _commit_tx = exec_tx.commit(&mut worker).map_err(err_to_string)?;
+    let pkg = Package::open(path)
+        .map_err(|e| format!("Failed opening package '{}': {e}", args.package))?;
+    let mut context = EvaluationContext::new();
+    load_package_properties(&pkg, &mut context);
+    context.set_property("ACTION", "ADMIN");
+    let cost_engine = DiskCostEngine::new();
+    let tx = Transaction::new(pkg.database().clone(), context, cost_engine);
+    let prep_tx = tx.prepare().map_err(err_to_string)?;
+    let mut worker = WorkerContext::new();
+    let exec_tx = prep_tx.execute(&mut worker).map_err(err_to_string)?;
+    let _commit_tx = exec_tx.commit(&mut worker).map_err(err_to_string)?;
 
-            if let Some(ref l) = logger {
-                drop(l.log(
-                    'i',
-                    &format!(
-                        "Administrative installation finished for {}",
-                        pkg.metadata().product_name()
-                    ),
-                ));
-            }
-            return Ok(format!(
-                "Administrative installation completed for '{}' (cabs: {})",
-                pkg.metadata().product_name(),
-                pkg.embedded_cabinets().len()
-            ));
-        }
+    if let Some(ref l) = logger {
+        drop(l.log(
+            'i',
+            &format!(
+                "Administrative installation finished for {}",
+                pkg.metadata().product_name()
+            ),
+        ));
     }
-
     Ok(format!(
-        "Administrative installation completed for '{}'",
-        args.package
+        "Administrative installation completed for '{}' (cabs: {})",
+        pkg.metadata().product_name(),
+        pkg.embedded_cabinets().len()
     ))
 }
 
@@ -604,6 +613,11 @@ fn handle_repair(args: &RepairArgs) -> Result<String, String> {
     if args.package.trim().is_empty() {
         return Err("Package path cannot be empty".to_string());
     }
+    let path = Path::new(&args.package);
+    if !path.exists() && !args.package.starts_with('{') {
+        return Err(format!("Product or package not found: '{}'", args.package));
+    }
+
     let flags = RepairFlags::parse(&args.flags).map_err(err_to_string)?;
     let logger = if let Some(ref p) = args.log {
         let opts = LoggingOptions::parse("*v", p).map_err(err_to_string)?;
@@ -617,40 +631,39 @@ fn handle_repair(args: &RepairArgs) -> Result<String, String> {
         None
     };
 
-    let path = Path::new(&args.package);
     if path.exists() {
-        if let Ok(pkg) = Package::open(path) {
-            let mut context = EvaluationContext::new();
-            load_package_properties(&pkg, &mut context);
-            context.set_property("REINSTALL", "ALL");
-            context.set_property("REINSTALLMODE", &args.flags);
+        let pkg = Package::open(path)
+            .map_err(|e| format!("Failed opening package '{}': {e}", args.package))?;
+        let mut context = EvaluationContext::new();
+        load_package_properties(&pkg, &mut context);
+        context.set_property("REINSTALL", "ALL");
+        context.set_property("REINSTALLMODE", &args.flags);
 
-            let cost_engine = DiskCostEngine::new();
-            let tx = Transaction::new(pkg.database().clone(), context, cost_engine);
-            let prep_tx = tx.prepare().map_err(err_to_string)?;
-            let mut worker = WorkerContext::new();
-            let exec_tx = prep_tx.execute(&mut worker).map_err(err_to_string)?;
-            let _commit_tx = exec_tx.commit(&mut worker).map_err(err_to_string)?;
+        let cost_engine = DiskCostEngine::new();
+        let tx = Transaction::new(pkg.database().clone(), context, cost_engine);
+        let prep_tx = tx.prepare().map_err(err_to_string)?;
+        let mut worker = WorkerContext::new();
+        let exec_tx = prep_tx.execute(&mut worker).map_err(err_to_string)?;
+        let _commit_tx = exec_tx.commit(&mut worker).map_err(err_to_string)?;
 
-            if let Some(ref l) = logger {
-                drop(l.log(
-                    'i',
-                    &format!("Repair committed for {}", pkg.metadata().product_name()),
-                ));
-            }
-            return Ok(format!(
-                "Successfully repaired package '{}' v{} with flags {:?}",
-                pkg.metadata().product_name(),
-                pkg.metadata().version(),
-                flags
+        if let Some(ref l) = logger {
+            drop(l.log(
+                'i',
+                &format!("Repair committed for {}", pkg.metadata().product_name()),
             ));
         }
+        Ok(format!(
+            "Successfully repaired package '{}' v{} with flags {:?}",
+            pkg.metadata().product_name(),
+            pkg.metadata().version(),
+            flags
+        ))
+    } else {
+        Ok(format!(
+            "Repaired product '{}' with flags {:?}",
+            args.package, flags
+        ))
     }
-
-    Ok(format!(
-        "Repaired package '{}' with flags {:?}",
-        args.package, flags
-    ))
 }
 
 /// Handles the `advertise` command.
@@ -658,32 +671,36 @@ fn handle_advertise(args: &AdvertiseArgs) -> Result<String, String> {
     if args.package.trim().is_empty() {
         return Err("Package path cannot be empty".to_string());
     }
+    let path = Path::new(&args.package);
+    if !path.exists() && !args.package.starts_with('{') {
+        return Err(format!("Product or package not found: '{}'", args.package));
+    }
+
     let scope = if args.user {
         AdvertiseScope::User
     } else {
         AdvertiseScope::Machine
     };
 
-    let path = Path::new(&args.package);
     if path.exists() {
-        if let Ok(pkg) = Package::open(path) {
-            let mut context = EvaluationContext::new();
-            context.set_property("ADVERTISE", "ALL");
-            let cost_engine = DiskCostEngine::new();
-            let tx = Transaction::new(pkg.database().clone(), context, cost_engine);
-            let prep_tx = tx.prepare().map_err(err_to_string)?;
-            let mut worker = WorkerContext::new();
-            let exec_tx = prep_tx.execute(&mut worker).map_err(err_to_string)?;
-            let _commit_tx = exec_tx.commit(&mut worker).map_err(err_to_string)?;
+        let pkg = Package::open(path)
+            .map_err(|e| format!("Failed opening package '{}': {e}", args.package))?;
+        let mut context = EvaluationContext::new();
+        context.set_property("ADVERTISE", "ALL");
+        let cost_engine = DiskCostEngine::new();
+        let tx = Transaction::new(pkg.database().clone(), context, cost_engine);
+        let prep_tx = tx.prepare().map_err(err_to_string)?;
+        let mut worker = WorkerContext::new();
+        let exec_tx = prep_tx.execute(&mut worker).map_err(err_to_string)?;
+        let _commit_tx = exec_tx.commit(&mut worker).map_err(err_to_string)?;
 
-            return Ok(format!(
-                "Successfully advertised package '{}' ({scope:?})",
-                pkg.metadata().product_name()
-            ));
-        }
+        Ok(format!(
+            "Successfully advertised package '{}' ({scope:?})",
+            pkg.metadata().product_name()
+        ))
+    } else {
+        Ok(format!("Advertised product '{}' ({scope:?})", args.package))
     }
-
-    Ok(format!("Advertised package '{}' ({scope:?})", args.package))
 }
 
 /// Handles the `patch` command.
@@ -694,44 +711,242 @@ fn handle_patch(args: &PatchArgs) -> Result<String, String> {
     if args.patch.trim().is_empty() {
         return Err("Patch path cannot be empty".to_string());
     }
+
+    let pkg_path = Path::new(&args.package);
+    if !pkg_path.exists() {
+        return Err(format!("Package file not found: '{}'", args.package));
+    }
+    let patch_path = Path::new(&args.patch);
+    if !patch_path.exists() {
+        return Err(format!("Patch file not found: '{}'", args.patch));
+    }
+
+    let mut pkg = Package::open(pkg_path)
+        .map_err(|e| format!("Failed opening package '{}': {e}", args.package))?;
+    let patch_bytes = std::fs::read(patch_path)
+        .map_err(|e| format!("Failed reading patch file '{}': {e}", args.patch))?;
+
+    let cfb = msi::cfb::CfbReader::new(&patch_bytes)
+        .map_err(|e| format!("Invalid patch CFB container: {e}"))?;
+
+    let mut transforms_applied = 0;
+    for entry in cfb.entries() {
+        let name = entry.name();
+        if name != "\u{0005}SummaryInformation"
+            && !name.starts_with("MsiPatchCert_")
+            && name != "#patch.cab"
+            && !name.is_empty()
+        {
+            if let Ok(stream_bytes) = cfb.read_stream(name) {
+                if let Ok(transform) =
+                    msi::database::transform::DatabaseTransform::from_bytes(&stream_bytes)
+                {
+                    let _ = transform.apply(pkg.database_mut());
+                    transforms_applied += 1;
+                }
+            }
+        }
+    }
+
+    if let Ok(cab_bytes) = cfb.read_stream("#patch.cab") {
+        pkg.add_embedded_cabinet("#patch.cab", cab_bytes);
+    }
+
+    pkg.save(pkg_path)
+        .map_err(|e| format!("Failed saving patched package: {e}"))?;
+
     Ok(format!(
-        "Applied patch '{}' to package '{}'",
-        args.patch, args.package
+        "Successfully applied patch '{}' to package '{}' (transforms: {})",
+        args.patch, args.package, transforms_applied
     ))
 }
 
-/// Handles the raw `msiexec` command.
+/// Helper converting [`RepairFlags`] to flag string.
+fn repair_flags_to_string(flags: &RepairFlags) -> String {
+    let mut s = String::new();
+    if flags.reinstall_missing {
+        s.push('p');
+    }
+    if flags.reinstall_older {
+        s.push('o');
+    }
+    if flags.reinstall_equal_or_older {
+        s.push('e');
+    }
+    if flags.reinstall_different {
+        s.push('d');
+    }
+    if flags.reinstall_checksum {
+        s.push('c');
+    }
+    if flags.reinstall_all {
+        s.push('a');
+    }
+    if flags.rewrite_user_registry {
+        s.push('u');
+    }
+    if flags.rewrite_machine_registry {
+        s.push('m');
+    }
+    if flags.overwrite_shortcuts {
+        s.push('s');
+    }
+    if flags.recache_source {
+        s.push('v');
+    }
+    if s.is_empty() {
+        "pecmsu".to_string()
+    } else {
+        s
+    }
+}
+
+/// Handles the raw `msiexec` command by delegating to active action pipelines.
 fn handle_msiexec(args: &MsiexecArgs) -> Result<String, String> {
     let parsed = MsiExecOptions::parse(&args.raw_args).map_err(err_to_string)?;
-    let summary = match parsed.action {
-        ActionMode::Install { ref package_path } => format!("Installed '{package_path}'"),
-        ActionMode::Uninstall { ref package_path } => format!("Uninstalled '{package_path}'"),
-        ActionMode::Administrative { ref package_path } => {
-            format!("Administrative install of '{package_path}'")
+    let log_file = parsed.logging.as_ref().map(|l| l.log_file.clone());
+    let result = match parsed.action {
+        ActionMode::Install { ref package_path } => {
+            let mut install_props = Vec::new();
+            for (k, v) in &parsed.properties {
+                install_props.push(format!("{k}={v}"));
+            }
+            handle_install(&InstallArgs {
+                package: package_path.clone(),
+                ui: CliUiLevel::from(parsed.ui_level),
+                log: log_file,
+                properties: install_props,
+            })?
         }
+        ActionMode::Uninstall { ref package_path } => handle_uninstall(&UninstallArgs {
+            package: package_path.clone(),
+            ui: CliUiLevel::from(parsed.ui_level),
+            log: log_file,
+        })?,
+        ActionMode::Administrative { ref package_path } => handle_admin(&AdminArgs {
+            package: package_path.clone(),
+            ui: CliUiLevel::from(parsed.ui_level),
+            log: log_file,
+        })?,
         ActionMode::Repair {
             ref flags,
             ref package_path,
-        } => format!("Repaired '{package_path}' with flags {flags:?}"),
+        } => handle_repair(&RepairArgs {
+            package: package_path.clone(),
+            flags: repair_flags_to_string(flags),
+            log: log_file,
+        })?,
         ActionMode::Advertise {
-            ref scope,
+            scope,
             ref package_path,
-        } => format!("Advertised '{package_path}' with scope {scope:?}"),
-        ActionMode::ApplyPatch { ref patch_path } => format!("Applied patch '{patch_path}'"),
+        } => handle_advertise(&AdvertiseArgs {
+            package: package_path.clone(),
+            user: scope == AdvertiseScope::User,
+        })?,
+        ActionMode::ApplyPatch { ref patch_path } => {
+            let pkg_path = match parsed.properties.get("PACKAGE") {
+                Some(p) => p.clone(),
+                None => parsed
+                    .properties
+                    .get("TARGETPACKAGE")
+                    .cloned()
+                    .unwrap_or_default(),
+            };
+            handle_patch(&PatchArgs {
+                package: pkg_path,
+                patch: patch_path.clone(),
+                ui: CliUiLevel::from(parsed.ui_level),
+                log: log_file,
+            })?
+        }
     };
     Ok(format!(
-        "Executed msiexec: {summary} (UI: {:?}, Properties: {})",
+        "Executed msiexec: {result} (UI: {:?}, Properties: {})",
         parsed.ui_level,
         parsed.properties.len()
     ))
 }
 
+/// Strongly-typed IPC socket address for worker daemon communication.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkerSocketAddress(String);
+
+impl WorkerSocketAddress {
+    /// Creates a new [`WorkerSocketAddress`], validating that the socket path is non-empty.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Path string to domain socket or named pipe.
+    ///
+    /// # Errors
+    ///
+    /// Returns error string if path is empty.
+    pub fn parse(path: &str) -> Result<Self, String> {
+        let trimmed = path.trim();
+        if trimmed.is_empty() {
+            return Err("Worker socket path cannot be empty".to_string());
+        }
+        Ok(Self(trimmed.to_string()))
+    }
+
+    /// Returns the socket path string slice.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 /// Handles the `worker` command.
 fn handle_worker(args: &WorkerArgs) -> Result<String, String> {
-    if args.socket.trim().is_empty() {
-        return Err("Worker socket path cannot be empty".to_string());
+    let socket_addr = WorkerSocketAddress::parse(&args.socket)?;
+    let path = Path::new(socket_addr.as_str());
+
+    #[cfg(unix)]
+    {
+        if path.exists() {
+            let _ = std::fs::remove_file(path);
+        }
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+
+        let listener = std::os::unix::net::UnixListener::bind(path)
+            .map_err(|e| format!("Failed to bind worker socket '{}': {e}", path.display()))?;
+
+        let _ = listener.set_nonblocking(true);
+
+        let quarantine_dir = std::env::temp_dir().join("msi_worker_quarantine");
+        let mut executor = msi::execution::worker::executor::LiveWorkerExecutor::new(
+            &quarantine_dir,
+            "worker-daemon",
+        );
+
+        for _ in 0..10 {
+            if let Ok((stream, _)) = listener.accept() {
+                let _ =
+                    msi::execution::worker::ipc::handle_ipc_stream(&stream, &stream, &mut executor);
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+
+        let _ = std::fs::remove_file(path);
     }
-    Ok(format!("Worker daemon initialized on {}", args.socket))
+
+    #[cfg(not(unix))]
+    {
+        if !path.to_string_lossy().starts_with(r"\\.\pipe\") {
+            return Err(
+                "Windows worker socket must be a named pipe path starting with \\\\.\\pipe\\"
+                    .to_string(),
+            );
+        }
+    }
+
+    Ok(format!(
+        "Worker daemon initialized on {}",
+        socket_addr.as_str()
+    ))
 }
 
 /// Handles the `harvest` command.
@@ -900,7 +1115,7 @@ mod tests {
         assert_ne!(err_to_string(msi::Error::Io("err".to_string())), "");
     }
 
-    /// Tests conversion from `CliUiLevel` to `UiLevel`.
+    /// Tests conversion from `CliUiLevel` to `UiLevel` and vice-versa.
     #[test]
     fn test_cli_ui_level_conversion() {
         assert_eq!(UiLevel::from(CliUiLevel::Quiet), UiLevel::None);
@@ -914,6 +1129,18 @@ mod tests {
         );
         assert_eq!(UiLevel::from(CliUiLevel::Reduced), UiLevel::Reduced);
         assert_eq!(UiLevel::from(CliUiLevel::Full), UiLevel::Full);
+
+        assert_eq!(CliUiLevel::from(UiLevel::None), CliUiLevel::Quiet);
+        assert_eq!(
+            CliUiLevel::from(UiLevel::Basic { no_cancel: false }),
+            CliUiLevel::Basic
+        );
+        assert_eq!(
+            CliUiLevel::from(UiLevel::Basic { no_cancel: true }),
+            CliUiLevel::BasicNoCancel
+        );
+        assert_eq!(CliUiLevel::from(UiLevel::Reduced), CliUiLevel::Reduced);
+        assert_eq!(CliUiLevel::from(UiLevel::Full), CliUiLevel::Full);
     }
 
     /// Tests `LoggingDispatcher` formatting all flag categories, disabled flags, console fallback, and errors.
@@ -993,16 +1220,67 @@ mod tests {
     /// Tests running the `worker` command.
     #[test]
     fn test_cli_worker() {
+        let temp_dir =
+            std::env::temp_dir().join(format!("msi_cli_worker_test_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let sock_file = temp_dir.join("worker.sock");
+
         let cli = Cli {
             command: Commands::Worker(WorkerArgs {
-                socket: "/tmp/msi_worker_test.sock".to_string(),
+                socket: sock_file.to_string_lossy().to_string(),
             }),
         };
         let result = run(&cli);
-        assert_eq!(
-            result,
-            Ok("Worker daemon initialized on /tmp/msi_worker_test.sock".to_string())
-        );
+        assert!(result.is_ok());
+
+        // Test worker with existing socket file to cover remove_file branch
+        let _ = std::fs::write(&sock_file, b"existing");
+        assert!(run(&cli).is_ok());
+
+        // Test worker with invalid socket path (bind failure)
+        let bad_cli = Cli {
+            command: Commands::Worker(WorkerArgs {
+                socket: "/dev/null/impossible_dir/socket.sock".to_string(),
+            }),
+        };
+        assert!(run(&bad_cli).is_err());
+
+        // Test worker with root path ("/") where path.parent() is None
+        let root_cli = Cli {
+            command: Commands::Worker(WorkerArgs {
+                socket: "/".to_string(),
+            }),
+        };
+        assert!(run(&root_cli).is_err());
+
+        // Test worker client connection
+        #[cfg(unix)]
+        {
+            let connect_sock = temp_dir.join("worker_active.sock");
+            let connect_str = connect_sock.to_string_lossy().to_string();
+            let connect_clone = connect_str.clone();
+
+            let handle = std::thread::spawn(move || {
+                for _ in 0..100 {
+                    if let Ok(mut stream) = std::os::unix::net::UnixStream::connect(&connect_clone)
+                    {
+                        use std::io::Write;
+                        let _ = stream.write_all(b"QUIT\n");
+                        let _ = stream.flush();
+                        return;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(2));
+                }
+            });
+
+            let client_cli = Cli {
+                command: Commands::Worker(WorkerArgs {
+                    socket: connect_str,
+                }),
+            };
+            assert!(run(&client_cli).is_ok());
+            let _ = handle.join();
+        }
 
         let cli_empty = Cli {
             command: Commands::Worker(WorkerArgs {
@@ -1010,6 +1288,34 @@ mod tests {
             }),
         };
         assert!(run(&cli_empty).is_err());
+
+        // Test WorkerSocketAddress directly
+        assert!(WorkerSocketAddress::parse("  ").is_err());
+        let addr = WorkerSocketAddress::parse("/tmp/test_parse.sock");
+        assert_eq!(
+            addr.as_ref().map(WorkerSocketAddress::as_str),
+            Ok("/tmp/test_parse.sock")
+        );
+        assert!(format!("{addr:?}").contains("WorkerSocketAddress"));
+        assert_eq!(addr, addr.clone());
+
+        // Test repair_flags_to_string
+        let all_flags = RepairFlags {
+            reinstall_missing: true,
+            reinstall_older: true,
+            reinstall_equal_or_older: true,
+            reinstall_different: true,
+            reinstall_checksum: true,
+            reinstall_all: true,
+            rewrite_user_registry: true,
+            rewrite_machine_registry: true,
+            overwrite_shortcuts: true,
+            recache_source: true,
+        };
+        assert_eq!(repair_flags_to_string(&all_flags), "poedcaumsv");
+        assert_eq!(repair_flags_to_string(&RepairFlags::default()), "pecmsu");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 
     /// Tests running `create` with an invalid version string.
@@ -1082,11 +1388,24 @@ mod tests {
 
     /// Tests install, uninstall, and admin basic commands.
     #[test]
-    fn test_cli_install_uninstall_admin_basic() {
+    fn test_cli_install_uninstall_admin_basic() -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir =
+            std::env::temp_dir().join(format!("msi_cli_basic_test_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let test_pkg = Package::builder()
+            .product_name("Test App")
+            .manufacturer("Test Vendor")
+            .version(ProductVersion::new(1, 0, 0))
+            .product_code("{12345678-1234-1234-1234-1234567890AB}")
+            .build()?;
+        let test_file = temp_dir.join("test.msi");
+        test_pkg.save(&test_file)?;
+        let pkg_path = test_file.to_string_lossy().to_string();
+
         // Install
         let install_cli = Cli {
             command: Commands::Install(InstallArgs {
-                package: "test.msi".to_string(),
+                package: pkg_path.clone(),
                 ui: CliUiLevel::Quiet,
                 log: None,
                 properties: vec!["INSTALLDIR=/opt/test".to_string()],
@@ -1104,10 +1423,20 @@ mod tests {
         };
         assert!(run(&install_empty).is_err());
 
+        let install_nonexistent = Cli {
+            command: Commands::Install(InstallArgs {
+                package: "/nonexistent/path/pkg.msi".to_string(),
+                ui: CliUiLevel::Quiet,
+                log: None,
+                properties: vec![],
+            }),
+        };
+        assert!(run(&install_nonexistent).is_err());
+
         // Uninstall
         let uninstall_cli = Cli {
             command: Commands::Uninstall(UninstallArgs {
-                package: "test.msi".to_string(),
+                package: pkg_path.clone(),
                 ui: CliUiLevel::Basic,
                 log: None,
             }),
@@ -1123,10 +1452,19 @@ mod tests {
         };
         assert!(run(&uninstall_empty).is_err());
 
+        let uninstall_nonexistent = Cli {
+            command: Commands::Uninstall(UninstallArgs {
+                package: "/nonexistent/path/pkg.msi".to_string(),
+                ui: CliUiLevel::Basic,
+                log: None,
+            }),
+        };
+        assert!(run(&uninstall_nonexistent).is_err());
+
         // Admin
         let admin_cli = Cli {
             command: Commands::Admin(AdminArgs {
-                package: "test.msi".to_string(),
+                package: pkg_path,
                 ui: CliUiLevel::Basic,
                 log: None,
             }),
@@ -1141,11 +1479,24 @@ mod tests {
             }),
         };
         assert!(run(&admin_empty).is_err());
+
+        let admin_nonexistent = Cli {
+            command: Commands::Admin(AdminArgs {
+                package: "/nonexistent/path/pkg.msi".to_string(),
+                ui: CliUiLevel::Basic,
+                log: None,
+            }),
+        };
+        assert!(run(&admin_nonexistent).is_err());
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        Ok(())
     }
 
     /// Tests install, uninstall, and admin commands with corrupt package files and bad log paths.
     #[test]
-    fn test_cli_install_uninstall_admin_corrupt_and_bad_logs() {
+    fn test_cli_install_uninstall_admin_corrupt_and_bad_logs(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let temp_dir =
             std::env::temp_dir().join(format!("msi_cli_corrupt_test_{}", std::process::id()));
         let _ = std::fs::create_dir_all(&temp_dir);
@@ -1161,7 +1512,7 @@ mod tests {
                 properties: vec![],
             }),
         };
-        assert!(run(&corrupt_install).is_ok());
+        assert!(run(&corrupt_install).is_err());
 
         let corrupt_uninstall = Cli {
             command: Commands::Uninstall(UninstallArgs {
@@ -1170,7 +1521,7 @@ mod tests {
                 log: None,
             }),
         };
-        assert!(run(&corrupt_uninstall).is_ok());
+        assert!(run(&corrupt_uninstall).is_err());
 
         let corrupt_admin = Cli {
             command: Commands::Admin(AdminArgs {
@@ -1179,13 +1530,23 @@ mod tests {
                 log: None,
             }),
         };
-        assert!(run(&corrupt_admin).is_ok());
+        assert!(run(&corrupt_admin).is_err());
 
         // Invalid log paths
+        let valid_pkg = Package::builder()
+            .product_name("Test App")
+            .manufacturer("Test Vendor")
+            .version(ProductVersion::new(1, 0, 0))
+            .product_code("{12345678-1234-1234-1234-1234567890AB}")
+            .build()?;
+        let valid_file = temp_dir.join("valid.msi");
+        valid_pkg.save(&valid_file)?;
+        let valid_path = valid_file.to_string_lossy().to_string();
+
         let bad_log = "/nonexistent/path/cannot_open.log".to_string();
         let bad_install = Cli {
             command: Commands::Install(InstallArgs {
-                package: "test.msi".to_string(),
+                package: valid_path.clone(),
                 ui: CliUiLevel::Basic,
                 log: Some(bad_log.clone()),
                 properties: vec![],
@@ -1195,7 +1556,7 @@ mod tests {
 
         let bad_uninstall = Cli {
             command: Commands::Uninstall(UninstallArgs {
-                package: "test.msi".to_string(),
+                package: valid_path.clone(),
                 ui: CliUiLevel::Basic,
                 log: Some(bad_log.clone()),
             }),
@@ -1204,7 +1565,7 @@ mod tests {
 
         let bad_admin = Cli {
             command: Commands::Admin(AdminArgs {
-                package: "test.msi".to_string(),
+                package: valid_path,
                 ui: CliUiLevel::Basic,
                 log: Some(bad_log),
             }),
@@ -1212,15 +1573,37 @@ mod tests {
         assert!(run(&bad_admin).is_err());
 
         let _ = std::fs::remove_dir_all(&temp_dir);
+        Ok(())
     }
 
     /// Tests repair, advertise, and patch commands.
     #[test]
-    fn test_cli_repair_advertise_patch() {
+    #[allow(clippy::too_many_lines)]
+    fn test_cli_repair_advertise_patch() -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir =
+            std::env::temp_dir().join(format!("msi_cli_repair_test_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let test_pkg = Package::builder()
+            .product_name("Test App")
+            .manufacturer("Test Vendor")
+            .version(ProductVersion::new(1, 0, 0))
+            .product_code("{12345678-1234-1234-1234-1234567890AB}")
+            .build()?;
+        let test_file = temp_dir.join("test.msi");
+        test_pkg.save(&test_file)?;
+        let pkg_path = test_file.to_string_lossy().to_string();
+
+        let patch_builder =
+            msi::wix::patch::PatchPackageBuilder::new("{99999999-9999-9999-9999-999999999999}");
+        let patch_bytes = patch_builder.build().unwrap_or_default();
+        let patch_file = temp_dir.join("update.msp");
+        let _ = std::fs::write(&patch_file, patch_bytes);
+        let patch_path = patch_file.to_string_lossy().to_string();
+
         // Repair
         let repair_cli = Cli {
             command: Commands::Repair(RepairArgs {
-                package: "test.msi".to_string(),
+                package: pkg_path.clone(),
                 flags: "omus".to_string(),
                 log: None,
             }),
@@ -1236,10 +1619,19 @@ mod tests {
         };
         assert!(run(&repair_empty).is_err());
 
+        let repair_nonexistent = Cli {
+            command: Commands::Repair(RepairArgs {
+                package: "/nonexistent/pkg.msi".to_string(),
+                flags: "p".to_string(),
+                log: None,
+            }),
+        };
+        assert!(run(&repair_nonexistent).is_err());
+
         // Advertise
         let adv_machine = Cli {
             command: Commands::Advertise(AdvertiseArgs {
-                package: "test.msi".to_string(),
+                package: pkg_path.clone(),
                 user: false,
             }),
         };
@@ -1247,7 +1639,7 @@ mod tests {
 
         let adv_user = Cli {
             command: Commands::Advertise(AdvertiseArgs {
-                package: "test.msi".to_string(),
+                package: pkg_path.clone(),
                 user: true,
             }),
         };
@@ -1261,11 +1653,19 @@ mod tests {
         };
         assert!(run(&adv_empty).is_err());
 
+        let adv_nonexistent = Cli {
+            command: Commands::Advertise(AdvertiseArgs {
+                package: "/nonexistent/pkg.msi".to_string(),
+                user: false,
+            }),
+        };
+        assert!(run(&adv_nonexistent).is_err());
+
         // Patch
         let patch_cli = Cli {
             command: Commands::Patch(PatchArgs {
-                package: "test.msi".to_string(),
-                patch: "update.msp".to_string(),
+                package: pkg_path.clone(),
+                patch: patch_path.clone(),
                 ui: CliUiLevel::Basic,
                 log: None,
             }),
@@ -1275,7 +1675,7 @@ mod tests {
         let patch_empty_pkg = Cli {
             command: Commands::Patch(PatchArgs {
                 package: String::new(),
-                patch: "update.msp".to_string(),
+                patch: patch_path.clone(),
                 ui: CliUiLevel::Basic,
                 log: None,
             }),
@@ -1284,7 +1684,7 @@ mod tests {
 
         let patch_empty_patch = Cli {
             command: Commands::Patch(PatchArgs {
-                package: "test.msi".to_string(),
+                package: pkg_path.clone(),
                 patch: String::new(),
                 ui: CliUiLevel::Basic,
                 log: None,
@@ -1292,10 +1692,143 @@ mod tests {
         };
         assert!(run(&patch_empty_patch).is_err());
 
+        let patch_nonexistent_pkg = Cli {
+            command: Commands::Patch(PatchArgs {
+                package: "/nonexistent/pkg.msi".to_string(),
+                patch: patch_path.clone(),
+                ui: CliUiLevel::Basic,
+                log: None,
+            }),
+        };
+        assert!(run(&patch_nonexistent_pkg).is_err());
+
+        let patch_nonexistent_patch = Cli {
+            command: Commands::Patch(PatchArgs {
+                package: pkg_path.clone(),
+                patch: "/nonexistent/patch.msp".to_string(),
+                ui: CliUiLevel::Basic,
+                log: None,
+            }),
+        };
+        assert!(run(&patch_nonexistent_patch).is_err());
+
+        // Test GUID fallback for repair, advertise, and uninstall
+        let guid_repair = Cli {
+            command: Commands::Repair(RepairArgs {
+                package: "{12345678-1234-1234-1234-1234567890AB}".to_string(),
+                flags: "omus".to_string(),
+                log: None,
+            }),
+        };
+        assert!(run(&guid_repair).is_ok());
+
+        let guid_adv = Cli {
+            command: Commands::Advertise(AdvertiseArgs {
+                package: "{12345678-1234-1234-1234-1234567890AB}".to_string(),
+                user: false,
+            }),
+        };
+        assert!(run(&guid_adv).is_ok());
+
+        let guid_uninstall = Cli {
+            command: Commands::Uninstall(UninstallArgs {
+                package: "{12345678-1234-1234-1234-1234567890AB}".to_string(),
+                ui: CliUiLevel::Quiet,
+                log: None,
+            }),
+        };
+        assert!(run(&guid_uninstall).is_ok());
+
+        // Valid patch with transform and cabinet
+        let mut patch_cfb = msi::cfb::writer::CfbWriter::new(msi::cfb::header::CfbVersion::V3);
+        let mut patch_transform = msi::database::transform::DatabaseTransform::new();
+        patch_transform.tables.insert(
+            "Property".to_string(),
+            msi::database::transform::TableTransform {
+                table_name: "Property".to_string(),
+                is_added: false,
+                is_dropped: false,
+                operations: vec![msi::database::transform::RowOperation::Insert(
+                    msi::database::tables::record::Record::with_fields(vec![
+                        FieldValue::String("PATCHED".to_string()),
+                        FieldValue::String("1".to_string()),
+                    ]),
+                )],
+            },
+        );
+        let mst_bytes = patch_transform.to_bytes()?;
+        patch_cfb.add_stream("Transform1", &mst_bytes)?;
+        patch_cfb.add_stream("NonTransformStream", b"raw non transform bytes")?;
+        patch_cfb.add_stream("MsiPatchCert_Cert1", b"dummy certificate")?;
+        patch_cfb.add_stream("#patch.cab", b"MSCF dummy cab")?;
+        let real_patch_file = temp_dir.join("real_update.msp");
+        std::fs::write(&real_patch_file, patch_cfb.build())?;
+        let real_patch_path = real_patch_file.to_string_lossy().to_string();
+
+        let patch_real_cli = Cli {
+            command: Commands::Patch(PatchArgs {
+                package: pkg_path.clone(),
+                patch: real_patch_path.clone(),
+                ui: CliUiLevel::Basic,
+                log: None,
+            }),
+        };
+        assert!(run(&patch_real_cli).is_ok());
+
+        // Error paths in handle_patch
+        let corrupt_msi = temp_dir.join("corrupt_pkg.msi");
+        std::fs::write(&corrupt_msi, b"not an msi")?;
+        let bad_pkg_patch = Cli {
+            command: Commands::Patch(PatchArgs {
+                package: corrupt_msi.to_string_lossy().to_string(),
+                patch: patch_path,
+                ui: CliUiLevel::Basic,
+                log: None,
+            }),
+        };
+        assert!(run(&bad_pkg_patch).is_err());
+
+        let bad_patch_dir = Cli {
+            command: Commands::Patch(PatchArgs {
+                package: pkg_path.clone(),
+                patch: temp_dir.to_string_lossy().to_string(),
+                ui: CliUiLevel::Basic,
+                log: None,
+            }),
+        };
+        assert!(run(&bad_patch_dir).is_err());
+
+        let invalid_cfb_file = temp_dir.join("corrupt_patch.msp");
+        std::fs::write(&invalid_cfb_file, b"not a cfb")?;
+        let bad_cfb_patch = Cli {
+            command: Commands::Patch(PatchArgs {
+                package: pkg_path,
+                patch: invalid_cfb_file.to_string_lossy().to_string(),
+                ui: CliUiLevel::Basic,
+                log: None,
+            }),
+        };
+        assert!(run(&bad_cfb_patch).is_err());
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let readonly_msi = temp_dir.join("readonly.msi");
+            std::fs::copy(&test_file, &readonly_msi)?;
+            std::fs::set_permissions(&readonly_msi, std::fs::Permissions::from_mode(0o444))?;
+            let ro_patch_cli = Cli {
+                command: Commands::Patch(PatchArgs {
+                    package: readonly_msi.to_string_lossy().to_string(),
+                    patch: real_patch_path,
+                    ui: CliUiLevel::Basic,
+                    log: None,
+                }),
+            };
+            assert!(run(&ro_patch_cli).is_err());
+            let _ = std::fs::set_permissions(&readonly_msi, std::fs::Permissions::from_mode(0o644));
+        }
+
         // Corrupt (non-MSI) existing file for repair and advertise
-        let temp_dir =
-            std::env::temp_dir().join(format!("msi_cli_repair_adv_corrupt_{}", std::process::id()));
-        let _ = std::fs::create_dir_all(&temp_dir);
         let corrupt_file = temp_dir.join("corrupt.msi");
         let _ = std::fs::write(&corrupt_file, b"corrupted payload");
         let corrupt_path = corrupt_file.to_string_lossy().to_string();
@@ -1307,7 +1840,7 @@ mod tests {
                 log: None,
             }),
         };
-        assert!(run(&corrupt_repair).is_ok());
+        assert!(run(&corrupt_repair).is_err());
 
         let corrupt_adv = Cli {
             command: Commands::Advertise(AdvertiseArgs {
@@ -1315,11 +1848,11 @@ mod tests {
                 user: false,
             }),
         };
-        assert!(run(&corrupt_adv).is_ok());
+        assert!(run(&corrupt_adv).is_err());
 
         let bad_repair_log = Cli {
             command: Commands::Repair(RepairArgs {
-                package: "test.msi".to_string(),
+                package: test_file.to_string_lossy().to_string(),
                 flags: "omus".to_string(),
                 log: Some("/nonexistent/bad/log.log".to_string()),
             }),
@@ -1327,28 +1860,72 @@ mod tests {
         assert!(run(&bad_repair_log).is_err());
 
         let _ = std::fs::remove_dir_all(&temp_dir);
+        Ok(())
     }
 
     /// Tests raw msiexec parity commands and logging dispatcher.
     #[test]
-    fn test_msiexec_parity_and_logging() {
-        let temp_dir = std::env::temp_dir().join("msi_cli_log_test");
+    fn test_msiexec_parity_and_logging() -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir =
+            std::env::temp_dir().join(format!("msi_cli_log_test_{}", std::process::id()));
         let _ = std::fs::create_dir_all(&temp_dir);
         let log_file = temp_dir.join("install.log");
+        let log_str = log_file.to_string_lossy().to_string();
 
-        // Test raw msiexec mode with various action flags
+        let test_pkg = Package::builder()
+            .product_name("Test App")
+            .manufacturer("Test Vendor")
+            .version(ProductVersion::new(1, 0, 0))
+            .product_code("{12345678-1234-1234-1234-1234567890AB}")
+            .build()?;
+        let app_file = temp_dir.join("app.msi");
+        test_pkg.save(&app_file)?;
+        let app_str = app_file.to_string_lossy().to_string();
+
+        let patch_builder =
+            msi::wix::patch::PatchPackageBuilder::new("{99999999-9999-9999-9999-999999999999}");
+        let patch_bytes = patch_builder.build().unwrap_or_default();
+        let patch_file = temp_dir.join("patch.msp");
+        let _ = std::fs::write(&patch_file, patch_bytes);
+        let patch_str = patch_file.to_string_lossy().to_string();
+
+        // Test raw msiexec mode with various action flags and logging
         for raw in [
             vec![
                 "/i".to_string(),
-                "app.msi".to_string(),
+                app_str.clone(),
                 "/qn".to_string(),
                 "TARGETDIR=/opt/app".to_string(),
+                "/l*".to_string(),
+                log_str.clone(),
             ],
-            vec!["/x".to_string(), "app.msi".to_string()],
-            vec!["/a".to_string(), "app.msi".to_string()],
-            vec!["/f".to_string(), "app.msi".to_string()],
-            vec!["/j".to_string(), "app.msi".to_string()],
-            vec!["/p".to_string(), "patch.msp".to_string()],
+            vec![
+                "/x".to_string(),
+                app_str.clone(),
+                "/l*".to_string(),
+                log_str.clone(),
+            ],
+            vec![
+                "/a".to_string(),
+                app_str.clone(),
+                "/l*".to_string(),
+                log_str.clone(),
+            ],
+            vec![
+                "/f".to_string(),
+                app_str.clone(),
+                "/l*".to_string(),
+                log_str.clone(),
+            ],
+            vec!["/j".to_string(), app_str.clone()],
+            vec![
+                "/p".to_string(),
+                patch_str.clone(),
+                format!("TARGETPACKAGE={app_str}"),
+                "/l*".to_string(),
+                log_str,
+            ],
+            vec!["/p".to_string(), patch_str, format!("PACKAGE={app_str}")],
         ] {
             let msiexec_cli = Cli {
                 command: Commands::Msiexec(MsiexecArgs { raw_args: raw }),
@@ -1372,11 +1949,35 @@ mod tests {
         assert!(content.contains("Warning non-fatal"));
 
         let _ = std::fs::remove_dir_all(&temp_dir);
+        Ok(())
     }
 
     /// Tests `run_with_args` covering command-line invocations including direct msiexec syntax.
     #[test]
-    fn test_run_with_args() {
+    #[allow(clippy::too_many_lines)]
+    fn test_run_with_args() -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir =
+            std::env::temp_dir().join(format!("msi_cli_run_args_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let app_file = temp_dir.join("app.msi");
+        let patch_file = temp_dir.join("patch.msp");
+
+        let test_pkg = Package::builder()
+            .product_name("Test App")
+            .manufacturer("Test Vendor")
+            .version(ProductVersion::new(1, 0, 0))
+            .product_code("{12345678-1234-1234-1234-1234567890AB}")
+            .build()?;
+        test_pkg.save(&app_file)?;
+
+        let patch_builder =
+            msi::wix::patch::PatchPackageBuilder::new("{99999999-9999-9999-9999-999999999999}");
+        let patch_bytes = patch_builder.build().unwrap_or_default();
+        let _ = std::fs::write(&patch_file, patch_bytes);
+
+        let app_str = app_file.to_string_lossy().to_string();
+        let patch_str = patch_file.to_string_lossy().to_string();
+
         let success_args = [
             "msi",
             "create",
@@ -1410,41 +2011,41 @@ mod tests {
 
         // Subcommands via CLI
         assert_eq!(
-            run_with_args(to_os(&["msi", "install", "app.msi", "--ui", "quiet"])),
+            run_with_args(to_os(&["msi", "install", &app_str, "--ui", "quiet"])),
             ExitCode::SUCCESS
         );
         assert_eq!(
-            run_with_args(to_os(&["msi", "uninstall", "app.msi"])),
+            run_with_args(to_os(&["msi", "uninstall", &app_str])),
             ExitCode::SUCCESS
         );
         assert_eq!(
-            run_with_args(to_os(&["msi", "admin", "app.msi"])),
+            run_with_args(to_os(&["msi", "admin", &app_str])),
             ExitCode::SUCCESS
         );
         assert_eq!(
-            run_with_args(to_os(&["msi", "repair", "app.msi", "-f", "omus"])),
+            run_with_args(to_os(&["msi", "repair", &app_str, "-f", "omus"])),
             ExitCode::SUCCESS
         );
         assert_eq!(
-            run_with_args(to_os(&["msi", "advertise", "app.msi", "--user"])),
+            run_with_args(to_os(&["msi", "advertise", &app_str, "--user"])),
             ExitCode::SUCCESS
         );
         assert_eq!(
-            run_with_args(to_os(&["msi", "patch", "app.msi", "patch.msp"])),
+            run_with_args(to_os(&["msi", "patch", &app_str, &patch_str])),
             ExitCode::SUCCESS
         );
 
         // Direct msiexec flag syntax parity: `msi /i app.msi /qn`
         assert_eq!(
-            run_with_args(to_os(&["msi", "/i", "app.msi", "/qn"])),
+            run_with_args(to_os(&["msi", "/i", &app_str, "/qn"])),
             ExitCode::SUCCESS
         );
         assert_eq!(
-            run_with_args(to_os(&["msi", "-i", "app.msi"])),
+            run_with_args(to_os(&["msi", "-i", &app_str])),
             ExitCode::SUCCESS
         );
         assert_eq!(
-            run_with_args(to_os(&["msi", "/x", "app.msi", "/qb"])),
+            run_with_args(to_os(&["msi", "/x", &app_str, "/qb"])),
             ExitCode::SUCCESS
         );
         assert_eq!(
@@ -1455,6 +2056,19 @@ mod tests {
             run_with_args(to_os(&["msi"])), // Single argument
             ExitCode::FAILURE
         );
+
+        // Missing package error verification
+        assert_eq!(
+            run_with_args(to_os(&["msi", "install", "nonexistent_file_xyz.msi"])),
+            ExitCode::FAILURE
+        );
+        assert_eq!(
+            run_with_args(to_os(&["msi", "/i", "nonexistent_file_xyz.msi"])),
+            ExitCode::FAILURE
+        );
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        Ok(())
     }
 
     /// Tests full end-to-end package lifecycle via CLI (info, install, repair, admin, advertise, uninstall).

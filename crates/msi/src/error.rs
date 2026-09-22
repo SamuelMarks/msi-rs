@@ -518,6 +518,50 @@ pub enum Error {
         /// Detail regarding the failure.
         reason: String,
     },
+
+    /// An unsupported operating system or platform architecture was encountered.
+    #[display("Unsupported platform '{platform}': {reason}")]
+    UnsupportedPlatform {
+        /// Operating system or architecture name.
+        platform: String,
+        /// Reason the operation is not supported.
+        reason: String,
+    },
+
+    /// An error occurred in the desktop GUI runtime.
+    #[display("GUI error: {reason}")]
+    GuiError {
+        /// Detail regarding the failure.
+        reason: String,
+    },
+
+    /// An error occurred during network configuration or validation.
+    #[display("Network configuration error: {reason}")]
+    NetworkConfigError {
+        /// Detail regarding the failure.
+        reason: String,
+    },
+
+    /// An error occurred during user account or credential provisioning.
+    #[display("User provisioning error: {reason}")]
+    UserProvisioningError {
+        /// Detail regarding the failure.
+        reason: String,
+    },
+
+    /// An error occurred during live installation media generation.
+    #[display("Live media error: {reason}")]
+    LiveMediaError {
+        /// Detail regarding the failure.
+        reason: String,
+    },
+
+    /// An error occurred during `WiX` Burn bootstrapper bundle compilation or execution.
+    #[display("Burn bundle error: {reason}")]
+    BurnBundleError {
+        /// Detail regarding the failure.
+        reason: String,
+    },
 }
 
 impl From<std::io::Error> for Error {
@@ -960,6 +1004,7 @@ mod tests {
 
     /// Tests formatting of bare metal and OS installer error variants.
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_error_display_bare_metal() {
         let err_boot = Error::BootHarnessError {
             recipe: "linux-uki".to_string(),
@@ -1056,6 +1101,52 @@ mod tests {
             format!("{err_unattend}"),
             "Unattend configuration error: missing ProductKey element"
         );
+
+        let err_unsupported_plat = Error::UnsupportedPlatform {
+            platform: "Windows PE".to_string(),
+            reason: "Wine not found".to_string(),
+        };
+        assert_eq!(
+            format!("{err_unsupported_plat}"),
+            "Unsupported platform 'Windows PE': Wine not found"
+        );
+
+        let err_gui = Error::GuiError {
+            reason: "failed to initialize window".to_string(),
+        };
+        assert_eq!(
+            format!("{err_gui}"),
+            "GUI error: failed to initialize window"
+        );
+
+        let err_net = Error::NetworkConfigError {
+            reason: "invalid IPv4 address".to_string(),
+        };
+        assert_eq!(
+            format!("{err_net}"),
+            "Network configuration error: invalid IPv4 address"
+        );
+
+        let err_user = Error::UserProvisioningError {
+            reason: "password too short".to_string(),
+        };
+        assert_eq!(
+            format!("{err_user}"),
+            "User provisioning error: password too short"
+        );
+
+        let err_live_media = Error::LiveMediaError {
+            reason: "ISO creation failed".to_string(),
+        };
+        assert_eq!(
+            format!("{err_live_media}"),
+            "Live media error: ISO creation failed"
+        );
+
+        let err_burn = Error::BurnBundleError {
+            reason: "manifest missing".to_string(),
+        };
+        assert_eq!(format!("{err_burn}"), "Burn bundle error: manifest missing");
     }
 
     /// Tests standard I/O error conversion via `From`.

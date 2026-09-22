@@ -170,6 +170,30 @@ pub enum GuiInputEvent {
     CancelEscape,
 }
 
+/// Lifecycle events of a desktop GUI window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowLifecycleEvent {
+    /// Window has opened and initialized on screen.
+    Opened,
+    /// Window received focus.
+    Focused,
+    /// Window lost focus.
+    Unfocused,
+    /// Window minimized.
+    Minimized,
+    /// Window restored from minimized state.
+    Restored,
+    /// Window resize requested with target dimensions (constrained by non-resizable rules).
+    ResizeRequested {
+        /// Requested width.
+        width: u32,
+        /// Requested height.
+        height: u32,
+    },
+    /// Window close requested by user (titlebar close button or Alt+F4).
+    CloseRequested,
+}
+
 /// The live desktop GUI windowing runtime orchestrating the immediate-mode render loop.
 #[derive(Debug)]
 pub struct GuiDesktopRuntime {
@@ -225,10 +249,114 @@ impl GuiDesktopRuntime {
         }
     }
 
+    /// Automatically selects the best available hardware backend, cascading from
+    /// `Wgpu` to `Glow` to `Softbuffer` on initialization failure.
+    ///
+    /// # Arguments
+    ///
+    /// * `requested` - Preferred initial backend.
+    /// * `wgpu_available` - Whether modern GPU is available.
+    /// * `glow_available` - Whether legacy OpenGL context can be acquired.
+    ///
+    /// # Returns
+    ///
+    /// Resulting active [`GuiHardwareBackend`].
+    #[must_use]
+    pub const fn select_backend_with_fallback(
+        requested: GuiHardwareBackend,
+        wgpu_available: bool,
+        glow_available: bool,
+    ) -> GuiHardwareBackend {
+        match requested {
+            GuiHardwareBackend::WgpuDirectXMetalVulkan => {
+                if wgpu_available {
+                    GuiHardwareBackend::WgpuDirectXMetalVulkan
+                } else if glow_available {
+                    GuiHardwareBackend::GlowLegacyOpenGl
+                } else {
+                    GuiHardwareBackend::SoftbufferHeadlessRasterizer
+                }
+            }
+            GuiHardwareBackend::GlowLegacyOpenGl => {
+                if glow_available {
+                    GuiHardwareBackend::GlowLegacyOpenGl
+                } else {
+                    GuiHardwareBackend::SoftbufferHeadlessRasterizer
+                }
+            }
+            GuiHardwareBackend::SoftbufferHeadlessRasterizer => {
+                GuiHardwareBackend::SoftbufferHeadlessRasterizer
+            }
+        }
+    }
+
+    /// Enforces non-resizable modal dialog constraints, returning the constrained dimensions.
+    ///
+    /// # Arguments
+    ///
+    /// * `requested_w` - Requested width.
+    /// * `requested_h` - Requested height.
+    ///
+    /// # Returns
+    ///
+    /// Tuple of constrained `(width, height)`.
+    #[must_use]
+    pub const fn enforce_window_constraints(
+        &self,
+        requested_w: u32,
+        requested_h: u32,
+    ) -> (u32, u32) {
+        if self.window_config.resizable {
+            (requested_w, requested_h)
+        } else {
+            (self.window_config.width, self.window_config.height)
+        }
+    }
+
+    /// Processes a window lifecycle event.
+    ///
+    /// # Arguments
+    ///
+    /// * `event` - Window lifecycle event.
+    ///
+    /// # Returns
+    ///
+    /// Optional [`DialogReturnCode`] if the event triggers dialog termination.
+    pub fn process_lifecycle_event(
+        &mut self,
+        event: WindowLifecycleEvent,
+    ) -> Option<DialogReturnCode> {
+        match event {
+            WindowLifecycleEvent::CloseRequested => {
+                let code = self
+                    .engine
+                    .active_dialog()
+                    .and_then(|dlg| {
+                        dlg.control_cancel
+                            .as_deref()
+                            .map(|c| (dlg.name.clone(), c.to_string()))
+                    })
+                    .and_then(|(dlg_name, cancel_ctrl)| {
+                        self.engine
+                            .click_control(&dlg_name, &cancel_ctrl)
+                            .ok()
+                            .flatten()
+                    });
+                Some(code.unwrap_or(DialogReturnCode::Exit))
+            }
+            _ => None,
+        }
+    }
+
     /// Returns a reference to the active window configuration.
     #[must_use]
     pub const fn window_config(&self) -> &WindowConfig {
         &self.window_config
+    }
+
+    /// Returns a mutable reference to the active window configuration.
+    pub const fn window_config_mut(&mut self) -> &mut WindowConfig {
+        &mut self.window_config
     }
 
     /// Returns the active hardware acceleration backend.
@@ -834,6 +962,7 @@ mod tests {
 
     /// Tests trait implementations for window types.
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_window_types_and_traits() {
         let mut bridge = AccessKitBridge::new();
         assert_eq!(bridge.nodes().len(), 0);
@@ -870,11 +999,186 @@ mod tests {
         assert!(format!("{config:?}").contains("WindowConfig"));
 
         let engine = create_test_engine();
-        let runtime = GuiDesktopRuntime::new(
+        let mut runtime = GuiDesktopRuntime::new(
             engine,
             WizardTheme::mondo(),
             GuiHardwareBackend::WgpuDirectXMetalVulkan,
         );
         assert!(format!("{runtime:?}").contains("GuiDesktopRuntime"));
+
+        // Test backend fallback cascade
+        assert_eq!(
+            GuiDesktopRuntime::select_backend_with_fallback(
+                GuiHardwareBackend::WgpuDirectXMetalVulkan,
+                true,
+                true
+            ),
+            GuiHardwareBackend::WgpuDirectXMetalVulkan
+        );
+        assert_eq!(
+            GuiDesktopRuntime::select_backend_with_fallback(
+                GuiHardwareBackend::WgpuDirectXMetalVulkan,
+                false,
+                true
+            ),
+            GuiHardwareBackend::GlowLegacyOpenGl
+        );
+        assert_eq!(
+            GuiDesktopRuntime::select_backend_with_fallback(
+                GuiHardwareBackend::WgpuDirectXMetalVulkan,
+                false,
+                false
+            ),
+            GuiHardwareBackend::SoftbufferHeadlessRasterizer
+        );
+        assert_eq!(
+            GuiDesktopRuntime::select_backend_with_fallback(
+                GuiHardwareBackend::GlowLegacyOpenGl,
+                false,
+                true
+            ),
+            GuiHardwareBackend::GlowLegacyOpenGl
+        );
+        assert_eq!(
+            GuiDesktopRuntime::select_backend_with_fallback(
+                GuiHardwareBackend::GlowLegacyOpenGl,
+                false,
+                false
+            ),
+            GuiHardwareBackend::SoftbufferHeadlessRasterizer
+        );
+        assert_eq!(
+            GuiDesktopRuntime::select_backend_with_fallback(
+                GuiHardwareBackend::SoftbufferHeadlessRasterizer,
+                true,
+                true
+            ),
+            GuiHardwareBackend::SoftbufferHeadlessRasterizer
+        );
+
+        // Test non-resizable window constraint enforcement
+        assert_eq!(
+            runtime.enforce_window_constraints(800, 600),
+            (
+                runtime.window_config().width,
+                runtime.window_config().height
+            )
+        );
+
+        // Test resizable window constraint enforcement
+        runtime.window_config_mut().resizable = true;
+        assert_eq!(runtime.enforce_window_constraints(1200, 900), (1200, 900));
+
+        // Test lifecycle events
+        assert_eq!(
+            runtime.process_lifecycle_event(WindowLifecycleEvent::Opened),
+            None
+        );
+        assert_eq!(
+            runtime.process_lifecycle_event(WindowLifecycleEvent::Focused),
+            None
+        );
+        assert_eq!(
+            runtime.process_lifecycle_event(WindowLifecycleEvent::Unfocused),
+            None
+        );
+        assert_eq!(
+            runtime.process_lifecycle_event(WindowLifecycleEvent::Minimized),
+            None
+        );
+        assert_eq!(
+            runtime.process_lifecycle_event(WindowLifecycleEvent::Restored),
+            None
+        );
+        assert_eq!(
+            runtime.process_lifecycle_event(WindowLifecycleEvent::ResizeRequested {
+                width: 1024,
+                height: 768
+            }),
+            None
+        );
+        assert_eq!(
+            runtime.process_lifecycle_event(WindowLifecycleEvent::CloseRequested),
+            Some(DialogReturnCode::Exit)
+        );
+
+        // Test CloseRequested when cancel button has registered event
+        let mut cancel_engine = create_test_engine();
+        let _ = cancel_engine.set_active_dialog("WelcomeDlg");
+        cancel_engine.add_event(crate::ui::events::ControlEvent::new(
+            "WelcomeDlg",
+            "CancelButton",
+            crate::ui::events::ControlEventType::EndDialog(DialogReturnCode::Retry),
+            None,
+            0,
+        ));
+        let mut cancel_runtime = GuiDesktopRuntime::new(
+            cancel_engine,
+            WizardTheme::mondo(),
+            GuiHardwareBackend::SoftbufferHeadlessRasterizer,
+        );
+        assert_eq!(
+            cancel_runtime.process_lifecycle_event(WindowLifecycleEvent::CloseRequested),
+            Some(DialogReturnCode::Retry)
+        );
+
+        // Test CloseRequested when active dialog has NO cancel control
+        let mut no_cancel_engine =
+            UiEngine::new(crate::execution::properties::EvaluationContext::new());
+        no_cancel_engine.add_dialog(DialogDefinition {
+            name: "NoCancelDlg".to_string(),
+            h_centering: 50,
+            v_centering: 50,
+            width: 200,
+            height: 100,
+            attributes: crate::ui::engine::DIALOG_ATTR_VISIBLE,
+            title: None,
+            control_first: String::new(),
+            control_default: None,
+            control_cancel: None,
+        });
+        let _ = no_cancel_engine.set_active_dialog("NoCancelDlg");
+        let mut no_cancel_runtime = GuiDesktopRuntime::new(
+            no_cancel_engine,
+            WizardTheme::mondo(),
+            GuiHardwareBackend::SoftbufferHeadlessRasterizer,
+        );
+        assert_eq!(
+            no_cancel_runtime.process_lifecycle_event(WindowLifecycleEvent::CloseRequested),
+            Some(DialogReturnCode::Exit)
+        );
+
+        // Test CloseRequested when cancel button does not exist (click_control returns Err)
+        let mut err_cancel_engine =
+            UiEngine::new(crate::execution::properties::EvaluationContext::new());
+        err_cancel_engine.add_dialog(DialogDefinition {
+            name: "ErrCancelDlg".to_string(),
+            h_centering: 50,
+            v_centering: 50,
+            width: 200,
+            height: 100,
+            attributes: crate::ui::engine::DIALOG_ATTR_VISIBLE,
+            title: None,
+            control_first: String::new(),
+            control_default: None,
+            control_cancel: Some("MissingCancelBtn".to_string()),
+        });
+        let _ = err_cancel_engine.set_active_dialog("ErrCancelDlg");
+        let mut err_cancel_runtime = GuiDesktopRuntime::new(
+            err_cancel_engine,
+            WizardTheme::mondo(),
+            GuiHardwareBackend::SoftbufferHeadlessRasterizer,
+        );
+        assert_eq!(
+            err_cancel_runtime.process_lifecycle_event(WindowLifecycleEvent::CloseRequested),
+            Some(DialogReturnCode::Exit)
+        );
+
+        let lc_ev = WindowLifecycleEvent::ResizeRequested {
+            width: 500,
+            height: 400,
+        };
+        assert_eq!(lc_ev, lc_ev.clone());
+        assert!(format!("{lc_ev:?}").contains("ResizeRequested"));
     }
 }

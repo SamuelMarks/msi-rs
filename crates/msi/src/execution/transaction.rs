@@ -121,6 +121,8 @@ pub struct WorkerContext {
     simulated_failure_action: Option<String>,
     /// Optional live worker executor for real physical disk operations and rollback quarantine.
     live_executor: Option<super::worker::LiveWorkerExecutor>,
+    /// Optional bare-metal rollback journal tracking low-level disk modifications.
+    bare_metal_journal: Option<crate::execution::bare_metal::BareMetalRollbackJournal>,
 }
 
 impl WorkerContext {
@@ -143,6 +145,31 @@ impl WorkerContext {
     pub fn with_live_executor(mut self, executor: super::worker::LiveWorkerExecutor) -> Self {
         self.live_executor = Some(executor);
         self
+    }
+
+    /// Attaches a [`crate::execution::bare_metal::BareMetalRollbackJournal`] to track disk operations for atomic rollback.
+    ///
+    /// # Arguments
+    ///
+    /// * `journal` - Configured bare metal rollback journal.
+    ///
+    /// # Returns
+    ///
+    /// Updated [`WorkerContext`].
+    #[must_use]
+    pub fn with_bare_metal_journal(
+        mut self,
+        journal: crate::execution::bare_metal::BareMetalRollbackJournal,
+    ) -> Self {
+        self.bare_metal_journal = Some(journal);
+        self
+    }
+
+    /// Returns a mutable reference to the attached [`crate::execution::bare_metal::BareMetalRollbackJournal`], if present.
+    pub const fn bare_metal_journal_mut(
+        &mut self,
+    ) -> Option<&mut crate::execution::bare_metal::BareMetalRollbackJournal> {
+        self.bare_metal_journal.as_mut()
     }
 
     /// Returns an optional reference to the attached [`super::worker::LiveWorkerExecutor`].
@@ -501,6 +528,9 @@ impl WorkerContext {
         self.quarantine_files.clear();
         if let Some(ref mut exec) = self.live_executor {
             exec.rollback()?;
+        }
+        if let Some(ref mut bm_journal) = self.bare_metal_journal {
+            bm_journal.execute_rollback()?;
         }
         Ok(())
     }
@@ -1314,6 +1344,17 @@ mod tests {
         assert_eq!(read_committed, b"OVERWRITTEN_CONFIG");
         assert!(new_file_path.exists());
         assert!(!quarantine_dir.exists());
+
+        // 4. Test WorkerContext with BareMetalRollbackJournal attached
+        let bm_file = target_dir.join("bm_created.bin");
+        std::fs::write(&bm_file, b"BM_DATA")?;
+        let mut bm_journal = crate::execution::bare_metal::BareMetalRollbackJournal::new();
+        bm_journal.record_file(&bm_file);
+        let mut worker_bm = WorkerContext::new().with_bare_metal_journal(bm_journal);
+        assert!(worker_bm.bare_metal_journal_mut().is_some());
+        let empty_rollback = RollbackScript::new();
+        worker_bm.execute_rollback(&empty_rollback)?;
+        assert!(!bm_file.exists());
 
         let _ = std::fs::remove_dir_all(&temp_root);
         Ok(())

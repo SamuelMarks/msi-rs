@@ -30,6 +30,66 @@ pub type MsiCustomActionFn = unsafe extern "system-unwind" fn(h_install: MSIHAND
 /// Global atomic counter generating unique sandbox directory names.
 static SANDBOX_COUNTER: AtomicU64 = AtomicU64::new(1);
 
+/// Binary executable or dynamic library file format detected from magic header bytes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum BinaryFormat {
+    /// Microsoft Windows Portable Executable (PE32 / PE32+ for `.exe`, `.dll`, `.sys`).
+    PeWindows,
+    /// Executable and Linkable Format (ELF for Linux, FreeBSD, NetBSD, Solaris).
+    ElfUnix,
+    /// Mach-O object file (macOS / iOS `.dylib`, bundle, executable).
+    MachOApple,
+    /// Unrecognized or raw non-binary format.
+    #[default]
+    Unknown,
+}
+
+impl BinaryFormat {
+    /// Detects binary format from the initial magic header bytes of a file.
+    ///
+    /// # Arguments
+    ///
+    /// * `header` - Raw slice of initial file bytes.
+    ///
+    /// # Returns
+    ///
+    /// Detected [`BinaryFormat`].
+    #[must_use]
+    pub fn detect(header: &[u8]) -> Self {
+        if header.len() >= 2 && header[0] == 0x4D && header[1] == 0x5A {
+            return Self::PeWindows;
+        }
+        if header.len() >= 4 && &header[0..4] == b"\x7fELF" {
+            return Self::ElfUnix;
+        }
+        if header.len() >= 4 {
+            let magic = u32::from_ne_bytes([header[0], header[1], header[2], header[3]]);
+            if magic == 0xFEED_FACE
+                || magic == 0xFEED_FACF
+                || magic == 0xCEFA_EDFE
+                || magic == 0xCFFA_EDFE
+                || magic == 0xCAFE_BABE
+                || magic == 0xBEBA_FECA
+            {
+                return Self::MachOApple;
+            }
+        }
+        Self::Unknown
+    }
+}
+
+/// Execution mode for Wine Windows PE emulation.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum WineMode {
+    /// Automatically detects Wine on host if present.
+    #[default]
+    Auto,
+    /// Disables Wine emulation even if present on host.
+    Disabled,
+    /// Uses an explicit custom Wine executable path.
+    Custom(PathBuf),
+}
+
 /// Sandboxed loader for native custom action libraries.
 #[derive(Debug)]
 pub struct NativeLibraryLoader {
@@ -37,6 +97,12 @@ pub struct NativeLibraryLoader {
     sandbox_dir: Option<PathBuf>,
     /// Path to extracted library file, if created.
     library_path: Option<PathBuf>,
+    /// Detected binary format of the loaded library file.
+    library_format: BinaryFormat,
+    /// Active Wine executable path if loaded as a Windows PE DLL on a non-Windows platform.
+    wine_executable: Option<PathBuf>,
+    /// Active Wine execution mode.
+    pub wine_mode: WineMode,
     /// Active OS dynamic library handle (`dlopen` on POSIX).
     #[cfg(unix)]
     dl_handle: Option<*mut std::ffi::c_void>,
@@ -66,10 +132,106 @@ impl NativeLibraryLoader {
         Self {
             sandbox_dir: None,
             library_path: None,
+            library_format: BinaryFormat::Unknown,
+            wine_executable: None,
+            wine_mode: WineMode::Auto,
             #[cfg(unix)]
             dl_handle: None,
             functions: HashMap::new(),
         }
+    }
+
+    /// Returns the detected binary format of the loaded library file.
+    #[must_use]
+    pub const fn library_format(&self) -> BinaryFormat {
+        self.library_format
+    }
+
+    /// Returns the active Wine executable path if Wine execution bridge is active.
+    #[must_use]
+    pub fn wine_executable(&self) -> Option<&Path> {
+        self.wine_executable.as_deref()
+    }
+
+    /// Checks for the presence of Wine (`wine64` or `wine`) on the host system.
+    ///
+    /// Searches standard `PATH` directories and standard installation paths.
+    ///
+    /// # Returns
+    ///
+    /// Path to Wine executable if found, or `None`.
+    #[must_use]
+    pub fn find_wine_binary() -> Option<PathBuf> {
+        Self::find_wine_binary_custom(
+            std::env::var_os("PATH").as_deref(),
+            &["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin"],
+        )
+    }
+
+    /// Searches for Wine binary (`wine64` or `wine`) with custom PATH and fallback directories.
+    ///
+    /// # Arguments
+    ///
+    /// * `path_var` - Optional path string to search.
+    /// * `fallback_dirs` - Fallback directories to search if not found in PATH.
+    ///
+    /// # Returns
+    ///
+    /// Path to Wine executable if found, or `None`.
+    #[must_use]
+    pub fn find_wine_binary_custom(
+        path_var: Option<&std::ffi::OsStr>,
+        fallback_dirs: &[&str],
+    ) -> Option<PathBuf> {
+        let candidates = ["wine64", "wine"];
+        if let Some(path_var) = path_var {
+            for dir in std::env::split_paths(path_var) {
+                for &candidate in &candidates {
+                    let bin = dir.join(candidate);
+                    if bin.is_file() {
+                        return Some(bin);
+                    }
+                }
+            }
+        }
+        for &dir in fallback_dirs {
+            for &candidate in &candidates {
+                let bin = Path::new(dir).join(candidate);
+                if bin.is_file() {
+                    return Some(bin);
+                }
+            }
+        }
+        None
+    }
+
+    /// Constructs the Wine command arguments to invoke a custom action in a Windows PE DLL.
+    ///
+    /// Uses Wine's `rundll32.exe` bridge: `wine64 rundll32.exe <dll_path>,<entry_point> <h_install>`.
+    ///
+    /// # Arguments
+    ///
+    /// * `wine_path` - Path to Wine executable.
+    /// * `dll_path` - Path to target Windows PE dynamic library.
+    /// * `entry_point` - Name of entry point function.
+    /// * `h_install` - MSI install session handle value.
+    ///
+    /// # Returns
+    ///
+    /// Tuple of `(program_path, argument_vector)`.
+    #[must_use]
+    pub fn build_wine_action_command(
+        wine_path: &Path,
+        dll_path: &Path,
+        entry_point: &str,
+        h_install: MSIHANDLE,
+    ) -> (PathBuf, Vec<String>) {
+        let args = vec![
+            "rundll32.exe".to_string(),
+            format!("{},{}", dll_path.display(), entry_point),
+            h_install.to_string(),
+        ];
+        (wine_path.to_path_buf(), args)
     }
 
     /// Registers an in-memory entry point function pointer (safe native mock or statically linked symbol).
@@ -100,7 +262,53 @@ impl NativeLibraryLoader {
         )
     }
 
+    /// Resolves the Wine binary path according to active [`WineMode`].
+    #[must_use]
+    pub fn resolve_wine(&self) -> Option<PathBuf> {
+        match self.wine_mode {
+            WineMode::Auto => Self::find_wine_binary(),
+            WineMode::Disabled => None,
+            WineMode::Custom(ref p) => Some(p.clone()),
+        }
+    }
+
+    /// Configures an explicit Wine executable path for Windows PE DLL emulation.
+    ///
+    /// # Arguments
+    ///
+    /// * `wine_executable` - Optional path to Wine binary.
+    ///
+    /// # Returns
+    ///
+    /// Updated [`NativeLibraryLoader`].
+    #[must_use]
+    pub fn with_wine_executable(self, wine_executable: Option<PathBuf>) -> Self {
+        match wine_executable {
+            Some(p) => self.with_wine_mode(WineMode::Custom(p)),
+            None => self.with_wine_mode(WineMode::Disabled),
+        }
+    }
+
+    /// Sets the Wine execution mode.
+    ///
+    /// # Arguments
+    ///
+    /// * `mode` - Target [`WineMode`].
+    ///
+    /// # Returns
+    ///
+    /// Updated [`NativeLibraryLoader`].
+    #[must_use]
+    pub fn with_wine_mode(mut self, mode: WineMode) -> Self {
+        self.wine_mode = mode;
+        self
+    }
+
     /// Loads an external dynamic shared library into the address space using the platform dynamic linker.
+    ///
+    /// Inspects file magic header bytes. On non-Windows platforms, if a Windows PE DLL is loaded,
+    /// checks for Wine availability; if Wine is present, configures the Wine execution bridge,
+    /// or returns [`Error::UnsupportedPlatform`] if Wine is unavailable.
     ///
     /// # Arguments
     ///
@@ -108,8 +316,32 @@ impl NativeLibraryLoader {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::CustomActionFailed`] on dynamic loading failure.
+    /// Returns [`Error::UnsupportedPlatform`] if a Windows PE DLL is loaded on non-Windows without Wine,
+    /// or [`Error::CustomActionFailed`] on I/O or dynamic loading failure.
     pub fn load_library(&mut self, path: &Path) -> Result<()> {
+        if let Ok(header) = fs::read(path) {
+            let format = BinaryFormat::detect(&header);
+            self.library_format = format;
+            self.library_path = Some(path.to_path_buf());
+
+            #[cfg(not(windows))]
+            {
+                if format == BinaryFormat::PeWindows {
+                    if let Some(wine_bin) = self.resolve_wine() {
+                        self.wine_executable = Some(wine_bin);
+                        return Ok(());
+                    }
+                    return Err(Error::UnsupportedPlatform {
+                        platform: "Windows PE (PE32/PE32+)".to_string(),
+                        reason: format!(
+                            "cannot execute Windows PE dynamic library '{}' on non-Windows host without Wine ('wine64' or 'wine')",
+                            path.display()
+                        ),
+                    });
+                }
+            }
+        }
+
         #[cfg(unix)]
         {
             use std::ffi::CString;
@@ -141,7 +373,7 @@ impl NativeLibraryLoader {
             Ok(())
         }
 
-        #[cfg(not(unix))]
+        #[cfg(windows)]
         {
             let _ = path;
             Ok(())
@@ -208,8 +440,20 @@ impl NativeLibraryLoader {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::CustomActionFailed`] if entry point is missing or if native code panics.
+    /// Returns [`Error::CustomActionFailed`] if entry point is missing, if native code panics,
+    /// or if Wine execution fails.
     pub fn invoke_action(&self, entry_point: &str, h_install: MSIHANDLE) -> Result<u32> {
+        if let Some(ref wine_bin) = self.wine_executable {
+            let empty_path = Path::new("");
+            let dll = self.library_path.as_deref().unwrap_or(empty_path);
+            let (prog, args) =
+                Self::build_wine_action_command(wine_bin, dll, entry_point, h_install);
+            let runner = SubprocessRunner::new();
+            let envs = HashMap::new();
+            let res = runner.run(&prog, &args, None, &envs)?;
+            return Ok(res.exit_code);
+        }
+
         let func: MsiCustomActionFn = if let Some(&f) = self.functions.get(entry_point) {
             f
         } else {
@@ -515,6 +759,7 @@ mod tests {
 
     /// Tests `NativeLibraryLoader` function registration, invocation, error, and panic boundary isolation.
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_native_library_loader() {
         let mut loader = NativeLibraryLoader::default();
         loader.register_function("SuccessAction", mock_success_action);
@@ -554,6 +799,23 @@ mod tests {
         // Sandbox directory should be deleted on drop
         assert!(!parent_dir.exists());
 
+        // Test extract_to_sandbox directory creation failure
+        let mut fail_dir_loader = NativeLibraryLoader::new();
+        let counter = SANDBOX_COUNTER.load(Ordering::SeqCst);
+        let pid = std::process::id();
+        let block_path = std::env::temp_dir().join(format!("msi_ca_{pid}_{counter}"));
+        let _ = fs::write(&block_path, b"blocking_file");
+        assert!(fail_dir_loader
+            .extract_to_sandbox("test.dll", b"data")
+            .is_err());
+        let _ = fs::remove_file(&block_path);
+
+        // Test extract_to_sandbox file write failure (nonexistent subdirectory)
+        let mut fail_write_loader = NativeLibraryLoader::new();
+        assert!(fail_write_loader
+            .extract_to_sandbox("nonexistent_sub/test.dll", b"data")
+            .is_err());
+
         // Test map_exit_code for all status paths
         assert_eq!(SubprocessRunner::map_exit_code(0), ERROR_SUCCESS);
         assert_eq!(
@@ -562,6 +824,155 @@ mod tests {
         );
         assert_eq!(SubprocessRunner::map_exit_code(1), ERROR_INSTALL_FAILURE);
         assert_eq!(SubprocessRunner::map_exit_code(-1), ERROR_INSTALL_FAILURE);
+
+        // Test BinaryFormat detection
+        assert_eq!(BinaryFormat::detect(b"MZ\x90\x00"), BinaryFormat::PeWindows);
+        assert_eq!(
+            BinaryFormat::detect(b"\x7fELF\x02\x01"),
+            BinaryFormat::ElfUnix
+        );
+        assert_eq!(
+            BinaryFormat::detect(&0xFEED_FACE_u32.to_ne_bytes()),
+            BinaryFormat::MachOApple
+        );
+        assert_eq!(
+            BinaryFormat::detect(&0xFEED_FACF_u32.to_ne_bytes()),
+            BinaryFormat::MachOApple
+        );
+        assert_eq!(
+            BinaryFormat::detect(&0xCEFA_EDFE_u32.to_ne_bytes()),
+            BinaryFormat::MachOApple
+        );
+        assert_eq!(
+            BinaryFormat::detect(&0xCFFA_EDFE_u32.to_ne_bytes()),
+            BinaryFormat::MachOApple
+        );
+        assert_eq!(
+            BinaryFormat::detect(&0xCAFE_BABE_u32.to_ne_bytes()),
+            BinaryFormat::MachOApple
+        );
+        assert_eq!(
+            BinaryFormat::detect(&0xBEBA_FECA_u32.to_ne_bytes()),
+            BinaryFormat::MachOApple
+        );
+        assert_eq!(BinaryFormat::detect(b"DATA"), BinaryFormat::Unknown);
+        assert_eq!(BinaryFormat::detect(b"M"), BinaryFormat::Unknown);
+        assert_eq!(BinaryFormat::detect(&[0x4D, 0x00]), BinaryFormat::Unknown);
+        assert_eq!(BinaryFormat::detect(b""), BinaryFormat::Unknown);
+
+        // Test WineMode derives
+        let default_wm = WineMode::default();
+        assert_eq!(default_wm, WineMode::Auto);
+        let clone_wm = default_wm.clone();
+        assert_eq!(default_wm, clone_wm);
+        assert!(format!("{default_wm:?}").contains("Auto"));
+
+        // Test Wine command builder
+        let (cmd, args) = NativeLibraryLoader::build_wine_action_command(
+            Path::new("/usr/bin/wine64"),
+            Path::new("/tmp/custom.dll"),
+            "EntryPoint",
+            42,
+        );
+        assert_eq!(cmd, PathBuf::from("/usr/bin/wine64"));
+        assert_eq!(
+            args,
+            vec!["rundll32.exe", "/tmp/custom.dll,EntryPoint", "42"]
+        );
+
+        // Test find_wine_binary and find_wine_binary_in
+        let _ = NativeLibraryLoader::find_wine_binary();
+
+        // Test loading PE DLL on non-Windows
+        let temp_pe = std::env::temp_dir().join(format!("test_mock_pe_{}.dll", std::process::id()));
+        let _ = fs::write(&temp_pe, b"MZ\x90\x00mock_pe_executable_bytes");
+        let pe_loader = NativeLibraryLoader::new();
+        assert_eq!(pe_loader.library_format(), BinaryFormat::Unknown);
+        assert!(pe_loader.wine_executable().is_none());
+
+        #[cfg(not(windows))]
+        {
+            // 1. Fallback search when PATH and fallback dirs are empty
+            assert!(NativeLibraryLoader::find_wine_binary_custom(None, &[]).is_none());
+
+            // 2. Search when PATH specifies directory containing mock wine
+            let mock_wine_dir =
+                std::env::temp_dir().join(format!("mock_wine_{}", std::process::id()));
+            let _ = fs::create_dir_all(&mock_wine_dir);
+            let mock_wine = mock_wine_dir.join("wine");
+            let _ = fs::write(&mock_wine, b"#!/bin/sh\nexit 0\n");
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = fs::set_permissions(&mock_wine, fs::Permissions::from_mode(0o755));
+            }
+            let found_path =
+                NativeLibraryLoader::find_wine_binary_custom(Some(mock_wine_dir.as_os_str()), &[]);
+            assert_eq!(found_path, Some(mock_wine.clone()));
+
+            let mock_wine_str = mock_wine_dir.to_string_lossy().to_string();
+            let found_fallback =
+                NativeLibraryLoader::find_wine_binary_custom(None, &[&mock_wine_str]);
+            assert_eq!(found_fallback, Some(mock_wine.clone()));
+
+            // 3. With explicit wine executable configured: must succeed and invoke action
+            let mut wine_loader = NativeLibraryLoader::new().with_wine_executable(Some(mock_wine));
+            assert!(wine_loader.load_library(&temp_pe).is_ok());
+            assert!(wine_loader.wine_executable().is_some());
+            assert_eq!(
+                wine_loader.invoke_action("CustomAction", 1),
+                Ok(ERROR_SUCCESS)
+            );
+
+            // 4. With wine disabled: must return UnsupportedPlatform
+            let mut disabled_loader = NativeLibraryLoader::new().with_wine_mode(WineMode::Disabled);
+            let unset_loader = NativeLibraryLoader::new().with_wine_executable(None);
+            assert_eq!(unset_loader.wine_mode, WineMode::Disabled);
+            let load_disabled = disabled_loader.load_library(&temp_pe);
+            assert!(matches!(
+                load_disabled,
+                Err(Error::UnsupportedPlatform { .. })
+            ));
+            assert!(disabled_loader.wine_executable().is_none());
+
+            let _ = fs::remove_dir_all(&mock_wine_dir);
+        }
+        let _ = fs::remove_file(&temp_pe);
+
+        // Test loading non-PE file (ELF)
+        let temp_elf =
+            std::env::temp_dir().join(format!("test_mock_elf_{}.so", std::process::id()));
+        let _ = fs::write(&temp_elf, b"\x7FELF\x02\x01\x01\x00_mock_elf_bytes");
+        let mut elf_loader = NativeLibraryLoader::new();
+        let _ = elf_loader.load_library(&temp_elf);
+        assert_eq!(elf_loader.library_format(), BinaryFormat::ElfUnix);
+        let _ = fs::remove_file(&temp_elf);
+
+        // Test resolve_wine in Auto mode
+        let auto_loader = NativeLibraryLoader::new();
+        assert_eq!(auto_loader.wine_mode, WineMode::Auto);
+        let _ = auto_loader.resolve_wine();
+
+        // Test invoke_action with mock wine executable
+        #[cfg(not(target_os = "windows"))]
+        {
+            let mut mock_wine_loader = NativeLibraryLoader::new();
+            mock_wine_loader.wine_executable = Some(PathBuf::from("/usr/bin/true"));
+            mock_wine_loader.library_path = Some(PathBuf::from("/tmp/test.dll"));
+            let wine_invoke_res = mock_wine_loader.invoke_action("CustomAction", 1);
+            assert_eq!(wine_invoke_res, Ok(ERROR_SUCCESS));
+
+            // Test invoke_action when library_path is None
+            mock_wine_loader.library_path = None;
+            assert_eq!(
+                mock_wine_loader.invoke_action("CustomAction", 1),
+                Ok(ERROR_SUCCESS)
+            );
+
+            // Test invoke_action when runner.run fails (wine executable does not exist)
+            mock_wine_loader.wine_executable = Some(PathBuf::from("/nonexistent/bin/wine_fail"));
+            assert!(mock_wine_loader.invoke_action("CustomAction", 1).is_err());
+        }
 
         // Test dynamic library loading error on invalid path
         let mut dl_loader = NativeLibraryLoader::new();

@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 /// In-memory simulated physical block storage device.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct MockBlockDevice {
     /// Total virtual capacity in bytes.
     pub capacity_bytes: usize,
@@ -242,6 +242,10 @@ pub struct QemuTestRunner {
     pub memory_mb: u32,
     /// Symmetrical Multi-Processing (SMP) CPU core count.
     pub smp_cores: u32,
+    /// Execution timeout in seconds.
+    pub timeout_secs: u64,
+    /// Expected success sentinel string in serial output log.
+    pub success_sentinel: Option<String>,
 }
 
 impl Default for QemuTestRunner {
@@ -253,6 +257,133 @@ impl Default for QemuTestRunner {
             iso_image: None,
             memory_mb: 2048,
             smp_cores: 2,
+            timeout_secs: 300,
+            success_sentinel: None,
+        }
+    }
+}
+
+/// Active QEMU virtual machine test process handle with serial output capture and timeout control.
+#[derive(Debug)]
+pub struct QemuProcess {
+    /// Active child process handle.
+    child: std::process::Child,
+    /// Timeout duration before process termination.
+    timeout: std::time::Duration,
+    /// Optional expected success sentinel string in serial output.
+    success_sentinel: Option<String>,
+}
+
+impl Drop for QemuProcess {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+impl QemuProcess {
+    /// Creates a new [`QemuProcess`] wrapper.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - Active child process handle.
+    /// * `timeout` - Maximum execution duration before kill.
+    /// * `success_sentinel` - Optional success string expected in output.
+    ///
+    /// # Returns
+    ///
+    /// Initialized [`QemuProcess`].
+    #[must_use]
+    pub const fn new(
+        child: std::process::Child,
+        timeout: std::time::Duration,
+        success_sentinel: Option<String>,
+    ) -> Self {
+        Self {
+            child,
+            timeout,
+            success_sentinel,
+        }
+    }
+
+    /// Waits for the VM process to finish within the configured timeout period,
+    /// captures serial output, and verifies the presence of the success sentinel string.
+    ///
+    /// # Returns
+    ///
+    /// Serial output log string.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ExecutionFailed`] if execution times out, process returns non-zero,
+    /// or if the success sentinel string is not found in the output.
+    pub fn wait_for_completion(&mut self) -> Result<String> {
+        use std::io::Read;
+        use std::time::Instant;
+
+        let start = Instant::now();
+        loop {
+            match self.child.try_wait() {
+                Ok(Some(status)) => {
+                    let mut stdout_buf = Vec::new();
+                    let mut stderr_buf = Vec::new();
+                    if let Some(ref mut out) = self.child.stdout {
+                        let _ = out.read_to_end(&mut stdout_buf);
+                    }
+                    if let Some(ref mut err) = self.child.stderr {
+                        let _ = err.read_to_end(&mut stderr_buf);
+                    }
+                    let stdout = String::from_utf8_lossy(&stdout_buf).to_string();
+                    let stderr = String::from_utf8_lossy(&stderr_buf).to_string();
+                    let combined = format!("{stdout}\n{stderr}");
+
+                    let code = status.code().unwrap_or(1);
+                    if code != 0 {
+                        let code_u32 = u32::try_from(code).unwrap_or(1);
+                        return Err(Error::ExecutionFailed {
+                            action: "qemu".to_string(),
+                            return_code: code_u32,
+                            message: format!("QEMU process failed with exit code {code}: {stderr}"),
+                        });
+                    }
+
+                    if let Some(ref sentinel) = self.success_sentinel {
+                        if !combined.contains(sentinel) {
+                            return Err(Error::ExecutionFailed {
+                                action: "qemu".to_string(),
+                                return_code: 1,
+                                message: format!(
+                                    "success sentinel '{sentinel}' not found in QEMU serial log"
+                                ),
+                            });
+                        }
+                    }
+
+                    return Ok(combined);
+                }
+                Ok(None) => {
+                    if start.elapsed() > self.timeout {
+                        let _ = self.child.kill();
+                        let _ = self.child.wait();
+                        return Err(Error::ExecutionFailed {
+                            action: "qemu".to_string(),
+                            return_code: 1,
+                            message: format!(
+                                "QEMU VM test run timed out after {}s",
+                                self.timeout.as_secs()
+                            ),
+                        });
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                }
+                Err(e) => {
+                    return Err(Error::ExecutionFailed {
+                        action: "qemu".to_string(),
+                        return_code: 1,
+                        message: format!("failed to wait on QEMU process: {e}"),
+                    });
+                }
+            }
         }
     }
 }
@@ -277,7 +408,89 @@ impl QemuTestRunner {
             iso_image: None,
             memory_mb: 2048,
             smp_cores: 2,
+            timeout_secs: 300,
+            success_sentinel: None,
         }
+    }
+
+    /// Configures execution timeout in seconds.
+    ///
+    /// # Arguments
+    ///
+    /// * `timeout_secs` - Timeout limit in seconds.
+    ///
+    /// # Returns
+    ///
+    /// Updated [`QemuTestRunner`].
+    #[must_use]
+    pub const fn with_timeout(mut self, timeout_secs: u64) -> Self {
+        self.timeout_secs = timeout_secs;
+        self
+    }
+
+    /// Configures the expected success sentinel string in serial logs.
+    ///
+    /// # Arguments
+    ///
+    /// * `sentinel` - Success marker string (e.g. `INSTALL_COMPLETE_SUCCESS`).
+    ///
+    /// # Returns
+    ///
+    /// Updated [`QemuTestRunner`].
+    #[must_use]
+    pub fn with_sentinel(mut self, sentinel: impl Into<String>) -> Self {
+        self.success_sentinel = Some(sentinel.into());
+        self
+    }
+
+    /// Spawns the QEMU child process with captured serial output.
+    ///
+    /// # Returns
+    ///
+    /// Active [`QemuProcess`] handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ExecutionFailed`] if spawning fails.
+    pub fn spawn(&self) -> Result<QemuProcess> {
+        let args = self.build_command_args();
+        let program = &args[0];
+        let rest = &args[1..];
+        self.spawn_custom(program, rest)
+    }
+
+    /// Spawns a custom command process with configured timeout and sentinel settings.
+    ///
+    /// # Arguments
+    ///
+    /// * `program` - Binary or script to execute.
+    /// * `args` - Command-line arguments.
+    ///
+    /// # Returns
+    ///
+    /// Active [`QemuProcess`] handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ExecutionFailed`] if spawning fails.
+    pub fn spawn_custom(&self, program: &str, args: &[String]) -> Result<QemuProcess> {
+        let mut cmd = std::process::Command::new(program);
+        cmd.args(args);
+        cmd.stdin(std::process::Stdio::null());
+        cmd.stdout(std::process::Stdio::piped());
+        cmd.stderr(std::process::Stdio::piped());
+
+        let child = cmd.spawn().map_err(|e| Error::ExecutionFailed {
+            action: program.to_string(),
+            return_code: 1,
+            message: format!("failed to spawn QEMU/VM process '{program}': {e}"),
+        })?;
+
+        Ok(QemuProcess::new(
+            child,
+            std::time::Duration::from_secs(self.timeout_secs),
+            self.success_sentinel.clone(),
+        ))
     }
 
     /// Assembles the complete QEMU launch command-line argument vector.
@@ -327,16 +540,16 @@ mod tests {
 
     /// Tests `MockBlockDevice` read and write operations.
     #[test]
-    fn test_mock_block_device_read_write() -> Result<()> {
-        let mut mock = MockBlockDevice::new(1024 * 1024, 512)?;
+    fn test_mock_block_device_read_write() {
+        let mut mock = MockBlockDevice::new(1024 * 1024, 512).unwrap_or_default();
 
         assert_eq!(mock.capacity_bytes, 1024 * 1024);
         assert_eq!(mock.sector_size, 512);
 
         let data = vec![0xAB; 512];
-        mock.write_sectors(10, &data)?;
+        assert!(mock.write_sectors(10, &data).is_ok());
 
-        let read = mock.read_sectors(10, 1)?;
+        let read = mock.read_sectors(10, 1).unwrap_or_default();
         assert_eq!(read, data);
 
         // Test invalid alignment/capacity/bounds
@@ -364,18 +577,16 @@ mod tests {
 
         mock.read_only = true;
         assert!(mock.write_sectors(0, &data).is_err());
-
-        Ok(())
     }
 
     /// Tests mock block device partitioning and filesystem formatting integration.
     #[test]
-    fn test_mock_block_device_partition_and_format() -> Result<()> {
+    fn test_mock_block_device_partition_and_format() {
         let total_sectors_u64 = 10_000u64;
         let capacity = 10_000 * 512;
-        let mut mock = MockBlockDevice::new(capacity, 512)?;
+        let mut mock = MockBlockDevice::new(capacity, 512).unwrap_or_default();
 
-        let mut gpt = GptTable::new(total_sectors_u64, 512, [0x11; 16])?;
+        let mut gpt = GptTable::new(total_sectors_u64, 512, [0x11; 16]).unwrap_or_default();
 
         let esp_part = GptPartitionEntry {
             type_guid: PartitionTypeGuid::ESP,
@@ -385,27 +596,26 @@ mod tests {
             attributes: 0,
             name: "ESP".to_string(),
         };
-        gpt.add_partition(esp_part)?;
+        assert!(gpt.add_partition(esp_part).is_ok());
 
         let mbr_bytes = gpt.serialize_protective_mbr(512);
-        mock.write_sectors(0, &mbr_bytes)?;
+        assert!(mock.write_sectors(0, &mbr_bytes).is_ok());
 
         let hdr_bytes = gpt.serialize_header(false, 512);
-        mock.write_sectors(1, &hdr_bytes)?;
+        assert!(mock.write_sectors(1, &hdr_bytes).is_ok());
 
         let entries_bytes = gpt.serialize_partition_entries();
-        mock.write_sectors(2, &entries_bytes[0..512])?;
+        assert!(mock.write_sectors(2, &entries_bytes[0..512]).is_ok());
 
-        let read_mbr = mock.read_sectors(0, 1)?;
+        let read_mbr = mock.read_sectors(0, 1).unwrap_or_default();
         assert_eq!(read_mbr[450], 0xEE);
         assert_eq!(read_mbr[510], 0x55);
         assert_eq!(read_mbr[511], 0xAA);
 
         let esp_opt = Fat32FormatOptions::default();
-        let fs_bytes = Fat32Formatter::format_filesystem(1_000_000, 512, &esp_opt)?;
+        let fs_bytes =
+            Fat32Formatter::format_filesystem(1_000_000, 512, &esp_opt).unwrap_or_default();
         assert!(FileSystemVerifier::verify(FileSystemKind::Fat32, &fs_bytes).is_ok());
-
-        Ok(())
     }
 
     /// Tests `MockUefiNvram` variable getter and setter.
@@ -423,6 +633,7 @@ mod tests {
 
     /// Tests `QemuTestRunner` argument assembly.
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_qemu_test_runner_args() {
         let runner = QemuTestRunner {
             qemu_binary: "qemu-system-x86_64".to_string(),
@@ -431,6 +642,8 @@ mod tests {
             iso_image: Some(PathBuf::from("/tmp/install.iso")),
             memory_mb: 4096,
             smp_cores: 4,
+            timeout_secs: 300,
+            success_sentinel: None,
         };
 
         let args = runner.build_command_args();
@@ -453,5 +666,145 @@ mod tests {
         let default_runner = QemuTestRunner::default();
         assert_eq!(default_runner.memory_mb, 2048);
         assert_eq!(default_runner.smp_cores, 2);
+        assert_eq!(default_runner.timeout_secs, 300);
+        assert!(default_runner.success_sentinel.is_none());
+
+        let configured = default_runner
+            .with_timeout(60)
+            .with_sentinel("INSTALL_COMPLETE_SUCCESS");
+        assert_eq!(configured.timeout_secs, 60);
+        assert_eq!(
+            configured.success_sentinel,
+            Some("INSTALL_COMPLETE_SUCCESS".to_string())
+        );
+
+        // Test spawning invalid command
+        let bad_runner = QemuTestRunner::new("/nonexistent/ovmf.fd", "/nonexistent/disk.img");
+        assert!(bad_runner
+            .spawn_custom("/nonexistent/bin/qemu_xyz", &[])
+            .is_err());
+        let _ = bad_runner.spawn();
+
+        // Test execution with mock process (echo / sh)
+        #[cfg(not(windows))]
+        {
+            fn run_runner_test(res: Result<QemuProcess>, expect_ok: bool) -> String {
+                match res {
+                    Ok(mut p) => {
+                        let wait = p.wait_for_completion();
+                        assert_eq!(wait.is_ok(), expect_ok);
+                        match wait {
+                            Ok(s) => s,
+                            Err(e) => format!("{e:?}"),
+                        }
+                    }
+                    Err(e) => {
+                        assert!(!expect_ok);
+                        format!("{e:?}")
+                    }
+                }
+            }
+
+            fn run_direct_child(mut cmd: std::process::Command, should_reap: bool) {
+                match cmd.spawn() {
+                    Ok(child) => {
+                        let mut proc = if should_reap {
+                            let pid = child.id() as libc::pid_t;
+                            // SAFETY: kill and waitpid are invoked on a known spawned child pid with valid pointers.
+                            unsafe {
+                                let _ = libc::kill(pid, libc::SIGKILL);
+                                let _ = libc::waitpid(pid, std::ptr::null_mut(), 0);
+                            }
+                            QemuProcess::new(child, std::time::Duration::from_secs(1), None)
+                        } else {
+                            QemuProcess::new(child, std::time::Duration::from_secs(10), None)
+                        };
+                        let res = proc.wait_for_completion();
+                        assert_eq!(res.is_ok(), !should_reap);
+                    }
+                    Err(e) => {
+                        assert!(format!("{e:?}").contains("No such file"));
+                    }
+                }
+            }
+
+            // 1. Success with sentinel match
+            let runner_ok = QemuTestRunner::default()
+                .with_timeout(10)
+                .with_sentinel("INSTALL_COMPLETE_SUCCESS");
+            let res_ok = run_runner_test(
+                runner_ok.spawn_custom(
+                    "/bin/sh",
+                    &[
+                        "-c".to_string(),
+                        "echo 'Booting...'; echo 'INSTALL_COMPLETE_SUCCESS'".to_string(),
+                    ],
+                ),
+                true,
+            );
+            assert!(res_ok.contains("INSTALL_COMPLETE_SUCCESS"));
+
+            // 2. Success without sentinel requirement
+            let runner_no_sentinel = QemuTestRunner::default().with_timeout(10);
+            let _ = run_runner_test(
+                runner_no_sentinel.spawn_custom(
+                    "/bin/sh",
+                    &["-c".to_string(), "echo 'all good'".to_string()],
+                ),
+                true,
+            );
+
+            // 3. Sentinel missing in output
+            let runner_missing_sentinel = QemuTestRunner::default()
+                .with_timeout(10)
+                .with_sentinel("EXPECTED_BUT_MISSING");
+            let _ = run_runner_test(
+                runner_missing_sentinel.spawn_custom(
+                    "/bin/sh",
+                    &["-c".to_string(), "echo 'wrong text'".to_string()],
+                ),
+                false,
+            );
+
+            // 4. Non-zero exit code
+            let runner_fail = QemuTestRunner::default().with_timeout(10);
+            let _ = run_runner_test(
+                runner_fail.spawn_custom("/bin/sh", &["-c".to_string(), "exit 42".to_string()]),
+                false,
+            );
+
+            // 5. Timeout enforcement and termination
+            let runner_timeout = QemuTestRunner::default().with_timeout(1);
+            let timeout_msg = run_runner_test(
+                runner_timeout.spawn_custom("/bin/sleep", &["5".to_string()]),
+                false,
+            );
+            assert!(timeout_msg.contains("timed out"));
+
+            // 6. Child process without piped stdio
+            let mut cmd_no_stdio = std::process::Command::new("/bin/echo");
+            cmd_no_stdio
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null());
+            run_direct_child(cmd_no_stdio, false);
+
+            // 7. Child process wait error
+            let mut cmd_reaped = std::process::Command::new("/bin/sleep");
+            cmd_reaped
+                .arg("10")
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null());
+            run_direct_child(cmd_reaped, true);
+
+            // 8. Custom binary not found error
+            let _ = run_runner_test(
+                runner_ok.spawn_custom("/nonexistent/binary/path/surely", &[]),
+                false,
+            );
+
+            // 9. Command spawn failure for run_direct_child
+            let cmd_invalid = std::process::Command::new("/nonexistent/binary/path/surely");
+            run_direct_child(cmd_invalid, false);
+        }
     }
 }

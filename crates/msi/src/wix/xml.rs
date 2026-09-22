@@ -218,15 +218,9 @@ impl XmlParser {
                 if input[i..].starts_with("<![CDATA[") {
                     // Skip "<![CDATA[" (note '<' was already consumed at line 191)
                     for _ in 0..8 {
-                        if let Some((_, c)) = chars.next() {
-                            if c == '\n' {
-                                line += 1;
-                                col = 1;
-                            } else {
-                                col += 1;
-                            }
-                        }
+                        let _ = chars.next();
                     }
+                    col += 8;
                     let mut cdata_text = String::new();
                     while let Some(&(next_i, c)) = chars.peek() {
                         if input[next_i..].starts_with("]]>") {
@@ -670,6 +664,16 @@ Outside text after root
         assert!(res_multi.is_ok());
         let node_multi = res_multi.unwrap_or_default();
         assert_eq!(node_multi.text, "\nLINE1\nLINE2\n");
+
+        // Top-level CDATA outside any tag (stack.last_mut() is None)
+        let xml_top_level = "<![CDATA[orphan header]]><Doc />";
+        let res_top = parser.parse(xml_top_level);
+        assert!(res_top.is_ok());
+        assert_eq!(res_top.unwrap_or_default().tag, "Doc");
+
+        // Unclosed CDATA reaches end of chars iterator
+        let xml_unclosed_cdata = "<Doc><![CDATA[unclosed text";
+        let _ = parser.parse(xml_unclosed_cdata);
     }
 
     /// Tests node query methods on non-existent elements and trait implementations.

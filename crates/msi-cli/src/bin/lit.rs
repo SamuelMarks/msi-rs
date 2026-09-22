@@ -124,7 +124,38 @@ impl LitOptions {
             objects.push(obj);
         }
 
-        let lib = WixLibrary::new(objects);
+        let mut bound_files = std::collections::HashMap::new();
+
+        if self.bind_files {
+            for obj in &objects {
+                for sec in &obj.sections {
+                    for tbl in &sec.tables {
+                        if tbl.name == "WixFile" {
+                            for rec in &tbl.records {
+                                if let (
+                                    Some(msi::database::FieldValue::String(file_key)),
+                                    Some(msi::database::FieldValue::String(source_path)),
+                                ) = (rec.get(0), rec.get(1))
+                                {
+                                    let path = Path::new(source_path);
+                                    if path.exists() {
+                                        let file_bytes = fs::read(path).map_err(|e| {
+                                            format!(
+                                                "failed reading payload file '{}': {e}",
+                                                path.display()
+                                            )
+                                        })?;
+                                        bound_files.insert(file_key.clone(), file_bytes);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let lib = WixLibrary::with_bound_files(objects, bound_files);
 
         let out_path = self
             .output
@@ -352,13 +383,107 @@ mod tests {
         };
         assert!(empty_out_opts.execute().is_err());
 
-        // 8. Derives test
+        // 8. Test -bf binding actual file payload
+        let payload_file = temp_dir.join("payload.txt");
+        fs::write(&payload_file, b"bound file payload data")?;
+        let mut obj_with_file = WixObject::new();
+        let mut sec_with_file = msi::wix::wixobj::IntermediateSection::new(
+            msi::wix::wixobj::SectionType::Fragment,
+            Some("FragWithFile".to_string()),
+        );
+        let mut wixfile_tbl = msi::wix::wixobj::IntermediateTable::new("WixFile");
+        wixfile_tbl.push_record(msi::database::Record::with_fields(vec![
+            msi::database::FieldValue::String("BoundPayloadKey".to_string()),
+            msi::database::FieldValue::String(payload_file.to_string_lossy().to_string()),
+        ]));
+        sec_with_file.tables.push(wixfile_tbl);
+        sec_with_file
+            .tables
+            .push(msi::wix::wixobj::IntermediateTable::new("OtherTable"));
+        obj_with_file.add_section(sec_with_file);
+        let obj_with_file_path = temp_dir.join("with_file.wixobj");
+        fs::write(&obj_with_file_path, obj_with_file.serialize())?;
+
+        let bound_out = temp_dir.join("bound_output.wixlib");
+        let bound_args = vec![
+            "-nologo".to_string(),
+            "-bf".to_string(),
+            "-o".to_string(),
+            bound_out.to_string_lossy().to_string(),
+            obj_with_file_path.to_string_lossy().to_string(),
+        ];
+        assert_eq!(run(&bound_args), 0);
+        let loaded_bound_lib = WixLibrary::open(&bound_out)?;
+        assert_eq!(
+            loaded_bound_lib.bound_files.get("BoundPayloadKey"),
+            Some(&b"bound file payload data".to_vec())
+        );
+
+        // Test non-existent file and wrong field types in WixFile
+        let mut obj_mixed = WixObject::new();
+        let mut sec_mixed = msi::wix::wixobj::IntermediateSection::new(
+            msi::wix::wixobj::SectionType::Fragment,
+            Some("FragMixed".to_string()),
+        );
+        let mut mixed_tbl = msi::wix::wixobj::IntermediateTable::new("WixFile");
+        mixed_tbl.push_record(msi::database::Record::with_fields(vec![
+            msi::database::FieldValue::String("NonExistentKey".to_string()),
+            msi::database::FieldValue::String("/nonexistent/file/path.txt".to_string()),
+        ]));
+        mixed_tbl.push_record(msi::database::Record::with_fields(vec![
+            msi::database::FieldValue::Short(42),
+            msi::database::FieldValue::Null,
+        ]));
+        sec_mixed.tables.push(mixed_tbl);
+        obj_mixed.add_section(sec_mixed);
+        let obj_mixed_path = temp_dir.join("mixed.wixobj");
+        fs::write(&obj_mixed_path, obj_mixed.serialize())?;
+        let mixed_out = temp_dir.join("mixed_out.wixlib");
+        assert_eq!(
+            run(&[
+                "-nologo".to_string(),
+                "-bf".to_string(),
+                "-o".to_string(),
+                mixed_out.to_string_lossy().to_string(),
+                obj_mixed_path.to_string_lossy().to_string(),
+            ]),
+            0
+        );
+
+        // Test read error on directory path in WixFile
+        let mut obj_dir_err = WixObject::new();
+        let mut sec_dir_err = msi::wix::wixobj::IntermediateSection::new(
+            msi::wix::wixobj::SectionType::Fragment,
+            Some("FragDirErr".to_string()),
+        );
+        let mut dir_err_tbl = msi::wix::wixobj::IntermediateTable::new("WixFile");
+        dir_err_tbl.push_record(msi::database::Record::with_fields(vec![
+            msi::database::FieldValue::String("DirKey".to_string()),
+            msi::database::FieldValue::String(temp_dir.to_string_lossy().to_string()),
+        ]));
+        sec_dir_err.tables.push(dir_err_tbl);
+        obj_dir_err.add_section(sec_dir_err);
+        let obj_dir_err_path = temp_dir.join("dir_err.wixobj");
+        fs::write(&obj_dir_err_path, obj_dir_err.serialize())?;
+        let dir_err_out = temp_dir.join("dir_err_out.wixlib");
+        assert_eq!(
+            run(&[
+                "-nologo".to_string(),
+                "-bf".to_string(),
+                "-o".to_string(),
+                dir_err_out.to_string_lossy().to_string(),
+                obj_dir_err_path.to_string_lossy().to_string(),
+            ]),
+            1
+        );
+
+        // 9. Derives test
         let default_opts = LitOptions::default();
         let cloned_opts = default_opts.clone();
         assert_eq!(default_opts, cloned_opts);
         assert!(format!("{default_opts:?}").contains("LitOptions"));
 
-        // 9. Test invoking main directly
+        // 10. Test invoking main directly
         let code = main();
         assert_eq!(code, ExitCode::FAILURE);
 

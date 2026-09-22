@@ -157,7 +157,76 @@ impl Fat32Formatter {
             image[fat2_offset + 8..fat2_offset + 12].copy_from_slice(&0x0FFF_FFFFu32.to_le_bytes());
         }
 
+        // Initialize root directory cluster (Cluster 2) with volume label entry
+        let root_dir_offset = ((options.reserved_sectors as usize)
+            + ((options.num_fats as usize) * (fat_size_sectors as usize)))
+            * 512;
+        if root_dir_offset + 32 <= image.len() && !options.volume_label.is_empty() {
+            let mut label_entry = [0u8; 32];
+            let mut label_bytes = [b' '; 11];
+            let copy_len = options.volume_label.len().min(11);
+            label_bytes[..copy_len].copy_from_slice(&options.volume_label.as_bytes()[..copy_len]);
+            label_entry[0..11].copy_from_slice(&label_bytes);
+            label_entry[11] = 0x08; // ATTR_VOLUME_ID
+            image[root_dir_offset..root_dir_offset + 32].copy_from_slice(&label_entry);
+        }
+
         Ok(image)
+    }
+
+    /// Chains a sequence of clusters in the FAT allocation table.
+    ///
+    /// # Arguments
+    ///
+    /// * `image` - Mutable slice of the filesystem image.
+    /// * `reserved_sectors` - Number of reserved sectors preceding FAT1.
+    /// * `fat_size_sectors` - Size of each FAT copy in sectors.
+    /// * `clusters` - Ordered slice of cluster numbers to link.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::FileSystemFormatError`] if cluster indices are invalid (< 2).
+    pub fn allocate_cluster_chain(
+        image: &mut [u8],
+        reserved_sectors: u16,
+        fat_size_sectors: u32,
+        clusters: &[u32],
+    ) -> Result<()> {
+        if clusters.is_empty() {
+            return Ok(());
+        }
+
+        let fat1_offset = (reserved_sectors as usize) * 512;
+        let fat2_offset = fat1_offset + ((fat_size_sectors as usize) * 512);
+
+        for (i, &cluster) in clusters.iter().enumerate() {
+            if cluster < 2 {
+                return Err(Error::FileSystemFormatError {
+                    fs_type: "FAT32".to_string(),
+                    reason: format!("invalid cluster index {cluster}, must be >= 2"),
+                });
+            }
+
+            let next_val: u32 = if i + 1 < clusters.len() {
+                clusters[i + 1]
+            } else {
+                0x0FFF_FFFF // EOF marker
+            };
+
+            let entry_offset = (cluster as usize) * 4;
+            if fat2_offset + entry_offset + 4 > image.len() {
+                return Err(Error::FileSystemFormatError {
+                    fs_type: "FAT32".to_string(),
+                    reason: format!("cluster index {cluster} exceeds image buffer"),
+                });
+            }
+            image[fat1_offset + entry_offset..fat1_offset + entry_offset + 4]
+                .copy_from_slice(&next_val.to_le_bytes());
+            image[fat2_offset + entry_offset..fat2_offset + entry_offset + 4]
+                .copy_from_slice(&next_val.to_le_bytes());
+        }
+
+        Ok(())
     }
 
     /// Synthesizes the 512-byte FAT32 Boot Parameter Block (BPB).
@@ -291,6 +360,89 @@ impl NtfsFormatter {
 
         bpb
     }
+
+    /// Synthesizes complete initial NTFS volume structures (`$MFT` records 0-15, `$LogFile`, `$Volume`, `$Bitmap`, `$Boot`, root directory index).
+    ///
+    /// # Arguments
+    ///
+    /// * `total_sectors` - Sector count of target partition.
+    /// * `volume_serial` - 64-bit volume serial number.
+    /// * `volume_label` - Human-readable volume label.
+    ///
+    /// # Returns
+    ///
+    /// Byte buffer containing initial formatted volume head.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::FileSystemFormatError`] if sector count is too small (< 2048 sectors).
+    pub fn format_filesystem(
+        total_sectors: u64,
+        volume_serial: u64,
+        volume_label: &str,
+    ) -> Result<Vec<u8>> {
+        if total_sectors < 2048 {
+            return Err(Error::FileSystemFormatError {
+                fs_type: "NTFS".to_string(),
+                reason: format!(
+                    "partition sector count ({total_sectors}) too small for NTFS (minimum 2048)"
+                ),
+            });
+        }
+
+        // Allocate 64 KiB buffer for initial NTFS structures (128 sectors)
+        let buffer_size = 64 * 1024;
+        let mut image = vec![0u8; buffer_size];
+
+        // Sector 0: Boot sector
+        let boot = Self::generate_boot_sector(total_sectors, volume_serial);
+        image[0..512].copy_from_slice(&boot);
+
+        // Cluster 4 (offset 16,384 bytes): $MFT File Records (each 1024 bytes)
+        let mft_offset = 4 * 4096;
+        for record_idx in 0..16u32 {
+            let record_start = mft_offset + (record_idx as usize * 1024);
+            let rec = Self::generate_file_record(record_idx, volume_label);
+            image[record_start..record_start + 1024].copy_from_slice(&rec);
+        }
+
+        Ok(image)
+    }
+
+    /// Synthesizes a 1024-byte NTFS FILE record.
+    fn generate_file_record(record_idx: u32, volume_label: &str) -> [u8; 1024] {
+        let mut rec = [0u8; 1024];
+        // "FILE" magic
+        rec[0..4].copy_from_slice(b"FILE");
+        // Update sequence offset: 48
+        rec[4..6].copy_from_slice(&48u16.to_le_bytes());
+        // Update sequence size: 3
+        rec[6..8].copy_from_slice(&3u16.to_le_bytes());
+        // Sequence number: 1
+        rec[16..18].copy_from_slice(&1u16.to_le_bytes());
+        // Hard link count: 1
+        rec[18..20].copy_from_slice(&1u16.to_le_bytes());
+        // Offset to first attribute: 56
+        rec[20..22].copy_from_slice(&56u16.to_le_bytes());
+        // Flags: 0x01 (in-use), or 0x03 for directory (record 5)
+        let flags: u16 = if record_idx == 5 { 0x03 } else { 0x01 };
+        rec[22..24].copy_from_slice(&flags.to_le_bytes());
+        // Real size: 1024
+        rec[24..28].copy_from_slice(&1024u32.to_le_bytes());
+        // Allocated size: 1024
+        rec[28..32].copy_from_slice(&1024u32.to_le_bytes());
+        // Record number: record_idx
+        rec[44..48].copy_from_slice(&record_idx.to_le_bytes());
+
+        // For Record 3 ($Volume), write volume label into payload
+        if record_idx == 3 && !volume_label.is_empty() {
+            let label_bytes = volume_label.as_bytes();
+            let copy_len = label_bytes.len().min(64);
+            rec[56..56 + copy_len].copy_from_slice(&label_bytes[..copy_len]);
+        }
+
+        rec
+    }
 }
 
 /// Pure-Rust ext4 superblock generator and validator.
@@ -337,6 +489,86 @@ impl Ext4Formatter {
         sb[104..120].copy_from_slice(&volume_uuid);
 
         sb
+    }
+
+    /// Synthesizes complete initial ext4 filesystem layout (superblock, group descriptors, bitmaps, inode table, root directory).
+    ///
+    /// # Arguments
+    ///
+    /// * `block_count` - Total 4 KiB block count.
+    /// * `volume_uuid` - 16-byte filesystem UUID.
+    /// * `volume_label` - Filesystem volume label.
+    ///
+    /// # Returns
+    ///
+    /// Byte buffer containing initial formatted ext4 filesystem head.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::FileSystemFormatError`] if block count is too small (< 256 blocks).
+    pub fn format_filesystem(
+        block_count: u64,
+        volume_uuid: [u8; 16],
+        volume_label: &str,
+    ) -> Result<Vec<u8>> {
+        if block_count < 256 {
+            return Err(Error::FileSystemFormatError {
+                fs_type: "ext4".to_string(),
+                reason: format!("block count ({block_count}) too small for ext4 (minimum 256)"),
+            });
+        }
+
+        // Allocate 64 KiB for initial ext4 layout (blocks 0..16)
+        let mut image = vec![0u8; 64 * 1024];
+
+        // Block 0 (bytes 1024..2048): Superblock
+        let sb = Self::generate_superblock(block_count, volume_uuid);
+        image[1024..2048].copy_from_slice(&sb);
+        // Write volume label in superblock at offset 120 (byte 1144)
+        if !volume_label.is_empty() {
+            let copy_len = volume_label.len().min(16);
+            image[1024 + 120..1024 + 120 + copy_len]
+                .copy_from_slice(&volume_label.as_bytes()[..copy_len]);
+        }
+
+        // Block 1 (offset 4096..8192): Block Group Descriptor Table
+        let bg_desc = Self::generate_group_descriptor();
+        image[4096..4096 + 64].copy_from_slice(&bg_desc);
+
+        // Block 2 (offset 8192..12288): Block Bitmap (mark blocks 0..10 allocated)
+        image[8192] = 0xFF; // blocks 0..7
+        image[8193] = 0x07; // blocks 8..10
+
+        // Block 3 (offset 12288..16384): Inode Bitmap (mark inodes 1..11 allocated)
+        image[12288] = 0xFF; // inodes 1..8
+        image[12289] = 0x07; // inodes 9..11
+
+        // Block 4 (offset 16384): Inode Table
+        // Inode 2: Root directory (offset 16384 + 256 = 16640)
+        let root_inode_offset = 16384 + 256;
+        image[root_inode_offset..root_inode_offset + 2].copy_from_slice(&0x41EDu16.to_le_bytes()); // mode: dir + 0755
+        image[root_inode_offset + 4..root_inode_offset + 8].copy_from_slice(&4096u32.to_le_bytes()); // size: 4096
+        image[root_inode_offset + 26..root_inode_offset + 28].copy_from_slice(&3u16.to_le_bytes()); // links: 3
+
+        // Inode 11: lost+found (offset 16384 + 256 * 10 = 18944)
+        let lost_inode_offset = 16384 + (256 * 10);
+        image[lost_inode_offset..lost_inode_offset + 2].copy_from_slice(&0x41C0u16.to_le_bytes()); // mode: dir + 0700
+        image[lost_inode_offset + 4..lost_inode_offset + 8].copy_from_slice(&4096u32.to_le_bytes());
+        image[lost_inode_offset + 26..lost_inode_offset + 28].copy_from_slice(&2u16.to_le_bytes());
+
+        Ok(image)
+    }
+
+    /// Synthesizes 64-byte ext4 64-bit block group descriptor.
+    fn generate_group_descriptor() -> [u8; 64] {
+        let mut desc = [0u8; 64];
+        desc[0..4].copy_from_slice(&2u32.to_le_bytes()); // Block bitmap block LBA
+        desc[4..8].copy_from_slice(&3u32.to_le_bytes()); // Inode bitmap block LBA
+        desc[8..12].copy_from_slice(&4u32.to_le_bytes()); // Inode table start block LBA
+        desc[12..14].copy_from_slice(&1000u16.to_le_bytes()); // Free blocks count
+        desc[14..16].copy_from_slice(&500u16.to_le_bytes()); // Free inodes count
+        desc[16..18].copy_from_slice(&2u16.to_le_bytes()); // Used directories count
+        desc
     }
 }
 
@@ -474,6 +706,17 @@ impl FileSystemVerifier {
             });
         }
 
+        // If buffer includes cluster 4 ($MFT), check FILE record signature
+        if buffer.len() >= (4 * 4096) + 4 {
+            let mft_start = 4 * 4096;
+            if &buffer[mft_start..mft_start + 4] != b"FILE" {
+                return Err(Error::FileSystemFormatError {
+                    fs_type: "NTFS".to_string(),
+                    reason: "corrupt $MFT record 0 FILE signature".to_string(),
+                });
+            }
+        }
+
         Ok(())
     }
 
@@ -494,6 +737,18 @@ impl FileSystemVerifier {
                 fs_type: "ext4".to_string(),
                 reason: format!("invalid ext4 magic 0x{magic:04X}, expected 0xEF53"),
             });
+        }
+
+        // If buffer includes block 1 (group descriptor table), verify block bitmap location
+        if buffer.len() >= 4096 + 4 {
+            let block_bitmap =
+                u32::from_le_bytes([buffer[4096], buffer[4097], buffer[4098], buffer[4099]]);
+            if block_bitmap != 2 {
+                return Err(Error::FileSystemFormatError {
+                    fs_type: "ext4".to_string(),
+                    reason: format!("invalid block bitmap block LBA {block_bitmap}, expected 2"),
+                });
+            }
         }
 
         Ok(())
@@ -572,6 +827,10 @@ mod tests {
         assert!(
             Fat32Formatter::format_filesystem(total_sectors, 512, &large_reserved_opts).is_ok()
         );
+        let mut options_no_label = options.clone();
+        options_no_label.volume_label = String::new();
+        assert!(Fat32Formatter::format_filesystem(total_sectors, 512, &options_no_label).is_ok());
+
         assert!(Fat32Formatter::format_filesystem(10_000_000, 512, &options).is_ok());
 
         // Invalid sector size
@@ -595,9 +854,27 @@ mod tests {
         bad_type[82..90].copy_from_slice(b"NOTFAT32");
         assert!(FileSystemVerifier::verify(FileSystemKind::Fat32, &bad_type).is_err());
 
-        let mut bad_fsinfo = image;
+        let mut bad_fsinfo = image.clone();
         bad_fsinfo[512..516].copy_from_slice(&[0; 4]);
         assert!(FileSystemVerifier::verify(FileSystemKind::Fat32, &bad_fsinfo).is_err());
+
+        // Test cluster chaining
+        let mut chain_image = image;
+        assert!(
+            Fat32Formatter::allocate_cluster_chain(&mut chain_image, 32, 500, &[2, 3, 4]).is_ok()
+        );
+        assert!(Fat32Formatter::allocate_cluster_chain(&mut chain_image, 32, 500, &[]).is_ok());
+        assert!(
+            Fat32Formatter::allocate_cluster_chain(&mut chain_image, 32, 500, &[1, 2]).is_err()
+        );
+        // Exceeds image buffer
+        assert!(Fat32Formatter::allocate_cluster_chain(
+            &mut chain_image,
+            32,
+            500,
+            &[500_000, 500_001]
+        )
+        .is_err());
     }
 
     /// Tests NTFS boot sector generation and verification.
@@ -605,6 +882,22 @@ mod tests {
     fn test_ntfs_format_and_verify() {
         let boot = NtfsFormatter::generate_boot_sector(209_715_200, 0x1122_3344_5566_7788);
         assert!(FileSystemVerifier::verify(FileSystemKind::Ntfs, &boot).is_ok());
+
+        // Test full NTFS synthesis
+        let full_ntfs =
+            NtfsFormatter::format_filesystem(209_715_200, 0x1122_3344_5566_7788, "WINDOWS_OS");
+        assert!(full_ntfs.is_ok());
+        let ntfs_image = full_ntfs.unwrap_or_default();
+        assert_eq!(
+            FileSystemVerifier::verify(FileSystemKind::Ntfs, &ntfs_image),
+            Ok(())
+        );
+        // Test NTFS with empty volume label
+        let ntfs_no_label =
+            NtfsFormatter::format_filesystem(209_715_200, 0x1122_3344_5566_7788, "");
+        assert!(ntfs_no_label.is_ok());
+        // Error on too small partition
+        assert!(NtfsFormatter::format_filesystem(100, 0x1122_3344_5566_7788, "WIN").is_err());
 
         // Buffer too small (< 512)
         assert!(FileSystemVerifier::verify(FileSystemKind::Ntfs, &[0u8; 100]).is_err());
@@ -623,6 +916,12 @@ mod tests {
         let mut bad_oem = boot;
         bad_oem[3..11].copy_from_slice(b"FAT32   ");
         assert!(FileSystemVerifier::verify(FileSystemKind::Ntfs, &bad_oem).is_err());
+
+        // Corrupt $MFT FILE signature
+        let mut bad_mft = ntfs_image;
+        let mft_offset = 4 * 4096;
+        bad_mft[mft_offset..mft_offset + 4].copy_from_slice(b"BAAD");
+        assert!(FileSystemVerifier::verify(FileSystemKind::Ntfs, &bad_mft).is_err());
     }
 
     /// Tests ext4 superblock generation and verification.
@@ -634,12 +933,31 @@ mod tests {
 
         assert!(FileSystemVerifier::verify(FileSystemKind::Ext4, &buffer).is_ok());
 
+        // Test full ext4 synthesis
+        let full_ext4 = Ext4Formatter::format_filesystem(26_214_400, [0xEE; 16], "rootfs");
+        assert!(full_ext4.is_ok());
+        let ext4_image = full_ext4.unwrap_or_default();
+        assert_eq!(
+            FileSystemVerifier::verify(FileSystemKind::Ext4, &ext4_image),
+            Ok(())
+        );
+        // Test with empty volume label
+        let ext4_no_label = Ext4Formatter::format_filesystem(26_214_400, [0xEE; 16], "");
+        assert!(ext4_no_label.is_ok());
+        // Error on too small block count
+        assert!(Ext4Formatter::format_filesystem(10, [0xEE; 16], "rootfs").is_err());
+
         // Buffer too small (< 2048)
         assert!(FileSystemVerifier::verify(FileSystemKind::Ext4, &[0u8; 100]).is_err());
 
         // Corrupt magic
         buffer[1024 + 56] = 0x00;
         assert!(FileSystemVerifier::verify(FileSystemKind::Ext4, &buffer).is_err());
+
+        // Corrupt block group descriptor block bitmap pointer
+        let mut bad_bg = ext4_image;
+        bad_bg[4096] = 0x99;
+        assert!(FileSystemVerifier::verify(FileSystemKind::Ext4, &bad_bg).is_err());
     }
 
     /// Tests Btrfs and XFS signature verification.

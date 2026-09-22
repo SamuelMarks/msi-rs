@@ -24,6 +24,8 @@ pub enum EscalationMethod {
     SystemdRun,
     /// macOS Apple Authorization Services privileged helper tool (`SMJobBless`).
     SMJobBless,
+    /// macOS graphical `AppleScript` administrator prompt (`osascript -e 'do shell script "..." with administrator privileges'`).
+    OsascriptAdmin,
     /// Windows `ShellExecute` elevation using the `runas` verb.
     ShellExecuteRunAs,
 }
@@ -50,14 +52,21 @@ impl PrivilegeEscalator {
     ///
     /// Recommended [`EscalationMethod`].
     #[must_use]
-    pub const fn detect_best_method() -> EscalationMethod {
+    pub fn detect_best_method() -> EscalationMethod {
         #[cfg(windows)]
         {
             EscalationMethod::ShellExecuteRunAs
         }
         #[cfg(target_os = "macos")]
         {
-            EscalationMethod::SMJobBless
+            // If running in terminal / SSH session, use sudo; otherwise graphical osascript
+            if std::env::var_os("SSH_CONNECTION").is_some()
+                || std::env::var_os("TERM_PROGRAM").is_some()
+            {
+                EscalationMethod::Sudo
+            } else {
+                EscalationMethod::OsascriptAdmin
+            }
         }
         #[cfg(target_os = "linux")]
         {
@@ -76,6 +85,87 @@ impl PrivilegeEscalator {
         }
     }
 
+    /// Detects the recommended escalation method for macOS environments.
+    ///
+    /// # Arguments
+    ///
+    /// * `has_gui` - Whether an interactive desktop graphical session is active.
+    /// * `helper_blessed` - Whether a privileged helper tool is already registered via `SMJobBless`.
+    ///
+    /// # Returns
+    ///
+    /// Selected [`EscalationMethod`].
+    #[must_use]
+    pub const fn detect_macos_method(has_gui: bool, helper_blessed: bool) -> EscalationMethod {
+        if helper_blessed {
+            EscalationMethod::SMJobBless
+        } else if has_gui {
+            EscalationMethod::OsascriptAdmin
+        } else {
+            EscalationMethod::Sudo
+        }
+    }
+
+    /// Generates a launchd job property list (`.plist`) XML for an `SMJobBless` privileged helper daemon.
+    ///
+    /// # Arguments
+    ///
+    /// * `job_label` - Reverse-DNS identifier of the privileged helper tool (e.g. `com.example.msi.helper`).
+    /// * `executable_path` - Path to the installed helper binary in `/Library/PrivilegedHelperTools`.
+    /// * `socket_path` - Path to the IPC socket or named pipe.
+    ///
+    /// # Returns
+    ///
+    /// Formatted XML property list string.
+    #[must_use]
+    pub fn generate_smjobbless_plist(
+        job_label: &str,
+        executable_path: &str,
+        socket_path: &str,
+    ) -> String {
+        format!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n\
+<plist version=\"1.0\">\n\
+<dict>\n    \
+<key>Label</key>\n    \
+<string>{job_label}</string>\n    \
+<key>ProgramArguments</key>\n    \
+<array>\n        \
+<string>{executable_path}</string>\n        \
+<string>--worker-socket</string>\n        \
+<string>{socket_path}</string>\n    \
+</array>\n    \
+<key>MachServices</key>\n    \
+<dict>\n        \
+<key>{job_label}</key>\n        \
+<true/>\n    \
+</dict>\n\
+</dict>\n\
+</plist>\n"
+        )
+    }
+
+    /// Generates code signing designated requirement string for an `SMJobBless` helper tool.
+    ///
+    /// # Arguments
+    ///
+    /// * `bundle_id` - Bundle identifier of the parent application or helper tool.
+    /// * `team_id` - Optional Apple Developer Team ID (10 alphanumeric characters).
+    ///
+    /// # Returns
+    ///
+    /// Apple code signing requirement expression string.
+    #[must_use]
+    pub fn generate_smjobbless_requirement(bundle_id: &str, team_id: Option<&str>) -> String {
+        team_id.map_or_else(
+            || format!("identifier \"{bundle_id}\" and anchor apple generic"),
+            |tid| {
+                format!("identifier \"{bundle_id}\" and anchor apple generic and certificate leaf[subject.OU] = \"{tid}\"")
+            },
+        )
+    }
+
     /// Determines the escalation method for a specific operating system and GUI environment.
     ///
     /// # Arguments
@@ -90,7 +180,7 @@ impl PrivilegeEscalator {
     pub fn detect_method_for(os: &str, has_gui: bool) -> EscalationMethod {
         match os {
             "windows" => EscalationMethod::ShellExecuteRunAs,
-            "macos" => EscalationMethod::SMJobBless,
+            "macos" if has_gui => EscalationMethod::OsascriptAdmin,
             "linux" if has_gui => EscalationMethod::PkExec,
             _ => EscalationMethod::Sudo,
         }
@@ -162,6 +252,16 @@ impl PrivilegeEscalator {
                 ],
                 env,
             },
+            EscalationMethod::OsascriptAdmin => {
+                let script = format!(
+                    "do shell script \"MSI_WORKER_SOCKET='{socket_path}' '{worker_binary}' --worker-socket '{socket_path}'\" with administrator privileges"
+                );
+                CommandSpec {
+                    program: "osascript".to_string(),
+                    args: vec!["-e".to_string(), script],
+                    env,
+                }
+            }
             EscalationMethod::ShellExecuteRunAs => CommandSpec {
                 program: "cmd.exe".to_string(),
                 args: vec![
@@ -189,6 +289,7 @@ mod tests {
                 | EscalationMethod::PkExec
                 | EscalationMethod::SystemdRun
                 | EscalationMethod::SMJobBless
+                | EscalationMethod::OsascriptAdmin
                 | EscalationMethod::ShellExecuteRunAs
         ));
     }
@@ -206,11 +307,11 @@ mod tests {
         );
         assert_eq!(
             PrivilegeEscalator::detect_method_for("macos", false),
-            EscalationMethod::SMJobBless
+            EscalationMethod::Sudo
         );
         assert_eq!(
             PrivilegeEscalator::detect_method_for("macos", true),
-            EscalationMethod::SMJobBless
+            EscalationMethod::OsascriptAdmin
         );
         assert_eq!(
             PrivilegeEscalator::detect_method_for("linux", true),
@@ -230,6 +331,90 @@ mod tests {
         );
     }
 
+    /// Tests macOS escalation selection helper for blessed, GUI, and headless contexts.
+    #[test]
+    fn test_detect_macos_method() {
+        assert_eq!(
+            PrivilegeEscalator::detect_macos_method(true, true),
+            EscalationMethod::SMJobBless
+        );
+        assert_eq!(
+            PrivilegeEscalator::detect_macos_method(false, true),
+            EscalationMethod::SMJobBless
+        );
+        assert_eq!(
+            PrivilegeEscalator::detect_macos_method(true, false),
+            EscalationMethod::OsascriptAdmin
+        );
+        assert_eq!(
+            PrivilegeEscalator::detect_macos_method(false, false),
+            EscalationMethod::Sudo
+        );
+    }
+
+    /// Tests `SMJobBless` launchd plist generation.
+    #[test]
+    fn test_generate_smjobbless_plist() {
+        let plist = PrivilegeEscalator::generate_smjobbless_plist(
+            "com.example.msi.helper",
+            "/Library/PrivilegedHelperTools/com.example.msi.helper",
+            "/tmp/msi-worker.sock",
+        );
+        assert!(plist.contains("<key>Label</key>"));
+        assert!(plist.contains("<string>com.example.msi.helper</string>"));
+        assert!(plist
+            .contains("<string>/Library/PrivilegedHelperTools/com.example.msi.helper</string>"));
+        assert!(plist.contains("<string>--worker-socket</string>"));
+        assert!(plist.contains("<string>/tmp/msi-worker.sock</string>"));
+    }
+
+    /// Tests `SMJobBless` code signing designated requirement generation.
+    #[test]
+    fn test_generate_smjobbless_requirement() {
+        let req_with_team = PrivilegeEscalator::generate_smjobbless_requirement(
+            "com.example.msi.helper",
+            Some("ABCDE12345"),
+        );
+        assert!(req_with_team.contains("identifier \"com.example.msi.helper\""));
+        assert!(req_with_team.contains("certificate leaf[subject.OU] = \"ABCDE12345\""));
+
+        let req_no_team =
+            PrivilegeEscalator::generate_smjobbless_requirement("com.example.msi.helper", None);
+        assert!(req_no_team.contains("identifier \"com.example.msi.helper\""));
+        assert!(!req_no_team.contains("certificate leaf[subject.OU]"));
+    }
+
+    /// Tests detection of best escalation method across macOS terminal vs GUI contexts.
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn test_detect_best_method_macos_contexts() {
+        // 1. Both unset -> GUI osascript
+        std::env::remove_var("TERM_PROGRAM");
+        std::env::remove_var("SSH_CONNECTION");
+        assert_eq!(
+            PrivilegeEscalator::detect_best_method(),
+            EscalationMethod::OsascriptAdmin
+        );
+
+        // 2. TERM_PROGRAM set -> Terminal sudo
+        std::env::set_var("TERM_PROGRAM", "Terminal");
+        assert_eq!(
+            PrivilegeEscalator::detect_best_method(),
+            EscalationMethod::Sudo
+        );
+
+        // 3. SSH_CONNECTION set, TERM_PROGRAM unset -> SSH session sudo
+        std::env::remove_var("TERM_PROGRAM");
+        std::env::set_var("SSH_CONNECTION", "10.0.0.1 50000 10.0.0.2 22");
+        assert_eq!(
+            PrivilegeEscalator::detect_best_method(),
+            EscalationMethod::Sudo
+        );
+
+        // Clean up
+        std::env::remove_var("SSH_CONNECTION");
+    }
+
     /// Tests worker command construction for all supported escalation methods.
     #[test]
     fn test_build_worker_command_all_methods() {
@@ -239,6 +424,7 @@ mod tests {
             EscalationMethod::PkExec,
             EscalationMethod::SystemdRun,
             EscalationMethod::SMJobBless,
+            EscalationMethod::OsascriptAdmin,
             EscalationMethod::ShellExecuteRunAs,
         ];
 
@@ -255,6 +441,11 @@ mod tests {
                 spec.env.get("MSI_WORKER_SOCKET"),
                 Some(&"/tmp/msi-worker.sock".to_string())
             );
+            if m == EscalationMethod::OsascriptAdmin {
+                assert_eq!(spec.program, "osascript");
+                assert_eq!(spec.args[0], "-e");
+                assert!(spec.args[1].contains("with administrator privileges"));
+            }
         }
     }
 }

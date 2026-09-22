@@ -8,7 +8,7 @@
 
 use crate::error::{Error, Result};
 use crate::platform::hive::{OfflineRegistryData, OfflineRegistryHive};
-use crate::platform::partition::PartitionUuid;
+use crate::platform::partition::{GptPartitionEntry, PartitionUuid};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
@@ -367,6 +367,68 @@ console-mode max
     }
 }
 
+/// Physical partition geometry information for constructing UEFI Harddrive Media Device Paths.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BootPartitionLayout {
+    /// 1-based partition index on the disk.
+    pub partition_number: u32,
+    /// Starting Logical Block Address (LBA).
+    pub start_lba: u64,
+    /// Total sector count occupied by the partition.
+    pub sector_count: u64,
+}
+
+impl Default for BootPartitionLayout {
+    fn default() -> Self {
+        Self {
+            partition_number: 1,
+            start_lba: 2048,
+            sector_count: 1_024_000,
+        }
+    }
+}
+
+impl BootPartitionLayout {
+    /// Creates a new [`BootPartitionLayout`].
+    ///
+    /// # Arguments
+    ///
+    /// * `partition_number` - 1-based partition index.
+    /// * `start_lba` - Starting Logical Block Address.
+    /// * `sector_count` - Total number of sectors.
+    ///
+    /// # Returns
+    ///
+    /// Initialized [`BootPartitionLayout`].
+    #[must_use]
+    pub const fn new(partition_number: u32, start_lba: u64, sector_count: u64) -> Self {
+        Self {
+            partition_number,
+            start_lba,
+            sector_count,
+        }
+    }
+
+    /// Constructs a [`BootPartitionLayout`] from a 1-based partition index and a [`GptPartitionEntry`].
+    ///
+    /// # Arguments
+    ///
+    /// * `partition_number` - 1-based partition index.
+    /// * `entry` - Borrowed [`GptPartitionEntry`] reference.
+    ///
+    /// # Returns
+    ///
+    /// Initialized [`BootPartitionLayout`].
+    #[must_use]
+    pub const fn from_gpt_entry(partition_number: u32, entry: &GptPartitionEntry) -> Self {
+        Self {
+            partition_number,
+            start_lba: entry.start_lba.0,
+            sector_count: entry.sector_count(),
+        }
+    }
+}
+
 /// Manager for non-volatile EFI boot menu variables in `efivarfs`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct EfiNvramManager;
@@ -383,6 +445,7 @@ impl EfiNvramManager {
     /// * `boot_index` - 4-digit hexadecimal boot index (e.g. `0x0001`).
     /// * `description` - Human-readable label displayed in BIOS/UEFI boot menu.
     /// * `partition_uuid` - Unique partition GUID of EFI System Partition.
+    /// * `partition_layout` - Physical partition layout geometry.
     /// * `loader_path` - Path to EFI loader binary (e.g. `\EFI\BOOT\BOOTX64.EFI`).
     ///
     /// # Errors
@@ -393,6 +456,7 @@ impl EfiNvramManager {
         boot_index: u16,
         description: &str,
         partition_uuid: PartitionUuid,
+        partition_layout: BootPartitionLayout,
         loader_path: &str,
     ) -> Result<()> {
         let root = efivarfs_root.unwrap_or_else(|| Path::new("/sys/firmware/efi/efivars"));
@@ -431,9 +495,9 @@ impl EfiNvramManager {
         payload.push(0x04);
         payload.push(0x01);
         payload.extend_from_slice(&42u16.to_le_bytes());
-        payload.extend_from_slice(&1u32.to_le_bytes()); // Partition Number: 1
-        payload.extend_from_slice(&2048u64.to_le_bytes()); // Partition Start: LBA 2048
-        payload.extend_from_slice(&1_024_000_u64.to_le_bytes()); // Partition Size
+        payload.extend_from_slice(&partition_layout.partition_number.to_le_bytes());
+        payload.extend_from_slice(&partition_layout.start_lba.to_le_bytes());
+        payload.extend_from_slice(&partition_layout.sector_count.to_le_bytes());
         payload.extend_from_slice(&partition_uuid.0); // Partition Signature UUID
         payload.push(0x02); // Format: GUID Partition Table
         payload.push(0x02); // Signature Type: GUID
@@ -651,17 +715,47 @@ mod tests {
         let _ = std::fs::create_dir_all(&temp_dir);
 
         let esp_uuid = PartitionUuid([0x44; 16]);
+        let custom_layout = BootPartitionLayout::new(3, 4096, 2_097_152);
+        assert_eq!(custom_layout.partition_number, 3);
+        assert_eq!(custom_layout.start_lba, 4096);
+        assert_eq!(custom_layout.sector_count, 2_097_152);
+
+        let gpt_entry = GptPartitionEntry {
+            type_guid: crate::platform::partition::PartitionTypeGuid::ESP,
+            unique_guid: esp_uuid,
+            start_lba: crate::platform::partition::Lba(2048),
+            end_lba: crate::platform::partition::Lba(1_026_047),
+            attributes: 0,
+            name: "EFI System".to_string(),
+        };
+        let from_gpt = BootPartitionLayout::from_gpt_entry(1, &gpt_entry);
+        assert_eq!(from_gpt.partition_number, 1);
+        assert_eq!(from_gpt.start_lba, 2048);
+        assert_eq!(from_gpt.sector_count, 1_024_000);
+        assert_eq!(from_gpt, BootPartitionLayout::default());
+
         let entry_res = EfiNvramManager::create_boot_entry(
             Some(&temp_dir),
             1,
             "msi-rs OS",
             esp_uuid,
+            custom_layout,
             r"\EFI\BOOT\BOOTX64.EFI",
         );
         assert!(entry_res.is_ok());
 
         let expected_var = format!("Boot0001-{}", EfiNvramManager::EFI_GLOBAL_VARIABLE_GUID);
-        assert!(temp_dir.join(&expected_var).exists());
+        let var_file = temp_dir.join(&expected_var);
+        assert!(var_file.exists());
+
+        // Verify the binary device path contains partition number 3, start LBA 4096, sector count 2_097_152
+        let raw_bytes = std::fs::read(&var_file).unwrap_or_default();
+        let part_num_bytes = 3u32.to_le_bytes();
+        let start_lba_bytes = 4096u64.to_le_bytes();
+        let sector_count_bytes = 2_097_152_u64.to_le_bytes();
+        assert!(raw_bytes.windows(4).any(|w| w == part_num_bytes));
+        assert!(raw_bytes.windows(8).any(|w| w == start_lba_bytes));
+        assert!(raw_bytes.windows(8).any(|w| w == sector_count_bytes));
 
         let order_res = EfiNvramManager::set_boot_order(Some(&temp_dir), &[1, 0]);
         assert!(order_res.is_ok());
@@ -679,6 +773,7 @@ mod tests {
             2,
             "msi-rs OS",
             esp_uuid,
+            BootPartitionLayout::default(),
             r"\EFI\BOOT\BOOTX64.EFI",
         )
         .is_err());
@@ -694,15 +789,27 @@ mod tests {
         assert!(EfiNvramManager::set_boot_order(Some(&err_dir), &[1, 0]).is_err());
 
         // Test None parameter for root path defaults
-        let _ = EfiNvramManager::create_boot_entry(None, 1, "test", esp_uuid, "test");
+        let _ = EfiNvramManager::create_boot_entry(
+            None,
+            1,
+            "test",
+            esp_uuid,
+            BootPartitionLayout::default(),
+            "test",
+        );
         let _ = EfiNvramManager::set_boot_order(None, &[1, 0]);
 
         // Inaccessible efivars must fail
         let bad_dir = temp_dir.join("nonexistent");
-        assert!(
-            EfiNvramManager::create_boot_entry(Some(&bad_dir), 1, "test", esp_uuid, "test")
-                .is_err()
-        );
+        assert!(EfiNvramManager::create_boot_entry(
+            Some(&bad_dir),
+            1,
+            "test",
+            esp_uuid,
+            BootPartitionLayout::default(),
+            "test",
+        )
+        .is_err());
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }

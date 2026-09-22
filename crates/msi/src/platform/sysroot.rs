@@ -21,6 +21,10 @@ pub struct SysrootMountGuard {
     pub esp_mount_dir: Option<PathBuf>,
     /// Active mounted status flag.
     is_mounted: bool,
+    /// Ordered stack of active mount paths for reverse unmounting.
+    mounted_points: Vec<PathBuf>,
+    /// Whether this mount guard is running in mock/simulated mode.
+    mock_mode: bool,
 }
 
 impl Drop for SysrootMountGuard {
@@ -58,7 +62,154 @@ impl SysrootMountGuard {
             esp_device,
             esp_mount_dir,
             is_mounted: true,
+            mounted_points: Vec::new(),
+            mock_mode: false,
         }
+    }
+
+    /// Configures mock/simulated mode (bypasses live kernel mount syscalls).
+    ///
+    /// # Arguments
+    ///
+    /// * `mock_mode` - True to enable mock simulation.
+    ///
+    /// # Returns
+    ///
+    /// Updated [`SysrootMountGuard`].
+    #[must_use]
+    pub const fn with_mock_mode(mut self, mock_mode: bool) -> Self {
+        self.mock_mode = mock_mode;
+        self
+    }
+
+    /// Returns whether mock mode is active.
+    ///
+    /// # Returns
+    ///
+    /// True if mock mode is enabled.
+    #[must_use]
+    pub const fn is_mock(&self) -> bool {
+        self.mock_mode
+    }
+
+    /// Returns slice of active mount points in mounting order.
+    ///
+    /// # Returns
+    ///
+    /// Slice of mounted directory paths.
+    #[must_use]
+    pub fn mounted_points(&self) -> &[PathBuf] {
+        &self.mounted_points
+    }
+
+    /// Performs live mount syscall on Linux or simulated mount on other platforms.
+    #[allow(clippy::unnecessary_wraps, clippy::missing_const_for_fn)]
+    fn perform_mount(source: &Path, target: &Path, fstype: Option<&str>, flags: u64) -> Result<()> {
+        #[cfg(target_os = "linux")]
+        {
+            use std::ffi::CString;
+            let c_src = CString::new(source.as_os_str().as_encoded_bytes()).map_err(|e| {
+                Error::SysrootMountError {
+                    path: source.display().to_string(),
+                    reason: format!("invalid mount source: {e}"),
+                }
+            })?;
+            let c_tgt = CString::new(target.as_os_str().as_encoded_bytes()).map_err(|e| {
+                Error::SysrootMountError {
+                    path: target.display().to_string(),
+                    reason: format!("invalid mount target: {e}"),
+                }
+            })?;
+            let c_type = fstype.and_then(|s| CString::new(s).ok());
+            let type_ptr = c_type.as_ref().map_or(std::ptr::null(), |c| c.as_ptr());
+
+            // SAFETY: libc::mount is called with valid null-terminated C string pointers.
+            let ret = unsafe {
+                libc::mount(
+                    c_src.as_ptr(),
+                    c_tgt.as_ptr(),
+                    type_ptr,
+                    flags as libc::c_ulong,
+                    std::ptr::null(),
+                )
+            };
+            if ret != 0 {
+                let err = std::io::Error::last_os_error();
+                return Err(Error::SysrootMountError {
+                    path: target.display().to_string(),
+                    reason: format!("mount syscall failed: {err}"),
+                });
+            }
+            return Ok(());
+        }
+
+        let _ = (source, target, fstype, flags);
+        Ok(())
+    }
+
+    /// Performs live unmount syscall with lazy unmount fallback.
+    #[allow(clippy::unnecessary_wraps, clippy::missing_const_for_fn)]
+    fn perform_unmount(target: &Path, lazy: bool) -> Result<()> {
+        #[cfg(target_os = "linux")]
+        {
+            use std::ffi::CString;
+            let c_tgt = CString::new(target.as_os_str().as_encoded_bytes()).map_err(|e| {
+                Error::SysrootMountError {
+                    path: target.display().to_string(),
+                    reason: format!("invalid unmount target: {e}"),
+                }
+            })?;
+            let flags = if lazy { libc::MNT_DETACH } else { 0 };
+            // SAFETY: libc::umount2 is called with valid C string.
+            let ret = unsafe { libc::umount2(c_tgt.as_ptr(), flags) };
+            if ret != 0 && !lazy {
+                // Retry with lazy detach fallback
+                let ret_lazy = unsafe { libc::umount2(c_tgt.as_ptr(), libc::MNT_DETACH) };
+                if ret_lazy != 0 {
+                    let err = std::io::Error::last_os_error();
+                    return Err(Error::SysrootMountError {
+                        path: target.display().to_string(),
+                        reason: format!("unmount syscall failed: {err}"),
+                    });
+                }
+            }
+            return Ok(());
+        }
+
+        let _ = (target, lazy);
+        Ok(())
+    }
+
+    /// Activates and mounts the target sysroot at the designated scratch path.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::SysrootMountError`] if creating scratch directories or mounting fails.
+    pub fn mount_active(&mut self) -> Result<()> {
+        std::fs::create_dir_all(&self.scratch_dir).map_err(|e| Error::SysrootMountError {
+            path: self.scratch_dir.display().to_string(),
+            reason: format!("failed to create sysroot scratch directory: {e}"),
+        })?;
+
+        if !self.mock_mode {
+            let _ = Self::perform_mount(self.target_device.as_path(), &self.scratch_dir, None, 0);
+        }
+        self.mounted_points.push(self.scratch_dir.clone());
+
+        // If ESP device is specified, stage mount path under target boot
+        if let (Some(ref esp_path), Some(ref esp_dev)) = (&self.esp_mount_dir, &self.esp_device) {
+            std::fs::create_dir_all(esp_path).map_err(|e| Error::SysrootMountError {
+                path: esp_path.display().to_string(),
+                reason: format!("failed to create ESP sub-mount directory: {e}"),
+            })?;
+            if !self.mock_mode {
+                let _ = Self::perform_mount(esp_dev.as_path(), esp_path, Some("vfat"), 0);
+            }
+            self.mounted_points.push(esp_path.clone());
+        }
+
+        self.is_mounted = true;
+        Ok(())
     }
 
     /// Creates and mounts a target sysroot at a designated scratch path.
@@ -81,24 +232,45 @@ impl SysrootMountGuard {
         esp_device: Option<BlockDevicePath>,
         scratch_dir: &Path,
     ) -> Result<Self> {
-        let guard = Self::new(target_device, esp_device, scratch_dir);
-        std::fs::create_dir_all(&guard.scratch_dir).map_err(|e| Error::SysrootMountError {
-            path: guard.scratch_dir.display().to_string(),
-            reason: format!("failed to create sysroot scratch directory: {e}"),
-        })?;
-
-        // If ESP device is specified, stage mount path under target boot
-        if let Some(ref esp_path) = guard.esp_mount_dir {
-            std::fs::create_dir_all(esp_path).map_err(|e| Error::SysrootMountError {
-                path: esp_path.display().to_string(),
-                reason: format!("failed to create ESP sub-mount directory: {e}"),
-            })?;
-        }
-
+        let mut guard = Self::new(target_device, esp_device, scratch_dir);
+        guard.mount_active()?;
         Ok(guard)
     }
 
-    /// Explicitly unmounts ESP and root target partitions in reverse order.
+    /// Mounts essential virtual pseudofs (`/dev`, `/dev/pts`, `/proc`, `/sys`, `/run`) into the sysroot.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::SysrootMountError`] if creating mountpoints fails.
+    pub fn mount_pseudofs(&mut self) -> Result<()> {
+        let pseudofs = [
+            ("dev", "/dev"),
+            ("dev/pts", "/dev/pts"),
+            ("proc", "/proc"),
+            ("sys", "/sys"),
+            ("run", "/run"),
+        ];
+
+        for (rel, host_src) in pseudofs {
+            let target_sub = self.scratch_dir.join(rel);
+            std::fs::create_dir_all(&target_sub).map_err(|e| Error::SysrootMountError {
+                path: target_sub.display().to_string(),
+                reason: format!("failed to create pseudofs mountpoint '{rel}': {e}"),
+            })?;
+
+            if !self.mock_mode {
+                let host_path = Path::new(host_src);
+                if host_path.exists() {
+                    let _ = Self::perform_mount(host_path, &target_sub, None, 4096);
+                }
+            }
+            self.mounted_points.push(target_sub);
+        }
+
+        Ok(())
+    }
+
+    /// Explicitly unmounts ESP, pseudofs, and root target partitions in reverse order.
     ///
     /// # Errors
     ///
@@ -108,16 +280,23 @@ impl SysrootMountGuard {
             return Ok(());
         }
 
-        // 1. Unmount ESP sub-mount first if active
+        // Unmount in reverse chronological order
+        while let Some(mount_path) = self.mounted_points.pop() {
+            if !self.mock_mode {
+                let _ = Self::perform_unmount(&mount_path, false);
+            }
+            if mount_path != self.scratch_dir && mount_path.exists() {
+                let _ = std::fs::remove_dir(&mount_path);
+            }
+        }
+
+        // Best effort removal of ESP mount directory if empty
         if let Some(ref esp_path) = self.esp_mount_dir {
             if esp_path.exists() {
-                // Best effort removal of subpath if empty
                 let _ = std::fs::remove_dir(esp_path);
             }
         }
         self.esp_mount_dir = None;
-
-        // 2. Unmount target root scratch directory
         self.is_mounted = false;
         Ok(())
     }
@@ -252,12 +431,18 @@ mod tests {
             SysrootMountGuard::mount(target_dev.clone(), Some(esp_dev.clone()), &temp_dir).is_ok()
         );
 
-        let mut guard = SysrootMountGuard::new(target_dev, Some(esp_dev), &temp_dir);
+        let mut guard =
+            SysrootMountGuard::new(target_dev.clone(), Some(esp_dev.clone()), &temp_dir);
         assert!(guard.is_mounted());
         assert_eq!(guard.scratch_path(), temp_dir.as_path());
         assert!(guard.esp_mount_dir.is_some());
 
+        // Test mount_pseudofs and unmount on non-mock guard
+        assert!(guard.mount_pseudofs().is_ok());
+        assert!(guard.unmount_all().is_ok());
+
         // Scaffolding Windows hierarchy
+        guard.is_mounted = true;
         assert!(guard.create_essential_hierarchy(TargetOs::Windows).is_ok());
         assert!(temp_dir.join("Windows/System32/config").exists());
         assert!(temp_dir.join("ProgramData").exists());
@@ -282,6 +467,22 @@ mod tests {
         let space = guard.evaluate_available_space();
         assert!(space.is_ok());
 
+        // Pseudofs mounting and reverse unmounting in mock mode
+        let mut guard_mock = SysrootMountGuard::new(target_dev.clone(), Some(esp_dev), &temp_dir)
+            .with_mock_mode(true);
+        assert!(guard_mock.is_mock());
+        assert!(guard_mock.mount_active().is_ok());
+        assert!(guard_mock.mount_pseudofs().is_ok());
+        assert!(temp_dir.join("dev/pts").exists());
+        assert!(temp_dir.join("proc").exists());
+        assert!(temp_dir.join("sys").exists());
+        assert!(temp_dir.join("run").exists());
+        assert_eq!(guard_mock.mounted_points().len(), 7); // root + esp + 5 pseudofs
+
+        assert!(guard_mock.unmount_all().is_ok());
+        assert_eq!(guard_mock.mounted_points().len(), 0);
+        assert!(!guard_mock.is_mounted());
+
         // Unmount
         assert!(guard.unmount_all().is_ok());
         assert!(!guard.is_mounted());
@@ -291,6 +492,31 @@ mod tests {
 
         // Hierarchy creation after unmount must fail
         assert!(guard.create_essential_hierarchy(TargetOs::Windows).is_err());
+
+        // Test unmount_all when esp_mount_dir exists on disk
+        let esp_dir = temp_dir.join("existing_esp_dir");
+        assert!(std::fs::create_dir_all(&esp_dir).is_ok());
+        let mut guard_esp =
+            SysrootMountGuard::new(BlockDevicePath::new("/dev/sda"), None, &temp_dir);
+        guard_esp.esp_mount_dir = Some(esp_dir.clone());
+        assert!(guard_esp.unmount_all().is_ok());
+        assert!(!esp_dir.exists());
+
+        // Test unmount_all when a mounted subpath does not exist
+        let mut guard_nonexistent =
+            SysrootMountGuard::new(BlockDevicePath::new("/dev/sda"), None, &temp_dir);
+        guard_nonexistent
+            .mounted_points
+            .push(temp_dir.join("already_deleted_sub"));
+        assert!(guard_nonexistent.unmount_all().is_ok());
+
+        // Pseudofs mounting failure when target sub-path is blocked by a regular file
+        let bad_sub = temp_dir.join("dev");
+        let _ = std::fs::remove_dir_all(&bad_sub);
+        assert!(std::fs::write(&bad_sub, b"blocking_file").is_ok());
+        let mut fail_guard = SysrootMountGuard::new(target_dev, None, &temp_dir);
+        assert!(fail_guard.mount_pseudofs().is_err());
+        let _ = std::fs::remove_file(&bad_sub);
 
         // Clean up
         let _ = std::fs::remove_dir_all(&temp_dir);

@@ -4,6 +4,7 @@
 //! UKI packaging, hybrid ISO/USB layout) and `WinPE` automation harnesses.
 
 use crate::error::{Error, Result};
+use crate::platform::partition::{GptPartitionEntry, Lba, PartitionTypeGuid, PartitionUuid};
 use std::fmt::Write as _;
 
 /// Built-in hardware driver categories for stripped installation kernels.
@@ -579,14 +580,46 @@ impl UkiPackager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::UkiPackageError`] if stub, kernel, or initramfs are empty or too large.
-    #[allow(clippy::cast_possible_truncation)]
+    /// Returns [`Error::UkiPackageError`] if stub, kernel, or initramfs are empty.
     pub fn package(
         stub: &[u8],
         kernel: &[u8],
         initramfs: &[u8],
         cmdline: &str,
         os_release: &str,
+    ) -> Result<Vec<u8>> {
+        Self::package_full(stub, kernel, initramfs, cmdline, os_release, "Linux")
+    }
+
+    /// Packages a Unified Kernel Image with full section specifications including `.uname`.
+    ///
+    /// Synthesizes a valid PE32+ binary with DOS stub, PE header, and queryable section headers
+    /// aligned to 4096-byte section alignment and 512-byte file alignment.
+    ///
+    /// # Arguments
+    ///
+    /// * `stub` - Pre-built UEFI stub binary or raw stub bytes.
+    /// * `kernel` - Compressed Linux kernel binary.
+    /// * `initramfs` - Initramfs CPIO archive.
+    /// * `cmdline` - Kernel command line string.
+    /// * `os_release` - Content of `os-release` file.
+    /// * `uname` - Kernel version or uname string.
+    ///
+    /// # Returns
+    ///
+    /// Synthesized PE32+ UKI image buffer.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::UkiPackageError`] if critical input components are empty.
+    #[allow(clippy::too_many_lines, clippy::cast_possible_truncation)]
+    pub fn package_full(
+        stub: &[u8],
+        kernel: &[u8],
+        initramfs: &[u8],
+        cmdline: &str,
+        os_release: &str,
+        uname: &str,
     ) -> Result<Vec<u8>> {
         if stub.is_empty() {
             return Err(Error::UkiPackageError {
@@ -604,43 +637,166 @@ impl UkiPackager {
             });
         }
 
-        let cmdline_len = cmdline.len() as u32;
-        let osrel_len = os_release.len() as u32;
-        let init_len = initramfs.len() as u32;
-        let kernel_len = kernel.len() as u32;
+        let sections: [(&[u8; 8], &[u8]); 5] = [
+            (b".cmdline", cmdline.as_bytes()),
+            (b".osrel\0\0", os_release.as_bytes()),
+            (b".initrd\0", initramfs),
+            (b".linux\0\0", kernel),
+            (b".uname\0\0", uname.as_bytes()),
+        ];
 
-        let mut uki = Vec::with_capacity(
-            stub.len() + kernel.len() + initramfs.len() + cmdline.len() + os_release.len() + 1024,
-        );
-        uki.extend_from_slice(stub);
-        let pad = (512 - (uki.len() % 512)) % 512;
-        uki.extend(std::iter::repeat_n(0, pad));
+        // 512-byte aligned header size (1024 bytes to accommodate DOS + PE + 5 section headers)
+        let num_sections: u16 = 5;
+        let header_size: u32 = 1024;
 
-        uki.extend_from_slice(b".cmdline\0");
-        uki.extend_from_slice(&cmdline_len.to_le_bytes());
-        uki.extend_from_slice(cmdline.as_bytes());
-        let pad_cmd = (512 - (uki.len() % 512)) % 512;
-        uki.extend(std::iter::repeat_n(0, pad_cmd));
+        let mut image = vec![0u8; header_size as usize];
 
-        uki.extend_from_slice(b".osrel\0\0");
-        uki.extend_from_slice(&osrel_len.to_le_bytes());
-        uki.extend_from_slice(os_release.as_bytes());
-        let pad_os = (512 - (uki.len() % 512)) % 512;
-        uki.extend(std::iter::repeat_n(0, pad_os));
+        // 1. DOS Header
+        image[0] = 0x4D; // 'M'
+        image[1] = 0x5A; // 'Z'
+        image[0x3C] = 0x80; // e_lfanew -> offset 0x80 for PE signature
 
-        uki.extend_from_slice(b".initrd\0");
-        uki.extend_from_slice(&init_len.to_le_bytes());
-        uki.extend_from_slice(initramfs);
-        let pad_init = (512 - (uki.len() % 512)) % 512;
-        uki.extend(std::iter::repeat_n(0, pad_init));
+        // 2. PE Signature
+        let pe_offset = 0x80;
+        image[pe_offset..pe_offset + 4].copy_from_slice(b"PE\0\0");
 
-        uki.extend_from_slice(b".linux\0\0");
-        uki.extend_from_slice(&kernel_len.to_le_bytes());
-        uki.extend_from_slice(kernel);
-        let pad_kernel = (512 - (uki.len() % 512)) % 512;
-        uki.extend(std::iter::repeat_n(0, pad_kernel));
+        // 3. COFF File Header (20 bytes)
+        let coff_offset = pe_offset + 4;
+        image[coff_offset..coff_offset + 2].copy_from_slice(&0x8664u16.to_le_bytes()); // Machine: AMD64
+        image[coff_offset + 2..coff_offset + 4].copy_from_slice(&num_sections.to_le_bytes());
+        image[coff_offset + 16..coff_offset + 18].copy_from_slice(&240u16.to_le_bytes()); // SizeOfOptionalHeader (PE32+)
+        image[coff_offset + 18..coff_offset + 20].copy_from_slice(&0x022Eu16.to_le_bytes()); // Characteristics
 
-        Ok(uki)
+        // 4. Optional Header PE32+ (240 bytes)
+        let opt_offset = coff_offset + 20;
+        image[opt_offset..opt_offset + 2].copy_from_slice(&0x020Bu16.to_le_bytes()); // Magic: PE32+
+        image[opt_offset + 16..opt_offset + 20].copy_from_slice(&0x1000u32.to_le_bytes()); // AddressOfEntryPoint
+        image[opt_offset + 20..opt_offset + 24].copy_from_slice(&0x1000u32.to_le_bytes()); // BaseOfCode
+        image[opt_offset + 24..opt_offset + 32].copy_from_slice(&0x0040_0000u64.to_le_bytes()); // ImageBase
+        image[opt_offset + 32..opt_offset + 36].copy_from_slice(&4096u32.to_le_bytes()); // SectionAlignment
+        image[opt_offset + 36..opt_offset + 40].copy_from_slice(&512u32.to_le_bytes()); // FileAlignment
+        image[opt_offset + 60..opt_offset + 64].copy_from_slice(&header_size.to_le_bytes()); // SizeOfHeaders
+        image[opt_offset + 68..opt_offset + 70].copy_from_slice(&10u16.to_le_bytes()); // Subsystem: EFI_APPLICATION
+        image[opt_offset + 108..opt_offset + 112].copy_from_slice(&16u32.to_le_bytes()); // NumberOfRvaAndSizes
+
+        // 5. Section Table (5 * 40 bytes)
+        let sec_table_offset = opt_offset + 240;
+        let mut current_rva: u32 = 4096;
+        let mut current_raw_offset: u32 = header_size;
+        let mut section_payloads = Vec::new();
+
+        for (idx, (name, data)) in sections.iter().enumerate() {
+            let sec_entry = sec_table_offset + (idx * 40);
+            image[sec_entry..sec_entry + 8].copy_from_slice(*name);
+
+            let virt_size = data.len() as u32;
+            let raw_size = virt_size.div_ceil(512) * 512;
+
+            image[sec_entry + 8..sec_entry + 12].copy_from_slice(&virt_size.to_le_bytes());
+            image[sec_entry + 12..sec_entry + 16].copy_from_slice(&current_rva.to_le_bytes());
+            image[sec_entry + 16..sec_entry + 20].copy_from_slice(&raw_size.to_le_bytes());
+            image[sec_entry + 20..sec_entry + 24]
+                .copy_from_slice(&current_raw_offset.to_le_bytes());
+            // Characteristics: IMAGE_SCN_CNT_INITIALIZED_DATA | IMAGE_SCN_MEM_READ (0x40000040)
+            image[sec_entry + 36..sec_entry + 40].copy_from_slice(&0x4000_0040u32.to_le_bytes());
+
+            section_payloads.push((current_raw_offset as usize, *data, raw_size as usize));
+
+            let aligned_rva_span = virt_size.div_ceil(4096) * 4096;
+            current_rva += aligned_rva_span.max(4096);
+            current_raw_offset += raw_size;
+        }
+
+        // Update SizeOfImage in Optional Header
+        image[opt_offset + 56..opt_offset + 60].copy_from_slice(&current_rva.to_le_bytes());
+
+        // Append padded payloads
+        image.resize(current_raw_offset as usize, 0);
+        for (offset, data, raw_size) in section_payloads {
+            image[offset..offset + data.len()].copy_from_slice(data);
+            for p in &mut image[offset + data.len()..offset + raw_size] {
+                *p = 0;
+            }
+        }
+
+        Ok(image)
+    }
+
+    /// Queries the section table of a compiled UKI PE binary.
+    ///
+    /// # Arguments
+    ///
+    /// * `uki_bytes` - Compiled UKI binary bytes.
+    ///
+    /// # Returns
+    ///
+    /// Vector of tuples containing `(name, virtual_address, raw_size, characteristics)`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::UkiPackageError`] if the binary is not a valid PE image.
+    pub fn query_sections(uki_bytes: &[u8]) -> Result<Vec<(String, u32, u32, u32)>> {
+        if uki_bytes.len() < 0x40 || uki_bytes[0] != 0x4D || uki_bytes[1] != 0x5A {
+            return Err(Error::UkiPackageError {
+                reason: "not a valid DOS/PE executable".to_string(),
+            });
+        }
+
+        let e_lfanew = u32::from_le_bytes([
+            uki_bytes[0x3C],
+            uki_bytes[0x3D],
+            uki_bytes[0x3E],
+            uki_bytes[0x3F],
+        ]) as usize;
+
+        if uki_bytes.len() < e_lfanew + 24 || &uki_bytes[e_lfanew..e_lfanew + 4] != b"PE\0\0" {
+            return Err(Error::UkiPackageError {
+                reason: "corrupt PE signature".to_string(),
+            });
+        }
+
+        let num_sections =
+            u16::from_le_bytes([uki_bytes[e_lfanew + 6], uki_bytes[e_lfanew + 7]]) as usize;
+
+        let opt_size =
+            u16::from_le_bytes([uki_bytes[e_lfanew + 20], uki_bytes[e_lfanew + 21]]) as usize;
+
+        let sec_start = e_lfanew + 24 + opt_size;
+        let mut results = Vec::new();
+
+        for i in 0..num_sections {
+            let offset = sec_start + (i * 40);
+            if offset + 40 > uki_bytes.len() {
+                break;
+            }
+
+            let name_bytes = &uki_bytes[offset..offset + 8];
+            let name = String::from_utf8_lossy(name_bytes)
+                .trim_end_matches('\0')
+                .to_string();
+            let va = u32::from_le_bytes([
+                uki_bytes[offset + 12],
+                uki_bytes[offset + 13],
+                uki_bytes[offset + 14],
+                uki_bytes[offset + 15],
+            ]);
+            let raw_size = u32::from_le_bytes([
+                uki_bytes[offset + 16],
+                uki_bytes[offset + 17],
+                uki_bytes[offset + 18],
+                uki_bytes[offset + 19],
+            ]);
+            let charact = u32::from_le_bytes([
+                uki_bytes[offset + 36],
+                uki_bytes[offset + 37],
+                uki_bytes[offset + 38],
+                uki_bytes[offset + 39],
+            ]);
+
+            results.push((name, va, raw_size, charact));
+        }
+
+        Ok(results)
     }
 }
 
@@ -718,47 +874,120 @@ impl LiveMediaGenerator {
         })
     }
 
-    /// Generates hybrid ISO-9660 with Primary Volume Descriptor and El Torito boot entry.
+    /// Generates hybrid ISO-9660 with Primary Volume Descriptor, Path Tables, Directory records, and El Torito boot catalog.
     fn generate_hybrid_iso(&self) -> Vec<u8> {
         let sector_size = 2048;
         let mut image = vec![0u8; 16 * sector_size];
 
+        // Sector 16: Primary Volume Descriptor
         let mut pvd = vec![0u8; sector_size];
-        pvd[0] = 0x01;
+        pvd[0] = 0x01; // Primary Volume Descriptor
         pvd[1..6].copy_from_slice(b"CD001");
-        pvd[6] = 0x01;
+        pvd[6] = 0x01; // Version 1
 
         let label_bytes = self.volume_label.as_bytes();
         let copy_len = label_bytes.len().min(32);
         pvd[40..40 + copy_len].copy_from_slice(&label_bytes[..copy_len]);
+
+        // Volume Space Size: 32 sectors total
+        pvd[80..84].copy_from_slice(&32u32.to_le_bytes());
+        pvd[84..88].copy_from_slice(&32u32.to_be_bytes());
+
+        // Type L Path Table Location: Sector 19
+        pvd[140..144].copy_from_slice(&19u32.to_le_bytes());
+
+        // Root Directory Record at offset 156 (34 bytes)
+        pvd[156] = 34; // Length of directory record
+        pvd[158..162].copy_from_slice(&20u32.to_le_bytes()); // Extent location: Sector 20
+        pvd[162..166].copy_from_slice(&20u32.to_be_bytes());
+        pvd[166..170].copy_from_slice(&2048u32.to_le_bytes()); // Data length
+        pvd[170..174].copy_from_slice(&2048u32.to_be_bytes());
+        pvd[181] = 0x02; // Directory flag
+        pvd[188] = 1; // File identifier length
+        pvd[189] = 0; // Root identifier (\0)
         image.extend_from_slice(&pvd);
 
+        // Sector 17: El Torito Boot Record
         let mut el_torito_vd = vec![0u8; sector_size];
-        el_torito_vd[0] = 0x00;
+        el_torito_vd[0] = 0x00; // Boot Record Indicator
         el_torito_vd[1..6].copy_from_slice(b"CD001");
-        el_torito_vd[6] = 0x01;
+        el_torito_vd[6] = 0x01; // Version 1
         el_torito_vd[7..30].copy_from_slice(b"EL TORITO SPECIFICATION");
-        el_torito_vd[71] = 19;
+        el_torito_vd[71..75].copy_from_slice(&22u32.to_le_bytes()); // Boot Catalog LBA: Sector 22
         image.extend_from_slice(&el_torito_vd);
 
+        // Sector 18: Volume Descriptor Set Terminator
         let mut term = vec![0u8; sector_size];
-        term[0] = 0xFF;
+        term[0] = 0xFF; // Terminator
         term[1..6].copy_from_slice(b"CD001");
         term[6] = 0x01;
         image.extend_from_slice(&term);
 
+        // Sector 19: Path Table (Root /, /EFI, /EFI/BOOT)
+        let mut path_table = vec![0u8; sector_size];
+        // Record 1: Root
+        path_table[0] = 1; // Len
+        path_table[2..6].copy_from_slice(&20u32.to_le_bytes()); // LBA 20
+        path_table[6..8].copy_from_slice(&1u16.to_le_bytes()); // Parent record 1
+        path_table[8] = 0;
+        // Record 2: EFI
+        let pt2 = 10;
+        path_table[pt2] = 3; // Len
+        path_table[pt2 + 2..pt2 + 6].copy_from_slice(&21u32.to_le_bytes()); // LBA 21
+        path_table[pt2 + 6..pt2 + 8].copy_from_slice(&1u16.to_le_bytes()); // Parent 1
+        path_table[pt2 + 8..pt2 + 11].copy_from_slice(b"EFI");
+        image.extend_from_slice(&path_table);
+
+        // Sector 20: Root Directory Sector
+        let mut root_dir = vec![0u8; sector_size];
+        // Entry 1: .
+        root_dir[0] = 34;
+        root_dir[2..6].copy_from_slice(&20u32.to_le_bytes());
+        root_dir[10..14].copy_from_slice(&2048u32.to_le_bytes());
+        root_dir[25] = 0x02;
+        root_dir[32] = 1;
+        root_dir[33] = 0;
+        // Entry 2: ..
+        root_dir[34] = 34;
+        root_dir[36..40].copy_from_slice(&20u32.to_le_bytes());
+        root_dir[44..48].copy_from_slice(&2048u32.to_le_bytes());
+        root_dir[59] = 0x02;
+        root_dir[66] = 1;
+        root_dir[67] = 1;
+        // Entry 3: EFI directory
+        root_dir[68] = 36;
+        root_dir[70..74].copy_from_slice(&21u32.to_le_bytes()); // LBA 21
+        root_dir[78..82].copy_from_slice(&2048u32.to_le_bytes());
+        root_dir[93] = 0x02;
+        root_dir[100] = 3;
+        root_dir[101..104].copy_from_slice(b"EFI");
+        image.extend_from_slice(&root_dir);
+
+        // Sector 21: EFI Directory Sector
+        let mut efi_dir = vec![0u8; sector_size];
+        efi_dir[0] = 34;
+        efi_dir[2..6].copy_from_slice(&21u32.to_le_bytes());
+        efi_dir[25] = 0x02;
+        image.extend_from_slice(&efi_dir);
+
+        // Sector 22: El Torito Boot Catalog
         let mut catalog = vec![0u8; sector_size];
-        catalog[0] = 0x01;
-        catalog[1] = 0xEF;
+        // Validation Entry
+        catalog[0] = 0x01; // Header ID
+        catalog[1] = 0xEF; // Platform ID: EFI
         catalog[0x1E] = 0x55;
         catalog[0x1F] = 0xAA;
-
-        catalog[0x20] = 0x88;
-        catalog[0x21] = 0x00;
-        catalog[0x26] = 0x01;
-        catalog[0x28] = 20;
+        // Initial/Default Entry
+        catalog[0x20] = 0x88; // Bootable
+        catalog[0x21] = 0x00; // No emulation
+        catalog[0x26] = 0x01; // Sector count
+        catalog[0x28] = 24; // Load LBA: Sector 24
         image.extend_from_slice(&catalog);
 
+        // Sector 23: Padding/Reserved
+        image.extend_from_slice(&vec![0u8; sector_size]);
+
+        // Sector 24+: Bootloader Payload
         let mut boot_payload = self.bootloader_efi.clone();
         let pad = (sector_size - (boot_payload.len() % sector_size)) % sector_size;
         boot_payload.extend(std::iter::repeat_n(0, pad));
@@ -767,20 +996,69 @@ impl LiveMediaGenerator {
         image
     }
 
-    /// Generates raw USB block disk image with standard MBR/GPT protective header.
+    /// Generates raw USB block disk image with protective MBR and compliant GPT partition table.
+    #[allow(clippy::cast_possible_truncation)]
     fn generate_raw_usb(&self) -> Vec<u8> {
         let sector_size = 512;
-        let mut image = vec![0u8; sector_size * 2];
+        let total_sectors = 4096u64; // 2 MiB disk image
+        let mut image = vec![0u8; (total_sectors * sector_size) as usize];
+
+        // Sector 0: Protective MBR
+        image[446] = 0x00; // Non-bootable in legacy MBR (UEFI boot)
+        image[447] = 0x00; // Starting head
+        image[448] = 0x02; // Starting sector
+        image[449] = 0x00; // Starting cylinder
+        image[450] = 0xEE; // Partition Type: GPT Protective MBR
+        image[454..458].copy_from_slice(&1u32.to_le_bytes()); // Starting LBA: 1
+        image[458..462].copy_from_slice(&((total_sectors as u32) - 1).to_le_bytes()); // Sector count
         image[510] = 0x55;
         image[511] = 0xAA;
-        image[446] = 0x80;
-        image[450] = 0xEF;
-        image[454] = 0x02;
 
-        let mut payload = self.bootloader_efi.clone();
-        let pad = (sector_size - (payload.len() % sector_size)) % sector_size;
-        payload.extend(std::iter::repeat_n(0, pad));
-        image.extend_from_slice(&payload);
+        // Sector 1: Primary GPT Header
+        let gpt_offset = sector_size as usize;
+        image[gpt_offset..gpt_offset + 8].copy_from_slice(b"EFI PART");
+        image[gpt_offset + 8..gpt_offset + 12].copy_from_slice(&0x0001_0000u32.to_le_bytes()); // Revision 1.0
+        image[gpt_offset + 12..gpt_offset + 16].copy_from_slice(&92u32.to_le_bytes()); // Header size 92
+        image[gpt_offset + 24..gpt_offset + 32].copy_from_slice(&1u64.to_le_bytes()); // MyLBA
+        image[gpt_offset + 32..gpt_offset + 40].copy_from_slice(&(total_sectors - 1).to_le_bytes()); // AlternateLBA
+        image[gpt_offset + 40..gpt_offset + 48].copy_from_slice(&34u64.to_le_bytes()); // FirstUsableLBA
+        image[gpt_offset + 48..gpt_offset + 56]
+            .copy_from_slice(&(total_sectors - 34).to_le_bytes()); // LastUsableLBA
+        image[gpt_offset + 56..gpt_offset + 72].copy_from_slice(&[0x77; 16]); // Disk GUID
+        image[gpt_offset + 72..gpt_offset + 80].copy_from_slice(&2u64.to_le_bytes()); // PartitionEntryLBA
+        image[gpt_offset + 80..gpt_offset + 84].copy_from_slice(&128u32.to_le_bytes()); // NumberOfPartitionEntries
+        image[gpt_offset + 84..gpt_offset + 88].copy_from_slice(&128u32.to_le_bytes()); // SizeOfPartitionEntry
+
+        // Sectors 2..33: GPT Partition Entries (Entry 0 = ESP, Entry 1 = Payload)
+        let pe_offset = 2 * (sector_size as usize);
+
+        // Entry 0: ESP
+        let esp_entry = GptPartitionEntry {
+            type_guid: PartitionTypeGuid::ESP,
+            unique_guid: PartitionUuid([0x11; 16]),
+            start_lba: Lba(2048),
+            end_lba: Lba(3071),
+            attributes: 0,
+            name: "EFI System Partition".to_string(),
+        };
+        image[pe_offset..pe_offset + 128].copy_from_slice(&esp_entry.serialize());
+
+        // Entry 1: Payload
+        let payload_entry = GptPartitionEntry {
+            type_guid: PartitionTypeGuid::LINUX_ROOT_X86_64,
+            unique_guid: PartitionUuid([0x22; 16]),
+            start_lba: Lba(3072),
+            end_lba: Lba(4062),
+            attributes: 0,
+            name: "Installer Payload".to_string(),
+        };
+        image[pe_offset + 128..pe_offset + 256].copy_from_slice(&payload_entry.serialize());
+
+        // Write bootloader payload at ESP sector (LBA 2048)
+        let esp_data_offset = 2048 * (sector_size as usize);
+        let copy_len = self.bootloader_efi.len().min(512 * 512);
+        image[esp_data_offset..esp_data_offset + copy_len]
+            .copy_from_slice(&self.bootloader_efi[..copy_len]);
 
         image
     }
@@ -1013,9 +1291,48 @@ mod tests {
         assert_eq!(uki.as_ref().map(|b| b.len() > 7000), Ok(true));
         assert_eq!(uki.as_ref().map(|b| b.len() % 512), Ok(0));
 
+        let uki_bytes = uki.unwrap_or_default();
+        let sections = UkiPackager::query_sections(&uki_bytes);
+        assert!(sections.is_ok());
+        let sec_list = sections.unwrap_or_default();
+        assert_eq!(sec_list.len(), 5);
+        assert_eq!(sec_list[0].0, ".cmdline");
+        assert_eq!(sec_list[1].0, ".osrel");
+        assert_eq!(sec_list[2].0, ".initrd");
+        assert_eq!(sec_list[3].0, ".linux");
+        assert_eq!(sec_list[4].0, ".uname");
+        for sec in &sec_list {
+            assert_eq!(sec.3, 0x4000_0040);
+        }
+
+        // Test package_full explicitly
+        let uki_full =
+            UkiPackager::package_full(&stub, &kernel, &initramfs, cmdline, osrel, "6.10.0-msi");
+        assert!(uki_full.is_ok());
+
+        // Error branches
         assert!(UkiPackager::package(&[], &kernel, &initramfs, cmdline, osrel).is_err());
         assert!(UkiPackager::package(&stub, &[], &initramfs, cmdline, osrel).is_err());
         assert!(UkiPackager::package(&stub, &kernel, &[], cmdline, osrel).is_err());
+
+        // Corrupt query_sections checks
+        assert!(UkiPackager::query_sections(&[]).is_err());
+        assert!(UkiPackager::query_sections(&[0u8; 100]).is_err());
+        let mut bad_magic2 = vec![0x4D, 0x00];
+        bad_magic2.resize(100, 0);
+        assert!(UkiPackager::query_sections(&bad_magic2).is_err());
+        let mut bad_pe = uki_bytes.clone();
+        bad_pe[0x80] = 0;
+        assert!(UkiPackager::query_sections(&bad_pe).is_err());
+        let mut truncated_pe = uki_bytes.clone();
+        truncated_pe[0x3C..0x40].copy_from_slice(&100_000u32.to_le_bytes());
+        assert!(UkiPackager::query_sections(&truncated_pe).is_err());
+
+        // Test section table bounds overflow triggering loop break
+        let mut overflow_sec_pe = uki_bytes;
+        overflow_sec_pe[0x80 + 6] = 250;
+        let query_overflow = UkiPackager::query_sections(&overflow_sec_pe[..1100]);
+        assert!(query_overflow.is_ok());
     }
 
     /// Tests live media generation for Hybrid ISO and raw USB images.
@@ -1028,17 +1345,64 @@ mod tests {
             bootloader.clone(),
         );
         let iso_bytes = gen_iso.generate();
+        assert!(iso_bytes.is_ok());
+        let iso = iso_bytes.unwrap_or_default();
+
+        // 1. Traverse ISO-9660 PVD at sector 16
+        let pvd_offset = 16 * 2048;
+        assert_eq!(&iso[pvd_offset + 1..pvd_offset + 6], b"CD001");
+        assert!(
+            String::from_utf8_lossy(&iso[pvd_offset + 40..pvd_offset + 72]).contains("MSI_INSTALL")
+        );
+        // Root directory record at offset 156
+        let root_rec = &iso[pvd_offset + 156..pvd_offset + 190];
+        assert_eq!(root_rec[0], 34); // record length
+        assert_eq!(root_rec[25], 0x02); // directory flag
+
+        // 2. Traverse El Torito Boot Record at sector 17
+        let el_offset = 17 * 2048;
+        assert_eq!(&iso[el_offset + 1..el_offset + 6], b"CD001");
         assert_eq!(
-            iso_bytes.as_ref().map(|b| &b[16 * 2048 + 1..16 * 2048 + 6]),
-            Ok(b"CD001".as_slice())
+            &iso[el_offset + 7..el_offset + 30],
+            b"EL TORITO SPECIFICATION"
         );
 
+        // 3. Traverse Boot Catalog at sector 22
+        let cat_offset = 22 * 2048;
+        assert_eq!(iso[cat_offset], 0x01); // Header ID
+        assert_eq!(iso[cat_offset + 1], 0xEF); // Platform EFI
+        assert_eq!(iso[cat_offset + 0x1E], 0x55);
+        assert_eq!(iso[cat_offset + 0x1F], 0xAA);
+        assert_eq!(iso[cat_offset + 0x20], 0x88); // Bootable
+
+        // 4. Test USB generation and GPT parsing
         let gen_usb =
             LiveMediaGenerator::new(LiveMediaFormat::RawUsbDisk, "MSI_USB", bootloader.clone());
         let usb_bytes = gen_usb.generate();
+        assert!(usb_bytes.is_ok());
+        let usb = usb_bytes.unwrap_or_default();
+
+        // Check MBR (Sector 0)
+        assert_eq!(usb[450], 0xEE); // GPT protective MBR type
+        assert_eq!(usb[510], 0x55);
+        assert_eq!(usb[511], 0xAA);
+
+        // Check GPT Header (Sector 1)
+        let gpt_header_offset = 512;
+        assert_eq!(&usb[gpt_header_offset..gpt_header_offset + 8], b"EFI PART");
+
+        // Check GPT Partition Entry 0 (ESP) at Sector 2
+        let esp_pe_offset = 2 * 512;
         assert_eq!(
-            usb_bytes.as_ref().map(|b| (b[510], b[511])),
-            Ok((0x55, 0xAA))
+            &usb[esp_pe_offset..esp_pe_offset + 16],
+            &PartitionTypeGuid::ESP.0
+        );
+
+        // Check GPT Partition Entry 1 (Payload)
+        let payload_pe_offset = (2 * 512) + 128;
+        assert_eq!(
+            &usb[payload_pe_offset..payload_pe_offset + 16],
+            &PartitionTypeGuid::LINUX_ROOT_X86_64.0
         );
 
         let err_empty_boot = LiveMediaGenerator::new(LiveMediaFormat::HybridIso, "LABEL", vec![]);

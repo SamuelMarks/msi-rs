@@ -54,7 +54,7 @@ pub use tui::{
 };
 pub use window::{
     AccessKitBridge, AccessibleNode, AccessibleRole, GuiDesktopRuntime, GuiHardwareBackend,
-    GuiInputEvent, WindowConfig,
+    GuiInputEvent, WindowConfig, WindowLifecycleEvent,
 };
 pub use wizard::{
     BareMetalInstallationWizard, DiagnosticsLogConsole, DiskSelectionDialog,

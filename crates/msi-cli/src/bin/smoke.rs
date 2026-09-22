@@ -100,8 +100,16 @@ impl SmokeOptions {
             )
         })?;
 
-        Linker::run_ice_validations(pkg.database())
-            .map_err(|e| format!("validation error: {e}"))?;
+        let reports = Linker::run_ice_validations_filtered(
+            pkg.database(),
+            &self.selected_ice,
+            &self.suppressed_ice,
+        )
+        .map_err(|e| format!("validation error: {e}"))?;
+
+        for rep in &reports {
+            println!("smoke.exe : warning {}: {}", rep.ice, rep.message);
+        }
 
         println!("smoke.exe : validation succeeded with 0 errors");
         Ok(())
@@ -288,7 +296,53 @@ mod tests {
         let bad_args = vec!["-nologo".to_string(), bad_msi.to_string_lossy().to_string()];
         assert_eq!(run(&bad_args), 1);
 
-        // 8. Test invoking main directly
+        // Suppress failing ICE04 and ICE05 rules
+        let suppress_args = vec![
+            "-nologo".to_string(),
+            "-sice:ICE04".to_string(),
+            "-sice:ICE05".to_string(),
+            bad_msi.to_string_lossy().to_string(),
+        ];
+        assert_eq!(run(&suppress_args), 0);
+
+        // Select only passing ICE01 rule
+        let select_args = vec![
+            "-nologo".to_string(),
+            "-ice:ICE01".to_string(),
+            bad_msi.to_string_lossy().to_string(),
+        ];
+        assert_eq!(run(&select_args), 0);
+
+        // 8. Test package triggering ICE warning (e.g. ICE33 warning)
+        let warn_msi = temp_dir.join("warn.msi");
+        let warn_pkg = Package::builder()
+            .product_name("WarnPkg")
+            .manufacturer("WarnMfr")
+            .version(ProductVersion::new(1, 0, 0))
+            .product_code("{12345678-1234-1234-1234-123456789012}")
+            .add_record(
+                "Registry",
+                msi::database::Record::with_fields(vec![
+                    msi::database::FieldValue::String("Reg1".to_string()),
+                    msi::database::FieldValue::Short(0),
+                    msi::database::FieldValue::String(
+                        "CLSID\\{11111111-2222-3333-4444-555555555555}".to_string(),
+                    ),
+                    msi::database::FieldValue::Null,
+                    msi::database::FieldValue::Null,
+                    msi::database::FieldValue::String("Comp1".to_string()),
+                ]),
+            )
+            .build()?;
+        warn_pkg.save(&warn_msi)?;
+        let warn_args = vec![
+            "-nologo".to_string(),
+            "-ice:ICE33".to_string(),
+            warn_msi.to_string_lossy().to_string(),
+        ];
+        assert_eq!(run(&warn_args), 0);
+
+        // 9. Test invoking main directly
         let code = main();
         assert_eq!(code, ExitCode::FAILURE);
 

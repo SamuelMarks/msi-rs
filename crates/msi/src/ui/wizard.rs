@@ -340,6 +340,600 @@ impl LocaleKeyboardDialog {
     pub fn current_keymap(&self) -> &str {
         &self.keymaps[self.selected_keymap]
     }
+
+    /// Renders text lines representing the locale and keyboard configuration dialog.
+    ///
+    /// # Returns
+    ///
+    /// Formatted ASCII line strings.
+    #[must_use]
+    pub fn render(&self) -> Vec<String> {
+        let mut lines = Vec::new();
+        lines.push(
+            "┌──────────────────────────────────────────────────────────────────────────┐"
+                .to_string(),
+        );
+        lines.push(
+            "│ Configure System Locale & Keyboard Layout                                │"
+                .to_string(),
+        );
+        lines.push(
+            "├──────────────────────────────────────────────────────────────────────────┤"
+                .to_string(),
+        );
+        let loc_cursor = if self.focus == LocaleFocusField::Locale {
+            ">"
+        } else {
+            " "
+        };
+        lines.push(format!(
+            "│ {loc_cursor} System Locale: {:<58} │",
+            self.current_locale()
+        ));
+        let key_cursor = if self.focus == LocaleFocusField::Keymap {
+            ">"
+        } else {
+            " "
+        };
+        lines.push(format!(
+            "│ {key_cursor} Keyboard Map:  {:<58} │",
+            self.current_keymap()
+        ));
+        lines.push(
+            "├──────────────────────────────────────────────────────────────────────────┤"
+                .to_string(),
+        );
+        lines.push(
+            "│ [Tab] Toggle Focus    [Up/Down] Select Option    [Enter] Next   [Esc] Back│"
+                .to_string(),
+        );
+        lines.push(
+            "└──────────────────────────────────────────────────────────────────────────┘"
+                .to_string(),
+        );
+        lines
+    }
+}
+
+/// Network configuration operational mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum NetworkConfigMode {
+    /// Automatic network assignment via DHCP.
+    #[default]
+    Dhcp,
+    /// Manual static IP, netmask, gateway, and DNS.
+    Static,
+    /// Skip network setup during deployment.
+    Skip,
+}
+
+/// Focused interactive field in network configuration dialog.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum NetworkFocusField {
+    /// Selecting target network interface.
+    #[default]
+    Interface,
+    /// Selecting network configuration mode (DHCP / Static / Skip).
+    Mode,
+    /// Entering static IP address.
+    IpAddress,
+    /// Entering subnet mask or CIDR.
+    SubnetMask,
+    /// Entering default gateway IP.
+    Gateway,
+    /// Entering DNS server IP.
+    DnsServer,
+}
+
+/// Network interface and address assignment configuration dialog.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NetworkConfigDialog {
+    /// Detected or configured network interfaces.
+    pub interfaces: Vec<String>,
+    /// Selected interface index.
+    pub selected_interface: usize,
+    /// Network assignment mode.
+    pub mode: NetworkConfigMode,
+    /// Static IPv4/IPv6 address string.
+    pub ip_address: String,
+    /// Static subnet mask string.
+    pub subnet_mask: String,
+    /// Default gateway router address.
+    pub gateway: String,
+    /// Configured DNS server addresses.
+    pub dns_servers: Vec<String>,
+    /// Currently focused interactive field.
+    pub focus: NetworkFocusField,
+    /// Validation error message if last validation failed.
+    pub error_message: Option<String>,
+}
+
+impl Default for NetworkConfigDialog {
+    fn default() -> Self {
+        Self {
+            interfaces: vec!["eth0".to_string(), "wlan0".to_string()],
+            selected_interface: 0,
+            mode: NetworkConfigMode::Dhcp,
+            ip_address: "192.168.1.100".to_string(),
+            subnet_mask: "255.255.255.0".to_string(),
+            gateway: "192.168.1.1".to_string(),
+            dns_servers: vec!["1.1.1.1".to_string(), "8.8.8.8".to_string()],
+            focus: NetworkFocusField::Interface,
+            error_message: None,
+        }
+    }
+}
+
+impl NetworkConfigDialog {
+    /// Creates a new [`NetworkConfigDialog`] with detected network interfaces.
+    ///
+    /// # Arguments
+    ///
+    /// * `interfaces` - List of detected network interface device names.
+    ///
+    /// # Returns
+    ///
+    /// Initialized dialog instance.
+    #[must_use]
+    pub fn new(interfaces: Vec<String>) -> Self {
+        Self {
+            interfaces,
+            ..Self::default()
+        }
+    }
+
+    /// Cycles through network configuration modes.
+    pub const fn toggle_mode(&mut self) {
+        self.mode = match self.mode {
+            NetworkConfigMode::Dhcp => NetworkConfigMode::Static,
+            NetworkConfigMode::Static => NetworkConfigMode::Skip,
+            NetworkConfigMode::Skip => NetworkConfigMode::Dhcp,
+        };
+    }
+
+    /// Advances active focus to the next field in sequence.
+    pub const fn toggle_focus(&mut self) {
+        self.focus = match self.focus {
+            NetworkFocusField::Interface => NetworkFocusField::Mode,
+            NetworkFocusField::Mode => NetworkFocusField::IpAddress,
+            NetworkFocusField::IpAddress => NetworkFocusField::SubnetMask,
+            NetworkFocusField::SubnetMask => NetworkFocusField::Gateway,
+            NetworkFocusField::Gateway => NetworkFocusField::DnsServer,
+            NetworkFocusField::DnsServer => NetworkFocusField::Interface,
+        };
+    }
+
+    /// Moves active focus to the previous field in sequence.
+    pub const fn focus_prev(&mut self) {
+        self.focus = match self.focus {
+            NetworkFocusField::Interface => NetworkFocusField::DnsServer,
+            NetworkFocusField::Mode => NetworkFocusField::Interface,
+            NetworkFocusField::IpAddress => NetworkFocusField::Mode,
+            NetworkFocusField::SubnetMask => NetworkFocusField::IpAddress,
+            NetworkFocusField::Gateway => NetworkFocusField::SubnetMask,
+            NetworkFocusField::DnsServer => NetworkFocusField::Gateway,
+        };
+    }
+
+    /// Selects the next available network interface.
+    pub fn select_next_interface(&mut self) {
+        if !self.interfaces.is_empty() {
+            self.selected_interface = (self.selected_interface + 1) % self.interfaces.len();
+        }
+    }
+
+    /// Appends a typed character to the currently focused text field.
+    ///
+    /// # Arguments
+    ///
+    /// * `c` - Input character.
+    pub fn handle_char(&mut self, c: char) {
+        if c.is_control() {
+            return;
+        }
+        match self.focus {
+            NetworkFocusField::IpAddress => self.ip_address.push(c),
+            NetworkFocusField::SubnetMask => self.subnet_mask.push(c),
+            NetworkFocusField::Gateway => self.gateway.push(c),
+            NetworkFocusField::DnsServer => {
+                if let Some(first_dns) = self.dns_servers.first_mut() {
+                    first_dns.push(c);
+                } else {
+                    self.dns_servers.push(c.to_string());
+                }
+            }
+            NetworkFocusField::Interface | NetworkFocusField::Mode => {}
+        }
+    }
+
+    /// Removes the trailing character from the currently focused text field.
+    pub fn handle_backspace(&mut self) {
+        match self.focus {
+            NetworkFocusField::IpAddress => {
+                self.ip_address.pop();
+            }
+            NetworkFocusField::SubnetMask => {
+                self.subnet_mask.pop();
+            }
+            NetworkFocusField::Gateway => {
+                self.gateway.pop();
+            }
+            NetworkFocusField::DnsServer => {
+                if let Some(first_dns) = self.dns_servers.first_mut() {
+                    first_dns.pop();
+                }
+            }
+            NetworkFocusField::Interface | NetworkFocusField::Mode => {}
+        }
+    }
+
+    /// Validates network configuration fields, updating error message state.
+    ///
+    /// # Returns
+    ///
+    /// `true` if configuration is valid.
+    pub fn validate(&mut self) -> bool {
+        if self.mode == NetworkConfigMode::Static {
+            if self.ip_address.parse::<std::net::IpAddr>().is_err() {
+                self.error_message = Some("Invalid static IP address syntax".to_string());
+                return false;
+            }
+            if self.subnet_mask.parse::<std::net::IpAddr>().is_err() {
+                self.error_message = Some("Invalid subnet mask syntax".to_string());
+                return false;
+            }
+            if !self.gateway.is_empty() && self.gateway.parse::<std::net::IpAddr>().is_err() {
+                self.error_message = Some("Invalid gateway IP address syntax".to_string());
+                return false;
+            }
+        }
+        self.error_message = None;
+        true
+    }
+
+    /// Renders text lines representing the network configuration dialog.
+    ///
+    /// # Returns
+    ///
+    /// Formatted ASCII line strings.
+    #[must_use]
+    pub fn render(&self) -> Vec<String> {
+        let mut lines = Vec::new();
+        lines.push(
+            "┌──────────────────────────────────────────────────────────────────────────┐"
+                .to_string(),
+        );
+        lines.push(
+            "│ Network Interface & Address Assignment                                   │"
+                .to_string(),
+        );
+        lines.push(
+            "├──────────────────────────────────────────────────────────────────────────┤"
+                .to_string(),
+        );
+        let iface = self
+            .interfaces
+            .get(self.selected_interface)
+            .map_or("none", String::as_str);
+        let iface_c = if self.focus == NetworkFocusField::Interface {
+            ">"
+        } else {
+            " "
+        };
+        lines.push(format!("│ {iface_c} Interface:   {iface:<59} │"));
+        let mode_c = if self.focus == NetworkFocusField::Mode {
+            ">"
+        } else {
+            " "
+        };
+        lines.push(format!(
+            "│ {mode_c} Mode:        {:<59} │",
+            format!("{:?}", self.mode)
+        ));
+        let ip_c = if self.focus == NetworkFocusField::IpAddress {
+            ">"
+        } else {
+            " "
+        };
+        lines.push(format!("│ {ip_c} IP Address:  {:<59} │", self.ip_address));
+        let mask_c = if self.focus == NetworkFocusField::SubnetMask {
+            ">"
+        } else {
+            " "
+        };
+        lines.push(format!(
+            "│ {mask_c} Subnet Mask: {:<59} │",
+            self.subnet_mask
+        ));
+        let gw_c = if self.focus == NetworkFocusField::Gateway {
+            ">"
+        } else {
+            " "
+        };
+        lines.push(format!("│ {gw_c} Gateway:     {:<59} │", self.gateway));
+        let dns_c = if self.focus == NetworkFocusField::DnsServer {
+            ">"
+        } else {
+            " "
+        };
+        let dns_str = self.dns_servers.join(", ");
+        lines.push(format!("│ {dns_c} DNS Servers: {dns_str:<59} │"));
+        lines.push(
+            "├──────────────────────────────────────────────────────────────────────────┤"
+                .to_string(),
+        );
+        if let Some(ref err) = self.error_message {
+            lines.push(format!("│ [!] ERROR: {err:<61} │"));
+        } else {
+            lines.push(
+                "│ Ready to configure network parameters.                                   │"
+                    .to_string(),
+            );
+        }
+        lines.push(
+            "│ [Tab] Next Field  [Space] Cycle Option  [Enter] Next  [Esc] Back         │"
+                .to_string(),
+        );
+        lines.push(
+            "└──────────────────────────────────────────────────────────────────────────┘"
+                .to_string(),
+        );
+        lines
+    }
+}
+
+/// Focused field in user account and credentials dialog.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum UserAccountFocusField {
+    /// Entering root/administrator password.
+    #[default]
+    RootPassword,
+    /// Entering root/administrator password confirmation.
+    RootPasswordConfirm,
+    /// Entering initial unprivileged username.
+    Username,
+    /// Entering initial user password.
+    UserPassword,
+    /// Entering initial user password confirmation.
+    UserPasswordConfirm,
+    /// Toggling sudo / administrator privileges.
+    GrantSudo,
+}
+
+/// User accounts and administrator credential provisioning dialog.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct UserAccountDialog {
+    /// System root / administrator password.
+    pub root_password: String,
+    /// Root password confirmation.
+    pub root_password_confirm: String,
+    /// Initial non-root username.
+    pub username: String,
+    /// Initial user password.
+    pub user_password: String,
+    /// User password confirmation.
+    pub user_password_confirm: String,
+    /// Grant sudo / wheel / administrator group membership.
+    pub grant_sudo: bool,
+    /// Currently focused interactive field.
+    pub focus: UserAccountFocusField,
+    /// Validation error message.
+    pub error_message: Option<String>,
+}
+
+impl UserAccountDialog {
+    /// Creates a new [`UserAccountDialog`] with default initial configuration.
+    ///
+    /// # Returns
+    ///
+    /// Default dialog instance.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            username: "admin".to_string(),
+            grant_sudo: true,
+            ..Self::default()
+        }
+    }
+
+    /// Advances active focus to the next field in sequence.
+    pub const fn toggle_focus(&mut self) {
+        self.focus = match self.focus {
+            UserAccountFocusField::RootPassword => UserAccountFocusField::RootPasswordConfirm,
+            UserAccountFocusField::RootPasswordConfirm => UserAccountFocusField::Username,
+            UserAccountFocusField::Username => UserAccountFocusField::UserPassword,
+            UserAccountFocusField::UserPassword => UserAccountFocusField::UserPasswordConfirm,
+            UserAccountFocusField::UserPasswordConfirm => UserAccountFocusField::GrantSudo,
+            UserAccountFocusField::GrantSudo => UserAccountFocusField::RootPassword,
+        };
+    }
+
+    /// Moves active focus to the previous field in sequence.
+    pub const fn focus_prev(&mut self) {
+        self.focus = match self.focus {
+            UserAccountFocusField::RootPassword => UserAccountFocusField::GrantSudo,
+            UserAccountFocusField::RootPasswordConfirm => UserAccountFocusField::RootPassword,
+            UserAccountFocusField::Username => UserAccountFocusField::RootPasswordConfirm,
+            UserAccountFocusField::UserPassword => UserAccountFocusField::Username,
+            UserAccountFocusField::UserPasswordConfirm => UserAccountFocusField::UserPassword,
+            UserAccountFocusField::GrantSudo => UserAccountFocusField::UserPasswordConfirm,
+        };
+    }
+
+    /// Toggles administrator / sudo privileges for the initial user account.
+    pub const fn toggle_sudo(&mut self) {
+        self.grant_sudo = !self.grant_sudo;
+    }
+
+    /// Appends a typed character to the currently focused text field.
+    ///
+    /// # Arguments
+    ///
+    /// * `c` - Input character.
+    pub fn handle_char(&mut self, c: char) {
+        if c.is_control() {
+            return;
+        }
+        match self.focus {
+            UserAccountFocusField::RootPassword => self.root_password.push(c),
+            UserAccountFocusField::RootPasswordConfirm => self.root_password_confirm.push(c),
+            UserAccountFocusField::Username => self.username.push(c),
+            UserAccountFocusField::UserPassword => self.user_password.push(c),
+            UserAccountFocusField::UserPasswordConfirm => self.user_password_confirm.push(c),
+            UserAccountFocusField::GrantSudo => {}
+        }
+    }
+
+    /// Removes the trailing character from the currently focused text field.
+    pub fn handle_backspace(&mut self) {
+        match self.focus {
+            UserAccountFocusField::RootPassword => {
+                self.root_password.pop();
+            }
+            UserAccountFocusField::RootPasswordConfirm => {
+                self.root_password_confirm.pop();
+            }
+            UserAccountFocusField::Username => {
+                self.username.pop();
+            }
+            UserAccountFocusField::UserPassword => {
+                self.user_password.pop();
+            }
+            UserAccountFocusField::UserPasswordConfirm => {
+                self.user_password_confirm.pop();
+            }
+            UserAccountFocusField::GrantSudo => {}
+        }
+    }
+
+    /// Validates user account parameters, verifying minimum length and matching confirmations.
+    ///
+    /// # Returns
+    ///
+    /// `true` if credentials pass validation.
+    pub fn validate(&mut self) -> bool {
+        if self.root_password.len() < 8 {
+            self.error_message =
+                Some("Root password must be at least 8 characters long".to_string());
+            return false;
+        }
+        if self.root_password != self.root_password_confirm {
+            self.error_message = Some("Root passwords do not match".to_string());
+            return false;
+        }
+        if self.username.trim().is_empty() {
+            self.error_message = Some("Initial username must not be empty".to_string());
+            return false;
+        }
+        if self.user_password.len() < 8 {
+            self.error_message =
+                Some("User password must be at least 8 characters long".to_string());
+            return false;
+        }
+        if self.user_password != self.user_password_confirm {
+            self.error_message = Some("User passwords do not match".to_string());
+            return false;
+        }
+        self.error_message = None;
+        true
+    }
+
+    /// Renders text lines representing the user account configuration dialog.
+    ///
+    /// # Returns
+    ///
+    /// Formatted ASCII line strings.
+    #[must_use]
+    pub fn render(&self) -> Vec<String> {
+        let mut lines = Vec::new();
+        lines.push(
+            "┌──────────────────────────────────────────────────────────────────────────┐"
+                .to_string(),
+        );
+        lines.push(
+            "│ System Accounts & Administrator Credentials                              │"
+                .to_string(),
+        );
+        lines.push(
+            "├──────────────────────────────────────────────────────────────────────────┤"
+                .to_string(),
+        );
+        let root_cursor = if self.focus == UserAccountFocusField::RootPassword {
+            ">"
+        } else {
+            " "
+        };
+        lines.push(format!(
+            "│ {root_cursor} Root Password:         {:<49} │",
+            "*".repeat(self.root_password.len())
+        ));
+        let confirm_root_cursor = if self.focus == UserAccountFocusField::RootPasswordConfirm {
+            ">"
+        } else {
+            " "
+        };
+        lines.push(format!(
+            "│ {confirm_root_cursor} Confirm Root Pass:     {:<49} │",
+            "*".repeat(self.root_password_confirm.len())
+        ));
+        let user_cursor = if self.focus == UserAccountFocusField::Username {
+            ">"
+        } else {
+            " "
+        };
+        lines.push(format!(
+            "│ {user_cursor} Initial Username:       {:<49} │",
+            self.username
+        ));
+        let user_pwd_cursor = if self.focus == UserAccountFocusField::UserPassword {
+            ">"
+        } else {
+            " "
+        };
+        lines.push(format!(
+            "│ {user_pwd_cursor} Initial User Password:  {:<49} │",
+            "*".repeat(self.user_password.len())
+        ));
+        let confirm_user_cursor = if self.focus == UserAccountFocusField::UserPasswordConfirm {
+            ">"
+        } else {
+            " "
+        };
+        lines.push(format!(
+            "│ {confirm_user_cursor} Confirm User Pass:      {:<49} │",
+            "*".repeat(self.user_password_confirm.len())
+        ));
+        let sudo_cursor = if self.focus == UserAccountFocusField::GrantSudo {
+            ">"
+        } else {
+            " "
+        };
+        let sudo_box = if self.grant_sudo { "[X]" } else { "[ ]" };
+        lines.push(format!(
+            "│ {sudo_cursor} Grant Sudo Privileges:  {sudo_box:<49} │"
+        ));
+        lines.push(
+            "├──────────────────────────────────────────────────────────────────────────┤"
+                .to_string(),
+        );
+        if let Some(ref err) = self.error_message {
+            lines.push(format!("│ [!] ERROR: {err:<61} │"));
+        } else {
+            lines.push(
+                "│ Passwords must be at least 8 characters long.                            │"
+                    .to_string(),
+            );
+        }
+        lines.push(
+            "│ [Tab] Next Field  [Space] Toggle Sudo  [Enter] Next  [Esc] Back          │"
+                .to_string(),
+        );
+        lines.push(
+            "└──────────────────────────────────────────────────────────────────────────┘"
+                .to_string(),
+        );
+        lines
+    }
 }
 
 /// Live installation progress dialog displaying current step and progress.
@@ -503,6 +1097,10 @@ pub struct BareMetalInstallationWizard {
     pub partition_confirm: PartitionConfirmationDialog,
     /// Locale and keyboard layout dialog state.
     pub locale_keyboard: LocaleKeyboardDialog,
+    /// Network configuration dialog state.
+    pub network_config: NetworkConfigDialog,
+    /// User account and credentials dialog state.
+    pub user_account: UserAccountDialog,
     /// Progress dialog state.
     pub progress: InstallationProgressDialog,
     /// Completion dialog state.
@@ -540,6 +1138,8 @@ impl BareMetalInstallationWizard {
                 ],
             ),
             locale_keyboard: LocaleKeyboardDialog::default(),
+            network_config: NetworkConfigDialog::default(),
+            user_account: UserAccountDialog::default(),
             progress: InstallationProgressDialog::default(),
             complete: InstallationCompleteDialog::default(),
             diagnostics: DiagnosticsLogConsole::new(),
@@ -585,21 +1185,152 @@ impl BareMetalInstallationWizard {
                 TuiKey::Tab => self.locale_keyboard.toggle_focus(),
                 TuiKey::Down => self.locale_keyboard.select_next(),
                 TuiKey::Up => self.locale_keyboard.select_prev(),
-                TuiKey::Enter => self.step = WizardStep::Progress,
+                TuiKey::Enter => self.step = WizardStep::NetworkConfig,
                 TuiKey::Escape => self.step = WizardStep::PartitionConfirmation,
                 _ => {}
             },
-            WizardStep::NetworkConfig | WizardStep::UserAccount => {
-                if key == TuiKey::Enter {
-                    self.step = WizardStep::Progress;
+            WizardStep::NetworkConfig => match key {
+                TuiKey::Tab => self.network_config.toggle_focus(),
+                TuiKey::Down => match self.network_config.focus {
+                    NetworkFocusField::Interface => self.network_config.select_next_interface(),
+                    _ => self.network_config.toggle_focus(),
+                },
+                TuiKey::Up => match self.network_config.focus {
+                    NetworkFocusField::Interface => {
+                        if !self.network_config.interfaces.is_empty() {
+                            self.network_config.selected_interface =
+                                if self.network_config.selected_interface == 0 {
+                                    self.network_config.interfaces.len() - 1
+                                } else {
+                                    self.network_config.selected_interface - 1
+                                };
+                        }
+                    }
+                    _ => self.network_config.focus_prev(),
+                },
+                TuiKey::Space => match self.network_config.focus {
+                    NetworkFocusField::Mode => self.network_config.toggle_mode(),
+                    NetworkFocusField::Interface => self.network_config.select_next_interface(),
+                    _ => {}
+                },
+                TuiKey::Char(c) => self.network_config.handle_char(c),
+                TuiKey::Backspace => self.network_config.handle_backspace(),
+                TuiKey::Enter => {
+                    if self.network_config.validate() {
+                        self.step = WizardStep::UserAccount;
+                    }
                 }
-            }
+                TuiKey::Escape => self.step = WizardStep::LocaleKeyboard,
+                _ => {}
+            },
+            WizardStep::UserAccount => match key {
+                TuiKey::Tab | TuiKey::Down => self.user_account.toggle_focus(),
+                TuiKey::Up => self.user_account.focus_prev(),
+                TuiKey::Space => {
+                    if self.user_account.focus == UserAccountFocusField::GrantSudo {
+                        self.user_account.toggle_sudo();
+                    }
+                }
+                TuiKey::Char(c) => self.user_account.handle_char(c),
+                TuiKey::Backspace => self.user_account.handle_backspace(),
+                TuiKey::Enter => {
+                    if self.user_account.validate() {
+                        self.step = WizardStep::Progress;
+                    }
+                }
+                TuiKey::Escape => self.step = WizardStep::NetworkConfig,
+                _ => {}
+            },
             WizardStep::Progress => {
                 if self.progress.overall_percent >= 100 && key == TuiKey::Enter {
                     self.step = WizardStep::Complete;
                 }
             }
             WizardStep::Complete => {}
+        }
+    }
+
+    /// Renders text lines representing the currently active wizard dialog.
+    ///
+    /// # Returns
+    ///
+    /// Formatted ASCII line strings.
+    #[must_use]
+    pub fn render(&self) -> Vec<String> {
+        match self.step {
+            WizardStep::DiskSelection => self.disk_selection.render(),
+            WizardStep::PartitionConfirmation => self.partition_confirm.render(),
+            WizardStep::LocaleKeyboard => self.locale_keyboard.render(),
+            WizardStep::NetworkConfig => self.network_config.render(),
+            WizardStep::UserAccount => self.user_account.render(),
+            WizardStep::Progress => self.progress.render(),
+            WizardStep::Complete => self.complete.render(),
+        }
+    }
+
+    /// Converts wizard identity settings to a [`crate::platform::linux_config::LinuxIdentityConfig`].
+    ///
+    /// # Returns
+    ///
+    /// Configured identity configuration.
+    #[must_use]
+    pub fn to_linux_identity(&self) -> crate::platform::linux_config::LinuxIdentityConfig {
+        crate::platform::linux_config::LinuxIdentityConfig {
+            hostname: "localhost".to_string(),
+            locale: self.locale_keyboard.current_locale().to_string(),
+            keymap: self.locale_keyboard.current_keymap().to_string(),
+            os_name: "Linux".to_string(),
+            os_version: "1.0".to_string(),
+        }
+    }
+
+    /// Converts wizard user settings into a [`crate::platform::linux_config::UserProvisioningEngine`].
+    ///
+    /// # Returns
+    ///
+    /// Configured user provisioning engine.
+    #[must_use]
+    pub fn to_user_provisioning(&self) -> crate::platform::linux_config::UserProvisioningEngine {
+        let mut engine = crate::platform::linux_config::UserProvisioningEngine::new();
+        if !self.user_account.username.is_empty() {
+            engine.add_user(crate::platform::linux_config::ProvisionUserAccount {
+                username: self.user_account.username.clone(),
+                uid: 1000,
+                gid: 1000,
+                gecos: self.user_account.username.clone(),
+                home_dir: format!("/home/{}", self.user_account.username),
+                shell: "/bin/bash".to_string(),
+                password_hash: self.user_account.user_password.clone(),
+            });
+        }
+        engine
+    }
+
+    /// Converts wizard settings to a [`crate::platform::unattend::LinuxCloudInitConfig`].
+    ///
+    /// # Returns
+    ///
+    /// Configured cloud-init provisioning configuration.
+    #[must_use]
+    pub fn to_cloud_init(&self) -> crate::platform::unattend::LinuxCloudInitConfig {
+        let mut users = Vec::new();
+        if !self.user_account.username.is_empty() {
+            users.push(crate::platform::linux_config::ProvisionUserAccount {
+                username: self.user_account.username.clone(),
+                uid: 1000,
+                gid: 1000,
+                gecos: self.user_account.username.clone(),
+                home_dir: format!("/home/{}", self.user_account.username),
+                shell: "/bin/bash".to_string(),
+                password_hash: self.user_account.user_password.clone(),
+            });
+        }
+        crate::platform::unattend::LinuxCloudInitConfig {
+            hostname: "localhost".to_string(),
+            users,
+            ssh_authorized_keys: Vec::new(),
+            packages: Vec::new(),
+            runcmd: Vec::new(),
         }
     }
 }
@@ -767,6 +1498,357 @@ mod tests {
         // toggle back to locale
         dialog.toggle_focus();
         assert_eq!(dialog.focus, LocaleFocusField::Locale);
+
+        let lines = dialog.render();
+        assert!(lines.iter().any(|l| l.contains("Configure System Locale")));
+        assert!(lines.iter().any(|l| l.contains("en_US.UTF-8")));
+    }
+
+    /// Tests `NetworkConfigDialog` operations, input handling, validation, and rendering.
+    #[test]
+    #[allow(clippy::too_many_lines, clippy::assert_is_empty)]
+    fn test_network_config_dialog() {
+        let mut dialog = NetworkConfigDialog::new(vec!["eth0".to_string(), "eth1".to_string()]);
+        assert_eq!(dialog.focus, NetworkFocusField::Interface);
+        assert_eq!(dialog.mode, NetworkConfigMode::Dhcp);
+        assert_eq!(dialog.interfaces.len(), 2);
+
+        // Cycle interfaces
+        dialog.select_next_interface();
+        assert_eq!(dialog.selected_interface, 1);
+        dialog.select_next_interface();
+        assert_eq!(dialog.selected_interface, 0);
+
+        // Cycle modes
+        dialog.toggle_mode();
+        assert_eq!(dialog.mode, NetworkConfigMode::Static);
+        dialog.toggle_mode();
+        assert_eq!(dialog.mode, NetworkConfigMode::Skip);
+        dialog.toggle_mode();
+        assert_eq!(dialog.mode, NetworkConfigMode::Dhcp);
+
+        // Focus navigation forwards
+        dialog.toggle_focus();
+        assert_eq!(dialog.focus, NetworkFocusField::Mode);
+        dialog.toggle_focus();
+        assert_eq!(dialog.focus, NetworkFocusField::IpAddress);
+        dialog.toggle_focus();
+        assert_eq!(dialog.focus, NetworkFocusField::SubnetMask);
+        dialog.toggle_focus();
+        assert_eq!(dialog.focus, NetworkFocusField::Gateway);
+        dialog.toggle_focus();
+        assert_eq!(dialog.focus, NetworkFocusField::DnsServer);
+        dialog.toggle_focus();
+        assert_eq!(dialog.focus, NetworkFocusField::Interface);
+
+        // Focus navigation backwards
+        dialog.focus_prev();
+        assert_eq!(dialog.focus, NetworkFocusField::DnsServer);
+        dialog.focus_prev();
+        assert_eq!(dialog.focus, NetworkFocusField::Gateway);
+        dialog.focus_prev();
+        assert_eq!(dialog.focus, NetworkFocusField::SubnetMask);
+        dialog.focus_prev();
+        assert_eq!(dialog.focus, NetworkFocusField::IpAddress);
+        dialog.focus_prev();
+        assert_eq!(dialog.focus, NetworkFocusField::Mode);
+        dialog.focus_prev();
+        assert_eq!(dialog.focus, NetworkFocusField::Interface);
+
+        // Empty interfaces select_next_interface
+        let mut empty_iface_dialog = NetworkConfigDialog::new(Vec::new());
+        empty_iface_dialog.select_next_interface();
+        assert_eq!(empty_iface_dialog.selected_interface, 0);
+
+        // render_text on all focus fields
+        for f in [
+            NetworkFocusField::Interface,
+            NetworkFocusField::Mode,
+            NetworkFocusField::IpAddress,
+            NetworkFocusField::SubnetMask,
+            NetworkFocusField::Gateway,
+            NetworkFocusField::DnsServer,
+        ] {
+            dialog.focus = f;
+            assert!(!dialog.render().is_empty());
+        }
+
+        // Input handling on Gateway
+        dialog.focus = NetworkFocusField::Gateway;
+        dialog.gateway.clear();
+        dialog.handle_char('1');
+        dialog.handle_char('0');
+        dialog.handle_char('.');
+        dialog.handle_char('\n'); // Control char ignored
+        assert_eq!(dialog.gateway, "10.");
+        dialog.handle_backspace();
+        assert_eq!(dialog.gateway, "10");
+
+        // Input on IP Address
+        dialog.focus = NetworkFocusField::IpAddress;
+        dialog.ip_address.clear();
+        dialog.handle_char('1');
+        dialog.handle_char('9');
+        dialog.handle_char('2');
+        assert_eq!(dialog.ip_address, "192");
+        dialog.handle_backspace();
+        assert_eq!(dialog.ip_address, "19");
+
+        // Input on SubnetMask
+        dialog.focus = NetworkFocusField::SubnetMask;
+        dialog.subnet_mask.clear();
+        dialog.handle_char('2');
+        assert_eq!(dialog.subnet_mask, "2");
+        dialog.handle_backspace();
+        assert_eq!(dialog.subnet_mask, "");
+
+        // Input on DnsServer
+        dialog.focus = NetworkFocusField::DnsServer;
+        dialog.dns_servers.clear();
+        dialog.handle_char('1');
+        assert_eq!(dialog.dns_servers, vec!["1".to_string()]);
+        dialog.handle_char('0');
+        assert_eq!(dialog.dns_servers, vec!["10".to_string()]);
+        dialog.handle_backspace();
+        assert_eq!(dialog.dns_servers, vec!["1".to_string()]);
+        dialog.dns_servers.clear();
+        dialog.handle_backspace();
+        assert!(dialog.dns_servers.is_empty());
+
+        // Ignored input on non-text fields
+        dialog.focus = NetworkFocusField::Mode;
+        dialog.handle_char('x');
+        dialog.handle_backspace();
+
+        // Validation: DHCP passes automatically
+        dialog.mode = NetworkConfigMode::Dhcp;
+        assert!(dialog.validate());
+        assert!(dialog.error_message.is_none());
+
+        // Validation: Static with invalid IP fails
+        dialog.mode = NetworkConfigMode::Static;
+        dialog.ip_address = "invalid_ip".to_string();
+        dialog.subnet_mask = "255.255.255.0".to_string();
+        assert!(!dialog.validate());
+        assert!(dialog
+            .error_message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Invalid static IP"));
+
+        // Validation: Static with invalid subnet mask fails
+        dialog.ip_address = "192.168.1.50".to_string();
+        dialog.subnet_mask = "not_a_mask".to_string();
+        assert!(!dialog.validate());
+        assert!(dialog
+            .error_message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Invalid subnet mask"));
+
+        // Validation: Static with invalid gateway fails
+        dialog.subnet_mask = "255.255.255.0".to_string();
+        dialog.gateway = "bad_gateway".to_string();
+        assert!(!dialog.validate());
+        assert!(dialog
+            .error_message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Invalid gateway"));
+
+        // Validation: Valid static configuration passes
+        dialog.gateway = "192.168.1.1".to_string();
+        assert!(dialog.validate());
+        assert!(dialog.error_message.is_none());
+
+        // Validation: Static configuration with empty gateway is allowed
+        dialog.gateway.clear();
+        assert!(dialog.validate());
+        assert!(dialog.error_message.is_none());
+
+        // Rendering with error and without error
+        let normal_render = dialog.render();
+        assert!(normal_render
+            .iter()
+            .any(|l| l.contains("Network Interface & Address Assignment")));
+        assert!(normal_render.iter().any(|l| l.contains("192.168.1.50")));
+
+        dialog.error_message = Some("Sample error".to_string());
+        let err_render = dialog.render();
+        assert!(err_render.iter().any(|l| l.contains("ERROR: Sample error")));
+    }
+
+    /// Tests `UserAccountDialog` operations, input handling, validation, and rendering.
+    #[test]
+    #[allow(clippy::too_many_lines, clippy::assert_is_empty)]
+    fn test_user_account_dialog() {
+        let mut dialog = UserAccountDialog::new();
+        assert_eq!(dialog.focus, UserAccountFocusField::RootPassword);
+        assert!(dialog.grant_sudo);
+
+        // Toggle sudo
+        dialog.toggle_sudo();
+        assert!(!dialog.grant_sudo);
+        dialog.toggle_sudo();
+        assert!(dialog.grant_sudo);
+
+        // Focus forward and backward
+        dialog.toggle_focus();
+        assert_eq!(dialog.focus, UserAccountFocusField::RootPasswordConfirm);
+        dialog.toggle_focus();
+        assert_eq!(dialog.focus, UserAccountFocusField::Username);
+        dialog.toggle_focus();
+        assert_eq!(dialog.focus, UserAccountFocusField::UserPassword);
+        dialog.toggle_focus();
+        assert_eq!(dialog.focus, UserAccountFocusField::UserPasswordConfirm);
+        dialog.toggle_focus();
+        assert_eq!(dialog.focus, UserAccountFocusField::GrantSudo);
+        dialog.toggle_focus();
+        assert_eq!(dialog.focus, UserAccountFocusField::RootPassword);
+
+        dialog.focus_prev();
+        assert_eq!(dialog.focus, UserAccountFocusField::GrantSudo);
+        dialog.focus_prev();
+        assert_eq!(dialog.focus, UserAccountFocusField::UserPasswordConfirm);
+        dialog.focus_prev();
+        assert_eq!(dialog.focus, UserAccountFocusField::UserPassword);
+        dialog.focus_prev();
+        assert_eq!(dialog.focus, UserAccountFocusField::Username);
+        dialog.focus_prev();
+        assert_eq!(dialog.focus, UserAccountFocusField::RootPasswordConfirm);
+        dialog.focus_prev();
+        assert_eq!(dialog.focus, UserAccountFocusField::RootPassword);
+
+        // Render on all focus fields
+        for f in [
+            UserAccountFocusField::RootPassword,
+            UserAccountFocusField::RootPasswordConfirm,
+            UserAccountFocusField::Username,
+            UserAccountFocusField::UserPassword,
+            UserAccountFocusField::UserPasswordConfirm,
+            UserAccountFocusField::GrantSudo,
+        ] {
+            dialog.focus = f;
+            assert!(!dialog.render().is_empty());
+        }
+
+        // Input handling on UserPasswordConfirm
+        dialog.focus = UserAccountFocusField::UserPasswordConfirm;
+        dialog.user_password_confirm.clear();
+        dialog.handle_char('a');
+        dialog.handle_char('b');
+        dialog.handle_char('\t'); // Control char ignored
+        assert_eq!(dialog.user_password_confirm, "ab");
+        dialog.handle_backspace();
+        assert_eq!(dialog.user_password_confirm, "a");
+
+        // Input on RootPassword
+        dialog.focus = UserAccountFocusField::RootPassword;
+        dialog.root_password.clear();
+        dialog.handle_char('p');
+        dialog.handle_char('a');
+        assert_eq!(dialog.root_password, "pa");
+        dialog.handle_backspace();
+        assert_eq!(dialog.root_password, "p");
+
+        // Input on RootPasswordConfirm
+        dialog.focus = UserAccountFocusField::RootPasswordConfirm;
+        dialog.root_password_confirm.clear();
+        dialog.handle_char('p');
+        assert_eq!(dialog.root_password_confirm, "p");
+        dialog.handle_backspace();
+        assert_eq!(dialog.root_password_confirm, "");
+
+        // Input on Username
+        dialog.focus = UserAccountFocusField::Username;
+        dialog.username.clear();
+        dialog.handle_char('u');
+        assert_eq!(dialog.username, "u");
+        dialog.handle_backspace();
+        assert_eq!(dialog.username, "");
+
+        // Input on UserPassword
+        dialog.focus = UserAccountFocusField::UserPassword;
+        dialog.user_password.clear();
+        dialog.handle_char('x');
+        assert_eq!(dialog.user_password, "x");
+        dialog.handle_backspace();
+        assert_eq!(dialog.user_password, "");
+
+        // Input on GrantSudo is ignored
+        dialog.focus = UserAccountFocusField::GrantSudo;
+        dialog.handle_char('x');
+        dialog.handle_backspace();
+
+        // Validation: Short root password
+        dialog.root_password = "short".to_string();
+        dialog.root_password_confirm = "short".to_string();
+        assert!(!dialog.validate());
+        assert!(dialog
+            .error_message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Root password must be at least 8"));
+
+        // Validation: Root password mismatch
+        dialog.root_password = "password123".to_string();
+        dialog.root_password_confirm = "password456".to_string();
+        assert!(!dialog.validate());
+        assert!(dialog
+            .error_message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Root passwords do not match"));
+
+        // Validation: Empty username
+        dialog.root_password_confirm = "password123".to_string();
+        dialog.username = "   ".to_string();
+        assert!(!dialog.validate());
+        assert!(dialog
+            .error_message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("username must not be empty"));
+
+        // Validation: Short user password
+        dialog.username = "developer".to_string();
+        dialog.user_password = "pw".to_string();
+        dialog.user_password_confirm = "pw".to_string();
+        assert!(!dialog.validate());
+        assert!(dialog
+            .error_message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("User password must be at least 8"));
+
+        // Validation: User password mismatch
+        dialog.user_password = "userpassword1".to_string();
+        dialog.user_password_confirm = "userpassword2".to_string();
+        assert!(!dialog.validate());
+        assert!(dialog
+            .error_message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("User passwords do not match"));
+
+        // Validation: All valid
+        dialog.user_password_confirm = "userpassword1".to_string();
+        assert!(dialog.validate());
+        assert!(dialog.error_message.is_none());
+
+        // Render check
+        let lines = dialog.render();
+        assert!(lines
+            .iter()
+            .any(|l| l.contains("System Accounts & Administrator Credentials")));
+        assert!(lines.iter().any(|l| l.contains("developer")));
+        assert!(lines.iter().any(|l| l.contains("[X]")));
+
+        dialog.error_message = Some("User account error test".to_string());
+        let err_lines = dialog.render();
+        assert!(err_lines
+            .iter()
+            .any(|l| l.contains("ERROR: User account error test")));
     }
 
     /// Tests `InstallationProgressDialog` update and split log toggle.
@@ -814,6 +1896,7 @@ mod tests {
 
     /// Tests `BareMetalInstallationWizard` state transitions.
     #[test]
+    #[allow(clippy::too_many_lines, clippy::assert_is_empty)]
     fn test_wizard_state_machine() {
         let disk1 = BlockDevice {
             path: BlockDevicePath::new("/dev/nvme0n1"),
@@ -883,9 +1966,87 @@ mod tests {
         wizard.handle_key(TuiKey::Enter);
         assert_eq!(wizard.step, WizardStep::LocaleKeyboard);
 
-        // Advance to progress
+        // Advance to NetworkConfig
+        assert_eq!(wizard.step, WizardStep::LocaleKeyboard);
+        assert!(!wizard.render().is_empty());
+        wizard.handle_key(TuiKey::Enter);
+        assert_eq!(wizard.step, WizardStep::NetworkConfig);
+        assert!(!wizard.render().is_empty());
+
+        // Escape in NetworkConfig retreats to LocaleKeyboard
+        wizard.handle_key(TuiKey::Escape);
+        assert_eq!(wizard.step, WizardStep::LocaleKeyboard);
+        wizard.handle_key(TuiKey::Enter);
+        assert_eq!(wizard.step, WizardStep::NetworkConfig);
+
+        // NetworkConfig key handling
+        wizard.network_config.focus = NetworkFocusField::Interface;
+        wizard.handle_key(TuiKey::Down);
+        wizard.handle_key(TuiKey::Space);
+        wizard.handle_key(TuiKey::Up);
+        wizard.network_config.selected_interface = 1;
+        wizard.handle_key(TuiKey::Up);
+        let ifaces_saved = std::mem::take(&mut wizard.network_config.interfaces);
+        wizard.handle_key(TuiKey::Up);
+        wizard.network_config.interfaces = ifaces_saved;
+        wizard.network_config.focus = NetworkFocusField::Mode;
+        wizard.handle_key(TuiKey::Down);
+        wizard.handle_key(TuiKey::Up);
+        wizard.network_config.focus = NetworkFocusField::Mode;
+        wizard.handle_key(TuiKey::Space); // Toggles mode
+        wizard.network_config.focus = NetworkFocusField::IpAddress;
+        wizard.handle_key(TuiKey::Space); // Space on IpAddress does nothing
+        wizard.handle_key(TuiKey::F(5)); // Unhandled key on NetworkConfig
+        wizard.handle_key(TuiKey::Tab);
+        wizard.handle_key(TuiKey::Char('a'));
+        wizard.handle_key(TuiKey::Backspace);
+
+        // Invalid network config prevents advancing
+        wizard.network_config.mode = NetworkConfigMode::Static;
+        wizard.network_config.ip_address = "invalid_static_ip".to_string();
+        wizard.handle_key(TuiKey::Enter);
+        assert_eq!(wizard.step, WizardStep::NetworkConfig);
+
+        // Set valid network config and advance to UserAccount
+        wizard.network_config.mode = NetworkConfigMode::Dhcp;
+        wizard.handle_key(TuiKey::Enter);
+        assert_eq!(wizard.step, WizardStep::UserAccount);
+        assert!(!wizard.render().is_empty());
+
+        // Escape in UserAccount retreats to NetworkConfig
+        wizard.handle_key(TuiKey::Escape);
+        assert_eq!(wizard.step, WizardStep::NetworkConfig);
+        wizard.handle_key(TuiKey::Enter);
+        assert_eq!(wizard.step, WizardStep::UserAccount);
+
+        // UserAccount key handling
+        wizard.handle_key(TuiKey::Tab);
+        wizard.handle_key(TuiKey::Down);
+        wizard.handle_key(TuiKey::Up);
+        wizard.handle_key(TuiKey::F(5)); // Unhandled key on UserAccount
+        wizard.user_account.focus = UserAccountFocusField::GrantSudo;
+        wizard.handle_key(TuiKey::Space); // Toggles sudo
+        wizard.user_account.focus = UserAccountFocusField::RootPassword;
+        wizard.handle_key(TuiKey::Space); // Space on non-sudo does nothing
+        wizard.handle_key(TuiKey::Up); // focus_prev
+        wizard.handle_key(TuiKey::Char('1'));
+        wizard.handle_key(TuiKey::Backspace);
+
+        // Invalid credentials prevents advancing
+        wizard.user_account.root_password = "bad".to_string();
+        wizard.handle_key(TuiKey::Enter);
+        assert_eq!(wizard.step, WizardStep::UserAccount);
+
+        // Valid credentials advances to Progress
+        wizard.user_account.root_password = "rootpassword123".to_string();
+        wizard.user_account.root_password_confirm = "rootpassword123".to_string();
+        wizard.user_account.username = "sysadmin".to_string();
+        wizard.user_account.user_password = "userpassword123".to_string();
+        wizard.user_account.user_password_confirm = "userpassword123".to_string();
+        wizard.user_account.grant_sudo = true;
         wizard.handle_key(TuiKey::Enter);
         assert_eq!(wizard.step, WizardStep::Progress);
+        assert!(!wizard.render().is_empty());
 
         // F2 toggles split log
         wizard.handle_key(TuiKey::F(2));
@@ -901,6 +2062,7 @@ mod tests {
         assert_eq!(wizard.step, WizardStep::Progress);
         wizard.handle_key(TuiKey::Enter);
         assert_eq!(wizard.step, WizardStep::Complete);
+        assert!(!wizard.render().is_empty());
 
         // Keys on Complete step
         wizard.handle_key(TuiKey::Enter);
@@ -911,6 +2073,30 @@ mod tests {
             .iter()
             .any(|l| l.contains("Installation Complete!")));
 
+        // Test deployment engine conversions
+        let identity = wizard.to_linux_identity();
+        assert_eq!(identity.hostname, "localhost");
+        assert_eq!(identity.locale, "en_US.UTF-8");
+        assert_eq!(identity.keymap, "us");
+        assert_eq!(identity.os_name, "Linux");
+
+        let user_prov = wizard.to_user_provisioning();
+        assert!(user_prov.render_passwd().contains("sysadmin"));
+
+        let cloud_init = wizard.to_cloud_init();
+        assert_eq!(cloud_init.hostname, "localhost");
+        assert_eq!(cloud_init.users.len(), 1);
+        assert_eq!(cloud_init.users[0].username, "sysadmin");
+
+        // Empty user account produces empty user lists
+        let mut empty_user_wizard = wizard.clone();
+        empty_user_wizard.user_account.username.clear();
+        assert!(empty_user_wizard.to_cloud_init().users.is_empty());
+        assert!(empty_user_wizard
+            .to_user_provisioning()
+            .render_passwd()
+            .is_empty());
+
         // Test wizard empty target disks fallback
         let mut empty_wizard = BareMetalInstallationWizard::new(Vec::new());
         assert_eq!(
@@ -918,19 +2104,9 @@ mod tests {
             BlockDevicePath::new("/dev/sda")
         );
         assert_eq!(empty_wizard.partition_confirm.disk_size_gib, 64);
+        assert!(!empty_wizard.render().is_empty());
         empty_wizard.handle_key(TuiKey::Enter);
         assert_eq!(empty_wizard.step, WizardStep::PartitionConfirmation);
-
-        // Test NetworkConfig and UserAccount steps
-        let mut net_wizard = BareMetalInstallationWizard::new(Vec::new());
-        net_wizard.step = WizardStep::NetworkConfig;
-        net_wizard.handle_key(TuiKey::Char('x'));
-        assert_eq!(net_wizard.step, WizardStep::NetworkConfig);
-        net_wizard.handle_key(TuiKey::Enter);
-        assert_eq!(net_wizard.step, WizardStep::Progress);
-
-        net_wizard.step = WizardStep::UserAccount;
-        net_wizard.handle_key(TuiKey::Enter);
-        assert_eq!(net_wizard.step, WizardStep::Progress);
+        assert!(!empty_wizard.render().is_empty());
     }
 }

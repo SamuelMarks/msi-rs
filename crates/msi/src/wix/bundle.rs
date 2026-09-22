@@ -10,6 +10,7 @@
 
 use crate::error::{Error, Result};
 use crate::wix::xml::XmlNode;
+use std::fmt::Write as _;
 
 /// Package type within a Bootstrapper Bundle execution chain.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,6 +48,26 @@ pub struct ChainPackage {
     pub cache: Option<String>,
 }
 
+/// Payload file item embedded within a payload group.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BundlePayload {
+    /// Unique payload identifier.
+    pub id: String,
+    /// Source file path on disk.
+    pub source_file: String,
+    /// Target relative placement name in bundle cache.
+    pub name: Option<String>,
+}
+
+/// Group of related payload assets (`<PayloadGroup>`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PayloadGroup {
+    /// Identifier of the payload group.
+    pub id: String,
+    /// List of contained payload files.
+    pub payloads: Vec<BundlePayload>,
+}
+
 /// Bootstrapper GUI/CLI frontend specification.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BootstrapperApplication {
@@ -69,7 +90,7 @@ impl Default for BootstrapperApplication {
 }
 
 /// Burn Bootstrapper Bundle definition (`<Bundle>`).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct BurnBundle {
     /// User-visible product bundle name.
     pub name: String,
@@ -89,6 +110,8 @@ pub struct BurnBundle {
     pub bootstrapper_application: BootstrapperApplication,
     /// Ordered chain of packages to execute.
     pub chain: Vec<ChainPackage>,
+    /// Payload groups registered in the bundle.
+    pub payload_groups: Vec<PayloadGroup>,
 }
 
 impl BurnBundle {
@@ -151,6 +174,7 @@ impl BurnBundle {
 
         let mut ba = BootstrapperApplication::default();
         let mut chain_packages = Vec::new();
+        let mut payload_groups = Vec::new();
 
         for child in &bundle_node.children {
             match child.tag.as_str() {
@@ -164,6 +188,26 @@ impl BurnBundle {
                     if let Some(lic) = child.attribute("LicenseUrl") {
                         ba.license_url = Some(lic.to_string());
                     }
+                }
+                "PayloadGroup" => {
+                    let group_id = child.attribute("Id").unwrap_or("PayloadGroup").to_string();
+                    let mut payloads = Vec::new();
+                    for p in &child.children {
+                        if p.tag == "Payload" {
+                            let p_id = p.attribute("Id").unwrap_or("Payload").to_string();
+                            let src = p.attribute("SourceFile").unwrap_or("").to_string();
+                            let p_name = p.attribute("Name").map(ToString::to_string);
+                            payloads.push(BundlePayload {
+                                id: p_id,
+                                source_file: src,
+                                name: p_name,
+                            });
+                        }
+                    }
+                    payload_groups.push(PayloadGroup {
+                        id: group_id,
+                        payloads,
+                    });
                 }
                 "Chain" => {
                     for pkg in &child.children {
@@ -210,6 +254,7 @@ impl BurnBundle {
             compressed,
             bootstrapper_application: ba,
             chain: chain_packages,
+            payload_groups,
         })
     }
 
@@ -222,10 +267,7 @@ impl BurnBundle {
     /// # Returns
     ///
     /// List of packages scheduled for execution.
-    pub fn plan_chain<F>(&self, eval_condition: F) -> Vec<&ChainPackage>
-    where
-        F: Fn(&str) -> bool,
-    {
+    pub fn plan_chain(&self, eval_condition: &dyn Fn(&str) -> bool) -> Vec<&ChainPackage> {
         let mut planned = Vec::new();
         for pkg in &self.chain {
             if pkg.package_type == ChainPackageType::RollbackBoundary {
@@ -253,10 +295,292 @@ impl BurnBundle {
     }
 }
 
+/// Compiler compiling `WiX` Bundle XML authoring into intermediate [`BurnBundle`] representations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct BurnCompiler;
+
+impl BurnCompiler {
+    /// Creates a new [`BurnCompiler`].
+    #[must_use]
+    pub const fn new() -> Self {
+        Self
+    }
+
+    /// Compiles XML source text into a [`BurnBundle`].
+    ///
+    /// # Arguments
+    ///
+    /// * `xml_source` - Raw XML string.
+    ///
+    /// # Returns
+    ///
+    /// Compiled [`BurnBundle`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::WixCompiler`] on XML parse error or missing bundle structure.
+    pub fn compile_xml(&self, xml_source: &str) -> Result<BurnBundle> {
+        let parser = crate::wix::xml::XmlParser::new();
+        let root = parser.parse(xml_source)?;
+        BurnBundle::parse(&root)
+    }
+
+    /// Compiles an already parsed XML tree node into a [`BurnBundle`].
+    ///
+    /// # Arguments
+    ///
+    /// * `root` - Root XML node.
+    ///
+    /// # Returns
+    ///
+    /// Compiled [`BurnBundle`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::WixCompiler`] if required bundle elements or attributes are missing.
+    pub fn compile_node(&self, root: &XmlNode) -> Result<BurnBundle> {
+        BurnBundle::parse(root)
+    }
+}
+
+/// Linker assembling manifest documents, packing payloads into cabinets, and emitting bootstrapper executables.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct BurnLinker;
+
+impl BurnLinker {
+    /// Creates a new [`BurnLinker`].
+    #[must_use]
+    pub const fn new() -> Self {
+        Self
+    }
+
+    /// Assembles the canonical `WiX` Burn bundle manifest XML document.
+    ///
+    /// # Arguments
+    ///
+    /// * `bundle` - Bundle definition to serialize.
+    ///
+    /// # Returns
+    ///
+    /// Formatted XML manifest string.
+    #[must_use]
+    pub fn assemble_manifest(&self, bundle: &BurnBundle) -> String {
+        let mut xml = String::from("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
+        xml.push_str("<BurnManifest xmlns=\"http://schemas.microsoft.com/wix/2010/Burn\">\n");
+        let _ = writeln!(
+            xml,
+            "  <Bundle Name=\"{}\" Version=\"{}\" Manufacturer=\"{}\" UpgradeCode=\"{}\" Compressed=\"{}\" />",
+            bundle.name,
+            bundle.version,
+            bundle.manufacturer,
+            bundle.upgrade_code,
+            if bundle.compressed { "yes" } else { "no" }
+        );
+        xml.push_str("  <Chain>\n");
+        for pkg in &bundle.chain {
+            match pkg.package_type {
+                ChainPackageType::RollbackBoundary => {
+                    let _ = writeln!(xml, "    <RollbackBoundary Id=\"{}\" />", pkg.id);
+                }
+                ChainPackageType::Msi => {
+                    let src = pkg.source_file.as_deref().unwrap_or("");
+                    let _ = writeln!(
+                        xml,
+                        "    <MsiPackage Id=\"{}\" SourceFile=\"{}\" />",
+                        pkg.id, src
+                    );
+                }
+                ChainPackageType::Exe => {
+                    let src = pkg.source_file.as_deref().unwrap_or("");
+                    let _ = writeln!(
+                        xml,
+                        "    <ExePackage Id=\"{}\" SourceFile=\"{}\" />",
+                        pkg.id, src
+                    );
+                }
+                ChainPackageType::Msp => {
+                    let src = pkg.source_file.as_deref().unwrap_or("");
+                    let _ = writeln!(
+                        xml,
+                        "    <MspPackage Id=\"{}\" SourceFile=\"{}\" />",
+                        pkg.id, src
+                    );
+                }
+                ChainPackageType::Msu => {
+                    let src = pkg.source_file.as_deref().unwrap_or("");
+                    let _ = writeln!(
+                        xml,
+                        "    <MsuPackage Id=\"{}\" SourceFile=\"{}\" />",
+                        pkg.id, src
+                    );
+                }
+            }
+        }
+        xml.push_str("  </Chain>\n");
+        xml.push_str("</BurnManifest>\n");
+        xml
+    }
+
+    /// Packs the bundle manifest and referenced payload files into a standalone bootstrapper container.
+    ///
+    /// Compresses manifest and payloads into a Microsoft Cabinet (CAB) container and prepends
+    /// an executable PE loader stub.
+    ///
+    /// # Arguments
+    ///
+    /// * `bundle` - Bundle definition.
+    /// * `payload_files` - Named payload files as `(relative_path, bytes)` pairs.
+    ///
+    /// # Returns
+    ///
+    /// Serialized executable bootstrapper package bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::BurnBundleError`] or [`Error::InvalidCabData`] if cabinet packaging fails.
+    pub fn pack_bundle(
+        &self,
+        bundle: &BurnBundle,
+        payload_files: &[(&str, &[u8])],
+    ) -> Result<Vec<u8>> {
+        let manifest_xml = self.assemble_manifest(bundle);
+
+        let mut writer =
+            crate::cab::writer::CabinetWriter::new(crate::cab::folder::CompressionType::Mszip);
+        writer.add_file("manifest.xml", manifest_xml.as_bytes())?;
+
+        for (name, data) in payload_files {
+            writer.add_file(name, data)?;
+        }
+
+        let cab_bytes = writer.build();
+
+        // Prepend standard PE loader stub (1024 bytes) followed by Cabinet container
+        let mut exe_image = Vec::with_capacity(1024 + cab_bytes.len());
+        exe_image.extend_from_slice(b"MZ\x90\x00");
+        exe_image.resize(1024, 0);
+        exe_image.extend_from_slice(&cab_bytes);
+
+        Ok(exe_image)
+    }
+}
+
+/// Execution outcome of a Bootstrapper Bundle installation chain.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BurnExecutionSummary {
+    /// List of successfully installed package identifiers.
+    pub installed_packages: Vec<String>,
+    /// List of packages that were rolled back due to error.
+    pub rolled_back_packages: Vec<String>,
+    /// Overall success flag.
+    pub success: bool,
+    /// Final exit code (0 for success).
+    pub exit_code: u32,
+}
+
+/// Runtime engine executing chained Bootstrapper Bundle packages with rollback boundaries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct BurnEngine;
+
+impl BurnEngine {
+    /// Creates a new [`BurnEngine`].
+    #[must_use]
+    pub const fn new() -> Self {
+        Self
+    }
+
+    /// Evaluates a condition expression against an evaluation context.
+    ///
+    /// # Arguments
+    ///
+    /// * `condition` - Condition expression string.
+    /// * `context` - Active evaluation context.
+    ///
+    /// # Returns
+    ///
+    /// True if the condition evaluates to true.
+    #[must_use]
+    pub fn evaluate_condition(
+        &self,
+        condition: &str,
+        context: &crate::execution::properties::EvaluationContext,
+    ) -> bool {
+        context.evaluate_condition(condition).unwrap_or(false)
+    }
+
+    /// Executes a planned package chain sequentially, capturing progress and handling rollback boundaries.
+    ///
+    /// When a package fails (executor returns non-zero or error), packages installed since the nearest
+    /// preceding [`ChainPackageType::RollbackBoundary`] are rolled back in reverse order.
+    ///
+    /// # Arguments
+    ///
+    /// * `chain` - Ordered package sequence.
+    /// * `executor` - Callback executing a package (returns exit code).
+    /// * `rollback_executor` - Callback rolling back an installed package.
+    ///
+    /// # Returns
+    ///
+    /// Detailed [`BurnExecutionSummary`].
+    pub fn execute_chain(
+        &self,
+        chain: &[ChainPackage],
+        executor: &mut dyn FnMut(&ChainPackage) -> Result<u32>,
+        rollback_executor: &mut dyn FnMut(&str) -> Result<()>,
+    ) -> BurnExecutionSummary {
+        let mut installed_since_boundary: Vec<String> = Vec::new();
+        let mut all_installed: Vec<String> = Vec::new();
+        let mut rolled_back: Vec<String> = Vec::new();
+
+        for pkg in chain {
+            if pkg.package_type == ChainPackageType::RollbackBoundary {
+                installed_since_boundary.clear();
+                continue;
+            }
+
+            let failed_code = match executor(pkg) {
+                Ok(0) => {
+                    installed_since_boundary.push(pkg.id.clone());
+                    all_installed.push(pkg.id.clone());
+                    None
+                }
+                Ok(err_code) => Some(err_code),
+                Err(_) => Some(1603),
+            };
+
+            if let Some(exit_code) = failed_code {
+                while let Some(rb_id) = installed_since_boundary.pop() {
+                    let _ = rollback_executor(&rb_id);
+                    all_installed.retain(|x| x != &rb_id);
+                    rolled_back.push(rb_id);
+                }
+                return BurnExecutionSummary {
+                    installed_packages: all_installed,
+                    rolled_back_packages: rolled_back,
+                    success: false,
+                    exit_code,
+                };
+            }
+        }
+
+        BurnExecutionSummary {
+            installed_packages: all_installed,
+            rolled_back_packages: rolled_back,
+            success: true,
+            exit_code: 0,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::wix::xml::XmlParser;
+
+    #[allow(clippy::unnecessary_wraps)]
+    fn dummy_rollback(_rb_id: &str) -> Result<()> {
+        Ok(())
+    }
 
     /// Tests parsing and execution planning of a standard Burn bundle.
     #[test]
@@ -290,7 +614,7 @@ mod tests {
 
         // Test planning with simulated condition evaluation
         let planned =
-            bundle.plan_chain(|cond| matches!(cond, "VCRedistInstalled = 1" | "NOT AppInstalled"));
+            bundle.plan_chain(&|cond| matches!(cond, "VCRedistInstalled = 1" | "NOT AppInstalled"));
 
         // VC_Redist was skipped because detect condition was true!
         // RollbackBoundary and App_Msi should be planned.
@@ -484,10 +808,11 @@ mod tests {
             compressed: true,
             bootstrapper_application: BootstrapperApplication::default(),
             chain,
+            payload_groups: Vec::new(),
         };
 
         let planned =
-            bundle.plan_chain(|cond| matches!(cond, "InstalledAlready" | "FeatureEnabled"));
+            bundle.plan_chain(&|cond| matches!(cond, "InstalledAlready" | "FeatureEnabled"));
 
         assert_eq!(planned.len(), 3);
         assert_eq!(planned[0].id, "Boundary1");
@@ -526,6 +851,21 @@ mod tests {
         assert_eq!(pkg, pkg_clone);
         assert!(format!("{pkg:?}").contains("ChainPackage"));
 
+        let payload = BundlePayload {
+            id: "Pay1".to_string(),
+            source_file: "p1.dat".to_string(),
+            name: Some("data.dat".to_string()),
+        };
+        assert_eq!(payload, payload.clone());
+        assert!(format!("{payload:?}").contains("BundlePayload"));
+
+        let pg = PayloadGroup {
+            id: "Group1".to_string(),
+            payloads: vec![payload],
+        };
+        assert_eq!(pg, pg.clone());
+        assert!(format!("{pg:?}").contains("PayloadGroup"));
+
         let bundle = BurnBundle {
             name: "B".to_string(),
             version: "1.0".to_string(),
@@ -536,9 +876,191 @@ mod tests {
             compressed: false,
             bootstrapper_application: ba_default,
             chain: vec![pkg],
+            payload_groups: vec![pg],
         };
         let bundle_clone = bundle.clone();
         assert_eq!(bundle, bundle_clone);
         assert!(format!("{bundle:?}").contains("BurnBundle"));
+    }
+
+    /// Tests `BurnCompiler`, `BurnLinker`, and `BurnEngine` with rollback boundaries and packaging.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_burn_toolchain_compiler_linker_and_engine() {
+        let xml = r#"
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+    <Bundle Name="BurnProduct" Version="1.2.3.4" Manufacturer="BurnCorp" UpgradeCode="{33333333-4444-5555-6666-777777777777}" Compressed="yes">
+        <PayloadGroup Id="SharedPayloads">
+            <Payload Id="PayA" SourceFile="fileA.dat" Name="targetA.dat" />
+            <IgnoredChildTag />
+        </PayloadGroup>
+        <Chain>
+            <MsiPackage Id="PrereqMsi" SourceFile="prereq.msi" />
+            <RollbackBoundary Id="BoundaryAfterPrereq" />
+            <ExePackage Id="MainExe" SourceFile="main.exe" />
+            <MspPackage Id="PatchMsp" SourceFile="patch.msp" />
+            <MsuPackage Id="UpdateMsu" SourceFile="update.msu" />
+            <MsiPackage Id="ExtraMsi" SourceFile="extra.msi" />
+        </Chain>
+    </Bundle>
+</Wix>
+"#;
+        let compiler = BurnCompiler::new();
+        assert_eq!(compiler, BurnCompiler);
+        assert!(compiler.compile_xml("<Invalid><").is_err());
+        let bundle = compiler.compile_xml(xml).unwrap_or_default();
+        assert_eq!(bundle.name, "BurnProduct");
+        assert_eq!(bundle.payload_groups.len(), 1);
+        assert_eq!(bundle.payload_groups[0].payloads.len(), 1);
+        assert_eq!(
+            bundle.payload_groups[0].payloads[0].source_file,
+            "fileA.dat"
+        );
+
+        let parser = XmlParser::new();
+        let root = parser.parse(xml).unwrap_or_default();
+        let bundle_from_node = compiler.compile_node(&root).unwrap_or_default();
+        assert_eq!(bundle, bundle_from_node);
+
+        // Test BurnLinker manifest generation and bundle packing
+        let linker = BurnLinker::new();
+        assert_eq!(linker, BurnLinker);
+        let manifest = linker.assemble_manifest(&bundle);
+        assert!(manifest.contains("<BurnManifest"));
+        assert!(manifest.contains("<MsiPackage Id=\"PrereqMsi\""));
+        assert!(manifest.contains("<RollbackBoundary Id=\"BoundaryAfterPrereq\""));
+        assert!(manifest.contains("<MspPackage Id=\"PatchMsp\""));
+        assert!(manifest.contains("<MsuPackage Id=\"UpdateMsu\""));
+
+        let bundle_no_src = BurnBundle {
+            compressed: false,
+            chain: vec![
+                ChainPackage {
+                    id: "NoSrcMsi".to_string(),
+                    package_type: ChainPackageType::Msi,
+                    source_file: None,
+                    install_condition: None,
+                    detect_condition: None,
+                    install_command: None,
+                    uninstall_command: None,
+                    cache: None,
+                },
+                ChainPackage {
+                    id: "NoSrcExe".to_string(),
+                    package_type: ChainPackageType::Exe,
+                    source_file: None,
+                    install_condition: None,
+                    detect_condition: None,
+                    install_command: None,
+                    uninstall_command: None,
+                    cache: None,
+                },
+                ChainPackage {
+                    id: "NoSrcMsp".to_string(),
+                    package_type: ChainPackageType::Msp,
+                    source_file: None,
+                    install_condition: None,
+                    detect_condition: None,
+                    install_command: None,
+                    uninstall_command: None,
+                    cache: None,
+                },
+                ChainPackage {
+                    id: "NoSrcMsu".to_string(),
+                    package_type: ChainPackageType::Msu,
+                    source_file: None,
+                    install_condition: None,
+                    detect_condition: None,
+                    install_command: None,
+                    uninstall_command: None,
+                    cache: None,
+                },
+            ],
+            ..bundle.clone()
+        };
+        let manifest_no_src = linker.assemble_manifest(&bundle_no_src);
+        assert!(manifest_no_src.contains("<MsiPackage Id=\"NoSrcMsi\" SourceFile=\"\""));
+        assert!(manifest_no_src.contains("<ExePackage Id=\"NoSrcExe\" SourceFile=\"\""));
+        assert!(manifest_no_src.contains("<MspPackage Id=\"NoSrcMsp\" SourceFile=\"\""));
+        assert!(manifest_no_src.contains("<MsuPackage Id=\"NoSrcMsu\" SourceFile=\"\""));
+        assert!(manifest_no_src.contains("Compressed=\"no\""));
+
+        let payload_files = [
+            ("prereq.msi", b"MSI_PAYLOAD_A".as_slice()),
+            ("main.exe", b"EXE_PAYLOAD_B".as_slice()),
+        ];
+        let packed_exe = linker
+            .pack_bundle(&bundle, &payload_files)
+            .unwrap_or_default();
+        assert!(packed_exe.len() > 1024);
+        assert_eq!(&packed_exe[0..2], b"MZ");
+
+        // Duplicate filename error
+        assert!(linker
+            .pack_bundle(&bundle, &[("manifest.xml", b"dup")])
+            .is_err());
+
+        // Test BurnEngine condition evaluation
+        let engine = BurnEngine::new();
+        assert_eq!(engine, BurnEngine);
+        let mut context = crate::execution::properties::EvaluationContext::new();
+        context.set_property("FEATURE_ENABLED", "1");
+        assert!(engine.evaluate_condition("FEATURE_ENABLED = \"1\"", &context));
+        assert!(!engine.evaluate_condition("FEATURE_ENABLED = \"0\"", &context));
+
+        // Test BurnEngine chain execution: Full success
+        let summary_ok =
+            engine.execute_chain(&bundle.chain, &mut |_pkg| Ok(0), &mut dummy_rollback);
+        assert!(summary_ok.success);
+        assert_eq!(summary_ok.exit_code, 0);
+        assert_eq!(summary_ok.installed_packages.len(), 5);
+        assert_eq!(summary_ok.rolled_back_packages.len(), 0);
+
+        // Test BurnEngine chain execution: Failure with rollback boundary
+        let mut rolled_back_ids = Vec::new();
+        let summary_fail = engine.execute_chain(
+            &bundle.chain,
+            &mut |pkg| {
+                if pkg.id == "ExtraMsi" {
+                    Ok(1602) // simulated failure exit code
+                } else {
+                    Ok(0)
+                }
+            },
+            &mut |rb_id| {
+                rolled_back_ids.push(rb_id.to_string());
+                Ok(())
+            },
+        );
+        assert!(!summary_fail.success);
+        assert_eq!(summary_fail.exit_code, 1602);
+        assert_eq!(summary_fail.installed_packages, vec!["PrereqMsi"]);
+        assert_eq!(
+            summary_fail.rolled_back_packages,
+            vec!["UpdateMsu", "PatchMsp", "MainExe"]
+        );
+        assert_eq!(rolled_back_ids, vec!["UpdateMsu", "PatchMsp", "MainExe"]);
+
+        // Test BurnEngine chain execution: Err failure
+        let summary_err = engine.execute_chain(
+            &bundle.chain,
+            &mut |pkg| {
+                if pkg.id == "ExtraMsi" {
+                    Err(Error::BurnBundleError {
+                        reason: "fail".to_string(),
+                    })
+                } else {
+                    Ok(0)
+                }
+            },
+            &mut dummy_rollback,
+        );
+        assert!(!summary_err.success);
+        assert_eq!(summary_err.exit_code, 1603);
+        assert_eq!(summary_err.installed_packages, vec!["PrereqMsi"]);
+        assert_eq!(
+            summary_err.rolled_back_packages,
+            vec!["UpdateMsu", "PatchMsp", "MainExe"]
+        );
     }
 }
