@@ -9,6 +9,7 @@
 //! - Wizard styling themes and accessibility metadata (`theme`).
 //! - Alternative terminal TUI interactive wizard (`tui`).
 
+pub mod console;
 pub mod controls;
 pub mod engine;
 pub mod events;
@@ -18,7 +19,12 @@ pub mod renderer;
 pub mod theme;
 pub mod tui;
 pub mod window;
+pub mod wizard;
 
+pub use console::{
+    ConsoleKind, GopPixelFormat, HeadlessConsole, LinuxVtDriver, SerialConsoleConfig, SerialParity,
+    UefiGopFramebuffer,
+};
 pub use controls::{
     ControlDefinition, ControlRuntimeState, ControlType, ListItem, SelectionTreeNode,
     VolumeCostEntry, CONTROL_ATTR_BITMAP, CONTROL_ATTR_ENABLED, CONTROL_ATTR_FIXED_SIZE,
@@ -49,4 +55,9 @@ pub use tui::{
 pub use window::{
     AccessKitBridge, AccessibleNode, AccessibleRole, GuiDesktopRuntime, GuiHardwareBackend,
     GuiInputEvent, WindowConfig,
+};
+pub use wizard::{
+    BareMetalInstallationWizard, DiagnosticsLogConsole, DiskSelectionDialog,
+    InstallationCompleteDialog, InstallationProgressDialog, LocaleFocusField, LocaleKeyboardDialog,
+    PartitionConfirmationDialog, WizardStep,
 };

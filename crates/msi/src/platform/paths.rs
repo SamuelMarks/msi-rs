@@ -5,8 +5,9 @@
 //! - Target platforms: `Linux`, `MacOs`, `FreeBsd`, `SunOs`, `Windows`.
 //! - Support for `$XDG_DATA_HOME`, `$XDG_CONFIG_HOME`, `$XDG_DESKTOP_DIR`, and `$TMPDIR` overrides.
 
+use crate::error::{Error, Result};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Target operating system platform for path resolution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -73,6 +74,10 @@ pub enum StandardDirectoryId {
     CommonFilesFolder,
     /// System binaries directory (`[SystemFolder]`).
     SystemFolder,
+    /// 64-bit System binaries directory (`[System64Folder]`).
+    System64Folder,
+    /// Windows system directory (`[WindowsFolder]`).
+    WindowsFolder,
     /// Shared machine application data (`[CommonAppDataFolder]`).
     CommonAppDataFolder,
     /// Per-user local application data (`[LocalAppDataFolder]`).
@@ -81,6 +86,8 @@ pub enum StandardDirectoryId {
     AppDataFolder,
     /// User desktop directory (`[DesktopFolder]`).
     DesktopFolder,
+    /// User profiles root directory (`[ProfilesFolder]`).
+    ProfilesFolder,
     /// Temporary files directory (`[TempFolder]`).
     TempFolder,
 }
@@ -103,10 +110,13 @@ impl StandardDirectoryId {
             "ProgramFiles64Folder" => Some(Self::ProgramFiles64Folder),
             "CommonFilesFolder" => Some(Self::CommonFilesFolder),
             "SystemFolder" => Some(Self::SystemFolder),
+            "System64Folder" => Some(Self::System64Folder),
+            "WindowsFolder" => Some(Self::WindowsFolder),
             "CommonAppDataFolder" => Some(Self::CommonAppDataFolder),
             "LocalAppDataFolder" => Some(Self::LocalAppDataFolder),
             "AppDataFolder" => Some(Self::AppDataFolder),
             "DesktopFolder" => Some(Self::DesktopFolder),
+            "ProfilesFolder" => Some(Self::ProfilesFolder),
             "TempFolder" => Some(Self::TempFolder),
             _ => None,
         }
@@ -121,10 +131,13 @@ impl StandardDirectoryId {
             Self::ProgramFiles64Folder => "ProgramFiles64Folder",
             Self::CommonFilesFolder => "CommonFilesFolder",
             Self::SystemFolder => "SystemFolder",
+            Self::System64Folder => "System64Folder",
+            Self::WindowsFolder => "WindowsFolder",
             Self::CommonAppDataFolder => "CommonAppDataFolder",
             Self::LocalAppDataFolder => "LocalAppDataFolder",
             Self::AppDataFolder => "AppDataFolder",
             Self::DesktopFolder => "DesktopFolder",
+            Self::ProfilesFolder => "ProfilesFolder",
             Self::TempFolder => "TempFolder",
         }
     }
@@ -143,6 +156,8 @@ pub struct PathResolver {
     home_dir: PathBuf,
     /// Target root prefix path (defaults to `/`).
     root_prefix: PathBuf,
+    /// Optional offline sysroot path for bare-metal OS installation.
+    sysroot: Option<PathBuf>,
     /// Environment variable overrides (e.g. `XDG_DATA_HOME`, `TMPDIR`).
     env_vars: HashMap<String, String>,
 }
@@ -171,6 +186,7 @@ impl PathResolver {
             product: product.into(),
             home_dir: home,
             root_prefix: PathBuf::from("/"),
+            sysroot: None,
             env_vars: HashMap::new(),
         }
     }
@@ -196,6 +212,71 @@ impl PathResolver {
         self
     }
 
+    /// Sets an explicit sysroot target directory for offline OS deployment.
+    ///
+    /// # Arguments
+    ///
+    /// * `sysroot` - Root prefix path of mounted target OS partition.
+    ///
+    /// # Returns
+    ///
+    /// Updated [`PathResolver`].
+    #[must_use]
+    pub fn sysroot(mut self, sysroot: impl Into<PathBuf>) -> Self {
+        self.sysroot = Some(sysroot.into());
+        self
+    }
+
+    /// Returns the configured sysroot path, if any.
+    ///
+    /// # Returns
+    ///
+    /// Optional borrowed [`Path`] reference.
+    #[must_use]
+    pub fn get_sysroot(&self) -> Option<&Path> {
+        self.sysroot.as_deref()
+    }
+
+    /// Prevents directory traversal attacks outside the mounted sysroot target.
+    ///
+    /// # Arguments
+    ///
+    /// * `sysroot` - Root prefix path.
+    /// * `subpath` - Requested path within sysroot.
+    ///
+    /// # Returns
+    ///
+    /// Sanitized absolute [`PathBuf`] within sysroot.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::SysrootMountError`] if path escapes the sysroot hierarchy.
+    pub fn sanitize_sysroot_path(sysroot: &Path, subpath: &Path) -> Result<PathBuf> {
+        let mut clean = sysroot.to_path_buf();
+        for component in subpath.components() {
+            match component {
+                std::path::Component::ParentDir => {
+                    if clean == sysroot {
+                        return Err(Error::SysrootMountError {
+                            path: subpath.display().to_string(),
+                            reason:
+                                "path attempts to escape sysroot via parent directory traversal"
+                                    .to_string(),
+                        });
+                    }
+                    clean.pop();
+                }
+                std::path::Component::Normal(c) => {
+                    clean.push(c);
+                }
+                std::path::Component::RootDir
+                | std::path::Component::Prefix(_)
+                | std::path::Component::CurDir => {}
+            }
+        }
+        Ok(clean)
+    }
+
     /// Sets an environment variable override for testing or custom environments.
     pub fn set_env(&mut self, key: impl Into<String>, val: impl Into<String>) {
         self.env_vars.insert(key.into(), val.into());
@@ -213,9 +294,18 @@ impl PathResolver {
     #[must_use]
     #[allow(clippy::too_many_lines)]
     pub fn resolve(&self, dir_id: StandardDirectoryId) -> PathBuf {
+        if let Some(ref sysroot) = self.sysroot {
+            return self.resolve_offline_sysroot(dir_id, sysroot);
+        }
+
         match (self.target_os, dir_id) {
             (_, StandardDirectoryId::TargetDir) => self.root_prefix.clone(),
 
+            (TargetOs::Windows, StandardDirectoryId::WindowsFolder) => PathBuf::from(r"C:\Windows"),
+            (
+                TargetOs::Windows,
+                StandardDirectoryId::SystemFolder | StandardDirectoryId::System64Folder,
+            ) => PathBuf::from(r"C:\Windows\System32"),
             (TargetOs::Windows, StandardDirectoryId::ProgramFilesFolder) => {
                 PathBuf::from(r"C:\Program Files (x86)")
             }
@@ -224,9 +314,6 @@ impl PathResolver {
             }
             (TargetOs::Windows, StandardDirectoryId::CommonFilesFolder) => {
                 PathBuf::from(r"C:\Program Files\Common Files")
-            }
-            (TargetOs::Windows, StandardDirectoryId::SystemFolder) => {
-                PathBuf::from(r"C:\Windows\System32")
             }
             (TargetOs::Windows, StandardDirectoryId::CommonAppDataFolder) => {
                 PathBuf::from(r"C:\ProgramData").join(&self.product)
@@ -237,6 +324,7 @@ impl PathResolver {
             (TargetOs::Windows, StandardDirectoryId::AppDataFolder) => {
                 self.home_dir.join(r"AppData\Roaming").join(&self.product)
             }
+            (TargetOs::Windows, StandardDirectoryId::ProfilesFolder) => PathBuf::from(r"C:\Users"),
             (TargetOs::Windows | TargetOs::MacOs, StandardDirectoryId::DesktopFolder) => {
                 self.home_dir.join("Desktop")
             }
@@ -256,9 +344,12 @@ impl PathResolver {
             (TargetOs::MacOs, StandardDirectoryId::CommonFilesFolder) => {
                 PathBuf::from("/Library/Application Support")
             }
-            (TargetOs::MacOs | TargetOs::FreeBsd, StandardDirectoryId::SystemFolder) => {
-                PathBuf::from("/usr/local/bin")
-            }
+            (
+                TargetOs::MacOs | TargetOs::FreeBsd,
+                StandardDirectoryId::SystemFolder | StandardDirectoryId::System64Folder,
+            ) => PathBuf::from("/usr/local/bin"),
+            (TargetOs::MacOs, StandardDirectoryId::WindowsFolder) => PathBuf::from("/Library"),
+            (TargetOs::MacOs, StandardDirectoryId::ProfilesFolder) => PathBuf::from("/Users"),
             (TargetOs::MacOs, StandardDirectoryId::CommonAppDataFolder) => {
                 PathBuf::from("/Library/Application Support").join(&self.product)
             }
@@ -299,9 +390,10 @@ impl PathResolver {
             (TargetOs::SunOs | TargetOs::Linux, StandardDirectoryId::CommonFilesFolder) => {
                 PathBuf::from("/usr/share")
             }
-            (TargetOs::SunOs | TargetOs::Linux, StandardDirectoryId::SystemFolder) => {
-                PathBuf::from("/usr/bin")
-            }
+            (
+                TargetOs::SunOs | TargetOs::Linux,
+                StandardDirectoryId::SystemFolder | StandardDirectoryId::System64Folder,
+            ) => PathBuf::from("/usr/bin"),
             (TargetOs::SunOs, StandardDirectoryId::CommonAppDataFolder) => {
                 PathBuf::from("/etc/opt").join(&self.product)
             }
@@ -310,6 +402,10 @@ impl PathResolver {
             (TargetOs::Linux, StandardDirectoryId::CommonAppDataFolder) => {
                 PathBuf::from("/var/lib").join(&self.product)
             }
+
+            // Linux/FreeBSD/SunOS WindowsFolder and ProfilesFolder
+            (_, StandardDirectoryId::WindowsFolder) => PathBuf::from("/etc"),
+            (_, StandardDirectoryId::ProfilesFolder) => PathBuf::from("/home"),
 
             // Shared XDG user directories for Linux, FreeBSD, SunOS
             (_, StandardDirectoryId::LocalAppDataFolder) => {
@@ -334,6 +430,69 @@ impl PathResolver {
                 .map_or_else(|| PathBuf::from("/tmp"), PathBuf::from),
         }
     }
+
+    /// Resolves directories relative to an explicit offline sysroot.
+    fn resolve_offline_sysroot(&self, dir_id: StandardDirectoryId, sysroot: &Path) -> PathBuf {
+        match (self.target_os, dir_id) {
+            (_, StandardDirectoryId::TargetDir) => sysroot.to_path_buf(),
+            (TargetOs::Windows, StandardDirectoryId::WindowsFolder) => sysroot.join("Windows"),
+            (
+                TargetOs::Windows,
+                StandardDirectoryId::SystemFolder | StandardDirectoryId::System64Folder,
+            ) => sysroot.join("Windows").join("System32"),
+            (TargetOs::Windows, StandardDirectoryId::ProgramFilesFolder) => {
+                sysroot.join("Program Files (x86)")
+            }
+            (TargetOs::Windows, StandardDirectoryId::ProgramFiles64Folder) => {
+                sysroot.join("Program Files")
+            }
+            (TargetOs::Windows, StandardDirectoryId::CommonFilesFolder) => {
+                sysroot.join("Program Files").join("Common Files")
+            }
+            (
+                TargetOs::Windows,
+                StandardDirectoryId::AppDataFolder | StandardDirectoryId::ProfilesFolder,
+            ) => sysroot.join("Users"),
+            (TargetOs::Windows, StandardDirectoryId::CommonAppDataFolder) => {
+                sysroot.join("ProgramData").join(&self.product)
+            }
+            (TargetOs::Windows, StandardDirectoryId::DesktopFolder) => {
+                sysroot.join("Users").join("Default").join("Desktop")
+            }
+            (TargetOs::Windows, StandardDirectoryId::TempFolder) => {
+                sysroot.join("Windows").join("Temp")
+            }
+            (TargetOs::Windows, StandardDirectoryId::LocalAppDataFolder) => sysroot
+                .join("Users")
+                .join("Default")
+                .join("AppData")
+                .join("Local")
+                .join(&self.product),
+            (_, StandardDirectoryId::WindowsFolder) => sysroot.join("etc"),
+            (_, StandardDirectoryId::SystemFolder | StandardDirectoryId::System64Folder) => {
+                sysroot.join("usr/bin")
+            }
+            (
+                _,
+                StandardDirectoryId::ProgramFilesFolder | StandardDirectoryId::ProgramFiles64Folder,
+            ) => self
+                .vendor
+                .as_ref()
+                .map_or_else(|| sysroot.join("opt"), |v| sysroot.join("opt").join(v)),
+            (_, StandardDirectoryId::CommonFilesFolder) => sysroot.join("usr/share"),
+            (_, StandardDirectoryId::CommonAppDataFolder) => {
+                sysroot.join("var/lib").join(&self.product)
+            }
+            (_, StandardDirectoryId::AppDataFolder | StandardDirectoryId::ProfilesFolder) => {
+                sysroot.join("home")
+            }
+            (_, StandardDirectoryId::LocalAppDataFolder) => {
+                sysroot.join("var/cache").join(&self.product)
+            }
+            (_, StandardDirectoryId::DesktopFolder) => sysroot.join("etc/skel/Desktop"),
+            (_, StandardDirectoryId::TempFolder) => sysroot.join("tmp"),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -355,6 +514,9 @@ mod tests {
             ),
             ("CommonFilesFolder", StandardDirectoryId::CommonFilesFolder),
             ("SystemFolder", StandardDirectoryId::SystemFolder),
+            ("System64Folder", StandardDirectoryId::System64Folder),
+            ("WindowsFolder", StandardDirectoryId::WindowsFolder),
+            ("ProfilesFolder", StandardDirectoryId::ProfilesFolder),
             (
                 "CommonAppDataFolder",
                 StandardDirectoryId::CommonAppDataFolder,
@@ -636,5 +798,200 @@ mod tests {
             format!("{:?}", StandardDirectoryId::ProgramFilesFolder).contains("ProgramFilesFolder")
         );
         assert!(format!("{custom_root:?}").contains("PathResolver"));
+    }
+
+    /// Tests offline sysroot path resolution on Windows.
+    #[test]
+    fn test_path_resolution_offline_sysroot_windows() {
+        let sysroot = Path::new("/mnt/target");
+        let win_resolver = PathResolver::new(TargetOs::Windows, "MyApp").sysroot(sysroot);
+
+        assert_eq!(win_resolver.get_sysroot(), Some(sysroot));
+        assert_eq!(
+            win_resolver.resolve(StandardDirectoryId::TargetDir),
+            PathBuf::from("/mnt/target")
+        );
+        assert_eq!(
+            win_resolver.resolve(StandardDirectoryId::WindowsFolder),
+            PathBuf::from("/mnt/target/Windows")
+        );
+        assert_eq!(
+            win_resolver.resolve(StandardDirectoryId::SystemFolder),
+            sysroot.join("Windows").join("System32")
+        );
+        assert_eq!(
+            win_resolver.resolve(StandardDirectoryId::System64Folder),
+            sysroot.join("Windows").join("System32")
+        );
+        assert_eq!(
+            win_resolver.resolve(StandardDirectoryId::ProgramFilesFolder),
+            sysroot.join("Program Files (x86)")
+        );
+        assert_eq!(
+            win_resolver.resolve(StandardDirectoryId::ProgramFiles64Folder),
+            sysroot.join("Program Files")
+        );
+        assert_eq!(
+            win_resolver.resolve(StandardDirectoryId::CommonFilesFolder),
+            sysroot.join("Program Files").join("Common Files")
+        );
+        assert_eq!(
+            win_resolver.resolve(StandardDirectoryId::ProfilesFolder),
+            sysroot.join("Users")
+        );
+        assert_eq!(
+            win_resolver.resolve(StandardDirectoryId::AppDataFolder),
+            sysroot.join("Users")
+        );
+        assert_eq!(
+            win_resolver.resolve(StandardDirectoryId::DesktopFolder),
+            sysroot.join("Users").join("Default").join("Desktop")
+        );
+        assert_eq!(
+            win_resolver.resolve(StandardDirectoryId::TempFolder),
+            sysroot.join("Windows").join("Temp")
+        );
+
+        // Test CommonAppDataFolder and LocalAppDataFolder with sysroot on Windows
+        assert_eq!(
+            win_resolver.resolve(StandardDirectoryId::CommonAppDataFolder),
+            sysroot.join("ProgramData").join("MyApp")
+        );
+        assert_eq!(
+            win_resolver.resolve(StandardDirectoryId::LocalAppDataFolder),
+            sysroot
+                .join("Users")
+                .join("Default")
+                .join("AppData")
+                .join("Local")
+                .join("MyApp")
+        );
+    }
+
+    /// Tests offline sysroot path resolution on Linux.
+    #[test]
+    fn test_path_resolution_offline_sysroot_linux() {
+        let sysroot = Path::new("/mnt/target");
+        let linux_resolver = PathResolver::new(TargetOs::Linux, "MyApp").sysroot(sysroot);
+        assert_eq!(
+            linux_resolver.resolve(StandardDirectoryId::TargetDir),
+            PathBuf::from("/mnt/target")
+        );
+        assert_eq!(
+            linux_resolver.resolve(StandardDirectoryId::WindowsFolder),
+            PathBuf::from("/mnt/target/etc")
+        );
+        assert_eq!(
+            linux_resolver.resolve(StandardDirectoryId::SystemFolder),
+            PathBuf::from("/mnt/target/usr/bin")
+        );
+        assert_eq!(
+            linux_resolver.resolve(StandardDirectoryId::CommonFilesFolder),
+            PathBuf::from("/mnt/target/usr/share")
+        );
+        assert_eq!(
+            linux_resolver.resolve(StandardDirectoryId::ProfilesFolder),
+            PathBuf::from("/mnt/target/home")
+        );
+        assert_eq!(
+            linux_resolver.resolve(StandardDirectoryId::TempFolder),
+            PathBuf::from("/mnt/target/tmp")
+        );
+        assert_eq!(
+            linux_resolver.resolve(StandardDirectoryId::ProgramFilesFolder),
+            sysroot.join("opt")
+        );
+        assert_eq!(
+            linux_resolver.resolve(StandardDirectoryId::CommonAppDataFolder),
+            sysroot.join("var/lib").join("MyApp")
+        );
+        assert_eq!(
+            linux_resolver.resolve(StandardDirectoryId::LocalAppDataFolder),
+            sysroot.join("var/cache").join("MyApp")
+        );
+        assert_eq!(
+            linux_resolver.resolve(StandardDirectoryId::DesktopFolder),
+            sysroot.join("etc/skel/Desktop")
+        );
+
+        // Linux resolver with vendor specified
+        let linux_vendor_resolver = PathResolver::new(TargetOs::Linux, "MyApp")
+            .vendor("AcmeCorp")
+            .sysroot(sysroot);
+        assert_eq!(
+            linux_vendor_resolver.resolve(StandardDirectoryId::ProgramFilesFolder),
+            sysroot.join("opt").join("AcmeCorp")
+        );
+        assert_eq!(
+            linux_vendor_resolver.resolve(StandardDirectoryId::ProgramFiles64Folder),
+            sysroot.join("opt").join("AcmeCorp")
+        );
+    }
+
+    /// Tests directory traversal sanitization within sysroot boundary.
+    #[test]
+    fn test_path_sanitization_and_traversal() {
+        let sysroot = Path::new("/mnt/target");
+
+        // Path sanitization checks
+        assert_eq!(
+            PathResolver::sanitize_sysroot_path(sysroot, Path::new("Windows/System32")),
+            Ok(PathBuf::from("/mnt/target/Windows/System32"))
+        );
+
+        // CurDir and RootDir components
+        assert_eq!(
+            PathResolver::sanitize_sysroot_path(sysroot, Path::new("./Windows/./System32")),
+            Ok(PathBuf::from("/mnt/target/Windows/System32"))
+        );
+        assert_eq!(
+            PathResolver::sanitize_sysroot_path(sysroot, Path::new("/Windows/System32")),
+            Ok(PathBuf::from("/mnt/target/Windows/System32"))
+        );
+
+        // Parent dir within sysroot is allowed
+        assert_eq!(
+            PathResolver::sanitize_sysroot_path(sysroot, Path::new("Windows/../Program Files")),
+            Ok(PathBuf::from("/mnt/target/Program Files"))
+        );
+
+        // Traversal escape outside sysroot is rejected
+        let escape = PathResolver::sanitize_sysroot_path(sysroot, Path::new("../../etc/shadow"));
+        assert!(escape.is_err());
+    }
+
+    /// Tests non-sysroot `WindowsFolder` and `ProfilesFolder` resolution across OSes and `set_env`.
+    #[test]
+    fn test_path_resolution_extra_branches_and_env() {
+        let mut resolver = PathResolver::new(TargetOs::Windows, "MyApp");
+        resolver.set_env("CUSTOM_ENV", "CUSTOM_VAL");
+        assert_eq!(
+            resolver.resolve(StandardDirectoryId::WindowsFolder),
+            PathBuf::from(r"C:\Windows")
+        );
+        assert_eq!(
+            resolver.resolve(StandardDirectoryId::ProfilesFolder),
+            PathBuf::from(r"C:\Users")
+        );
+
+        let mac_resolver = PathResolver::new(TargetOs::MacOs, "MyApp");
+        assert_eq!(
+            mac_resolver.resolve(StandardDirectoryId::WindowsFolder),
+            PathBuf::from("/Library")
+        );
+        assert_eq!(
+            mac_resolver.resolve(StandardDirectoryId::ProfilesFolder),
+            PathBuf::from("/Users")
+        );
+
+        let freebsd_resolver = PathResolver::new(TargetOs::FreeBsd, "MyApp");
+        assert_eq!(
+            freebsd_resolver.resolve(StandardDirectoryId::WindowsFolder),
+            PathBuf::from("/etc")
+        );
+        assert_eq!(
+            freebsd_resolver.resolve(StandardDirectoryId::ProfilesFolder),
+            PathBuf::from("/home")
+        );
     }
 }

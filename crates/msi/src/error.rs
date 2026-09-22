@@ -425,6 +425,99 @@ pub enum Error {
         /// Diagnostic detail.
         reason: String,
     },
+
+    /// An error occurred during boot harness or live image generation.
+    #[display("Boot harness error for recipe '{recipe}': {reason}")]
+    BootHarnessError {
+        /// Recipe or component identifier.
+        recipe: String,
+        /// Detail regarding the failure.
+        reason: String,
+    },
+
+    /// An error occurred during console or terminal initialization.
+    #[display("Console initialization error on device '{device}': {reason}")]
+    ConsoleInitError {
+        /// Device name or path.
+        device: String,
+        /// Detail regarding the failure.
+        reason: String,
+    },
+
+    /// An error occurred during Unified Kernel Image (UKI) packaging.
+    #[display("UKI packaging error: {reason}")]
+    UkiPackageError {
+        /// Detail regarding the failure.
+        reason: String,
+    },
+
+    /// An error occurred during block device discovery or operation.
+    #[display("Block device error on '{path}': {reason}")]
+    BlockDeviceError {
+        /// Block device path or identifier.
+        path: String,
+        /// Detail regarding the failure.
+        reason: String,
+    },
+
+    /// An error occurred during partition table creation or manipulation.
+    #[display("Partition error: {reason}")]
+    PartitionError {
+        /// Detail regarding the failure.
+        reason: String,
+    },
+
+    /// An error occurred during filesystem formatting or verification.
+    #[display("Filesystem formatting error for '{fs_type}': {reason}")]
+    FileSystemFormatError {
+        /// Filesystem type (e.g. FAT32, NTFS, ext4).
+        fs_type: String,
+        /// Detail regarding the failure.
+        reason: String,
+    },
+
+    /// An error occurred during sysroot mounting or redirection.
+    #[display("Sysroot mount error at '{path}': {reason}")]
+    SysrootMountError {
+        /// Sysroot path.
+        path: String,
+        /// Detail regarding the failure.
+        reason: String,
+    },
+
+    /// An error occurred during binary registry hive parsing or serialization.
+    #[display("Registry hive error on '{hive}': {reason}")]
+    RegistryHiveError {
+        /// Hive name or file path.
+        hive: String,
+        /// Detail regarding the failure.
+        reason: String,
+    },
+
+    /// An error occurred during driver store staging or hardware servicing.
+    #[display("Driver servicing error for INF '{inf}': {reason}")]
+    DriverServicingError {
+        /// Driver INF name or path.
+        inf: String,
+        /// Detail regarding the failure.
+        reason: String,
+    },
+
+    /// An error occurred during bootloader or firmware provisioning.
+    #[display("Bootloader error for target '{target}': {reason}")]
+    BootloaderError {
+        /// Bootloader target identifier.
+        target: String,
+        /// Detail regarding the failure.
+        reason: String,
+    },
+
+    /// An error occurred during unattended answer file generation or parsing.
+    #[display("Unattend configuration error: {reason}")]
+    UnattendError {
+        /// Detail regarding the failure.
+        reason: String,
+    },
 }
 
 impl From<std::io::Error> for Error {
@@ -862,6 +955,106 @@ mod tests {
         assert_eq!(
             format!("{err_ipc}"),
             "Worker IPC error: CRC32 frame checksum mismatch"
+        );
+    }
+
+    /// Tests formatting of bare metal and OS installer error variants.
+    #[test]
+    fn test_error_display_bare_metal() {
+        let err_boot = Error::BootHarnessError {
+            recipe: "linux-uki".to_string(),
+            reason: "missing kernel image".to_string(),
+        };
+        assert_eq!(
+            format!("{err_boot}"),
+            "Boot harness error for recipe 'linux-uki': missing kernel image"
+        );
+
+        let err_console = Error::ConsoleInitError {
+            device: "/dev/tty0".to_string(),
+            reason: "permission denied".to_string(),
+        };
+        assert_eq!(
+            format!("{err_console}"),
+            "Console initialization error on device '/dev/tty0': permission denied"
+        );
+
+        let err_uki = Error::UkiPackageError {
+            reason: "invalid EFI stub binary".to_string(),
+        };
+        assert_eq!(
+            format!("{err_uki}"),
+            "UKI packaging error: invalid EFI stub binary"
+        );
+
+        let err_block = Error::BlockDeviceError {
+            path: "/dev/nvme0n1".to_string(),
+            reason: "device is read-only".to_string(),
+        };
+        assert_eq!(
+            format!("{err_block}"),
+            "Block device error on '/dev/nvme0n1': device is read-only"
+        );
+
+        let err_part = Error::PartitionError {
+            reason: "GPT header CRC32 mismatch".to_string(),
+        };
+        assert_eq!(
+            format!("{err_part}"),
+            "Partition error: GPT header CRC32 mismatch"
+        );
+
+        let err_fmt = Error::FileSystemFormatError {
+            fs_type: "FAT32".to_string(),
+            reason: "too few clusters".to_string(),
+        };
+        assert_eq!(
+            format!("{err_fmt}"),
+            "Filesystem formatting error for 'FAT32': too few clusters"
+        );
+
+        let err_sysroot = Error::SysrootMountError {
+            path: "/mnt/target".to_string(),
+            reason: "target mount failed".to_string(),
+        };
+        assert_eq!(
+            format!("{err_sysroot}"),
+            "Sysroot mount error at '/mnt/target': target mount failed"
+        );
+
+        let err_hive = Error::RegistryHiveError {
+            hive: "SYSTEM".to_string(),
+            reason: "invalid regf header signature".to_string(),
+        };
+        assert_eq!(
+            format!("{err_hive}"),
+            "Registry hive error on 'SYSTEM': invalid regf header signature"
+        );
+
+        let err_drv = Error::DriverServicingError {
+            inf: "netio.inf".to_string(),
+            reason: "unsigned driver catalog".to_string(),
+        };
+        assert_eq!(
+            format!("{err_drv}"),
+            "Driver servicing error for INF 'netio.inf': unsigned driver catalog"
+        );
+
+        let err_bootloader = Error::BootloaderError {
+            target: "systemd-boot".to_string(),
+            reason: "loader entry write failure".to_string(),
+        };
+        assert_eq!(
+            format!("{err_bootloader}"),
+            "Bootloader error for target 'systemd-boot': loader entry write failure"
+        );
+
+        let err_unattend = Error::UnattendError {
+            reason: "missing ProductKey element".to_string(),
+        };
+        assert_eq!(
+            format!("{err_unattend}"),
+            "Unattend configuration error: missing ProductKey element"
         );
     }
 

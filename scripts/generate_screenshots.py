@@ -183,8 +183,7 @@ def wrap_text_to_width(
                     curr_line = sub_lines[-1]
                 else:
                     curr_line = word
-        if curr_line:
-            lines.append(curr_line)
+        lines.append(curr_line)
         return lines
 
     # For a single long token with hyphens (e.g. GUID):
@@ -216,8 +215,7 @@ def wrap_text_to_width(
                 curr = tok
             else:
                 curr = cand
-        if curr:
-            lines.append(curr)
+        lines.append(curr)
         return lines
 
     # Character-based wrap fallback
@@ -231,8 +229,7 @@ def wrap_text_to_width(
             curr = ch
         else:
             curr += ch
-    if curr:
-        lines.append(curr)
+    lines.append(curr)
     return lines
 
 

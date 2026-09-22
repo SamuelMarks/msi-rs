@@ -2,7 +2,7 @@
 //!
 //! Grounded directly in the official Windows Installer SDK SQL syntax specification:
 //! - Keywords: `SELECT`, `FROM`, `WHERE`, `ORDER BY`, `ASC`, `DESC`, `INSERT`, `INTO`, `VALUES`, `UPDATE`, `SET`, `DELETE`, `CREATE`, `TABLE`, `ALTER`, `ADD`, `DROP`, `HOLD`, `FREE`, `DISTINCT`, `IS`, `NULL`, `NOT`, `AND`, `OR`, `LIKE`.
-//! - Query execution against [`LinkedDatabase`].
+//! - Query execution against `LinkedDatabase`.
 
 pub mod ast;
 pub mod executor;

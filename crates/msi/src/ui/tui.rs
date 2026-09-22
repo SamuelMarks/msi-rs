@@ -33,6 +33,18 @@ pub enum TuiKey {
     Right,
     /// Printable character input for text edit boxes.
     Char(char),
+    /// Function key (F1 through F12).
+    F(u8),
+    /// Home navigation key.
+    Home,
+    /// End navigation key.
+    End,
+    /// Page Up navigation key.
+    PageUp,
+    /// Page Down navigation key.
+    PageDown,
+    /// Backspace deletion key.
+    Backspace,
 }
 
 /// Terminal input and window events.
@@ -367,7 +379,17 @@ impl TerminalWizard {
                 }
                 Ok(None)
             }
-            TuiKey::Up | TuiKey::Down | TuiKey::Left | TuiKey::Right | TuiKey::Char(_) => Ok(None),
+            TuiKey::Up
+            | TuiKey::Down
+            | TuiKey::Left
+            | TuiKey::Right
+            | TuiKey::Char(_)
+            | TuiKey::F(_)
+            | TuiKey::Home
+            | TuiKey::End
+            | TuiKey::PageUp
+            | TuiKey::PageDown
+            | TuiKey::Backspace => Ok(None),
         }
     }
 

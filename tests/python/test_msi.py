@@ -2,8 +2,6 @@
 Comprehensive test suite for the msi Python package.
 """
 
-import os
-import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -12,7 +10,7 @@ from pathlib import Path
 repo_root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(repo_root / "crates" / "msi-python" / "python"))
 
-import msi
+import msi  # type: ignore[import-not-found]
 
 
 def test_product_version_parsing_and_comparisons() -> None:
