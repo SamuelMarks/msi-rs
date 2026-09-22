@@ -8,6 +8,7 @@
 
 use crate::database::tables::types::ComponentGuid;
 use crate::error::Result;
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
@@ -16,11 +17,41 @@ const QUOTE: char = 34 as char;
 /// Backslash character constant.
 const BACKSLASH: char = 92 as char;
 
+/// Returns whether a relative path matches a pattern or glob expression.
+fn matches_pattern(rel_path: &str, pattern: &str) -> bool {
+    let norm_path = rel_path.replace('\\', "/");
+    let norm_pat = pattern.replace('\\', "/");
+    let norm_pat = norm_pat.trim_start_matches("./");
+
+    if norm_pat.ends_with("/*") || norm_pat.ends_with("/**") {
+        let prefix = norm_pat.trim_end_matches("/*").trim_end_matches("/**");
+        return norm_path.starts_with(prefix) || norm_path == prefix;
+    }
+    if let Some(suffix) = norm_pat.strip_prefix('*') {
+        return norm_path.ends_with(suffix);
+    }
+    if norm_pat.ends_with('/') {
+        let prefix = norm_pat.trim_end_matches('/');
+        return norm_path.starts_with(prefix) || norm_path.contains(&format!("/{prefix}/"));
+    }
+
+    norm_path == norm_pat
+        || norm_path.starts_with(&format!("{norm_pat}/"))
+        || norm_path.ends_with(&format!("/{norm_pat}"))
+        || norm_path.contains(&format!("/{norm_pat}/"))
+}
+
 /// `WiX` Asset and Metadata Harvester generating `.wxs` source fragments from disk assets and registries.
 #[derive(Debug, Clone, Default)]
 pub struct Harvester {
     /// File extensions to exclude from harvesting.
     excluded_extensions: Vec<String>,
+    /// Path or glob patterns to exclude from harvesting (e.g. from `.gitignore`).
+    excluded_patterns: Vec<String>,
+    /// Rules mapping path patterns to specific Media `DiskId` (e.g. `("cache/runtimes/*", 2)`).
+    disk_rules: Vec<(String, i16)>,
+    /// Secondary component groups filtering by pattern: `(group_id, pattern)`.
+    secondary_groups: Vec<(String, String)>,
 }
 
 impl Harvester {
@@ -33,6 +64,9 @@ impl Harvester {
     pub const fn new() -> Self {
         Self {
             excluded_extensions: Vec::new(),
+            excluded_patterns: Vec::new(),
+            disk_rules: Vec::new(),
+            secondary_groups: Vec::new(),
         }
     }
 
@@ -43,6 +77,56 @@ impl Harvester {
     /// * `ext` - Extension string to exclude.
     pub fn exclude_extension(&mut self, ext: impl Into<String>) {
         self.excluded_extensions.push(ext.into().to_lowercase());
+    }
+
+    /// Adds an excluded path pattern (e.g. `".git"`, `"tests_tmp/*"`).
+    ///
+    /// # Arguments
+    ///
+    /// * `pattern` - Glob or path pattern to exclude.
+    pub fn add_exclude_pattern(&mut self, pattern: impl Into<String>) {
+        self.excluded_patterns.push(pattern.into());
+    }
+
+    /// Loads exclusion patterns from a `.gitignore` file.
+    ///
+    /// # Arguments
+    ///
+    /// * `gitignore_path` - Path to `.gitignore` file.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::Error::Io`] if reading the file fails.
+    pub fn load_gitignore(&mut self, gitignore_path: &Path) -> Result<()> {
+        let content = fs::read_to_string(gitignore_path)?;
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if !trimmed.is_empty() && !trimmed.starts_with('#') {
+                self.excluded_patterns.push(trimmed.to_string());
+            }
+        }
+        Ok(())
+    }
+
+    /// Adds a rule mapping a path pattern to a specific Media `DiskId`.
+    ///
+    /// # Arguments
+    ///
+    /// * `pattern` - Path pattern to match (e.g. `"cache/runtimes/*"`).
+    /// * `disk_id` - Target `DiskId` for matching files.
+    pub fn add_disk_rule(&mut self, pattern: impl Into<String>, disk_id: i16) {
+        self.disk_rules.push((pattern.into(), disk_id));
+    }
+
+    /// Registers a secondary component group that captures files matching a pattern.
+    ///
+    /// # Arguments
+    ///
+    /// * `group_id` - Identifier of the secondary `<ComponentGroup>`.
+    /// * `pattern` - Path pattern to match (e.g. `"cache/**"`).
+    pub fn add_secondary_group(&mut self, group_id: impl Into<String>, pattern: impl Into<String>) {
+        self.secondary_groups
+            .push((group_id.into(), pattern.into()));
     }
 
     /// Recursively harvests a directory tree into a valid `WiX` XML source fragment.
@@ -69,72 +153,74 @@ impl Harvester {
     ) -> Result<String> {
         let mut xml = String::new();
         xml.push_str(&format!(
-            "<?xml version={QUOTE}1.0{QUOTE} encoding={QUOTE}UTF-8{QUOTE}?>
-"
+            "<?xml version={QUOTE}1.0{QUOTE} encoding={QUOTE}UTF-8{QUOTE}?>\n"
         ));
         xml.push_str(&format!(
-            "<Wix xmlns={QUOTE}http://schemas.microsoft.com/wix/2006/wi{QUOTE}>
-"
+            "<Wix xmlns={QUOTE}http://schemas.microsoft.com/wix/2006/wi{QUOTE}>\n"
         ));
-        xml.push_str(
-            "  <Fragment>
-",
-        );
+        xml.push_str("  <Fragment>\n");
         xml.push_str(&format!(
-            "    <DirectoryRef Id={QUOTE}{target_dir_id}{QUOTE}>
-"
+            "    <DirectoryRef Id={QUOTE}{target_dir_id}{QUOTE}>\n"
         ));
 
         let mut components = Vec::new();
+        let mut secondary_members: HashMap<String, Vec<String>> = HashMap::new();
         let mut counter = 0;
         self.harvest_dir_recursive(
+            dir_path,
             dir_path,
             target_dir_id,
             &mut counter,
             &mut xml,
             &mut components,
+            &mut secondary_members,
         )?;
 
-        xml.push_str(
-            "    </DirectoryRef>
-",
-        );
+        xml.push_str("    </DirectoryRef>\n");
 
         xml.push_str(&format!(
-            "    <ComponentGroup Id={QUOTE}{comp_group_id}{QUOTE}>
-"
+            "    <ComponentGroup Id={QUOTE}{comp_group_id}{QUOTE}>\n"
         ));
         for comp_id in &components {
             xml.push_str(&format!(
-                "      <ComponentRef Id={QUOTE}{comp_id}{QUOTE} />
-"
+                "      <ComponentRef Id={QUOTE}{comp_id}{QUOTE} />\n"
             ));
         }
-        xml.push_str(
-            "    </ComponentGroup>
-",
-        );
-        xml.push_str(
-            "  </Fragment>
-",
-        );
-        xml.push_str(
-            "</Wix>
-",
-        );
+        xml.push_str("    </ComponentGroup>\n");
+
+        for (sec_group, sec_comps) in &secondary_members {
+            xml.push_str(&format!(
+                "    <ComponentGroup Id={QUOTE}{sec_group}{QUOTE}>\n"
+            ));
+            for comp_id in sec_comps {
+                xml.push_str(&format!(
+                    "      <ComponentRef Id={QUOTE}{comp_id}{QUOTE} />\n"
+                ));
+            }
+            xml.push_str("    </ComponentGroup>\n");
+        }
+
+        xml.push_str("  </Fragment>\n");
+        xml.push_str("</Wix>\n");
 
         Ok(xml)
     }
 
     /// Recursive directory traversal worker.
-    #[allow(clippy::too_many_lines, clippy::format_push_string)]
+    #[allow(
+        clippy::too_many_lines,
+        clippy::too_many_arguments,
+        clippy::format_push_string
+    )]
     fn harvest_dir_recursive(
         &self,
+        root_path: &Path,
         current_path: &Path,
         parent_dir_id: &str,
         counter: &mut usize,
         xml: &mut String,
         components: &mut Vec<String>,
+        secondary_members: &mut HashMap<String, Vec<String>>,
     ) -> Result<()> {
         let mut entries = Vec::new();
         if current_path.is_dir() {
@@ -148,6 +234,20 @@ impl Harvester {
         let mut subdirs = Vec::new();
 
         for entry in entries {
+            let rel_path = entry
+                .strip_prefix(root_path)
+                .unwrap_or(&entry)
+                .to_string_lossy();
+            let norm_rel = rel_path.replace('\\', "/");
+
+            if self
+                .excluded_patterns
+                .iter()
+                .any(|pat| matches_pattern(&norm_rel, pat))
+            {
+                continue;
+            }
+
             if entry.is_dir() {
                 subdirs.push(entry);
             } else {
@@ -171,19 +271,37 @@ impl Harvester {
             let guid = ComponentGuid::generate_deterministic(parent_dir_id, &comp_id)?;
             let short_name = make_8_3_name(&file_name);
 
+            let rel_path = file
+                .strip_prefix(root_path)
+                .unwrap_or(&file)
+                .to_string_lossy();
+            let norm_rel = rel_path.replace('\\', "/");
+
+            let mut disk_attr = String::new();
+            for (pat, did) in &self.disk_rules {
+                if matches_pattern(&norm_rel, pat) {
+                    disk_attr = format!(" DiskId={QUOTE}{did}{QUOTE}");
+                    break;
+                }
+            }
+
+            for (group_id, pat) in &self.secondary_groups {
+                if matches_pattern(&norm_rel, pat) {
+                    secondary_members
+                        .entry(group_id.clone())
+                        .or_default()
+                        .push(comp_id.clone());
+                }
+            }
+
             xml.push_str(&format!(
-                "      <Component Id={QUOTE}{comp_id}{QUOTE} Guid={QUOTE}{guid}{QUOTE}>
-"
+                "      <Component Id={QUOTE}{comp_id}{QUOTE} Guid={QUOTE}{guid}{QUOTE}>\n"
             ));
             xml.push_str(&format!(
-                "        <File Id={QUOTE}{file_id}{QUOTE} Name={QUOTE}{file_name}{QUOTE} ShortName={QUOTE}{short_name}{QUOTE} Source={QUOTE}{}{QUOTE} KeyPath={QUOTE}yes{QUOTE} />
-",
+                "        <File Id={QUOTE}{file_id}{QUOTE} Name={QUOTE}{file_name}{QUOTE} ShortName={QUOTE}{short_name}{QUOTE} Source={QUOTE}{}{QUOTE}{disk_attr} KeyPath={QUOTE}yes{QUOTE} />\n",
                 file.display()
             ));
-            xml.push_str(
-                "      </Component>
-",
-            );
+            xml.push_str("      </Component>\n");
             components.push(comp_id);
         }
 
@@ -195,14 +313,18 @@ impl Harvester {
             let short_name = make_8_3_name(&dir_name);
 
             xml.push_str(&format!(
-                "      <Directory Id={QUOTE}{sub_dir_id}{QUOTE} Name={QUOTE}{dir_name}{QUOTE} ShortName={QUOTE}{short_name}{QUOTE}>
-"
+                "      <Directory Id={QUOTE}{sub_dir_id}{QUOTE} Name={QUOTE}{dir_name}{QUOTE} ShortName={QUOTE}{short_name}{QUOTE}>\n"
             ));
-            self.harvest_dir_recursive(&subdir, &sub_dir_id, counter, xml, components)?;
-            xml.push_str(
-                "      </Directory>
-",
-            );
+            self.harvest_dir_recursive(
+                root_path,
+                &subdir,
+                &sub_dir_id,
+                counter,
+                xml,
+                components,
+                secondary_members,
+            )?;
+            xml.push_str("      </Directory>\n");
         }
 
         Ok(())
@@ -607,5 +729,60 @@ LineWithoutEquals
             ("string", "\"unterminated".to_string())
         );
         assert_eq!(parse_reg_value("\""), ("string", "\"".to_string()));
+    }
+
+    /// Tests harvester gitignore filtering, disk routing rules, and secondary component groups.
+    #[test]
+    fn test_harvester_gitignore_disk_rules_and_secondary_groups() -> Result<()> {
+        let temp_dir = std::env::temp_dir().join("msi_harvest_advanced_test");
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(temp_dir.join("cache").join("runtimes"))?;
+        fs::create_dir_all(temp_dir.join("cache").join("databases"))?;
+        fs::create_dir_all(temp_dir.join("ignored_dir"))?;
+
+        fs::write(
+            temp_dir.join(".gitignore"),
+            "ignored_dir/*\n*.log\n# comment\n\n",
+        )?;
+        fs::write(temp_dir.join("app.exe"), b"app binary")?;
+        fs::write(temp_dir.join("ignored.log"), b"log")?;
+        fs::write(temp_dir.join("ignored_dir").join("secret.txt"), b"secret")?;
+        fs::write(
+            temp_dir.join("cache").join("runtimes").join("python.dll"),
+            b"python",
+        )?;
+        fs::write(
+            temp_dir.join("cache").join("databases").join("db.bin"),
+            b"database",
+        )?;
+
+        let mut harvester = Harvester::new();
+        harvester.load_gitignore(&temp_dir.join(".gitignore"))?;
+        harvester.add_exclude_pattern("*.gitignore");
+        harvester.add_disk_rule("cache/runtimes/*", 2);
+        harvester.add_disk_rule("cache/databases/*", 3);
+        harvester.add_secondary_group("OfflineCacheComponents", "cache/**");
+
+        let xml = harvester.harvest_directory(&temp_dir, "MainComponents", "INSTALLFOLDER")?;
+
+        // 1. Verify excluded files are not in xml
+        assert!(!xml.contains("ignored.log"));
+        assert!(!xml.contains("secret.txt"));
+
+        // 2. Verify included files
+        assert!(xml.contains("app.exe"));
+        assert!(xml.contains("python.dll"));
+        assert!(xml.contains("db.bin"));
+
+        // 3. Verify disk routing
+        assert!(xml.contains(r#"Source=""#) || xml.contains(r#"Source=""#));
+        assert!(xml.contains(r#"DiskId="2""#));
+        assert!(xml.contains(r#"DiskId="3""#));
+
+        // 4. Verify secondary group
+        assert!(xml.contains(r#"<ComponentGroup Id="OfflineCacheComponents">"#));
+
+        let _ = fs::remove_dir_all(&temp_dir);
+        Ok(())
     }
 }

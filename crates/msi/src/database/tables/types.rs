@@ -500,6 +500,37 @@ impl fmt::Display for SequenceNumber {
     }
 }
 
+/// Truncates and deterministically hashes an identifier that exceeds 72 characters.
+///
+/// If `s` has 72 or fewer characters, it is returned unchanged.
+/// If `s` exceeds 72 characters, the first 55 bytes (adjusted to UTF-8 char boundary)
+/// are preserved and suffixed with `_` and a 16-hex-character deterministic SHA-1 hash
+/// of the full identifier, ensuring the result is at most 72 characters and unique.
+///
+/// # Arguments
+///
+/// * `s` - Raw identifier string.
+///
+/// # Returns
+///
+/// Deterministically sanitized identifier string of 72 characters or fewer.
+#[must_use]
+pub fn sanitize_identifier_length(s: String) -> String {
+    if s.len() <= 72 {
+        return s;
+    }
+    let hash = compute_sha1(s.as_bytes());
+    let hex_hash = format!(
+        "{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}",
+        hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7]
+    );
+    let mut boundary = 55;
+    while !s.is_char_boundary(boundary) {
+        boundary -= 1;
+    }
+    format!("{}_{hex_hash}", &s[..boundary])
+}
+
 /// Strongly-typed File key identifier (primary key in `File` table).
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FileKey(String);
@@ -507,29 +538,30 @@ pub struct FileKey(String);
 impl FileKey {
     /// Creates a new [`FileKey`].
     ///
+    /// Identifiers exceeding 72 characters are deterministically hashed to conform
+    /// to the standard Windows Installer column length limit.
+    ///
     /// # Arguments
     ///
     /// * `key` - Primary key identifier string.
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] if `key` is empty or exceeds 72 characters.
+    /// Returns [`Error::Validation`] if `key` is empty.
     pub fn new(key: impl Into<String>) -> Result<Self> {
         Self::new_inner(key.into())
     }
 
     /// Validates and constructs a [`FileKey`] from an owned string.
     fn new_inner(s: String) -> Result<Self> {
-        if s.is_empty() || s.len() > 72 {
+        if s.is_empty() {
             return Err(Error::Validation {
                 element: "FileKey".to_string(),
-                reason: format!(
-                    "FileKey must be between 1 and 72 characters, got {}",
-                    s.len()
-                ),
+                reason: "FileKey must not be empty".to_string(),
             });
         }
-        Ok(Self(s))
+        let sanitized = sanitize_identifier_length(s);
+        Ok(Self(sanitized))
     }
 
     /// Returns the string slice.
@@ -605,29 +637,30 @@ pub struct ComponentName(String);
 impl ComponentName {
     /// Creates a new [`ComponentName`].
     ///
+    /// Identifiers exceeding 72 characters are deterministically hashed to conform
+    /// to the standard Windows Installer column length limit.
+    ///
     /// # Arguments
     ///
     /// * `name` - Component name string.
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] if `name` is empty or exceeds 72 characters.
+    /// Returns [`Error::Validation`] if `name` is empty.
     pub fn new(name: impl Into<String>) -> Result<Self> {
         Self::new_inner(name.into())
     }
 
     /// Validates and constructs a [`ComponentName`] from an owned string.
     fn new_inner(s: String) -> Result<Self> {
-        if s.is_empty() || s.len() > 72 {
+        if s.is_empty() {
             return Err(Error::Validation {
                 element: "ComponentName".to_string(),
-                reason: format!(
-                    "ComponentName must be between 1 and 72 characters, got {}",
-                    s.len()
-                ),
+                reason: "ComponentName must not be empty".to_string(),
             });
         }
-        Ok(Self(s))
+        let sanitized = sanitize_identifier_length(s);
+        Ok(Self(sanitized))
     }
 
     /// Returns the string slice.
@@ -654,29 +687,30 @@ pub struct DirectoryId(String);
 impl DirectoryId {
     /// Creates a new [`DirectoryId`].
     ///
+    /// Identifiers exceeding 72 characters are deterministically hashed to conform
+    /// to the standard Windows Installer column length limit.
+    ///
     /// # Arguments
     ///
     /// * `id` - Directory identifier string (e.g. `TARGETDIR`, `INSTALLDIR`).
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] if `id` is empty or exceeds 72 characters.
+    /// Returns [`Error::Validation`] if `id` is empty.
     pub fn new(id: impl Into<String>) -> Result<Self> {
         Self::new_inner(id.into())
     }
 
     /// Validates and constructs a [`DirectoryId`] from an owned string.
     fn new_inner(s: String) -> Result<Self> {
-        if s.is_empty() || s.len() > 72 {
+        if s.is_empty() {
             return Err(Error::Validation {
                 element: "DirectoryId".to_string(),
-                reason: format!(
-                    "DirectoryId must be between 1 and 72 characters, got {}",
-                    s.len()
-                ),
+                reason: "DirectoryId must not be empty".to_string(),
             });
         }
-        Ok(Self(s))
+        let sanitized = sanitize_identifier_length(s);
+        Ok(Self(sanitized))
     }
 
     /// Returns the string slice.
@@ -832,7 +866,9 @@ mod tests {
     #[test]
     fn test_file_key() -> Result<()> {
         assert!(FileKey::new("").is_err());
-        assert!(FileKey::new("a".repeat(73)).is_err());
+        let f_long = FileKey::new("a".repeat(73))?;
+        assert!(f_long.as_str().len() <= 72);
+        assert!(f_long.as_str().starts_with(&"a".repeat(55)));
         let f = FileKey::new("bin_file")?;
         assert_eq!(f.as_str(), "bin_file");
         assert_eq!(format!("{f}"), "bin_file");
@@ -852,7 +888,18 @@ mod tests {
     #[test]
     fn test_component_name() -> Result<()> {
         assert!(ComponentName::new("").is_err());
-        assert!(ComponentName::new("a".repeat(73)).is_err());
+        let c_long = ComponentName::new(
+            "CMP_H__lib_web_servers_nginx_conf_simple_location_proxy_websockets_conf",
+        )?;
+        assert!(c_long.as_str().len() <= 72);
+        assert!(c_long
+            .as_str()
+            .starts_with("CMP_H__lib_web_servers_nginx_conf_simple_location_proxy"));
+        // Test deterministic behavior
+        let c_long_repeat = ComponentName::new(
+            "CMP_H__lib_web_servers_nginx_conf_simple_location_proxy_websockets_conf",
+        )?;
+        assert_eq!(c_long, c_long_repeat);
         let c = ComponentName::new("MainComp")?;
         assert_eq!(c.as_str(), "MainComp");
         assert_eq!(format!("{c}"), "MainComp");
@@ -862,11 +909,22 @@ mod tests {
     #[test]
     fn test_directory_id() -> Result<()> {
         assert!(DirectoryId::new("").is_err());
-        assert!(DirectoryId::new("a".repeat(73)).is_err());
+        let d_long = DirectoryId::new(
+            "DIR_H__lib_web_servers_nginx_conf_simple_location_proxy_websockets_conf",
+        )?;
+        assert!(d_long.as_str().len() <= 72);
         let d = DirectoryId::new("TARGETDIR")?;
         assert_eq!(d.as_str(), "TARGETDIR");
         assert_eq!(format!("{d}"), "TARGETDIR");
         Ok(())
+    }
+
+    #[test]
+    fn test_sanitize_identifier_multibyte_utf8() {
+        // Multi-byte character around index 55
+        let s = format!("{}🦀{}", "a".repeat(54), "b".repeat(30));
+        let sanitized = sanitize_identifier_length(s);
+        assert!(sanitized.len() <= 72);
     }
 
     #[test]

@@ -214,6 +214,43 @@ impl XmlParser {
                     continue;
                 }
 
+                // Check for CDATA <![CDATA[
+                if input[i..].starts_with("<![CDATA[") {
+                    // Skip "<![CDATA[" (note '<' was already consumed at line 191)
+                    for _ in 0..8 {
+                        if let Some((_, c)) = chars.next() {
+                            if c == '\n' {
+                                line += 1;
+                                col = 1;
+                            } else {
+                                col += 1;
+                            }
+                        }
+                    }
+                    let mut cdata_text = String::new();
+                    while let Some(&(next_i, c)) = chars.peek() {
+                        if input[next_i..].starts_with("]]>") {
+                            let _ = chars.next(); // ]
+                            let _ = chars.next(); // ]
+                            let _ = chars.next(); // >
+                            col += 3;
+                            break;
+                        }
+                        cdata_text.push(c);
+                        let _ = chars.next();
+                        if c == '\n' {
+                            line += 1;
+                            col = 1;
+                        } else {
+                            col += 1;
+                        }
+                    }
+                    if let Some(top) = stack.last_mut() {
+                        top.text.push_str(&cdata_text);
+                    }
+                    continue;
+                }
+
                 // Check for XML declaration <?xml or processing instruction <?
                 if input[i..].starts_with("<?") {
                     while let Some((_, c)) = chars.next() {
@@ -614,6 +651,25 @@ Outside text after root
         // Trailing key without value or reaching EOF
         assert!(parser.parse("<Doc key ").is_err());
         assert!(parser.parse("<Doc key").is_err());
+    }
+
+    /// Tests CDATA section parsing including embedded quotes, operators, and multiline text.
+    #[test]
+    fn test_xml_parser_cdata() {
+        let parser = XmlParser::new();
+        let xml = r#"<Publish Event="EndDialog" Value="Return"><![CDATA[LICENSE_ACCEPTED="1" AND PROP_VAL > 0]]></Publish>"#;
+        let res = parser.parse(xml);
+        assert!(res.is_ok());
+        let node = res.unwrap_or_default();
+        assert_eq!(node.tag, "Publish");
+        assert_eq!(node.text, "LICENSE_ACCEPTED=\"1\" AND PROP_VAL > 0");
+
+        // Multiline CDATA
+        let xml_multiline = "<Condition><![CDATA[\nLINE1\nLINE2\n]]></Condition>";
+        let res_multi = parser.parse(xml_multiline);
+        assert!(res_multi.is_ok());
+        let node_multi = res_multi.unwrap_or_default();
+        assert_eq!(node_multi.text, "\nLINE1\nLINE2\n");
     }
 
     /// Tests node query methods on non-existent elements and trait implementations.

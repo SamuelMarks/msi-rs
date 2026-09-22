@@ -888,7 +888,7 @@ mod tests {
                 )
                 .is_err());
 
-            // 4. File whose name exceeds 72 characters triggers FileKey::new error branch
+            // 4. File whose name exceeds 72 characters is deterministically hashed and succeeds
             let long_name = format!("{}.txt", "a".repeat(80));
             let long_file = std::env::temp_dir().join(long_name);
             let _ = fs::write(&long_file, b"long filename test");
@@ -899,8 +899,18 @@ mod tests {
                     "MainFeat".to_string(),
                     None
                 )
-                .is_err());
+                .is_ok());
             let _ = fs::remove_file(&long_file);
+
+            // 5. Empty feature name triggers error branch
+            assert!(b
+                .add_file_from_disk(
+                    temp_src.to_str().unwrap_or(""),
+                    "TARGETDIR".to_string(),
+                    String::new(),
+                    None
+                )
+                .is_err());
 
             let _ = fs::remove_file(&temp_src);
             true

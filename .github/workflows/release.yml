@@ -1,0 +1,334 @@
+name: Release & Binary Distribution
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-*"
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: "Mark as pre-release"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  build-binaries:
+    name: Build Binaries (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux x86_64 (GNU & Musl)
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            use-cross: false
+            archive-ext: tar.gz
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            use-cross: true
+            archive-ext: tar.gz
+
+          # Linux aarch64 (GNU & Musl)
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            use-cross: true
+            archive-ext: tar.gz
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            use-cross: true
+            archive-ext: tar.gz
+
+          # macOS (Apple Silicon & Intel)
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            use-cross: false
+            archive-ext: tar.gz
+          - os: macos-13
+            target: x86_64-apple-darwin
+            use-cross: false
+            archive-ext: tar.gz
+
+          # Windows (x86_64 & aarch64)
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            use-cross: false
+            archive-ext: zip
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            use-cross: false
+            archive-ext: zip
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Install Stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install Cross (if cross-compiling)
+        if: matrix.use-cross
+        uses: taiki-e/install-action@cross
+
+      - name: Cache Cargo Dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build Release CLI and GUI Binaries
+        shell: bash
+        run: |
+          BUILD_CMD="cargo"
+          if [ "${{ matrix.use-cross }}" = "true" ]; then
+            BUILD_CMD="cross"
+          fi
+          $BUILD_CMD build --release --target ${{ matrix.target }} -p msi-cli -p msi-gui
+
+      - name: Package Binary Archive (POSIX)
+        if: matrix.archive-ext == 'tar.gz'
+        shell: bash
+        run: |
+          BIN_DIR="target/${{ matrix.target }}/release"
+          PKG_NAME="msi-tools-${{ github.ref_name }}-${{ matrix.target }}"
+          STAGING_DIR="target/staging/${PKG_NAME}"
+          mkdir -p "${STAGING_DIR}"
+
+          # Binaries to package
+          BINARIES=(msi candle light wix heat dark lit msibuild msidiff msidump msiextract msiinfo pyro smoke torch msi-gui)
+          for bin in "${BINARIES[@]}"; do
+            if [ -f "${BIN_DIR}/${bin}" ]; then
+              cp "${BIN_DIR}/${bin}" "${STAGING_DIR}/"
+            fi
+          done
+
+          # Documentation and License
+          cp README.md LICENSE-MIT LICENSE-APACHE "${STAGING_DIR}/"
+          if [ -f ARCHITECTURE.md ]; then
+            cp ARCHITECTURE.md "${STAGING_DIR}/"
+          fi
+
+          tar -czf "target/${PKG_NAME}.tar.gz" -C target/staging "${PKG_NAME}"
+          cd target && sha256sum "${PKG_NAME}.tar.gz" > "${PKG_NAME}.tar.gz.sha256"
+
+      - name: Package Binary Archive (Windows)
+        if: matrix.archive-ext == 'zip'
+        shell: bash
+        run: |
+          BIN_DIR="target/${{ matrix.target }}/release"
+          PKG_NAME="msi-tools-${{ github.ref_name }}-${{ matrix.target }}"
+          STAGING_DIR="target/staging/${PKG_NAME}"
+          mkdir -p "${STAGING_DIR}"
+
+          # Executables to package
+          BINARIES=(msi.exe candle.exe light.exe wix.exe heat.exe dark.exe lit.exe msibuild.exe msidiff.exe msidump.exe msiextract.exe msiinfo.exe pyro.exe smoke.exe torch.exe msi-gui.exe)
+          for bin in "${BINARIES[@]}"; do
+            if [ -f "${BIN_DIR}/${bin}" ]; then
+              cp "${BIN_DIR}/${bin}" "${STAGING_DIR}/"
+            fi
+          done
+
+          cp README.md LICENSE-MIT LICENSE-APACHE "${STAGING_DIR}/"
+          if [ -f ARCHITECTURE.md ]; then
+            cp ARCHITECTURE.md "${STAGING_DIR}/"
+          fi
+
+          cd target/staging && 7z a "../${PKG_NAME}.zip" "${PKG_NAME}"
+          cd .. && sha256sum "${PKG_NAME}.zip" > "${PKG_NAME}.zip.sha256"
+
+      - name: Upload Binary Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: binaries-${{ matrix.target }}
+          path: |
+            target/*.tar.gz
+            target/*.tar.gz.sha256
+            target/*.zip
+            target/*.zip.sha256
+
+  build-c-sdk:
+    name: Build C-FFI SDK (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive-ext: tar.gz
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            archive-ext: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive-ext: zip
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Install Stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Cargo Dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: c-sdk-${{ matrix.target }}
+
+      - name: Build C-FFI Shared & Static Libraries
+        run: cargo build --release --target ${{ matrix.target }} -p msi-ffi
+
+      - name: Package C SDK (POSIX)
+        if: matrix.archive-ext == 'tar.gz'
+        shell: bash
+        run: |
+          PKG_NAME="msi-c-sdk-${{ github.ref_name }}-${{ matrix.target }}"
+          STAGING_DIR="target/staging/${PKG_NAME}"
+          mkdir -p "${STAGING_DIR}/include" "${STAGING_DIR}/lib"
+
+          cp crates/msi-ffi/include/msi.h "${STAGING_DIR}/include/"
+          cp target/${{ matrix.target }}/release/libmsi_ffi.a "${STAGING_DIR}/lib/"
+          if [ -f target/${{ matrix.target }}/release/libmsi_ffi.so ]; then
+            cp target/${{ matrix.target }}/release/libmsi_ffi.so "${STAGING_DIR}/lib/"
+          fi
+          if [ -f target/${{ matrix.target }}/release/libmsi_ffi.dylib ]; then
+            cp target/${{ matrix.target }}/release/libmsi_ffi.dylib "${STAGING_DIR}/lib/"
+          fi
+          cp LICENSE-MIT LICENSE-APACHE "${STAGING_DIR}/"
+
+          tar -czf "target/${PKG_NAME}.tar.gz" -C target/staging "${PKG_NAME}"
+          cd target && sha256sum "${PKG_NAME}.tar.gz" > "${PKG_NAME}.tar.gz.sha256"
+
+      - name: Package C SDK (Windows)
+        if: matrix.archive-ext == 'zip'
+        shell: bash
+        run: |
+          PKG_NAME="msi-c-sdk-${{ github.ref_name }}-${{ matrix.target }}"
+          STAGING_DIR="target/staging/${PKG_NAME}"
+          mkdir -p "${STAGING_DIR}/include" "${STAGING_DIR}/lib"
+
+          cp crates/msi-ffi/include/msi.h "${STAGING_DIR}/include/"
+          cp target/${{ matrix.target }}/release/msi_ffi.lib "${STAGING_DIR}/lib/"
+          if [ -f target/${{ matrix.target }}/release/msi_ffi.dll ]; then
+            cp target/${{ matrix.target }}/release/msi_ffi.dll "${STAGING_DIR}/lib/"
+          fi
+          cp LICENSE-MIT LICENSE-APACHE "${STAGING_DIR}/"
+
+          cd target/staging && 7z a "../${PKG_NAME}.zip" "${PKG_NAME}"
+          cd .. && sha256sum "${PKG_NAME}.zip" > "${PKG_NAME}.zip.sha256"
+
+      - name: Upload C SDK Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: c-sdk-${{ matrix.target }}
+          path: |
+            target/*.tar.gz
+            target/*.tar.gz.sha256
+            target/*.zip
+            target/*.zip.sha256
+
+  build-python-wheels:
+    name: Build Python Wheels (${{ matrix.os }} - ${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64
+          - os: ubuntu-latest
+            target: aarch64
+          - os: macos-latest
+            target: aarch64
+          - os: macos-13
+            target: x86_64
+          - os: windows-latest
+            target: x64
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Build Python Wheels via Maturin
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: --release --out dist --manifest-path crates/msi-python/Cargo.toml
+          sdist: ${{ matrix.os == 'ubuntu-latest' && matrix.target == 'x86_64' }}
+
+      - name: Upload Wheel Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: wheels-${{ matrix.os }}-${{ matrix.target }}
+          path: dist/*
+
+  create-release:
+    name: Create GitHub Release
+    needs: [build-binaries, build-c-sdk, build-python-wheels]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: release_assets
+
+      - name: Organize Release Assets & Compute Unified Checksums
+        shell: bash
+        run: |
+          mkdir -p release_dist
+          find release_assets -type f \( -name "*.tar.gz" -o -name "*.zip" -o -name "*.whl" -o -name "*.tar.gz" \) -exec cp {} release_dist/ \;
+
+          cd release_dist
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Generate Release Notes & Changelog
+        id: release_notes
+        shell: bash
+        run: |
+          cat << 'EOF' > release_body.md
+          ## MSI-RS Windows Installer Engine Release
+
+          ### Features & Highlights
+          - **Pure-Rust Toolset**: 100% self-contained replacement for WiX v3 / v4 (`candle`, `light`, `wix`, `heat`, `dark`, `lit`, `msibuild`, `msidump`, `msiextract`, `msiinfo`).
+          - **True Cross-Platform Support**: Compiles `.msi` packages identically on Linux, macOS, FreeBSD, SunOS, and Windows.
+          - **Multi-Cabinet Partitioning**: Supports offline multi-CAB installers (`engine.cab`, `runtimes.cab`, `databases.cab`, etc.) with aligned sequence numbering.
+          - **Topological Action Sequencer**: Relative sequence resolution (`Before`, `After`, `OnExit`) for custom actions and UI dialogs.
+          - **Multi-Language SDKs**: Native Rust crate, C-FFI dynamic and static libraries, and Python wheels (`pip install msi`).
+
+          ### Checksums (SHA-256)
+          ```text
+          EOF
+          cat release_dist/SHA256SUMS.txt >> release_body.md
+          echo '```' >> release_body.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          body_path: release_body.md
+          draft: false
+          prerelease: ${{ inputs.prerelease || contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}
+          files: |
+            release_dist/*
+          fail_on_unmatched_files: false

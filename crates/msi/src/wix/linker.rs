@@ -23,7 +23,7 @@ use crate::package::{Package, ProductVersion};
 use crate::wix::localization::LocalizationCatalog;
 use crate::wix::wixobj::{IntermediateSection, SectionType, Symbol, WixObject};
 use rayon::prelude::*;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::path::{Path, PathBuf};
 
@@ -359,6 +359,50 @@ pub const STANDARD_INSTALL_EXECUTE_ACTIONS: &[StandardActionOrder] = &[
     StandardActionOrder {
         name: "InstallFinalize",
         sequence: 6600,
+        condition: None,
+    },
+];
+
+/// Standard MSI action sequence in `InstallUISequence` table per MSI SDK.
+pub const STANDARD_INSTALL_UI_ACTIONS: &[StandardActionOrder] = &[
+    StandardActionOrder {
+        name: "AppSearch",
+        sequence: 400,
+        condition: None,
+    },
+    StandardActionOrder {
+        name: "FindRelatedProducts",
+        sequence: 500,
+        condition: None,
+    },
+    StandardActionOrder {
+        name: "LaunchConditions",
+        sequence: 600,
+        condition: None,
+    },
+    StandardActionOrder {
+        name: "ValidateProductID",
+        sequence: 700,
+        condition: None,
+    },
+    StandardActionOrder {
+        name: "CostInitialize",
+        sequence: 800,
+        condition: None,
+    },
+    StandardActionOrder {
+        name: "FileCost",
+        sequence: 900,
+        condition: None,
+    },
+    StandardActionOrder {
+        name: "CostFinalize",
+        sequence: 1000,
+        condition: None,
+    },
+    StandardActionOrder {
+        name: "ExecuteAction",
+        sequence: 1300,
         condition: None,
     },
 ];
@@ -1664,6 +1708,9 @@ impl Linker {
         // 4. Inject standard action sequences
         Self::sequence_standard_actions(&mut db);
 
+        // 4b. Solve topological relative sequences (InstallExecuteSequence & InstallUISequence)
+        Self::solve_relative_sequences(&mut db)?;
+
         // 5. Expand localization string tokens !(loc.StringId) across all string fields
         self.expand_localization_tokens(&mut db)?;
 
@@ -1682,6 +1729,9 @@ impl Linker {
                 }
             }
         }
+
+        // 5c. Resolve WiX variables, bind bitmaps, and extract EULA
+        self.resolve_wix_variables(&mut db);
 
         // 6. Bind physical files from disk and generate cabinet archives
         self.bind_files_and_pack_cabinets(&mut db)?;
@@ -1709,6 +1759,283 @@ impl Linker {
             }
         }
         Ok(())
+    }
+
+    /// Solves relative sequencing directives (`Before`, `After`, `OnExit`) across execution and UI sequences.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - The [`LinkedDatabase`] containing sequence tables.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on successful sequence resolution.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::WixLinker`] if a cyclic dependency is detected.
+    #[allow(clippy::too_many_lines)]
+    fn solve_relative_sequences(db: &mut LinkedDatabase) -> Result<()> {
+        let rel_records = db.tables.remove("_WixSequenceRelative").unwrap_or_default();
+        if rel_records.is_empty() {
+            return Ok(());
+        }
+
+        let mut constraints_by_table: HashMap<String, Vec<(String, String, String)>> =
+            HashMap::new();
+        for r in &rel_records {
+            if let (
+                Some(FieldValue::String(tbl)),
+                Some(FieldValue::String(action)),
+                Some(FieldValue::String(anchor)),
+                Some(FieldValue::String(pos)),
+            ) = (r.get(0), r.get(1), r.get(2), r.get(3))
+            {
+                constraints_by_table.entry(tbl.clone()).or_default().push((
+                    action.clone(),
+                    anchor.clone(),
+                    pos.clone(),
+                ));
+            }
+        }
+
+        for (table_name, constraints) in constraints_by_table {
+            let existing_records = db.tables.entry(table_name.clone()).or_default();
+
+            for (action, anchor, pos) in &constraints {
+                if pos == "OnExit" {
+                    let on_exit_seq: i16 = match anchor.as_str() {
+                        "cancel" => -2,
+                        "error" => -3,
+                        "suspend" => -4,
+                        _ => -1,
+                    };
+                    for rec in existing_records.iter_mut() {
+                        if rec.get(0) == Some(&FieldValue::String(action.clone())) {
+                            rec.set(2, FieldValue::Short(on_exit_seq));
+                        }
+                    }
+                }
+            }
+
+            let mut action_seqs: HashMap<String, i16> = HashMap::new();
+            for rec in existing_records.iter() {
+                if let (Some(FieldValue::String(act)), Some(FieldValue::Short(s))) =
+                    (rec.get(0), rec.get(2))
+                {
+                    action_seqs.insert(act.clone(), *s);
+                }
+            }
+
+            if table_name == "InstallUISequence" {
+                for std in STANDARD_INSTALL_UI_ACTIONS {
+                    action_seqs
+                        .entry(std.name.to_string())
+                        .or_insert(std.sequence);
+                }
+            } else if table_name == "InstallExecuteSequence" {
+                for std in STANDARD_INSTALL_EXECUTE_ACTIONS {
+                    action_seqs
+                        .entry(std.name.to_string())
+                        .or_insert(std.sequence);
+                }
+            }
+
+            let mut in_degree: HashMap<String, usize> = HashMap::new();
+            let mut graph: HashMap<String, Vec<String>> = HashMap::new();
+            for (action, anchor, pos) in &constraints {
+                if pos == "After" {
+                    graph
+                        .entry(anchor.clone())
+                        .or_default()
+                        .push(action.clone());
+                    *in_degree.entry(action.clone()).or_insert(0) += 1;
+                    in_degree.entry(anchor.clone()).or_insert(0);
+                } else if pos == "Before" {
+                    graph
+                        .entry(action.clone())
+                        .or_default()
+                        .push(anchor.clone());
+                    *in_degree.entry(anchor.clone()).or_insert(0) += 1;
+                    in_degree.entry(action.clone()).or_insert(0);
+                }
+            }
+
+            let mut queue: VecDeque<String> = VecDeque::new();
+            for (node, &deg) in &in_degree {
+                if deg == 0 {
+                    queue.push_back(node.clone());
+                }
+            }
+
+            let mut sorted_count = 0;
+            while let Some(node) = queue.pop_front() {
+                sorted_count += 1;
+                if let Some(neighbors) = graph.get(&node) {
+                    for n in neighbors {
+                        if let Some(d) = in_degree.get_mut(n) {
+                            *d -= 1;
+                            if *d == 0 {
+                                queue.push_back(n.clone());
+                            }
+                        }
+                    }
+                }
+            }
+
+            if sorted_count < in_degree.len() {
+                return Err(Error::WixLinker {
+                    message: format!(
+                        "cycle detected in relative sequencing constraints for {table_name}"
+                    ),
+                });
+            }
+
+            for (action, anchor, pos) in &constraints {
+                if pos == "After" {
+                    let base_seq = action_seqs.get(anchor).copied().unwrap_or(1000);
+                    let mut assigned = base_seq + 25;
+                    while action_seqs.values().any(|&v| v == assigned) {
+                        assigned += 1;
+                    }
+                    action_seqs.insert(action.clone(), assigned);
+                    for rec in existing_records.iter_mut() {
+                        if rec.get(0) == Some(&FieldValue::String(action.clone())) {
+                            rec.set(2, FieldValue::Short(assigned));
+                        }
+                    }
+                } else if pos == "Before" {
+                    let base_seq = action_seqs.get(anchor).copied().unwrap_or(1000);
+                    let mut assigned = (base_seq - 25).max(1);
+                    while action_seqs.values().any(|&v| v == assigned) {
+                        assigned = (assigned - 1).max(1);
+                    }
+                    action_seqs.insert(action.clone(), assigned);
+                    for rec in existing_records.iter_mut() {
+                        if rec.get(0) == Some(&FieldValue::String(action.clone())) {
+                            rec.set(2, FieldValue::Short(assigned));
+                        }
+                    }
+                }
+            }
+
+            existing_records.sort_by(|a, b| {
+                let seq_a = match a.get(2) {
+                    Some(FieldValue::Short(s)) => *s,
+                    _ => 0,
+                };
+                let seq_b = match b.get(2) {
+                    Some(FieldValue::Short(s)) => *s,
+                    _ => 0,
+                };
+                seq_a.cmp(&seq_b)
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Resolves `WixVariable` tokens, binds branding bitmaps, and extracts license RTF.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - The [`LinkedDatabase`] to update.
+    fn resolve_wix_variables(&self, db: &mut LinkedDatabase) {
+        let wix_vars = db.tables.remove("WixVariable").unwrap_or_default();
+        if wix_vars.is_empty() {
+            return;
+        }
+
+        let mut var_map: HashMap<String, String> = HashMap::new();
+        for r in &wix_vars {
+            if let (Some(FieldValue::String(k)), Some(FieldValue::String(v))) = (r.get(0), r.get(1))
+            {
+                var_map.insert(k.clone(), v.clone());
+            }
+        }
+
+        for records in db.tables.values_mut() {
+            for rec in records.iter_mut() {
+                for i in 0..rec.len() {
+                    if let Some(FieldValue::String(s)) = rec.get(i) {
+                        if s.contains("!(wix.") {
+                            let mut new_s = s.clone();
+                            for (k, v) in &var_map {
+                                let pat = format!("!(wix.{k})");
+                                if new_s.contains(&pat) {
+                                    new_s = new_s.replace(&pat, v);
+                                }
+                            }
+                            rec.set(i, FieldValue::String(new_s));
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some(banner_path) = var_map.get("WixUIBannerBmp") {
+            if let Some(real_path) = self.resolve_source_path(banner_path) {
+                if let Ok(_data) = std::fs::read(&real_path) {
+                    db.add_record(
+                        "Binary",
+                        Record::with_fields(vec![
+                            FieldValue::String("WixUIBannerBmp".to_string()),
+                            FieldValue::Stream(crate::database::tables::types::StringPoolId::new(
+                                1,
+                            )),
+                        ]),
+                    );
+                }
+            }
+        }
+
+        if let Some(dialog_path) = var_map.get("WixUIDialogBmp") {
+            if let Some(real_path) = self.resolve_source_path(dialog_path) {
+                if let Ok(_data) = std::fs::read(&real_path) {
+                    db.add_record(
+                        "Binary",
+                        Record::with_fields(vec![
+                            FieldValue::String("WixUIDialogBmp".to_string()),
+                            FieldValue::Stream(crate::database::tables::types::StringPoolId::new(
+                                2,
+                            )),
+                        ]),
+                    );
+                }
+            }
+        }
+
+        if let Some(lic_val) = var_map.get("WixUILicenseRtf") {
+            let rtf_content = if lic_val.starts_with(r"{\rtf1") {
+                lic_val.clone()
+            } else if let Some(real_path) = self.resolve_source_path(lic_val) {
+                std::fs::read_to_string(&real_path).map_or_else(
+                    |_| lic_val.clone(),
+                    |content| {
+                        if real_path
+                            .extension()
+                            .is_some_and(|e| e.eq_ignore_ascii_case("rtf"))
+                        {
+                            content
+                        } else {
+                            crate::wix::compiler::convert_text_to_rtf(&content)
+                        }
+                    },
+                )
+            } else {
+                lic_val.clone()
+            };
+
+            if let Some(ctrl_records) = db.tables.get_mut("Control") {
+                for r in ctrl_records.iter_mut() {
+                    if r.get(2) == Some(&FieldValue::String("ScrollableText".to_string()))
+                        && (r.get(9).is_none() || r.get(9) == Some(&FieldValue::Null))
+                    {
+                        r.set(9, FieldValue::String(rtf_content.clone()));
+                    }
+                }
+            }
+        }
     }
 
     /// Resolves a source file path against configured base directories and bind paths.
@@ -1758,14 +2085,45 @@ impl Linker {
             return Ok(());
         }
 
-        let mut file_sources: HashMap<String, String> = HashMap::new();
+        let mut file_sources: HashMap<String, (String, i16)> = HashMap::new();
         for r in &wix_files {
             if let (Some(FieldValue::String(fid)), Some(FieldValue::String(src))) =
                 (r.get(0), r.get(1))
             {
-                file_sources.insert(fid.clone(), src.clone());
+                let disk_id = match r.get(2) {
+                    Some(FieldValue::Short(d)) => *d,
+                    _ => 1,
+                };
+                file_sources.insert(fid.clone(), (src.clone(), disk_id));
             }
         }
+
+        let mut disk_to_cab: HashMap<i16, String> = HashMap::new();
+        for r in db.get_records("Media") {
+            if let Some(FieldValue::Short(did)) = r.get(0) {
+                let cab_name = match r.get(3) {
+                    Some(FieldValue::String(c)) => {
+                        if c.starts_with('#') {
+                            c.clone()
+                        } else {
+                            format!("#{c}")
+                        }
+                    }
+                    _ => format!("#cab{did}.cab"),
+                };
+                disk_to_cab.insert(*did, cab_name);
+            }
+        }
+
+        let mut file_disk_records: Vec<Record> = Vec::new();
+        for (fid, (_src, did)) in &file_sources {
+            file_disk_records.push(Record::with_fields(vec![
+                FieldValue::String(fid.clone()),
+                FieldValue::Short(*did),
+            ]));
+        }
+        db.tables
+            .insert("_FileDiskId".to_string(), file_disk_records);
 
         let mut cab_writers: HashMap<String, crate::cab::writer::CabinetWriter> = HashMap::new();
         let mut file_hash_records: Vec<Record> = Vec::new();
@@ -1782,8 +2140,8 @@ impl Linker {
                     _ => continue,
                 };
 
-                let src_path_str = match file_sources.get(&file_id) {
-                    Some(s) => s.clone(),
+                let (src_path_str, disk_id) = match file_sources.get(&file_id) {
+                    Some((s, d)) => (s.clone(), *d),
                     None => continue,
                 };
 
@@ -1847,7 +2205,10 @@ impl Linker {
                 let cab_name = if self.cab_per_component {
                     format!("#comp_{comp_id}.cab")
                 } else {
-                    "#cab1.cab".to_string()
+                    disk_to_cab
+                        .get(&disk_id)
+                        .cloned()
+                        .unwrap_or_else(|| format!("#cab{disk_id}.cab"))
                 };
 
                 let writer = cab_writers.entry(cab_name).or_insert_with(|| {
@@ -1942,6 +2303,7 @@ impl Linker {
 
     /// Solves the symbol graph: identifies the single entry point (`Product` or `Module`),
     /// detects duplicate symbols, and resolves all required references across sections.
+    #[allow(clippy::too_many_lines)]
     fn solve_symbol_graph(&self) -> Result<Vec<IntermediateSection>> {
         let mut all_sections: Vec<&IntermediateSection> = Vec::new();
         for obj in &self.objects {
@@ -2005,29 +2367,42 @@ impl Linker {
             let current_sec = all_sections[current_idx];
             for rf in &current_sec.references {
                 let target_sym = Symbol::new(&rf.namespace, &rf.id);
-                if let Some(&target_sec_idx) = defined_symbols.get(&target_sym) {
-                    if included_section_indices.insert(target_sec_idx) {
-                        queue.push(target_sec_idx);
+                let mut target_sec_idx = defined_symbols.get(&target_sym).copied();
+                if target_sec_idx.is_none() && rf.namespace == "Action" {
+                    target_sec_idx = defined_symbols
+                        .get(&Symbol::new("CustomAction", &rf.id))
+                        .or_else(|| defined_symbols.get(&Symbol::new("Dialog", &rf.id)))
+                        .copied();
+                }
+                if let Some(target_idx) = target_sec_idx {
+                    if included_section_indices.insert(target_idx) {
+                        queue.push(target_idx);
                     }
                 } else {
                     // Check if reference is a standard directory or built-in action or standard UI / Property
                     let is_standard_dir = rf.namespace == "Directory"
                         && STANDARD_DIRECTORIES.iter().any(|d| d.id == rf.id);
                     let is_standard_action = rf.namespace == "Action"
-                        && STANDARD_INSTALL_EXECUTE_ACTIONS
+                        && (STANDARD_INSTALL_EXECUTE_ACTIONS
                             .iter()
-                            .any(|a| a.name == rf.id);
+                            .any(|a| a.name == rf.id)
+                            || STANDARD_INSTALL_UI_ACTIONS.iter().any(|a| a.name == rf.id)
+                            || rf.id == "ExecuteAction");
                     let is_standard_ui =
                         rf.namespace == "UI" && (rf.id.starts_with("WixUI_") || rf.id == "WixUI");
                     let is_standard_property = rf.namespace == "Property"
                         && (rf.id.starts_with("WIXUI_")
                             || rf.id.starts_with("ARP")
                             || rf.id == "ALLUSERS");
+                    let is_dialog_or_ca = rf.namespace == "Action"
+                        && (defined_symbols.contains_key(&Symbol::new("Dialog", &rf.id))
+                            || defined_symbols.contains_key(&Symbol::new("CustomAction", &rf.id)));
 
                     if !is_standard_dir
                         && !is_standard_action
                         && !is_standard_ui
                         && !is_standard_property
+                        && !is_dialog_or_ca
                     {
                         return Err(Error::WixLinker {
                             message: format!(
@@ -2216,27 +2591,55 @@ impl Linker {
         }
     }
 
-    /// Sequences file numbers and aligns media last sequence.
+    /// Sequences file numbers and aligns media last sequence across partitioned disks.
     #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
     fn layout_media_and_files(db: &mut LinkedDatabase) {
-        let file_count = db.get_records("File").len();
+        let file_disk_mapping = db.tables.remove("_FileDiskId").unwrap_or_default();
+        let mut file_to_disk: HashMap<String, i16> = HashMap::new();
+        for r in &file_disk_mapping {
+            if let (Some(FieldValue::String(fid)), Some(FieldValue::Short(d))) =
+                (r.get(0), r.get(1))
+            {
+                file_to_disk.insert(fid.clone(), *d);
+            }
+        }
+
+        let file_records = db.get_records("File").to_vec();
+        let file_count = file_records.len();
         if file_count == 0 {
             return;
         }
 
-        // Re-sequence files if sequence is 0 or unassigned
+        let mut sorted_files = file_records;
+        sorted_files.sort_by_key(|r| {
+            let fid = match r.get(0) {
+                Some(FieldValue::String(s)) => s.as_str(),
+                _ => "",
+            };
+            file_to_disk.get(fid).copied().unwrap_or(1)
+        });
+
         let mut resequenced_files: Vec<Record> = Vec::with_capacity(file_count);
-        for (i, r) in db.get_records("File").iter().enumerate() {
+        let mut disk_max_seq: HashMap<i16, i32> = HashMap::new();
+
+        for (i, r) in sorted_files.iter().enumerate() {
             let mut fields = r.fields().to_vec();
             let seq = (i + 1) as i16;
             if fields.len() >= 8 {
                 fields[7] = FieldValue::Short(seq);
             }
+            let fid = match fields.first() {
+                Some(FieldValue::String(s)) => s.as_str(),
+                _ => "",
+            };
+            let disk_id = file_to_disk.get(fid).copied().unwrap_or(1);
+            disk_max_seq.insert(disk_id, i32::from(seq));
             resequenced_files.push(Record::with_fields(fields));
         }
         db.tables.insert("File".to_string(), resequenced_files);
 
-        // Ensure Media table exists and LastSequence covers all files
+        let is_multi_cab = !file_disk_mapping.is_empty();
+
         let media_records = db.get_records("Media");
         if media_records.is_empty() {
             let default_media = Record::with_fields(vec![
@@ -2248,8 +2651,7 @@ impl Linker {
                 FieldValue::Null,
             ]);
             db.add_record("Media", default_media);
-        } else {
-            // Update last sequence of final media disk if less than file_count
+        } else if !is_multi_cab {
             let mut updated_media = media_records.to_vec();
             let last_idx = updated_media.len() - 1;
             let mut fields = updated_media[last_idx].fields().to_vec();
@@ -2260,6 +2662,31 @@ impl Linker {
                     db.tables.insert("Media".to_string(), updated_media);
                 }
             }
+        } else {
+            let mut updated_media = media_records.to_vec();
+            updated_media.sort_by_key(|r| match r.get(0) {
+                Some(FieldValue::Short(d)) => *d,
+                _ => 1,
+            });
+            let mut running_last_seq = 0;
+            for r in &mut updated_media {
+                let mut fields = r.fields().to_vec();
+                if let Some(FieldValue::Short(did)) = fields.first() {
+                    if let Some(&max_seq) = disk_max_seq.get(did) {
+                        running_last_seq = running_last_seq.max(max_seq);
+                    }
+                    let existing_last = match fields.get(1) {
+                        Some(FieldValue::Long(l)) => *l,
+                        _ => 0,
+                    };
+                    running_last_seq = running_last_seq.max(existing_last);
+                    if running_last_seq > 0 {
+                        fields[1] = FieldValue::Long(running_last_seq);
+                    }
+                    *r = Record::with_fields(fields);
+                }
+            }
+            db.tables.insert("Media".to_string(), updated_media);
         }
     }
 
@@ -7075,6 +7502,264 @@ mod tests {
         let msm_opened_from_file = MergeModule::open(&temp_open_msm)?;
         assert_eq!(msm_opened_from_file.guid(), "Module");
         let _ = std::fs::remove_file(&temp_open_msm);
+
+        Ok(())
+    }
+
+    /// Tests multi-cabinet media partitioning, sequence graph solving, and variable resolution.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on test setup or execution failure.
+    #[test]
+    #[allow(
+        clippy::too_many_lines,
+        clippy::cast_possible_truncation,
+        clippy::cast_possible_wrap
+    )]
+    fn test_linker_libscript_parity_multi_cab_and_sequences() -> Result<()> {
+        let mut db = LinkedDatabase::new()?;
+
+        // 1. Setup Media table with 4 disks
+        db.add_record(
+            "Media",
+            Record::with_fields(vec![
+                FieldValue::Short(1),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::String("#engine.cab".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        db.add_record(
+            "Media",
+            Record::with_fields(vec![
+                FieldValue::Short(2),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::String("#runtimes.cab".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        db.add_record(
+            "Media",
+            Record::with_fields(vec![
+                FieldValue::Short(3),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::String("#databases.cab".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        db.add_record(
+            "Media",
+            Record::with_fields(vec![
+                FieldValue::Short(4),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::String("#codebase.cab".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+
+        // 2. Setup File table and _FileDiskId mapping (2 files per disk = 8 files total)
+        for d in 1..=4 {
+            for f in 1..=2 {
+                let fid = format!("File_D{d}_{f}");
+                db.add_record(
+                    "File",
+                    Record::with_fields(vec![
+                        FieldValue::String(fid.clone()),
+                        FieldValue::String(format!("Comp_D{d}_{f}")),
+                        FieldValue::String(format!("file_d{d}_{f}.txt")),
+                        FieldValue::Long(100),
+                        FieldValue::Null,
+                        FieldValue::Null,
+                        FieldValue::Null,
+                        FieldValue::Null,
+                    ]),
+                );
+                db.add_record(
+                    "_FileDiskId",
+                    Record::with_fields(vec![FieldValue::String(fid), FieldValue::Short(d)]),
+                );
+            }
+        }
+
+        // 3. Layout media and files
+        Linker::layout_media_and_files(&mut db);
+
+        let files = db.get_records("File");
+        assert_eq!(files.len(), 8);
+        for (i, r) in files.iter().enumerate() {
+            let expected_seq = (i + 1) as i16;
+            assert_eq!(r.get(7), Some(&FieldValue::Short(expected_seq)));
+        }
+
+        let media = db.get_records("Media");
+        assert_eq!(media.len(), 4);
+        assert_eq!(media[0].get(1), Some(&FieldValue::Long(2)));
+        assert_eq!(media[1].get(1), Some(&FieldValue::Long(4)));
+        assert_eq!(media[2].get(1), Some(&FieldValue::Long(6)));
+        assert_eq!(media[3].get(1), Some(&FieldValue::Long(8)));
+
+        // 4. Test Relative Sequence Solving
+        db.add_record(
+            "InstallUISequence",
+            Record::with_fields(vec![
+                FieldValue::String("Dlg_Welcome".to_string()),
+                FieldValue::String("NOT Installed".to_string()),
+                FieldValue::Null,
+            ]),
+        );
+        db.add_record(
+            "InstallUISequence",
+            Record::with_fields(vec![
+                FieldValue::String("Dlg_Exit".to_string()),
+                FieldValue::String("NOT Installed".to_string()),
+                FieldValue::Null,
+            ]),
+        );
+
+        db.add_record(
+            "_WixSequenceRelative",
+            Record::with_fields(vec![
+                FieldValue::String("InstallUISequence".to_string()),
+                FieldValue::String("Dlg_Welcome".to_string()),
+                FieldValue::String("CostFinalize".to_string()),
+                FieldValue::String("After".to_string()),
+            ]),
+        );
+        db.add_record(
+            "_WixSequenceRelative",
+            Record::with_fields(vec![
+                FieldValue::String("InstallUISequence".to_string()),
+                FieldValue::String("Dlg_Exit".to_string()),
+                FieldValue::String("success".to_string()),
+                FieldValue::String("OnExit".to_string()),
+            ]),
+        );
+
+        Linker::solve_relative_sequences(&mut db)?;
+
+        let ui_seq = db.get_records("InstallUISequence");
+        let exit_rec = ui_seq
+            .iter()
+            .find(|r| r.get(0) == Some(&FieldValue::String("Dlg_Exit".to_string())));
+        assert!(exit_rec.is_some());
+        assert_eq!(
+            exit_rec.and_then(|r| r.get(2)),
+            Some(&FieldValue::Short(-1))
+        );
+
+        let welcome_rec = ui_seq
+            .iter()
+            .find(|r| r.get(0) == Some(&FieldValue::String("Dlg_Welcome".to_string())));
+        assert!(welcome_rec.is_some());
+        assert_eq!(
+            welcome_rec.and_then(|r| r.get(2)),
+            Some(&FieldValue::Short(1025))
+        );
+
+        // 5. Test Cycle Detection
+        let mut cyclic_db = LinkedDatabase::new()?;
+        cyclic_db.add_record(
+            "InstallExecuteSequence",
+            Record::with_fields(vec![
+                FieldValue::String("ActA".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        cyclic_db.add_record(
+            "InstallExecuteSequence",
+            Record::with_fields(vec![
+                FieldValue::String("ActB".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        cyclic_db.add_record(
+            "_WixSequenceRelative",
+            Record::with_fields(vec![
+                FieldValue::String("InstallExecuteSequence".to_string()),
+                FieldValue::String("ActA".to_string()),
+                FieldValue::String("ActB".to_string()),
+                FieldValue::String("After".to_string()),
+            ]),
+        );
+        cyclic_db.add_record(
+            "_WixSequenceRelative",
+            Record::with_fields(vec![
+                FieldValue::String("InstallExecuteSequence".to_string()),
+                FieldValue::String("ActB".to_string()),
+                FieldValue::String("ActA".to_string()),
+                FieldValue::String("After".to_string()),
+            ]),
+        );
+        assert!(Linker::solve_relative_sequences(&mut cyclic_db).is_err());
+
+        // 6. Test WixVariable Resolution and EULA binding
+        let linker = Linker::new();
+        let mut var_db = LinkedDatabase::new()?;
+        var_db.add_record(
+            "WixVariable",
+            Record::with_fields(vec![
+                FieldValue::String("AppName".to_string()),
+                FieldValue::String("MySuperApp".to_string()),
+                FieldValue::Short(0),
+            ]),
+        );
+        var_db.add_record(
+            "WixVariable",
+            Record::with_fields(vec![
+                FieldValue::String("WixUILicenseRtf".to_string()),
+                FieldValue::String(r"{\rtf1 Custom EULA Text}".to_string()),
+                FieldValue::Short(0),
+            ]),
+        );
+        var_db.add_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("ProductName".to_string()),
+                FieldValue::String("Welcome to !(wix.AppName)".to_string()),
+            ]),
+        );
+        var_db.add_record(
+            "Control",
+            Record::with_fields(vec![
+                FieldValue::String("LicenseDlg".to_string()),
+                FieldValue::String("AgreementText".to_string()),
+                FieldValue::String("ScrollableText".to_string()),
+                FieldValue::Short(20),
+                FieldValue::Short(60),
+                FieldValue::Short(330),
+                FieldValue::Short(150),
+                FieldValue::Long(3),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+
+        linker.resolve_wix_variables(&mut var_db);
+
+        let prop = var_db.get_records("Property");
+        assert_eq!(
+            prop[0].get(1),
+            Some(&FieldValue::String("Welcome to MySuperApp".to_string()))
+        );
+
+        let ctrl = var_db.get_records("Control");
+        assert_eq!(
+            ctrl[0].get(9),
+            Some(&FieldValue::String(r"{\rtf1 Custom EULA Text}".to_string()))
+        );
 
         Ok(())
     }

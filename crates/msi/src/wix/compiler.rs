@@ -639,6 +639,11 @@ impl Compiler {
                         .or_insert_with(|| IntermediateTable::new("File"))
                         .push_record(row.to_record());
 
+                    let file_disk_id: i16 = child
+                        .attribute("DiskId")
+                        .and_then(|d| d.parse().ok())
+                        .unwrap_or(1);
+
                     if let Some(src) = child.attribute("Source") {
                         tables
                             .entry("WixFile".to_string())
@@ -646,6 +651,7 @@ impl Compiler {
                             .push_record(Record::with_fields(vec![
                                 FieldValue::String(file_id_str.to_string()),
                                 FieldValue::String(src.to_string()),
+                                FieldValue::Short(file_disk_id),
                             ]));
                     }
 
@@ -1086,22 +1092,59 @@ impl Compiler {
                         .attribute("Id")
                         .and_then(|id| id.parse().ok())
                         .unwrap_or(1);
-                    let cabinet = child.attribute("Cabinet").map(ToString::to_string);
+                    let mut cabinet = child.attribute("Cabinet").map(ToString::to_string);
+                    let is_embedded = child
+                        .attribute("EmbedCab")
+                        .is_some_and(|v| v.eq_ignore_ascii_case("yes"));
+                    if is_embedded {
+                        if let Some(ref mut c) = cabinet {
+                            if !c.starts_with('#') {
+                                *c = format!("#{c}");
+                            }
+                        }
+                    }
+                    let disk_prompt = child.attribute("DiskPrompt").map(ToString::to_string);
+                    let volume_label = child.attribute("VolumeLabel").map(ToString::to_string);
+                    let source = child.attribute("Source").map(ToString::to_string);
 
                     section.add_symbol(Symbol::new("Media", format!("{disk_id}")));
 
                     let row = MediaRow {
                         disk_id,
                         last_sequence: 1,
-                        disk_prompt: None,
+                        disk_prompt,
                         cabinet,
-                        volume_label: None,
-                        source: None,
+                        volume_label,
+                        source,
                     };
                     tables
                         .entry("Media".to_string())
                         .or_insert_with(|| IntermediateTable::new("Media"))
                         .push_record(row.to_record());
+                }
+                "WixVariable" => {
+                    let var_id = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
+                        element: "WixVariable".to_string(),
+                        message: "missing required 'Id' attribute".to_string(),
+                    })?;
+                    let val = child
+                        .attribute("Value")
+                        .map_or_else(|| child.text.as_str(), |v| v);
+                    let overridable = child
+                        .attribute("Overridable")
+                        .is_some_and(|v| v.eq_ignore_ascii_case("yes"));
+
+                    section.add_symbol(Symbol::new("WixVariable", var_id));
+
+                    let rec = Record::with_fields(vec![
+                        FieldValue::String(var_id.to_string()),
+                        FieldValue::String(val.to_string()),
+                        FieldValue::Short(i16::from(overridable)),
+                    ]);
+                    tables
+                        .entry("WixVariable".to_string())
+                        .or_insert_with(|| IntermediateTable::new("WixVariable"))
+                        .push_record(rec);
                 }
                 "Property" => {
                     let prop_id_str = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
@@ -1113,14 +1156,29 @@ impl Compiler {
                     let prop_name = PropertyName::new(prop_id_str)?;
                     section.add_symbol(Symbol::new("Property", prop_id_str));
 
-                    let row = PropertyRow {
-                        property: prop_name,
-                        value: prop_val.to_string(),
-                    };
-                    tables
-                        .entry("Property".to_string())
-                        .or_insert_with(|| IntermediateTable::new("Property"))
-                        .push_record(row.to_record());
+                    let has_search_children = child.children.iter().any(|c| {
+                        matches!(
+                            c.tag.as_str(),
+                            "RegistrySearch"
+                                | "DirectorySearch"
+                                | "FileSearch"
+                                | "IniFileSearch"
+                                | "ComponentSearch"
+                        )
+                    });
+
+                    if !prop_val.is_empty() || !has_search_children {
+                        let row = PropertyRow {
+                            property: prop_name,
+                            value: prop_val.to_string(),
+                        };
+                        tables
+                            .entry("Property".to_string())
+                            .or_insert_with(|| IntermediateTable::new("Property"))
+                            .push_record(row.to_record());
+                    }
+
+                    self.compile_element_tree(child, Some(prop_id_str), section, tables)?;
                 }
                 "RegistryKey" => {
                     let key = child.attribute("Key").unwrap_or("Software\\Product");
@@ -1168,7 +1226,7 @@ impl Compiler {
                     Self::compile_upgrade(child, section, tables);
                 }
                 "MajorUpgrade" => {
-                    Self::compile_major_upgrade(tables);
+                    Self::compile_major_upgrade(child, tables);
                 }
                 "posix:File" | "PosixFile" | "posix:Symlink" | "PosixSymlink" | "posix:Daemon"
                 | "PosixDaemon" | "posix:Acl" | "PosixAcl" | "posix:Desktop" | "PosixDesktop" => {
@@ -1496,6 +1554,7 @@ impl Compiler {
     }
 
     /// Compiles a `<CustomAction>` element.
+    #[allow(clippy::option_if_let_else)]
     fn compile_custom_action(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -1513,22 +1572,32 @@ impl Compiler {
             child.attribute("Script"),
             child.attribute("Error"),
         ) {
-            (Some(bin), _, _, _, _, _) => child.attribute("DllEntry").map_or_else(
-                || {
-                    child
-                        .attribute("ExeCommand")
-                        .map_or_else(|| (bin, "", 1), |exe| (bin, exe, 2))
-                },
-                |dll| (bin, dll, 1),
-            ),
+            (Some(bin), _, _, _, _, _) => {
+                section.add_reference(Reference::new("Binary", bin));
+                if let Some(vbs) = child.attribute("VBScriptCall") {
+                    (bin, vbs, 6)
+                } else if let Some(js) = child.attribute("JScriptCall") {
+                    (bin, js, 5)
+                } else if let Some(dll) = child.attribute("DllEntry") {
+                    (bin, dll, 1)
+                } else if let Some(exe) = child.attribute("ExeCommand") {
+                    (bin, exe, 2)
+                } else {
+                    (bin, "", 1)
+                }
+            }
             (None, Some(file), _, _, _, _) => {
+                section.add_reference(Reference::new("File", file));
                 (file, child.attribute("ExeCommand").unwrap_or(""), 18)
             }
             (None, None, Some(prop), _, _, _) => (prop, child.attribute("Value").unwrap_or(""), 51),
-            (None, None, None, Some(dir), _, _) => child.attribute("Value").map_or_else(
-                || (dir, child.attribute("ExeCommand").unwrap_or(""), 34),
-                |val| (dir, val, 35),
-            ),
+            (None, None, None, Some(dir), _, _) => {
+                section.add_reference(Reference::new("Directory", dir));
+                child.attribute("Value").map_or_else(
+                    || (dir, child.attribute("ExeCommand").unwrap_or(""), 34),
+                    |val| (dir, val, 35),
+                )
+            }
             (None, None, None, None, Some("vbscript"), _) => ("", child.text.as_str(), 6),
             (None, None, None, None, Some("jscript"), _) => ("", child.text.as_str(), 5),
             (None, None, None, None, _, Some(err)) => ("", err, 19),
@@ -1648,6 +1717,27 @@ impl Compiler {
             .and_then(|v| v.parse().ok())
             .unwrap_or(17);
         let text = child.attribute("Text").map(ToString::to_string);
+        let mut resolved_text = text;
+        if resolved_text.is_none() {
+            if let Some(text_sub) = child.children.iter().find(|c| c.tag == "Text") {
+                if let Some(src) = text_sub.attribute("SourceFile") {
+                    if let Ok(content) = std::fs::read_to_string(src) {
+                        if std::path::Path::new(src)
+                            .extension()
+                            .is_some_and(|ext| ext.eq_ignore_ascii_case("rtf"))
+                        {
+                            resolved_text = Some(content);
+                        } else {
+                            resolved_text = Some(convert_text_to_rtf(&content));
+                        }
+                    } else {
+                        resolved_text = Some(src.to_string());
+                    }
+                } else if !text_sub.text.is_empty() {
+                    resolved_text = Some(text_sub.text.clone());
+                }
+            }
+        }
         let prop = child.attribute("Property").map(ToString::to_string);
         let dlg_name = parent_id.unwrap_or("DefaultDialog");
 
@@ -1663,7 +1753,7 @@ impl Compiler {
             FieldValue::Short(h),
             FieldValue::Long(3),
             prop.map_or(FieldValue::Null, FieldValue::String),
-            text.map_or(FieldValue::Null, FieldValue::String),
+            resolved_text.map_or(FieldValue::Null, FieldValue::String),
             FieldValue::Null,
             FieldValue::Null,
         ]);
@@ -1741,6 +1831,95 @@ impl Compiler {
                         .or_insert_with(|| IntermediateTable::new("EventMapping"))
                         .push_record(em_rec);
                 }
+                "RadioButtonGroup" => {
+                    let rbg_prop = sub
+                        .attribute("Property")
+                        .or_else(|| child.attribute("Property"))
+                        .unwrap_or("");
+                    for (idx, rb) in sub
+                        .children
+                        .iter()
+                        .filter(|c| c.tag == "RadioButton")
+                        .enumerate()
+                    {
+                        let val = rb.attribute("Value").unwrap_or("");
+                        let rx: i16 = rb.attribute("X").and_then(|v| v.parse().ok()).unwrap_or(0);
+                        let ry: i16 = rb.attribute("Y").and_then(|v| v.parse().ok()).unwrap_or(0);
+                        let rw: i16 = rb
+                            .attribute("Width")
+                            .and_then(|v| v.parse().ok())
+                            .unwrap_or(w);
+                        let rh: i16 = rb
+                            .attribute("Height")
+                            .and_then(|v| v.parse().ok())
+                            .unwrap_or(14);
+                        let rtext = rb.attribute("Text").map_or_else(|| rb.text.as_str(), |t| t);
+                        let rhelp = rb.attribute("Help");
+                        let order = i16::try_from(idx + 1).unwrap_or(1);
+
+                        section.add_symbol(Symbol::new("RadioButton", format!("{rbg_prop}.{val}")));
+
+                        let rb_rec = Record::with_fields(vec![
+                            FieldValue::String(rbg_prop.to_string()),
+                            FieldValue::Short(order),
+                            FieldValue::String(val.to_string()),
+                            FieldValue::Short(rx),
+                            FieldValue::Short(ry),
+                            FieldValue::Short(rw),
+                            FieldValue::Short(rh),
+                            FieldValue::String(rtext.to_string()),
+                            rhelp.map_or(FieldValue::Null, |help_text| {
+                                FieldValue::String(help_text.to_string())
+                            }),
+                        ]);
+                        tables
+                            .entry("RadioButton".to_string())
+                            .or_insert_with(|| IntermediateTable::new("RadioButton"))
+                            .push_record(rb_rec);
+                    }
+                }
+                "RadioButton" => {
+                    let rbg_prop = child.attribute("Property").unwrap_or("");
+                    let val = sub.attribute("Value").unwrap_or("");
+                    let rx: i16 = sub.attribute("X").and_then(|v| v.parse().ok()).unwrap_or(0);
+                    let ry: i16 = sub.attribute("Y").and_then(|v| v.parse().ok()).unwrap_or(0);
+                    let rw: i16 = sub
+                        .attribute("Width")
+                        .and_then(|v| v.parse().ok())
+                        .unwrap_or(w);
+                    let rh: i16 = sub
+                        .attribute("Height")
+                        .and_then(|v| v.parse().ok())
+                        .unwrap_or(14);
+                    let rtext = sub
+                        .attribute("Text")
+                        .map_or_else(|| sub.text.as_str(), |t| t);
+                    let rhelp = sub.attribute("Help");
+                    let order: i16 = sub
+                        .attribute("Order")
+                        .and_then(|o| o.parse().ok())
+                        .unwrap_or(1);
+
+                    section.add_symbol(Symbol::new("RadioButton", format!("{rbg_prop}.{val}")));
+
+                    let rb_rec = Record::with_fields(vec![
+                        FieldValue::String(rbg_prop.to_string()),
+                        FieldValue::Short(order),
+                        FieldValue::String(val.to_string()),
+                        FieldValue::Short(rx),
+                        FieldValue::Short(ry),
+                        FieldValue::Short(rw),
+                        FieldValue::Short(rh),
+                        FieldValue::String(rtext.to_string()),
+                        rhelp.map_or(FieldValue::Null, |help_text| {
+                            FieldValue::String(help_text.to_string())
+                        }),
+                    ]);
+                    tables
+                        .entry("RadioButton".to_string())
+                        .or_insert_with(|| IntermediateTable::new("RadioButton"))
+                        .push_record(rb_rec);
+                }
                 _ => {}
             }
         }
@@ -1810,20 +1989,92 @@ impl Compiler {
     }
 
     /// Compiles a `<MajorUpgrade>` syntactic macro.
-    fn compile_major_upgrade(tables: &mut std::collections::HashMap<String, IntermediateTable>) {
-        let rec = Record::with_fields(vec![
+    fn compile_major_upgrade(
+        child: &XmlNode,
+        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+    ) {
+        let downgrade_err = child.attribute("DowngradeErrorMessage");
+        let schedule = child
+            .attribute("Schedule")
+            .unwrap_or("afterInstallInitialize");
+        let allow_same = child
+            .attribute("AllowSameVersionUpgrades")
+            .is_some_and(|s| s.eq_ignore_ascii_case("yes"));
+
+        let older_attrs: i32 = if allow_same { 256 | 1 } else { 256 };
+        let older_rec = Record::with_fields(vec![
             FieldValue::String("{00000000-0000-0000-0000-000000000000}".to_string()),
             FieldValue::Null,
             FieldValue::Null,
             FieldValue::Null,
-            FieldValue::Long(256),
+            FieldValue::Long(older_attrs),
             FieldValue::Null,
-            FieldValue::String("MAJORUPGRADE".to_string()),
+            FieldValue::String("WIX_UPGRADE_DETECTED".to_string()),
         ]);
         tables
             .entry("Upgrade".to_string())
             .or_insert_with(|| IntermediateTable::new("Upgrade"))
-            .push_record(rec);
+            .push_record(older_rec);
+
+        if let Some(err_msg) = downgrade_err {
+            let newer_rec = Record::with_fields(vec![
+                FieldValue::String("{00000000-0000-0000-0000-000000000000}".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Long(2),
+                FieldValue::Null,
+                FieldValue::String("WIX_DOWNGRADE_DETECTED".to_string()),
+            ]);
+            tables
+                .entry("Upgrade".to_string())
+                .or_insert_with(|| IntermediateTable::new("Upgrade"))
+                .push_record(newer_rec);
+
+            let lc_rec = Record::with_fields(vec![
+                FieldValue::String("NOT WIX_DOWNGRADE_DETECTED".to_string()),
+                FieldValue::String(err_msg.to_string()),
+            ]);
+            tables
+                .entry("LaunchCondition".to_string())
+                .or_insert_with(|| IntermediateTable::new("LaunchCondition"))
+                .push_record(lc_rec);
+        }
+
+        let prop_rec = Record::with_fields(vec![
+            FieldValue::String("SecureCustomProperties".to_string()),
+            FieldValue::String("WIX_UPGRADE_DETECTED;WIX_DOWNGRADE_DETECTED".to_string()),
+        ]);
+        tables
+            .entry("Property".to_string())
+            .or_insert_with(|| IntermediateTable::new("Property"))
+            .push_record(prop_rec);
+
+        let rep_seq: i16 = match schedule {
+            "afterInstallValidate" => 1400,
+            "afterInstallExecute" => 6550,
+            "afterInstallFinalize" => 6601,
+            _ => 1501,
+        };
+        let rep_rec = Record::with_fields(vec![
+            FieldValue::String("RemoveExistingProducts".to_string()),
+            FieldValue::Null,
+            FieldValue::Short(rep_seq),
+        ]);
+        tables
+            .entry("InstallExecuteSequence".to_string())
+            .or_insert_with(|| IntermediateTable::new("InstallExecuteSequence"))
+            .push_record(rep_rec);
+
+        let frp_rec = Record::with_fields(vec![
+            FieldValue::String("FindRelatedProducts".to_string()),
+            FieldValue::Null,
+            FieldValue::Short(200),
+        ]);
+        tables
+            .entry("InstallExecuteSequence".to_string())
+            .or_insert_with(|| IntermediateTable::new("InstallExecuteSequence"))
+            .push_record(frp_rec);
     }
 
     /// Compiles cross-platform POSIX extension elements.
@@ -2751,11 +3002,24 @@ impl Compiler {
         let key = child.attribute("Key").unwrap_or("");
         let name = child.attribute("Name").map(ToString::to_string);
         let type_str = child.attribute("Type").unwrap_or("raw");
-        let type_num: i16 = match type_str {
+        let mut type_num: i16 = match type_str {
             "directory" => 0,
             "file" => 1,
             _ => 2,
         };
+
+        // If there is a nested FileSearch, this registry search is locating a directory
+        let mut nested_file_searches = Vec::new();
+        for sub in &child.children {
+            if sub.tag == "FileSearch" {
+                type_num = 0;
+                let file_sig = sub.attribute("Id").unwrap_or(sig);
+                let file_name = sub.attribute("Name").unwrap_or("target.exe");
+                let min_ver = sub.attribute("MinVersion").map(ToString::to_string);
+                let max_ver = sub.attribute("MaxVersion").map(ToString::to_string);
+                nested_file_searches.push((file_sig, file_name, min_ver, max_ver));
+            }
+        }
 
         section.add_symbol(Symbol::new("Signature", sig));
         if let Some(parent_prop) = parent_id {
@@ -2780,6 +3044,25 @@ impl Compiler {
             .entry("RegLocator".to_string())
             .or_insert_with(|| IntermediateTable::new("RegLocator"))
             .push_record(rec);
+
+        for (file_sig, file_name, min_ver, max_ver) in nested_file_searches {
+            section.add_symbol(Symbol::new("Signature", file_sig));
+            let sig_rec = Record::with_fields(vec![
+                FieldValue::String(file_sig.to_string()),
+                FieldValue::String(file_name.to_string()),
+                min_ver.map_or(FieldValue::Null, FieldValue::String),
+                max_ver.map_or(FieldValue::Null, FieldValue::String),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+            ]);
+            tables
+                .entry("Signature".to_string())
+                .or_insert_with(|| IntermediateTable::new("Signature"))
+                .push_record(sig_rec);
+        }
     }
 
     /// Compiles `<DirectorySearch>` element into `DrLocator` table.
@@ -2972,6 +3255,7 @@ impl Compiler {
         for sub in &child.children {
             let action_name = sub
                 .attribute("Action")
+                .or_else(|| sub.attribute("Dialog"))
                 .or_else(|| sub.attribute("Id"))
                 .unwrap_or(&sub.tag);
             let cond = sub
@@ -2986,6 +3270,42 @@ impl Compiler {
                 });
             let seq: Option<i16> = sub.attribute("Sequence").and_then(|s| s.parse().ok());
             section.add_reference(Reference::new("Action", action_name));
+
+            if let Some(after) = sub.attribute("After") {
+                let rel_rec = Record::with_fields(vec![
+                    FieldValue::String(table_name.clone()),
+                    FieldValue::String(action_name.to_string()),
+                    FieldValue::String(after.to_string()),
+                    FieldValue::String("After".to_string()),
+                ]);
+                tables
+                    .entry("_WixSequenceRelative".to_string())
+                    .or_insert_with(|| IntermediateTable::new("_WixSequenceRelative"))
+                    .push_record(rel_rec);
+            } else if let Some(before) = sub.attribute("Before") {
+                let rel_rec = Record::with_fields(vec![
+                    FieldValue::String(table_name.clone()),
+                    FieldValue::String(action_name.to_string()),
+                    FieldValue::String(before.to_string()),
+                    FieldValue::String("Before".to_string()),
+                ]);
+                tables
+                    .entry("_WixSequenceRelative".to_string())
+                    .or_insert_with(|| IntermediateTable::new("_WixSequenceRelative"))
+                    .push_record(rel_rec);
+            } else if let Some(on_exit) = sub.attribute("OnExit") {
+                let rel_rec = Record::with_fields(vec![
+                    FieldValue::String(table_name.clone()),
+                    FieldValue::String(action_name.to_string()),
+                    FieldValue::String(on_exit.to_string()),
+                    FieldValue::String("OnExit".to_string()),
+                ]);
+                tables
+                    .entry("_WixSequenceRelative".to_string())
+                    .or_insert_with(|| IntermediateTable::new("_WixSequenceRelative"))
+                    .push_record(rel_rec);
+            }
+
             let seq_row = SequenceRow::new(action_name, cond, seq)?;
             tables
                 .entry(table_name.clone())
@@ -4317,6 +4637,7 @@ mod tests {
             "<Wix><Product Id=\"{11111111-1111-1111-1111-111111111111}\"><RemoveFolder /></Product></Wix>",
             "<Wix><Product Id=\"{11111111-1111-1111-1111-111111111111}\"><Environment /></Product></Wix>",
             "<Wix><Product Id=\"{11111111-1111-1111-1111-111111111111}\"><CustomAction /></Product></Wix>",
+            "<Wix><Product Id=\"{11111111-1111-1111-1111-111111111111}\"><WixVariable /></Product></Wix>",
             "<Wix><Product Id=\"{11111111-1111-1111-1111-111111111111}\"><UI><Dialog /></UI></Product></Wix>",
             "<Wix><Product Id=\"{11111111-1111-1111-1111-111111111111}\"><UI><Dialog Id=\"D1\"><Control /></Dialog></UI></Product></Wix>",
         ];
@@ -4325,6 +4646,267 @@ mod tests {
             let root = parser.parse(xml)?;
             assert!(compiler.compile(&root).is_err());
         }
+
+        Ok(())
+    }
+
+    /// Tests libscript `WiX` feature parity in compiler: multi-cab media, `DiskId` on files,
+    /// `WixVariable`, nested Property searches, `RadioButtonGroup`/`RadioButton`, `ScrollableText`,
+    /// VBScript/JScript custom actions, relative sequencing, and `MajorUpgrade` attributes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] if XML parsing or compilation fails.
+    #[test]
+    #[allow(clippy::too_many_lines, clippy::similar_names)]
+    fn test_compiler_libscript_parity_features() -> Result<()> {
+        let parser = XmlParser::new();
+        let compiler = Compiler::new();
+
+        let xml = r##"
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="{11111111-2222-3333-4444-555555555555}" Name="ParityApp" Version="2.0.0" Manufacturer="TestCorp" UpgradeCode="{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}">
+        <Package Description="Parity Test" />
+        <MajorUpgrade DowngradeErrorMessage="A newer version is installed." Schedule="afterInstallExecute" AllowSameVersionUpgrades="yes" />
+        <Media Id="1" Cabinet="engine.cab" EmbedCab="yes" DiskPrompt="Disk 1" VolumeLabel="VOL1" Source="SRC1" />
+        <Media Id="2" Cabinet="#runtimes.cab" EmbedCab="yes" />
+        <WixVariable Id="WixUIBannerBmp" Value="banner.bmp" Overridable="yes" />
+        <WixVariable Id="WixUILicenseRtf">{\rtf1 Inline EULA}</WixVariable>
+
+        <Property Id="FOUND_PYTHON_EXE">
+            <RegistrySearch Id="SearchPy64" Root="HKLM" Key="SOFTWARE\Python\PythonCore\3.12\InstallPath" Type="raw" Win64="yes">
+                <FileSearch Id="SearchPyExe64" Name="python.exe" MinVersion="3.12.0" MaxVersion="3.13.0" />
+            </RegistrySearch>
+        </Property>
+
+        <Binary Id="Bin_Val_mysql" SourceFile="validate_mysql.vbs" />
+        <Binary Id="Bin_Val_js" SourceFile="validate.js" />
+        <CustomAction Id="CA_Val_mysql" BinaryKey="Bin_Val_mysql" VBScriptCall="CheckPorts_mysql" Return="check" />
+        <CustomAction Id="CA_Val_js" BinaryKey="Bin_Val_js" JScriptCall="CheckPorts_js" Return="ignore" />
+
+        <Directory Id="TARGETDIR" Name="SourceDir">
+            <Directory Id="ProgramFilesFolder" Name="PFiles">
+                <Directory Id="INSTALLDIR" Name="App">
+                    <Component Id="C_Engine" Guid="{11111111-1111-1111-1111-111111111111}">
+                        <File Id="F_Engine" Source="engine.exe" DiskId="1" KeyPath="yes" />
+                    </Component>
+                    <Component Id="C_Runtime" Guid="{22222222-2222-2222-2222-222222222222}">
+                        <File Id="F_Runtime" Source="python.dll" DiskId="2" KeyPath="yes" />
+                    </Component>
+                </Directory>
+            </Directory>
+        </Directory>
+
+        <UI Id="CustomUI">
+            <Dialog Id="Dlg_Mode" Width="370" Height="270" Title="Setup Mode">
+                <Control Id="ModeRadio" Type="RadioButtonGroup" X="20" Y="50" Width="300" Height="60" Property="SETUP_MODE">
+                    <RadioButtonGroup Property="SETUP_MODE">
+                        <RadioButton Value="Simple" X="0" Y="0" Width="280" Height="14" Text="Simple (Express)" />
+                        <RadioButton Value="Advanced" X="0" Y="20" Width="280" Height="14" Text="Advanced (Custom)" Help="Choose features" />
+                    </RadioButtonGroup>
+                </Control>
+                <Control Id="DirectRadio" Type="RadioButtonGroup" X="20" Y="120" Width="300" Height="40" Property="SUB_MODE">
+                    <RadioButton Value="Val1" Order="1" X="0" Y="0" Width="280" Height="14" Text="Option 1" />
+                    <RadioButton Value="Val2" Order="2" X="0" Y="20" Width="280" Height="14" Text="Option 2" />
+                </Control>
+                <Control Id="LicenseBox" Type="ScrollableText" X="20" Y="170" Width="300" Height="60" Sunken="yes">
+                    <Text>{\rtf1 EULA content here}</Text>
+                </Control>
+            </Dialog>
+        </UI>
+
+        <InstallUISequence>
+            <Show Dialog="Dlg_Mode" After="CostFinalize">NOT Installed</Show>
+            <Show Dialog="Dlg_Exit" OnExit="success">NOT Installed</Show>
+        </InstallUISequence>
+
+        <InstallExecuteSequence>
+            <Custom Action="CA_Val_mysql" Before="InstallInitialize">NOT Installed</Custom>
+            <Custom Action="CA_Val_js" After="InstallInitialize">NOT Installed</Custom>
+        </InstallExecuteSequence>
+    </Product>
+</Wix>
+"##;
+
+        let root = parser.parse(xml)?;
+        let obj = compiler.compile(&root)?;
+        let sec = &obj.sections[0];
+
+        // 1. Verify WixFile table contains DiskId
+        let wix_file_tbl = sec.tables.iter().find(|t| t.name == "WixFile");
+        let Some(wix_file_tbl) = wix_file_tbl else {
+            return Err(Error::Validation {
+                element: "WixFile".to_string(),
+                reason: "missing WixFile table".to_string(),
+            });
+        };
+        let wf_records = &wix_file_tbl.records;
+        assert_eq!(wf_records.len(), 2);
+        assert_eq!(wf_records[0].get(2), Some(&FieldValue::Short(1)));
+        assert_eq!(wf_records[1].get(2), Some(&FieldValue::Short(2)));
+
+        // 2. Verify Media records (embedding prefix #, DiskPrompt, VolumeLabel, Source)
+        let media_tbl = sec.tables.iter().find(|t| t.name == "Media");
+        let Some(media_tbl) = media_tbl else {
+            return Err(Error::Validation {
+                element: "Media".to_string(),
+                reason: "missing Media table".to_string(),
+            });
+        };
+        let m_records = &media_tbl.records;
+        assert_eq!(m_records.len(), 2);
+        assert_eq!(
+            m_records[0].get(3),
+            Some(&FieldValue::String("#engine.cab".to_string()))
+        );
+        assert_eq!(
+            m_records[0].get(2),
+            Some(&FieldValue::String("Disk 1".to_string()))
+        );
+        assert_eq!(
+            m_records[0].get(4),
+            Some(&FieldValue::String("VOL1".to_string()))
+        );
+        assert_eq!(
+            m_records[0].get(5),
+            Some(&FieldValue::String("SRC1".to_string()))
+        );
+        assert_eq!(
+            m_records[1].get(3),
+            Some(&FieldValue::String("#runtimes.cab".to_string()))
+        );
+
+        // 3. Verify WixVariable table
+        let wix_var_tbl = sec.tables.iter().find(|t| t.name == "WixVariable");
+        let Some(wix_var_tbl) = wix_var_tbl else {
+            return Err(Error::Validation {
+                element: "WixVariable".to_string(),
+                reason: "missing WixVariable table".to_string(),
+            });
+        };
+        let wv_records = &wix_var_tbl.records;
+        assert_eq!(wv_records.len(), 2);
+        assert_eq!(
+            wv_records[0].get(0),
+            Some(&FieldValue::String("WixUIBannerBmp".to_string()))
+        );
+        assert_eq!(
+            wv_records[0].get(1),
+            Some(&FieldValue::String("banner.bmp".to_string()))
+        );
+        assert_eq!(wv_records[0].get(2), Some(&FieldValue::Short(1))); // overridable = 1
+
+        // 4. Verify nested Property -> RegistrySearch -> FileSearch
+        let sig_tbl = sec.tables.iter().find(|t| t.name == "Signature");
+        assert!(sig_tbl.is_some());
+        let reg_loc_tbl = sec.tables.iter().find(|t| t.name == "RegLocator");
+        assert!(reg_loc_tbl.is_some());
+        let app_search_tbl = sec.tables.iter().find(|t| t.name == "AppSearch");
+        assert!(app_search_tbl.is_some());
+
+        // 5. Verify CustomAction Type 6 (VBScript) and Type 5 (JScript)
+        let ca_tbl = sec.tables.iter().find(|t| t.name == "CustomAction");
+        let Some(ca_tbl) = ca_tbl else {
+            return Err(Error::Validation {
+                element: "CustomAction".to_string(),
+                reason: "missing CustomAction table".to_string(),
+            });
+        };
+        let ca_records = &ca_tbl.records;
+        assert_eq!(
+            ca_records[0].get(0),
+            Some(&FieldValue::String("CA_Val_mysql".to_string()))
+        );
+        assert_eq!(ca_records[0].get(1), Some(&FieldValue::Short(6))); // Type 6 VBScript
+        assert_eq!(
+            ca_records[1].get(0),
+            Some(&FieldValue::String("CA_Val_js".to_string()))
+        );
+        assert_eq!(ca_records[1].get(1), Some(&FieldValue::Short(5 | 0x0040))); // Type 5 JScript + Return="ignore"
+
+        // 6. Verify RadioButton table
+        let rb_tbl = sec.tables.iter().find(|t| t.name == "RadioButton");
+        let Some(rb_tbl) = rb_tbl else {
+            return Err(Error::Validation {
+                element: "RadioButton".to_string(),
+                reason: "missing RadioButton table".to_string(),
+            });
+        };
+        let rb_records = &rb_tbl.records;
+        assert_eq!(rb_records.len(), 4);
+        assert_eq!(
+            rb_records[0].get(0),
+            Some(&FieldValue::String("SETUP_MODE".to_string()))
+        );
+        assert_eq!(
+            rb_records[0].get(2),
+            Some(&FieldValue::String("Simple".to_string()))
+        );
+        assert_eq!(
+            rb_records[1].get(2),
+            Some(&FieldValue::String("Advanced".to_string()))
+        );
+        assert_eq!(
+            rb_records[1].get(8),
+            Some(&FieldValue::String("Choose features".to_string()))
+        );
+        assert_eq!(
+            rb_records[2].get(0),
+            Some(&FieldValue::String("SUB_MODE".to_string()))
+        );
+        assert_eq!(
+            rb_records[2].get(2),
+            Some(&FieldValue::String("Val1".to_string()))
+        );
+
+        // 7. Verify ScrollableText resolved text
+        let ctrl_tbl = sec.tables.iter().find(|t| t.name == "Control");
+        let Some(ctrl_tbl) = ctrl_tbl else {
+            return Err(Error::Validation {
+                element: "Control".to_string(),
+                reason: "missing Control table".to_string(),
+            });
+        };
+        let ctrl_records = &ctrl_tbl.records;
+        let license_rec = ctrl_records
+            .iter()
+            .find(|r| r.get(1) == Some(&FieldValue::String("LicenseBox".to_string())));
+        assert!(license_rec.is_some());
+        assert_eq!(
+            license_rec.and_then(|r| r.get(9)),
+            Some(&FieldValue::String(
+                r"{\rtf1 EULA content here}".to_string()
+            ))
+        );
+
+        // 8. Verify Relative Sequence Table (_WixSequenceRelative)
+        let rel_tbl = sec.tables.iter().find(|t| t.name == "_WixSequenceRelative");
+        let Some(rel_tbl) = rel_tbl else {
+            return Err(Error::Validation {
+                element: "_WixSequenceRelative".to_string(),
+                reason: "missing _WixSequenceRelative table".to_string(),
+            });
+        };
+        let rel_records = &rel_tbl.records;
+        assert_eq!(rel_records.len(), 4);
+
+        // 9. Verify MajorUpgrade records
+        let upg_tbl = sec.tables.iter().find(|t| t.name == "Upgrade");
+        assert!(upg_tbl.is_some());
+        let lc_tbl = sec.tables.iter().find(|t| t.name == "LaunchCondition");
+        assert!(lc_tbl.is_some());
+        let prop_tbl = sec.tables.iter().find(|t| t.name == "Property");
+        let Some(prop_tbl) = prop_tbl else {
+            return Err(Error::Validation {
+                element: "Property".to_string(),
+                reason: "missing Property table".to_string(),
+            });
+        };
+        let p_records = &prop_tbl.records;
+        let sec_prop = p_records
+            .iter()
+            .find(|r| r.get(0) == Some(&FieldValue::String("SecureCustomProperties".to_string())));
+        assert!(sec_prop.is_some());
 
         Ok(())
     }
