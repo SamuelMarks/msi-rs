@@ -537,6 +537,13 @@ mod tests {
 
         assert!(r.find_entry("NonExistent").is_err());
 
+        // Test reading 0-byte stream
+        let mut zero_stream_writer = crate::cfb::writer::CfbWriter::new(CfbVersion::V3);
+        assert!(zero_stream_writer.add_stream("ZeroStream", &[]).is_ok());
+        let zero_cfb = zero_stream_writer.build();
+        let zero_reader = CfbReader::new(&zero_cfb)?;
+        assert_eq!(zero_reader.read_stream("ZeroStream"), Ok(Vec::new()));
+
         // Read stream data
         let data = r.read_stream("TestStream")?;
         assert_eq!(data, vec![0xAA; 5000]);

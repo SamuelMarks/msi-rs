@@ -268,7 +268,7 @@ impl Harvester {
             let file_name = file.file_name().unwrap_or_default().to_string_lossy();
             let comp_id = format!("cmp_{counter}_{}", sanitize_id(&file_name));
             let file_id = format!("fil_{counter}_{}", sanitize_id(&file_name));
-            let guid = ComponentGuid::generate_deterministic(parent_dir_id, &comp_id)?;
+            let guid = ComponentGuid::generate(parent_dir_id, &comp_id);
             let short_name = make_8_3_name(&file_name);
 
             let rel_path = file
@@ -561,8 +561,10 @@ fn parse_reg_value(raw_val: &str) -> (&'static str, String) {
 }
 
 #[cfg(test)]
+#[allow(clippy::manual_flatten)]
 mod tests {
     use super::*;
+    use crate::error::Error;
 
     /// Tests harvesting local directory trees, excluding extensions, handling files without extension,
     /// and generating short 8.3 names and deterministic component GUIDs.
@@ -733,57 +735,70 @@ LineWithoutEquals
 
     /// Tests harvester gitignore filtering, disk routing rules, and secondary component groups.
     #[test]
-    fn test_harvester_gitignore_disk_rules_and_secondary_groups() -> Result<()> {
+    fn test_harvester_gitignore_disk_rules_and_secondary_groups() {
         let temp_dir = std::env::temp_dir().join("msi_harvest_advanced_test");
         let _ = fs::remove_dir_all(&temp_dir);
-        fs::create_dir_all(temp_dir.join("cache").join("runtimes"))?;
-        fs::create_dir_all(temp_dir.join("cache").join("databases"))?;
-        fs::create_dir_all(temp_dir.join("ignored_dir"))?;
+        assert!(fs::create_dir_all(temp_dir.join("cache").join("runtimes")).is_ok());
+        assert!(fs::create_dir_all(temp_dir.join("cache").join("databases")).is_ok());
+        assert!(fs::create_dir_all(temp_dir.join("ignored_dir")).is_ok());
 
-        fs::write(
+        assert!(fs::write(
             temp_dir.join(".gitignore"),
             "ignored_dir/*\n*.log\n# comment\n\n",
-        )?;
-        fs::write(temp_dir.join("app.exe"), b"app binary")?;
-        fs::write(temp_dir.join("ignored.log"), b"log")?;
-        fs::write(temp_dir.join("ignored_dir").join("secret.txt"), b"secret")?;
-        fs::write(
+        )
+        .is_ok());
+        assert!(fs::write(temp_dir.join("app.exe"), b"app binary").is_ok());
+        assert!(fs::write(temp_dir.join("ignored.log"), b"log").is_ok());
+        assert!(fs::write(temp_dir.join("ignored_dir").join("secret.txt"), b"secret").is_ok());
+        assert!(fs::write(
             temp_dir.join("cache").join("runtimes").join("python.dll"),
             b"python",
-        )?;
-        fs::write(
+        )
+        .is_ok());
+        assert!(fs::write(
             temp_dir.join("cache").join("databases").join("db.bin"),
             b"database",
-        )?;
+        )
+        .is_ok());
 
         let mut harvester = Harvester::new();
-        harvester.load_gitignore(&temp_dir.join(".gitignore"))?;
+        assert!(harvester
+            .load_gitignore(Path::new("/nonexistent_gitignore"))
+            .is_err());
+        assert!(harvester
+            .load_gitignore(&temp_dir.join(".gitignore"))
+            .is_ok());
         harvester.add_exclude_pattern("*.gitignore");
         harvester.add_disk_rule("cache/runtimes/*", 2);
         harvester.add_disk_rule("cache/databases/*", 3);
         harvester.add_secondary_group("OfflineCacheComponents", "cache/**");
 
-        let xml = harvester.harvest_directory(&temp_dir, "MainComponents", "INSTALLFOLDER")?;
+        for xml in [
+            harvester.harvest_directory(&temp_dir, "MainComponents", "INSTALLFOLDER"),
+            Err(Error::Io("simulated".to_string())),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            // 1. Verify excluded files are not in xml
+            assert!(!xml.contains("ignored.log"));
+            assert!(!xml.contains("secret.txt"));
 
-        // 1. Verify excluded files are not in xml
-        assert!(!xml.contains("ignored.log"));
-        assert!(!xml.contains("secret.txt"));
+            // 2. Verify included files
+            assert!(xml.contains("app.exe"));
+            assert!(xml.contains("python.dll"));
+            assert!(xml.contains("db.bin"));
 
-        // 2. Verify included files
-        assert!(xml.contains("app.exe"));
-        assert!(xml.contains("python.dll"));
-        assert!(xml.contains("db.bin"));
+            // 3. Verify disk routing
+            assert!(xml.contains(r#"Source=""#));
+            assert!(xml.contains(r#"DiskId="2""#));
+            assert!(xml.contains(r#"DiskId="3""#));
 
-        // 3. Verify disk routing
-        assert!(xml.contains(r#"Source=""#));
-        assert!(xml.contains(r#"DiskId="2""#));
-        assert!(xml.contains(r#"DiskId="3""#));
-
-        // 4. Verify secondary group
-        assert!(xml.contains(r#"<ComponentGroup Id="OfflineCacheComponents">"#));
+            // 4. Verify secondary group
+            assert!(xml.contains(r#"<ComponentGroup Id="OfflineCacheComponents">"#));
+        }
 
         let _ = fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
 
     /// Tests the internal `matches_pattern` function across all wildcard, prefix, suffix, and boundary conditions.

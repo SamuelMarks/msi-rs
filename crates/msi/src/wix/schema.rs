@@ -92,23 +92,24 @@ impl fmt::Display for WixSchemaVersion {
 mod tests {
     use super::*;
 
+    /// Tests roundtrip conversion between `WiX` schema versions and namespace URIs.
     #[test]
-    fn test_schema_versions_roundtrip() -> Result<()> {
+    fn test_schema_versions_roundtrip() {
         assert_eq!(
-            WixSchemaVersion::from_uri(WIX_V3_NAMESPACE)?,
-            WixSchemaVersion::V3
+            WixSchemaVersion::from_uri(WIX_V3_NAMESPACE),
+            Ok(WixSchemaVersion::V3)
         );
         assert_eq!(
-            WixSchemaVersion::from_uri(WIX_V4_NAMESPACE)?,
-            WixSchemaVersion::V4
+            WixSchemaVersion::from_uri(WIX_V4_NAMESPACE),
+            Ok(WixSchemaVersion::V4)
         );
         assert_eq!(
-            WixSchemaVersion::from_uri(WIX_V5_NAMESPACE)?,
-            WixSchemaVersion::V5
+            WixSchemaVersion::from_uri(WIX_V5_NAMESPACE),
+            Ok(WixSchemaVersion::V5)
         );
         assert_eq!(
-            WixSchemaVersion::from_uri(WIX_POSIX_V1_NAMESPACE)?,
-            WixSchemaVersion::PosixV1
+            WixSchemaVersion::from_uri(WIX_POSIX_V1_NAMESPACE),
+            Ok(WixSchemaVersion::PosixV1)
         );
 
         assert_eq!(WixSchemaVersion::V3.namespace_uri(), WIX_V3_NAMESPACE);
@@ -125,6 +126,5 @@ mod tests {
         assert!(format!("{}", WixSchemaVersion::PosixV1).contains("POSIX v1"));
 
         assert!(WixSchemaVersion::from_uri("http://example.com/invalid").is_err());
-        Ok(())
     }
 }

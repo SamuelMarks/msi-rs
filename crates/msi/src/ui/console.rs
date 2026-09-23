@@ -376,6 +376,18 @@ impl UefiGopFramebuffer {
             });
         }
 
+        self.write_pixel_unchecked(offset, color, buffer);
+        Ok(())
+    }
+
+    /// Internal helper writing a formatted pixel to a pre-validated buffer offset.
+    ///
+    /// # Arguments
+    ///
+    /// * `offset` - Byte index within `buffer`.
+    /// * `color` - RGBA color value.
+    /// * `buffer` - Mutable byte slice of the linear framebuffer.
+    fn write_pixel_unchecked(&self, offset: usize, color: Color32, buffer: &mut [u8]) {
         match self.pixel_format {
             GopPixelFormat::Rgb8 => {
                 buffer[offset] = color.r;
@@ -397,7 +409,6 @@ impl UefiGopFramebuffer {
                 buffer[offset..offset + 4].copy_from_slice(&packed.to_le_bytes());
             }
         }
-        Ok(())
     }
 
     /// Clears the entire framebuffer surface to a single solid color.
@@ -421,7 +432,8 @@ impl UefiGopFramebuffer {
 
         for y in 0..self.height {
             for x in 0..self.width {
-                self.put_pixel(x, y, color, buffer)?;
+                let offset = ((y * self.stride + x) * 4) as usize;
+                self.write_pixel_unchecked(offset, color, buffer);
             }
         }
         Ok(())

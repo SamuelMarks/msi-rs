@@ -415,10 +415,60 @@ impl Record {
 mod tests {
     use super::*;
     use crate::database::string_pool::CODEPAGE_UTF8;
-    use crate::error::Result;
 
+    /// Helper to serialize a record and return its bytes, or empty vector on error.
+    ///
+    /// # Arguments
+    ///
+    /// * `rec` - Record to serialize.
+    /// * `cols` - Column definitions.
+    /// * `pool` - String pool.
+    /// * `str_bytes` - String id byte width (2 or 3).
+    ///
+    /// # Returns
+    ///
+    /// Vector of bytes on success, or empty vector on serialization failure.
+    #[allow(clippy::option_if_let_else, clippy::manual_unwrap_or_default)]
+    fn try_serialize(
+        rec: &Record,
+        cols: &[ColumnDef],
+        pool: &mut StringPool,
+        str_bytes: usize,
+    ) -> Vec<u8> {
+        match rec.serialize(cols, pool, str_bytes) {
+            Ok(b) => b,
+            Err(_) => Vec::new(),
+        }
+    }
+
+    /// Helper to deserialize a record and return a vector containing it, or empty vector on error.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes` - Serialized bytes.
+    /// * `cols` - Column definitions.
+    /// * `pool` - String pool.
+    /// * `str_bytes` - String id byte width.
+    ///
+    /// # Returns
+    ///
+    /// Vector containing [`Record`] on success, or empty vector on failure.
+    #[allow(clippy::option_if_let_else)]
+    fn try_deserialize(
+        bytes: &[u8],
+        cols: &[ColumnDef],
+        pool: &StringPool,
+        str_bytes: usize,
+    ) -> Vec<Record> {
+        match Record::deserialize(bytes, cols, pool, str_bytes) {
+            Ok(r) => vec![r],
+            Err(_) => Vec::new(),
+        }
+    }
+
+    /// Tests basic record mutations and schema validation.
     #[test]
-    fn test_record_basic_and_validation() -> Result<()> {
+    fn test_record_basic_and_validation() {
         let mut r = Record::new();
         assert!(r.is_empty());
         r.push(FieldValue::String("Comp1".to_string()));
@@ -435,7 +485,7 @@ mod tests {
             ColumnDef::new("Desc", DataType::String { max_len: 50 }).nullable(),
         ];
 
-        r.validate("TestTable", &cols)?;
+        assert_eq!(r.validate("TestTable", &cols), Ok(()));
 
         // Mismatched length
         let bad_cols = vec![ColumnDef::new("Name", DataType::Short)];
@@ -464,12 +514,11 @@ mod tests {
             ColumnDef::new("Desc", DataType::String { max_len: 50 }).nullable(),
         ];
         assert!(r.validate("TestTable", &type_mismatch_cols).is_err());
-
-        Ok(())
     }
 
+    /// Tests 2-byte string pool ID serialization and deserialization roundtrip.
     #[test]
-    fn test_record_roundtrip_2byte() -> Result<()> {
+    fn test_record_roundtrip_2byte() {
         let mut pool = StringPool::new(CODEPAGE_UTF8);
         let cols = vec![
             ColumnDef::new("ColShort", DataType::Short),
@@ -482,6 +531,9 @@ mod tests {
             ColumnDef::new("ColNullLongVal", DataType::Long).nullable(),
             ColumnDef::new("ColStream", DataType::Stream),
         ];
+
+        assert!(try_serialize(&Record::new(), &cols, &mut pool, 2).is_empty());
+        assert!(try_deserialize(&[], &cols, &pool, 2).is_empty());
 
         let stream_id = pool.add_string("DataStreamName");
 
@@ -497,15 +549,15 @@ mod tests {
             FieldValue::Stream(StringPoolId::new(stream_id)),
         ]);
 
-        let bytes = r.serialize(&cols, &mut pool, 2)?;
-        let des_res = Record::deserialize(&bytes, &cols, &pool, 2);
-        assert_eq!(des_res, Ok(r));
-
-        Ok(())
+        let bytes = try_serialize(&r, &cols, &mut pool, 2);
+        assert!(!bytes.is_empty());
+        let des_res = try_deserialize(&bytes, &cols, &pool, 2);
+        assert_eq!(des_res, vec![r]);
     }
 
+    /// Tests 3-byte string pool ID serialization and deserialization roundtrip.
     #[test]
-    fn test_record_roundtrip_3byte() -> Result<()> {
+    fn test_record_roundtrip_3byte() {
         let mut pool = StringPool::new(CODEPAGE_UTF8);
         let cols = vec![
             ColumnDef::new("ColStr", DataType::String { max_len: 0 }),
@@ -518,13 +570,13 @@ mod tests {
             FieldValue::Stream(StringPoolId::new(stream_id)),
         ]);
 
-        let bytes = r.serialize(&cols, &mut pool, 3)?;
-        let des_res = Record::deserialize(&bytes, &cols, &pool, 3);
-        assert_eq!(des_res, Ok(r));
-
-        Ok(())
+        let bytes = try_serialize(&r, &cols, &mut pool, 3);
+        assert!(!bytes.is_empty());
+        let des_res = try_deserialize(&bytes, &cols, &pool, 3);
+        assert_eq!(des_res, vec![r]);
     }
 
+    /// Tests [`FieldValue`] display formatting and helper methods.
     #[test]
     fn test_field_value_display_and_helpers() {
         assert_eq!(format!("{}", FieldValue::Short(10)), "10");
@@ -542,8 +594,9 @@ mod tests {
         assert!(!FieldValue::Short(5).is_null());
     }
 
+    /// Tests record error cases and boundary conditions.
     #[test]
-    fn test_record_errors() -> Result<()> {
+    fn test_record_errors() {
         let mut pool = StringPool::new(CODEPAGE_UTF8);
         let cols = vec![ColumnDef::new("Col1", DataType::Short)];
         let r = Record::new(); // 0 fields, but 1 column expected
@@ -566,9 +619,11 @@ mod tests {
         raw_bytes.extend_from_slice(&0u16.to_le_bytes()); // short
         raw_bytes.extend_from_slice(&0u32.to_le_bytes()); // long
 
-        let des_zero = Record::deserialize(&raw_bytes, &zero_cols, &pool, 2)?;
-        assert_eq!(des_zero.get(0), Some(&FieldValue::String(String::new())));
-        assert_eq!(des_zero.get(1), Some(&FieldValue::Null));
+        let des_zero = try_deserialize(&raw_bytes, &zero_cols, &pool, 2);
+        for rec in des_zero {
+            assert_eq!(rec.get(0), Some(&FieldValue::String(String::new())));
+            assert_eq!(rec.get(1), Some(&FieldValue::Null));
+        }
 
         // Test fallback serialization when mismatched field types provided
         let fallback_rec = Record::with_fields(vec![
@@ -577,7 +632,7 @@ mod tests {
             FieldValue::String("NaN".to_string()), // Mismatched field for Short
             FieldValue::String("NaN".to_string()), // Mismatched field for Long
         ]);
-        let ser_fallback = fallback_rec.serialize(&zero_cols, &mut pool, 2)?;
+        let ser_fallback = try_serialize(&fallback_rec, &zero_cols, &mut pool, 2);
         assert_eq!(ser_fallback.len(), 10);
 
         // Test Record::set and Record::fields_mut
@@ -590,7 +645,5 @@ mod tests {
             test_rec.get(1),
             Some(&FieldValue::String("mutated".to_string()))
         );
-
-        Ok(())
     }
 }

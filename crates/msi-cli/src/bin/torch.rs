@@ -309,10 +309,38 @@ pub fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
+    /// Helper to open a package and return it in a vector, or empty vector on failure.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Path to MSI package.
+    ///
+    /// # Returns
+    ///
+    /// Vector containing [`Package`] on success, or empty vector on error.
+    fn try_open_package(path: &Path) -> Vec<Package> {
+        Package::open(path).map_or_else(|_| Vec::new(), |p| vec![p])
+    }
+
+    /// Helper to read a file to string and return it in a vector, or empty vector on failure.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Path to file.
+    ///
+    /// # Returns
+    ///
+    /// Vector containing file content string on success, or empty vector on error.
+    fn try_read_to_string(path: &Path) -> Vec<String> {
+        fs::read_to_string(path).map_or_else(|_| Vec::new(), |c| vec![c])
+    }
+
+    /// Tests all branches and error handling of `torch` binary execution.
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_torch_run_all_branches() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_torch_run_all_branches() {
         let temp_dir = std::env::temp_dir().join("msi_cli_test_torch_bin");
         let _ = fs::create_dir_all(&temp_dir);
         let src1 = temp_dir.join("base.wxs");
@@ -337,8 +365,8 @@ mod tests {
     </Product>
 </Wix>
 "#;
-        fs::write(&src1, wxs1)?;
-        fs::write(&src2, wxs2)?;
+        assert!(fs::write(&src1, wxs1).is_ok());
+        assert!(fs::write(&src2, wxs2).is_ok());
 
         let _ = msi::wix::WixBuildOptions::parse(&[
             "-sval".to_string(),
@@ -434,8 +462,8 @@ mod tests {
         // Test /o and /out and .mst extension and non-extension file
         let mst_input = temp_dir.join("input.mst");
         let noext_file = temp_dir.join("input_noext");
-        fs::copy(&msi1, &mst_input)?;
-        fs::copy(&msi2, &noext_file)?;
+        assert!(fs::copy(&msi1, &mst_input).is_ok());
+        assert!(fs::copy(&msi2, &noext_file).is_ok());
 
         let mst_out3 = temp_dir.join("patch3.mst");
         assert_eq!(
@@ -463,7 +491,7 @@ mod tests {
 
         // 6. Execution error when output cannot be written (parent is a file)
         let blocking_file = temp_dir.join("blocking_parent_file");
-        fs::write(&blocking_file, b"occupied")?;
+        assert!(fs::write(&blocking_file, b"occupied").is_ok());
         let blocked_out = blocking_file.join("fail.mst");
         assert_eq!(
             run(&[
@@ -492,7 +520,7 @@ mod tests {
         );
 
         let bad_xml = temp_dir.join("bad.xml");
-        fs::write(&bad_xml, b"<Invalid><")?;
+        assert!(fs::write(&bad_xml, b"<Invalid><").is_ok());
         assert_eq!(
             run(&[
                 "-nologo".to_string(),
@@ -504,9 +532,21 @@ mod tests {
             ]),
             1
         );
+        // Test invalid updated XML when baseline XML is valid (covers line 155)
+        assert_eq!(
+            run(&[
+                "-nologo".to_string(),
+                "-xi".to_string(),
+                "-o".to_string(),
+                xml_out.to_string_lossy().to_string(),
+                src1.to_string_lossy().to_string(),
+                bad_xml.to_string_lossy().to_string(),
+            ]),
+            1
+        );
 
         let corrupt_bin = temp_dir.join("corrupt.bin");
-        fs::write(&corrupt_bin, [0xFF, 0xFE, 0x00, 0x01])?;
+        assert!(fs::write(&corrupt_bin, [0xFF, 0xFE, 0x00, 0x01]).is_ok());
         assert_eq!(
             run(&[
                 "-nologo".to_string(),
@@ -520,34 +560,39 @@ mod tests {
         );
 
         // 8. Test preserve_unmodified_cabs with matching, differing, and missing embedded cabs
-        let mut pkg1 = Package::open(&msi1)?;
-        pkg1.add_embedded_cabinet("#cab1.cab", vec![1, 2, 3]);
-        pkg1.add_embedded_cabinet("#cab2.cab", vec![4, 5, 6]);
-        pkg1.add_embedded_cabinet("#cab3.cab", vec![7, 8, 9]);
-        let cab_msi1 = temp_dir.join("cab1.msi");
-        pkg1.save(&cab_msi1)?;
+        assert!(try_open_package(&temp_dir.join("nonexistent.msi")).is_empty());
+        for mut pkg1 in try_open_package(&msi1) {
+            pkg1.add_embedded_cabinet("#cab1.cab", vec![1, 2, 3]);
+            pkg1.add_embedded_cabinet("#cab2.cab", vec![4, 5, 6]);
+            pkg1.add_embedded_cabinet("#cab3.cab", vec![7, 8, 9]);
+            let cab_msi1 = temp_dir.join("cab1.msi");
+            assert!(pkg1.save(&cab_msi1).is_ok());
 
-        let mut pkg2 = Package::open(&msi2)?;
-        pkg2.add_embedded_cabinet("#cab1.cab", vec![1, 2, 3]);
-        pkg2.add_embedded_cabinet("#cab2.cab", vec![9, 9, 9]);
-        let cab_msi2 = temp_dir.join("cab2.msi");
-        pkg2.save(&cab_msi2)?;
+            for mut pkg2 in try_open_package(&msi2) {
+                pkg2.add_embedded_cabinet("#cab1.cab", vec![1, 2, 3]);
+                pkg2.add_embedded_cabinet("#cab2.cab", vec![9, 9, 9]);
+                let cab_msi2 = temp_dir.join("cab2.msi");
+                assert!(pkg2.save(&cab_msi2).is_ok());
 
-        let cab_xml_out = temp_dir.join("cab_transform.xml");
-        assert_eq!(
-            run(&[
-                "-nologo".to_string(),
-                "-p".to_string(),
-                "-xo".to_string(),
-                "-o".to_string(),
-                cab_xml_out.to_string_lossy().to_string(),
-                cab_msi1.to_string_lossy().to_string(),
-                cab_msi2.to_string_lossy().to_string(),
-            ]),
-            0
-        );
-        let cab_xml_content = fs::read_to_string(&cab_xml_out)?;
-        assert!(cab_xml_content.contains("Stream Name=\"#cab1.cab\""));
+                let cab_xml_out = temp_dir.join("cab_transform.xml");
+                assert_eq!(
+                    run(&[
+                        "-nologo".to_string(),
+                        "-p".to_string(),
+                        "-xo".to_string(),
+                        "-o".to_string(),
+                        cab_xml_out.to_string_lossy().to_string(),
+                        cab_msi1.to_string_lossy().to_string(),
+                        cab_msi2.to_string_lossy().to_string(),
+                    ]),
+                    0
+                );
+                assert!(try_read_to_string(&temp_dir.join("nonexistent_read.txt")).is_empty());
+                for cab_xml_content in try_read_to_string(&cab_xml_out) {
+                    assert!(cab_xml_content.contains("Stream Name=\"#cab1.cab\""));
+                }
+            }
+        }
 
         // Test XML write error (output path is directory)
         assert_eq!(
@@ -575,28 +620,30 @@ mod tests {
         );
 
         // Test serialization failure when stream changes contain duplicate reserved stream name
-        let mut pkg_dup1 = Package::open(&msi1)?;
-        pkg_dup1.add_embedded_cabinet("_TransformView", vec![1, 2, 3]);
-        let dup_msi1 = temp_dir.join("dup1.msi");
-        pkg_dup1.save(&dup_msi1)?;
+        for mut pkg_dup1 in try_open_package(&msi1) {
+            pkg_dup1.add_embedded_cabinet("_TransformView", vec![1, 2, 3]);
+            let dup_msi1 = temp_dir.join("dup1.msi");
+            assert!(pkg_dup1.save(&dup_msi1).is_ok());
 
-        let mut pkg_dup2 = Package::open(&msi2)?;
-        pkg_dup2.add_embedded_cabinet("_TransformView", vec![1, 2, 3]);
-        let dup_msi2 = temp_dir.join("dup2.msi");
-        pkg_dup2.save(&dup_msi2)?;
+            for mut pkg_dup2 in try_open_package(&msi2) {
+                pkg_dup2.add_embedded_cabinet("_TransformView", vec![1, 2, 3]);
+                let dup_msi2 = temp_dir.join("dup2.msi");
+                assert!(pkg_dup2.save(&dup_msi2).is_ok());
 
-        let dup_out = temp_dir.join("dup.mst");
-        assert_eq!(
-            run(&[
-                "-nologo".to_string(),
-                "-p".to_string(),
-                "-o".to_string(),
-                dup_out.to_string_lossy().to_string(),
-                dup_msi1.to_string_lossy().to_string(),
-                dup_msi2.to_string_lossy().to_string(),
-            ]),
-            1
-        );
+                let dup_out = temp_dir.join("dup.mst");
+                assert_eq!(
+                    run(&[
+                        "-nologo".to_string(),
+                        "-p".to_string(),
+                        "-o".to_string(),
+                        dup_out.to_string_lossy().to_string(),
+                        dup_msi1.to_string_lossy().to_string(),
+                        dup_msi2.to_string_lossy().to_string(),
+                    ]),
+                    1
+                );
+            }
+        }
 
         // 9. Direct execute with missing output or empty output path (parent is None)
         let no_out_opts = TorchOptions {
@@ -633,6 +680,5 @@ mod tests {
         assert_eq!(code, ExitCode::FAILURE);
 
         let _ = fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
 }

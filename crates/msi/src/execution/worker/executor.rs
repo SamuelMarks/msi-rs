@@ -285,6 +285,60 @@ mod tests {
         let _ = fs::remove_dir_all(&temp_dir);
     }
 
+    /// Tests atomic write and commit I/O error edge cases.
+    #[test]
+    fn test_live_worker_executor_error_paths() {
+        let temp_dir =
+            std::env::temp_dir().join(format!("msi_test_exec_err_{}", std::process::id()));
+        let _ = fs::create_dir_all(&temp_dir);
+
+        // 1. Error creating quarantine_dir when target_path exists (quarantine_dir blocked by regular file)
+        let blocked_file = temp_dir.join("blocked_file");
+        let _ = fs::write(&blocked_file, b"content");
+        let existing_target = temp_dir.join("existing_target.txt");
+        let _ = fs::write(&existing_target, b"original");
+
+        let mut exec_quar_err = LiveWorkerExecutor::new(&blocked_file.join("sub"), "s1");
+        assert!(exec_quar_err
+            .write_file_atomic(&existing_target, b"new", None)
+            .is_err());
+
+        // 2. Error copying target_path to quarantine_rbf (quarantine_rbf pre-exists as directory)
+        let quarantine_dir = temp_dir.join("quar2");
+        let _ = fs::create_dir_all(&quarantine_dir);
+        let mut exec_copy_err = LiveWorkerExecutor::new(&quarantine_dir, "s2");
+        let rbf_dir = quarantine_dir.join("file_s2_1.rbf");
+        let _ = fs::create_dir_all(&rbf_dir);
+        assert!(exec_copy_err
+            .write_file_atomic(&existing_target, b"new", None)
+            .is_err());
+
+        // 3. Error writing tmp_path (tmp_path pre-exists as directory)
+        let new_target = temp_dir.join("new_file.txt");
+        let mut exec_tmp_err = LiveWorkerExecutor::new(&quarantine_dir, "s3");
+        let pre_existing_dir = temp_dir.join("new_file.txt.tmp.s3.1");
+        let _ = fs::create_dir_all(&pre_existing_dir);
+        assert!(exec_tmp_err
+            .write_file_atomic(&new_target, b"new", None)
+            .is_err());
+
+        // 4. Error in commit when quarantine_dir cannot be deleted
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let unremovable_quar = temp_dir.join("unremovable_quar");
+            let _ = fs::create_dir_all(&unremovable_quar);
+            let sub_file = unremovable_quar.join("dummy.rbf");
+            let _ = fs::write(&sub_file, b"dummy");
+            let _ = fs::set_permissions(&unremovable_quar, fs::Permissions::from_mode(0o555));
+            let mut exec_commit_err = LiveWorkerExecutor::new(&unremovable_quar, "s4");
+            assert!(exec_commit_err.commit().is_err());
+            let _ = fs::set_permissions(&unremovable_quar, fs::Permissions::from_mode(0o755));
+        }
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
     #[test]
     fn test_live_worker_executor_rollback_restoration() {
         let temp_dir =

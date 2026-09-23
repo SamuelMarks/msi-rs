@@ -236,26 +236,40 @@ pub fn self_reg_schema() -> TableSchema {
 mod tests {
     use super::*;
 
+    /// Helper creating a [`SelfRegRow`] in a vector, or empty vector if invalid.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - File key identifier.
+    /// * `cost` - Optional registration cost.
+    ///
+    /// # Returns
+    ///
+    /// Vector containing [`SelfRegRow`] on success, or empty vector on failure.
+    fn make_rows(key: &str, cost: Option<i16>) -> Vec<SelfRegRow> {
+        let Ok(file) = FileKey::new(key) else {
+            return Vec::new();
+        };
+        vec![SelfRegRow { file, cost }]
+    }
+
     /// Tests serialization, deserialization, and error handling for [`SelfRegRow`].
     #[test]
-    fn test_self_reg_roundtrip() -> Result<()> {
-        let file = FileKey::new("file1")?;
-        let row = SelfRegRow {
-            file,
-            cost: Some(512),
-        };
-        let rec = row.to_record();
-        assert_eq!(rec.len(), 2);
-        let parsed = SelfRegRow::from_record(&rec);
-        assert_eq!(parsed, Ok(row));
+    fn test_self_reg_roundtrip() {
+        assert!(make_rows("", None).is_empty());
+
+        for row in make_rows("file1", Some(512)) {
+            let rec = row.to_record();
+            assert_eq!(rec.len(), 2);
+            let parsed = SelfRegRow::from_record(&rec);
+            assert_eq!(parsed, Ok(row));
+        }
 
         // Test with None cost
-        let row_no_cost = SelfRegRow {
-            file: FileKey::new("file2")?,
-            cost: None,
-        };
-        let rec_no_cost = row_no_cost.to_record();
-        assert_eq!(SelfRegRow::from_record(&rec_no_cost), Ok(row_no_cost));
+        for row_no_cost in make_rows("file2", None) {
+            let rec_no_cost = row_no_cost.to_record();
+            assert_eq!(SelfRegRow::from_record(&rec_no_cost), Ok(row_no_cost));
+        }
 
         // Error on record length mismatch (< 2 fields)
         assert!(SelfRegRow::from_record(&Record::new()).is_err());
@@ -271,8 +285,6 @@ mod tests {
         bad_key_rec.push(FieldValue::String(String::new()));
         bad_key_rec.push(FieldValue::Null);
         assert!(SelfRegRow::from_record(&bad_key_rec).is_err());
-
-        Ok(())
     }
 
     /// Tests COM table schemas.

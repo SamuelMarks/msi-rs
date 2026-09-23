@@ -225,7 +225,7 @@ pub fn control_condition_schema() -> TableSchema {
         .with_column(ColumnDef::new("Dialog_", DataType::String { max_len: 72 }).primary_key())
         .with_column(ColumnDef::new("Control_", DataType::String { max_len: 50 }).primary_key())
         .with_column(ColumnDef::new("Action", DataType::String { max_len: 50 }).primary_key())
-        .with_column(ColumnDef::new("Condition", DataType::String { max_len: 255 }).primary_key())
+        .with_column(ColumnDef::new("Condition", DataType::String { max_len: 0 }).primary_key())
 }
 
 /// Creates official schema for `ControlEvent` table.
@@ -239,8 +239,8 @@ pub fn control_event_schema() -> TableSchema {
         .with_column(ColumnDef::new("Dialog_", DataType::String { max_len: 72 }).primary_key())
         .with_column(ColumnDef::new("Control_", DataType::String { max_len: 50 }).primary_key())
         .with_column(ColumnDef::new("Event", DataType::String { max_len: 50 }).primary_key())
-        .with_column(ColumnDef::new("Argument", DataType::String { max_len: 255 }).primary_key())
-        .with_column(ColumnDef::new("Condition", DataType::String { max_len: 255 }).primary_key())
+        .with_column(ColumnDef::new("Argument", DataType::String { max_len: 0 }).primary_key())
+        .with_column(ColumnDef::new("Condition", DataType::String { max_len: 0 }).primary_key())
         .with_column(ColumnDef::new("Ordering", DataType::Short).nullable())
 }
 

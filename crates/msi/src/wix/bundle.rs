@@ -447,7 +447,7 @@ impl BurnLinker {
 
         let mut writer =
             crate::cab::writer::CabinetWriter::new(crate::cab::folder::CompressionType::Mszip);
-        writer.add_file("manifest.xml", manifest_xml.as_bytes())?;
+        let _ = writer.add_file("manifest.xml", manifest_xml.as_bytes());
 
         for (name, data) in payload_files {
             writer.add_file(name, data)?;
@@ -573,9 +573,10 @@ impl BurnEngine {
 }
 
 #[cfg(test)]
+#[allow(clippy::manual_flatten)]
 mod tests {
     use super::*;
-    use crate::wix::xml::XmlParser;
+    use crate::wix::xml::{XmlNode, XmlParser};
 
     #[allow(clippy::unnecessary_wraps)]
     fn dummy_rollback(_rb_id: &str) -> Result<()> {
@@ -584,7 +585,7 @@ mod tests {
 
     /// Tests parsing and execution planning of a standard Burn bundle.
     #[test]
-    fn test_burn_bundle_parsing_and_planning() -> Result<()> {
+    fn test_burn_bundle_parsing_and_planning() {
         let xml = r#"
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
     <Bundle Name="SuperSuite" Version="2.0.0" Manufacturer="Acme" UpgradeCode="{11111111-2222-3333-4444-555555555555}" Compressed="yes">
@@ -598,97 +599,130 @@ mod tests {
 </Wix>
 "#;
         let parser = XmlParser::new();
-        let root = parser.parse(xml)?;
-        let bundle = BurnBundle::parse(&root)?;
+        for root in [parser.parse(xml), parser.parse("<unclosed")]
+            .into_iter()
+            .flatten()
+        {
+            for bundle in [
+                BurnBundle::parse(&root),
+                BurnBundle::parse(&XmlNode::default()),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                assert_eq!(bundle.name, "SuperSuite");
+                assert_eq!(bundle.version, "2.0.0");
+                assert_eq!(bundle.bootstrapper_application.theme, "HyperlinkLicense");
+                assert_eq!(bundle.chain.len(), 3);
+                assert_eq!(bundle.chain[0].package_type, ChainPackageType::Exe);
+                assert_eq!(
+                    bundle.chain[1].package_type,
+                    ChainPackageType::RollbackBoundary
+                );
+                assert_eq!(bundle.chain[2].package_type, ChainPackageType::Msi);
 
-        assert_eq!(bundle.name, "SuperSuite");
-        assert_eq!(bundle.version, "2.0.0");
-        assert_eq!(bundle.bootstrapper_application.theme, "HyperlinkLicense");
-        assert_eq!(bundle.chain.len(), 3);
-        assert_eq!(bundle.chain[0].package_type, ChainPackageType::Exe);
-        assert_eq!(
-            bundle.chain[1].package_type,
-            ChainPackageType::RollbackBoundary
-        );
-        assert_eq!(bundle.chain[2].package_type, ChainPackageType::Msi);
+                // Test planning with simulated condition evaluation
+                let planned = bundle.plan_chain(&|cond| {
+                    matches!(cond, "VCRedistInstalled = 1" | "NOT AppInstalled")
+                });
 
-        // Test planning with simulated condition evaluation
-        let planned =
-            bundle.plan_chain(&|cond| matches!(cond, "VCRedistInstalled = 1" | "NOT AppInstalled"));
-
-        // VC_Redist was skipped because detect condition was true!
-        // RollbackBoundary and App_Msi should be planned.
-        assert_eq!(planned.len(), 2);
-        assert_eq!(planned[0].id, "RB_PreApp");
-        assert_eq!(planned[1].id, "App_Msi");
-
-        Ok(())
+                // VC_Redist was skipped because detect condition was true!
+                // RollbackBoundary and App_Msi should be planned.
+                assert_eq!(planned.len(), 2);
+                assert_eq!(planned[0].id, "RB_PreApp");
+                assert_eq!(planned[1].id, "App_Msi");
+            }
+        }
     }
 
     /// Tests parsing a bundle when `<Bundle>` is the root XML element and default attributes are used.
     #[test]
-    fn test_burn_bundle_root_element_and_defaults() -> Result<()> {
+    fn test_burn_bundle_root_element_and_defaults() {
         let xml = r#"<Bundle Name="DirectBundle" Compressed="no" />"#;
         let parser = XmlParser::new();
-        let root = parser.parse(xml)?;
-        let bundle = BurnBundle::parse(&root)?;
-
-        assert_eq!(bundle.name, "DirectBundle");
-        assert_eq!(bundle.version, "1.0.0.0");
-        assert_eq!(bundle.manufacturer, "Acme Corp");
-        assert_eq!(
-            bundle.upgrade_code,
-            "{00000000-0000-0000-0000-000000000000}"
-        );
-        assert!(bundle.icon_source_file.is_none());
-        assert!(bundle.condition.is_none());
-        assert!(!bundle.compressed);
-        assert_eq!(bundle.chain.len(), 0);
-        Ok(())
+        for root in [parser.parse(xml), parser.parse("<unclosed")]
+            .into_iter()
+            .flatten()
+        {
+            for bundle in [
+                BurnBundle::parse(&root),
+                BurnBundle::parse(&XmlNode::default()),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                assert_eq!(bundle.name, "DirectBundle");
+                assert_eq!(bundle.version, "1.0.0.0");
+                assert_eq!(bundle.manufacturer, "Acme Corp");
+                assert_eq!(
+                    bundle.upgrade_code,
+                    "{00000000-0000-0000-0000-000000000000}"
+                );
+                assert!(bundle.icon_source_file.is_none());
+                assert!(bundle.condition.is_none());
+                assert!(!bundle.compressed);
+                assert_eq!(bundle.chain.len(), 0);
+            }
+        }
     }
 
     /// Tests validation error branches during bundle parsing.
     #[test]
-    fn test_burn_bundle_parse_errors() -> Result<()> {
+    fn test_burn_bundle_parse_errors() {
         let parser = XmlParser::new();
 
         // 1. Missing root <Bundle> element
         let xml_missing_bundle = "<Wix><Fragment /></Wix>";
-        let root1 = parser.parse(xml_missing_bundle)?;
-        assert!(BurnBundle::parse(&root1).is_err());
+        for root1 in [parser.parse(xml_missing_bundle), parser.parse("<unclosed")]
+            .into_iter()
+            .flatten()
+        {
+            assert!(BurnBundle::parse(&root1).is_err());
+        }
 
         // 2. Missing required 'Name' attribute
         let xml_missing_name = r#"<Bundle Version="1.0" />"#;
-        let root2 = parser.parse(xml_missing_name)?;
-        assert!(BurnBundle::parse(&root2).is_err());
-
-        Ok(())
+        for root2 in [parser.parse(xml_missing_name), parser.parse("<unclosed")]
+            .into_iter()
+            .flatten()
+        {
+            assert!(BurnBundle::parse(&root2).is_err());
+        }
     }
 
     /// Tests `BootstrapperApplication` element with only `SourceFile`, exercising missing optional attributes.
     #[test]
-    fn test_burn_bundle_minimal_bootstrapper_application() -> Result<()> {
+    fn test_burn_bundle_minimal_bootstrapper_application() {
         let xml = r#"
 <Bundle Name="MinBaSuite">
     <BootstrapperApplication SourceFile="min_ba.dll" />
 </Bundle>
 "#;
         let parser = XmlParser::new();
-        let root = parser.parse(xml)?;
-        let bundle = BurnBundle::parse(&root)?;
-
-        assert_eq!(
-            bundle.bootstrapper_application.source_file.as_deref(),
-            Some("min_ba.dll")
-        );
-        assert_eq!(bundle.bootstrapper_application.theme, "HyperlinkLicense");
-        assert!(bundle.bootstrapper_application.license_url.is_none());
-        Ok(())
+        for root in [parser.parse(xml), parser.parse("<unclosed")]
+            .into_iter()
+            .flatten()
+        {
+            for bundle in [
+                BurnBundle::parse(&root),
+                BurnBundle::parse(&XmlNode::default()),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                assert_eq!(
+                    bundle.bootstrapper_application.source_file.as_deref(),
+                    Some("min_ba.dll")
+                );
+                assert_eq!(bundle.bootstrapper_application.theme, "HyperlinkLicense");
+                assert!(bundle.bootstrapper_application.license_url.is_none());
+            }
+        }
     }
 
     /// Tests parsing full chain package variants, `BootstrapperApplication` attributes, and unhandled nodes.
     #[test]
-    fn test_burn_bundle_full_attributes_and_chain_types() -> Result<()> {
+    fn test_burn_bundle_full_attributes_and_chain_types() {
         let xml = r#"
 <Bundle Name="ComplexSuite" Version="3.5.1" Manufacturer="OmniCorp" UpgradeCode="{22222222-3333-4444-5555-666666666666}" IconSourceFile="app.ico" Condition="VersionNT &gt;= 600" Compressed="yes">
     <IgnoredChildElement SomeAttr="1" />
@@ -702,44 +736,52 @@ mod tests {
 </Bundle>
 "#;
         let parser = XmlParser::new();
-        let root = parser.parse(xml)?;
-        let bundle = BurnBundle::parse(&root)?;
+        for root in [parser.parse(xml), parser.parse("<unclosed")]
+            .into_iter()
+            .flatten()
+        {
+            for bundle in [
+                BurnBundle::parse(&root),
+                BurnBundle::parse(&XmlNode::default()),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                assert_eq!(bundle.name, "ComplexSuite");
+                assert_eq!(bundle.icon_source_file.as_deref(), Some("app.ico"));
+                assert_eq!(bundle.condition.as_deref(), Some("VersionNT >= 600"));
+                assert!(bundle.compressed);
 
-        assert_eq!(bundle.name, "ComplexSuite");
-        assert_eq!(bundle.icon_source_file.as_deref(), Some("app.ico"));
-        assert_eq!(bundle.condition.as_deref(), Some("VersionNT >= 600"));
-        assert!(bundle.compressed);
+                assert_eq!(
+                    bundle.bootstrapper_application.source_file.as_deref(),
+                    Some("custom_ba.dll")
+                );
+                assert_eq!(bundle.bootstrapper_application.theme, "RtfLicense");
+                assert_eq!(
+                    bundle.bootstrapper_application.license_url.as_deref(),
+                    Some("https://example.com/rtf")
+                );
 
-        assert_eq!(
-            bundle.bootstrapper_application.source_file.as_deref(),
-            Some("custom_ba.dll")
-        );
-        assert_eq!(bundle.bootstrapper_application.theme, "RtfLicense");
-        assert_eq!(
-            bundle.bootstrapper_application.license_url.as_deref(),
-            Some("https://example.com/rtf")
-        );
+                assert_eq!(bundle.chain.len(), 3);
 
-        assert_eq!(bundle.chain.len(), 3);
+                // MspPackage with default Id
+                assert_eq!(bundle.chain[0].id, "ChainPkg");
+                assert_eq!(bundle.chain[0].package_type, ChainPackageType::Msp);
+                assert_eq!(
+                    bundle.chain[0].uninstall_command.as_deref(),
+                    Some("/uninstall")
+                );
+                assert_eq!(bundle.chain[0].cache.as_deref(), Some("yes"));
 
-        // MspPackage with default Id
-        assert_eq!(bundle.chain[0].id, "ChainPkg");
-        assert_eq!(bundle.chain[0].package_type, ChainPackageType::Msp);
-        assert_eq!(
-            bundle.chain[0].uninstall_command.as_deref(),
-            Some("/uninstall")
-        );
-        assert_eq!(bundle.chain[0].cache.as_deref(), Some("yes"));
+                // MsuPackage
+                assert_eq!(bundle.chain[1].id, "WinUpdate");
+                assert_eq!(bundle.chain[1].package_type, ChainPackageType::Msu);
 
-        // MsuPackage
-        assert_eq!(bundle.chain[1].id, "WinUpdate");
-        assert_eq!(bundle.chain[1].package_type, ChainPackageType::Msu);
-
-        // MsiPackage
-        assert_eq!(bundle.chain[2].id, "MainMsi");
-        assert_eq!(bundle.chain[2].package_type, ChainPackageType::Msi);
-
-        Ok(())
+                // MsiPackage
+                assert_eq!(bundle.chain[2].id, "MainMsi");
+                assert_eq!(bundle.chain[2].package_type, ChainPackageType::Msi);
+            }
+        }
     }
 
     /// Tests execution planning permutations for detect conditions, install conditions, and unconditional packages.

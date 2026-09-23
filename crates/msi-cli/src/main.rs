@@ -86,6 +86,8 @@ pub enum Commands {
     Harvest(HarvestArgs),
     /// Decompile an MSI database into `WiX` source XML.
     Decompile(DecompileArgs),
+    /// Compile and link `WiX` source manifests into an MSI package.
+    Pack(PackArgs),
 }
 
 /// CLI UI display level selection.
@@ -279,11 +281,11 @@ pub struct HarvestArgs {
     pub target: String,
 
     /// Component group identifier.
-    #[arg(long, default_value = "HarvestedComponents")]
+    #[arg(long, default_value = "HarvestedComponents", alias = "component-group")]
     pub group: String,
 
     /// Target directory identifier.
-    #[arg(long, default_value = "INSTALLFOLDER")]
+    #[arg(long, default_value = "INSTALLFOLDER", alias = "directory-id")]
     pub dir_id: String,
 
     /// Destination output .wxs file path (defaults to stdout).
@@ -293,6 +295,26 @@ pub struct HarvestArgs {
     /// Mode: "dir" for directory harvesting, "reg" for registry file.
     #[arg(long, default_value = "dir")]
     pub mode: String,
+
+    /// Path to a .gitignore file to respect during harvesting.
+    #[arg(long)]
+    pub gitignore: Option<String>,
+
+    /// Disk ID assignment rules in `PATTERN=DISK_ID` format (e.g. `cache/runtimes/*=2`).
+    #[arg(long = "disk-rule")]
+    pub disk_rules: Vec<String>,
+
+    /// Secondary component groups in `PATTERN=GROUP_ID` format (e.g. `cache/*=LibscriptOfflineCacheComponents`).
+    #[arg(long = "secondary-group")]
+    pub secondary_groups: Vec<String>,
+
+    /// Specific file extensions to exclude from harvesting (e.g. `tmp`, `pdb`).
+    #[arg(long = "exclude-ext")]
+    pub exclude_extensions: Vec<String>,
+
+    /// Specific path or glob patterns to exclude from harvesting.
+    #[arg(long = "exclude-pattern")]
+    pub exclude_patterns: Vec<String>,
 }
 
 /// Arguments for decompiling an MSI package into `WiX` source XML.
@@ -309,6 +331,38 @@ pub struct DecompileArgs {
     /// Directory to extract embedded cabinets and stream assets into.
     #[arg(long)]
     pub extract_assets: Option<String>,
+}
+
+/// Arguments for compiling and linking `WiX` source manifests into an MSI package.
+#[derive(Debug, Args, PartialEq, Eq)]
+pub struct PackArgs {
+    /// Output path for the generated .msi package.
+    #[arg(short, long, value_name = "PATH")]
+    pub output: String,
+
+    /// One or more .wxs source files or .wixobj objects.
+    #[arg(value_name = "SOURCES", required = true)]
+    pub sources: Vec<String>,
+
+    /// Preprocessor variable definitions (e.g. -d NAME=VALUE).
+    #[arg(short, long = "define", value_name = "NAME=VALUE")]
+    pub defines: Vec<String>,
+
+    /// Target platform architecture (e.g. x86, x64, arm64).
+    #[arg(long, default_value = "x64")]
+    pub arch: String,
+
+    /// Suppress internal consistency evaluators (ICE) validation.
+    #[arg(short = 's', long = "suppress-validation", alias = "sval")]
+    pub suppress_validation: bool,
+
+    /// `WiX` extension identifiers (e.g. `WixUIExtension`, `WixToolset.UI.wixext`).
+    #[arg(short = 'e', long = "extension", alias = "ext")]
+    pub extensions: Vec<String>,
+
+    /// Enable verbose progress and binding diagnostics.
+    #[arg(short, long)]
+    pub verbose: bool,
 }
 
 /// Real-time logging dispatcher streaming formatted records to log files or stdout.
@@ -951,7 +1005,31 @@ fn handle_worker(args: &WorkerArgs) -> Result<String, String> {
 
 /// Handles the `harvest` command.
 fn handle_harvest(args: &HarvestArgs) -> Result<String, String> {
-    let harvester = msi::wix::Harvester::new();
+    let mut harvester = msi::wix::Harvester::new();
+    if let Some(ref gitignore) = args.gitignore {
+        harvester
+            .load_gitignore(Path::new(gitignore))
+            .map_err(err_to_string)?;
+    }
+    for rule in &args.disk_rules {
+        if let Some((pat, disk_str)) = rule.split_once('=') {
+            if let Ok(did) = disk_str.parse::<i16>() {
+                harvester.add_disk_rule(pat, did);
+            }
+        }
+    }
+    for sec in &args.secondary_groups {
+        if let Some((pat, grp)) = sec.split_once('=') {
+            harvester.add_secondary_group(grp, pat);
+        }
+    }
+    for ext in &args.exclude_extensions {
+        harvester.exclude_extension(ext);
+    }
+    for pat in &args.exclude_patterns {
+        harvester.add_exclude_pattern(pat);
+    }
+
     let xml = if args.mode == "reg" {
         let content = std::fs::read_to_string(&args.target)
             .map_err(|e| format!("Failed to read registry file '{}': {e}", args.target))?;
@@ -999,6 +1077,55 @@ fn handle_decompile(args: &DecompileArgs) -> Result<String, String> {
     }
 }
 
+/// Handles the `pack` command by compiling and linking `WiX` source manifests into an MSI package.
+///
+/// # Arguments
+///
+/// * `args` - The command arguments containing source manifests and build configuration.
+///
+/// # Returns
+///
+/// A message string with the generated package path on success.
+///
+/// # Errors
+///
+/// Returns an error message if source files are missing, compilation fails, or linking fails.
+fn handle_pack(args: &PackArgs) -> Result<String, String> {
+    if args.sources.is_empty() {
+        return Err("No source files specified".to_string());
+    }
+    if args.output.trim().is_empty() {
+        return Err("Output path cannot be empty".to_string());
+    }
+
+    let mut raw_args = vec!["-o".to_string(), args.output.clone()];
+    for src in &args.sources {
+        raw_args.push(src.clone());
+    }
+    for def in &args.defines {
+        raw_args.push(format!("-d{def}"));
+    }
+    if args.suppress_validation {
+        raw_args.push("-sval".to_string());
+    }
+    for ext in &args.extensions {
+        raw_args.push("-ext".to_string());
+        raw_args.push(ext.clone());
+    }
+    if !args.arch.is_empty() {
+        raw_args.push("-arch".to_string());
+        raw_args.push(args.arch.clone());
+    }
+
+    let opts = msi::wix::toolchain::WixBuildOptions::parse(&raw_args).map_err(err_to_string)?;
+    let out_path = opts.execute().map_err(err_to_string)?;
+
+    Ok(format!(
+        "Successfully compiled and linked MSI package: '{}'",
+        out_path.display()
+    ))
+}
+
 /// Executes the CLI command based on parsed options.
 ///
 /// # Arguments
@@ -1026,6 +1153,7 @@ pub fn run(cli: &Cli) -> Result<String, String> {
         Commands::Worker(args) => handle_worker(args),
         Commands::Harvest(args) => handle_harvest(args),
         Commands::Decompile(args) => handle_decompile(args),
+        Commands::Pack(args) => handle_pack(args),
     }
 }
 
@@ -1045,8 +1173,34 @@ where
     run_with_os_args(args.into_iter().collect())
 }
 
+/// Normalizes single-dash multi-character `WiX` flags (e.g. `-sval`, `-ext`, `-arch`, `-out`) for CLI parsing.
+fn normalize_pack_flags(args: Vec<std::ffi::OsString>) -> Vec<std::ffi::OsString> {
+    if args.len() > 1 && args[1] == "pack" {
+        args.into_iter()
+            .map(|arg| {
+                let s = arg.to_string_lossy();
+                if s == "-sval" {
+                    std::ffi::OsString::from("--suppress-validation")
+                } else if s == "-ext" {
+                    std::ffi::OsString::from("--extension")
+                } else if s == "-arch" {
+                    std::ffi::OsString::from("--arch")
+                } else if s == "-out" {
+                    std::ffi::OsString::from("--output")
+                } else {
+                    arg
+                }
+            })
+            .collect()
+    } else {
+        args
+    }
+}
+
 /// Executes the CLI application given an already-collected list of OS arguments.
 fn run_with_os_args(args_vec: Vec<std::ffi::OsString>) -> ExitCode {
+    let args_vec = normalize_pack_flags(args_vec);
+
     // Direct msiexec flag parity: check if first arg starts with '/' or '-'
     if args_vec.len() > 1 {
         let first_str = args_vec[1].to_string_lossy();
@@ -1933,6 +2087,20 @@ mod tests {
             assert!(run(&msiexec_cli).is_ok());
         }
 
+        // Test msiexec error paths for uninstall, admin, repair, advertise, and patch
+        for bad_raw in [
+            vec!["/x".to_string(), "/nonexistent/app.msi".to_string()],
+            vec!["/a".to_string(), "/nonexistent/app.msi".to_string()],
+            vec!["/f".to_string(), "/nonexistent/app.msi".to_string()],
+            vec!["/j".to_string(), "/nonexistent/app.msi".to_string()],
+            vec!["/p".to_string(), "/nonexistent/patch.msp".to_string()],
+        ] {
+            let bad_msiexec = Cli {
+                command: Commands::Msiexec(MsiexecArgs { raw_args: bad_raw }),
+            };
+            assert!(run(&bad_msiexec).is_err());
+        }
+
         // Test logging dispatcher
         let log_opts = LoggingOptions::parse("*v!", log_file.to_string_lossy().to_string())
             .unwrap_or_default();
@@ -2064,6 +2232,10 @@ mod tests {
         );
         assert_eq!(
             run_with_args(to_os(&["msi", "/i", "nonexistent_file_xyz.msi"])),
+            ExitCode::FAILURE
+        );
+        assert_eq!(
+            run_with_args(to_os(&["msi", "--totally-invalid-cli-flag-xyz"])),
             ExitCode::FAILURE
         );
 
@@ -2257,7 +2429,12 @@ mod tests {
 
         let harvest_out = temp_dir.join("harvested.wxs");
 
-        // 1. Harvest directory to file
+        // 1. Harvest directory to file with disk rules and gitignore
+        let gitignore_file = temp_dir.join(".gitignore");
+        std::fs::write(&gitignore_file, b"*.tmp\n")?;
+        std::fs::write(src_dir.join("test.log"), b"log")?;
+        std::fs::write(src_dir.join("test.bak"), b"bak")?;
+
         let harvest_res = run(&Cli {
             command: Commands::Harvest(HarvestArgs {
                 target: src_dir.to_string_lossy().to_string(),
@@ -2265,6 +2442,15 @@ mod tests {
                 dir_id: "INSTALLFOLDER".to_string(),
                 output: Some(harvest_out.to_string_lossy().to_string()),
                 mode: "dir".to_string(),
+                gitignore: Some(gitignore_file.to_string_lossy().to_string()),
+                disk_rules: vec![
+                    "test.txt=2".to_string(),
+                    "bad_num=not_a_number".to_string(),
+                    "no_equal_sign".to_string(),
+                ],
+                secondary_groups: vec!["*.txt=SecGroup".to_string(), "no_equal_sign".to_string()],
+                exclude_extensions: vec!["bak".to_string(), "log".to_string()],
+                exclude_patterns: vec!["ignored/*".to_string(), "*.tmp".to_string()],
             }),
         });
         assert!(harvest_res.is_ok());
@@ -2272,6 +2458,10 @@ mod tests {
         let harvested_xml = std::fs::read_to_string(&harvest_out)?;
         assert!(harvested_xml.contains("MyHarvestGroup"));
         assert!(harvested_xml.contains("test.txt"));
+        assert!(harvested_xml.contains("DiskId=\"2\""));
+        assert!(harvested_xml.contains("SecGroup"));
+        assert!(!harvested_xml.contains("test.log"));
+        assert!(!harvested_xml.contains("test.bak"));
 
         // 2. Harvest directory to stdout
         let harvest_stdout = run(&Cli {
@@ -2281,6 +2471,11 @@ mod tests {
                 dir_id: "INSTALLFOLDER".to_string(),
                 output: None,
                 mode: "dir".to_string(),
+                gitignore: None,
+                disk_rules: vec![],
+                secondary_groups: vec![],
+                exclude_extensions: vec![],
+                exclude_patterns: vec![],
             }),
         });
         assert!(harvest_stdout.is_ok());
@@ -2298,6 +2493,11 @@ mod tests {
                 dir_id: "INSTALLFOLDER".to_string(),
                 output: None,
                 mode: "reg".to_string(),
+                gitignore: None,
+                disk_rules: vec![],
+                secondary_groups: vec![],
+                exclude_extensions: vec![],
+                exclude_patterns: vec![],
             }),
         });
         assert!(reg_harvest_res.is_ok());
@@ -2310,6 +2510,11 @@ mod tests {
                 dir_id: "D".to_string(),
                 output: None,
                 mode: "reg".to_string(),
+                gitignore: None,
+                disk_rules: vec![],
+                secondary_groups: vec![],
+                exclude_extensions: vec![],
+                exclude_patterns: vec![],
             }),
         });
         assert!(bad_harvest.is_err());
@@ -2321,9 +2526,48 @@ mod tests {
                 dir_id: "D".to_string(),
                 output: Some("/nonexistent/dir/out.wxs".to_string()),
                 mode: "dir".to_string(),
+                gitignore: None,
+                disk_rules: vec![],
+                secondary_groups: vec![],
+                exclude_extensions: vec![],
+                exclude_patterns: vec![],
             }),
         });
         assert!(bad_harvest_out.is_err());
+
+        let bad_gitignore = run(&Cli {
+            command: Commands::Harvest(HarvestArgs {
+                target: src_dir.to_string_lossy().to_string(),
+                group: "G".to_string(),
+                dir_id: "D".to_string(),
+                output: None,
+                mode: "dir".to_string(),
+                gitignore: Some("/nonexistent/missing.gitignore".to_string()),
+                disk_rules: vec![],
+                secondary_groups: vec![],
+                exclude_extensions: vec![],
+                exclude_patterns: vec![],
+            }),
+        });
+        assert!(bad_gitignore.is_err());
+
+        let empty_reg_file = temp_dir.join("empty.reg");
+        std::fs::write(&empty_reg_file, b"   ")?;
+        let empty_reg_err = run(&Cli {
+            command: Commands::Harvest(HarvestArgs {
+                target: empty_reg_file.to_string_lossy().to_string(),
+                group: "G".to_string(),
+                dir_id: "D".to_string(),
+                output: None,
+                mode: "reg".to_string(),
+                gitignore: None,
+                disk_rules: vec![],
+                secondary_groups: vec![],
+                exclude_extensions: vec![],
+                exclude_patterns: vec![],
+            }),
+        });
+        assert!(empty_reg_err.is_err());
 
         let _ = std::fs::remove_dir_all(&temp_dir);
         Ok(())
@@ -2393,6 +2637,140 @@ mod tests {
             }),
         });
         assert!(bad_decompile.is_err());
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        Ok(())
+    }
+
+    /// Tests `pack` CLI subcommand across single/multi source files, flags, and error branches.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_cli_pack() -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir =
+            std::env::temp_dir().join(format!("msi_cli_pack_test_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+
+        let src1_path = temp_dir.join("product.wxs");
+        let src2_path = temp_dir.join("payload.wxs");
+        let out_msi = temp_dir.join("output_pack.msi");
+
+        let xml1 = r#"
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="{11111111-2222-3333-4444-555555555555}" Name="PackApp" Version="1.0.0" Manufacturer="Acme">
+        <Package Description="Pack test" />
+        <Media Id="1" Cabinet="media1.cab" EmbedCab="yes" />
+        <Directory Id="TARGETDIR" Name="SourceDir">
+            <Directory Id="INSTALLFOLDER" Name="PackApp" />
+        </Directory>
+        <Feature Id="MainFeature" Level="1">
+            <ComponentGroupRef Id="PayloadComponents" />
+        </Feature>
+    </Product>
+</Wix>
+"#;
+        let xml2 = r#"
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Fragment>
+        <ComponentGroup Id="PayloadComponents">
+            <Component Id="CmpPayload" Directory="INSTALLFOLDER" Guid="{22222222-3333-4444-5555-666666666666}">
+                <CreateFolder />
+            </Component>
+        </ComponentGroup>
+    </Fragment>
+</Wix>
+"#;
+        std::fs::write(&src1_path, xml1)?;
+        std::fs::write(&src2_path, xml2)?;
+
+        // 1. Pack with multiple sources, defines, and extensions via run_with_args
+        let exit = run_with_args(to_os(&[
+            "msi",
+            "pack",
+            "-out",
+            &out_msi.to_string_lossy(),
+            &src1_path.to_string_lossy(),
+            &src2_path.to_string_lossy(),
+            "-d",
+            "BUILD_ENV=test",
+            "-d",
+            "STANDALONE_FLAG",
+            "-arch",
+            "x64",
+            "-sval",
+            "-ext",
+            "WixUIExtension",
+            "-v",
+        ]));
+        assert_eq!(exit, ExitCode::SUCCESS);
+        assert!(out_msi.exists());
+
+        // Verify the created package
+        let pkg = Package::open(&out_msi)?;
+        assert_eq!(pkg.metadata().product_name(), "PackApp");
+
+        // 2. Direct run() with PackArgs
+        let out_msi2 = temp_dir.join("output_pack2.msi");
+        let pack_res = run(&Cli {
+            command: Commands::Pack(PackArgs {
+                output: out_msi2.to_string_lossy().to_string(),
+                sources: vec![
+                    src1_path.to_string_lossy().to_string(),
+                    src2_path.to_string_lossy().to_string(),
+                ],
+                defines: vec!["DEBUG=1".to_string(), "NO_VAL_FLAG".to_string()],
+                arch: "x64".to_string(),
+                suppress_validation: true,
+                extensions: vec!["WixToolset.UI.wixext".to_string()],
+                verbose: false,
+            }),
+        });
+        assert!(pack_res.is_ok());
+        assert!(out_msi2.exists());
+
+        // 3. Error branches
+        let err_no_sources = handle_pack(&PackArgs {
+            output: out_msi2.to_string_lossy().to_string(),
+            sources: vec![],
+            defines: vec![],
+            arch: "x64".to_string(),
+            suppress_validation: false,
+            extensions: vec![],
+            verbose: false,
+        });
+        assert!(err_no_sources.is_err());
+
+        let err_empty_output = handle_pack(&PackArgs {
+            output: "   ".to_string(),
+            sources: vec![src1_path.to_string_lossy().to_string()],
+            defines: vec![],
+            arch: "x64".to_string(),
+            suppress_validation: false,
+            extensions: vec![],
+            verbose: false,
+        });
+        assert!(err_empty_output.is_err());
+
+        let err_missing_file = handle_pack(&PackArgs {
+            output: out_msi2.to_string_lossy().to_string(),
+            sources: vec!["/nonexistent/missing.wxs".to_string()],
+            defines: vec![],
+            arch: "x64".to_string(),
+            suppress_validation: false,
+            extensions: vec![],
+            verbose: false,
+        });
+        assert!(err_missing_file.is_err());
+
+        let err_bad_parse = handle_pack(&PackArgs {
+            output: out_msi2.to_string_lossy().to_string(),
+            sources: vec![src1_path.to_string_lossy().to_string()],
+            defines: vec![],
+            arch: String::new(),
+            suppress_validation: false,
+            extensions: vec!["--missing-value".to_string()],
+            verbose: false,
+        });
+        assert!(err_bad_parse.is_err());
 
         let _ = std::fs::remove_dir_all(&temp_dir);
         Ok(())

@@ -530,7 +530,7 @@ mod tests {
     }
 
     #[test]
-    fn test_script_database_operations() -> Result<()> {
+    fn test_script_database_operations() {
         let mut session = ScriptSession::default();
         assert!(!session.database().table_exists("Property"));
         assert_eq!(session.database().row_count("Property"), 0);
@@ -552,14 +552,14 @@ mod tests {
 
         // Test table_exists fallback to DatabaseCatalog
         let mut cat = DatabaseCatalog::new();
-        cat.add_table(crate::database::catalogs::TableSchema::new(
-            "CatalogOnlyTable",
-        ))?;
+        assert!(cat
+            .add_table(crate::database::catalogs::TableSchema::new(
+                "CatalogOnlyTable",
+            ))
+            .is_ok());
         let db_with_cat = ScriptDatabase::new(Some(cat));
         assert!(db_with_cat.table_exists("CatalogOnlyTable"));
         assert!(!db_with_cat.table_exists("NonExistentTable"));
-
-        Ok(())
     }
 
     #[test]

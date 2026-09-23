@@ -1506,7 +1506,7 @@ mod tests {
 
     /// Tests `NetworkConfigDialog` operations, input handling, validation, and rendering.
     #[test]
-    #[allow(clippy::too_many_lines, clippy::assert_is_empty)]
+    #[allow(clippy::too_many_lines)]
     fn test_network_config_dialog() {
         let mut dialog = NetworkConfigDialog::new(vec!["eth0".to_string(), "eth1".to_string()]);
         assert_eq!(dialog.focus, NetworkFocusField::Interface);
@@ -1570,7 +1570,7 @@ mod tests {
             NetworkFocusField::DnsServer,
         ] {
             dialog.focus = f;
-            assert!(!dialog.render().is_empty());
+            assert_ne!(dialog.render(), Vec::<String>::new());
         }
 
         // Input handling on Gateway
@@ -1613,7 +1613,7 @@ mod tests {
         assert_eq!(dialog.dns_servers, vec!["1".to_string()]);
         dialog.dns_servers.clear();
         dialog.handle_backspace();
-        assert!(dialog.dns_servers.is_empty());
+        assert_eq!(dialog.dns_servers, Vec::<String>::new());
 
         // Ignored input on non-text fields
         dialog.focus = NetworkFocusField::Mode;
@@ -1680,7 +1680,7 @@ mod tests {
 
     /// Tests `UserAccountDialog` operations, input handling, validation, and rendering.
     #[test]
-    #[allow(clippy::too_many_lines, clippy::assert_is_empty)]
+    #[allow(clippy::too_many_lines)]
     fn test_user_account_dialog() {
         let mut dialog = UserAccountDialog::new();
         assert_eq!(dialog.focus, UserAccountFocusField::RootPassword);
@@ -1729,7 +1729,7 @@ mod tests {
             UserAccountFocusField::GrantSudo,
         ] {
             dialog.focus = f;
-            assert!(!dialog.render().is_empty());
+            assert_ne!(dialog.render(), Vec::<String>::new());
         }
 
         // Input handling on UserPasswordConfirm
@@ -1896,7 +1896,7 @@ mod tests {
 
     /// Tests `BareMetalInstallationWizard` state transitions.
     #[test]
-    #[allow(clippy::too_many_lines, clippy::assert_is_empty)]
+    #[allow(clippy::too_many_lines)]
     fn test_wizard_state_machine() {
         let disk1 = BlockDevice {
             path: BlockDevicePath::new("/dev/nvme0n1"),
@@ -1968,10 +1968,10 @@ mod tests {
 
         // Advance to NetworkConfig
         assert_eq!(wizard.step, WizardStep::LocaleKeyboard);
-        assert!(!wizard.render().is_empty());
+        assert_ne!(wizard.render(), Vec::<String>::new());
         wizard.handle_key(TuiKey::Enter);
         assert_eq!(wizard.step, WizardStep::NetworkConfig);
-        assert!(!wizard.render().is_empty());
+        assert_ne!(wizard.render(), Vec::<String>::new());
 
         // Escape in NetworkConfig retreats to LocaleKeyboard
         wizard.handle_key(TuiKey::Escape);
@@ -2011,7 +2011,7 @@ mod tests {
         wizard.network_config.mode = NetworkConfigMode::Dhcp;
         wizard.handle_key(TuiKey::Enter);
         assert_eq!(wizard.step, WizardStep::UserAccount);
-        assert!(!wizard.render().is_empty());
+        assert_ne!(wizard.render(), Vec::<String>::new());
 
         // Escape in UserAccount retreats to NetworkConfig
         wizard.handle_key(TuiKey::Escape);
@@ -2046,7 +2046,7 @@ mod tests {
         wizard.user_account.grant_sudo = true;
         wizard.handle_key(TuiKey::Enter);
         assert_eq!(wizard.step, WizardStep::Progress);
-        assert!(!wizard.render().is_empty());
+        assert_ne!(wizard.render(), Vec::<String>::new());
 
         // F2 toggles split log
         wizard.handle_key(TuiKey::F(2));
@@ -2062,7 +2062,7 @@ mod tests {
         assert_eq!(wizard.step, WizardStep::Progress);
         wizard.handle_key(TuiKey::Enter);
         assert_eq!(wizard.step, WizardStep::Complete);
-        assert!(!wizard.render().is_empty());
+        assert_ne!(wizard.render(), Vec::<String>::new());
 
         // Keys on Complete step
         wizard.handle_key(TuiKey::Enter);
@@ -2091,11 +2091,11 @@ mod tests {
         // Empty user account produces empty user lists
         let mut empty_user_wizard = wizard.clone();
         empty_user_wizard.user_account.username.clear();
-        assert!(empty_user_wizard.to_cloud_init().users.is_empty());
-        assert!(empty_user_wizard
-            .to_user_provisioning()
-            .render_passwd()
-            .is_empty());
+        assert_eq!(
+            empty_user_wizard.to_cloud_init().users,
+            Vec::<crate::platform::linux_config::ProvisionUserAccount>::new()
+        );
+        assert_eq!(empty_user_wizard.to_user_provisioning().render_passwd(), "");
 
         // Test wizard empty target disks fallback
         let mut empty_wizard = BareMetalInstallationWizard::new(Vec::new());
@@ -2104,9 +2104,9 @@ mod tests {
             BlockDevicePath::new("/dev/sda")
         );
         assert_eq!(empty_wizard.partition_confirm.disk_size_gib, 64);
-        assert!(!empty_wizard.render().is_empty());
+        assert_ne!(empty_wizard.render(), Vec::<String>::new());
         empty_wizard.handle_key(TuiKey::Enter);
         assert_eq!(empty_wizard.step, WizardStep::PartitionConfirmation);
-        assert!(!empty_wizard.render().is_empty());
+        assert_ne!(empty_wizard.render(), Vec::<String>::new());
     }
 }

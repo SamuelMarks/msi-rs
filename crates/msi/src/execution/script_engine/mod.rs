@@ -168,6 +168,15 @@ mod tests {
         assert_eq!(session.property("APP_STATUS"), "RUNNING");
     }
 
+    /// Tests error propagation when `VBScript` execution fails.
+    #[test]
+    fn test_unified_script_engine_vbscript_error() {
+        let mut session = ScriptSession::default();
+        let mut engine = ScriptEngine::new();
+        let res = engine.execute(ScriptLanguage::VBScript, "syntax error !!!", &mut session);
+        assert!(res.is_err());
+    }
+
     /// Tests `ScriptValue` conversions from both `JsValue` and `Variant`.
     #[test]
     fn test_script_value_conversions() {

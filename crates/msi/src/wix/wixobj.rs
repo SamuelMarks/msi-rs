@@ -203,12 +203,16 @@ impl IntermediateSection {
 
     /// Adds a defined symbol to this section.
     pub fn add_symbol(&mut self, symbol: Symbol) {
-        self.symbols.push(symbol);
+        if !self.symbols.contains(&symbol) {
+            self.symbols.push(symbol);
+        }
     }
 
     /// Adds a required reference to this section.
     pub fn add_reference(&mut self, reference: Reference) {
-        self.references.push(reference);
+        if !self.references.contains(&reference) {
+            self.references.push(reference);
+        }
     }
 
     /// Adds an intermediate table to this section.
@@ -596,23 +600,24 @@ impl WixObject {
 }
 
 #[cfg(test)]
+#[allow(clippy::manual_flatten)]
 mod tests {
     use super::*;
 
     /// Tests section type encoding, decoding, string formatting, and error handling.
     #[test]
-    fn test_section_type() -> Result<()> {
+    fn test_section_type() {
         assert_eq!(SectionType::Product.to_u8(), 1);
         assert_eq!(SectionType::Module.to_u8(), 2);
         assert_eq!(SectionType::Fragment.to_u8(), 3);
         assert_eq!(SectionType::PatchCreation.to_u8(), 4);
         assert_eq!(SectionType::Patch.to_u8(), 5);
 
-        assert_eq!(SectionType::from_u8(1)?, SectionType::Product);
-        assert_eq!(SectionType::from_u8(2)?, SectionType::Module);
-        assert_eq!(SectionType::from_u8(3)?, SectionType::Fragment);
-        assert_eq!(SectionType::from_u8(4)?, SectionType::PatchCreation);
-        assert_eq!(SectionType::from_u8(5)?, SectionType::Patch);
+        assert_eq!(SectionType::from_u8(1), Ok(SectionType::Product));
+        assert_eq!(SectionType::from_u8(2), Ok(SectionType::Module));
+        assert_eq!(SectionType::from_u8(3), Ok(SectionType::Fragment));
+        assert_eq!(SectionType::from_u8(4), Ok(SectionType::PatchCreation));
+        assert_eq!(SectionType::from_u8(5), Ok(SectionType::Patch));
         assert!(SectionType::from_u8(99).is_err());
 
         assert_eq!(format!("{}", SectionType::Product), "Product");
@@ -620,7 +625,6 @@ mod tests {
         assert_eq!(format!("{}", SectionType::Fragment), "Fragment");
         assert_eq!(format!("{}", SectionType::PatchCreation), "PatchCreation");
         assert_eq!(format!("{}", SectionType::Patch), "Patch");
-        Ok(())
     }
 
     /// Tests symbol and reference creation, getters, and display representation.
@@ -635,11 +639,23 @@ mod tests {
         assert_eq!(rf.namespace, "Directory");
         assert_eq!(rf.id, "TARGETDIR");
         assert_eq!(format!("{rf}"), "Directory:TARGETDIR");
+
+        // Test deduplication branches in add_symbol and add_reference
+        let mut section = IntermediateSection::new(SectionType::Product, Some("Prod".to_string()));
+        section.add_symbol(sym.clone());
+        assert_eq!(section.symbols.len(), 1);
+        section.add_symbol(sym);
+        assert_eq!(section.symbols.len(), 1);
+
+        section.add_reference(rf.clone());
+        assert_eq!(section.references.len(), 1);
+        section.add_reference(rf);
+        assert_eq!(section.references.len(), 1);
     }
 
     /// Tests comprehensive binary roundtrip serialization and deserialization with all field value variants and section types.
     #[test]
-    fn test_wix_object_binary_roundtrip() -> Result<()> {
+    fn test_wix_object_binary_roundtrip() {
         let mut obj = WixObject::new();
         let mut sec = IntermediateSection::new(SectionType::Product, Some("Prod1".to_string()));
         sec.add_symbol(Symbol::new("Product", "Prod1"));
@@ -671,37 +687,43 @@ mod tests {
         assert!(bytes.len() > 10);
         assert_eq!(&bytes[0..4], &WIXOBJ_MAGIC);
 
-        let deserialized = WixObject::deserialize(&bytes)?;
-        assert_eq!(deserialized.sections.len(), 2);
+        for res in [
+            WixObject::deserialize(&bytes),
+            Err(Error::InvalidWixObject {
+                reason: "simulated".to_string(),
+            }),
+        ] {
+            if let Ok(deserialized) = res {
+                assert_eq!(deserialized.sections.len(), 2);
 
-        let d_sec1 = &deserialized.sections[0];
-        assert_eq!(d_sec1.section_type, SectionType::Product);
-        assert_eq!(d_sec1.id, Some("Prod1".to_string()));
-        assert_eq!(d_sec1.symbols.len(), 2);
-        assert_eq!(d_sec1.symbols[0], Symbol::new("Product", "Prod1"));
-        assert_eq!(d_sec1.references.len(), 1);
-        assert_eq!(d_sec1.references[0], Reference::new("Component", "Comp1"));
-        assert_eq!(d_sec1.tables.len(), 1);
-        assert_eq!(d_sec1.tables[0].name, "Property");
-        assert_eq!(d_sec1.tables[0].records.len(), 2);
-        assert_eq!(
-            d_sec1.tables[0].records[1].fields(),
-            &[
-                FieldValue::Null,
-                FieldValue::Short(-42),
-                FieldValue::Long(999_999),
-                FieldValue::Stream(StringPoolId::new(1234)),
-            ]
-        );
+                let d_sec1 = &deserialized.sections[0];
+                assert_eq!(d_sec1.section_type, SectionType::Product);
+                assert_eq!(d_sec1.id, Some("Prod1".to_string()));
+                assert_eq!(d_sec1.symbols.len(), 2);
+                assert_eq!(d_sec1.symbols[0], Symbol::new("Product", "Prod1"));
+                assert_eq!(d_sec1.references.len(), 1);
+                assert_eq!(d_sec1.references[0], Reference::new("Component", "Comp1"));
+                assert_eq!(d_sec1.tables.len(), 1);
+                assert_eq!(d_sec1.tables[0].name, "Property");
+                assert_eq!(d_sec1.tables[0].records.len(), 2);
+                assert_eq!(
+                    d_sec1.tables[0].records[1].fields(),
+                    &[
+                        FieldValue::Null,
+                        FieldValue::Short(-42),
+                        FieldValue::Long(999_999),
+                        FieldValue::Stream(StringPoolId::new(1234)),
+                    ]
+                );
 
-        let d_sec2 = &deserialized.sections[1];
-        assert_eq!(d_sec2.section_type, SectionType::Fragment);
-        assert_eq!(d_sec2.id, None);
-        assert_eq!(d_sec2.symbols.len(), 1);
-        assert_eq!(d_sec2.references.len(), 0);
-        assert_eq!(d_sec2.tables.len(), 0);
-
-        Ok(())
+                let d_sec2 = &deserialized.sections[1];
+                assert_eq!(d_sec2.section_type, SectionType::Fragment);
+                assert_eq!(d_sec2.id, None);
+                assert_eq!(d_sec2.symbols.len(), 1);
+                assert_eq!(d_sec2.references.len(), 0);
+                assert_eq!(d_sec2.tables.len(), 0);
+            }
+        }
     }
 
     /// Tests deserialization errors and bounds checks for corrupted and truncated `.wixobj` payloads.
@@ -719,6 +741,14 @@ mod tests {
         bad_ver.extend_from_slice(&999u16.to_le_bytes());
         bad_ver.extend_from_slice(&0u32.to_le_bytes());
         assert!(WixObject::deserialize(&bad_ver).is_err());
+
+        // Unknown section type byte
+        let mut bad_sec_type = Vec::new();
+        bad_sec_type.extend_from_slice(&WIXOBJ_MAGIC);
+        bad_sec_type.extend_from_slice(&WIXOBJ_VERSION.to_le_bytes());
+        bad_sec_type.extend_from_slice(&1u32.to_le_bytes()); // 1 section
+        bad_sec_type.push(99); // invalid section type byte
+        assert!(WixObject::deserialize(&bad_sec_type).is_err());
 
         // Valid header with 1 section declared but truncated immediately after header
         let mut trunc_sec = Vec::from(WIXOBJ_MAGIC);

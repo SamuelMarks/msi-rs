@@ -235,15 +235,15 @@ mod tests {
 
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_pyro_run_all_branches() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_pyro_run_all_branches() {
         let temp_dir = std::env::temp_dir().join("msi_cli_test_pyro_bin");
         let _ = fs::create_dir_all(&temp_dir);
         let patch_obj = temp_dir.join("patch.wixobj");
         let mst_file = temp_dir.join("diff.mst");
         let msp_out = temp_dir.join("update.msp");
 
-        fs::write(&patch_obj, "DUMMY_OBJ")?;
-        fs::write(&mst_file, "DUMMY_MST")?;
+        assert!(fs::write(&patch_obj, "DUMMY_OBJ").is_ok());
+        assert!(fs::write(&mst_file, "DUMMY_MST").is_ok());
 
         // 1. Parse errors
         assert_eq!(run(&[]), 1);
@@ -285,7 +285,7 @@ mod tests {
         // 4. Successful run with alternate flags (/nologo, /wx, /t, /out, /o, -out)
         let msp_out2 = temp_dir.join("nested_dir").join("update2.msp");
         let wxs_patch = temp_dir.join("patch.wxs");
-        fs::copy(&patch_obj, &wxs_patch)?;
+        assert!(fs::copy(&patch_obj, &wxs_patch).is_ok());
         let slash_args = vec![
             "/nologo".to_string(),
             "/wx".to_string(),
@@ -304,8 +304,8 @@ mod tests {
         // Test /o and /out and xml and existing non-extension file
         let xml_patch = temp_dir.join("patch.xml");
         let noext_patch = temp_dir.join("patch_noext");
-        fs::copy(&patch_obj, &xml_patch)?;
-        fs::copy(&patch_obj, &noext_patch)?;
+        assert!(fs::copy(&patch_obj, &xml_patch).is_ok());
+        assert!(fs::copy(&patch_obj, &noext_patch).is_ok());
         let msp_out3 = temp_dir.join("update3.msp");
         assert_eq!(
             run(&[
@@ -330,7 +330,7 @@ mod tests {
 
         // 5. Execution error when output cannot be written (parent is a file)
         let blocking_file = temp_dir.join("blocking_parent_file");
-        fs::write(&blocking_file, b"occupied")?;
+        assert!(fs::write(&blocking_file, b"occupied").is_ok());
         let blocked_out = blocking_file.join("fail.msp");
         assert_eq!(
             run(&[
@@ -382,6 +382,5 @@ mod tests {
         assert_eq!(code, ExitCode::FAILURE);
 
         let _ = fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
 }

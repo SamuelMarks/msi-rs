@@ -580,9 +580,27 @@ mod tests {
         assert!(CfHeader::parse(&bad_res_data).is_err());
 
         // Unterminated cstring in prev cabinet
-        let mut bad_str = bytes;
+        let mut bad_str = bytes.clone();
         bad_str[30] = CFHDR_PREV_CABINET as u8;
         bad_str.extend_from_slice(b"unterminated_string_without_null");
         assert!(CfHeader::parse(&bad_str).is_err());
+
+        // Unterminated cstring in prev disk
+        let mut bad_prev_disk = bytes.clone();
+        bad_prev_disk[30] = CFHDR_PREV_CABINET as u8;
+        bad_prev_disk.extend_from_slice(b"prev.cab\0unterminated_disk_without_null");
+        assert!(CfHeader::parse(&bad_prev_disk).is_err());
+
+        // Unterminated cstring in next cabinet
+        let mut bad_next_cab = bytes.clone();
+        bad_next_cab[30] = CFHDR_NEXT_CABINET as u8;
+        bad_next_cab.extend_from_slice(b"unterminated_next_without_null");
+        assert!(CfHeader::parse(&bad_next_cab).is_err());
+
+        // Unterminated cstring in next disk
+        let mut bad_next_disk = bytes;
+        bad_next_disk[30] = CFHDR_NEXT_CABINET as u8;
+        bad_next_disk.extend_from_slice(b"next.cab\0unterminated_disk_without_null");
+        assert!(CfHeader::parse(&bad_next_disk).is_err());
     }
 }

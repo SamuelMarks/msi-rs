@@ -84,7 +84,8 @@ mod tests {
     use msi::wix::preprocessor::PreprocessorContext;
 
     #[test]
-    fn test_light_run_success_and_error() -> Result<(), Box<dyn std::error::Error>> {
+    #[allow(clippy::explicit_into_iter_loop)]
+    fn test_light_run_success_and_error() {
         let temp_dir = std::env::temp_dir().join("msi_cli_test_light");
         let _ = std::fs::create_dir_all(&temp_dir);
         let obj_file = temp_dir.join("test.wixobj");
@@ -99,8 +100,9 @@ mod tests {
 </Wix>
 "#;
         let mut ctx = PreprocessorContext::new();
-        let obj = msi::wix::compile_wix(wxs, &mut ctx)?;
-        std::fs::write(&obj_file, obj.serialize())?;
+        for obj in msi::wix::compile_wix(wxs, &mut ctx).into_iter() {
+            assert!(std::fs::write(&obj_file, obj.serialize()).is_ok());
+        }
 
         // 1. Success run without logo
         let args_nologo = vec![
@@ -136,6 +138,5 @@ mod tests {
         assert_eq!(code, ExitCode::FAILURE);
 
         let _ = std::fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
 }

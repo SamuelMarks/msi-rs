@@ -553,6 +553,7 @@ fn sort_records(records: &mut [Record], order_by: &[OrderByTerm], schema: &Table
 }
 
 #[cfg(test)]
+#[allow(clippy::manual_flatten)]
 mod tests {
     use super::*;
 

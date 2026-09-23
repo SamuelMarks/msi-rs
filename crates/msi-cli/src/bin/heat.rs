@@ -307,9 +307,10 @@ pub fn main() -> ExitCode {
 mod tests {
     use super::*;
 
+    /// Tests all branches and error handling of `heat` binary execution.
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_heat_run_all_branches() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_heat_run_all_branches() {
         let temp_dir = std::env::temp_dir().join("msi_cli_test_heat_bin");
         let _ = fs::create_dir_all(&temp_dir);
         let sample_file = temp_dir.join("sample.txt");
@@ -318,15 +319,15 @@ mod tests {
         let project_file = temp_dir.join("app.csproj");
         let out_wxs = temp_dir.join("sub_dir").join("harvested.wxs");
 
-        fs::write(&sample_file, "Sample Content")?;
+        assert!(fs::write(&sample_file, "Sample Content").is_ok());
         let reg_content = r#"Windows Registry Editor Version 5.00
 
 [HKEY_LOCAL_MACHINE\Software\Test]
 "Value"="1"
 "#;
-        fs::write(&reg_file, reg_content)?;
-        fs::write(&empty_reg_file, "")?;
-        fs::write(&project_file, "<Project />")?;
+        assert!(fs::write(&reg_file, reg_content).is_ok());
+        assert!(fs::write(&empty_reg_file, "").is_ok());
+        assert!(fs::write(&project_file, "<Project />").is_ok());
 
         // 1. Parse errors
         assert_eq!(run(&[]), 1);
@@ -419,8 +420,10 @@ mod tests {
             use std::os::unix::fs::PermissionsExt;
             let unreadable_parent = temp_dir.join("unreadable_harvest");
             let unreadable_sub = unreadable_parent.join("no_perm");
-            fs::create_dir_all(&unreadable_sub)?;
-            fs::set_permissions(&unreadable_sub, fs::Permissions::from_mode(0o000))?;
+            assert!(fs::create_dir_all(&unreadable_sub).is_ok());
+            assert!(
+                fs::set_permissions(&unreadable_sub, fs::Permissions::from_mode(0o000)).is_ok()
+            );
 
             assert_eq!(
                 run(&[
@@ -439,7 +442,9 @@ mod tests {
                 1
             );
 
-            fs::set_permissions(&unreadable_sub, fs::Permissions::from_mode(0o755))?;
+            assert!(
+                fs::set_permissions(&unreadable_sub, fs::Permissions::from_mode(0o755)).is_ok()
+            );
         }
 
         // 6. Harvest file
@@ -504,7 +509,7 @@ mod tests {
 
         // 9. Output failure on write
         let blocking_file = temp_dir.join("blocking_output_file");
-        fs::write(&blocking_file, "blocking")?;
+        assert!(fs::write(&blocking_file, "blocking").is_ok());
         assert_eq!(
             run(&[
                 "-nologo".to_string(),
@@ -543,6 +548,5 @@ mod tests {
         assert_eq!(code, ExitCode::FAILURE);
 
         let _ = fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
 }

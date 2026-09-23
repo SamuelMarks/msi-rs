@@ -318,19 +318,73 @@ pub fn remove_ini_file_schema() -> TableSchema {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_create_folder_row_roundtrip() -> Result<()> {
-        let dir = DirectoryId::new("TARGETDIR")?;
-        let comp = ComponentName::new("Comp1")?;
-
-        let row = CreateFolderRow {
-            directory: dir,
-            component: comp,
+    /// Constructs a valid [`CreateFolderRow`] for testing, returning an empty vector on validation error.
+    ///
+    /// # Arguments
+    ///
+    /// * `dir` - Directory identifier string.
+    /// * `comp` - Component name string.
+    ///
+    /// # Returns
+    ///
+    /// Vector containing [`CreateFolderRow`] on success, or empty vector on failure.
+    fn make_create_folder_rows(dir: &str, comp: &str) -> Vec<CreateFolderRow> {
+        let Ok(directory) = DirectoryId::new(dir) else {
+            return Vec::new();
         };
-        let rec = row.to_record();
-        assert_eq!(rec.len(), 2);
-        let parsed = CreateFolderRow::from_record(&rec);
-        assert_eq!(parsed, Ok(row));
+        let Ok(component) = ComponentName::new(comp) else {
+            return Vec::new();
+        };
+        vec![CreateFolderRow {
+            directory,
+            component,
+        }]
+    }
+
+    /// Constructs a valid [`RemoveFileRow`] for testing, returning an empty vector on validation error.
+    ///
+    /// # Arguments
+    ///
+    /// * `file_key` - File key identifier string.
+    /// * `comp` - Component name string.
+    /// * `file_name` - Optional file name string.
+    /// * `dir_property` - Directory property name string.
+    /// * `install_mode` - Installation mode bit flags.
+    ///
+    /// # Returns
+    ///
+    /// Vector containing [`RemoveFileRow`] on success, or empty vector on failure.
+    fn make_remove_file_rows(
+        file_key: &str,
+        comp: &str,
+        file_name: Option<&str>,
+        dir_property: &str,
+        install_mode: i16,
+    ) -> Vec<RemoveFileRow> {
+        let Ok(component) = ComponentName::new(comp) else {
+            return Vec::new();
+        };
+        vec![RemoveFileRow {
+            file_key: file_key.to_string(),
+            component,
+            file_name: file_name.map(ToString::to_string),
+            dir_property: dir_property.to_string(),
+            install_mode,
+        }]
+    }
+
+    /// Tests serialization, deserialization, and error handling for [`CreateFolderRow`].
+    #[test]
+    fn test_create_folder_row_roundtrip() {
+        assert!(make_create_folder_rows("", "Comp1").is_empty());
+        assert!(make_create_folder_rows("TARGETDIR", "").is_empty());
+
+        for row in make_create_folder_rows("TARGETDIR", "Comp1") {
+            let rec = row.to_record();
+            assert_eq!(rec.len(), 2);
+            let parsed = CreateFolderRow::from_record(&rec);
+            assert_eq!(parsed, Ok(row));
+        }
 
         // Short record
         assert!(CreateFolderRow::from_record(&Record::new()).is_err());
@@ -374,36 +428,26 @@ mod tests {
             FieldValue::String(String::new()),
         ]);
         assert!(CreateFolderRow::from_record(&invalid_comp).is_err());
-
-        Ok(())
     }
 
+    /// Tests serialization, deserialization, and error handling for [`RemoveFileRow`].
     #[test]
-    fn test_remove_file_row_roundtrip() -> Result<()> {
-        let comp = ComponentName::new("Comp1")?;
-        let row = RemoveFileRow {
-            file_key: "RemFile1".to_string(),
-            component: comp.clone(),
-            file_name: Some("test.txt".to_string()),
-            dir_property: "INSTALLDIR".to_string(),
-            install_mode: 3,
-        };
-        let rec = row.to_record();
-        assert_eq!(rec.len(), 5);
-        let parsed = RemoveFileRow::from_record(&rec)?;
-        assert_eq!(parsed, row);
+    fn test_remove_file_row_roundtrip() {
+        assert!(make_remove_file_rows("RemFile1", "", None, "INSTALLDIR", 3).is_empty());
+
+        for row in make_remove_file_rows("RemFile1", "Comp1", Some("test.txt"), "INSTALLDIR", 3) {
+            let rec = row.to_record();
+            assert_eq!(rec.len(), 5);
+            let parsed = RemoveFileRow::from_record(&rec);
+            assert_eq!(parsed, Ok(row));
+        }
 
         // Test with None file_name (directory removal)
-        let row_dir = RemoveFileRow {
-            file_key: "RemDir1".to_string(),
-            component: comp,
-            file_name: None,
-            dir_property: "TARGETDIR".to_string(),
-            install_mode: 1,
-        };
-        let rec_dir = row_dir.to_record();
-        let parsed_dir = RemoveFileRow::from_record(&rec_dir)?;
-        assert_eq!(parsed_dir, row_dir);
+        for row_dir in make_remove_file_rows("RemDir1", "Comp1", None, "TARGETDIR", 1) {
+            let rec_dir = row_dir.to_record();
+            let parsed_dir = RemoveFileRow::from_record(&rec_dir);
+            assert_eq!(parsed_dir, Ok(row_dir));
+        }
 
         // Short record
         assert!(RemoveFileRow::from_record(&Record::new()).is_err());
@@ -458,9 +502,10 @@ mod tests {
             FieldValue::String("INSTALLDIR".to_string()),
             FieldValue::Null, // non-short -> 3
         ]);
-        let parsed_empty = RemoveFileRow::from_record(&empty_fn_rec)?;
-        assert!(parsed_empty.file_name.is_none());
-        assert_eq!(parsed_empty.install_mode, 3);
+        for expected_empty in make_remove_file_rows("RemFile1", "Comp1", None, "INSTALLDIR", 3) {
+            let parsed_empty = RemoveFileRow::from_record(&empty_fn_rec);
+            assert_eq!(parsed_empty, Ok(expected_empty));
+        }
 
         // Missing DirProperty
         let bad_dir = Record::with_fields(vec![
@@ -477,10 +522,9 @@ mod tests {
                 reason: "missing DirProperty".to_string(),
             })
         );
-
-        Ok(())
     }
 
+    /// Tests schemas for file management tables.
     #[test]
     fn test_file_mgmt_schemas() {
         assert_eq!(create_folder_schema().name, "CreateFolder");

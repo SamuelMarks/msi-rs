@@ -52,6 +52,7 @@ impl PrivilegeEscalator {
     ///
     /// Recommended [`EscalationMethod`].
     #[must_use]
+    #[allow(clippy::missing_const_for_fn)]
     pub fn detect_best_method() -> EscalationMethod {
         #[cfg(windows)]
         {

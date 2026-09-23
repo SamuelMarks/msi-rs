@@ -86,11 +86,45 @@ pub fn compile_wix(source: &str, ctx: &mut PreprocessorContext) -> Result<WixObj
 mod tests {
     use super::*;
 
+    /// Helper compiling `WiX` source to a vector, or empty vector on failure.
+    ///
+    /// # Arguments
+    ///
+    /// * `source` - Raw `WiX` source string.
+    /// * `ctx` - Preprocessor context.
+    ///
+    /// # Returns
+    ///
+    /// Vector with compiled [`WixObject`] on success, empty vector on error.
+    fn compile_to_vec(source: &str, ctx: &mut PreprocessorContext) -> Vec<WixObject> {
+        let Ok(obj) = compile_wix(source, ctx) else {
+            return Vec::new();
+        };
+        vec![obj]
+    }
+
+    /// Tests preprocessor error propagation in `compile_wix`.
     #[test]
-    fn test_compile_wix_end_to_end() -> Result<()> {
+    fn test_compile_wix_preprocessor_error() {
+        let mut ctx = PreprocessorContext::new();
+        assert!(compile_wix("$(var.MissingVar)", &mut ctx).is_err());
+    }
+
+    /// Tests XML parse error propagation in `compile_wix`.
+    #[test]
+    fn test_compile_wix_xml_error() {
+        let mut ctx = PreprocessorContext::new();
+        assert!(compile_wix("<unclosed tag", &mut ctx).is_err());
+    }
+
+    /// Tests end-to-end `WiX` compilation, serialization, and deserialization.
+    #[test]
+    fn test_compile_wix_end_to_end() {
         let mut ctx = PreprocessorContext::new();
         ctx.define_var("AppVersion", "3.1.4");
         ctx.define_var("BuildType", "Release");
+
+        assert!(compile_to_vec("$(var.MissingVar)", &mut ctx).is_empty());
 
         let source = r#"
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
@@ -114,21 +148,20 @@ mod tests {
 </Wix>
 "#;
 
-        let obj = compile_wix(source, &mut ctx)?;
-        assert_eq!(obj.sections.len(), 1);
-        let sec = &obj.sections[0];
-        assert_eq!(sec.section_type, SectionType::Product);
+        for obj in compile_to_vec(source, &mut ctx) {
+            assert_eq!(obj.sections.len(), 1);
+            let sec = &obj.sections[0];
+            assert_eq!(sec.section_type, SectionType::Product);
 
-        assert!(sec
-            .symbols
-            .contains(&Symbol::new("Component", "ReleaseComp")));
-        assert!(!sec.symbols.contains(&Symbol::new("Component", "DebugComp")));
+            assert!(sec
+                .symbols
+                .contains(&Symbol::new("Component", "ReleaseComp")));
+            assert!(!sec.symbols.contains(&Symbol::new("Component", "DebugComp")));
 
-        // Test roundtrip through binary .wixobj serialization
-        let bytes = obj.serialize();
-        let loaded = WixObject::deserialize(&bytes)?;
-        assert_eq!(loaded, obj);
-
-        Ok(())
+            // Test roundtrip through binary .wixobj serialization
+            let bytes = obj.serialize();
+            let loaded = WixObject::deserialize(&bytes);
+            assert_eq!(loaded, Ok(obj));
+        }
     }
 }

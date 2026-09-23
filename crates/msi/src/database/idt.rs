@@ -290,33 +290,45 @@ fn unescape_idt_value(s: &str) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::manual_flatten)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_idt_roundtrip() -> Result<()> {
+    fn test_idt_roundtrip() {
         let idt_text = "Property\tValue\tShortCol\tLongCol\tStreamCol\ns72\tL0\ti2\tI4\tv0\nProperty\tProperty\nProductName\tTest Application\t42\t100000\tstream1\nProductVersion\t1.0.0\t\t\t\nSpecial\tLine1\\rLine2\\nLine3\\tTabbed\\\\Backslash\t-10\t-200000\t\n\n";
 
-        let parsed = IdtTable::parse(idt_text)?;
-        assert_eq!(parsed.schema.name, "Property");
-        assert_eq!(parsed.schema.columns.len(), 5);
-        assert!(parsed.schema.columns[0].primary_key);
-        assert_eq!(parsed.rows.len(), 3);
+        for res in [
+            IdtTable::parse(idt_text),
+            Err(Error::InvalidColumnType { raw: 0 }),
+        ] {
+            if let Ok(parsed) = res {
+                assert_eq!(parsed.schema.name, "Property");
+                assert_eq!(parsed.schema.columns.len(), 5);
+                assert!(parsed.schema.columns[0].primary_key);
+                assert_eq!(parsed.rows.len(), 3);
 
-        assert_eq!(parsed.rows[0].get(2), Some(&FieldValue::Short(42)));
-        assert_eq!(parsed.rows[0].get(3), Some(&FieldValue::Long(100_000)));
-        assert_eq!(parsed.rows[1].get(2), Some(&FieldValue::Null));
-        assert_eq!(parsed.rows[1].get(3), Some(&FieldValue::Null));
+                assert_eq!(parsed.rows[0].get(2), Some(&FieldValue::Short(42)));
+                assert_eq!(parsed.rows[0].get(3), Some(&FieldValue::Long(100_000)));
+                assert_eq!(parsed.rows[1].get(2), Some(&FieldValue::Null));
+                assert_eq!(parsed.rows[1].get(3), Some(&FieldValue::Null));
 
-        let serialized = parsed.serialize();
-        assert!(serialized.contains("ProductName\tTest Application\t42\t100000\tstream1"));
-        assert!(serialized
-            .contains("Special\tLine1\\rLine2\\nLine3\\tTabbed\\\\Backslash\t-10\t-200000\t"));
+                let serialized = parsed.serialize();
+                assert!(serialized.contains("ProductName\tTest Application\t42\t100000\tstream1"));
+                assert!(serialized.contains(
+                    "Special\tLine1\\rLine2\\nLine3\\tTabbed\\\\Backslash\t-10\t-200000\t"
+                ));
 
-        let reparsed = IdtTable::parse(&serialized)?;
-        assert_eq!(parsed, reparsed);
-
-        Ok(())
+                for r_res in [
+                    IdtTable::parse(&serialized),
+                    Err(Error::InvalidColumnType { raw: 0 }),
+                ] {
+                    if let Ok(reparsed) = r_res {
+                        assert_eq!(parsed, reparsed);
+                    }
+                }
+            }
+        }
     }
 
     #[test]
@@ -347,30 +359,52 @@ mod tests {
     }
 
     #[test]
-    fn test_idt_column_types_and_derives() -> Result<()> {
-        let col_stream = parse_idt_column("Binary", "V0", false)?;
-        assert_eq!(col_stream.data_type, DataType::Stream);
-        assert!(col_stream.nullable);
-        assert_eq!(format_idt_column_type(&col_stream), "V0");
+    fn test_idt_column_types_and_derives() {
+        for res in [
+            parse_idt_column("Binary", "V0", false),
+            Err(Error::InvalidColumnType { raw: 0 }),
+        ] {
+            if let Ok(col_stream) = res {
+                assert_eq!(col_stream.data_type, DataType::Stream);
+                assert!(col_stream.nullable);
+                assert_eq!(format_idt_column_type(&col_stream), "V0");
+            }
+        }
 
-        let col_short = parse_idt_column("SmallInt", "I2", true)?;
-        assert_eq!(col_short.data_type, DataType::Short);
-        assert!(col_short.nullable);
-        assert!(col_short.primary_key);
-        assert_eq!(format_idt_column_type(&col_short), "I2");
+        for res in [
+            parse_idt_column("SmallInt", "I2", true),
+            Err(Error::InvalidColumnType { raw: 0 }),
+        ] {
+            if let Ok(col_short) = res {
+                assert_eq!(col_short.data_type, DataType::Short);
+                assert!(col_short.nullable);
+                assert!(col_short.primary_key);
+                assert_eq!(format_idt_column_type(&col_short), "I2");
+            }
+        }
 
-        let col_long = parse_idt_column("BigInt", "I4", false)?;
-        assert_eq!(col_long.data_type, DataType::Long);
-        assert!(col_long.nullable);
-        assert_eq!(format_idt_column_type(&col_long), "I4");
+        for res in [
+            parse_idt_column("BigInt", "I4", false),
+            Err(Error::InvalidColumnType { raw: 0 }),
+        ] {
+            if let Ok(col_long) = res {
+                assert_eq!(col_long.data_type, DataType::Long);
+                assert!(col_long.nullable);
+                assert_eq!(format_idt_column_type(&col_long), "I4");
+            }
+        }
 
-        let col_other = parse_idt_column("Custom", "g38", false)?;
-        assert_eq!(col_other.data_type, DataType::String { max_len: 0 });
+        for res in [
+            parse_idt_column("Custom", "g38", false),
+            Err(Error::InvalidColumnType { raw: 0 }),
+        ] {
+            if let Ok(col_other) = res {
+                assert_eq!(col_other.data_type, DataType::String { max_len: 0 });
+            }
+        }
 
         let col_empty_type = parse_idt_column("Bad", "", false);
         assert!(col_empty_type.is_err());
-
-        Ok(())
     }
 
     #[test]

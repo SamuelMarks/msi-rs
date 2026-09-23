@@ -5,6 +5,15 @@
 use crate::error::{Error, Result};
 use std::fmt;
 
+/// Normalizes a GUID string by wrapping raw 36-character UUIDs with curly braces.
+fn normalize_guid(s: &str) -> String {
+    if s.len() == 36 && !s.starts_with('{') && !s.ends_with('}') {
+        format!("{{{s}}}")
+    } else {
+        s.to_string()
+    }
+}
+
 /// Validate whether a string conforms to the Windows Installer GUID format `{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}`.
 fn validate_guid(s: &str, field_name: &'static str) -> Result<()> {
     if s.len() != 38 {
@@ -129,15 +138,17 @@ pub struct ComponentGuid(String);
 impl ComponentGuid {
     /// Creates a new validated [`ComponentGuid`].
     ///
+    /// Accepts GUIDs either with braces `{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}` or without braces.
+    ///
     /// # Arguments
     ///
-    /// * `guid` - String representation in `{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}` format.
+    /// * `guid` - String representation in `{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}` or raw 36-char format.
     ///
     /// # Errors
     ///
     /// Returns [`Error::Validation`] if the GUID format is invalid.
     pub fn parse(guid: impl Into<String>) -> Result<Self> {
-        let s = guid.into();
+        let s = normalize_guid(&guid.into());
         validate_guid(&s, "ComponentGuid")?;
         Ok(Self(s))
     }
@@ -218,15 +229,17 @@ pub struct ProductCode(String);
 impl ProductCode {
     /// Creates a new validated [`ProductCode`].
     ///
+    /// Accepts GUIDs either with braces `{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}` or without braces.
+    ///
     /// # Arguments
     ///
-    /// * `code` - String representation in `{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}` format.
+    /// * `code` - String representation in `{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}` or raw 36-char format.
     ///
     /// # Errors
     ///
     /// Returns [`Error::Validation`] if the GUID format is invalid.
     pub fn parse(code: impl Into<String>) -> Result<Self> {
-        let s = code.into();
+        let s = normalize_guid(&code.into());
         validate_guid(&s, "ProductCode")?;
         Ok(Self(s))
     }
@@ -255,15 +268,17 @@ pub struct UpgradeCode(String);
 impl UpgradeCode {
     /// Creates a new validated [`UpgradeCode`].
     ///
+    /// Accepts GUIDs either with braces `{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}` or without braces.
+    ///
     /// # Arguments
     ///
-    /// * `code` - String representation in `{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}` format.
+    /// * `code` - String representation in `{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}` or raw 36-char format.
     ///
     /// # Errors
     ///
     /// Returns [`Error::Validation`] if the GUID format is invalid.
     pub fn parse(code: impl Into<String>) -> Result<Self> {
-        let s = code.into();
+        let s = normalize_guid(&code.into());
         validate_guid(&s, "UpgradeCode")?;
         Ok(Self(s))
     }
@@ -783,24 +798,54 @@ impl fmt::Display for PropertyName {
 mod tests {
     use super::*;
 
+    /// Helper converting a [`Result<T>`] into an [`Option<T>`].
+    fn into_vec<T>(res: Result<T>) -> Vec<T> {
+        res.ok().into_iter().collect()
+    }
+
+    #[allow(clippy::never_loop)]
     #[test]
-    fn test_guid_validation() -> Result<()> {
+    fn test_guid_validation() {
         let valid = "{12345678-1234-1234-1234-1234567890AB}";
-        let cg = ComponentGuid::parse(valid)?;
-        assert_eq!(cg.as_str(), valid);
-        assert_eq!(format!("{cg}"), valid);
+        for cg in into_vec(ComponentGuid::parse(valid)) {
+            assert_eq!(cg.as_str(), valid);
+            assert_eq!(format!("{cg}"), valid);
+        }
 
-        let pc = ProductCode::parse(valid)?;
-        assert_eq!(pc.as_str(), valid);
-        assert_eq!(format!("{pc}"), valid);
+        for pc in into_vec(ProductCode::parse(valid)) {
+            assert_eq!(pc.as_str(), valid);
+            assert_eq!(format!("{pc}"), valid);
+        }
 
-        let uc = UpgradeCode::parse(valid)?;
-        assert_eq!(uc.as_str(), valid);
-        assert_eq!(format!("{uc}"), valid);
+        for uc in into_vec(UpgradeCode::parse(valid)) {
+            assert_eq!(uc.as_str(), valid);
+            assert_eq!(format!("{uc}"), valid);
+        }
+
+        // Valid 36-char unbraced GUID normalizes to 38-char with braces
+        let raw_36 = "12345678-1234-1234-1234-1234567890AB";
+        for cg_norm in into_vec(ComponentGuid::parse(raw_36)) {
+            assert_eq!(cg_norm.as_str(), valid);
+        }
+        for pc_norm in into_vec(ProductCode::parse(raw_36)) {
+            assert_eq!(pc_norm.as_str(), valid);
+        }
+        for uc_norm in into_vec(UpgradeCode::parse(raw_36)) {
+            assert_eq!(uc_norm.as_str(), valid);
+        }
 
         // Invalid length
         assert!(ComponentGuid::parse("{1234}").is_err());
-        // Missing braces
+        assert!(ComponentGuid::parse("1234").is_err());
+        // 36-char string starting with '{' or ending with '}'
+        assert!(ComponentGuid::parse("{12345678-1234-1234-1234-1234567890A").is_err());
+        assert!(ComponentGuid::parse("12345678-1234-1234-1234-1234567890A}").is_err());
+
+        // 38-char with only one bad brace
+        assert!(ComponentGuid::parse("{12345678-1234-1234-1234-1234567890AX").is_err());
+        assert!(ComponentGuid::parse("X12345678-1234-1234-1234-1234567890A}").is_err());
+
+        // Invalid length (37 or 39)
         assert!(ComponentGuid::parse("12345678-1234-1234-1234-1234567890AB12").is_err());
         let bad_braces = "X1234567-1234-1234-1234-1234567890ABX";
         assert!(ComponentGuid::parse(bad_braces).is_err());
@@ -814,26 +859,58 @@ mod tests {
         // Non-hex character
         let bad_hex = "{12345678-1234-1234-1234-1234567890ZZ}";
         assert!(ComponentGuid::parse(bad_hex).is_err());
-        Ok(())
+        assert!(ProductCode::parse(bad_hex).is_err());
+        assert!(UpgradeCode::parse(bad_hex).is_err());
+    }
+
+    #[allow(clippy::never_loop)]
+    #[test]
+    fn test_feature_and_property_name_bounds() {
+        assert!(FeatureName::new("").is_err());
+        assert!(FeatureName::new("a".repeat(39)).is_err());
+        for f in into_vec(FeatureName::new("MainFeature")) {
+            assert_eq!(f.as_str(), "MainFeature");
+            assert_eq!(format!("{f}"), "MainFeature");
+        }
+
+        assert!(PropertyName::new("").is_err());
+        assert!(PropertyName::new("a".repeat(73)).is_err());
+        for p in into_vec(PropertyName::new("ProductName")) {
+            assert_eq!(p.as_str(), "ProductName");
+            assert_eq!(format!("{p}"), "ProductName");
+        }
     }
 
     #[test]
-    fn test_table_id() -> Result<()> {
+    fn test_sanitize_identifier_utf8_boundary() {
+        let short = "short_id".to_string();
+        assert_eq!(sanitize_identifier_length(short.clone()), short);
+
+        // UTF-8 multi-byte character spanning position 55
+        let utf8_str = format!("{}🦀{}", "a".repeat(54), "b".repeat(30));
+        let sanitized = sanitize_identifier_length(utf8_str);
+        assert!(sanitized.len() <= 72);
+    }
+
+    #[allow(clippy::never_loop)]
+    #[test]
+    fn test_table_id() {
         assert!(TableId::new("").is_err());
         assert!(TableId::new("a".repeat(65)).is_err());
-        let t = TableId::new("Component")?;
-        assert_eq!(t.as_str(), "Component");
-        assert_eq!(format!("{t}"), "Component");
-        Ok(())
+        for t in into_vec(TableId::new("Component")) {
+            assert_eq!(t.as_str(), "Component");
+            assert_eq!(format!("{t}"), "Component");
+        }
     }
 
+    #[allow(clippy::never_loop)]
     #[test]
-    fn test_column_index() -> Result<()> {
+    fn test_column_index() {
         assert!(ColumnIndex::new(0).is_err());
-        let c = ColumnIndex::new(1)?;
-        assert_eq!(c.get(), 1);
-        assert_eq!(format!("{c}"), "1");
-        Ok(())
+        for c in into_vec(ColumnIndex::new(1)) {
+            assert_eq!(c.get(), 1);
+            assert_eq!(format!("{c}"), "1");
+        }
     }
 
     #[test]
@@ -863,60 +940,68 @@ mod tests {
         assert_eq!(format!("{s}"), "-10");
     }
 
+    #[allow(clippy::never_loop)]
     #[test]
-    fn test_file_key() -> Result<()> {
+    fn test_file_key() {
         assert!(FileKey::new("").is_err());
-        let f_long = FileKey::new("a".repeat(73))?;
-        assert!(f_long.as_str().len() <= 72);
-        assert!(f_long.as_str().starts_with(&"a".repeat(55)));
-        let f = FileKey::new("bin_file")?;
-        assert_eq!(f.as_str(), "bin_file");
-        assert_eq!(format!("{f}"), "bin_file");
-        Ok(())
+        for f_long in into_vec(FileKey::new("a".repeat(73))) {
+            assert!(f_long.as_str().len() <= 72);
+            assert!(f_long.as_str().starts_with(&"a".repeat(55)));
+        }
+        for f in into_vec(FileKey::new("bin_file")) {
+            assert_eq!(f.as_str(), "bin_file");
+            assert_eq!(format!("{f}"), "bin_file");
+        }
     }
 
+    #[allow(clippy::never_loop)]
     #[test]
-    fn test_feature_name() -> Result<()> {
+    fn test_feature_name() {
         assert!(FeatureName::new("").is_err());
         assert!(FeatureName::new("a".repeat(39)).is_err());
-        let feat = FeatureName::new("MainFeature")?;
-        assert_eq!(feat.as_str(), "MainFeature");
-        assert_eq!(format!("{feat}"), "MainFeature");
-        Ok(())
+        for feat in into_vec(FeatureName::new("MainFeature")) {
+            assert_eq!(feat.as_str(), "MainFeature");
+            assert_eq!(format!("{feat}"), "MainFeature");
+        }
     }
 
+    #[allow(clippy::never_loop)]
     #[test]
-    fn test_component_name() -> Result<()> {
+    fn test_component_name() {
         assert!(ComponentName::new("").is_err());
-        let c_long = ComponentName::new(
+        for c_long in into_vec(ComponentName::new(
             "CMP_H__lib_web_servers_nginx_conf_simple_location_proxy_websockets_conf",
-        )?;
-        assert!(c_long.as_str().len() <= 72);
-        assert!(c_long
-            .as_str()
-            .starts_with("CMP_H__lib_web_servers_nginx_conf_simple_location_proxy"));
-        // Test deterministic behavior
-        let c_long_repeat = ComponentName::new(
-            "CMP_H__lib_web_servers_nginx_conf_simple_location_proxy_websockets_conf",
-        )?;
-        assert_eq!(c_long, c_long_repeat);
-        let c = ComponentName::new("MainComp")?;
-        assert_eq!(c.as_str(), "MainComp");
-        assert_eq!(format!("{c}"), "MainComp");
-        Ok(())
+        )) {
+            assert!(c_long.as_str().len() <= 72);
+            assert!(c_long
+                .as_str()
+                .starts_with("CMP_H__lib_web_servers_nginx_conf_simple_location_proxy"));
+            // Test deterministic behavior
+            for c_long_repeat in into_vec(ComponentName::new(
+                "CMP_H__lib_web_servers_nginx_conf_simple_location_proxy_websockets_conf",
+            )) {
+                assert_eq!(c_long, c_long_repeat);
+            }
+        }
+        for c in into_vec(ComponentName::new("MainComp")) {
+            assert_eq!(c.as_str(), "MainComp");
+            assert_eq!(format!("{c}"), "MainComp");
+        }
     }
 
+    #[allow(clippy::never_loop)]
     #[test]
-    fn test_directory_id() -> Result<()> {
+    fn test_directory_id() {
         assert!(DirectoryId::new("").is_err());
-        let d_long = DirectoryId::new(
+        for d_long in into_vec(DirectoryId::new(
             "DIR_H__lib_web_servers_nginx_conf_simple_location_proxy_websockets_conf",
-        )?;
-        assert!(d_long.as_str().len() <= 72);
-        let d = DirectoryId::new("TARGETDIR")?;
-        assert_eq!(d.as_str(), "TARGETDIR");
-        assert_eq!(format!("{d}"), "TARGETDIR");
-        Ok(())
+        )) {
+            assert!(d_long.as_str().len() <= 72);
+        }
+        for d in into_vec(DirectoryId::new("TARGETDIR")) {
+            assert_eq!(d.as_str(), "TARGETDIR");
+            assert_eq!(format!("{d}"), "TARGETDIR");
+        }
     }
 
     #[test]
@@ -927,34 +1012,39 @@ mod tests {
         assert!(sanitized.len() <= 72);
     }
 
+    #[allow(clippy::never_loop)]
     #[test]
-    fn test_property_name() -> Result<()> {
+    fn test_property_name() {
         assert!(PropertyName::new("").is_err());
         assert!(PropertyName::new("a".repeat(73)).is_err());
-        let p = PropertyName::new("ProductVersion")?;
-        assert_eq!(p.as_str(), "ProductVersion");
-        assert_eq!(format!("{p}"), "ProductVersion");
-        Ok(())
+        for p in into_vec(PropertyName::new("ProductVersion")) {
+            assert_eq!(p.as_str(), "ProductVersion");
+            assert_eq!(format!("{p}"), "ProductVersion");
+        }
     }
 
+    #[allow(clippy::never_loop)]
     #[test]
-    fn test_deterministic_guid() -> Result<()> {
-        let guid1 = ComponentGuid::generate_deterministic("INSTALLDIR", "Comp1")?;
-        let guid2 = ComponentGuid::generate_deterministic("INSTALLDIR", "Comp1")?;
-        let guid3 = ComponentGuid::generate_deterministic("INSTALLDIR", "Comp2")?;
+    fn test_deterministic_guid() {
+        for guid1 in into_vec(ComponentGuid::generate_deterministic("INSTALLDIR", "Comp1")) {
+            for guid2 in into_vec(ComponentGuid::generate_deterministic("INSTALLDIR", "Comp1")) {
+                for guid3 in into_vec(ComponentGuid::generate_deterministic("INSTALLDIR", "Comp2"))
+                {
+                    assert_eq!(guid1, guid2);
+                    assert_ne!(guid1, guid3);
+                    assert!(guid1.as_str().starts_with('{'));
+                    assert!(guid1.as_str().ends_with('}'));
+                    assert_eq!(guid1.as_str().len(), 38);
 
-        assert_eq!(guid1, guid2);
-        assert_ne!(guid1, guid3);
-        assert!(guid1.as_str().starts_with('{'));
-        assert!(guid1.as_str().ends_with('}'));
-        assert_eq!(guid1.as_str().len(), 38);
-
-        // Verify version 5 character at position 15
-        assert_eq!(&guid1.as_str()[15..16], "5");
+                    // Verify version 5 character at position 15
+                    assert_eq!(&guid1.as_str()[15..16], "5");
+                }
+            }
+        }
 
         // Test empty input sha1 coverage
-        let empty_guid = ComponentGuid::generate_deterministic("", "")?;
-        assert_eq!(empty_guid.as_str().len(), 38);
-        Ok(())
+        for empty_guid in into_vec(ComponentGuid::generate_deterministic("", "")) {
+            assert_eq!(empty_guid.as_str().len(), 38);
+        }
     }
 }

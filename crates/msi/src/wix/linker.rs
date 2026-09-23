@@ -1965,6 +1965,7 @@ impl Linker {
     /// # Arguments
     ///
     /// * `db` - The [`LinkedDatabase`] to update.
+    #[allow(clippy::too_many_lines)]
     fn resolve_wix_variables(&self, db: &mut LinkedDatabase) {
         let wix_vars = db.tables.remove("WixVariable").unwrap_or_default();
         if wix_vars.is_empty() {
@@ -2026,6 +2027,34 @@ impl Linker {
                             )),
                         ]),
                     );
+                }
+            }
+        }
+
+        for (idx, icon_var) in [
+            "WixUIExclamationIco",
+            "WixUIInfoIco",
+            "WixUINewIco",
+            "WixUIUpIco",
+        ]
+        .iter()
+        .enumerate()
+        {
+            if let Some(ico_path) = var_map.get(*icon_var) {
+                if let Some(real_path) = self.resolve_source_path(ico_path) {
+                    if let Ok(_data) = std::fs::read(&real_path) {
+                        db.add_record(
+                            "Binary",
+                            Record::with_fields(vec![
+                                FieldValue::String((*icon_var).to_string()),
+                                FieldValue::Stream(
+                                    crate::database::tables::types::StringPoolId::new(
+                                        u32::try_from(idx + 3).unwrap_or(u32::MAX),
+                                    ),
+                                ),
+                            ]),
+                        );
+                    }
                 }
             }
         }
@@ -2123,6 +2152,21 @@ impl Linker {
             }
         }
 
+        let mut disk_compression: HashMap<i16, crate::cab::folder::CompressionType> =
+            HashMap::new();
+        for r in db.get_records("WixMediaCompression") {
+            if let (Some(FieldValue::Short(did)), Some(FieldValue::String(lvl))) =
+                (r.get(0), r.get(1))
+            {
+                let ct = match lvl.to_ascii_lowercase().as_str() {
+                    "high" => crate::cab::folder::CompressionType::Lzx { window_bits: 21 },
+                    "none" => crate::cab::folder::CompressionType::None,
+                    _ => crate::cab::folder::CompressionType::Mszip,
+                };
+                disk_compression.insert(*did, ct);
+            }
+        }
+
         let mut disk_to_cab: HashMap<i16, String> = HashMap::new();
         for r in db.get_records("Media") {
             if let Some(FieldValue::Short(did)) = r.get(0) {
@@ -2155,6 +2199,23 @@ impl Linker {
         let mut font_records: Vec<Record> = Vec::new();
 
         if let Some(file_records) = db.tables.get_mut("File") {
+            // Stable sort file records by disk_id so disk partitions are grouped together while preserving manifest order
+            file_records.sort_by(|a, b| {
+                let fid_a = match a.get(0) {
+                    Some(FieldValue::String(s)) => s.as_str(),
+                    _ => "",
+                };
+                let fid_b = match b.get(0) {
+                    Some(FieldValue::String(s)) => s.as_str(),
+                    _ => "",
+                };
+                let disk_a = file_sources.get(fid_a).map_or(1, |(_, d)| *d);
+                let disk_b = file_sources.get(fid_b).map_or(1, |(_, d)| *d);
+                disk_a.cmp(&disk_b)
+            });
+
+            let mut max_seq_per_disk: HashMap<i16, i32> = HashMap::new();
+
             for (idx, r) in file_records.iter_mut().enumerate() {
                 let file_id = match r.get(0) {
                     Some(FieldValue::String(s)) => s.clone(),
@@ -2224,7 +2285,9 @@ impl Linker {
                 }
 
                 // Sequence
-                r.set(7, FieldValue::Short((idx + 1) as i16));
+                let seq = (idx + 1) as i32;
+                r.set(7, FieldValue::Short(seq as i16));
+                max_seq_per_disk.insert(disk_id, seq);
 
                 // Add to cabinet
                 let cab_name = if self.cab_per_component {
@@ -2236,18 +2299,43 @@ impl Linker {
                         .unwrap_or_else(|| format!("#cab{disk_id}.cab"))
                 };
 
-                let writer = cab_writers.entry(cab_name).or_insert_with(|| {
-                    crate::cab::writer::CabinetWriter::new(
-                        crate::cab::folder::CompressionType::Mszip,
-                    )
-                });
+                let comp_type = disk_compression
+                    .get(&disk_id)
+                    .copied()
+                    .unwrap_or(crate::cab::folder::CompressionType::Mszip);
 
-                let file_name_in_cab = Path::new(&src_path_str)
-                    .file_name()
-                    .and_then(|f| f.to_str())
-                    .unwrap_or(&file_id);
+                let writer = cab_writers
+                    .entry(cab_name)
+                    .or_insert_with(|| crate::cab::writer::CabinetWriter::new(comp_type));
+
+                let file_name_in_cab = &file_id;
 
                 writer.add_file(file_name_in_cab, &data)?;
+            }
+
+            // Update Media table LastSequence per disk
+            if let Some(media_records) = db.tables.get_mut("Media") {
+                media_records.sort_by(|a, b| {
+                    let did_a = match a.get(0) {
+                        Some(FieldValue::Short(d)) => *d,
+                        _ => 0,
+                    };
+                    let did_b = match b.get(0) {
+                        Some(FieldValue::Short(d)) => *d,
+                        _ => 0,
+                    };
+                    did_a.cmp(&did_b)
+                });
+
+                let mut cumulative_last_seq = 0;
+                for mr in media_records.iter_mut() {
+                    if let Some(FieldValue::Short(did)) = mr.get(0) {
+                        if let Some(&max_seq) = max_seq_per_disk.get(did) {
+                            cumulative_last_seq = cumulative_last_seq.max(max_seq);
+                        }
+                        mr.set(1, FieldValue::Long(cumulative_last_seq));
+                    }
+                }
             }
         }
 
@@ -2364,6 +2452,10 @@ impl Linker {
         for (sec_idx, sec) in all_sections.iter().enumerate() {
             for sym in &sec.symbols {
                 if let Some(existing_idx) = defined_symbols.get(sym) {
+                    if *existing_idx == sec_idx || sym.namespace == "Property" {
+                        // WiX allows identical symbols in same section or properties across fragments
+                        continue;
+                    }
                     return Err(Error::WixLinker {
                         message: format!(
                             "duplicate symbol definition '{sym}' across sections {existing_idx} and {sec_idx}"
@@ -3819,6 +3911,28 @@ mod tests {
         let mut dup_linker = Linker::new();
         dup_linker.add_object(dup_obj);
         assert!(dup_linker.link().is_err());
+
+        // Duplicate Property definition across sections is permitted in WiX
+        let mut prop_obj = WixObject::new();
+        let mut ps1 = IntermediateSection::new(SectionType::Product, Some("P1".to_string()));
+        ps1.add_symbol(Symbol::new("Property", "PROP1"));
+        let mut ps2 = IntermediateSection::new(SectionType::Fragment, Some("F1".to_string()));
+        ps2.add_symbol(Symbol::new("Property", "PROP1"));
+        prop_obj.add_section(ps1);
+        prop_obj.add_section(ps2);
+        let mut prop_linker = Linker::new();
+        prop_linker.add_object(prop_obj);
+        assert!(prop_linker.link().is_ok());
+
+        // Duplicate symbol definition within the same section is permitted and skipped
+        let mut same_sec_obj = WixObject::new();
+        let mut ss = IntermediateSection::new(SectionType::Product, Some("P_Same".to_string()));
+        ss.symbols.push(Symbol::new("Component", "C_Same"));
+        ss.symbols.push(Symbol::new("Component", "C_Same"));
+        same_sec_obj.add_section(ss);
+        let mut same_sec_linker = Linker::new();
+        same_sec_linker.add_object(same_sec_obj);
+        assert!(same_sec_linker.link().is_ok());
     }
 
     #[test]
@@ -7741,6 +7855,21 @@ mod tests {
         // 6. Test WixVariable Resolution and EULA binding
         let linker = Linker::new();
         let mut var_db = LinkedDatabase::new()?;
+
+        let temp_dir =
+            std::env::temp_dir().join(format!("linker_icon_test_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let ico_file = temp_dir.join("exclamation.ico");
+        std::fs::write(&ico_file, b"fake icon data")?;
+
+        var_db.add_record(
+            "WixVariable",
+            Record::with_fields(vec![
+                FieldValue::String("WixUIExclamationIco".to_string()),
+                FieldValue::String(ico_file.to_string_lossy().to_string()),
+                FieldValue::Short(0),
+            ]),
+        );
         var_db.add_record(
             "WixVariable",
             Record::with_fields(vec![
@@ -7795,6 +7924,13 @@ mod tests {
             ctrl[0].get(9),
             Some(&FieldValue::String(r"{\rtf1 Custom EULA Text}".to_string()))
         );
+
+        let bin_records = var_db.get_records("Binary");
+        assert!(bin_records
+            .iter()
+            .any(|r| r.get(0) == Some(&FieldValue::String("WixUIExclamationIco".to_string()))));
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
 
         Ok(())
     }
@@ -8398,6 +8534,21 @@ mod tests {
                 FieldValue::Null,
             ]),
         );
+        // Test WixUIExclamationIco (unresolved source path) and WixUIInfoIco (resolved to directory, read fails)
+        var_db_dir_err.add_record(
+            "WixVariable",
+            Record::with_fields(vec![
+                FieldValue::String("WixUIExclamationIco".to_string()),
+                FieldValue::String("relative_missing_ico_12345.ico".to_string()),
+            ]),
+        );
+        var_db_dir_err.add_record(
+            "WixVariable",
+            Record::with_fields(vec![
+                FieldValue::String("WixUIInfoIco".to_string()),
+                FieldValue::String(unreadable_dir.to_string_lossy().to_string()),
+            ]),
+        );
         linker.resolve_wix_variables(&mut var_db_dir_err);
         let ctrls_dir_err = var_db_dir_err.get_records("Control");
         assert_eq!(
@@ -8418,6 +8569,36 @@ mod tests {
         std::fs::write(&dummy_src_b, b"dummy payload data b")?;
         let dummy_src_c = temp_dir.join("dummy_c.bin");
         std::fs::write(&dummy_src_c, b"dummy payload data c")?;
+
+        // WixMediaCompression records: one with "none", "high", "medium", and invalid non-Short did
+        bind_db.add_record(
+            "WixMediaCompression",
+            Record::with_fields(vec![
+                FieldValue::Short(1),
+                FieldValue::String("none".to_string()),
+            ]),
+        );
+        bind_db.add_record(
+            "WixMediaCompression",
+            Record::with_fields(vec![
+                FieldValue::Short(2),
+                FieldValue::String("high".to_string()),
+            ]),
+        );
+        bind_db.add_record(
+            "WixMediaCompression",
+            Record::with_fields(vec![
+                FieldValue::Short(99),
+                FieldValue::String("medium".to_string()),
+            ]),
+        );
+        bind_db.add_record(
+            "WixMediaCompression",
+            Record::with_fields(vec![
+                FieldValue::String("not_short".to_string()),
+                FieldValue::String("none".to_string()),
+            ]),
+        );
 
         bind_db.add_record(
             "WixFile",
@@ -8473,6 +8654,30 @@ mod tests {
             "Media",
             Record::with_fields(vec![
                 FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        // Media disk 3 with no files to hit max_seq_per_disk.get(did) == None
+        bind_db.add_record(
+            "Media",
+            Record::with_fields(vec![
+                FieldValue::Short(3),
+                FieldValue::Long(30),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        // Additional non-Short Media record to hit match b.get(0) _ => 0
+        bind_db.add_record(
+            "Media",
+            Record::with_fields(vec![
+                FieldValue::String("non_short_b".to_string()),
                 FieldValue::Null,
                 FieldValue::Null,
                 FieldValue::Null,

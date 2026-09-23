@@ -588,33 +588,33 @@ mod tests {
 
     /// Tests full interactive navigation through dialogs and dynamic condition updates.
     #[test]
-    fn test_ui_engine_navigation_and_conditions() -> Result<()> {
+    fn test_ui_engine_navigation_and_conditions() {
         let mut engine = setup_test_wizard();
-        engine.set_active_dialog("WelcomeDlg")?;
+        assert!(engine.set_active_dialog("WelcomeDlg").is_ok());
         assert_eq!(
             engine.active_dialog().map(|d| d.name.as_str()),
             Some("WelcomeDlg")
         );
 
         // Click CancelBtn -> Spawns CancelDlg modal
-        let ret = engine.click_control("WelcomeDlg", "CancelBtn")?;
-        assert_eq!(ret, None);
+        let ret = engine.click_control("WelcomeDlg", "CancelBtn");
+        assert_eq!(ret, Ok(None));
         assert_eq!(
             engine.active_dialog().map(|d| d.name.as_str()),
             Some("CancelDlg")
         );
 
         // Click NoBtn on CancelDlg -> Returns to WelcomeDlg parent
-        let ret_no = engine.click_control("CancelDlg", "NoBtn")?;
-        assert_eq!(ret_no, None);
+        let ret_no = engine.click_control("CancelDlg", "NoBtn");
+        assert_eq!(ret_no, Ok(None));
         assert_eq!(
             engine.active_dialog().map(|d| d.name.as_str()),
             Some("WelcomeDlg")
         );
 
         // Click NextBtn on WelcomeDlg -> Navigates to LicenseDlg
-        let ret_next = engine.click_control("WelcomeDlg", "NextBtn")?;
-        assert_eq!(ret_next, None);
+        let ret_next = engine.click_control("WelcomeDlg", "NextBtn");
+        assert_eq!(ret_next, Ok(None));
         assert_eq!(
             engine.active_dialog().map(|d| d.name.as_str()),
             Some("LicenseDlg")
@@ -626,26 +626,24 @@ mod tests {
 
         // Simulate checking the box: setting ACCEPT_EULA = "1"
         engine.context_mut().set_property("ACCEPT_EULA", "1");
-        engine.evaluate_conditions_and_formatting()?;
+        assert!(engine.evaluate_conditions_and_formatting().is_ok());
 
         let next_state_enabled = engine.get_control_state("LicenseDlg", "NextBtn");
         assert!(next_state_enabled.is_some_and(|s| s.is_enabled));
 
         // Click NextBtn on LicenseDlg -> Ends dialog with Return
-        let end_res = engine.click_control("LicenseDlg", "NextBtn")?;
-        assert_eq!(end_res, Some(DialogReturnCode::Return));
+        let end_res = engine.click_control("LicenseDlg", "NextBtn");
+        assert_eq!(end_res, Ok(Some(DialogReturnCode::Return)));
 
         // Test progress update
         engine.update_progress(75);
         let cur_state = engine.get_control_state("LicenseDlg", "NextBtn");
         assert_eq!(cur_state.map(|s| s.progress_percent), Some(75));
-
-        Ok(())
     }
 
     /// Tests `SetProperty`, `Reset`, and `DoAction` event handling.
     #[test]
-    fn test_ui_engine_events_variety() -> Result<()> {
+    fn test_ui_engine_events_variety() {
         let mut context = EvaluationContext::new();
         context.set_property("PROP1", "Original");
 
@@ -705,25 +703,23 @@ mod tests {
             1,
         ));
 
-        engine.set_active_dialog("Dlg")?;
+        assert!(engine.set_active_dialog("Dlg").is_ok());
         assert_eq!(engine.context().get_property("PROP1"), Some("Original"));
 
         // Click SetBtn
-        engine.click_control("Dlg", "SetBtn")?;
+        assert_eq!(engine.click_control("Dlg", "SetBtn"), Ok(None));
         assert_eq!(engine.context().get_property("PROP1"), Some("Modified"));
         assert_eq!(engine.action_log(), &["DoAction(CustomAction1)"]);
 
         // Click ResetBtn
-        engine.click_control("Dlg", "ResetBtn")?;
+        assert_eq!(engine.click_control("Dlg", "ResetBtn"), Ok(None));
         assert_eq!(engine.context().get_property("PROP1"), Some("Original"));
-
-        Ok(())
     }
 
     /// Tests edge cases: `is_modal`, unbound properties, `Default` and `Show` conditions, `SpawnWaitDialog`, progress clamping, and state mutations.
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_ui_engine_edge_cases() -> Result<()> {
+    fn test_ui_engine_edge_cases() {
         let modal_dlg = DialogDefinition {
             name: "ModalDlg".to_string(),
             h_centering: 50,
@@ -867,7 +863,7 @@ mod tests {
         engine
             .context_mut()
             .set_property("BOUND_PROP", "BoundValue");
-        engine.set_active_dialog("NonModal")?;
+        assert!(engine.set_active_dialog("NonModal").is_ok());
         assert!(engine.active_dialog().is_some());
 
         let bound_st = engine.get_control_state("NonModal", "BoundEdit");
@@ -881,7 +877,7 @@ mod tests {
         assert_eq!(btn_st.map(|s| s.is_visible), Some(false));
 
         // Trigger SpawnWaitDialog (and skip unsatisfied event)
-        engine.click_control("NonModal", "Btn")?;
+        assert_eq!(engine.click_control("NonModal", "Btn"), Ok(None));
         assert_eq!(
             engine.action_log().last().map(String::as_str),
             Some("SpawnWaitDialog(WaitDlg)")
@@ -901,7 +897,7 @@ mod tests {
             control_cancel: None,
         };
         engine.add_dialog(empty_dlg);
-        engine.set_active_dialog("EmptyDlg")?;
+        assert!(engine.set_active_dialog("EmptyDlg").is_ok());
 
         // Test NewDialog and SpawnDialog when active_dialog is None
         let mut headless1 = UiEngine::new(EvaluationContext::new());
@@ -965,11 +961,232 @@ mod tests {
         assert_eq!(clamped_st.map(|s| s.progress_percent), Some(100));
 
         // Test clear_control_states and evaluation when states are cleared but controls exist
-        engine.set_active_dialog("NonModal")?;
+        assert!(engine.set_active_dialog("NonModal").is_ok());
         engine.clear_control_states();
         assert!(engine.get_control_state("NonModal", "Btn").is_none());
         assert!(engine.evaluate_conditions_and_formatting().is_ok());
+    }
 
-        Ok(())
+    /// Tests error branches for invalid property formatting, condition evaluation errors, and missing navigation targets.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_ui_engine_error_paths() {
+        // 1. evaluate_conditions_and_formatting format_string error
+        let mut engine1 = UiEngine::new(EvaluationContext::new());
+        let mut dlg1 = DialogDefinition {
+            name: "ErrorDlg".to_string(),
+            h_centering: 50,
+            v_centering: 50,
+            width: 100,
+            height: 100,
+            attributes: DIALOG_ATTR_VISIBLE,
+            title: None,
+            control_first: String::new(),
+            control_default: None,
+            control_cancel: None,
+        };
+        let ctrl_bad_fmt = ControlDefinition::new(
+            "ErrorDlg",
+            "BadFmt",
+            ControlType::Text,
+            DluRect::new(0, 0, 10, 10),
+            0,
+        )
+        .text("[Unclosed");
+        dlg1.control_first = "BadFmt".to_string();
+        engine1.add_dialog(dlg1);
+        engine1.add_control(ctrl_bad_fmt);
+        assert!(engine1.set_active_dialog("ErrorDlg").is_err());
+
+        // 2. evaluate_conditions_and_formatting condition error
+        let mut engine2 = UiEngine::new(EvaluationContext::new());
+        let dlg2 = DialogDefinition {
+            name: "CondErrDlg".to_string(),
+            h_centering: 50,
+            v_centering: 50,
+            width: 100,
+            height: 100,
+            attributes: DIALOG_ATTR_VISIBLE,
+            title: None,
+            control_first: String::new(),
+            control_default: None,
+            control_cancel: None,
+        };
+        engine2.add_dialog(dlg2);
+        engine2.add_condition(ControlCondition {
+            dialog: "CondErrDlg".to_string(),
+            control: "Btn".to_string(),
+            action: ControlConditionAction::Enable,
+            condition: "A === B".to_string(),
+        });
+        assert!(engine2.set_active_dialog("CondErrDlg").is_err());
+
+        // 3. click_control event.is_satisfied error
+        let mut engine3 = UiEngine::new(EvaluationContext::new());
+        let dlg3 = DialogDefinition {
+            name: "SatisfyErrDlg".to_string(),
+            h_centering: 50,
+            v_centering: 50,
+            width: 100,
+            height: 100,
+            attributes: DIALOG_ATTR_VISIBLE,
+            title: None,
+            control_first: String::new(),
+            control_default: None,
+            control_cancel: None,
+        };
+        engine3.add_dialog(dlg3);
+        assert!(engine3.set_active_dialog("SatisfyErrDlg").is_ok());
+        engine3.add_event(ControlEvent::new(
+            "SatisfyErrDlg",
+            "Btn",
+            ControlEventType::Reset,
+            Some("A === B".to_string()),
+            1,
+        ));
+        assert!(engine3.click_control("SatisfyErrDlg", "Btn").is_err());
+
+        // 4. click_control NewDialog / SpawnDialog with nonexistent target
+        let mut engine4 = UiEngine::new(EvaluationContext::new());
+        let dlg4 = DialogDefinition {
+            name: "NavErrDlg".to_string(),
+            h_centering: 50,
+            v_centering: 50,
+            width: 100,
+            height: 100,
+            attributes: DIALOG_ATTR_VISIBLE,
+            title: None,
+            control_first: String::new(),
+            control_default: None,
+            control_cancel: None,
+        };
+        engine4.add_dialog(dlg4);
+        assert!(engine4.set_active_dialog("NavErrDlg").is_ok());
+        engine4.add_event(ControlEvent::new(
+            "NavErrDlg",
+            "NewDlgBtn",
+            ControlEventType::NewDialog("GhostDlg".to_string()),
+            None,
+            1,
+        ));
+        assert!(engine4.click_control("NavErrDlg", "NewDlgBtn").is_err());
+
+        engine4.add_event(ControlEvent::new(
+            "NavErrDlg",
+            "SpawnDlgBtn",
+            ControlEventType::SpawnDialog("GhostDlg".to_string()),
+            None,
+            1,
+        ));
+        assert!(engine4.click_control("NavErrDlg", "SpawnDlgBtn").is_err());
+
+        // 5. click_control SetProperty format_string error
+        engine4.add_event(ControlEvent::new(
+            "NavErrDlg",
+            "SetPropBtn",
+            ControlEventType::SetProperty {
+                property: "P".to_string(),
+                value: "[Unclosed".to_string(),
+            },
+            None,
+            1,
+        ));
+        assert!(engine4.click_control("NavErrDlg", "SetPropBtn").is_err());
+
+        // 6. EndDialog return to modal parent that has condition error on re-evaluation
+        let mut engine5 = UiEngine::new(EvaluationContext::new());
+        let parent_dlg = DialogDefinition {
+            name: "ParentDlg".to_string(),
+            h_centering: 50,
+            v_centering: 50,
+            width: 100,
+            height: 100,
+            attributes: DIALOG_ATTR_VISIBLE,
+            title: None,
+            control_first: String::new(),
+            control_default: None,
+            control_cancel: None,
+        };
+        let child_dlg = DialogDefinition {
+            name: "ChildDlg".to_string(),
+            h_centering: 50,
+            v_centering: 50,
+            width: 100,
+            height: 100,
+            attributes: DIALOG_ATTR_MODAL,
+            title: None,
+            control_first: String::new(),
+            control_default: None,
+            control_cancel: None,
+        };
+        engine5.add_dialog(parent_dlg);
+        engine5.add_dialog(child_dlg);
+        assert!(engine5.set_active_dialog("ParentDlg").is_ok());
+        engine5.add_event(ControlEvent::new(
+            "ParentDlg",
+            "OpenChildBtn",
+            ControlEventType::SpawnDialog("ChildDlg".to_string()),
+            None,
+            1,
+        ));
+        assert!(engine5.click_control("ParentDlg", "OpenChildBtn").is_ok());
+
+        engine5.add_condition(ControlCondition {
+            dialog: "ParentDlg".to_string(),
+            control: "C".to_string(),
+            action: ControlConditionAction::Enable,
+            condition: "A === B".to_string(),
+        });
+        engine5.add_event(ControlEvent::new(
+            "ChildDlg",
+            "ExitBtn",
+            ControlEventType::EndDialog(DialogReturnCode::Return),
+            None,
+            1,
+        ));
+        assert!(engine5.click_control("ChildDlg", "ExitBtn").is_err());
+
+        // 7. SetProperty and Reset evaluation error when condition fails
+        let mut engine6 = UiEngine::new(EvaluationContext::new());
+        let dlg6 = DialogDefinition {
+            name: "SetPropErrDlg".to_string(),
+            h_centering: 50,
+            v_centering: 50,
+            width: 100,
+            height: 100,
+            attributes: DIALOG_ATTR_VISIBLE,
+            title: None,
+            control_first: String::new(),
+            control_default: None,
+            control_cancel: None,
+        };
+        engine6.add_dialog(dlg6);
+        assert!(engine6.set_active_dialog("SetPropErrDlg").is_ok());
+        engine6.add_condition(ControlCondition {
+            dialog: "SetPropErrDlg".to_string(),
+            control: "C".to_string(),
+            action: ControlConditionAction::Enable,
+            condition: "A === B".to_string(),
+        });
+        engine6.add_event(ControlEvent::new(
+            "SetPropErrDlg",
+            "SetBtn",
+            ControlEventType::SetProperty {
+                property: "P".to_string(),
+                value: "valid".to_string(),
+            },
+            None,
+            1,
+        ));
+        assert!(engine6.click_control("SetPropErrDlg", "SetBtn").is_err());
+
+        engine6.add_event(ControlEvent::new(
+            "SetPropErrDlg",
+            "ResetBtn",
+            ControlEventType::Reset,
+            None,
+            1,
+        ));
+        assert!(engine6.click_control("SetPropErrDlg", "ResetBtn").is_err());
     }
 }

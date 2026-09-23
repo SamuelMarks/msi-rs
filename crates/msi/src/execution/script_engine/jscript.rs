@@ -2244,6 +2244,7 @@ mod tests {
 
     /// Tests `JsValue` truthiness, string formatting, and numeric conversions across all variants.
     #[test]
+    #[allow(clippy::float_cmp)]
     fn test_jscript_jsvalue_methods_and_derives() {
         // is_truthy
         assert!(!JsValue::Undefined.is_truthy());

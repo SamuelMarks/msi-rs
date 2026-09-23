@@ -310,9 +310,10 @@ impl ServiceDefinition {
     #[must_use]
     pub fn launchd_lifecycle_commands(&self, is_system_daemon: bool) -> Vec<String> {
         let path = self.launchd_plist_path(is_system_daemon);
+        let path_str = path.to_string_lossy().replace('\\', "/");
         let domain = if is_system_daemon { "system" } else { "gui" };
         vec![
-            format!("launchctl bootstrap {domain} {}", path.display()),
+            format!("launchctl bootstrap {domain} {path_str}"),
             format!("launchctl kickstart -k {domain}/{}", self.name),
         ]
     }
@@ -448,8 +449,9 @@ impl ServiceDefinition {
     #[must_use]
     pub fn smf_lifecycle_commands(&self) -> Vec<String> {
         let path = self.smf_manifest_path();
+        let path_str = path.to_string_lossy().replace('\\', "/");
         vec![
-            format!("svccfg import {}", path.display()),
+            format!("svccfg import {path_str}"),
             format!("svcadm enable -s site/{}", self.name),
         ]
     }
@@ -1248,8 +1250,11 @@ mod tests {
         assert!(res_write_err.is_err());
 
         // Failure when installing with root_prefix = None without write permissions to /lib
-        let res_no_prefix = executor.install_service(&svc, SupervisorType::Systemd, None);
-        assert!(res_no_prefix.is_err());
+        #[cfg(unix)]
+        {
+            let res_no_prefix = executor.install_service(&svc, SupervisorType::Systemd, None);
+            assert!(res_no_prefix.is_err());
+        }
 
         let _ = fs::remove_dir_all(&temp_dir);
     }

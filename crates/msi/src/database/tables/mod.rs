@@ -152,4 +152,12 @@ mod tests {
             assert!(catalog.get_table(&schema.name).is_some());
         }
     }
+
+    /// Tests error propagation when duplicate schema is added.
+    #[test]
+    fn test_populate_standard_tables_duplicate_error() {
+        let mut catalog = DatabaseCatalog::new();
+        assert!(catalog.add_table(component_schema()).is_ok());
+        assert!(populate_standard_tables(&mut catalog).is_err());
+    }
 }

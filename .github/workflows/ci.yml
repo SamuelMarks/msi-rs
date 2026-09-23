@@ -116,11 +116,11 @@ jobs:
       - name: Compile and Run C API Integration Test (POSIX)
         run: |
           mkdir -p target/c_test
-          gcc -O2 -Wall -Wextra 
-            -Icrates/msi-ffi/include 
-            crates/msi-ffi/tests/test_c_api.c 
-            target/release/libmsi_ffi.a 
-            -lpthread -ldl -lm 
+          gcc -O2 -Wall -Wextra \
+            -Icrates/msi-ffi/include \
+            crates/msi-ffi/tests/test_c_api.c \
+            target/release/libmsi_ffi.a \
+            -lpthread -ldl -lm \
             -o target/c_test/test_c_api
           ./target/c_test/test_c_api
 
@@ -153,7 +153,9 @@ jobs:
           pip install maturin pytest pytest-cov
 
       - name: Build & Install Python Package via Maturin
-        run: maturin develop --manifest-path crates/msi-python/Cargo.toml
+        run: |
+          maturin build --manifest-path crates/msi-python/Cargo.toml --out target/wheels
+          pip install --find-links=target/wheels msi-python
 
       - name: Run Pytest Test Suite
         run: pytest tests/python

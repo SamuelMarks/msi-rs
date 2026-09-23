@@ -208,7 +208,7 @@ pub fn component_schema() -> TableSchema {
             DataType::String { max_len: 72 },
         ))
         .with_column(ColumnDef::new("Attributes", DataType::Short))
-        .with_column(ColumnDef::new("Condition", DataType::String { max_len: 255 }).nullable())
+        .with_column(ColumnDef::new("Condition", DataType::String { max_len: 0 }).nullable())
         .with_column(ColumnDef::new("KeyPath", DataType::String { max_len: 72 }).nullable())
 }
 

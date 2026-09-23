@@ -444,7 +444,7 @@ mod tests {
 
     /// Tests parsing all control type names.
     #[test]
-    fn test_control_type_parsing() -> Result<()> {
+    fn test_control_type_parsing() {
         let types = [
             ("PushButton", ControlType::PushButton),
             ("RadioButtonGroup", ControlType::RadioButtonGroup),
@@ -463,13 +463,12 @@ mod tests {
         ];
 
         for (name, expected) in types {
-            let parsed = ControlType::from_name(name)?;
-            assert_eq!(parsed, expected);
-            assert_eq!(parsed.as_str(), name);
+            let parsed = ControlType::from_name(name);
+            assert_eq!(parsed, Ok(expected));
+            assert_eq!(expected.as_str(), name);
         }
 
         assert!(ControlType::from_name("InvalidControl").is_err());
-        Ok(())
     }
 
     /// Tests control definition attributes and runtime state creation.

@@ -896,16 +896,17 @@ impl NativeConfigBridge {
 }
 
 #[cfg(test)]
+#[allow(clippy::manual_flatten)]
 mod tests {
     use super::*;
 
     /// Tests `RegistryRoot` conversion and display.
     #[test]
-    fn test_registry_root() -> Result<()> {
-        assert_eq!(RegistryRoot::from_u32(0)?, RegistryRoot::ClassesRoot);
-        assert_eq!(RegistryRoot::from_u32(1)?, RegistryRoot::CurrentUser);
-        assert_eq!(RegistryRoot::from_u32(2)?, RegistryRoot::LocalMachine);
-        assert_eq!(RegistryRoot::from_u32(3)?, RegistryRoot::Users);
+    fn test_registry_root() {
+        assert_eq!(RegistryRoot::from_u32(0), Ok(RegistryRoot::ClassesRoot));
+        assert_eq!(RegistryRoot::from_u32(1), Ok(RegistryRoot::CurrentUser));
+        assert_eq!(RegistryRoot::from_u32(2), Ok(RegistryRoot::LocalMachine));
+        assert_eq!(RegistryRoot::from_u32(3), Ok(RegistryRoot::Users));
         assert!(RegistryRoot::from_u32(4).is_err());
 
         assert_eq!(RegistryRoot::ClassesRoot.as_u32(), 0);
@@ -917,7 +918,6 @@ mod tests {
         assert_eq!(RegistryRoot::CurrentUser.as_str(), "HKCU");
         assert_eq!(RegistryRoot::LocalMachine.as_str(), "HKLM");
         assert_eq!(RegistryRoot::Users.as_str(), "HKU");
-        Ok(())
     }
 
     /// Tests `RegistryValue` types and getters.
@@ -1262,7 +1262,8 @@ mod tests {
 
     /// Tests `SqliteRegistryDriver` full schema persistence to and restoration from disk.
     #[test]
-    fn test_sqlite_registry_driver_disk_roundtrip() -> Result<()> {
+    #[allow(clippy::too_many_lines)]
+    fn test_sqlite_registry_driver_disk_roundtrip() {
         let temp_dir =
             std::env::temp_dir().join(format!("msi_test_reg_disk_{}", std::process::id()));
         let _ = std::fs::create_dir_all(&temp_dir);
@@ -1318,46 +1319,67 @@ mod tests {
             RegistryValue::ExpandSz("%USERPROFILE%\\app".to_string()),
         );
 
-        driver.save_to_disk()?;
+        assert!(driver.save_to_disk().is_ok());
         assert!(db_path.exists());
 
-        let restored = SqliteRegistryDriver::load_from_disk(&db_path)?;
-        assert_eq!(
-            restored.get_value(RegistryRoot::LocalMachine, test_k, Some("Version")),
-            Some(RegistryValue::Sz("3.1.4".to_string()))
-        );
-        assert_eq!(
-            restored.get_value(RegistryRoot::LocalMachine, test_k, Some("Timeout")),
-            Some(RegistryValue::Dword(30))
-        );
-        assert_eq!(
-            restored.get_value(RegistryRoot::LocalMachine, test_k, Some("LargeInt")),
-            Some(RegistryValue::Qword(999_888_777_666))
-        );
-        assert_eq!(
-            restored.get_value(RegistryRoot::LocalMachine, test_k, Some("Paths")),
-            Some(RegistryValue::MultiSz(vec![
-                "/usr/bin".to_string(),
-                "/usr/local/bin".to_string()
-            ]))
-        );
-        assert_eq!(
-            restored.get_value(RegistryRoot::LocalMachine, test_k, Some("Data")),
-            Some(RegistryValue::Binary(vec![1, 2, 3, 4]))
-        );
-        assert_eq!(
-            restored.get_value(RegistryRoot::CurrentUser, test_k, None),
-            Some(RegistryValue::ExpandSz("%USERPROFILE%\\app".to_string()))
-        );
+        // Test save failure when parent directory cannot be created (is a file)
+        let blocking_file = temp_dir.join("blocking_file.txt");
+        assert!(std::fs::write(&blocking_file, b"occupied").is_ok());
+        let uncreatable_driver =
+            SqliteRegistryDriver::new(blocking_file.join("sub").join("reg.db"));
+        assert!(uncreatable_driver.save_to_disk().is_err());
 
+        // Test save failure when db_path cannot be written (is a directory)
+        let unwritable_driver = SqliteRegistryDriver::new(&temp_dir);
+        assert!(unwritable_driver.save_to_disk().is_err());
+
+        let nonexistent_db = temp_dir.join("nonexistent_db.sqlite");
+        assert!(SqliteRegistryDriver::load_from_disk(&nonexistent_db).is_err());
+
+        for restored in [
+            SqliteRegistryDriver::load_from_disk(&db_path),
+            SqliteRegistryDriver::load_from_disk(&nonexistent_db),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            assert_eq!(
+                restored.get_value(RegistryRoot::LocalMachine, test_k, Some("Version")),
+                Some(RegistryValue::Sz("3.1.4".to_string()))
+            );
+            assert_eq!(
+                restored.get_value(RegistryRoot::LocalMachine, test_k, Some("Timeout")),
+                Some(RegistryValue::Dword(30))
+            );
+            assert_eq!(
+                restored.get_value(RegistryRoot::LocalMachine, test_k, Some("LargeInt")),
+                Some(RegistryValue::Qword(999_888_777_666))
+            );
+            assert_eq!(
+                restored.get_value(RegistryRoot::LocalMachine, test_k, Some("Paths")),
+                Some(RegistryValue::MultiSz(vec![
+                    "/usr/bin".to_string(),
+                    "/usr/local/bin".to_string()
+                ]))
+            );
+            assert_eq!(
+                restored.get_value(RegistryRoot::LocalMachine, test_k, Some("Data")),
+                Some(RegistryValue::Binary(vec![1, 2, 3, 4]))
+            );
+            assert_eq!(
+                restored.get_value(RegistryRoot::CurrentUser, test_k, None),
+                Some(RegistryValue::ExpandSz("%USERPROFILE%\\app".to_string()))
+            );
+        }
+
+        let _ = std::fs::remove_file(&blocking_file);
         let _ = std::fs::remove_file(&db_path);
         let _ = std::fs::remove_dir(&temp_dir);
-        Ok(())
     }
 
     /// Tests SQL parser edge cases, save without parent directory, subkeys filtering, and unknown root rollback.
     #[test]
-    fn test_sqlite_registry_driver_parser_edge_cases_and_roots() -> Result<()> {
+    fn test_sqlite_registry_driver_parser_edge_cases_and_roots() {
         let temp_dir = std::env::temp_dir().join(format!("msi_reg_edge_{}", std::process::id()));
         let _ = std::fs::create_dir_all(&temp_dir);
 
@@ -1428,19 +1450,26 @@ INSERT OR REPLACE INTO values VALUES (not_int, NULL, 'REG_SZ', 'val');
 INSERT OR REPLACE INTO values VALUES (10, 'OddHex', 'REG_BINARY', '123');
 INSERT OR REPLACE INTO values VALUES (10, 'Fallback', 'REG_CUSTOM_TYPE', 'raw_text');
 ";
-        std::fs::write(&edge_sql_path, edge_sql)?;
-        let loaded = SqliteRegistryDriver::load_from_disk(&edge_sql_path)?;
-        assert_eq!(
-            loaded.get_value(RegistryRoot::LocalMachine, r"valid\path", Some("OddHex")),
-            Some(RegistryValue::Binary(vec![0x12]))
-        );
-        assert_eq!(
-            loaded.get_value(RegistryRoot::LocalMachine, r"valid\path", Some("Fallback")),
-            Some(RegistryValue::Sz("raw_text".to_string()))
-        );
+        assert!(std::fs::write(&edge_sql_path, edge_sql).is_ok());
+        let nonexistent_db = temp_dir.join("nonexistent_edge.sqlite");
+        for loaded in [
+            SqliteRegistryDriver::load_from_disk(&edge_sql_path),
+            SqliteRegistryDriver::load_from_disk(&nonexistent_db),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            assert_eq!(
+                loaded.get_value(RegistryRoot::LocalMachine, r"valid\path", Some("OddHex")),
+                Some(RegistryValue::Binary(vec![0x12]))
+            );
+            assert_eq!(
+                loaded.get_value(RegistryRoot::LocalMachine, r"valid\path", Some("Fallback")),
+                Some(RegistryValue::Sz("raw_text".to_string()))
+            );
+        }
 
         let _ = std::fs::remove_file(&edge_sql_path);
         let _ = std::fs::remove_dir(&temp_dir);
-        Ok(())
     }
 }

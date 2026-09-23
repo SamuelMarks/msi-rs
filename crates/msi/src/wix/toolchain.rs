@@ -837,7 +837,7 @@ impl WixBuildOptions {
     #[allow(clippy::branches_sharing_code)]
     pub fn parse(args: &[String]) -> Result<Self> {
         let mut opts = Self::new();
-        let mut idx = 0;
+        let mut idx = usize::from(!args.is_empty() && args[0].eq_ignore_ascii_case("build"));
 
         while idx < args.len() {
             let arg = &args[idx];
@@ -1364,6 +1364,7 @@ x64
         assert!(msi_file.exists());
 
         // Parse error tests
+        assert!(WixBuildOptions::parse(&[]).is_err());
         assert!(WixBuildOptions::parse(&["-arch".to_string()]).is_err());
         assert!(WixBuildOptions::parse(&["-ext".to_string()]).is_err());
         assert!(WixBuildOptions::parse(&["-culture".to_string()]).is_err());

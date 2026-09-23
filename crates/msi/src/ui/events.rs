@@ -315,7 +315,7 @@ mod tests {
 
     /// Tests parsing [`DialogReturnCode`] and [`ControlEventType`].
     #[test]
-    fn test_control_events_parsing() -> Result<()> {
+    fn test_control_events_parsing() {
         let codes = [
             ("Return", DialogReturnCode::Return),
             ("Exit", DialogReturnCode::Exit),
@@ -324,65 +324,65 @@ mod tests {
         ];
 
         for (s, expected) in codes {
-            let parsed = DialogReturnCode::from_argument(s)?;
-            assert_eq!(parsed, expected);
-            assert_eq!(parsed.as_str(), s);
+            assert_eq!(DialogReturnCode::from_argument(s), Ok(expected));
+            assert_eq!(expected.as_str(), s);
         }
         assert!(DialogReturnCode::from_argument("BadCode").is_err());
 
         // Parse events
-        let ev_end = ControlEventType::parse("EndDialog", "Exit")?;
-        assert_eq!(ev_end, ControlEventType::EndDialog(DialogReturnCode::Exit));
-
-        let ev_new = ControlEventType::parse("NewDialog", "NextDlg")?;
-        assert_eq!(ev_new, ControlEventType::NewDialog("NextDlg".to_string()));
-
-        let ev_spawn = ControlEventType::parse("SpawnDialog", "CancelDlg")?;
         assert_eq!(
-            ev_spawn,
-            ControlEventType::SpawnDialog("CancelDlg".to_string())
+            ControlEventType::parse("EndDialog", "Exit"),
+            Ok(ControlEventType::EndDialog(DialogReturnCode::Exit))
+        );
+        assert!(ControlEventType::parse("EndDialog", "BadCode").is_err());
+
+        assert_eq!(
+            ControlEventType::parse("NewDialog", "NextDlg"),
+            Ok(ControlEventType::NewDialog("NextDlg".to_string()))
         );
 
-        let ev_wait = ControlEventType::parse("SpawnWaitDialog", "WaitDlg")?;
         assert_eq!(
-            ev_wait,
-            ControlEventType::SpawnWaitDialog("WaitDlg".to_string())
+            ControlEventType::parse("SpawnDialog", "CancelDlg"),
+            Ok(ControlEventType::SpawnDialog("CancelDlg".to_string()))
         );
 
-        let ev_prop = ControlEventType::parse("SetProperty", "MY_PROP=123")?;
         assert_eq!(
-            ev_prop,
-            ControlEventType::SetProperty {
+            ControlEventType::parse("SpawnWaitDialog", "WaitDlg"),
+            Ok(ControlEventType::SpawnWaitDialog("WaitDlg".to_string()))
+        );
+
+        assert_eq!(
+            ControlEventType::parse("SetProperty", "MY_PROP=123"),
+            Ok(ControlEventType::SetProperty {
                 property: "MY_PROP".to_string(),
                 value: "123".to_string(),
-            }
+            })
         );
 
-        let ev_prop_no_val = ControlEventType::parse("SetProperty", "EMPTY_PROP")?;
         assert_eq!(
-            ev_prop_no_val,
-            ControlEventType::SetProperty {
+            ControlEventType::parse("SetProperty", "EMPTY_PROP"),
+            Ok(ControlEventType::SetProperty {
                 property: "EMPTY_PROP".to_string(),
                 value: String::new(),
-            }
+            })
         );
 
-        let ev_reset = ControlEventType::parse("Reset", "")?;
-        assert_eq!(ev_reset, ControlEventType::Reset);
-
-        let ev_act = ControlEventType::parse("DoAction", "ValidateAction")?;
         assert_eq!(
-            ev_act,
-            ControlEventType::DoAction("ValidateAction".to_string())
+            ControlEventType::parse("Reset", ""),
+            Ok(ControlEventType::Reset)
+        );
+
+        assert_eq!(
+            ControlEventType::parse("DoAction", "ValidateAction"),
+            Ok(ControlEventType::DoAction("ValidateAction".to_string()))
         );
 
         assert!(ControlEventType::parse("UnknownEvent", "").is_err());
-        Ok(())
     }
 
     /// Tests `ControlEvent` condition evaluation and ordering.
     #[test]
-    fn test_control_event_evaluation() -> Result<()> {
+    fn test_control_event_evaluation() {
         let mut context = EvaluationContext::new();
         context.set_property("ACCEPT_EULA", "1");
 
@@ -402,11 +402,11 @@ mod tests {
         );
         assert_eq!(ev1.condition(), Some(r#"ACCEPT_EULA = "1""#));
         assert_eq!(ev1.ordering(), 1);
-        assert!(ev1.is_satisfied(&context)?);
+        assert_eq!(ev1.is_satisfied(&context), Ok(true));
 
         // Unsatisfied condition
         context.set_property("ACCEPT_EULA", "0");
-        assert!(!ev1.is_satisfied(&context)?);
+        assert_eq!(ev1.is_satisfied(&context), Ok(false));
 
         // Empty condition defaults to satisfied
         let ev_empty = ControlEvent::new(
@@ -417,45 +417,42 @@ mod tests {
             1,
         );
         assert_eq!(ev_empty.condition(), None);
-        assert!(ev_empty.is_satisfied(&context)?);
+        assert_eq!(ev_empty.is_satisfied(&context), Ok(true));
 
         let ev_ws = ControlEvent::new("D", "C", ControlEventType::Reset, Some("  ".to_string()), 1);
-        assert!(ev_ws.is_satisfied(&context)?);
+        assert_eq!(ev_ws.is_satisfied(&context), Ok(true));
 
         let ev_one = ControlEvent::new("D", "C", ControlEventType::Reset, Some("1".to_string()), 1);
-        assert!(ev_one.is_satisfied(&context)?);
+        assert_eq!(ev_one.is_satisfied(&context), Ok(true));
 
         let ev_zero =
             ControlEvent::new("D", "C", ControlEventType::Reset, Some("0".to_string()), 1);
-        assert!(!ev_zero.is_satisfied(&context)?);
-
-        Ok(())
+        assert_eq!(ev_zero.is_satisfied(&context), Ok(false));
     }
 
     /// Tests `ControlConditionAction` parsing and variants.
     #[test]
-    fn test_control_condition_action() -> Result<()> {
+    fn test_control_condition_action() {
         assert_eq!(
-            ControlConditionAction::from_action("Default")?,
-            ControlConditionAction::Default
+            ControlConditionAction::from_action("Default"),
+            Ok(ControlConditionAction::Default)
         );
         assert_eq!(
-            ControlConditionAction::from_action("Enable")?,
-            ControlConditionAction::Enable
+            ControlConditionAction::from_action("Enable"),
+            Ok(ControlConditionAction::Enable)
         );
         assert_eq!(
-            ControlConditionAction::from_action("Disable")?,
-            ControlConditionAction::Disable
+            ControlConditionAction::from_action("Disable"),
+            Ok(ControlConditionAction::Disable)
         );
         assert_eq!(
-            ControlConditionAction::from_action("Hide")?,
-            ControlConditionAction::Hide
+            ControlConditionAction::from_action("Hide"),
+            Ok(ControlConditionAction::Hide)
         );
         assert_eq!(
-            ControlConditionAction::from_action("Show")?,
-            ControlConditionAction::Show
+            ControlConditionAction::from_action("Show"),
+            Ok(ControlConditionAction::Show)
         );
         assert!(ControlConditionAction::from_action("BadAction").is_err());
-        Ok(())
     }
 }

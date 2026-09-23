@@ -1106,6 +1106,7 @@ impl Compiler {
                     let disk_prompt = child.attribute("DiskPrompt").map(ToString::to_string);
                     let volume_label = child.attribute("VolumeLabel").map(ToString::to_string);
                     let source = child.attribute("Source").map(ToString::to_string);
+                    let compression_level = child.attribute("CompressionLevel");
 
                     section.add_symbol(Symbol::new("Media", format!("{disk_id}")));
 
@@ -1121,6 +1122,16 @@ impl Compiler {
                         .entry("Media".to_string())
                         .or_insert_with(|| IntermediateTable::new("Media"))
                         .push_record(row.to_record());
+
+                    if let Some(comp_lvl) = compression_level {
+                        tables
+                            .entry("WixMediaCompression".to_string())
+                            .or_insert_with(|| IntermediateTable::new("WixMediaCompression"))
+                            .push_record(Record::with_fields(vec![
+                                FieldValue::Short(disk_id),
+                                FieldValue::String(comp_lvl.to_string()),
+                            ]));
+                    }
                 }
                 "WixVariable" => {
                     let var_id = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
@@ -1741,6 +1752,56 @@ impl Compiler {
         let prop = child.attribute("Property").map(ToString::to_string);
         let dlg_name = parent_id.unwrap_or("DefaultDialog");
 
+        let mut attributes: i32 = 3; // Visible | Enabled
+        if child
+            .attribute("Hidden")
+            .is_some_and(|v| v.eq_ignore_ascii_case("yes"))
+        {
+            attributes &= !1;
+        }
+        if child
+            .attribute("Disabled")
+            .is_some_and(|v| v.eq_ignore_ascii_case("yes"))
+        {
+            attributes &= !2;
+        }
+        if child
+            .attribute("Sunken")
+            .is_some_and(|v| v.eq_ignore_ascii_case("yes"))
+        {
+            attributes |= 0x0001_0000;
+        }
+        if child
+            .attribute("Multiline")
+            .is_some_and(|v| v.eq_ignore_ascii_case("yes"))
+        {
+            attributes |= 0x0004_0000;
+        }
+        if child
+            .attribute("Password")
+            .is_some_and(|v| v.eq_ignore_ascii_case("yes"))
+        {
+            attributes |= 0x0020_0000;
+        }
+        if child
+            .attribute("NoPrefix")
+            .is_some_and(|v| v.eq_ignore_ascii_case("yes"))
+        {
+            attributes |= 0x0040_0000;
+        }
+        if child
+            .attribute("Default")
+            .is_some_and(|v| v.eq_ignore_ascii_case("yes"))
+        {
+            attributes |= 0x0000_0004;
+        }
+        if child
+            .attribute("Cancel")
+            .is_some_and(|v| v.eq_ignore_ascii_case("yes"))
+        {
+            attributes |= 0x0000_0008;
+        }
+
         section.add_symbol(Symbol::new("Control", format!("{dlg_name}.{ctrl_id}")));
 
         let rec = Record::with_fields(vec![
@@ -1751,7 +1812,7 @@ impl Compiler {
             FieldValue::Short(y),
             FieldValue::Short(w),
             FieldValue::Short(h),
-            FieldValue::Long(3),
+            FieldValue::Long(attributes),
             prop.map_or(FieldValue::Null, FieldValue::String),
             resolved_text.map_or(FieldValue::Null, FieldValue::String),
             FieldValue::Null,
@@ -1765,7 +1826,10 @@ impl Compiler {
         for sub in &child.children {
             match sub.tag.as_str() {
                 "Publish" | "ControlEvent" => {
-                    let event = sub.attribute("Event").unwrap_or("NewDialog");
+                    let event = sub.attribute("Property").map_or_else(
+                        || sub.attribute("Event").unwrap_or("NewDialog").to_string(),
+                        |target_prop| format!("[{target_prop}]"),
+                    );
                     let arg = sub
                         .attribute("Argument")
                         .or_else(|| sub.attribute("Value"))
@@ -1784,7 +1848,7 @@ impl Compiler {
                     let ce_rec = Record::with_fields(vec![
                         FieldValue::String(dlg_name.to_string()),
                         FieldValue::String(ctrl_id.to_string()),
-                        FieldValue::String(event.to_string()),
+                        FieldValue::String(event),
                         FieldValue::String(arg.to_string()),
                         cond.map_or(FieldValue::Null, FieldValue::String),
                         order.map_or(FieldValue::Null, FieldValue::Short),
@@ -3005,6 +3069,13 @@ impl Compiler {
             _ => 2,
         };
 
+        if child
+            .attribute("Win64")
+            .is_some_and(|v| v.eq_ignore_ascii_case("yes"))
+        {
+            type_num |= 0x0010;
+        }
+
         // If there is a nested FileSearch, this registry search is locating a directory
         let mut nested_file_searches = Vec::new();
         for sub in &child.children {
@@ -3350,7 +3421,10 @@ impl Compiler {
         let control = parent_id
             .or_else(|| child.attribute("Control"))
             .unwrap_or("BtnNext");
-        let event = child.attribute("Event").unwrap_or("NewDialog");
+        let event = child.attribute("Property").map_or_else(
+            || child.attribute("Event").unwrap_or("NewDialog").to_string(),
+            |target_prop| format!("[{target_prop}]"),
+        );
         let arg = child
             .attribute("Argument")
             .or_else(|| child.attribute("Value"))
@@ -3370,7 +3444,7 @@ impl Compiler {
         let rec = Record::with_fields(vec![
             FieldValue::String(dialog.to_string()),
             FieldValue::String(control.to_string()),
-            FieldValue::String(event.to_string()),
+            FieldValue::String(event),
             FieldValue::String(arg.to_string()),
             cond.map_or(FieldValue::Null, FieldValue::String),
             order.map_or(FieldValue::Null, FieldValue::Short),
@@ -4449,6 +4523,7 @@ mod tests {
         <UI>
             <Publish Dialog="Dlg1" Control="BtnNext" Event="NewDialog" Value="Dlg2" Order="1">NOT Installed</Publish>
             <Publish Dialog="Dlg1" Control="BtnCancel" Event="EndDialog" Argument="Exit" />
+            <Publish Dialog="Dlg1" Control="BtnNext" Property="CUSTOM_PROP" Value="VAL">1</Publish>
             <ControlCondition Dialog="Dlg1" Control="BtnNext" Action="disable" Condition="VersionNT &lt; 600" />
             <ControlCondition Dialog="Dlg1" Control="BtnNext" Action="hide">VersionNT &lt; 500</ControlCondition>
             <ControlCondition Dialog="Dlg1" Control="BtnNext" Action="enable" />
@@ -4457,11 +4532,22 @@ mod tests {
             <Dialog Id="Dlg1" Width="300" Height="200" Title="Dlg1">
                 <Control Id="BtnNext" Type="PushButton" X="10" Y="10" Width="50" Height="20">
                     <Publish Event="DoAction" Value="CA1">1</Publish>
+                    <Publish Property="_BrowseProperty" Value="INSTALLFOLDER">1</Publish>
                     <Condition Action="enable" />
                     <UnknownControlChild />
                 </Control>
+                <Control Id="TxtPass" Type="Edit" X="10" Y="40" Width="100" Height="20" Hidden="yes" Disabled="yes" Multiline="yes" Password="yes" NoPrefix="yes" Cancel="yes" Sunken="yes" Default="yes" />
+                <Control Id="TxtNorm" Type="Edit" X="10" Y="70" Width="100" Height="20" Hidden="no" Disabled="no" Multiline="no" Password="no" NoPrefix="no" Cancel="no" Sunken="no" Default="no" />
             </Dialog>
         </UI>
+        <Directory Id="TARGETDIR" Name="SourceDir">
+            <Directory Id="INSTALLFOLDER" Name="App">
+                <Component Id="CmpGuidQuestion" Guid="?"><CreateFolder /></Component>
+                <Component Id="CmpGuidStar" Guid="*"><CreateFolder /></Component>
+                <Component Id="CmpGuidEmpty" Guid=""><CreateFolder /></Component>
+                <Component Id="CmpGuidNone"><CreateFolder /></Component>
+            </Directory>
+        </Directory>
     </Product>
 </Wix>
 "#;
@@ -4474,7 +4560,7 @@ mod tests {
         let mut found_event_mapping = false;
         for t in &sec.tables {
             if t.name == "ControlEvent" {
-                assert_eq!(t.records.len(), 3);
+                assert_eq!(t.records.len(), 5);
                 found_control_event = true;
             } else if t.name == "ControlCondition" {
                 assert_eq!(t.records.len(), 4);
@@ -5128,6 +5214,52 @@ mod tests {
         assert!(compiler.compile(&root_frag).is_ok());
 
         let _ = fs::remove_dir_all(&temp_dir);
+        Ok(())
+    }
+
+    /// Tests compiling `Media` elements with `CompressionLevel` attribute creating `WixMediaCompression` table.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] if XML parsing fails.
+    #[test]
+    fn test_compiler_media_compression_level() -> Result<()> {
+        let xml = r#"
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="{11111111-2222-3333-4444-555555555555}" Name="MediaApp" Version="1.0.0" Manufacturer="Vendor">
+        <Package Description="Media Test" />
+        <Media Id="1" Cabinet="app.cab" EmbedCab="yes" CompressionLevel="high" />
+        <Media Id="2" Cabinet="none.cab" EmbedCab="no" CompressionLevel="none" />
+        <Media Id="3" Cabinet="default.cab" />
+    </Product>
+</Wix>
+"#;
+        let parser = XmlParser::new();
+        let root = parser.parse(xml)?;
+        let compiler = Compiler::new();
+        let obj = compiler.compile(&root)?;
+        assert_eq!(obj.sections.len(), 1);
+        let sec = &obj.sections[0];
+        let mut count = 0;
+        for tbl in sec
+            .tables
+            .iter()
+            .filter(|t| t.name == "WixMediaCompression")
+        {
+            assert_eq!(tbl.records.len(), 2);
+            assert_eq!(tbl.records[0].get(0), Some(&FieldValue::Short(1)));
+            assert_eq!(
+                tbl.records[0].get(1),
+                Some(&FieldValue::String("high".to_string()))
+            );
+            assert_eq!(tbl.records[1].get(0), Some(&FieldValue::Short(2)));
+            assert_eq!(
+                tbl.records[1].get(1),
+                Some(&FieldValue::String("none".to_string()))
+            );
+            count += 1;
+        }
+        assert_eq!(count, 1);
         Ok(())
     }
 }

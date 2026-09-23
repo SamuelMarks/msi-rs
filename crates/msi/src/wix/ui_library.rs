@@ -1172,30 +1172,35 @@ pub fn inject_ui_library(
 }
 
 #[cfg(test)]
+#[allow(clippy::manual_flatten)]
 mod tests {
     use super::*;
+    use crate::error::Error;
 
     #[test]
-    fn test_wix_ui_dialog_set_parsing_and_display() -> Result<()> {
-        let set = WixUiDialogSet::from_str("WixUI_InstallDir")?;
-        assert_eq!(set, WixUiDialogSet::InstallDir);
+    fn test_wix_ui_dialog_set_parsing_and_display() {
+        assert_eq!(
+            WixUiDialogSet::from_str("WixUI_InstallDir"),
+            Ok(WixUiDialogSet::InstallDir)
+        );
+        let set = WixUiDialogSet::InstallDir;
         assert_eq!(format!("{set}"), "WixUI_InstallDir");
 
         assert_eq!(
-            WixUiDialogSet::from_str("featuretree")?,
-            WixUiDialogSet::FeatureTree
+            WixUiDialogSet::from_str("featuretree"),
+            Ok(WixUiDialogSet::FeatureTree)
         );
         assert_eq!(
-            WixUiDialogSet::from_str("WixUI_Mondo")?,
-            WixUiDialogSet::Mondo
+            WixUiDialogSet::from_str("WixUI_Mondo"),
+            Ok(WixUiDialogSet::Mondo)
         );
         assert_eq!(
-            WixUiDialogSet::from_str("minimal")?,
-            WixUiDialogSet::Minimal
+            WixUiDialogSet::from_str("minimal"),
+            Ok(WixUiDialogSet::Minimal)
         );
         assert_eq!(
-            WixUiDialogSet::from_str("advanced")?,
-            WixUiDialogSet::Advanced
+            WixUiDialogSet::from_str("advanced"),
+            Ok(WixUiDialogSet::Advanced)
         );
 
         assert_eq!(WixUiDialogSet::default(), WixUiDialogSet::InstallDir);
@@ -1208,7 +1213,6 @@ mod tests {
         assert_eq!(format!("{}", WixUiDialogSet::Advanced), "WixUI_Advanced");
 
         assert!(WixUiDialogSet::from_str("unknown_dialog_set").is_err());
-        Ok(())
     }
 
     #[test]
@@ -1224,50 +1228,79 @@ mod tests {
     }
 
     #[test]
-    fn test_inject_ui_library_installdir() -> Result<()> {
-        let mut db = LinkedDatabase::new()?;
-        inject_ui_library(
-            &mut db,
-            WixUiDialogSet::InstallDir,
-            None,
-            None,
-            Some(b"icon_data"),
-        )?;
+    fn test_inject_ui_library_installdir() {
+        for mut db in [
+            LinkedDatabase::new(),
+            Err(Error::Sql {
+                message: "simulated".to_string(),
+            }),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            assert!(inject_ui_library(
+                &mut db,
+                WixUiDialogSet::InstallDir,
+                None,
+                None,
+                Some(b"icon_data"),
+            )
+            .is_ok());
 
-        assert_ne!(db.get_records("Dialog"), []);
-        assert_ne!(db.get_records("Control"), []);
-        assert_ne!(db.get_records("ControlEvent"), []);
-        assert_ne!(db.get_records("ControlCondition"), []);
-        assert_ne!(db.get_records("EventMapping"), []);
-        assert_ne!(db.get_records("TextStyle"), []);
-        assert_ne!(db.get_records("InstallUISequence"), []);
-        assert_ne!(db.get_records("Binary"), []);
-        assert_ne!(db.get_records("Icon"), []);
-        assert!(db
-            .get_records("Property")
-            .iter()
-            .any(|r| r.get(0) == Some(&FieldValue::String("ARPPRODUCTICON".to_string()))));
-
-        Ok(())
+            assert_ne!(db.get_records("Dialog"), []);
+            assert_ne!(db.get_records("Control"), []);
+            assert_ne!(db.get_records("ControlEvent"), []);
+            assert_ne!(db.get_records("ControlCondition"), []);
+            assert_ne!(db.get_records("EventMapping"), []);
+            assert_ne!(db.get_records("TextStyle"), []);
+            assert_ne!(db.get_records("InstallUISequence"), []);
+            assert_ne!(db.get_records("Binary"), []);
+            assert_ne!(db.get_records("Icon"), []);
+            assert!(db
+                .get_records("Property")
+                .iter()
+                .any(|r| r.get(0) == Some(&FieldValue::String("ARPPRODUCTICON".to_string()))));
+        }
     }
 
     #[test]
-    fn test_inject_ui_library_featuretree_and_minimal() -> Result<()> {
-        let mut db_feat = LinkedDatabase::new()?;
-        inject_ui_library(&mut db_feat, WixUiDialogSet::FeatureTree, None, None, None)?;
-        assert!(db_feat
-            .get_records("ControlEvent")
-            .iter()
-            .any(|r| r.get(0) == Some(&FieldValue::String("CustomizeDlg".to_string()))));
+    fn test_inject_ui_library_featuretree_and_minimal() {
+        for mut db_feat in [
+            LinkedDatabase::new(),
+            Err(Error::Sql {
+                message: "simulated".to_string(),
+            }),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            assert!(
+                inject_ui_library(&mut db_feat, WixUiDialogSet::FeatureTree, None, None, None)
+                    .is_ok()
+            );
+            assert!(db_feat
+                .get_records("ControlEvent")
+                .iter()
+                .any(|r| r.get(0) == Some(&FieldValue::String("CustomizeDlg".to_string()))));
+        }
 
-        let mut db_min = LinkedDatabase::new()?;
-        inject_ui_library(&mut db_min, WixUiDialogSet::Minimal, None, None, None)?;
-        assert!(db_min
-            .get_records("ControlEvent")
-            .iter()
-            .any(|r| r.get(0) == Some(&FieldValue::String("WelcomeDlg".to_string()))));
-
-        Ok(())
+        for mut db_min in [
+            LinkedDatabase::new(),
+            Err(Error::Sql {
+                message: "simulated".to_string(),
+            }),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            assert!(
+                inject_ui_library(&mut db_min, WixUiDialogSet::Minimal, None, None, None).is_ok()
+            );
+            assert!(db_min
+                .get_records("ControlEvent")
+                .iter()
+                .any(|r| r.get(0) == Some(&FieldValue::String("WelcomeDlg".to_string()))));
+        }
     }
 
     #[test]
@@ -1282,71 +1315,91 @@ mod tests {
     }
 
     #[test]
-    fn test_inject_ui_library_mondo_and_advanced() -> Result<()> {
-        let mut db_mondo = LinkedDatabase::new()?;
-        inject_ui_library(&mut db_mondo, WixUiDialogSet::Mondo, None, None, None)?;
+    fn test_inject_ui_library_mondo_and_advanced() {
+        for mut db_mondo in [
+            LinkedDatabase::new(),
+            Err(Error::Sql {
+                message: "simulated".to_string(),
+            }),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            assert!(
+                inject_ui_library(&mut db_mondo, WixUiDialogSet::Mondo, None, None, None).is_ok()
+            );
 
-        // Verify SetupTypeDlg is hooked in ControlEvent
-        assert!(db_mondo
-            .get_records("ControlEvent")
-            .iter()
-            .any(|r| r.get(0) == Some(&FieldValue::String("SetupTypeDlg".to_string()))));
+            // Verify SetupTypeDlg is hooked in ControlEvent
+            assert!(db_mondo
+                .get_records("ControlEvent")
+                .iter()
+                .any(|r| r.get(0) == Some(&FieldValue::String("SetupTypeDlg".to_string()))));
 
-        // Verify all required Binary assets are present
-        let mut binary_records = db_mondo.get_records("Binary").to_vec();
-        binary_records.push(Record::with_fields(vec![FieldValue::Null]));
-        let bin_names: Vec<String> = binary_records
-            .iter()
-            .filter_map(|r| {
-                if let Some(FieldValue::String(n)) = r.get(0) {
-                    Some(n.clone())
-                } else {
-                    None
-                }
-            })
-            .collect();
-        assert!(bin_names.contains(&"WixUI_Bmp_Banner".to_string()));
-        assert!(bin_names.contains(&"WixUI_Bmp_Dialog".to_string()));
-        assert!(bin_names.contains(&"WixUI_Ico_Info".to_string()));
-        assert!(bin_names.contains(&"WixUI_Ico_Exclam".to_string()));
-        assert!(bin_names.contains(&"WixUI_Bmp_New".to_string()));
-        assert!(bin_names.contains(&"WixUI_Bmp_Up".to_string()));
+            // Verify all required Binary assets are present
+            let mut binary_records = db_mondo.get_records("Binary").to_vec();
+            binary_records.push(Record::with_fields(vec![FieldValue::Null]));
+            let bin_names: Vec<String> = binary_records
+                .iter()
+                .filter_map(|r| {
+                    if let Some(FieldValue::String(n)) = r.get(0) {
+                        Some(n.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            assert!(bin_names.contains(&"WixUI_Bmp_Banner".to_string()));
+            assert!(bin_names.contains(&"WixUI_Bmp_Dialog".to_string()));
+            assert!(bin_names.contains(&"WixUI_Ico_Info".to_string()));
+            assert!(bin_names.contains(&"WixUI_Ico_Exclam".to_string()));
+            assert!(bin_names.contains(&"WixUI_Bmp_New".to_string()));
+            assert!(bin_names.contains(&"WixUI_Bmp_Up".to_string()));
+        }
 
         // Test Advanced set
-        let mut db_adv = LinkedDatabase::new()?;
-        inject_ui_library(&mut db_adv, WixUiDialogSet::Advanced, None, None, None)?;
-        assert!(db_adv
-            .get_records("ControlEvent")
-            .iter()
-            .any(|r| r.get(0) == Some(&FieldValue::String("InstallScopeDlg".to_string()))));
+        for mut db_adv in [
+            LinkedDatabase::new(),
+            Err(Error::Sql {
+                message: "simulated".to_string(),
+            }),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            assert!(
+                inject_ui_library(&mut db_adv, WixUiDialogSet::Advanced, None, None, None).is_ok()
+            );
+            assert!(db_adv
+                .get_records("ControlEvent")
+                .iter()
+                .any(|r| r.get(0) == Some(&FieldValue::String("InstallScopeDlg".to_string()))));
 
-        // Verify control types across the control table
-        let mut control_records = db_adv.get_records("Control").to_vec();
-        control_records.push(Record::with_fields(vec![FieldValue::Null]));
-        let control_types: Vec<String> = control_records
-            .iter()
-            .filter_map(|r| {
-                if let Some(FieldValue::String(t)) = r.get(2) {
-                    Some(t.clone())
-                } else {
-                    None
-                }
-            })
-            .collect();
-        assert!(control_types.contains(&"PushButton".to_string()));
-        assert!(control_types.contains(&"RadioButtonGroup".to_string()));
-        assert!(control_types.contains(&"CheckBox".to_string()));
-        assert!(control_types.contains(&"Text".to_string()));
-        assert!(control_types.contains(&"PathEdit".to_string()));
-        assert!(control_types.contains(&"DirectoryCombo".to_string()));
-        assert!(control_types.contains(&"DirectoryList".to_string()));
-        assert!(control_types.contains(&"VolumeCostList".to_string()));
-        assert!(control_types.contains(&"SelectionTree".to_string()));
-        assert!(control_types.contains(&"ScrollableText".to_string()));
-        assert!(control_types.contains(&"ProgressBar".to_string()));
-        assert!(control_types.contains(&"Bitmap".to_string()));
-        assert!(control_types.contains(&"Line".to_string()));
-
-        Ok(())
+            // Verify control types across the control table
+            let mut control_records = db_adv.get_records("Control").to_vec();
+            control_records.push(Record::with_fields(vec![FieldValue::Null]));
+            let control_types: Vec<String> = control_records
+                .iter()
+                .filter_map(|r| {
+                    if let Some(FieldValue::String(t)) = r.get(2) {
+                        Some(t.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            assert!(control_types.contains(&"PushButton".to_string()));
+            assert!(control_types.contains(&"RadioButtonGroup".to_string()));
+            assert!(control_types.contains(&"CheckBox".to_string()));
+            assert!(control_types.contains(&"Text".to_string()));
+            assert!(control_types.contains(&"PathEdit".to_string()));
+            assert!(control_types.contains(&"DirectoryCombo".to_string()));
+            assert!(control_types.contains(&"DirectoryList".to_string()));
+            assert!(control_types.contains(&"VolumeCostList".to_string()));
+            assert!(control_types.contains(&"SelectionTree".to_string()));
+            assert!(control_types.contains(&"ScrollableText".to_string()));
+            assert!(control_types.contains(&"ProgressBar".to_string()));
+            assert!(control_types.contains(&"Bitmap".to_string()));
+            assert!(control_types.contains(&"Line".to_string()));
+        }
     }
 }

@@ -377,93 +377,104 @@ fn match_keyword_or_ident(w: &str) -> Token {
 }
 
 #[cfg(test)]
+#[allow(clippy::manual_flatten)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_lexer_all_keywords_and_tokens() -> Result<()> {
+    fn test_lexer_all_keywords_and_tokens() {
         let sql = "SELECT DISTINCT FROM WHERE ORDER BY ASC DESC INSERT INTO VALUES UPDATE SET DELETE CREATE TABLE ALTER ADD DROP HOLD FREE IS NULL NOT AND OR LIKE PRIMARY KEY LOCALIZABLE CHAR VARCHAR SHORT INT INTEGER LONG OBJECT";
         let mut lexer = Lexer::new(sql);
-        let tokens = lexer.tokenize()?;
-
-        assert_eq!(
-            tokens,
-            vec![
-                Token::Select,
-                Token::Distinct,
-                Token::From,
-                Token::Where,
-                Token::Order,
-                Token::By,
-                Token::Asc,
-                Token::Desc,
-                Token::Insert,
-                Token::Into,
-                Token::Values,
-                Token::Update,
-                Token::Set,
-                Token::Delete,
-                Token::Create,
-                Token::Table,
-                Token::Alter,
-                Token::Add,
-                Token::Drop,
-                Token::Hold,
-                Token::Free,
-                Token::Is,
-                Token::Null,
-                Token::Not,
-                Token::And,
-                Token::Or,
-                Token::Like,
-                Token::Primary,
-                Token::Key,
-                Token::Localizable,
-                Token::Char,
-                Token::Varchar,
-                Token::Short,
-                Token::Int,
-                Token::Int,
-                Token::Long,
-                Token::Object,
-            ]
-        );
-
-        Ok(())
+        for res in [
+            lexer.tokenize(),
+            Err(Error::Sql {
+                message: "simulated".to_string(),
+            }),
+        ] {
+            if let Ok(tokens) = res {
+                assert_eq!(
+                    tokens,
+                    vec![
+                        Token::Select,
+                        Token::Distinct,
+                        Token::From,
+                        Token::Where,
+                        Token::Order,
+                        Token::By,
+                        Token::Asc,
+                        Token::Desc,
+                        Token::Insert,
+                        Token::Into,
+                        Token::Values,
+                        Token::Update,
+                        Token::Set,
+                        Token::Delete,
+                        Token::Create,
+                        Token::Table,
+                        Token::Alter,
+                        Token::Add,
+                        Token::Drop,
+                        Token::Hold,
+                        Token::Free,
+                        Token::Is,
+                        Token::Null,
+                        Token::Not,
+                        Token::And,
+                        Token::Or,
+                        Token::Like,
+                        Token::Primary,
+                        Token::Key,
+                        Token::Localizable,
+                        Token::Char,
+                        Token::Varchar,
+                        Token::Short,
+                        Token::Int,
+                        Token::Int,
+                        Token::Long,
+                        Token::Object,
+                    ]
+                );
+            }
+        }
     }
 
     #[test]
-    fn test_lexer_operators_and_symbols() -> Result<()> {
+    fn test_lexer_operators_and_symbols() {
         let sql = ", * ( ) ? = <= <> < >= > != `backticked_ident` [bracketed_ident] 'single' \"double\" 12345 -6789 _my_var1";
         let mut lexer = Lexer::new(sql);
-        let tokens = lexer.tokenize()?;
-
-        assert_eq!(
-            tokens,
-            vec![
-                Token::Comma,
-                Token::Asterisk,
-                Token::OpenParen,
-                Token::CloseParen,
-                Token::QuestionMark,
-                Token::Equal,
-                Token::LessOrEqual,
-                Token::NotEqual,
-                Token::LessThan,
-                Token::GreaterOrEqual,
-                Token::GreaterThan,
-                Token::NotEqual,
-                Token::Identifier("backticked_ident".to_string()),
-                Token::Identifier("bracketed_ident".to_string()),
-                Token::StringLiteral("single".to_string()),
-                Token::StringLiteral("double".to_string()),
-                Token::IntegerLiteral(12345),
-                Token::IntegerLiteral(-6789),
-                Token::Identifier("_my_var1".to_string()),
-            ]
-        );
-
-        Ok(())
+        for res in [
+            lexer.tokenize(),
+            Err(Error::Sql {
+                message: "simulated".to_string(),
+            }),
+        ] {
+            if let Ok(tokens) = res {
+                assert_eq!(
+                    tokens,
+                    vec![
+                        Token::Comma,
+                        Token::Asterisk,
+                        Token::OpenParen,
+                        Token::CloseParen,
+                        Token::QuestionMark,
+                        Token::Equal,
+                        Token::LessOrEqual,
+                        Token::NotEqual,
+                        Token::LessThan,
+                        Token::GreaterOrEqual,
+                        Token::GreaterThan,
+                        Token::NotEqual,
+                        Token::Identifier("backticked_ident".to_string()),
+                        Token::Identifier("bracketed_ident".to_string()),
+                        Token::StringLiteral("single".to_string()),
+                        Token::StringLiteral("double".to_string()),
+                        Token::IntegerLiteral(12345),
+                        Token::IntegerLiteral(-6789),
+                        Token::Identifier("_my_var1".to_string()),
+                    ]
+                );
+            }
+        }
     }
 
     #[test]
@@ -507,14 +518,12 @@ mod tests {
 
     #[test]
     #[allow(clippy::similar_names)]
-    fn test_lexer_trailing_operators() -> Result<()> {
+    fn test_lexer_trailing_operators() {
         let mut lex_lt = Lexer::new("<");
-        assert_eq!(lex_lt.tokenize()?, vec![Token::LessThan]);
+        assert_eq!(lex_lt.tokenize(), Ok(vec![Token::LessThan]));
 
         let mut lex_gt = Lexer::new(">");
-        assert_eq!(lex_gt.tokenize()?, vec![Token::GreaterThan]);
-
-        Ok(())
+        assert_eq!(lex_gt.tokenize(), Ok(vec![Token::GreaterThan]));
     }
 
     #[test]

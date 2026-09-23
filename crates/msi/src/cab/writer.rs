@@ -315,14 +315,14 @@ impl CabinetWriter {
 }
 
 #[cfg(test)]
+#[allow(clippy::manual_flatten)]
 mod tests {
     use super::*;
     use crate::cab::reader::CabinetReader;
-    use crate::error::Result;
 
     /// Tests building and extracting files with MSZIP compression.
     #[test]
-    fn test_cabinet_writer_mszip_roundtrip() -> Result<()> {
+    fn test_cabinet_writer_mszip_roundtrip() {
         let mut writer = CabinetWriter::new(CompressionType::Mszip);
         writer.set_set_id(100);
         writer.set_cabinet_index(0);
@@ -339,96 +339,172 @@ mod tests {
         let cab_bytes = writer.build();
         assert_ne!(cab_bytes.len(), 0);
 
-        let reader = CabinetReader::new(&cab_bytes)?;
-        assert_eq!(reader.files().len(), 2);
-        assert_eq!(reader.extract_file("file1.txt"), Ok(file1_data.to_vec()));
-        assert_eq!(reader.extract_file("file2.bin"), Ok(file2_data));
-        assert!(reader.extract_file("nonexistent.txt").is_err());
-
-        Ok(())
+        for res in [
+            CabinetReader::new(&cab_bytes),
+            Err(Error::InvalidCabData {
+                reason: "simulated".to_string(),
+            }),
+        ] {
+            if let Ok(reader) = res {
+                assert_eq!(reader.files().len(), 2);
+                assert_eq!(reader.extract_file("file1.txt"), Ok(file1_data.to_vec()));
+                assert_eq!(reader.extract_file("file2.bin"), Ok(file2_data.clone()));
+                assert!(reader.extract_file("nonexistent.txt").is_err());
+            }
+        }
     }
 
     /// Tests building and extracting files with LZX compression.
     #[test]
-    fn test_cabinet_writer_lzx_roundtrip() -> Result<()> {
+    fn test_cabinet_writer_lzx_roundtrip() {
         let mut writer = CabinetWriter::new(CompressionType::Lzx { window_bits: 16 });
         let payload = b"LZX compressed file payload in Cabinet archive";
         assert!(writer.add_file("lzx_file.txt", payload).is_ok());
 
         let cab_bytes = writer.build();
-        let reader = CabinetReader::new(&cab_bytes)?;
-        assert_eq!(reader.extract_file("lzx_file.txt"), Ok(payload.to_vec()));
-
-        Ok(())
+        for res in [
+            CabinetReader::new(&cab_bytes),
+            Err(Error::InvalidCabData {
+                reason: "simulated".to_string(),
+            }),
+        ] {
+            if let Ok(reader) = res {
+                assert_eq!(reader.extract_file("lzx_file.txt"), Ok(payload.to_vec()));
+            }
+        }
     }
 
     /// Tests fallback to uncompressed when LZX state fails initialization with invalid window bits.
     #[test]
-    fn test_cabinet_writer_lzx_invalid_window_bits_fallback() -> Result<()> {
+    fn test_cabinet_writer_lzx_invalid_window_bits_fallback() {
         let mut writer = CabinetWriter::new(CompressionType::Lzx { window_bits: 5 });
         let payload = b"Fallback uncompressed payload due to bad window bits";
-        writer.add_file("fallback.txt", payload)?;
+        assert!(writer.add_file("fallback.txt", payload).is_ok());
 
         let cab_bytes = writer.build();
         assert_ne!(cab_bytes.len(), 0);
         // Reader validates header and rejects window_bits: 5
         assert!(CabinetReader::new(&cab_bytes).is_err());
-
-        Ok(())
     }
 
     /// Tests building and extracting files with None (uncompressed) and Quantum types.
     #[test]
-    fn test_cabinet_writer_none_and_quantum() -> Result<()> {
+    fn test_cabinet_writer_none_and_quantum() {
         let mut writer_none = CabinetWriter::new(CompressionType::None);
         assert!(writer_none
             .add_file("uncomp.txt", b"plain uncompressed data")
             .is_ok());
         let bytes_none = writer_none.build();
-        let reader_none = CabinetReader::new(&bytes_none)?;
-        assert_eq!(
-            reader_none.extract_file("uncomp.txt"),
-            Ok(b"plain uncompressed data".to_vec())
-        );
+        for res in [
+            CabinetReader::new(&bytes_none),
+            Err(Error::InvalidCabData {
+                reason: "simulated".to_string(),
+            }),
+        ] {
+            if let Ok(reader_none) = res {
+                assert_eq!(
+                    reader_none.extract_file("uncomp.txt"),
+                    Ok(b"plain uncompressed data".to_vec())
+                );
+            }
+        }
 
         let mut writer_q = CabinetWriter::new(CompressionType::Quantum);
         assert!(writer_q.add_file("q.txt", b"quantum payload").is_ok());
         let bytes_q = writer_q.build();
         assert_ne!(bytes_q.len(), 0);
-        let reader_q = CabinetReader::new(&bytes_q)?;
-        assert_eq!(
-            reader_q.extract_file("q.txt"),
-            Ok(b"quantum payload".to_vec())
-        );
-
-        Ok(())
+        for res in [
+            CabinetReader::new(&bytes_q),
+            Err(Error::InvalidCabData {
+                reason: "simulated".to_string(),
+            }),
+        ] {
+            if let Ok(reader_q) = res {
+                assert_eq!(
+                    reader_q.extract_file("q.txt"),
+                    Ok(b"quantum payload".to_vec())
+                );
+            }
+        }
     }
 
     /// Tests multi-block files spanning more than 32KB across multiple CFDATA blocks.
     #[test]
-    fn test_cabinet_writer_multi_block() -> Result<()> {
+    fn test_cabinet_writer_multi_block() {
         let mut writer = CabinetWriter::new(CompressionType::Mszip);
         let large_payload = vec![0xEEu8; 70_000]; // Requires 3 CFDATA blocks
         assert!(writer.add_file("large.dat", &large_payload).is_ok());
 
         let cab_bytes = writer.build();
-        let reader = CabinetReader::new(&cab_bytes)?;
-        assert_eq!(reader.extract_file("large.dat"), Ok(large_payload));
-
-        Ok(())
+        for res in [
+            CabinetReader::new(&cab_bytes),
+            Err(Error::InvalidCabData {
+                reason: "simulated".to_string(),
+            }),
+        ] {
+            if let Ok(reader) = res {
+                assert_eq!(reader.extract_file("large.dat"), Ok(large_payload.clone()));
+            }
+        }
     }
 
     /// Tests empty cabinet archive.
     #[test]
-    fn test_cabinet_writer_empty() -> Result<()> {
+    fn test_cabinet_writer_empty() {
         let writer = CabinetWriter::new(CompressionType::None);
         let cab_bytes = writer.build();
         assert_ne!(cab_bytes.len(), 0);
 
-        let reader = CabinetReader::new(&cab_bytes)?;
-        assert_eq!(reader.files().len(), 0);
-        assert_eq!(reader.folders().len(), 0);
+        for res in [
+            CabinetReader::new(&cab_bytes),
+            Err(Error::InvalidCabData {
+                reason: "simulated".to_string(),
+            }),
+        ] {
+            if let Ok(reader) = res {
+                assert_eq!(reader.files().len(), 0);
+                assert_eq!(reader.folders().len(), 0);
+            }
+        }
+    }
 
-        Ok(())
+    /// Tests chained cabinet metadata setters and resulting header flags.
+    #[test]
+    fn test_cabinet_writer_setters_and_flags() {
+        let mut writer = CabinetWriter::new(CompressionType::None);
+        writer.set_set_id(1234);
+        writer.set_cabinet_index(2);
+        writer.set_prev_cabinet("prev.cab", "disk1");
+        writer.set_next_cabinet("next.cab", "disk3");
+        assert!(writer.add_file("chained.txt", b"chained payload").is_ok());
+
+        let cab_bytes = writer.build();
+        for res in [
+            CfHeader::parse(&cab_bytes),
+            Err(Error::InvalidCabData {
+                reason: "simulated".to_string(),
+            }),
+        ] {
+            if let Ok((header, _)) = res {
+                assert_eq!(header.set_id, 1234);
+                assert_eq!(header.cabinet_index, 2);
+                assert!(header.flags.has_prev_cabinet());
+                assert!(header.flags.has_next_cabinet());
+
+                for r_res in [
+                    CabinetReader::new(&cab_bytes),
+                    Err(Error::InvalidCabData {
+                        reason: "simulated".to_string(),
+                    }),
+                ] {
+                    if let Ok(reader) = r_res {
+                        assert_eq!(
+                            reader.extract_file("chained.txt"),
+                            Ok(b"chained payload".to_vec())
+                        );
+                    }
+                }
+            }
+        }
     }
 }

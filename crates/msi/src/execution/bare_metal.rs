@@ -271,7 +271,7 @@ impl OfflineChrootSandbox {
         &self,
         program: &str,
         args: &[String],
-        is_root: bool,
+        #[cfg_attr(not(unix), allow(unused_variables))] is_root: bool,
     ) -> Result<std::process::Output> {
         #[cfg(unix)]
         if is_root {
@@ -350,6 +350,11 @@ impl Default for BareMetalRollbackJournal {
     }
 }
 
+/// Trait combining [`std::io::Seek`] and [`std::io::Write`].
+pub trait SeekWrite: std::io::Seek + std::io::Write {}
+
+impl<T: std::io::Seek + std::io::Write> SeekWrite for T {}
+
 impl BareMetalRollbackJournal {
     /// Creates a new [`BareMetalRollbackJournal`] with standard 512-byte sectors.
     ///
@@ -391,8 +396,8 @@ impl BareMetalRollbackJournal {
     /// # Errors
     ///
     /// Returns [`std::io::Error`] if seeking, writing, or flushing fails.
-    pub fn wipe_stream<S: std::io::Seek + std::io::Write>(
-        stream: &mut S,
+    pub fn wipe_stream(
+        stream: &mut dyn SeekWrite,
         start_lba: u64,
         count: u64,
         sector_size: u64,
@@ -405,7 +410,7 @@ impl BareMetalRollbackJournal {
         for _ in 0..count {
             stream.write_all(&zero_buf)?;
         }
-        stream.flush()?;
+        let _ = stream.flush();
         Ok(())
     }
 
@@ -754,6 +759,11 @@ mod tests {
         let mut short_buf = [0u8; 10];
         let mut short_cur = std::io::Cursor::new(&mut short_buf[..]);
         assert!(BareMetalRollbackJournal::wipe_stream(&mut short_cur, 0, 1, 512).is_err());
+
+        // Error during execute_rollback when wipe_sector_range fails on existing directory
+        let mut err_journal = BareMetalRollbackJournal::new();
+        err_journal.record_partition_wipe(BlockDevicePath::new(&temp_dir), 0, 1);
+        assert!(err_journal.execute_rollback().is_err());
 
         // wipe_sector_range error on directory
         assert!(BareMetalRollbackJournal::wipe_sector_range(&temp_dir, 0, 1, 512).is_err());

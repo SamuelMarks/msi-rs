@@ -715,6 +715,33 @@ mod tests {
                         assert!(r_corrupt_prov.extract_file("large.bin").is_err());
                     }
                 }
+
+                // 5b. Provider supplies valid volume without continued file (part2 missing)
+                let mut missing_file_prov = InMemoryMediaProvider::new();
+                let other_cab = CabinetWriter::new(CompressionType::None).build();
+                missing_file_prov.add_cabinet(artifacts[1].filename.clone(), other_cab);
+                for r_res in [
+                    MultiCabinetReader::new(&artifacts[0].data, Some(Box::new(missing_file_prov))),
+                    MultiCabinetReader::new(&[0u8; 4], None),
+                ] {
+                    if let Ok(mut r_missing) = r_res {
+                        assert!(r_missing.extract_file("large.bin").is_err());
+                    }
+                }
+
+                // 5c. Primary cabinet has truncated data block causing part1 extraction failure
+                let mut truncated_primary = artifacts[0].data.clone();
+                truncated_primary.truncate(truncated_primary.len().saturating_sub(10));
+                let mut valid_prov = InMemoryMediaProvider::new();
+                valid_prov.add_cabinet(artifacts[1].filename.clone(), artifacts[1].data.clone());
+                for r_res in [
+                    MultiCabinetReader::new(&truncated_primary, Some(Box::new(valid_prov))),
+                    MultiCabinetReader::new(&[0u8; 4], None),
+                ] {
+                    if let Ok(mut r_bad_part1) = r_res {
+                        assert!(r_bad_part1.extract_file("large.bin").is_err());
+                    }
+                }
             }
         }
 
@@ -797,6 +824,13 @@ mod tests {
                 assert_eq!(artifacts.len(), 2);
             }
         }
+
+        // 5. Case-insensitive collision in same chunk triggers build error
+        let mut writer_collision =
+            MultiCabinetWriter::new(1000, 4, "Disk", "disk", CompressionType::None);
+        assert!(writer_collision.add_file("file.txt", b"a").is_ok());
+        assert!(writer_collision.add_file("FILE.TXT", b"b").is_ok());
+        assert!(writer_collision.pack().is_err());
     }
 
     #[test]

@@ -421,6 +421,22 @@ pub struct QuantumDecompressor {
     position_model: AdaptiveModel,
 }
 
+impl Default for QuantumDecompressor {
+    /// Creates a default [`QuantumDecompressor`] with default window bits (`15`).
+    fn default() -> Self {
+        Self {
+            window_bits: QUANTUM_DEFAULT_WINDOW_BITS,
+            window: vec![0; 1 << QUANTUM_DEFAULT_WINDOW_BITS],
+            window_pos: 0,
+            total_written: 0,
+            control_model: AdaptiveModel::new(NUM_CONTROL_SYMBOLS),
+            literal_model: AdaptiveModel::new(NUM_LITERAL_SYMBOLS),
+            length_model: AdaptiveModel::new(NUM_LENGTH_SYMBOLS),
+            position_model: AdaptiveModel::new(NUM_POSITION_SLOTS),
+        }
+    }
+}
+
 impl QuantumDecompressor {
     /// Creates a new [`QuantumDecompressor`] with specified window size in bits.
     ///
@@ -810,6 +826,7 @@ mod tests {
 
     #[test]
     fn test_quantum_decompressor_reset() {
+        assert_eq!(QuantumDecompressor::default().window_bits(), 15);
         for bits in [15, 9] {
             if let Ok(mut decompressor) = QuantumDecompressor::new(bits) {
                 assert_eq!(decompressor.window_bits(), 15);
@@ -839,6 +856,32 @@ mod tests {
                 corrupted.extend_from_slice(&[0b0000_1001, 0b1111_1111, 0b1111_1111]);
                 let res = decompressor.decompress_block(&corrupted, 10);
                 assert!(res.is_err());
+
+                // 1. EOF while reading 3 control bits
+                decompressor.reset();
+                assert!(decompressor.decompress_block(&[], 10).is_err());
+
+                // 2. EOF while reading 8 literal bits (ctrl_sym == 0)
+                decompressor.reset();
+                assert!(decompressor.decompress_block(&[0x00], 10).is_err());
+
+                // 3. EOF while reading extra match length (ctrl_sym = 4 needs 5 extra bits).
+                // Iteration 1: 3 bits ctrl (0) + 8 bits lit (0x41) = 11 bits.
+                // Iteration 2: 3 bits ctrl (4) = 14 bits.
+                // Next: read_bits(5) needs 19 bits, but only 16 bits (2 bytes: [0x08, 0x22]) provided.
+                decompressor.reset();
+                assert!(decompressor.decompress_block(&[0x08, 0x22], 10).is_err());
+
+                // 4. EOF while reading match position slot (ctrl_sym = 1, match_len = 3).
+                // Iteration 1: 3 bits ctrl (0) + 8 bits lit (0x41) = 11 bits.
+                // Iteration 2: 3 bits ctrl (1) = 14 bits.
+                // Next: read_bits(5) for pos_slot needs 19 bits, but only 16 bits (2 bytes: [0x08, 0x0A]) provided.
+                decompressor.reset();
+                assert!(decompressor.decompress_block(&[0x08, 0x0A], 10).is_err());
+
+                // 5. EOF while reading extra position offset
+                decompressor.reset();
+                assert!(decompressor.decompress_block(&[249], 10).is_err());
             }
         }
     }

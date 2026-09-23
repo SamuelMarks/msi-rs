@@ -24,10 +24,12 @@ pub struct PartitionUuid(pub [u8; 16]);
 
 impl std::fmt::Display for PartitionUuid {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use std::fmt::Write as _;
+        let mut hex = String::with_capacity(32);
         for b in self.0 {
-            write!(f, "{b:02X}")?;
+            let _ = write!(hex, "{b:02X}");
         }
-        Ok(())
+        f.write_str(&hex)
     }
 }
 
@@ -587,26 +589,26 @@ impl StandardPartitionScheme {
         // 1. ESP
         let esp_start = table.first_usable_lba;
         let esp_end = Lba(esp_start.0 + esp_sectors - 1);
-        table.add_partition(GptPartitionEntry {
+        table.partitions.push(GptPartitionEntry {
             type_guid: PartitionTypeGuid::ESP,
             unique_guid: PartitionUuid([1; 16]),
             start_lba: esp_start,
             end_lba: esp_end,
             attributes: 0,
             name: "EFI system partition".to_string(),
-        })?;
+        });
 
         // 2. MSR
         let msr_start = Lba(esp_end.0 + 1);
         let msr_end = Lba(msr_start.0 + msr_sectors - 1);
-        table.add_partition(GptPartitionEntry {
+        table.partitions.push(GptPartitionEntry {
             type_guid: PartitionTypeGuid::MSR,
             unique_guid: PartitionUuid([2; 16]),
             start_lba: msr_start,
             end_lba: msr_end,
             attributes: 0,
             name: "Microsoft reserved partition".to_string(),
-        })?;
+        });
 
         // 4. Recovery at end of disk
         let rec_end = table.last_usable_lba;
@@ -615,23 +617,24 @@ impl StandardPartitionScheme {
         // 3. OS Partition in remaining space
         let os_start = Lba(msr_end.0 + 1);
         let os_end = Lba(rec_start.0.saturating_sub(1));
-        table.add_partition(GptPartitionEntry {
+        table.partitions.push(GptPartitionEntry {
             type_guid: PartitionTypeGuid::WINDOWS_BASIC_DATA,
             unique_guid: PartitionUuid([3; 16]),
             start_lba: os_start,
             end_lba: os_end,
             attributes: 0,
             name: "Basic data partition".to_string(),
-        })?;
+        });
 
-        table.add_partition(GptPartitionEntry {
+        table.partitions.push(GptPartitionEntry {
             type_guid: PartitionTypeGuid::WINDOWS_RECOVERY,
             unique_guid: PartitionUuid([4; 16]),
             start_lba: rec_start,
             end_lba: rec_end,
             attributes: 0x8000_0000_0000_0001,
             name: "Recovery".to_string(),
-        })?;
+        });
+        table.partitions.sort_by_key(|p| p.start_lba.0);
         Ok(())
     }
 
@@ -662,50 +665,51 @@ impl StandardPartitionScheme {
         // 1. ESP
         let esp_start = table.first_usable_lba;
         let esp_end = Lba(esp_start.0 + esp_sectors - 1);
-        table.add_partition(GptPartitionEntry {
+        table.partitions.push(GptPartitionEntry {
             type_guid: PartitionTypeGuid::ESP,
             unique_guid: PartitionUuid([1; 16]),
             start_lba: esp_start,
             end_lba: esp_end,
             attributes: 0,
             name: "EFI System Partition".to_string(),
-        })?;
+        });
 
         // 2. Boot
         let boot_start = Lba(esp_end.0 + 1);
         let boot_end = Lba(boot_start.0 + boot_sectors - 1);
-        table.add_partition(GptPartitionEntry {
+        table.partitions.push(GptPartitionEntry {
             type_guid: PartitionTypeGuid::LINUX_BOOT,
             unique_guid: PartitionUuid([2; 16]),
             start_lba: boot_start,
             end_lba: boot_end,
             attributes: 0,
             name: "Boot Partition".to_string(),
-        })?;
+        });
 
         // 3. Swap
         let swap_start = Lba(boot_end.0 + 1);
         let swap_end = Lba(swap_start.0 + swap_sectors - 1);
-        table.add_partition(GptPartitionEntry {
+        table.partitions.push(GptPartitionEntry {
             type_guid: PartitionTypeGuid::LINUX_SWAP,
             unique_guid: PartitionUuid([3; 16]),
             start_lba: swap_start,
             end_lba: swap_end,
             attributes: 0,
             name: "Swap Partition".to_string(),
-        })?;
+        });
 
         // 4. Root
         let root_start = Lba(swap_end.0 + 1);
         let root_end = table.last_usable_lba;
-        table.add_partition(GptPartitionEntry {
+        table.partitions.push(GptPartitionEntry {
             type_guid: PartitionTypeGuid::LINUX_ROOT_X86_64,
             unique_guid: PartitionUuid([4; 16]),
             start_lba: root_start,
             end_lba: root_end,
             attributes: 0,
             name: "Linux Root".to_string(),
-        })?;
+        });
+        table.partitions.sort_by_key(|p| p.start_lba.0);
         Ok(())
     }
 }

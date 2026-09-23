@@ -226,8 +226,8 @@ mod tests {
     use msi::package::ProductVersion;
 
     #[test]
-    #[allow(clippy::too_many_lines)]
-    fn test_msiextract_run_all_branches() -> Result<(), Box<dyn std::error::Error>> {
+    #[allow(clippy::too_many_lines, clippy::explicit_into_iter_loop)]
+    fn test_msiextract_run_all_branches() {
         let temp_dir = std::env::temp_dir().join("msi_cli_test_msiextract_bin");
         let _ = fs::create_dir_all(&temp_dir);
         let out_dir = temp_dir.join("extracted_files");
@@ -239,15 +239,18 @@ mod tests {
 
         // Build an MSI with both a valid cabinet and a raw non-cabinet stream
         let msi_file = temp_dir.join("extract.msi");
-        let pkg = Package::builder()
+        let build_res = Package::builder()
             .product_name("ExtractApp")
             .manufacturer("ExtractMfr")
             .version(ProductVersion::new(1, 0, 0))
             .product_code("{99999999-9999-9999-9999-999999999999}")
             .add_embedded_cabinet("#cab1.cab", cab_bytes)
             .add_embedded_cabinet("#raw.bin", vec![1, 2, 3, 4])
-            .build()?;
-        pkg.save(&msi_file)?;
+            .build();
+        assert!(build_res.is_ok());
+        for pkg in build_res.into_iter() {
+            assert!(pkg.save(&msi_file).is_ok());
+        }
 
         // 1. Parse errors
         assert_eq!(run(&[]), 1);
@@ -277,7 +280,7 @@ mod tests {
         // 4. Successful extract with --directory, unknown flags, and non-msi extension that exists
         let out_dir2 = temp_dir.join("extracted_files2");
         let noext_msi = temp_dir.join("extract_noext");
-        fs::copy(&msi_file, &noext_msi)?;
+        assert!(fs::copy(&msi_file, &noext_msi).is_ok());
         assert_eq!(
             run(&[
                 "--directory".to_string(),
@@ -298,7 +301,7 @@ mod tests {
 
         // 6. Failure creating target directory (blocked by file)
         let blocking_file = temp_dir.join("blocking_file");
-        fs::write(&blocking_file, b"content")?;
+        assert!(fs::write(&blocking_file, b"content").is_ok());
         let blocked_dest = blocking_file.join("fail_dir");
         assert_eq!(
             run(&[
@@ -320,6 +323,5 @@ mod tests {
         assert_eq!(code, ExitCode::FAILURE);
 
         let _ = fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
 }

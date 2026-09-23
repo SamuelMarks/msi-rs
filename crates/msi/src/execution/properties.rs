@@ -137,6 +137,45 @@ impl EvaluationContext {
         &self.properties
     }
 
+    /// Checks if a property should be masked in logs according to `MsiHiddenProperties`.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The property name to check.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the property is hidden, `false` otherwise.
+    #[must_use]
+    pub fn is_hidden_property(&self, name: &str) -> bool {
+        self.get_property("MsiHiddenProperties")
+            .is_some_and(|hidden_list| {
+                hidden_list
+                    .split(';')
+                    .map(str::trim)
+                    .any(|hidden_prop| hidden_prop.eq_ignore_ascii_case(name))
+            })
+    }
+
+    /// Returns a masked representation of a property value if registered in `MsiHiddenProperties`.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The property name.
+    /// * `value` - The raw property value.
+    ///
+    /// # Returns
+    ///
+    /// `"******"` if hidden, otherwise the original `value`.
+    #[must_use]
+    pub fn mask_if_hidden<'a>(&self, name: &str, value: &'a str) -> &'a str {
+        if self.is_hidden_property(name) {
+            "******"
+        } else {
+            value
+        }
+    }
+
     /// Sets requested action state for a Feature (`&Feature`).
     pub fn set_feature_action(&mut self, feature: impl Into<String>, state: InstallState) {
         self.feature_action_states.insert(feature.into(), state);
@@ -805,6 +844,46 @@ mod tests {
         assert!(EvaluationContext::is_public_property("PROP_123"));
         assert!(!EvaluationContext::is_public_property("myPrivateProp"));
         assert!(!EvaluationContext::is_public_property(""));
+
+        let mut ctx = EvaluationContext::new();
+        ctx.set_property("MY_PROP", "my_val");
+        assert_eq!(ctx.properties().get("MY_PROP"), Some(&"my_val".to_string()));
+
+        assert!(!is_truthy(""));
+        assert!(!is_truthy("0"));
+        assert!(is_truthy("1"));
+        assert!(is_truthy("true"));
+    }
+
+    #[test]
+    fn test_hidden_properties_masking() {
+        let mut ctx = EvaluationContext::new();
+        ctx.set_property("PUBLIC_VAR", "visible_value");
+        ctx.set_property("DB_PASSWORD", "secret_pass_123");
+        ctx.set_property("API_KEY", "secret_token_abc");
+        ctx.set_property("MsiHiddenProperties", "DB_PASSWORD;API_KEY;AUTH_TOKEN");
+
+        assert!(!ctx.is_hidden_property("PUBLIC_VAR"));
+        assert!(ctx.is_hidden_property("DB_PASSWORD"));
+        assert!(ctx.is_hidden_property("db_password")); // case-insensitive
+        assert!(ctx.is_hidden_property("API_KEY"));
+        assert!(ctx.is_hidden_property("AUTH_TOKEN"));
+        assert!(!ctx.is_hidden_property("UNKNOWN"));
+
+        assert_eq!(
+            ctx.mask_if_hidden("PUBLIC_VAR", "visible_value"),
+            "visible_value"
+        );
+        assert_eq!(
+            ctx.mask_if_hidden("DB_PASSWORD", "secret_pass_123"),
+            "******"
+        );
+        assert_eq!(ctx.mask_if_hidden("API_KEY", "secret_token_abc"), "******");
+
+        // Without MsiHiddenProperties set
+        let empty_ctx = EvaluationContext::new();
+        assert!(!empty_ctx.is_hidden_property("DB_PASSWORD"));
+        assert_eq!(empty_ctx.mask_if_hidden("DB_PASSWORD", "pass"), "pass");
     }
 
     #[test]
@@ -1017,6 +1096,7 @@ mod tests {
 
         // Syntax error
         assert!(ctx.evaluate_condition("(VersionNT = 601").is_err());
+        assert!(ctx.evaluate_condition("(=").is_err());
         assert!(ctx.evaluate_condition("=").is_err());
 
         Ok(())

@@ -301,31 +301,90 @@ pub fn posix_desktop_schema() -> TableSchema {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_posix_file_row_roundtrip() -> Result<()> {
-        let file = FileKey::new("bin1")?;
-        let row = PosixFileRow {
-            file: file.clone(),
-            mode_octal: 0o755,
-            owner_user: Some("root".to_string()),
-            owner_group: Some("wheel".to_string()),
-            flags: Some(0),
+    /// Helper to construct [`PosixFileRow`] for testing.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - File key identifier.
+    /// * `mode` - File permission mode octal.
+    /// * `user` - Optional owner user string.
+    /// * `group` - Optional owner group string.
+    /// * `flags` - Optional file flags.
+    ///
+    /// # Returns
+    ///
+    /// Vector containing [`PosixFileRow`] on success, or empty vector on failure.
+    fn make_posix_file_rows(
+        key: &str,
+        mode: i32,
+        user: Option<&str>,
+        group: Option<&str>,
+        flags: Option<i32>,
+    ) -> Vec<PosixFileRow> {
+        let Ok(file) = FileKey::new(key) else {
+            return Vec::new();
         };
-        let rec = row.to_record();
-        assert_eq!(rec.len(), 5);
-        let parsed = PosixFileRow::from_record(&rec);
-        assert_eq!(parsed, Ok(row));
+        vec![PosixFileRow {
+            file,
+            mode_octal: mode,
+            owner_user: user.map(ToString::to_string),
+            owner_group: group.map(ToString::to_string),
+            flags,
+        }]
+    }
+
+    /// Helper to construct [`PosixSymlinkRow`] for testing.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - Symlink key string.
+    /// * `target` - Target path string.
+    /// * `dir` - Link directory identifier.
+    /// * `name` - Link name string.
+    /// * `comp` - Component name.
+    ///
+    /// # Returns
+    ///
+    /// Vector containing [`PosixSymlinkRow`] on success, or empty vector on failure.
+    fn make_posix_symlink_rows(
+        key: &str,
+        target: &str,
+        dir: &str,
+        name: &str,
+        comp: &str,
+    ) -> Vec<PosixSymlinkRow> {
+        let Ok(link_directory) = DirectoryId::new(dir) else {
+            return Vec::new();
+        };
+        let Ok(component) = ComponentName::new(comp) else {
+            return Vec::new();
+        };
+        vec![PosixSymlinkRow {
+            symlink_key: key.to_string(),
+            target_path: target.to_string(),
+            link_directory,
+            link_name: name.to_string(),
+            component,
+        }]
+    }
+
+    /// Tests serialization, deserialization, and error handling for [`PosixFileRow`].
+    #[test]
+    fn test_posix_file_row_roundtrip() {
+        assert!(make_posix_file_rows("", 0o755, None, None, None).is_empty());
+
+        for row in make_posix_file_rows("bin1", 0o755, Some("root"), Some("wheel"), Some(0)) {
+            let rec = row.to_record();
+            assert_eq!(rec.len(), 5);
+            let parsed = PosixFileRow::from_record(&rec);
+            assert_eq!(parsed, Ok(row));
+        }
 
         // Minimal (all None)
-        let min_row = PosixFileRow {
-            file: file.clone(),
-            mode_octal: 0o644,
-            owner_user: None,
-            owner_group: None,
-            flags: None,
-        };
-        let min_rec = min_row.to_record();
-        assert_eq!(PosixFileRow::from_record(&min_rec), Ok(min_row));
+        for min_row in make_posix_file_rows("bin1", 0o644, None, None, None) {
+            let min_rec = min_row.to_record();
+            assert_eq!(PosixFileRow::from_record(&min_rec), Ok(min_row));
+        }
 
         // Fallback default mode and empty user/group strings
         let fallback_rec = Record::with_fields(vec![
@@ -335,40 +394,42 @@ mod tests {
             FieldValue::String(String::new()), // empty group -> None
             FieldValue::Null,                  // flags -> None
         ]);
-        assert_eq!(
-            PosixFileRow::from_record(&fallback_rec),
-            Ok(PosixFileRow {
-                file,
-                mode_octal: 0o644,
-                owner_user: None,
-                owner_group: None,
-                flags: None,
-            })
-        );
+        for expected_fallback in make_posix_file_rows("bin1", 0o644, None, None, None) {
+            assert_eq!(
+                PosixFileRow::from_record(&fallback_rec),
+                Ok(expected_fallback)
+            );
+        }
 
         // Errors
         assert!(PosixFileRow::from_record(&Record::new()).is_err());
         assert!(
             PosixFileRow::from_record(&Record::with_fields(vec![FieldValue::Null; 5])).is_err()
         );
-        Ok(())
+
+        // Invalid FileKey (empty string)
+        let invalid_file_key_rec = Record::with_fields(vec![
+            FieldValue::String(String::new()),
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Null,
+        ]);
+        assert!(PosixFileRow::from_record(&invalid_file_key_rec).is_err());
     }
 
+    /// Tests serialization, deserialization, and error handling for [`PosixSymlinkRow`].
     #[test]
-    fn test_posix_symlink_row_roundtrip() -> Result<()> {
-        let dir = DirectoryId::new("BINDIR")?;
-        let comp = ComponentName::new("Comp1")?;
-        let row = PosixSymlinkRow {
-            symlink_key: "sym1".to_string(),
-            target_path: "/usr/bin/app".to_string(),
-            link_directory: dir.clone(),
-            link_name: "app".to_string(),
-            component: comp.clone(),
-        };
-        let rec = row.to_record();
-        assert_eq!(rec.len(), 5);
-        let parsed = PosixSymlinkRow::from_record(&rec);
-        assert_eq!(parsed, Ok(row));
+    fn test_posix_symlink_row_roundtrip() {
+        assert!(make_posix_symlink_rows("sym1", "/target", "", "name", "Comp1").is_empty());
+        assert!(make_posix_symlink_rows("sym1", "/target", "BINDIR", "name", "").is_empty());
+
+        for row in make_posix_symlink_rows("sym1", "/usr/bin/app", "BINDIR", "app", "Comp1") {
+            let rec = row.to_record();
+            assert_eq!(rec.len(), 5);
+            let parsed = PosixSymlinkRow::from_record(&rec);
+            assert_eq!(parsed, Ok(row));
+        }
 
         // Fallbacks for optional target_path and link_name
         let fallback_rec = Record::with_fields(vec![
@@ -378,16 +439,12 @@ mod tests {
             FieldValue::Null, // default link_name ""
             FieldValue::String("Comp1".to_string()),
         ]);
-        assert_eq!(
-            PosixSymlinkRow::from_record(&fallback_rec),
-            Ok(PosixSymlinkRow {
-                symlink_key: "symFallback".to_string(),
-                target_path: String::new(),
-                link_directory: dir,
-                link_name: String::new(),
-                component: comp,
-            })
-        );
+        for expected_fallback in make_posix_symlink_rows("symFallback", "", "BINDIR", "", "Comp1") {
+            assert_eq!(
+                PosixSymlinkRow::from_record(&fallback_rec),
+                Ok(expected_fallback)
+            );
+        }
 
         // Missing link_directory error
         let bad_dir_rec = Record::with_fields(vec![
@@ -399,6 +456,16 @@ mod tests {
         ]);
         assert!(PosixSymlinkRow::from_record(&bad_dir_rec).is_err());
 
+        // Invalid link_directory error (empty string)
+        let invalid_dir_rec = Record::with_fields(vec![
+            FieldValue::String("sym2".to_string()),
+            FieldValue::String("/target".to_string()),
+            FieldValue::String(String::new()), // invalid DirectoryId
+            FieldValue::String("link".to_string()),
+            FieldValue::String("Comp1".to_string()),
+        ]);
+        assert!(PosixSymlinkRow::from_record(&invalid_dir_rec).is_err());
+
         // Missing component error
         let bad_comp_rec = Record::with_fields(vec![
             FieldValue::String("sym3".to_string()),
@@ -409,13 +476,23 @@ mod tests {
         ]);
         assert!(PosixSymlinkRow::from_record(&bad_comp_rec).is_err());
 
+        // Invalid component error (empty string)
+        let invalid_comp_rec = Record::with_fields(vec![
+            FieldValue::String("sym3".to_string()),
+            FieldValue::String("/target".to_string()),
+            FieldValue::String("BINDIR".to_string()),
+            FieldValue::String("link".to_string()),
+            FieldValue::String(String::new()), // invalid ComponentName
+        ]);
+        assert!(PosixSymlinkRow::from_record(&invalid_comp_rec).is_err());
+
         assert!(PosixSymlinkRow::from_record(&Record::new()).is_err());
         assert!(
             PosixSymlinkRow::from_record(&Record::with_fields(vec![FieldValue::Null; 5])).is_err()
         );
-        Ok(())
     }
 
+    /// Tests schemas for POSIX tables.
     #[test]
     fn test_posix_schemas() {
         assert_eq!(posix_file_schema().name, "PosixFile");

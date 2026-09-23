@@ -13,6 +13,7 @@ version = "0.0.1"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.85.0"
+readme = "README.md"
 repository = "https://github.com/samuel/msi-rs"
 keywords = ["msi", "windows-installer", "cfb", "cab", "wix"]
 categories = ["development-tools", "os::windows-apis", "filesystem"]
@@ -29,6 +30,7 @@ trivial_numeric_casts = "deny"
 unused_extern_crates = "deny"
 unused_import_braces = "deny"
 unused_qualifications = "deny"
+unknown_lints = "allow"
 
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
@@ -86,6 +88,7 @@ case_sensitive_file_extension_comparisons = "deny"
 bool_to_int_with_if = "deny"
 module_name_repetitions = "allow"
 multiple_crate_versions = "allow"
+assert_is_empty = "allow"
 
 [workspace.dependencies]
 clap = { version = "4.6", features = ["derive"] }

@@ -175,8 +175,8 @@ mod tests {
     use std::fs;
 
     #[test]
-    #[allow(clippy::too_many_lines)]
-    fn test_msidiff_run_all_branches() -> Result<(), Box<dyn std::error::Error>> {
+    #[allow(clippy::too_many_lines, clippy::explicit_into_iter_loop)]
+    fn test_msidiff_run_all_branches() {
         let temp_dir = std::env::temp_dir().join("msi_cli_test_msidiff_bin");
         let _ = fs::create_dir_all(&temp_dir);
         let src1 = temp_dir.join("app1.wxs");
@@ -200,8 +200,8 @@ mod tests {
     </Product>
 </Wix>
 "#;
-        fs::write(&src1, wxs1)?;
-        fs::write(&src2, wxs2)?;
+        assert!(fs::write(&src1, wxs1).is_ok());
+        assert!(fs::write(&src2, wxs2).is_ok());
 
         let _ = msi::wix::WixBuildOptions::parse(&[
             "-sval".to_string(),
@@ -261,21 +261,28 @@ mod tests {
 
         // 5. Packages with added and removed tables (+ Table, - Table)
         let msi_extra = temp_dir.join("extra.msi");
-        let mut pkg_extra = Package::builder()
+        let build_res = Package::builder()
             .product_name("ExtraApp")
             .manufacturer("ExtraMfr")
             .version(ProductVersion::new(1, 0, 0))
             .product_code("{33333333-3333-3333-3333-333333333333}")
-            .build()?;
-        pkg_extra.database_mut().catalog.add_table(
-            TableSchema::new("ExtraTable")
-                .with_column(ColumnDef::new("Col1", DataType::Short).primary_key()),
-        )?;
-        pkg_extra.database_mut().add_record(
-            "ExtraTable",
-            Record::with_fields(vec![FieldValue::Short(42)]),
-        );
-        pkg_extra.save(&msi_extra)?;
+            .build();
+        assert!(build_res.is_ok());
+        for mut pkg_extra in build_res.into_iter() {
+            assert!(pkg_extra
+                .database_mut()
+                .catalog
+                .add_table(
+                    TableSchema::new("ExtraTable")
+                        .with_column(ColumnDef::new("Col1", DataType::Short).primary_key()),
+                )
+                .is_ok());
+            pkg_extra.database_mut().add_record(
+                "ExtraTable",
+                Record::with_fields(vec![FieldValue::Short(42)]),
+            );
+            assert!(pkg_extra.save(&msi_extra).is_ok());
+        }
 
         // msi1 vs msi_extra -> + Table: ExtraTable
         assert_eq!(
@@ -299,9 +306,9 @@ mod tests {
         let msm_file = temp_dir.join("pkg.msm");
         let transform_file = temp_dir.join("pkg.mst");
         let noext_file = temp_dir.join("pkg_noext");
-        fs::copy(&msi1, &msm_file)?;
-        fs::copy(&msi1, &transform_file)?;
-        fs::copy(&msi1, &noext_file)?;
+        assert!(fs::copy(&msi1, &msm_file).is_ok());
+        assert!(fs::copy(&msi1, &transform_file).is_ok());
+        assert!(fs::copy(&msi1, &noext_file).is_ok());
 
         assert_eq!(
             run(&[
@@ -326,6 +333,5 @@ mod tests {
         assert_eq!(code, ExitCode::FAILURE);
 
         let _ = fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
 }

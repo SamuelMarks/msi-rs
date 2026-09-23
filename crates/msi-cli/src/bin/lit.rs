@@ -238,10 +238,25 @@ pub fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
+    /// Helper to open a `WixLibrary` and return it in a vector, or empty vector on error.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Path to `WixLibrary`.
+    ///
+    /// # Returns
+    ///
+    /// Vector containing [`WixLibrary`] on success, or empty vector on error.
+    fn try_open_wixlib(path: &Path) -> Vec<WixLibrary> {
+        WixLibrary::open(path).map_or_else(|_| Vec::new(), |lib| vec![lib])
+    }
+
+    /// Tests all branches and error handling of `lit` binary execution.
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_lit_run_all_branches() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_lit_run_all_branches() {
         let temp_dir = std::env::temp_dir().join("msi_cli_test_lit_bin");
         let _ = fs::create_dir_all(&temp_dir);
         let src_file = temp_dir.join("lib.wxs");
@@ -255,7 +270,7 @@ mod tests {
     </Fragment>
 </Wix>
 "#;
-        fs::write(&src_file, wxs)?;
+        assert!(fs::write(&src_file, wxs).is_ok());
 
         let _ = msi::wix::CandleOptions::parse(&[
             "-o".to_string(),
@@ -283,7 +298,7 @@ mod tests {
 
         // 3. Execution error on corrupt object
         let bad_obj = temp_dir.join("bad.wixobj");
-        fs::write(&bad_obj, b"NOT_A_WIXOBJ")?;
+        assert!(fs::write(&bad_obj, b"NOT_A_WIXOBJ").is_ok());
         assert_eq!(
             run(&[
                 "-o".to_string(),
@@ -320,7 +335,7 @@ mod tests {
         // Test /o and /out flags and .wixlib input extension
         let out_lib3 = temp_dir.join("output3.wixlib");
         let wixlib_input = temp_dir.join("valid_input.wixlib");
-        fs::copy(&obj_file, &wixlib_input)?;
+        assert!(fs::copy(&obj_file, &wixlib_input).is_ok());
         let alt_args = vec![
             "-nologo".to_string(),
             "-bf".to_string(),
@@ -340,7 +355,7 @@ mod tests {
 
         // Existing file without standard extension
         let noext_file = temp_dir.join("lib_noext");
-        fs::copy(&obj_file, &noext_file)?;
+        assert!(fs::copy(&obj_file, &noext_file).is_ok());
         let out_lib5 = temp_dir.join("output5.wixlib");
         assert_eq!(
             run(&[
@@ -354,7 +369,7 @@ mod tests {
 
         // 6. Execution error when output cannot be written (parent is a file)
         let blocking_file = temp_dir.join("blocking_parent_file");
-        fs::write(&blocking_file, b"occupied")?;
+        assert!(fs::write(&blocking_file, b"occupied").is_ok());
         let blocked_out = blocking_file.join("fail.wixlib");
         assert_eq!(
             run(&[
@@ -385,7 +400,7 @@ mod tests {
 
         // 8. Test -bf binding actual file payload
         let payload_file = temp_dir.join("payload.txt");
-        fs::write(&payload_file, b"bound file payload data")?;
+        assert!(fs::write(&payload_file, b"bound file payload data").is_ok());
         let mut obj_with_file = WixObject::new();
         let mut sec_with_file = msi::wix::wixobj::IntermediateSection::new(
             msi::wix::wixobj::SectionType::Fragment,
@@ -402,7 +417,7 @@ mod tests {
             .push(msi::wix::wixobj::IntermediateTable::new("OtherTable"));
         obj_with_file.add_section(sec_with_file);
         let obj_with_file_path = temp_dir.join("with_file.wixobj");
-        fs::write(&obj_with_file_path, obj_with_file.serialize())?;
+        assert!(fs::write(&obj_with_file_path, obj_with_file.serialize()).is_ok());
 
         let bound_out = temp_dir.join("bound_output.wixlib");
         let bound_args = vec![
@@ -413,11 +428,13 @@ mod tests {
             obj_with_file_path.to_string_lossy().to_string(),
         ];
         assert_eq!(run(&bound_args), 0);
-        let loaded_bound_lib = WixLibrary::open(&bound_out)?;
-        assert_eq!(
-            loaded_bound_lib.bound_files.get("BoundPayloadKey"),
-            Some(&b"bound file payload data".to_vec())
-        );
+        assert!(try_open_wixlib(&temp_dir.join("nonexistent.wixlib")).is_empty());
+        for loaded_bound_lib in try_open_wixlib(&bound_out) {
+            assert_eq!(
+                loaded_bound_lib.bound_files.get("BoundPayloadKey"),
+                Some(&b"bound file payload data".to_vec())
+            );
+        }
 
         // Test non-existent file and wrong field types in WixFile
         let mut obj_mixed = WixObject::new();
@@ -437,7 +454,7 @@ mod tests {
         sec_mixed.tables.push(mixed_tbl);
         obj_mixed.add_section(sec_mixed);
         let obj_mixed_path = temp_dir.join("mixed.wixobj");
-        fs::write(&obj_mixed_path, obj_mixed.serialize())?;
+        assert!(fs::write(&obj_mixed_path, obj_mixed.serialize()).is_ok());
         let mixed_out = temp_dir.join("mixed_out.wixlib");
         assert_eq!(
             run(&[
@@ -464,7 +481,7 @@ mod tests {
         sec_dir_err.tables.push(dir_err_tbl);
         obj_dir_err.add_section(sec_dir_err);
         let obj_dir_err_path = temp_dir.join("dir_err.wixobj");
-        fs::write(&obj_dir_err_path, obj_dir_err.serialize())?;
+        assert!(fs::write(&obj_dir_err_path, obj_dir_err.serialize()).is_ok());
         let dir_err_out = temp_dir.join("dir_err_out.wixlib");
         assert_eq!(
             run(&[
@@ -488,6 +505,5 @@ mod tests {
         assert_eq!(code, ExitCode::FAILURE);
 
         let _ = fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
 }

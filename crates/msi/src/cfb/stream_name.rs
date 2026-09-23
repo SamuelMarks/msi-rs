@@ -180,16 +180,16 @@ pub fn decode_msi_stream_name(encoded: &str) -> Result<(String, bool)> {
         if (u32::from(MSI_NAME_COMPRESSION_BASE)..u32::from(MSI_NAME_SINGLE_CHAR_BASE))
             .contains(&unit)
         {
-            let offset = (unit - u32::from(MSI_NAME_COMPRESSION_BASE)) as u16;
+            let offset = unit.wrapping_sub(u32::from(MSI_NAME_COMPRESSION_BASE)) as usize;
             let val0 = offset % 64;
             let val1 = offset / 64;
-            decoded.push(index_to_char(val0)?);
-            decoded.push(index_to_char(val1)?);
+            decoded.push(ALPHABET[val0] as char);
+            decoded.push(ALPHABET[val1] as char);
         } else if (u32::from(MSI_NAME_SINGLE_CHAR_BASE)..u32::from(MSI_NAME_SINGLE_CHAR_BASE) + 64)
             .contains(&unit)
         {
-            let val0 = (unit - u32::from(MSI_NAME_SINGLE_CHAR_BASE)) as u16;
-            decoded.push(index_to_char(val0)?);
+            let val0 = unit.wrapping_sub(u32::from(MSI_NAME_SINGLE_CHAR_BASE)) as usize;
+            decoded.push(ALPHABET[val0] as char);
         } else {
             decoded.push(ch);
         }
@@ -205,12 +205,10 @@ mod tests {
     /// Tests char to index conversion and back.
     #[test]
     fn test_char_index_roundtrip() {
-        for &byte in ALPHABET {
-            let ch = byte as char;
-            let idx = char_to_index(ch);
-            assert!(idx.is_ok());
-            let idx_val = idx.unwrap_or(0);
-            assert_eq!(index_to_char(idx_val), Ok(ch));
+        for i in 0u16..64u16 {
+            let ch = ALPHABET[i as usize] as char;
+            assert_eq!(char_to_index(ch), Ok(i));
+            assert_eq!(index_to_char(i), Ok(ch));
         }
 
         assert!(char_to_index('?').is_err());
@@ -233,30 +231,25 @@ mod tests {
     fn test_msi_stream_name_roundtrip() {
         // Even length regular stream
         let enc1 = encode_msi_stream_name("Component", false);
-        assert!(enc1.is_ok());
-        let (dec1, is_tbl1) = decode_msi_stream_name(&enc1.unwrap_or_default()).unwrap_or_default();
-        assert_eq!(dec1, "Component");
-        assert!(!is_tbl1);
+        let dec1 = enc1.and_then(|s| decode_msi_stream_name(&s));
+        assert_eq!(dec1, Ok(("Component".to_string(), false)));
 
         // Odd length table stream
         let enc2 = encode_msi_stream_name("File", true);
-        assert!(enc2.is_ok());
-        let (dec2, is_tbl2) = decode_msi_stream_name(&enc2.unwrap_or_default()).unwrap_or_default();
-        assert_eq!(dec2, "File");
-        assert!(is_tbl2);
+        let dec2 = enc2.and_then(|s| decode_msi_stream_name(&s));
+        assert_eq!(dec2, Ok(("File".to_string(), true)));
 
         // Single character table
         let enc3 = encode_msi_stream_name("A", true);
-        assert!(enc3.is_ok());
-        let (dec3, is_tbl3) = decode_msi_stream_name(&enc3.unwrap_or_default()).unwrap_or_default();
-        assert_eq!(dec3, "A");
-        assert!(is_tbl3);
+        let dec3 = enc3.and_then(|s| decode_msi_stream_name(&s));
+        assert_eq!(dec3, Ok(("A".to_string(), true)));
 
         // Empty name
         assert_eq!(encode_msi_stream_name("", false), Ok(String::new()));
         assert_eq!(decode_msi_stream_name(""), Ok((String::new(), false)));
 
-        // Error encoding unsupported character
+        // Error encoding unsupported character at both ch0 and ch1 positions
+        assert!(encode_msi_stream_name("!bad", false).is_err());
         assert!(encode_msi_stream_name("bad!name", false).is_err());
         assert!(encode_msi_stream_name("first!bad", false).is_err());
     }
@@ -278,8 +271,7 @@ mod tests {
     #[test]
     fn test_uncompressed_stream_name() {
         let uncompressed = "PlainName";
-        let (dec, is_tbl) = decode_msi_stream_name(uncompressed).unwrap_or_default();
-        assert_eq!(dec, "PlainName");
-        assert!(!is_tbl);
+        let dec = decode_msi_stream_name(uncompressed);
+        assert_eq!(dec, Ok(("PlainName".to_string(), false)));
     }
 }

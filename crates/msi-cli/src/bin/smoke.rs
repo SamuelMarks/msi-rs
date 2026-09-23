@@ -182,8 +182,8 @@ mod tests {
     use std::fs;
 
     #[test]
-    #[allow(clippy::too_many_lines)]
-    fn test_smoke_run_all_branches() -> Result<(), Box<dyn std::error::Error>> {
+    #[allow(clippy::too_many_lines, clippy::explicit_into_iter_loop)]
+    fn test_smoke_run_all_branches() {
         let temp_dir = std::env::temp_dir().join("msi_cli_test_smoke_bin");
         let _ = fs::create_dir_all(&temp_dir);
         let src_file = temp_dir.join("app.wxs");
@@ -197,7 +197,7 @@ mod tests {
     </Product>
 </Wix>
 "#;
-        fs::write(&src_file, wxs)?;
+        assert!(fs::write(&src_file, wxs).is_ok());
 
         let _ = msi::wix::WixBuildOptions::parse(&[
             "-sval".to_string(),
@@ -243,7 +243,7 @@ mod tests {
 
         // 6. Test slash path variations: .msm, .msp, existing file without extension, and non-existent slash path
         let msm_path = temp_dir.join("test.msm");
-        fs::copy(&msi_file, &msm_path)?;
+        assert!(fs::copy(&msi_file, &msm_path).is_ok());
         let msm_args = vec![
             "-nologo".to_string(),
             msm_path.to_string_lossy().to_string(),
@@ -251,7 +251,7 @@ mod tests {
         assert_eq!(run(&msm_args), 0);
 
         let msp_path = temp_dir.join("test.msp");
-        fs::copy(&msi_file, &msp_path)?;
+        assert!(fs::copy(&msi_file, &msp_path).is_ok());
         let msp_args = vec![
             "-nologo".to_string(),
             msp_path.to_string_lossy().to_string(),
@@ -260,7 +260,7 @@ mod tests {
 
         // Existing file without standard extension starting with slash
         let noext_file = temp_dir.join("testpkg");
-        fs::copy(&msi_file, &noext_file)?;
+        assert!(fs::copy(&msi_file, &noext_file).is_ok());
         let noext_args = vec![
             "-nologo".to_string(),
             noext_file.to_string_lossy().to_string(),
@@ -273,7 +273,7 @@ mod tests {
 
         // 7. Trigger ICE validation failure (error SMK0002)
         let bad_msi = temp_dir.join("bad.msi");
-        let bad_pkg = Package::builder()
+        let bad_build_res = Package::builder()
             .product_name("BadPkg")
             .manufacturer("BadMfr")
             .version(ProductVersion::new(1, 0, 0))
@@ -291,8 +291,11 @@ mod tests {
                     msi::database::FieldValue::Short(99),
                 ]),
             )
-            .build()?;
-        bad_pkg.save(&bad_msi)?;
+            .build();
+        assert!(bad_build_res.is_ok());
+        for bad_pkg in bad_build_res.into_iter() {
+            assert!(bad_pkg.save(&bad_msi).is_ok());
+        }
         let bad_args = vec!["-nologo".to_string(), bad_msi.to_string_lossy().to_string()];
         assert_eq!(run(&bad_args), 1);
 
@@ -315,7 +318,7 @@ mod tests {
 
         // 8. Test package triggering ICE warning (e.g. ICE33 warning)
         let warn_msi = temp_dir.join("warn.msi");
-        let warn_pkg = Package::builder()
+        let warn_build_res = Package::builder()
             .product_name("WarnPkg")
             .manufacturer("WarnMfr")
             .version(ProductVersion::new(1, 0, 0))
@@ -333,8 +336,11 @@ mod tests {
                     msi::database::FieldValue::String("Comp1".to_string()),
                 ]),
             )
-            .build()?;
-        warn_pkg.save(&warn_msi)?;
+            .build();
+        assert!(warn_build_res.is_ok());
+        for warn_pkg in warn_build_res.into_iter() {
+            assert!(warn_pkg.save(&warn_msi).is_ok());
+        }
         let warn_args = vec![
             "-nologo".to_string(),
             "-ice:ICE33".to_string(),
@@ -347,6 +353,5 @@ mod tests {
         assert_eq!(code, ExitCode::FAILURE);
 
         let _ = fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
 }

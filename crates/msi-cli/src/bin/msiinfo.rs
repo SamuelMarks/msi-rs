@@ -378,9 +378,10 @@ pub fn main() -> ExitCode {
 mod tests {
     use super::*;
 
+    /// Tests all branches and error handling of `msiinfo` binary execution.
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_msiinfo_run_all_branches() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_msiinfo_run_all_branches() {
         let temp_dir = std::env::temp_dir().join("msi_cli_test_msiinfo_bin");
         let _ = fs::create_dir_all(&temp_dir);
         let src_file = temp_dir.join("info.wxs");
@@ -395,7 +396,7 @@ mod tests {
     </Product>
 </Wix>
 "#;
-        fs::write(&src_file, wxs)?;
+        assert!(fs::write(&src_file, wxs).is_ok());
 
         let _ = msi::wix::WixBuildOptions::parse(&[
             "-sval".to_string(),
@@ -545,8 +546,8 @@ mod tests {
         {
             use std::os::unix::fs::PermissionsExt;
             let ro_msi = temp_dir.join("readonly.msi");
-            fs::copy(&msi_file, &ro_msi)?;
-            fs::set_permissions(&ro_msi, fs::Permissions::from_mode(0o400))?;
+            assert!(fs::copy(&msi_file, &ro_msi).is_ok());
+            assert!(fs::set_permissions(&ro_msi, fs::Permissions::from_mode(0o400)).is_ok());
             assert_eq!(
                 run(&[
                     ro_msi.to_string_lossy().to_string(),
@@ -555,7 +556,7 @@ mod tests {
                 ]),
                 1
             );
-            fs::set_permissions(&ro_msi, fs::Permissions::from_mode(0o644))?;
+            assert!(fs::set_permissions(&ro_msi, fs::Permissions::from_mode(0o644)).is_ok());
         }
 
         // 4. Tables listing
@@ -616,7 +617,7 @@ mod tests {
         );
 
         let corrupt_msi = temp_dir.join("corrupt.msi");
-        fs::write(&corrupt_msi, b"not cfb format")?;
+        assert!(fs::write(&corrupt_msi, b"not cfb format").is_ok());
         assert_eq!(
             run(&[
                 "streams".to_string(),
@@ -698,7 +699,7 @@ mod tests {
 
         // Extract write failure
         let blocking_file = temp_dir.join("blocking_parent_extract");
-        fs::write(&blocking_file, "blocking")?;
+        assert!(fs::write(&blocking_file, "blocking").is_ok());
         assert_eq!(
             run(&[
                 "extract".to_string(),
@@ -746,6 +747,5 @@ mod tests {
         assert_eq!(code, ExitCode::FAILURE);
 
         let _ = fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
 }

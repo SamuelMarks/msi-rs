@@ -232,13 +232,13 @@ mod tests {
     use super::*;
 
     #[test]
-    #[allow(clippy::too_many_lines)]
-    fn test_msibuild_run_all_branches() -> Result<(), Box<dyn std::error::Error>> {
+    #[allow(clippy::too_many_lines, clippy::explicit_into_iter_loop)]
+    fn test_msibuild_run_all_branches() {
         let temp_dir = std::env::temp_dir().join("msi_cli_test_msibuild_bin");
         let _ = fs::create_dir_all(&temp_dir);
         let msi_file = temp_dir.join("build.msi");
         let sample_txt = temp_dir.join("sample.txt");
-        fs::write(&sample_txt, "Payload data")?;
+        assert!(fs::write(&sample_txt, "Payload data").is_ok());
 
         // 1. Parse errors
         assert_eq!(run(&[]), 1);
@@ -301,12 +301,12 @@ mod tests {
 
         // 6. Fail opening existing corrupted file
         let corrupt_msi = temp_dir.join("corrupt.msi");
-        fs::write(&corrupt_msi, b"not a cfb file")?;
+        assert!(fs::write(&corrupt_msi, b"not a cfb file").is_ok());
         assert_eq!(run(&[corrupt_msi.to_string_lossy().to_string()]), 1);
 
         // 7. Fail creating new package when parent is blocked by a file
         let blocking_file = temp_dir.join("block_parent");
-        fs::write(&blocking_file, b"file content")?;
+        assert!(fs::write(&blocking_file, b"file content").is_ok());
         let blocked_msi = blocking_file.join("blocked.msi");
         assert_eq!(run(&[blocked_msi.to_string_lossy().to_string()]), 1);
 
@@ -323,10 +323,12 @@ mod tests {
 
         // 9. Fail saving when destination file is read-only (for both AddStream and RemoveStream)
         let ro_msi = temp_dir.join("readonly.msi");
-        fs::copy(&msi_file, &ro_msi)?;
-        let mut perms = fs::metadata(&ro_msi)?.permissions();
-        perms.set_readonly(true);
-        fs::set_permissions(&ro_msi, perms)?;
+        assert!(fs::copy(&msi_file, &ro_msi).is_ok());
+        for m in fs::metadata(&ro_msi).into_iter() {
+            let mut perms = m.permissions();
+            perms.set_readonly(true);
+            assert!(fs::set_permissions(&ro_msi, perms).is_ok());
+        }
 
         // AddStream fails save
         assert_eq!(
@@ -350,10 +352,12 @@ mod tests {
         );
 
         // Restore permissions for cleanup
-        let mut restore_perms = fs::metadata(&ro_msi)?.permissions();
-        #[allow(clippy::permissions_set_readonly_false)]
-        restore_perms.set_readonly(false);
-        fs::set_permissions(&ro_msi, restore_perms)?;
+        for m in fs::metadata(&ro_msi).into_iter() {
+            let mut restore_perms = m.permissions();
+            #[allow(clippy::permissions_set_readonly_false)]
+            restore_perms.set_readonly(false);
+            assert!(fs::set_permissions(&ro_msi, restore_perms).is_ok());
+        }
 
         // 10. Empty path where parent is None
         let empty_path_opts = MsiBuildOptions {
@@ -395,6 +399,5 @@ mod tests {
         assert_eq!(code, ExitCode::FAILURE);
 
         let _ = fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
 }

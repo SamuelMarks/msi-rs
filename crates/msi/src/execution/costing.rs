@@ -25,6 +25,7 @@ pub const DEFAULT_CLUSTER_SIZE: u64 = 4096;
 ///
 /// A tuple containing `(available_bytes, cluster_size)`.
 #[must_use]
+#[allow(clippy::missing_const_for_fn)]
 pub fn query_host_volume_metrics(path: &str) -> (u64, u64) {
     #[cfg(unix)]
     {

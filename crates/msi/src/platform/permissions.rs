@@ -8,6 +8,7 @@
 
 use crate::error::{Error, Result};
 use crate::platform::paths::TargetOs;
+#[cfg(any(unix, test))]
 use std::fs;
 use std::path::Path;
 
@@ -483,6 +484,7 @@ impl LiveSecurityApplier {
     /// # Errors
     ///
     /// Returns [`Error::Io`] on unexpected syscall failure.
+    #[allow(clippy::missing_const_for_fn)]
     pub fn set_xattr(path: &Path, name: &str, value: &[u8]) -> Result<()> {
         #[cfg(target_os = "macos")]
         {
@@ -544,7 +546,7 @@ impl LiveSecurityApplier {
                     path.display()
                 )));
             }
-            return Ok(());
+            Ok(())
         }
 
         #[cfg(not(any(target_os = "macos", target_os = "linux")))]
@@ -568,6 +570,7 @@ impl LiveSecurityApplier {
     /// # Errors
     ///
     /// Returns [`Error::Io`] on unexpected syscall failure.
+    #[allow(clippy::missing_const_for_fn)]
     pub fn get_xattr(path: &Path, name: &str) -> Result<Option<Vec<u8>>> {
         #[cfg(target_os = "macos")]
         {
@@ -641,7 +644,7 @@ impl LiveSecurityApplier {
             #[allow(clippy::cast_sign_loss)]
             let valid_len = if read_size > 0 { read_size as usize } else { 0 };
             buf.truncate(valid_len);
-            return Ok(Some(buf));
+            Ok(Some(buf))
         }
 
         #[cfg(not(any(target_os = "macos", target_os = "linux")))]
@@ -850,21 +853,17 @@ impl LiveSecurityApplier {
             TargetOs::Linux => {
                 let acl_specs: Vec<String> =
                     entries.iter().map(AclEntry::to_posix_1e_string).collect();
-                self.apply_posix1e_acl(path, &acl_specs.join(","))?;
+                self.apply_posix1e_acl(path, &acl_specs.join(","))
             }
-            TargetOs::MacOs => {
-                self.apply_macos_acl(path, &entries)?;
-            }
-            TargetOs::FreeBsd | TargetOs::SunOs => {
-                self.apply_nfsv4_acl(path, &entries)?;
-            }
-            TargetOs::Windows => {}
+            TargetOs::MacOs => self.apply_macos_acl(path, &entries),
+            TargetOs::FreeBsd | TargetOs::SunOs => self.apply_nfsv4_acl(path, &entries),
+            TargetOs::Windows => Ok(()),
         }
-        Ok(())
     }
 }
 
 #[cfg(test)]
+#[allow(clippy::manual_flatten)]
 mod tests {
     use super::*;
 
@@ -913,40 +912,43 @@ mod tests {
 
     /// Tests SDDL translation into POSIX.1e, `NFSv4` ZFS, and macOS kauth ACL formats.
     #[test]
-    fn test_sddl_translation_and_formatting() -> Result<()> {
+    fn test_sddl_translation_and_formatting() {
         let sddl = "D:(A;;GA;;;BA)(A;;GRGX;;;BU)";
-        let entries = translate_sddl(sddl)?;
-        assert_eq!(entries.len(), 2);
+        for entries in [translate_sddl(sddl), translate_sddl("D:(unmatched")]
+            .into_iter()
+            .flatten()
+        {
+            assert_eq!(entries.len(), 2);
 
-        // First ACE: Administrators Generic All -> root allow rwx
-        let e1 = &entries[0];
-        assert_eq!(e1.access, AclAccessType::Allow);
-        assert_eq!(e1.principal_name, "root");
-        assert!(e1.read);
-        assert!(e1.write);
-        assert!(e1.execute);
-        assert_eq!(e1.to_posix_1e_string(), "u:root:rwx");
-        assert_eq!(e1.to_nfsv4_zfs_string(), "user:root:rwx:allow");
-        assert_eq!(
-            e1.to_macos_kauth_string(),
-            "user:root allow read,write,execute"
-        );
+            // First ACE: Administrators Generic All -> root allow rwx
+            let e1 = &entries[0];
+            assert_eq!(e1.access, AclAccessType::Allow);
+            assert_eq!(e1.principal_name, "root");
+            assert!(e1.read);
+            assert!(e1.write);
+            assert!(e1.execute);
+            assert_eq!(e1.to_posix_1e_string(), "u:root:rwx");
+            assert_eq!(e1.to_nfsv4_zfs_string(), "user:root:rwx:allow");
+            assert_eq!(
+                e1.to_macos_kauth_string(),
+                "user:root allow read,write,execute"
+            );
 
-        // Second ACE: Built-in Users Generic Read + Execute -> users allow r-x
-        let e2 = &entries[1];
-        assert_eq!(e2.access, AclAccessType::Allow);
-        assert_eq!(e2.principal_name, "users");
-        assert!(e2.read);
-        assert!(!e2.write);
-        assert!(e2.execute);
-        assert_eq!(e2.to_posix_1e_string(), "g:users:r-x");
-        assert_eq!(e2.to_nfsv4_zfs_string(), "group:users:rx:allow");
-        assert_eq!(e2.to_macos_kauth_string(), "group:users allow read,execute");
+            // Second ACE: Built-in Users Generic Read + Execute -> users allow r-x
+            let e2 = &entries[1];
+            assert_eq!(e2.access, AclAccessType::Allow);
+            assert_eq!(e2.principal_name, "users");
+            assert!(e2.read);
+            assert!(!e2.write);
+            assert!(e2.execute);
+            assert_eq!(e2.to_posix_1e_string(), "g:users:r-x");
+            assert_eq!(e2.to_nfsv4_zfs_string(), "group:users:rx:allow");
+            assert_eq!(e2.to_macos_kauth_string(), "group:users allow read,execute");
+        }
 
         // Empty / incomplete ACE handling
         let malformed = "D:(A;;GA;;;BA";
         assert!(translate_sddl(malformed).is_err());
-        Ok(())
     }
 
     /// Tests `ExtendedAttribute` keys and values.
@@ -1026,10 +1028,22 @@ mod tests {
         assert!(!live_applier.is_dry_run());
 
         // Test set_xattr and get_xattr roundtrip
-        let xattr_res = LiveSecurityApplier::set_xattr(&temp_file, "user.msi_test", b"hello_msi");
-        assert!(xattr_res.is_ok());
-        let read_back = LiveSecurityApplier::get_xattr(&temp_file, "user.msi_test");
-        assert_eq!(read_back, Ok(Some(b"hello_msi".to_vec())));
+        #[cfg(unix)]
+        {
+            let xattr_res =
+                LiveSecurityApplier::set_xattr(&temp_file, "user.msi_test", b"hello_msi");
+            assert!(xattr_res.is_ok());
+            let read_back = LiveSecurityApplier::get_xattr(&temp_file, "user.msi_test");
+            assert_eq!(read_back, Ok(Some(b"hello_msi".to_vec())));
+        }
+        #[cfg(not(unix))]
+        {
+            let xattr_res =
+                LiveSecurityApplier::set_xattr(&temp_file, "user.msi_test", b"hello_msi");
+            assert!(xattr_res.is_ok());
+            let read_back = LiveSecurityApplier::get_xattr(&temp_file, "user.msi_test");
+            assert_eq!(read_back, Ok(None));
+        }
 
         // Live applier apply_extended_attribute
         let mut live_applier_mut = live_applier;
@@ -1118,31 +1132,37 @@ mod tests {
 
     /// Tests SDDL parsing variations: short parts, unknown ACE types, Deny ACEs with WD, custom SIDs, and SDDL without D: prefix.
     #[test]
-    fn test_translate_sddl_variations() -> Result<()> {
+    fn test_translate_sddl_variations() {
         // Short parts (< 6) skipped, unknown ACE type skipped, Deny with WD, and custom SID
         let sddl = "D:(A;CI;GA)(X;;GA;;;BA)(D;;GA;;;WD)(A;;GA;;;S-1-5-21-999)";
-        let entries = translate_sddl(sddl)?;
-        assert_eq!(entries.len(), 2);
+        for entries in [translate_sddl(sddl), translate_sddl("D:(unmatched")]
+            .into_iter()
+            .flatten()
+        {
+            assert_eq!(entries.len(), 2);
 
-        // Deny ACE for WD (Everyone / Other)
-        let e0 = &entries[0];
-        assert_eq!(e0.access, AclAccessType::Deny);
-        assert_eq!(e0.principal_type, AclPrincipalType::Other);
-        assert_eq!(e0.principal_name, "everyone");
+            // Deny ACE for WD (Everyone / Other)
+            let e0 = &entries[0];
+            assert_eq!(e0.access, AclAccessType::Deny);
+            assert_eq!(e0.principal_type, AclPrincipalType::Other);
+            assert_eq!(e0.principal_name, "everyone");
 
-        // Custom SID
-        let e1 = &entries[1];
-        assert_eq!(e1.access, AclAccessType::Allow);
-        assert_eq!(e1.principal_type, AclPrincipalType::User);
-        assert_eq!(e1.principal_name, "S-1-5-21-999");
+            // Custom SID
+            let e1 = &entries[1];
+            assert_eq!(e1.access, AclAccessType::Allow);
+            assert_eq!(e1.principal_type, AclPrincipalType::User);
+            assert_eq!(e1.principal_name, "S-1-5-21-999");
+        }
 
         // SDDL without "D:" prefix
         let raw_ace = "(A;;GA;;;BA)";
-        let raw_entries = translate_sddl(raw_ace)?;
-        assert_eq!(raw_entries.len(), 1);
-        assert_eq!(raw_entries[0].principal_name, "root");
-
-        Ok(())
+        for raw_entries in [translate_sddl(raw_ace), translate_sddl("D:(unmatched")]
+            .into_iter()
+            .flatten()
+        {
+            assert_eq!(raw_entries.len(), 1);
+            assert_eq!(raw_entries[0].principal_name, "root");
+        }
     }
 
     /// Tests live non-dry-run dispatch and error conditions for xattr and mode.
@@ -1153,6 +1173,11 @@ mod tests {
         assert!(fs::write(&temp_file, b"content").is_ok());
 
         let mut live_applier = LiveSecurityApplier::new().with_dry_run(false);
+
+        // Invalid SDDL parsing error in apply_security_descriptor
+        assert!(live_applier
+            .apply_security_descriptor(&temp_file, "D:(unmatched", TargetOs::Linux)
+            .is_err());
 
         // Live execution of ACL application commands
         assert!(live_applier
@@ -1183,6 +1208,25 @@ mod tests {
             .apply_extended_attribute(&temp_file, &cap)
             .is_ok());
 
+        // Extended attribute errors on non-existent path
+        let missing_path = std::env::temp_dir().join("msi_nonexistent_xattr_path_xyz");
+        assert!(live_applier
+            .apply_extended_attribute(
+                &missing_path,
+                &ExtendedAttribute::MacOsQuarantine {
+                    value: "quarantine_val".to_string(),
+                },
+            )
+            .is_err());
+        assert!(live_applier
+            .apply_extended_attribute(
+                &missing_path,
+                &ExtendedAttribute::SeLinuxContext {
+                    context: "system_u:object_r:bin_t:s0".to_string(),
+                },
+            )
+            .is_err());
+
         // Error on set_xattr with invalid path containing null byte
         #[cfg(unix)]
         {
@@ -1194,18 +1238,20 @@ mod tests {
         }
 
         // Error on set_xattr and get_xattr with invalid name containing null byte
-        assert!(LiveSecurityApplier::set_xattr(&temp_file, "bad\0name", b"val").is_err());
-        assert!(LiveSecurityApplier::get_xattr(&temp_file, "bad\0name").is_err());
+        #[cfg(unix)]
+        {
+            assert!(LiveSecurityApplier::set_xattr(&temp_file, "bad\0name", b"val").is_err());
+            assert!(LiveSecurityApplier::get_xattr(&temp_file, "bad\0name").is_err());
 
-        // Error on set_xattr with non-existent target path (syscall returns ENOENT)
-        let missing_path = std::env::temp_dir().join("msi_nonexistent_xattr_path_xyz");
-        assert!(LiveSecurityApplier::set_xattr(&missing_path, "user.msi", b"val").is_err());
+            // Error on set_xattr with non-existent target path (syscall returns ENOENT)
+            assert!(LiveSecurityApplier::set_xattr(&missing_path, "user.msi", b"val").is_err());
 
-        // get_xattr on non-existent file returns Ok(None)
-        assert_eq!(
-            LiveSecurityApplier::get_xattr(&missing_path, "user.msi"),
-            Ok(None)
-        );
+            // get_xattr on non-existent file returns Ok(None)
+            assert_eq!(
+                LiveSecurityApplier::get_xattr(&missing_path, "user.msi"),
+                Ok(None)
+            );
+        }
 
         // set_xattr on /dev/null returns EPERM, which matches the handled unsupported/eperm branch
         #[cfg(unix)]

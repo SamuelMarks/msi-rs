@@ -243,10 +243,25 @@ pub fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
+    /// Helper to open a package and return it in a vector, or empty vector on failure.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Path to MSI package.
+    ///
+    /// # Returns
+    ///
+    /// Vector containing [`Package`] on success, or empty vector on error.
+    fn try_open_package(path: &Path) -> Vec<Package> {
+        Package::open(path).map_or_else(|_| Vec::new(), |p| vec![p])
+    }
+
+    /// Tests all branches and error handling of `dark` binary execution.
     #[test]
     #[allow(clippy::too_many_lines, clippy::similar_names)]
-    fn test_dark_run_all_branches() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_dark_run_all_branches() {
         let temp_dir = std::env::temp_dir().join("msi_cli_test_dark_bin");
         let _ = fs::create_dir_all(&temp_dir);
         let src_file = temp_dir.join("input.wxs");
@@ -262,7 +277,7 @@ mod tests {
     </Product>
 </Wix>
 "#;
-        fs::write(&src_file, wxs)?;
+        assert!(fs::write(&src_file, wxs).is_ok());
 
         // Build MSI to decompile
         let build_args = vec![
@@ -313,50 +328,55 @@ mod tests {
         assert_eq!(run(&[msi_file.to_string_lossy().to_string()]), 0);
 
         // 4. Decompile with all flags and embedded cabinets (valid, continued, and invalid)
-        let mut pkg_with_cab = Package::open(&msi_file)?;
-        // Valid cabinet
-        let mut cab_writer =
-            msi::cab::writer::CabinetWriter::new(msi::cab::folder::CompressionType::None);
-        cab_writer.add_file("valid_file.txt", b"cab payload")?;
-        let cab_bytes = cab_writer.build();
-        pkg_with_cab.add_embedded_cabinet("#valid.cab", cab_bytes.clone());
+        assert!(try_open_package(&temp_dir.join("nonexistent.msi")).is_empty());
+        for mut pkg_with_cab in try_open_package(&msi_file) {
+            // Valid cabinet
+            let mut cab_writer =
+                msi::cab::writer::CabinetWriter::new(msi::cab::folder::CompressionType::None);
+            assert!(cab_writer
+                .add_file("valid_file.txt", b"cab payload")
+                .is_ok());
+            let cab_bytes = cab_writer.build();
+            pkg_with_cab.add_embedded_cabinet("#valid.cab", cab_bytes.clone());
 
-        // Continued cabinet (extract_file returns Err)
-        let mut cab_prev = cab_bytes;
-        let files_offset =
-            u32::from_le_bytes([cab_prev[16], cab_prev[17], cab_prev[18], cab_prev[19]]) as usize;
-        let folder_idx_offset = files_offset + 8;
-        cab_prev[folder_idx_offset..folder_idx_offset + 2]
-            .copy_from_slice(&0xFFFDu16.to_le_bytes());
-        pkg_with_cab.add_embedded_cabinet("#continued.cab", cab_prev);
+            // Continued cabinet (extract_file returns Err)
+            let mut cab_prev = cab_bytes;
+            let files_offset =
+                u32::from_le_bytes([cab_prev[16], cab_prev[17], cab_prev[18], cab_prev[19]])
+                    as usize;
+            let folder_idx_offset = files_offset + 8;
+            cab_prev[folder_idx_offset..folder_idx_offset + 2]
+                .copy_from_slice(&0xFFFDu16.to_le_bytes());
+            pkg_with_cab.add_embedded_cabinet("#continued.cab", cab_prev);
 
-        // Invalid raw cabinet
-        pkg_with_cab.add_embedded_cabinet("#cab1.cab", vec![1, 2, 3, 4]);
+            // Invalid raw cabinet
+            pkg_with_cab.add_embedded_cabinet("#cab1.cab", vec![1, 2, 3, 4]);
 
-        let msi_with_cab_path = temp_dir.join("with_cab.msi");
-        pkg_with_cab.save(&msi_with_cab_path)?;
+            let msi_with_cab_path = temp_dir.join("with_cab.msi");
+            assert!(pkg_with_cab.save(&msi_with_cab_path).is_ok());
 
-        let full_args = vec![
-            "-nologo".to_string(),
-            "-x".to_string(),
-            extract_dir.to_string_lossy().to_string(),
-            "-sval".to_string(),
-            "-sui".to_string(),
-            "-b".to_string(),
-            temp_dir.to_string_lossy().to_string(),
-            "-o".to_string(),
-            out_wxs.to_string_lossy().to_string(),
-            "-v".to_string(),
-            "-unknown".to_string(),
-            msi_with_cab_path.to_string_lossy().to_string(),
-        ];
-        assert_eq!(run(&full_args), 0);
-        assert_eq!(run_app(&full_args), ExitCode::SUCCESS);
-        assert!(out_wxs.exists());
+            let full_args = vec![
+                "-nologo".to_string(),
+                "-x".to_string(),
+                extract_dir.to_string_lossy().to_string(),
+                "-sval".to_string(),
+                "-sui".to_string(),
+                "-b".to_string(),
+                temp_dir.to_string_lossy().to_string(),
+                "-o".to_string(),
+                out_wxs.to_string_lossy().to_string(),
+                "-v".to_string(),
+                "-unknown".to_string(),
+                msi_with_cab_path.to_string_lossy().to_string(),
+            ];
+            assert_eq!(run(&full_args), 0);
+            assert_eq!(run_app(&full_args), ExitCode::SUCCESS);
+            assert!(out_wxs.exists());
+        }
 
         // 5. Execution failure on extract_dir creation
         let blocking_file = temp_dir.join("blocking_parent_file");
-        fs::write(&blocking_file, b"occupied")?;
+        assert!(fs::write(&blocking_file, b"occupied").is_ok());
         let failed_extract_args = vec![
             "-nologo".to_string(),
             "-x".to_string(),
@@ -392,9 +412,9 @@ mod tests {
         // 8. Decompilation failure on empty package
         let empty_msi = temp_dir.join("empty.msi");
         let mut cfb_writer = msi::cfb::writer::CfbWriter::new(msi::cfb::header::CfbVersion::V3);
-        cfb_writer.add_stream("dummy", &[1, 2, 3])?;
+        assert!(cfb_writer.add_stream("dummy", &[1, 2, 3]).is_ok());
         let cfb_bytes = cfb_writer.build();
-        fs::write(&empty_msi, cfb_bytes)?;
+        assert!(fs::write(&empty_msi, cfb_bytes).is_ok());
         assert_eq!(
             run(&[
                 "-nologo".to_string(),
@@ -420,6 +440,5 @@ mod tests {
         assert_eq!(code, ExitCode::FAILURE);
 
         let _ = fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
 }

@@ -108,6 +108,8 @@ impl SysrootMountGuard {
         #[cfg(target_os = "linux")]
         {
             use std::ffi::CString;
+            use std::mem::size_of;
+
             let c_src = CString::new(source.as_os_str().as_encoded_bytes()).map_err(|e| {
                 Error::SysrootMountError {
                     path: source.display().to_string(),
@@ -123,13 +125,18 @@ impl SysrootMountGuard {
             let c_type = fstype.and_then(|s| CString::new(s).ok());
             let type_ptr = c_type.as_ref().map_or(std::ptr::null(), |c| c.as_ptr());
 
+            let flags_bytes = flags.to_ne_bytes();
+            let mut ulong_bytes = [0u8; size_of::<libc::c_ulong>()];
+            let copy_len = ulong_bytes.len().min(flags_bytes.len());
+            ulong_bytes[..copy_len].copy_from_slice(&flags_bytes[..copy_len]);
+            let mount_flags = libc::c_ulong::from_ne_bytes(ulong_bytes);
             // SAFETY: libc::mount is called with valid null-terminated C string pointers.
             let ret = unsafe {
                 libc::mount(
                     c_src.as_ptr(),
                     c_tgt.as_ptr(),
                     type_ptr,
-                    flags as libc::c_ulong,
+                    mount_flags,
                     std::ptr::null(),
                 )
             };
@@ -140,11 +147,14 @@ impl SysrootMountGuard {
                     reason: format!("mount syscall failed: {err}"),
                 });
             }
-            return Ok(());
+            Ok(())
         }
 
-        let _ = (source, target, fstype, flags);
-        Ok(())
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = (source, target, fstype, flags);
+            Ok(())
+        }
     }
 
     /// Performs live unmount syscall with lazy unmount fallback.
@@ -164,6 +174,7 @@ impl SysrootMountGuard {
             let ret = unsafe { libc::umount2(c_tgt.as_ptr(), flags) };
             if ret != 0 && !lazy {
                 // Retry with lazy detach fallback
+                // SAFETY: libc::umount2 is called with valid C string and MNT_DETACH flag.
                 let ret_lazy = unsafe { libc::umount2(c_tgt.as_ptr(), libc::MNT_DETACH) };
                 if ret_lazy != 0 {
                     let err = std::io::Error::last_os_error();
@@ -173,11 +184,14 @@ impl SysrootMountGuard {
                     });
                 }
             }
-            return Ok(());
+            Ok(())
         }
 
-        let _ = (target, lazy);
-        Ok(())
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = (target, lazy);
+            Ok(())
+        }
     }
 
     /// Activates and mounts the target sysroot at the designated scratch path.

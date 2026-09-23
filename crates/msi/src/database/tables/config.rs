@@ -198,7 +198,7 @@ pub fn environment_schema() -> TableSchema {
     TableSchema::new("Environment")
         .with_column(ColumnDef::new("Environment", DataType::String { max_len: 72 }).primary_key())
         .with_column(ColumnDef::new("Name", DataType::String { max_len: 255 }).localizable())
-        .with_column(ColumnDef::new("Value", DataType::String { max_len: 255 }).localizable())
+        .with_column(ColumnDef::new("Value", DataType::String { max_len: 0 }).localizable())
         .with_column(ColumnDef::new(
             "Component_",
             DataType::String { max_len: 72 },
@@ -438,8 +438,8 @@ pub fn condition_schema() -> TableSchema {
 #[must_use]
 pub fn launch_condition_schema() -> TableSchema {
     TableSchema::new("LaunchCondition")
-        .with_column(ColumnDef::new("Condition", DataType::String { max_len: 255 }).primary_key())
-        .with_column(ColumnDef::new("Description", DataType::String { max_len: 255 }).localizable())
+        .with_column(ColumnDef::new("Condition", DataType::String { max_len: 0 }).primary_key())
+        .with_column(ColumnDef::new("Description", DataType::String { max_len: 0 }).localizable())
 }
 
 /// Creates official schema for `AppSearch` table.
@@ -566,42 +566,101 @@ pub fn signature_schema() -> TableSchema {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_registry_row_roundtrip() -> Result<()> {
-        let comp = ComponentName::new("Comp1")?;
-
-        let row = RegistryRow {
-            registry: "Reg1".to_string(),
-            root: registry_root::HKLM,
-            key: r"Software\Acme".to_string(),
-            name: Some("InstallPath".to_string()),
-            value: Some("[INSTALLDIR]".to_string()),
-            component: comp,
+    /// Helper to construct [`RegistryRow`] for testing.
+    ///
+    /// # Arguments
+    ///
+    /// * `registry` - Registry key identifier.
+    /// * `root` - Root registry hive integer.
+    /// * `key` - Registry subkey path.
+    /// * `name` - Optional value name.
+    /// * `value` - Optional value data.
+    /// * `comp` - Component name.
+    ///
+    /// # Returns
+    ///
+    /// Vector containing [`RegistryRow`] on success, or empty vector on failure.
+    fn make_registry_rows(
+        registry: &str,
+        root: i16,
+        key: &str,
+        name: Option<&str>,
+        value: Option<&str>,
+        comp: &str,
+    ) -> Vec<RegistryRow> {
+        let Ok(component) = ComponentName::new(comp) else {
+            return Vec::new();
         };
+        vec![RegistryRow {
+            registry: registry.to_string(),
+            root,
+            key: key.to_string(),
+            name: name.map(ToString::to_string),
+            value: value.map(ToString::to_string),
+            component,
+        }]
+    }
 
-        let rec = row.to_record();
-        assert_eq!(rec.len(), 6);
-        let parsed = RegistryRow::from_record(&rec);
-        assert_eq!(parsed, Ok(row));
+    /// Helper to construct [`EnvironmentRow`] for testing.
+    ///
+    /// # Arguments
+    ///
+    /// * `env` - Environment identifier.
+    /// * `name` - Environment variable name.
+    /// * `value` - Environment variable value.
+    /// * `comp` - Component name.
+    ///
+    /// # Returns
+    ///
+    /// Vector containing [`EnvironmentRow`] on success, or empty vector on failure.
+    fn make_environment_rows(
+        env: &str,
+        name: &str,
+        value: &str,
+        comp: &str,
+    ) -> Vec<EnvironmentRow> {
+        let Ok(component) = ComponentName::new(comp) else {
+            return Vec::new();
+        };
+        vec![EnvironmentRow {
+            environment: env.to_string(),
+            name: name.to_string(),
+            value: value.to_string(),
+            component,
+        }]
+    }
+
+    /// Tests serialization, deserialization, and error handling for [`RegistryRow`].
+    #[test]
+    fn test_registry_row_roundtrip() {
+        assert!(make_registry_rows("Reg1", 0, "k", None, None, "").is_empty());
+
+        for row in make_registry_rows(
+            "Reg1",
+            registry_root::HKLM,
+            r"Software\Acme",
+            Some("InstallPath"),
+            Some("[INSTALLDIR]"),
+            "Comp1",
+        ) {
+            let rec = row.to_record();
+            assert_eq!(rec.len(), 6);
+            let parsed = RegistryRow::from_record(&rec);
+            assert_eq!(parsed, Ok(row));
+        }
 
         // Test with empty/default fields
-        let minimal_row = RegistryRow {
-            registry: "RegMin".to_string(),
-            root: 0,
-            key: String::new(),
-            name: None,
-            value: None,
-            component: ComponentName::new("CompMin")?,
-        };
-        let min_rec = Record::with_fields(vec![
-            FieldValue::String("RegMin".to_string()),
-            FieldValue::Null, // non-Short root fallback
-            FieldValue::Null, // non-String key fallback
-            FieldValue::Null, // non-String name fallback
-            FieldValue::Null, // non-String value fallback
-            FieldValue::String("CompMin".to_string()),
-        ]);
-        assert_eq!(RegistryRow::from_record(&min_rec)?, minimal_row);
+        for minimal_row in make_registry_rows("RegMin", 0, "", None, None, "CompMin") {
+            let min_rec = Record::with_fields(vec![
+                FieldValue::String("RegMin".to_string()),
+                FieldValue::Null, // non-Short root fallback
+                FieldValue::Null, // non-String key fallback
+                FieldValue::Null, // non-String name fallback
+                FieldValue::Null, // non-String value fallback
+                FieldValue::String("CompMin".to_string()),
+            ]);
+            assert_eq!(RegistryRow::from_record(&min_rec), Ok(minimal_row));
+        }
 
         // Test with empty string name and value
         let empty_str_rec = Record::with_fields(vec![
@@ -612,9 +671,9 @@ mod tests {
             FieldValue::String(String::new()),
             FieldValue::String("CompMin".to_string()),
         ]);
-        let parsed_empty = RegistryRow::from_record(&empty_str_rec)?;
-        assert!(parsed_empty.name.is_none());
-        assert!(parsed_empty.value.is_none());
+        for expected_empty in make_registry_rows("RegMin", 1, "Key", None, None, "CompMin") {
+            assert_eq!(RegistryRow::from_record(&empty_str_rec), Ok(expected_empty));
+        }
 
         // Error cases
         assert!(RegistryRow::from_record(&Record::new()).is_err());
@@ -663,23 +722,19 @@ mod tests {
             FieldValue::String(String::new()),
         ]);
         assert!(RegistryRow::from_record(&bad_comp_rec).is_err());
-
-        Ok(())
     }
 
+    /// Tests serialization, deserialization, and error handling for [`EnvironmentRow`].
     #[test]
-    fn test_environment_row_roundtrip() -> Result<()> {
-        let comp = ComponentName::new("Comp1")?;
-        let row = EnvironmentRow {
-            environment: "Env1".to_string(),
-            name: "=PATH".to_string(),
-            value: "[INSTALLDIR]".to_string(),
-            component: comp,
-        };
-        let rec = row.to_record();
-        assert_eq!(rec.len(), 4);
-        let parsed = EnvironmentRow::from_record(&rec)?;
-        assert_eq!(parsed, row);
+    fn test_environment_row_roundtrip() {
+        assert!(make_environment_rows("Env1", "n", "v", "").is_empty());
+
+        for row in make_environment_rows("Env1", "=PATH", "[INSTALLDIR]", "Comp1") {
+            let rec = row.to_record();
+            assert_eq!(rec.len(), 4);
+            let parsed = EnvironmentRow::from_record(&rec);
+            assert_eq!(parsed, Ok(row));
+        }
 
         assert!(EnvironmentRow::from_record(&Record::new()).is_err());
 
@@ -751,10 +806,9 @@ mod tests {
             FieldValue::String(String::new()),
         ]);
         assert!(EnvironmentRow::from_record(&bad_comp_rec).is_err());
-
-        Ok(())
     }
 
+    /// Tests schemas for configuration tables.
     #[test]
     fn test_config_schemas() {
         assert_eq!(registry_schema().name, "Registry");

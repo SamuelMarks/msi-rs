@@ -202,7 +202,7 @@ mod tests {
 
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_msidump_run_all_branches() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_msidump_run_all_branches() {
         let temp_dir = std::env::temp_dir().join("msi_cli_test_msidump_bin");
         let _ = fs::create_dir_all(&temp_dir);
         let src_file = temp_dir.join("dump.wxs");
@@ -217,7 +217,7 @@ mod tests {
     </Product>
 </Wix>
 "#;
-        fs::write(&src_file, wxs)?;
+        assert!(fs::write(&src_file, wxs).is_ok());
 
         let _ = msi::wix::WixBuildOptions::parse(&[
             "-sval".to_string(),
@@ -265,7 +265,7 @@ mod tests {
 
         // Existing file without standard extension
         let noext_file = temp_dir.join("dump_noext");
-        fs::copy(&msi_file, &noext_file)?;
+        assert!(fs::copy(&msi_file, &noext_file).is_ok());
         let dump_out3 = temp_dir.join("dump_output3");
         assert_eq!(
             run(&[
@@ -278,7 +278,7 @@ mod tests {
 
         // 5. Failure creating destination directory (file blocking dir creation)
         let blocking_file = temp_dir.join("blocking_file");
-        fs::write(&blocking_file, b"block")?;
+        assert!(fs::write(&blocking_file, b"block").is_ok());
         let bad_dest = blocking_file.join("subfolder");
         assert_eq!(
             run(&[
@@ -291,7 +291,7 @@ mod tests {
 
         // 6. Invalid CFB container
         let invalid_cfb = temp_dir.join("invalid.msi");
-        fs::write(&invalid_cfb, b"Not a CFB file header")?;
+        assert!(fs::write(&invalid_cfb, b"Not a CFB file header").is_ok());
         assert_eq!(
             run(&[
                 "-d".to_string(),
@@ -311,7 +311,7 @@ mod tests {
             msi::cfb::stream_name::encode_msi_stream_name("_StringData", false).unwrap_or_default();
         let _ = bad_pool_writer.add_stream(&pool_name, b"short");
         let _ = bad_pool_writer.add_stream(&data_name, b"data");
-        fs::write(&corrupt_msi, bad_pool_writer.build())?;
+        assert!(fs::write(&corrupt_msi, bad_pool_writer.build()).is_ok());
         assert_eq!(
             run(&[
                 "-d".to_string(),
@@ -332,6 +332,5 @@ mod tests {
         assert_eq!(code, ExitCode::FAILURE);
 
         let _ = fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
 }

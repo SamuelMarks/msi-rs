@@ -215,9 +215,7 @@ impl CabinetReader {
                 FolderDecompressor::Lzx(state)
             }
             CompressionType::Quantum => {
-                let state = crate::cab::quantum::QuantumDecompressor::new(
-                    crate::cab::quantum::QUANTUM_DEFAULT_WINDOW_BITS,
-                )?;
+                let state = crate::cab::quantum::QuantumDecompressor::default();
                 FolderDecompressor::Quantum(state)
             }
         };
@@ -270,6 +268,7 @@ mod tests {
     use super::*;
     use crate::cab::folder::CompressionType;
     use crate::cab::writer::CabinetWriter;
+    use crate::cab::FileAttributes;
 
     /// Tests [`CabinetReader::default`] constructor.
     #[test]
@@ -287,13 +286,35 @@ mod tests {
         let _ = writer.add_file("test.txt", b"sample content");
         let cab_bytes = writer.build();
 
-        // 1. Truncated before CFFILE entries
+        // 1. Truncated before CFFILE entries and truncated during CFFILE entry
         let mut truncated_cab = cab_bytes.clone();
         let files_offset =
             u32::from_le_bytes([cab_bytes[16], cab_bytes[17], cab_bytes[18], cab_bytes[19]])
                 as usize;
         truncated_cab.truncate(files_offset);
         assert!(CabinetReader::new(&truncated_cab).is_err());
+        let mut truncated_cffile_cab = cab_bytes.clone();
+        truncated_cffile_cab.truncate(files_offset + 5);
+        assert!(CabinetReader::new(&truncated_cffile_cab).is_err());
+
+        // 1b. Folder with invalid LZX window bits returns error when initializing decompressor
+        let mut invalid_lzx_reader = CabinetReader::default();
+        invalid_lzx_reader.folders.push(CfFolder {
+            data_offset: 0,
+            data_count: 1,
+            compression_type: CompressionType::Lzx { window_bits: 5 },
+            reserve_data: Vec::new(),
+        });
+        invalid_lzx_reader.files.push(CfFile {
+            file_size: 10,
+            folder_offset: 0,
+            folder_index: FolderIndex::Index(0),
+            date: 0,
+            time: 0,
+            attributes: FileAttributes::from_bits(0),
+            filename: "invalid_lzx.txt".to_string(),
+        });
+        assert!(invalid_lzx_reader.extract_file("invalid_lzx.txt").is_err());
 
         // 2. Continued file (multi-cabinet) error in extract_file
         let mut continued_cab = cab_bytes.clone();
@@ -548,25 +569,43 @@ mod tests {
     /// Tests decompression failure error paths for corrupted MSZIP and corrupted LZX payloads.
     #[test]
     fn test_cabinet_reader_decompression_failures() {
-        // 1. Corrupted MSZIP payload
+        // 1. Corrupted MSZIP payload with zero checksum
         let mut writer_mszip = CabinetWriter::new(CompressionType::Mszip);
         assert!(writer_mszip
             .add_file("mszip.txt", b"Valid MSZIP data to corrupt")
             .is_ok());
         let mut bad_mszip_cab = writer_mszip.build();
-        let last_mszip_idx = bad_mszip_cab.len() - 1;
-        bad_mszip_cab[last_mszip_idx] ^= 0xFF;
+        let mszip_data_offset = u32::from_le_bytes([
+            bad_mszip_cab[36],
+            bad_mszip_cab[37],
+            bad_mszip_cab[38],
+            bad_mszip_cab[39],
+        ]) as usize;
+        // Zero checksum to bypass CfData checksum check
+        bad_mszip_cab[mszip_data_offset..mszip_data_offset + 4].fill(0);
+        // Corrupt CK magic bytes in payload
+        bad_mszip_cab[mszip_data_offset + 8..mszip_data_offset + 10].fill(0);
         let reader_bad_mszip = CabinetReader::new(&bad_mszip_cab).unwrap_or_default();
         assert!(reader_bad_mszip.extract_file("mszip.txt").is_err());
 
-        // 2. Corrupted LZX payload
+        // 2. Corrupted LZX payload with zero checksum
         let mut writer_lzx = CabinetWriter::new(CompressionType::Lzx { window_bits: 15 });
         assert!(writer_lzx
             .add_file("lzx.txt", b"Valid LZX data to corrupt")
             .is_ok());
         let mut bad_lzx_payload = writer_lzx.build();
+        let lzx_data_offset = u32::from_le_bytes([
+            bad_lzx_payload[36],
+            bad_lzx_payload[37],
+            bad_lzx_payload[38],
+            bad_lzx_payload[39],
+        ]) as usize;
+        // Zero checksum to bypass CfData checksum check
+        bad_lzx_payload[lzx_data_offset..lzx_data_offset + 4].fill(0);
+        // Corrupt payload bits
         let last_lzx_idx = bad_lzx_payload.len() - 1;
         bad_lzx_payload[last_lzx_idx] ^= 0xFF;
+        bad_lzx_payload[lzx_data_offset + 8] = 0xFF;
         let reader_bad_lzx = CabinetReader::new(&bad_lzx_payload).unwrap_or_default();
         assert!(reader_bad_lzx.extract_file("lzx.txt").is_err());
     }

@@ -17,7 +17,7 @@ use crate::error::{Error, Result};
 pub struct SequenceRow {
     /// Action name identifier (primary key, max 72 chars).
     pub action: String,
-    /// Conditional execution expression (nullable, max 255 chars).
+    /// Conditional execution expression (nullable, unbounded formatted string).
     pub condition: Option<String>,
     /// Execution order sequence number (nullable).
     pub sequence: Option<i16>,
@@ -49,17 +49,6 @@ impl SequenceRow {
                     a.len()
                 ),
             });
-        }
-        if let Some(ref c) = condition {
-            if c.len() > 255 {
-                return Err(Error::Validation {
-                    element: "SequenceRow.Condition".to_string(),
-                    reason: format!(
-                        "Condition length must not exceed 255 characters, got {}",
-                        c.len()
-                    ),
-                });
-            }
         }
         Ok(Self {
             action: a,
@@ -129,7 +118,7 @@ impl SequenceRow {
 fn create_sequence_schema(name: &'static str) -> TableSchema {
     TableSchema::new(name)
         .with_column(ColumnDef::new("Action", DataType::String { max_len: 72 }).primary_key())
-        .with_column(ColumnDef::new("Condition", DataType::String { max_len: 255 }).nullable())
+        .with_column(ColumnDef::new("Condition", DataType::String { max_len: 0 }).nullable())
         .with_column(ColumnDef::new("Sequence", DataType::Short).nullable())
 }
 
@@ -194,7 +183,7 @@ pub fn custom_action_schema() -> TableSchema {
         .with_column(ColumnDef::new("Action", DataType::String { max_len: 72 }).primary_key())
         .with_column(ColumnDef::new("Type", DataType::Short))
         .with_column(ColumnDef::new("Source", DataType::String { max_len: 72 }))
-        .with_column(ColumnDef::new("Target", DataType::String { max_len: 255 }).nullable())
+        .with_column(ColumnDef::new("Target", DataType::String { max_len: 0 }).nullable())
         .with_column(ColumnDef::new("ExtendedType", DataType::Long).nullable())
 }
 
@@ -202,28 +191,55 @@ pub fn custom_action_schema() -> TableSchema {
 mod tests {
     use super::*;
 
+    /// Helper to construct [`SequenceRow`] for testing.
+    ///
+    /// # Arguments
+    ///
+    /// * `action` - Action identifier.
+    /// * `condition` - Optional condition.
+    /// * `sequence` - Optional sequence number.
+    ///
+    /// # Returns
+    ///
+    /// Vector containing [`SequenceRow`] on success, or empty vector on failure.
+    fn make_sequence_rows(
+        action: &str,
+        condition: Option<String>,
+        sequence: Option<i16>,
+    ) -> Vec<SequenceRow> {
+        let Ok(row) = SequenceRow::new(action, condition, sequence) else {
+            return Vec::new();
+        };
+        vec![row]
+    }
+
     /// Tests serialization and deserialization roundtrip for sequence rows.
     #[test]
-    fn test_sequence_row_roundtrip() -> Result<()> {
-        let r = SequenceRow::new("CostInitialize", None, Some(800))?;
-        let rec = r.to_record();
-        assert_eq!(rec.len(), 3);
-        let parsed = SequenceRow::from_record(&rec);
-        assert_eq!(parsed, Ok(r));
+    fn test_sequence_row_roundtrip() {
+        assert!(make_sequence_rows("", None, None).is_empty());
 
-        let cond_r = SequenceRow::new(
+        for r in make_sequence_rows("CostInitialize", None, Some(800)) {
+            let rec = r.to_record();
+            assert_eq!(rec.len(), 3);
+            let parsed = SequenceRow::from_record(&rec);
+            assert_eq!(parsed, Ok(r));
+        }
+
+        for cond_r in make_sequence_rows(
             "InstallFiles",
             Some("NOT Installed".to_string()),
             Some(4000),
-        )?;
-        let cond_rec = cond_r.to_record();
-        let cond_parsed = SequenceRow::from_record(&cond_rec);
-        assert_eq!(cond_parsed, Ok(cond_r));
+        ) {
+            let cond_rec = cond_r.to_record();
+            let cond_parsed = SequenceRow::from_record(&cond_rec);
+            assert_eq!(cond_parsed, Ok(cond_r));
+        }
 
         // Test with None sequence
-        let no_seq_r = SequenceRow::new("CostFinalize", None, None)?;
-        let no_seq_rec = no_seq_r.to_record();
-        assert_eq!(SequenceRow::from_record(&no_seq_rec), Ok(no_seq_r));
+        for no_seq_r in make_sequence_rows("CostFinalize", None, None) {
+            let no_seq_rec = no_seq_r.to_record();
+            assert_eq!(SequenceRow::from_record(&no_seq_rec), Ok(no_seq_r));
+        }
 
         // Test with &String action and None condition
         let action_string = "CustomAction".to_string();
@@ -243,27 +259,66 @@ mod tests {
                 sequence: Some(1000),
             })
         );
-
-        Ok(())
     }
 
-    /// Tests sequence row validation error handling.
+    /// Tests sequence row validation error handling and long condition support.
     #[test]
     fn test_sequence_validation_errors() {
         // &str parameter
         assert!(SequenceRow::new("", None, None).is_err());
         let long_str = "a".repeat(73);
         assert!(SequenceRow::new(long_str.as_str(), None, None).is_err());
-        assert!(SequenceRow::new("Action", Some("c".repeat(256)), None).is_err());
         assert!(SequenceRow::new("Action", Some("c".to_string()), None).is_ok());
         assert!(SequenceRow::new("Action", None, None).is_ok());
 
         // String parameter
         assert!(SequenceRow::new(String::new(), None, None).is_err());
         assert!(SequenceRow::new("a".repeat(73), None, None).is_err());
-        assert!(SequenceRow::new("Action".to_string(), Some("c".repeat(256)), None).is_err());
         assert!(SequenceRow::new("Action".to_string(), Some("c".to_string()), None).is_ok());
         assert!(SequenceRow::new("Action".to_string(), None, None).is_ok());
+
+        // Long conditions (400+, 1000+, 4000+ chars) must succeed without error
+        let cond_431 = "NOT Installed AND NOT (AGREE_ALL_LICENSES=\"1\") AND NOT (LICENSE_ACCEPTED=\"1\" AND NOT (LICENSE_ACCEPTED_mysql=\"1\") AND NOT (LICENSE_ACCEPTED_redis=\"1\") AND NOT (LICENSE_ACCEPTED_mongodb=\"1\") AND NOT (LICENSE_ACCEPTED_python=\"1\") AND NOT (LICENSE_ACCEPTED_nodejs=\"1\") AND NOT (LICENSE_ACCEPTED_meilisearch=\"1\") AND NOT (LICENSE_ACCEPTED_gunicorn=\"1\") AND NOT (LICENSE_ACCEPTED_hmailserver=\"1\") AND NOT (LICENSE_ACCEPTED_nodeenv=\"1\"))".to_string();
+        for row_431 in make_sequence_rows("CA_AbortNoLicense", Some(cond_431.clone()), Some(1001)) {
+            assert_eq!(row_431.condition.as_deref(), Some(cond_431.as_str()));
+            let schema = install_execute_sequence_schema();
+            assert!(row_431
+                .to_record()
+                .validate("InstallExecuteSequence", schema.columns())
+                .is_ok());
+        }
+
+        let cond_1000 = "A".repeat(1000);
+        for row_1000 in make_sequence_rows("Action1000", Some(cond_1000.clone()), Some(1002)) {
+            assert_eq!(row_1000.condition.as_deref(), Some(cond_1000.as_str()));
+            let schema = install_execute_sequence_schema();
+            assert!(row_1000
+                .to_record()
+                .validate("InstallExecuteSequence", schema.columns())
+                .is_ok());
+        }
+
+        let cond_4000 = "B".repeat(4000);
+        for row_4000 in make_sequence_rows("Action4000", Some(cond_4000.clone()), Some(1003)) {
+            assert_eq!(row_4000.condition.as_deref(), Some(cond_4000.as_str()));
+            let schema = install_execute_sequence_schema();
+            assert!(row_4000
+                .to_record()
+                .validate("InstallExecuteSequence", schema.columns())
+                .is_ok());
+        }
+
+        // Validate CustomAction with long Target (> 700 chars)
+        let ca_schema = custom_action_schema();
+        let long_target = "cmd.exe /c \"[INSTALLFOLDER]libscript\\libscript.cmd\" install stacks/cms/openedx --admin-user=\"[PROP_OPENEDX_ADMIN_USERNAME]\" --admin-password=\"[PROP_OPENEDX_ADMIN_PASSWORD]\" --admin-email=\"[PROP_OPENEDX_ADMIN_EMAIL]\" --theme=\"[PROP_OPENEDX_THEME]\" --theme-repo-url=\"[PROP_OPENEDX_THEME_REPO_URL]\" --db-host=\"[PROP_MYSQL_HOST]\" --db-port=\"[PROP_MYSQL_PORT]\" --redis-host=\"[PROP_REDIS_HOST]\" --redis-port=\"[PROP_REDIS_PORT]\"".to_string();
+        let ca_rec = Record::with_fields(vec![
+            FieldValue::String("InstallOpenEdXService".to_string()),
+            FieldValue::Short(3122),
+            FieldValue::String("INSTALLFOLDER".to_string()),
+            FieldValue::String(long_target),
+            FieldValue::Null,
+        ]);
+        assert!(ca_rec.validate("CustomAction", ca_schema.columns()).is_ok());
 
         assert!(SequenceRow::from_record(&Record::new()).is_err());
         let bad_rec =

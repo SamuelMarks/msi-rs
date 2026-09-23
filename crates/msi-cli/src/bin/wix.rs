@@ -405,9 +405,10 @@ pub fn main() -> ExitCode {
 mod tests {
     use super::*;
 
+    /// Tests all branches and error handling of `wix` binary execution.
     #[test]
     #[allow(clippy::too_many_lines, clippy::similar_names)]
-    fn test_wix_run_all_branches() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_wix_run_all_branches() {
         let temp_dir = std::env::temp_dir().join("msi_cli_test_wix_bin");
         let _ = fs::create_dir_all(&temp_dir);
         let src_file = temp_dir.join("app.wxs");
@@ -422,7 +423,7 @@ mod tests {
     </Product>
 </Wix>
 "#;
-        fs::write(&src_file, wxs)?;
+        assert!(fs::write(&src_file, wxs).is_ok());
 
         // 1. Empty arguments
         assert_eq!(run(&[]), 1);
@@ -466,10 +467,10 @@ mod tests {
 
         // 6. Clean subcommand
         let dummy_obj = temp_dir.join("dummy.wixobj");
-        fs::write(&dummy_obj, "dummy")?;
+        assert!(fs::write(&dummy_obj, "dummy").is_ok());
         // Directory matching extension to trigger remove_file failure branch
         let dir_cab = temp_dir.join("fake_folder.cab");
-        fs::create_dir_all(&dir_cab)?;
+        assert!(fs::create_dir_all(&dir_cab).is_ok());
         assert_eq!(
             run(&["clean".to_string(), temp_dir.to_string_lossy().to_string()]),
             0
@@ -515,7 +516,7 @@ mod tests {
             1
         );
         let bad_xml = temp_dir.join("bad.xml");
-        fs::write(&bad_xml, "<unclosed")?;
+        assert!(fs::write(&bad_xml, "<unclosed").is_ok());
         assert_eq!(
             run(&["format".to_string(), bad_xml.to_string_lossy().to_string()]),
             1
@@ -526,13 +527,13 @@ mod tests {
         {
             use std::os::unix::fs::PermissionsExt;
             let ro_wxs = temp_dir.join("readonly.wxs");
-            fs::write(&ro_wxs, wxs)?;
-            fs::set_permissions(&ro_wxs, fs::Permissions::from_mode(0o400))?;
+            assert!(fs::write(&ro_wxs, wxs).is_ok());
+            assert!(fs::set_permissions(&ro_wxs, fs::Permissions::from_mode(0o400)).is_ok());
             assert_eq!(
                 run(&["format".to_string(), ro_wxs.to_string_lossy().to_string()]),
                 1
             );
-            fs::set_permissions(&ro_wxs, fs::Permissions::from_mode(0o644))?;
+            assert!(fs::set_permissions(&ro_wxs, fs::Permissions::from_mode(0o644)).is_ok());
         }
 
         // 9. Harvest subcommand
@@ -606,8 +607,10 @@ mod tests {
             use std::os::unix::fs::PermissionsExt;
             let unreadable_parent = temp_dir.join("unreadable_harvest");
             let unreadable_sub = unreadable_parent.join("no_perm");
-            fs::create_dir_all(&unreadable_sub)?;
-            fs::set_permissions(&unreadable_sub, fs::Permissions::from_mode(0o000))?;
+            assert!(fs::create_dir_all(&unreadable_sub).is_ok());
+            assert!(
+                fs::set_permissions(&unreadable_sub, fs::Permissions::from_mode(0o000)).is_ok()
+            );
             assert_eq!(
                 run(&[
                     "harvest".to_string(),
@@ -616,7 +619,9 @@ mod tests {
                 ]),
                 1
             );
-            fs::set_permissions(&unreadable_sub, fs::Permissions::from_mode(0o755))?;
+            assert!(
+                fs::set_permissions(&unreadable_sub, fs::Permissions::from_mode(0o755)).is_ok()
+            );
         }
 
         // 10. MSI subcommand group
@@ -684,9 +689,9 @@ mod tests {
         // Empty CFB package for decompile and validate failures
         let empty_cfb_path = temp_dir.join("empty_cfb.msi");
         let mut cfb_writer = msi::cfb::writer::CfbWriter::new(msi::cfb::header::CfbVersion::V3);
-        cfb_writer.add_stream("dummy", &[1, 2, 3])?;
+        assert!(cfb_writer.add_stream("dummy", &[1, 2, 3]).is_ok());
         let cfb_bytes = cfb_writer.build();
-        fs::write(&empty_cfb_path, cfb_bytes)?;
+        assert!(fs::write(&empty_cfb_path, cfb_bytes).is_ok());
 
         assert_eq!(
             run(&[
@@ -742,7 +747,7 @@ mod tests {
             msi::database::summary_info::SummaryInfo::default(),
             std::collections::HashMap::new(),
         );
-        pkg_invalid.save(&invalid_ice_path)?;
+        assert!(pkg_invalid.save(&invalid_ice_path).is_ok());
 
         assert_eq!(
             run(&[
@@ -812,6 +817,5 @@ mod tests {
         assert_eq!(code, ExitCode::FAILURE);
 
         let _ = fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
 }

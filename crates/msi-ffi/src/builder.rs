@@ -1832,9 +1832,319 @@ mod tests {
                 MSI_SUCCESS
             );
 
+            // 7. Invalid UTF-8 in pack_files_from_disk
+            let invalid_utf8 = [0xFF_u8, 0xFE, 0xFD, 0x00];
+            let inv_ptr = invalid_utf8.as_ptr().cast::<c_char>();
+            let inv_sources = [inv_ptr];
+            assert_eq!(
+                msi_package_builder_pack_files_from_disk(
+                    builder,
+                    inv_sources.as_ptr(),
+                    file_id_ptrs.as_ptr(),
+                    comp_id_ptrs.as_ptr(),
+                    1,
+                    1,
+                    ptr::null(),
+                ),
+                MSI_ERROR_INVALID_ARGUMENT
+            );
+            let inv_fids = [inv_ptr];
+            assert_eq!(
+                msi_package_builder_pack_files_from_disk(
+                    builder,
+                    sources.as_ptr(),
+                    inv_fids.as_ptr(),
+                    comp_id_ptrs.as_ptr(),
+                    1,
+                    1,
+                    ptr::null(),
+                ),
+                MSI_ERROR_INVALID_ARGUMENT
+            );
+            let inv_comps = [inv_ptr];
+            assert_eq!(
+                msi_package_builder_pack_files_from_disk(
+                    builder,
+                    sources.as_ptr(),
+                    file_id_ptrs.as_ptr(),
+                    inv_comps.as_ptr(),
+                    1,
+                    1,
+                    ptr::null(),
+                ),
+                MSI_ERROR_INVALID_ARGUMENT
+            );
+            assert_eq!(
+                msi_package_builder_pack_files_from_disk(
+                    builder,
+                    sources.as_ptr(),
+                    file_id_ptrs.as_ptr(),
+                    comp_id_ptrs.as_ptr(),
+                    1,
+                    1,
+                    inv_ptr,
+                ),
+                MSI_ERROR_INVALID_ARGUMENT
+            );
+
             msi_package_builder_destroy(builder);
         }
 
         let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    /// Tests that invalid UTF-8 strings return [`MSI_ERROR_INVALID_ARGUMENT`] across builder methods.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_builder_invalid_utf8_arguments() {
+        let invalid_utf8 = [0xFF_u8, 0xFE, 0xFD, 0x00];
+        let inv = invalid_utf8.as_ptr().cast::<c_char>();
+        let valid_name = CString::new("ValidName").unwrap_or_default();
+        let valid_code = CString::new("{12345678-1234-1234-1234-1234567890AB}").unwrap_or_default();
+
+        unsafe {
+            let mut out_builder: *mut MsiPackageBuilderHandle = ptr::null_mut();
+
+            // Create with invalid UTF-8
+            assert_eq!(
+                msi_package_builder_create(
+                    inv,
+                    valid_name.as_ptr(),
+                    1,
+                    0,
+                    0,
+                    valid_code.as_ptr(),
+                    &raw mut out_builder,
+                ),
+                MSI_ERROR_INVALID_ARGUMENT
+            );
+            assert_eq!(
+                msi_package_builder_create(
+                    valid_name.as_ptr(),
+                    inv,
+                    1,
+                    0,
+                    0,
+                    valid_code.as_ptr(),
+                    &raw mut out_builder,
+                ),
+                MSI_ERROR_INVALID_ARGUMENT
+            );
+            assert_eq!(
+                msi_package_builder_create(
+                    valid_name.as_ptr(),
+                    valid_name.as_ptr(),
+                    1,
+                    0,
+                    0,
+                    inv,
+                    &raw mut out_builder,
+                ),
+                MSI_ERROR_INVALID_ARGUMENT
+            );
+
+            // Valid builder creation
+            assert_eq!(
+                msi_package_builder_create(
+                    valid_name.as_ptr(),
+                    valid_name.as_ptr(),
+                    1,
+                    0,
+                    0,
+                    valid_code.as_ptr(),
+                    &raw mut out_builder,
+                ),
+                MSI_SUCCESS
+            );
+
+            // Directory with invalid UTF-8 parent
+            assert_eq!(
+                msi_package_builder_add_directory(
+                    out_builder,
+                    valid_name.as_ptr(),
+                    inv,
+                    valid_name.as_ptr(),
+                ),
+                MSI_ERROR_INVALID_ARGUMENT
+            );
+
+            // Component with invalid UTF-8 optional parameters
+            assert_eq!(
+                msi_package_builder_add_component(
+                    out_builder,
+                    valid_name.as_ptr(),
+                    inv,
+                    valid_name.as_ptr(),
+                    0,
+                    ptr::null(),
+                    ptr::null(),
+                ),
+                MSI_ERROR_INVALID_ARGUMENT
+            );
+            assert_eq!(
+                msi_package_builder_add_component(
+                    out_builder,
+                    valid_name.as_ptr(),
+                    ptr::null(),
+                    valid_name.as_ptr(),
+                    0,
+                    inv,
+                    ptr::null(),
+                ),
+                MSI_ERROR_INVALID_ARGUMENT
+            );
+            assert_eq!(
+                msi_package_builder_add_component(
+                    out_builder,
+                    valid_name.as_ptr(),
+                    ptr::null(),
+                    valid_name.as_ptr(),
+                    0,
+                    ptr::null(),
+                    inv,
+                ),
+                MSI_ERROR_INVALID_ARGUMENT
+            );
+
+            // Feature with invalid UTF-8 optional parameters
+            assert_eq!(
+                msi_package_builder_add_feature(
+                    out_builder,
+                    valid_name.as_ptr(),
+                    inv,
+                    ptr::null(),
+                    ptr::null(),
+                    0,
+                    1,
+                    ptr::null(),
+                    0,
+                ),
+                MSI_ERROR_INVALID_ARGUMENT
+            );
+            assert_eq!(
+                msi_package_builder_add_feature(
+                    out_builder,
+                    valid_name.as_ptr(),
+                    ptr::null(),
+                    inv,
+                    ptr::null(),
+                    0,
+                    1,
+                    ptr::null(),
+                    0,
+                ),
+                MSI_ERROR_INVALID_ARGUMENT
+            );
+            assert_eq!(
+                msi_package_builder_add_feature(
+                    out_builder,
+                    valid_name.as_ptr(),
+                    ptr::null(),
+                    ptr::null(),
+                    inv,
+                    0,
+                    1,
+                    ptr::null(),
+                    0,
+                ),
+                MSI_ERROR_INVALID_ARGUMENT
+            );
+            assert_eq!(
+                msi_package_builder_add_feature(
+                    out_builder,
+                    valid_name.as_ptr(),
+                    ptr::null(),
+                    ptr::null(),
+                    ptr::null(),
+                    0,
+                    1,
+                    inv,
+                    0,
+                ),
+                MSI_ERROR_INVALID_ARGUMENT
+            );
+
+            // File with invalid UTF-8 version / language
+            assert_eq!(
+                msi_package_builder_add_file(
+                    out_builder,
+                    valid_name.as_ptr(),
+                    valid_name.as_ptr(),
+                    valid_name.as_ptr(),
+                    100,
+                    inv,
+                    ptr::null(),
+                    0,
+                    1,
+                ),
+                MSI_ERROR_INVALID_ARGUMENT
+            );
+            assert_eq!(
+                msi_package_builder_add_file(
+                    out_builder,
+                    valid_name.as_ptr(),
+                    valid_name.as_ptr(),
+                    valid_name.as_ptr(),
+                    100,
+                    ptr::null(),
+                    inv,
+                    0,
+                    1,
+                ),
+                MSI_ERROR_INVALID_ARGUMENT
+            );
+
+            // Media with invalid UTF-8 optional fields
+            assert_eq!(
+                msi_package_builder_add_media(
+                    out_builder,
+                    1,
+                    10,
+                    inv,
+                    ptr::null(),
+                    ptr::null(),
+                    ptr::null(),
+                ),
+                MSI_ERROR_INVALID_ARGUMENT
+            );
+            assert_eq!(
+                msi_package_builder_add_media(
+                    out_builder,
+                    1,
+                    10,
+                    ptr::null(),
+                    inv,
+                    ptr::null(),
+                    ptr::null(),
+                ),
+                MSI_ERROR_INVALID_ARGUMENT
+            );
+            assert_eq!(
+                msi_package_builder_add_media(
+                    out_builder,
+                    1,
+                    10,
+                    ptr::null(),
+                    ptr::null(),
+                    inv,
+                    ptr::null(),
+                ),
+                MSI_ERROR_INVALID_ARGUMENT
+            );
+            assert_eq!(
+                msi_package_builder_add_media(
+                    out_builder,
+                    1,
+                    10,
+                    ptr::null(),
+                    ptr::null(),
+                    ptr::null(),
+                    inv,
+                ),
+                MSI_ERROR_INVALID_ARGUMENT
+            );
+
+            msi_package_builder_destroy(out_builder);
+        }
     }
 }

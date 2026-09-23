@@ -711,6 +711,37 @@ mod tests {
         };
         assert!(store_none.flush_all().is_ok());
 
+        // Error on flush_all for system_hive
+        let store_err_sys = OfflineHiveStore {
+            system_hive: OfflineRegistryHive {
+                path: Some(blocked_parent.join("sub/SYSTEM")),
+                ..OfflineRegistryHive::new("SYSTEM")
+            },
+            software_hive: OfflineRegistryHive::new("SOFTWARE"),
+            default_hive: OfflineRegistryHive::new("DEFAULT"),
+        };
+        assert!(store_err_sys.flush_all().is_err());
+
+        // Error on flush_all for software_hive
+        let store_err_soft = OfflineHiveStore {
+            system_hive: OfflineRegistryHive::new("SYSTEM"),
+            software_hive: OfflineRegistryHive {
+                path: Some(blocked_parent.join("sub/SOFTWARE")),
+                ..OfflineRegistryHive::new("SOFTWARE")
+            },
+            default_hive: OfflineRegistryHive::new("DEFAULT"),
+        };
+        assert!(store_err_soft.flush_all().is_err());
+
+        // Error on flush_all for default_hive
+        let mut store_err_def = OfflineHiveStore {
+            system_hive: OfflineRegistryHive::new("SYSTEM"),
+            software_hive: OfflineRegistryHive::new("SOFTWARE"),
+            default_hive: OfflineRegistryHive::new("DEFAULT"),
+        };
+        store_err_def.default_hive.path = Some(blocked_parent.join("sub/DEFAULT"));
+        assert!(store_err_def.flush_all().is_err());
+
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }

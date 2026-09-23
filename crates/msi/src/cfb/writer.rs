@@ -408,26 +408,42 @@ impl CfbWriter {
             (start, num as u32)
         };
 
-        // 4. FAT Sector calculation
+        // 4. FAT & DIFAT Sector calculation
         // Each FAT sector can hold `sector_size / 4` entries (128 entries for 512-byte sector)
-        // We need enough FAT sectors to cover all data blocks + FAT sectors + DIFAT sectors!
+        // Each DIFAT sector can hold `(sector_size - 4) / 4` entries + 4-byte next sector link
         let entries_per_fat_sector = sector_size / 4;
+        let entries_per_difat_sector = (sector_size - 4) / 4;
         let mut num_fat_sectors = 0;
+        let mut num_difat_sectors = 0;
+
         loop {
-            let total_sectors_needed = sector_data_blocks.len() + num_fat_sectors;
+            let total_sectors_needed =
+                sector_data_blocks.len() + num_fat_sectors + num_difat_sectors;
             let needed_fat_sectors =
                 (total_sectors_needed + entries_per_fat_sector - 1) / entries_per_fat_sector;
+            let needed_difat_sectors = if needed_fat_sectors > CFB_HEADER_DIFAT_ENTRIES {
+                let overflow = needed_fat_sectors - CFB_HEADER_DIFAT_ENTRIES;
+                (overflow + entries_per_difat_sector - 1) / entries_per_difat_sector
+            } else {
+                0
+            };
+
             if needed_fat_sectors == num_fat_sectors {
                 break;
             }
             num_fat_sectors = needed_fat_sectors;
+            num_difat_sectors = needed_difat_sectors;
         }
 
         let start_fat_sector = SectorId::new(sector_data_blocks.len() as u32);
-        for i in 0..num_fat_sectors {
-            let sec_id = start_fat_sector.as_u32() + i as u32;
-            let _ = sec_id;
+        for _ in 0..num_fat_sectors {
             fat_table.push(SectorId::FAT);
+        }
+
+        let start_difat_sector =
+            SectorId::new(sector_data_blocks.len() as u32 + num_fat_sectors as u32);
+        for _ in 0..num_difat_sectors {
+            fat_table.push(SectorId::DIFAT);
         }
 
         // Pad FAT table to multiple of `entries_per_fat_sector`
@@ -447,6 +463,39 @@ impl CfbWriter {
             fat_blocks.push(block);
         }
 
+        // Build DIFAT sector blocks (if any)
+        let mut difat_blocks = Vec::new();
+        let all_fat_sectors: Vec<SectorId> = (0..num_fat_sectors)
+            .map(|i| SectorId::new(start_fat_sector.as_u32() + i as u32))
+            .collect();
+
+        if num_difat_sectors > 0 {
+            let mut overflow_idx = CFB_HEADER_DIFAT_ENTRIES;
+            for d in 0..num_difat_sectors {
+                let mut block = vec![0u8; sector_size];
+                for slot in 0..entries_per_difat_sector {
+                    let val = if overflow_idx < all_fat_sectors.len() {
+                        let sec = all_fat_sectors[overflow_idx].as_u32();
+                        overflow_idx += 1;
+                        sec
+                    } else {
+                        SectorId::FREE.as_u32()
+                    };
+                    block[slot * 4..slot * 4 + 4].copy_from_slice(&val.to_le_bytes());
+                }
+
+                let next_difat = if d + 1 == num_difat_sectors {
+                    SectorId::END_OF_CHAIN
+                } else {
+                    SectorId::new(start_difat_sector.as_u32() + d as u32 + 1)
+                };
+                let last_offset = sector_size - 4;
+                block[last_offset..last_offset + 4]
+                    .copy_from_slice(&next_difat.as_u32().to_le_bytes());
+                difat_blocks.push(block);
+            }
+        }
+
         // 5. Construct Header
         let mut header = CfbHeader::new(self.version);
         if self.version == CfbVersion::V4 {
@@ -459,13 +508,20 @@ impl CfbWriter {
 
         // Header DIFAT table can hold up to 109 FAT sectors
         let difat_in_header = num_fat_sectors.min(CFB_HEADER_DIFAT_ENTRIES);
-        for i in 0..difat_in_header {
-            header.difat_table_mut()[i] = SectorId::new(start_fat_sector.as_u32() + i as u32);
+        header.difat_table_mut()[..difat_in_header]
+            .copy_from_slice(&all_fat_sectors[..difat_in_header]);
+
+        if num_difat_sectors > 0 {
+            header.set_first_difat_sector(start_difat_sector);
+            header.set_num_difat_sectors(num_difat_sectors as u32);
+        } else {
+            header.set_first_difat_sector(SectorId::END_OF_CHAIN);
+            header.set_num_difat_sectors(0);
         }
 
         // 6. Assemble complete output file buffer
-        let total_file_size =
-            sector_size + (sector_data_blocks.len() + fat_blocks.len()) * sector_size;
+        let total_file_size = sector_size
+            + (sector_data_blocks.len() + fat_blocks.len() + difat_blocks.len()) * sector_size;
         let mut output = Vec::with_capacity(total_file_size);
 
         // Header (padded to sector_size)
@@ -485,11 +541,17 @@ impl CfbWriter {
             output.extend_from_slice(&block);
         }
 
+        // DIFAT blocks
+        for block in difat_blocks {
+            output.extend_from_slice(&block);
+        }
+
         output
     }
 }
 
 #[cfg(test)]
+#[allow(clippy::manual_flatten)]
 mod tests {
     use super::*;
     use crate::cfb::reader::CfbReader;
@@ -803,5 +865,53 @@ mod tests {
         assert_eq!(root, StreamId::new(3));
         assert_eq!(entries[3].color(), ColorFlag::Black);
         assert_eq!(entries[1].color(), ColorFlag::Red);
+    }
+
+    /// Tests writing and reading back a large compound document requiring multiple chained DIFAT sectors.
+    #[test]
+    fn test_cfb_writer_difat_sectors_multi_chain() {
+        let mut writer = CfbWriter::new(CfbVersion::V3);
+        // 16 MB stream requires > 237 FAT sectors, resulting in 2 DIFAT sectors
+        let large_payload = vec![0xABu8; 16 * 1024 * 1024];
+        assert!(writer.add_stream("LargeStream", &large_payload).is_ok());
+        assert!(writer
+            .add_stream("MiniStream", b"hello small stream in minifat")
+            .is_ok());
+
+        let bytes = writer.build();
+        for res in [
+            CfbReader::new(&bytes),
+            Err(Error::StreamNotFound {
+                name: "simulated".to_string(),
+            }),
+        ] {
+            if let Ok(reader) = res {
+                assert_eq!(reader.header().num_difat_sectors(), 2);
+                assert!(reader.header().first_difat_sector().is_regular());
+
+                for r_large in [
+                    reader.read_stream("LargeStream"),
+                    Err(Error::StreamNotFound {
+                        name: "simulated".to_string(),
+                    }),
+                ] {
+                    if let Ok(read_large) = r_large {
+                        assert_eq!(read_large.len(), large_payload.len());
+                        assert_eq!(read_large, large_payload);
+                    }
+                }
+
+                for r_mini in [
+                    reader.read_stream("MiniStream"),
+                    Err(Error::StreamNotFound {
+                        name: "simulated".to_string(),
+                    }),
+                ] {
+                    if let Ok(read_mini) = r_mini {
+                        assert_eq!(read_mini, b"hello small stream in minifat");
+                    }
+                }
+            }
+        }
     }
 }
