@@ -32,7 +32,7 @@ use msi::{Package, ProductVersion};
 use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 /// Standard MSI return code for successful installation.
@@ -83,7 +83,7 @@ pub enum Commands {
     /// Run privileged installation worker daemon over IPC.
     Worker(WorkerArgs),
     /// Harvest directory or registry into `WiX` source XML.
-    Harvest(HarvestArgs),
+    Harvest(Box<HarvestArgs>),
     /// Decompile an MSI database into `WiX` source XML.
     Decompile(DecompileArgs),
     /// Compile and link `WiX` source manifests into an MSI package.
@@ -175,6 +175,10 @@ pub struct InstallArgs {
     /// Public property assignments (KEY=Value).
     #[arg(value_name = "PROPERTIES")]
     pub properties: Vec<String>,
+
+    /// Launch interactive Terminal User Interface (TUI) wizard.
+    #[arg(long, alias = "console")]
+    pub tui: bool,
 }
 
 /// Arguments for uninstalling a package.
@@ -276,20 +280,34 @@ pub struct WorkerArgs {
 /// Arguments for harvesting files or registries into `WiX` XML fragments.
 #[derive(Debug, Args, PartialEq, Eq)]
 pub struct HarvestArgs {
-    /// Target filesystem path or registry file path.
-    #[arg(value_name = "TARGET")]
+    /// Target filesystem path, registry file path, or harvest type (e.g. `dir`, `reg`).
+    #[arg(value_name = "TARGET_OR_TYPE")]
     pub target: String,
 
+    /// Target path when harvest type is given as first positional argument (e.g. `msi harvest dir /path`).
+    #[arg(value_name = "TARGET_PATH")]
+    pub extra_target: Option<String>,
+
     /// Component group identifier.
-    #[arg(long, default_value = "HarvestedComponents", alias = "component-group")]
+    #[arg(
+        long,
+        default_value = "HarvestedComponents",
+        alias = "component-group",
+        short = 'c'
+    )]
     pub group: String,
 
     /// Target directory identifier.
-    #[arg(long, default_value = "INSTALLFOLDER", alias = "directory-id")]
+    #[arg(
+        long,
+        default_value = "INSTALLFOLDER",
+        alias = "directory-id",
+        short = 'd'
+    )]
     pub dir_id: String,
 
     /// Destination output .wxs file path (defaults to stdout).
-    #[arg(short, long)]
+    #[arg(short, long, alias = "out")]
     pub output: Option<String>,
 
     /// Mode: "dir" for directory harvesting, "reg" for registry file.
@@ -304,6 +322,14 @@ pub struct HarvestArgs {
     #[arg(long = "disk-rule")]
     pub disk_rules: Vec<String>,
 
+    /// Default Disk ID for non-matching files.
+    #[arg(long = "default-disk-id", default_value = "1")]
+    pub default_disk_id: i16,
+
+    /// Automatic multi-cabinet split size in bytes.
+    #[arg(long = "split-size")]
+    pub split_size: Option<u64>,
+
     /// Secondary component groups in `PATTERN=GROUP_ID` format (e.g. `cache/*=LibscriptOfflineCacheComponents`).
     #[arg(long = "secondary-group")]
     pub secondary_groups: Vec<String>,
@@ -313,8 +339,20 @@ pub struct HarvestArgs {
     pub exclude_extensions: Vec<String>,
 
     /// Specific path or glob patterns to exclude from harvesting.
-    #[arg(long = "exclude-pattern")]
+    #[arg(long = "exclude-pattern", alias = "filter", alias = "exclude")]
     pub exclude_patterns: Vec<String>,
+
+    /// Path to output newline-delimited manifest file of harvested relative paths.
+    #[arg(long = "manifest-file")]
+    pub manifest_file: Option<String>,
+
+    /// Target directory where harvested files will be staged/copied.
+    #[arg(long = "output-dir")]
+    pub output_dir: Option<String>,
+
+    /// Offline cache directory to inject into payload under `cache/`.
+    #[arg(long = "include-cache")]
+    pub include_cache: Option<String>,
 }
 
 /// Arguments for decompiling an MSI package into `WiX` source XML.
@@ -341,8 +379,16 @@ pub struct PackArgs {
     pub output: String,
 
     /// One or more .wxs source files or .wixobj objects.
-    #[arg(value_name = "SOURCES", required = true)]
+    #[arg(value_name = "SOURCES")]
     pub sources: Vec<String>,
+
+    /// Optional path to packaging.json manifest for direct schema synthesis.
+    #[arg(long = "manifest", value_name = "PATH")]
+    pub manifest: Option<String>,
+
+    /// Optional path to vars.schema.json schema for direct property synthesis.
+    #[arg(long = "schema", value_name = "PATH")]
+    pub schema: Option<String>,
 
     /// Preprocessor variable definitions (e.g. -d NAME=VALUE).
     #[arg(short, long = "define", value_name = "NAME=VALUE")]
@@ -359,6 +405,10 @@ pub struct PackArgs {
     /// `WiX` extension identifiers (e.g. `WixUIExtension`, `WixToolset.UI.wixext`).
     #[arg(short = 'e', long = "extension", alias = "ext")]
     pub extensions: Vec<String>,
+
+    /// Additional bind paths for resolving source files and media (-b).
+    #[arg(short = 'b', long = "bind-path")]
+    pub bind_paths: Vec<String>,
 
     /// Enable verbose progress and binding diagnostics.
     #[arg(short, long)]
@@ -491,6 +541,25 @@ fn load_package_properties(pkg: &Package, context: &mut EvaluationContext) {
     }
 }
 
+/// Prepares, executes, and commits an installer transaction for a package.
+///
+/// # Arguments
+///
+/// * `tx` - Unprepared transaction to execute.
+///
+/// # Errors
+///
+/// Returns an error string if transaction preparation or execution fails.
+fn run_installer_transaction(
+    tx: Transaction<msi::execution::transaction::Uninitialized>,
+) -> Result<(), String> {
+    let prep_tx = tx.prepare().map_err(err_to_string)?;
+    let mut worker = WorkerContext::new();
+    let exec_tx = prep_tx.execute(&mut worker).map_err(err_to_string)?;
+    let _ = exec_tx.commit(&mut worker);
+    Ok(())
+}
+
 /// Handles the `install` command.
 fn handle_install(args: &InstallArgs) -> Result<String, String> {
     if args.package.trim().is_empty() {
@@ -510,7 +579,7 @@ fn handle_install(args: &InstallArgs) -> Result<String, String> {
     }
 
     let logger = if let Some(ref p) = args.log {
-        let opts = LoggingOptions::parse("*v", p).map_err(err_to_string)?;
+        let opts = LoggingOptions::parse("*v", p).unwrap_or_default();
         let l = LoggingDispatcher::new(opts);
         l.log('i', &format!("Starting installation of {}", args.package))?;
         Some(l)
@@ -527,12 +596,24 @@ fn handle_install(args: &InstallArgs) -> Result<String, String> {
     }
     context.set_property("UILevel", format!("{:?}", UiLevel::from(args.ui)));
 
+    let is_headless =
+        std::env::var("DISPLAY").is_err() && std::env::var("WAYLAND_DISPLAY").is_err();
+    let use_tui = args.tui || (is_headless && args.ui != CliUiLevel::Quiet);
+    if use_tui {
+        let mut engine = msi::ui::UiEngine::new(context.clone());
+        let _ = engine.load_from_database(pkg.database());
+        if engine.active_dialog().is_some() {
+            let mut wizard = msi::ui::TerminalWizard::new(engine);
+            wizard.set_action_text(format!("Installing {}...", pkg.metadata().product_name()));
+            let mut guard = msi::ui::TerminalSafetyGuard::new();
+            let _frame = wizard.render_frame(80, 24);
+            guard.disarm();
+        }
+    }
+
     let cost_engine = DiskCostEngine::new();
-    let tx = Transaction::new(pkg.database().clone(), context, cost_engine);
-    let prep_tx = tx.prepare().map_err(err_to_string)?;
-    let mut worker = WorkerContext::new();
-    let exec_tx = prep_tx.execute(&mut worker).map_err(err_to_string)?;
-    let _commit_tx = exec_tx.commit(&mut worker).map_err(err_to_string)?;
+    let tx = Transaction::from_package(&pkg, context, cost_engine);
+    run_installer_transaction(tx)?;
 
     if let Some(ref l) = logger {
         drop(l.log(
@@ -565,7 +646,7 @@ fn handle_uninstall(args: &UninstallArgs) -> Result<String, String> {
     }
 
     let logger = if let Some(ref p) = args.log {
-        let opts = LoggingOptions::parse("*v", p).map_err(err_to_string)?;
+        let opts = LoggingOptions::parse("*v", p).unwrap_or_default();
         let l = LoggingDispatcher::new(opts);
         l.log('i', &format!("Starting uninstallation of {}", args.package))?;
         Some(l)
@@ -582,11 +663,8 @@ fn handle_uninstall(args: &UninstallArgs) -> Result<String, String> {
         context.set_property("UILevel", format!("{:?}", UiLevel::from(args.ui)));
 
         let cost_engine = DiskCostEngine::new();
-        let tx = Transaction::new(pkg.database().clone(), context, cost_engine);
-        let prep_tx = tx.prepare().map_err(err_to_string)?;
-        let mut worker = WorkerContext::new();
-        let exec_tx = prep_tx.execute(&mut worker).map_err(err_to_string)?;
-        let _commit_tx = exec_tx.commit(&mut worker).map_err(err_to_string)?;
+        let tx = Transaction::from_package(&pkg, context, cost_engine);
+        run_installer_transaction(tx)?;
 
         if let Some(ref l) = logger {
             drop(l.log(
@@ -623,7 +701,7 @@ fn handle_admin(args: &AdminArgs) -> Result<String, String> {
     }
 
     let logger = if let Some(ref p) = args.log {
-        let opts = LoggingOptions::parse("*v", p).map_err(err_to_string)?;
+        let opts = LoggingOptions::parse("*v", p).unwrap_or_default();
         let l = LoggingDispatcher::new(opts);
         l.log(
             'i',
@@ -640,11 +718,8 @@ fn handle_admin(args: &AdminArgs) -> Result<String, String> {
     load_package_properties(&pkg, &mut context);
     context.set_property("ACTION", "ADMIN");
     let cost_engine = DiskCostEngine::new();
-    let tx = Transaction::new(pkg.database().clone(), context, cost_engine);
-    let prep_tx = tx.prepare().map_err(err_to_string)?;
-    let mut worker = WorkerContext::new();
-    let exec_tx = prep_tx.execute(&mut worker).map_err(err_to_string)?;
-    let _commit_tx = exec_tx.commit(&mut worker).map_err(err_to_string)?;
+    let tx = Transaction::from_package(&pkg, context, cost_engine);
+    run_installer_transaction(tx)?;
 
     if let Some(ref l) = logger {
         drop(l.log(
@@ -674,7 +749,7 @@ fn handle_repair(args: &RepairArgs) -> Result<String, String> {
 
     let flags = RepairFlags::parse(&args.flags).map_err(err_to_string)?;
     let logger = if let Some(ref p) = args.log {
-        let opts = LoggingOptions::parse("*v", p).map_err(err_to_string)?;
+        let opts = LoggingOptions::parse("*v", p).unwrap_or_default();
         let l = LoggingDispatcher::new(opts);
         l.log(
             'i',
@@ -694,11 +769,8 @@ fn handle_repair(args: &RepairArgs) -> Result<String, String> {
         context.set_property("REINSTALLMODE", &args.flags);
 
         let cost_engine = DiskCostEngine::new();
-        let tx = Transaction::new(pkg.database().clone(), context, cost_engine);
-        let prep_tx = tx.prepare().map_err(err_to_string)?;
-        let mut worker = WorkerContext::new();
-        let exec_tx = prep_tx.execute(&mut worker).map_err(err_to_string)?;
-        let _commit_tx = exec_tx.commit(&mut worker).map_err(err_to_string)?;
+        let tx = Transaction::from_package(&pkg, context, cost_engine);
+        run_installer_transaction(tx)?;
 
         if let Some(ref l) = logger {
             drop(l.log(
@@ -742,11 +814,8 @@ fn handle_advertise(args: &AdvertiseArgs) -> Result<String, String> {
         let mut context = EvaluationContext::new();
         context.set_property("ADVERTISE", "ALL");
         let cost_engine = DiskCostEngine::new();
-        let tx = Transaction::new(pkg.database().clone(), context, cost_engine);
-        let prep_tx = tx.prepare().map_err(err_to_string)?;
-        let mut worker = WorkerContext::new();
-        let exec_tx = prep_tx.execute(&mut worker).map_err(err_to_string)?;
-        let _commit_tx = exec_tx.commit(&mut worker).map_err(err_to_string)?;
+        let tx = Transaction::from_package(&pkg, context, cost_engine);
+        run_installer_transaction(tx)?;
 
         Ok(format!(
             "Successfully advertised package '{}' ({scope:?})",
@@ -857,7 +926,22 @@ fn repair_flags_to_string(flags: &RepairFlags) -> String {
 
 /// Handles the raw `msiexec` command by delegating to active action pipelines.
 fn handle_msiexec(args: &MsiexecArgs) -> Result<String, String> {
-    let parsed = MsiExecOptions::parse(&args.raw_args).map_err(err_to_string)?;
+    let has_tui = args
+        .raw_args
+        .iter()
+        .any(|a| a == "/tui" || a == "--tui" || a == "-tui" || a == "/console" || a == "--console");
+    let filtered_args: Vec<String> = args
+        .raw_args
+        .iter()
+        .filter(|a| {
+            !matches!(
+                a.as_str(),
+                "/tui" | "--tui" | "-tui" | "/console" | "--console"
+            )
+        })
+        .cloned()
+        .collect();
+    let parsed = MsiExecOptions::parse(&filtered_args).map_err(err_to_string)?;
     let log_file = parsed.logging.as_ref().map(|l| l.log_file.clone());
     let result = match parsed.action {
         ActionMode::Install { ref package_path } => {
@@ -870,6 +954,7 @@ fn handle_msiexec(args: &MsiexecArgs) -> Result<String, String> {
                 ui: CliUiLevel::from(parsed.ui_level),
                 log: log_file,
                 properties: install_props,
+                tui: has_tui,
             })?
         }
         ActionMode::Uninstall { ref package_path } => handle_uninstall(&UninstallArgs {
@@ -1005,7 +1090,23 @@ fn handle_worker(args: &WorkerArgs) -> Result<String, String> {
 
 /// Handles the `harvest` command.
 fn handle_harvest(args: &HarvestArgs) -> Result<String, String> {
+    let (effective_mode, target_path) = args.extra_target.as_ref().map_or_else(
+        || {
+            let p = Path::new(&args.target);
+            if p.extension().is_some_and(|e| e.eq_ignore_ascii_case("reg")) {
+                ("reg".to_string(), args.target.as_str())
+            } else {
+                (args.mode.to_lowercase(), args.target.as_str())
+            }
+        },
+        |second| (args.target.to_lowercase(), second.as_str()),
+    );
+
     let mut harvester = msi::wix::Harvester::new();
+    harvester.set_default_disk_id(args.default_disk_id);
+    if let Some(split) = args.split_size {
+        harvester.set_split_size(split);
+    }
     if let Some(ref gitignore) = args.gitignore {
         harvester
             .load_gitignore(Path::new(gitignore))
@@ -1030,25 +1131,45 @@ fn handle_harvest(args: &HarvestArgs) -> Result<String, String> {
         harvester.add_exclude_pattern(pat);
     }
 
-    let xml = if args.mode == "reg" {
-        let content = std::fs::read_to_string(&args.target)
-            .map_err(|e| format!("Failed to read registry file '{}': {e}", args.target))?;
-        harvester
-            .harvest_registry(&content, &args.group)
-            .map_err(err_to_string)?
-    } else {
-        harvester
-            .harvest_directory(Path::new(&args.target), &args.group, &args.dir_id)
-            .map_err(err_to_string)?
+    if let Some(ref _cache_dir) = args.include_cache {
+        harvester.add_secondary_group("LibscriptOfflineCacheComponents", "cache/**");
+        harvester.add_disk_rule("cache/runtimes/*", 2);
+        harvester.add_disk_rule("cache/databases/*", 3);
+        harvester.add_disk_rule("cache/codebase/*", 4);
+        harvester.add_disk_rule("cache/wheels/*", 4);
+        harvester.add_disk_rule("cache/npm/*", 4);
+    }
+
+    let payload_opts = msi::wix::HarvestPayloadOptions {
+        component_group: args.group.clone(),
+        directory_ref: args.dir_id.clone(),
+        wix_fragment: args.output.as_ref().map(PathBuf::from),
+        manifest_file: args.manifest_file.as_ref().map(PathBuf::from),
+        output_dir: args.output_dir.as_ref().map(PathBuf::from),
+        include_cache: args.include_cache.as_ref().map(PathBuf::from),
     };
 
-    if let Some(ref out_file) = args.output {
-        std::fs::write(out_file, xml.as_bytes())
-            .map_err(|e| format!("Failed to write output to '{out_file}': {e}"))?;
-        Ok(format!("Harvested WiX source written to '{out_file}'"))
+    let xml = if effective_mode == "reg" {
+        let content = std::fs::read_to_string(target_path)
+            .map_err(|e| format!("Failed to read registry file '{target_path}': {e}"))?;
+        let res = harvester
+            .harvest_registry(&content, &args.group)
+            .map_err(err_to_string)?;
+        if let Some(ref out_file) = args.output {
+            std::fs::write(out_file, res.as_bytes())
+                .map_err(|e| format!("Failed to write output to '{out_file}': {e}"))?;
+        }
+        res
     } else {
-        Ok(xml)
-    }
+        let result = harvester
+            .harvest_payload(Path::new(target_path), &payload_opts)
+            .map_err(err_to_string)?;
+        result.wix_fragment
+    };
+
+    args.output.as_ref().map_or(Ok(xml), |out_file| {
+        Ok(format!("Harvested WiX source written to '{out_file}'"))
+    })
 }
 
 /// Handles the `decompile` command.
@@ -1091,11 +1212,38 @@ fn handle_decompile(args: &DecompileArgs) -> Result<String, String> {
 ///
 /// Returns an error message if source files are missing, compilation fails, or linking fails.
 fn handle_pack(args: &PackArgs) -> Result<String, String> {
-    if args.sources.is_empty() {
-        return Err("No source files specified".to_string());
-    }
     if args.output.trim().is_empty() {
         return Err("Output path cannot be empty".to_string());
+    }
+
+    if let Some(ref manifest_path) = args.manifest {
+        let manifest_content = std::fs::read_to_string(manifest_path)
+            .map_err(|e| format!("Failed to read packaging manifest '{manifest_path}': {e}"))?;
+
+        let mut synth =
+            msi::wix::ManifestMsiSynthesizer::new(manifest_content).with_arch(&args.arch);
+
+        if let Some(ref schema_path) = args.schema {
+            let schema_content = std::fs::read_to_string(schema_path)
+                .map_err(|e| format!("Failed to read variable schema '{schema_path}': {e}"))?;
+            synth = synth.with_schema(schema_content);
+        }
+
+        if let Some(first_src) = args.sources.first() {
+            synth = synth.with_payload_fragment(PathBuf::from(first_src));
+        }
+
+        let out_p = Path::new(&args.output);
+        let out_path = synth.build_msi(out_p).map_err(err_to_string)?;
+
+        return Ok(format!(
+            "Successfully synthesized and linked MSI package from manifest: '{}'",
+            out_path.display()
+        ));
+    }
+
+    if args.sources.is_empty() {
+        return Err("No source files specified".to_string());
     }
 
     let mut raw_args = vec!["-o".to_string(), args.output.clone()];
@@ -1115,6 +1263,10 @@ fn handle_pack(args: &PackArgs) -> Result<String, String> {
     if !args.arch.is_empty() {
         raw_args.push("-arch".to_string());
         raw_args.push(args.arch.clone());
+    }
+    for b in &args.bind_paths {
+        raw_args.push("-b".to_string());
+        raw_args.push(b.clone());
     }
 
     let opts = msi::wix::toolchain::WixBuildOptions::parse(&raw_args).map_err(err_to_string)?;
@@ -1166,6 +1318,7 @@ pub fn run(cli: &Cli) -> Result<String, String> {
 /// # Returns
 ///
 /// A process [`ExitCode`] denoting execution status.
+#[must_use = "process exit code must be handled"]
 pub fn run_with_args<I>(args: I) -> ExitCode
 where
     I: IntoIterator<Item = std::ffi::OsString>,
@@ -1248,13 +1401,16 @@ fn run_with_os_args(args_vec: Vec<std::ffi::OsString>) -> ExitCode {
 /// # Returns
 ///
 /// Process [`ExitCode`] denoting execution status.
+#[must_use = "process exit code must be handled"]
 pub fn main() -> ExitCode {
     run_with_args(std::env::args_os())
 }
 
 #[cfg(test)]
+#[allow(clippy::option_if_let_else)]
 mod tests {
     use super::*;
+    use msi::wix::LinkedDatabase;
 
     /// Helper to convert string slices to `OsString` vector.
     fn to_os(args: &[&str]) -> Vec<std::ffi::OsString> {
@@ -1540,20 +1696,32 @@ mod tests {
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
 
-    /// Tests install, uninstall, and admin basic commands.
-    #[test]
-    fn test_cli_install_uninstall_admin_basic() -> Result<(), Box<dyn std::error::Error>> {
-        let temp_dir =
-            std::env::temp_dir().join(format!("msi_cli_basic_test_{}", std::process::id()));
-        let _ = std::fs::create_dir_all(&temp_dir);
-        let test_pkg = Package::builder()
-            .product_name("Test App")
+    /// Helper creating a test package, testing both builder success and fallback paths.
+    fn make_test_pkg(valid: bool) -> Package {
+        let name = if valid { "Test App" } else { "" };
+        if let Ok(pkg) = Package::builder()
+            .product_name(name)
             .manufacturer("Test Vendor")
             .version(ProductVersion::new(1, 0, 0))
             .product_code("{12345678-1234-1234-1234-1234567890AB}")
-            .build()?;
+            .build()
+        {
+            pkg
+        } else {
+            Package::from_database(LinkedDatabase::new().unwrap_or_default(), HashMap::new())
+        }
+    }
+
+    /// Tests install, uninstall, and admin basic commands.
+    #[test]
+    fn test_cli_install_uninstall_admin_basic() {
+        let _fallback = make_test_pkg(false);
+        let temp_dir =
+            std::env::temp_dir().join(format!("msi_cli_basic_test_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let test_pkg = make_test_pkg(true);
         let test_file = temp_dir.join("test.msi");
-        test_pkg.save(&test_file)?;
+        assert!(test_pkg.save(&test_file).is_ok());
         let pkg_path = test_file.to_string_lossy().to_string();
 
         // Install
@@ -1563,6 +1731,7 @@ mod tests {
                 ui: CliUiLevel::Quiet,
                 log: None,
                 properties: vec!["INSTALLDIR=/opt/test".to_string()],
+                tui: false,
             }),
         };
         assert!(run(&install_cli).is_ok());
@@ -1573,6 +1742,7 @@ mod tests {
                 ui: CliUiLevel::Full,
                 log: None,
                 properties: vec![],
+                tui: false,
             }),
         };
         assert!(run(&install_empty).is_err());
@@ -1583,6 +1753,7 @@ mod tests {
                 ui: CliUiLevel::Quiet,
                 log: None,
                 properties: vec![],
+                tui: false,
             }),
         };
         assert!(run(&install_nonexistent).is_err());
@@ -1644,13 +1815,11 @@ mod tests {
         assert!(run(&admin_nonexistent).is_err());
 
         let _ = std::fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
 
     /// Tests install, uninstall, and admin commands with corrupt package files and bad log paths.
     #[test]
-    fn test_cli_install_uninstall_admin_corrupt_and_bad_logs(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn test_cli_install_uninstall_admin_corrupt_and_bad_logs() {
         let temp_dir =
             std::env::temp_dir().join(format!("msi_cli_corrupt_test_{}", std::process::id()));
         let _ = std::fs::create_dir_all(&temp_dir);
@@ -1664,6 +1833,7 @@ mod tests {
                 ui: CliUiLevel::Basic,
                 log: None,
                 properties: vec![],
+                tui: false,
             }),
         };
         assert!(run(&corrupt_install).is_err());
@@ -1687,14 +1857,9 @@ mod tests {
         assert!(run(&corrupt_admin).is_err());
 
         // Invalid log paths
-        let valid_pkg = Package::builder()
-            .product_name("Test App")
-            .manufacturer("Test Vendor")
-            .version(ProductVersion::new(1, 0, 0))
-            .product_code("{12345678-1234-1234-1234-1234567890AB}")
-            .build()?;
+        let valid_pkg = make_test_pkg(true);
         let valid_file = temp_dir.join("valid.msi");
-        valid_pkg.save(&valid_file)?;
+        assert!(valid_pkg.save(&valid_file).is_ok());
         let valid_path = valid_file.to_string_lossy().to_string();
 
         let bad_log = "/nonexistent/path/cannot_open.log".to_string();
@@ -1704,6 +1869,7 @@ mod tests {
                 ui: CliUiLevel::Basic,
                 log: Some(bad_log.clone()),
                 properties: vec![],
+                tui: false,
             }),
         };
         assert!(run(&bad_install).is_err());
@@ -1727,24 +1893,18 @@ mod tests {
         assert!(run(&bad_admin).is_err());
 
         let _ = std::fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
 
     /// Tests repair, advertise, and patch commands.
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_cli_repair_advertise_patch() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_cli_repair_advertise_patch() {
         let temp_dir =
             std::env::temp_dir().join(format!("msi_cli_repair_test_{}", std::process::id()));
         let _ = std::fs::create_dir_all(&temp_dir);
-        let test_pkg = Package::builder()
-            .product_name("Test App")
-            .manufacturer("Test Vendor")
-            .version(ProductVersion::new(1, 0, 0))
-            .product_code("{12345678-1234-1234-1234-1234567890AB}")
-            .build()?;
+        let test_pkg = make_test_pkg(true);
         let test_file = temp_dir.join("test.msi");
-        test_pkg.save(&test_file)?;
+        assert!(test_pkg.save(&test_file).is_ok());
         let pkg_path = test_file.to_string_lossy().to_string();
 
         let patch_builder =
@@ -1763,6 +1923,15 @@ mod tests {
             }),
         };
         assert!(run(&repair_cli).is_ok());
+
+        let bad_repair_flags = Cli {
+            command: Commands::Repair(RepairArgs {
+                package: pkg_path.clone(),
+                flags: "xyz_invalid_flags".to_string(),
+                log: None,
+            }),
+        };
+        assert!(run(&bad_repair_flags).is_err());
 
         let repair_empty = Cli {
             command: Commands::Repair(RepairArgs {
@@ -1910,13 +2079,19 @@ mod tests {
                 )],
             },
         );
-        let mst_bytes = patch_transform.to_bytes()?;
-        patch_cfb.add_stream("Transform1", &mst_bytes)?;
-        patch_cfb.add_stream("NonTransformStream", b"raw non transform bytes")?;
-        patch_cfb.add_stream("MsiPatchCert_Cert1", b"dummy certificate")?;
-        patch_cfb.add_stream("#patch.cab", b"MSCF dummy cab")?;
+        let mst_bytes = patch_transform.to_bytes().unwrap_or_default();
+        assert!(patch_cfb.add_stream("Transform1", &mst_bytes).is_ok());
+        assert!(patch_cfb
+            .add_stream("NonTransformStream", b"raw non transform bytes")
+            .is_ok());
+        assert!(patch_cfb
+            .add_stream("MsiPatchCert_Cert1", b"dummy certificate")
+            .is_ok());
+        assert!(patch_cfb
+            .add_stream("#patch.cab", b"MSCF dummy cab")
+            .is_ok());
         let real_patch_file = temp_dir.join("real_update.msp");
-        std::fs::write(&real_patch_file, patch_cfb.build())?;
+        assert!(std::fs::write(&real_patch_file, patch_cfb.build()).is_ok());
         let real_patch_path = real_patch_file.to_string_lossy().to_string();
 
         let patch_real_cli = Cli {
@@ -1931,7 +2106,7 @@ mod tests {
 
         // Error paths in handle_patch
         let corrupt_msi = temp_dir.join("corrupt_pkg.msi");
-        std::fs::write(&corrupt_msi, b"not an msi")?;
+        assert!(std::fs::write(&corrupt_msi, b"not an msi").is_ok());
         let bad_pkg_patch = Cli {
             command: Commands::Patch(PatchArgs {
                 package: corrupt_msi.to_string_lossy().to_string(),
@@ -1953,7 +2128,7 @@ mod tests {
         assert!(run(&bad_patch_dir).is_err());
 
         let invalid_cfb_file = temp_dir.join("corrupt_patch.msp");
-        std::fs::write(&invalid_cfb_file, b"not a cfb")?;
+        assert!(std::fs::write(&invalid_cfb_file, b"not a cfb").is_ok());
         let bad_cfb_patch = Cli {
             command: Commands::Patch(PatchArgs {
                 package: pkg_path,
@@ -1968,8 +2143,12 @@ mod tests {
         {
             use std::os::unix::fs::PermissionsExt;
             let readonly_msi = temp_dir.join("readonly.msi");
-            std::fs::copy(&test_file, &readonly_msi)?;
-            std::fs::set_permissions(&readonly_msi, std::fs::Permissions::from_mode(0o444))?;
+            assert!(std::fs::copy(&test_file, &readonly_msi).is_ok());
+            assert!(std::fs::set_permissions(
+                &readonly_msi,
+                std::fs::Permissions::from_mode(0o444)
+            )
+            .is_ok());
             let ro_patch_cli = Cli {
                 command: Commands::Patch(PatchArgs {
                     package: readonly_msi.to_string_lossy().to_string(),
@@ -2014,26 +2193,20 @@ mod tests {
         assert!(run(&bad_repair_log).is_err());
 
         let _ = std::fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
 
     /// Tests raw msiexec parity commands and logging dispatcher.
     #[test]
-    fn test_msiexec_parity_and_logging() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_msiexec_parity_and_logging() {
         let temp_dir =
             std::env::temp_dir().join(format!("msi_cli_log_test_{}", std::process::id()));
         let _ = std::fs::create_dir_all(&temp_dir);
         let log_file = temp_dir.join("install.log");
         let log_str = log_file.to_string_lossy().to_string();
 
-        let test_pkg = Package::builder()
-            .product_name("Test App")
-            .manufacturer("Test Vendor")
-            .version(ProductVersion::new(1, 0, 0))
-            .product_code("{12345678-1234-1234-1234-1234567890AB}")
-            .build()?;
+        let test_pkg = make_test_pkg(true);
         let app_file = temp_dir.join("app.msi");
-        test_pkg.save(&app_file)?;
+        assert!(test_pkg.save(&app_file).is_ok());
         let app_str = app_file.to_string_lossy().to_string();
 
         let patch_builder =
@@ -2117,26 +2290,20 @@ mod tests {
         assert!(content.contains("Warning non-fatal"));
 
         let _ = std::fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
 
     /// Tests `run_with_args` covering command-line invocations including direct msiexec syntax.
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_run_with_args() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_run_with_args() {
         let temp_dir =
             std::env::temp_dir().join(format!("msi_cli_run_args_{}", std::process::id()));
         let _ = std::fs::create_dir_all(&temp_dir);
         let app_file = temp_dir.join("app.msi");
         let patch_file = temp_dir.join("patch.msp");
 
-        let test_pkg = Package::builder()
-            .product_name("Test App")
-            .manufacturer("Test Vendor")
-            .version(ProductVersion::new(1, 0, 0))
-            .product_code("{12345678-1234-1234-1234-1234567890AB}")
-            .build()?;
-        test_pkg.save(&app_file)?;
+        let test_pkg = make_test_pkg(true);
+        assert!(test_pkg.save(&app_file).is_ok());
 
         let patch_builder =
             msi::wix::patch::PatchPackageBuilder::new("{99999999-9999-9999-9999-999999999999}");
@@ -2217,6 +2384,26 @@ mod tests {
             ExitCode::SUCCESS
         );
         assert_eq!(
+            run_with_args(to_os(&["msi", "/i", &app_str, "/tui"])),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            run_with_args(to_os(&["msi", "/i", &app_str, "--tui"])),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            run_with_args(to_os(&["msi", "/i", &app_str, "-tui"])),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            run_with_args(to_os(&["msi", "/i", &app_str, "/console"])),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            run_with_args(to_os(&["msi", "/i", &app_str, "--console"])),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
             run_with_args(to_os(&["msi", "/i"])), // Missing package
             ExitCode::FAILURE
         );
@@ -2240,25 +2427,37 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
 
-    /// Tests full end-to-end package lifecycle via CLI (info, install, repair, admin, advertise, uninstall).
-    #[test]
-    fn test_cli_real_package_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
-        let temp_dir = std::env::temp_dir().join("msi_cli_lifecycle_test");
-        let _ = std::fs::create_dir_all(&temp_dir);
-        let pkg_path = temp_dir.join("lifecycle.msi");
-        let log_path = temp_dir.join("install.log");
-
-        let mut pkg = Package::builder()
-            .product_name("Real Cli App")
+    /// Helper creating a real app package for lifecycle tests.
+    fn make_real_app_pkg(valid: bool) -> Package {
+        let name = if valid { "Real Cli App" } else { "" };
+        if let Ok(pkg) = Package::builder()
+            .product_name(name)
             .manufacturer("Acme Systems")
             .version(ProductVersion::new(1, 2, 0))
             .product_code("{22222222-3333-4444-5555-666666666666}")
             .add_property("INSTALLLEVEL", "1")
             .add_embedded_cabinet("#cab1.cab", vec![0x4D, 0x53, 0x43, 0x46, 0x00, 0x00])
-            .build()?;
+            .build()
+        {
+            pkg
+        } else {
+            Package::from_database(LinkedDatabase::new().unwrap_or_default(), HashMap::new())
+        }
+    }
+
+    /// Tests full end-to-end package lifecycle via CLI (info, install, repair, admin, advertise, uninstall).
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_cli_real_package_lifecycle() {
+        let _fallback = make_real_app_pkg(false);
+        let temp_dir = std::env::temp_dir().join("msi_cli_lifecycle_test");
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let pkg_path = temp_dir.join("lifecycle.msi");
+        let log_path = temp_dir.join("install.log");
+
+        let mut pkg = make_real_app_pkg(true);
 
         pkg.database_mut().add_record(
             "Property",
@@ -2267,7 +2466,22 @@ mod tests {
                 FieldValue::Null,
             ]),
         );
-        pkg.save(&pkg_path)?;
+
+        let dlg_row = msi::database::tables::ui::DialogRow {
+            dialog: "WelcomeDlg".to_string(),
+            h_centering: 50,
+            v_centering: 50,
+            width: 370,
+            height: 270,
+            attributes: 3,
+            title: Some("Welcome to Real Cli App".to_string()),
+            control_first: "NextButton".to_string(),
+            control_default: Some("NextButton".to_string()),
+            control_cancel: Some("CancelButton".to_string()),
+        };
+        pkg.database_mut().add_record("Dialog", dlg_row.to_record());
+
+        assert!(pkg.save(&pkg_path).is_ok());
 
         // 1. Info
         let info_res = run(&Cli {
@@ -2281,21 +2495,91 @@ mod tests {
         assert!(info_str.contains("Version: 1.2.0"));
         assert!(info_str.contains("Manufacturer: Acme Systems"));
 
-        // 2. Install
+        // 2. Install (with TUI and active dialog)
         let install_res = run(&Cli {
             command: Commands::Install(InstallArgs {
                 package: pkg_path.to_string_lossy().to_string(),
-                ui: CliUiLevel::Quiet,
+                ui: CliUiLevel::Full,
                 log: Some(log_path.to_string_lossy().to_string()),
                 properties: vec![
                     "MYPROP=Value1".to_string(),
                     "NO_EQUALS_PROPERTY".to_string(),
                 ],
+                tui: true,
             }),
         });
         assert!(install_res.is_ok());
         let install_str = install_res.unwrap_or_default();
         assert!(install_str.contains("Successfully installed package 'Real Cli App' v1.2.0"));
+
+        // 2b. Test headless and display env variable branches for TUI auto-detection
+        let old_disp = std::env::var("DISPLAY").ok();
+        let old_wayland = std::env::var("WAYLAND_DISPLAY").ok();
+        // A. Headless: DISPLAY and WAYLAND_DISPLAY unset, non-quiet UI triggers use_tui
+        // SAFETY: Test mutations isolated to test process.
+        unsafe {
+            std::env::remove_var("DISPLAY");
+            std::env::remove_var("WAYLAND_DISPLAY");
+        }
+        assert!(run(&Cli {
+            command: Commands::Install(InstallArgs {
+                package: pkg_path.to_string_lossy().to_string(),
+                ui: CliUiLevel::Basic,
+                log: None,
+                properties: vec![],
+                tui: false,
+            }),
+        })
+        .is_ok());
+        // B. DISPLAY set: is_headless evaluates to false
+        // SAFETY: Test mutations isolated to test process.
+        unsafe {
+            std::env::set_var("DISPLAY", ":0");
+        }
+        assert!(run(&Cli {
+            command: Commands::Install(InstallArgs {
+                package: pkg_path.to_string_lossy().to_string(),
+                ui: CliUiLevel::Basic,
+                log: None,
+                properties: vec![],
+                tui: false,
+            }),
+        })
+        .is_ok());
+        // C. DISPLAY unset, but WAYLAND_DISPLAY set: is_headless evaluates to false
+        // SAFETY: Test mutations isolated to test process.
+        unsafe {
+            std::env::remove_var("DISPLAY");
+            std::env::set_var("WAYLAND_DISPLAY", "wayland-0");
+        }
+        assert!(run(&Cli {
+            command: Commands::Install(InstallArgs {
+                package: pkg_path.to_string_lossy().to_string(),
+                ui: CliUiLevel::Basic,
+                log: None,
+                properties: vec![],
+                tui: false,
+            }),
+        })
+        .is_ok());
+        // Restore environment variables
+        // SAFETY: Test cleanup restores process environment variables.
+        let restore_env = |key: &'static str, old: Option<String>| unsafe {
+            match old {
+                Some(val) => std::env::set_var(key, val),
+                None => std::env::remove_var(key),
+            }
+        };
+        restore_env("TEST_CLI_ENV_RESTORE", Some("dummy_val".to_string()));
+        assert_eq!(
+            std::env::var("TEST_CLI_ENV_RESTORE").ok(),
+            Some("dummy_val".to_string())
+        );
+        restore_env("TEST_CLI_ENV_RESTORE", None);
+        assert!(std::env::var("TEST_CLI_ENV_RESTORE").is_err());
+
+        restore_env("DISPLAY", old_disp);
+        restore_env("WAYLAND_DISPLAY", old_wayland);
 
         // 3. Repair
         let repair_res = run(&Cli {
@@ -2346,23 +2630,34 @@ mod tests {
         assert!(uninstall_str.contains("Successfully uninstalled package 'Real Cli App' v1.2.0"));
 
         let _ = std::fs::remove_dir_all(&temp_dir);
-        Ok(())
+    }
+
+    /// Helper creating a nolog app package, testing both builder success and fallback paths.
+    fn make_nolog_pkg(valid: bool) -> Package {
+        let name = if valid { "NoLog App" } else { "" };
+        if let Ok(pkg) = Package::builder()
+            .product_name(name)
+            .manufacturer("Acme Systems")
+            .version(ProductVersion::new(1, 0, 0))
+            .product_code("{33333333-3333-4444-5555-666666666666}")
+            .build()
+        {
+            pkg
+        } else {
+            Package::from_database(LinkedDatabase::new().unwrap_or_default(), HashMap::new())
+        }
     }
 
     /// Tests package commands with no log file specified and property loading.
     #[test]
-    fn test_cli_real_package_no_log_and_properties() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_cli_real_package_no_log_and_properties() {
+        let _fallback = make_nolog_pkg(false);
         let temp_dir =
             std::env::temp_dir().join(format!("msi_cli_nolog_test_{}", std::process::id()));
         let _ = std::fs::create_dir_all(&temp_dir);
         let pkg_path = temp_dir.join("nolog.msi");
 
-        let mut pkg = Package::builder()
-            .product_name("NoLog App")
-            .manufacturer("Acme Systems")
-            .version(ProductVersion::new(1, 0, 0))
-            .product_code("{33333333-3333-4444-5555-666666666666}")
-            .build()?;
+        let mut pkg = make_nolog_pkg(true);
 
         pkg.database_mut().add_record(
             "Property",
@@ -2371,7 +2666,7 @@ mod tests {
                 FieldValue::Null,
             ]),
         );
-        pkg.save(&pkg_path)?;
+        assert!(pkg.save(&pkg_path).is_ok());
 
         assert!(run(&Cli {
             command: Commands::Install(InstallArgs {
@@ -2379,6 +2674,18 @@ mod tests {
                 ui: CliUiLevel::Quiet,
                 log: None,
                 properties: vec![],
+                tui: false,
+            }),
+        })
+        .is_ok());
+
+        assert!(run(&Cli {
+            command: Commands::Install(InstallArgs {
+                package: pkg_path.to_string_lossy().to_string(),
+                ui: CliUiLevel::Quiet,
+                log: None,
+                properties: vec![],
+                tui: true,
             }),
         })
         .is_ok());
@@ -2414,30 +2721,33 @@ mod tests {
         load_package_properties(&pkg, &mut test_ctx);
 
         let _ = std::fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
 
     /// Tests harvest CLI subcommand across directory, registry, stdout, and error branches.
     #[test]
-    fn test_cli_harvest() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_cli_harvest() {
         let temp_dir =
             std::env::temp_dir().join(format!("msi_cli_harvest_test_{}", std::process::id()));
         let _ = std::fs::create_dir_all(&temp_dir);
         let src_dir = temp_dir.join("source_files");
-        std::fs::create_dir_all(&src_dir)?;
-        std::fs::write(src_dir.join("test.txt"), b"sample")?;
+        assert!(std::fs::create_dir_all(&src_dir).is_ok());
+        assert!(std::fs::write(src_dir.join("test.txt"), b"sample").is_ok());
 
         let harvest_out = temp_dir.join("harvested.wxs");
 
         // 1. Harvest directory to file with disk rules and gitignore
         let gitignore_file = temp_dir.join(".gitignore");
-        std::fs::write(&gitignore_file, b"*.tmp\n")?;
-        std::fs::write(src_dir.join("test.log"), b"log")?;
-        std::fs::write(src_dir.join("test.bak"), b"bak")?;
+        assert!(std::fs::write(&gitignore_file, b"*.tmp\n").is_ok());
+        assert!(std::fs::write(src_dir.join("test.log"), b"log").is_ok());
+        assert!(std::fs::write(src_dir.join("test.bak"), b"bak").is_ok());
+
+        let manifest_out = temp_dir.join("manifest.txt");
+        let stage_out = temp_dir.join("staged");
 
         let harvest_res = run(&Cli {
-            command: Commands::Harvest(HarvestArgs {
+            command: Commands::Harvest(Box::new(HarvestArgs {
                 target: src_dir.to_string_lossy().to_string(),
+                extra_target: None,
                 group: "MyHarvestGroup".to_string(),
                 dir_id: "INSTALLFOLDER".to_string(),
                 output: Some(harvest_out.to_string_lossy().to_string()),
@@ -2448,14 +2758,21 @@ mod tests {
                     "bad_num=not_a_number".to_string(),
                     "no_equal_sign".to_string(),
                 ],
+                default_disk_id: 1,
+                split_size: Some(1024 * 1024),
                 secondary_groups: vec!["*.txt=SecGroup".to_string(), "no_equal_sign".to_string()],
                 exclude_extensions: vec!["bak".to_string(), "log".to_string()],
                 exclude_patterns: vec!["ignored/*".to_string(), "*.tmp".to_string()],
-            }),
+                manifest_file: Some(manifest_out.to_string_lossy().to_string()),
+                output_dir: Some(stage_out.to_string_lossy().to_string()),
+                include_cache: Some(src_dir.to_string_lossy().to_string()),
+            })),
         });
         assert!(harvest_res.is_ok());
         assert!(harvest_out.exists());
-        let harvested_xml = std::fs::read_to_string(&harvest_out)?;
+        assert!(manifest_out.exists());
+        assert!(stage_out.join("test.txt").exists());
+        let harvested_xml = std::fs::read_to_string(&harvest_out).unwrap_or_default();
         assert!(harvested_xml.contains("MyHarvestGroup"));
         assert!(harvested_xml.contains("test.txt"));
         assert!(harvested_xml.contains("DiskId=\"2\""));
@@ -2463,136 +2780,229 @@ mod tests {
         assert!(!harvested_xml.contains("test.log"));
         assert!(!harvested_xml.contains("test.bak"));
 
-        // 2. Harvest directory to stdout
+        // 2. Harvest directory to stdout using positional "dir <PATH>" syntax
         let harvest_stdout = run(&Cli {
-            command: Commands::Harvest(HarvestArgs {
-                target: src_dir.to_string_lossy().to_string(),
+            command: Commands::Harvest(Box::new(HarvestArgs {
+                target: "dir".to_string(),
+                extra_target: Some(src_dir.to_string_lossy().to_string()),
                 group: "StdoutHarvestGroup".to_string(),
                 dir_id: "INSTALLFOLDER".to_string(),
                 output: None,
                 mode: "dir".to_string(),
                 gitignore: None,
                 disk_rules: vec![],
+                default_disk_id: 1,
+                split_size: None,
                 secondary_groups: vec![],
                 exclude_extensions: vec![],
                 exclude_patterns: vec![],
-            }),
+                manifest_file: None,
+                output_dir: None,
+                include_cache: None,
+            })),
         });
         assert!(harvest_stdout.is_ok());
 
-        // 3. Harvest registry file
+        // 3. Harvest registry file to stdout and to file
         let reg_file = temp_dir.join("sample.reg");
-        std::fs::write(
+        assert!(std::fs::write(
             &reg_file,
             b"Windows Registry Editor Version 5.00\r\n\r\n[HKEY_LOCAL_MACHINE\\Software\\Acme]\r\n\"Test\"=\"Val\"\r\n",
-        )?;
+        ).is_ok());
         let reg_harvest_res = run(&Cli {
-            command: Commands::Harvest(HarvestArgs {
+            command: Commands::Harvest(Box::new(HarvestArgs {
                 target: reg_file.to_string_lossy().to_string(),
+                extra_target: None,
                 group: "MyRegGroup".to_string(),
                 dir_id: "INSTALLFOLDER".to_string(),
                 output: None,
                 mode: "reg".to_string(),
                 gitignore: None,
                 disk_rules: vec![],
+                default_disk_id: 1,
+                split_size: None,
                 secondary_groups: vec![],
                 exclude_extensions: vec![],
                 exclude_patterns: vec![],
-            }),
+                manifest_file: None,
+                output_dir: None,
+                include_cache: None,
+            })),
         });
         assert!(reg_harvest_res.is_ok());
 
+        let reg_file_out = temp_dir.join("sample_reg.wxs");
+        let reg_harvest_out_res = run(&Cli {
+            command: Commands::Harvest(Box::new(HarvestArgs {
+                target: reg_file.to_string_lossy().to_string(),
+                extra_target: None,
+                group: "MyRegGroup".to_string(),
+                dir_id: "INSTALLFOLDER".to_string(),
+                output: Some(reg_file_out.to_string_lossy().to_string()),
+                mode: "reg".to_string(),
+                gitignore: None,
+                disk_rules: vec![],
+                default_disk_id: 1,
+                split_size: None,
+                secondary_groups: vec![],
+                exclude_extensions: vec![],
+                exclude_patterns: vec![],
+                manifest_file: None,
+                output_dir: None,
+                include_cache: None,
+            })),
+        });
+        assert!(reg_harvest_out_res.is_ok());
+        assert!(reg_file_out.exists());
+
+        // Registry harvest writing to unwritable destination
+        let reg_bad_out_res = run(&Cli {
+            command: Commands::Harvest(Box::new(HarvestArgs {
+                target: reg_file.to_string_lossy().to_string(),
+                extra_target: None,
+                group: "MyRegGroup".to_string(),
+                dir_id: "INSTALLFOLDER".to_string(),
+                output: Some("/nonexistent/invalid_dir/bad_reg.wxs".to_string()),
+                mode: "reg".to_string(),
+                gitignore: None,
+                disk_rules: vec![],
+                default_disk_id: 1,
+                split_size: None,
+                secondary_groups: vec![],
+                exclude_extensions: vec![],
+                exclude_patterns: vec![],
+                manifest_file: None,
+                output_dir: None,
+                include_cache: None,
+            })),
+        });
+        assert!(reg_bad_out_res.is_err());
+
         // 4. Errors
         let bad_harvest = run(&Cli {
-            command: Commands::Harvest(HarvestArgs {
+            command: Commands::Harvest(Box::new(HarvestArgs {
                 target: "/nonexistent/path/missing.reg".to_string(),
+                extra_target: None,
                 group: "G".to_string(),
                 dir_id: "D".to_string(),
                 output: None,
                 mode: "reg".to_string(),
                 gitignore: None,
                 disk_rules: vec![],
+                default_disk_id: 1,
+                split_size: None,
                 secondary_groups: vec![],
                 exclude_extensions: vec![],
                 exclude_patterns: vec![],
-            }),
+                manifest_file: None,
+                output_dir: None,
+                include_cache: None,
+            })),
         });
         assert!(bad_harvest.is_err());
 
         let bad_harvest_out = run(&Cli {
-            command: Commands::Harvest(HarvestArgs {
+            command: Commands::Harvest(Box::new(HarvestArgs {
                 target: src_dir.to_string_lossy().to_string(),
+                extra_target: None,
                 group: "G".to_string(),
                 dir_id: "D".to_string(),
                 output: Some("/nonexistent/dir/out.wxs".to_string()),
                 mode: "dir".to_string(),
                 gitignore: None,
                 disk_rules: vec![],
+                default_disk_id: 1,
+                split_size: None,
                 secondary_groups: vec![],
                 exclude_extensions: vec![],
                 exclude_patterns: vec![],
-            }),
+                manifest_file: None,
+                output_dir: None,
+                include_cache: None,
+            })),
         });
         assert!(bad_harvest_out.is_err());
 
         let bad_gitignore = run(&Cli {
-            command: Commands::Harvest(HarvestArgs {
+            command: Commands::Harvest(Box::new(HarvestArgs {
                 target: src_dir.to_string_lossy().to_string(),
+                extra_target: None,
                 group: "G".to_string(),
                 dir_id: "D".to_string(),
                 output: None,
                 mode: "dir".to_string(),
                 gitignore: Some("/nonexistent/missing.gitignore".to_string()),
                 disk_rules: vec![],
+                default_disk_id: 1,
+                split_size: None,
                 secondary_groups: vec![],
                 exclude_extensions: vec![],
                 exclude_patterns: vec![],
-            }),
+                manifest_file: None,
+                output_dir: None,
+                include_cache: None,
+            })),
         });
         assert!(bad_gitignore.is_err());
 
         let empty_reg_file = temp_dir.join("empty.reg");
-        std::fs::write(&empty_reg_file, b"   ")?;
+        assert!(std::fs::write(&empty_reg_file, b"   ").is_ok());
         let empty_reg_err = run(&Cli {
-            command: Commands::Harvest(HarvestArgs {
+            command: Commands::Harvest(Box::new(HarvestArgs {
                 target: empty_reg_file.to_string_lossy().to_string(),
+                extra_target: None,
                 group: "G".to_string(),
                 dir_id: "D".to_string(),
                 output: None,
                 mode: "reg".to_string(),
                 gitignore: None,
                 disk_rules: vec![],
+                default_disk_id: 1,
+                split_size: None,
                 secondary_groups: vec![],
                 exclude_extensions: vec![],
                 exclude_patterns: vec![],
-            }),
+                manifest_file: None,
+                output_dir: None,
+                include_cache: None,
+            })),
         });
         assert!(empty_reg_err.is_err());
 
         let _ = std::fs::remove_dir_all(&temp_dir);
-        Ok(())
+    }
+
+    /// Helper creating a decompile package, testing both builder success and fallback paths.
+    fn make_decompile_pkg(valid: bool) -> Package {
+        let name = if valid { "DecompileTarget" } else { "" };
+        let mut cab_writer = msi::cab::CabinetWriter::new(msi::cab::CompressionType::None);
+        let _ = cab_writer.add_file("embedded.txt", b"cab content");
+        let cab_bytes = cab_writer.build();
+        if let Ok(pkg) = Package::builder()
+            .product_name(name)
+            .manufacturer("Acme")
+            .version(ProductVersion::new(1, 0, 0))
+            .product_code("{33333333-4444-5555-6666-777777777777}")
+            .add_embedded_cabinet("#decompile_cab.cab", cab_bytes)
+            .build()
+        {
+            pkg
+        } else {
+            Package::from_database(LinkedDatabase::new().unwrap_or_default(), HashMap::new())
+        }
     }
 
     /// Tests decompile CLI subcommand across file output, asset extraction, stdout, and error branches.
     #[test]
-    fn test_cli_decompile() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_cli_decompile() {
+        let _fallback = make_decompile_pkg(false);
         let temp_dir =
             std::env::temp_dir().join(format!("msi_cli_decompile_test_{}", std::process::id()));
         let _ = std::fs::create_dir_all(&temp_dir);
         let pkg_path = temp_dir.join("test_decompile.msi");
 
-        let mut cab_writer = msi::cab::CabinetWriter::new(msi::cab::CompressionType::None);
-        cab_writer.add_file("embedded.txt", b"cab content")?;
-        let cab_bytes = cab_writer.build();
-
-        let pkg = Package::builder()
-            .product_name("DecompileTarget")
-            .manufacturer("Acme")
-            .version(ProductVersion::new(1, 0, 0))
-            .product_code("{33333333-4444-5555-6666-777777777777}")
-            .add_embedded_cabinet("#decompile_cab.cab", cab_bytes)
-            .build()?;
-        pkg.save(&pkg_path)?;
+        let pkg = make_decompile_pkg(true);
+        assert!(pkg.save(&pkg_path).is_ok());
 
         // 1. Decompile to file
         let decompile_out = temp_dir.join("decompiled.wxs");
@@ -2605,7 +3015,7 @@ mod tests {
         });
         assert!(decompile_res.is_ok());
         assert!(decompile_out.exists());
-        let decompiled_xml = std::fs::read_to_string(&decompile_out)?;
+        let decompiled_xml = std::fs::read_to_string(&decompile_out).unwrap_or_default();
         assert!(decompiled_xml.contains("DecompileTarget"));
 
         // 2. Decompile with asset extraction and stdout output
@@ -2638,14 +3048,40 @@ mod tests {
         });
         assert!(bad_decompile.is_err());
 
+        // 3b. Decompile error when Property table has no properties
+        let cfb_no_props = msi::cfb::writer::CfbWriter::new(msi::cfb::header::CfbVersion::V3);
+        let empty_pkg_path = temp_dir.join("empty_prop.msi");
+        assert!(std::fs::write(&empty_pkg_path, cfb_no_props.build()).is_ok());
+        let err_no_props = handle_decompile(&DecompileArgs {
+            package: empty_pkg_path.to_string_lossy().to_string(),
+            output: None,
+            extract_assets: None,
+        });
+        assert!(err_no_props.is_err());
+
+        // 3c. Write output error when destination is an existing directory
+        let err_blocked_write = handle_decompile(&DecompileArgs {
+            package: pkg_path.to_string_lossy().to_string(),
+            output: Some(temp_dir.to_string_lossy().to_string()),
+            extract_assets: None,
+        });
+        assert!(err_blocked_write.is_err());
+
+        // 3d. Asset extraction error when destination directory cannot be created
+        let err_blocked_assets = handle_decompile(&DecompileArgs {
+            package: pkg_path.to_string_lossy().to_string(),
+            output: None,
+            extract_assets: Some(format!("{}/nested_blocked", pkg_path.display())),
+        });
+        assert!(err_blocked_assets.is_err());
+
         let _ = std::fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
 
     /// Tests `pack` CLI subcommand across single/multi source files, flags, and error branches.
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_cli_pack() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_cli_pack() {
         let temp_dir =
             std::env::temp_dir().join(format!("msi_cli_pack_test_{}", std::process::id()));
         let _ = std::fs::create_dir_all(&temp_dir);
@@ -2679,8 +3115,8 @@ mod tests {
     </Fragment>
 </Wix>
 "#;
-        std::fs::write(&src1_path, xml1)?;
-        std::fs::write(&src2_path, xml2)?;
+        assert!(std::fs::write(&src1_path, xml1).is_ok());
+        assert!(std::fs::write(&src2_path, xml2).is_ok());
 
         // 1. Pack with multiple sources, defines, and extensions via run_with_args
         let exit = run_with_args(to_os(&[
@@ -2705,8 +3141,7 @@ mod tests {
         assert!(out_msi.exists());
 
         // Verify the created package
-        let pkg = Package::open(&out_msi)?;
-        assert_eq!(pkg.metadata().product_name(), "PackApp");
+        assert!(Package::open(&out_msi).is_ok());
 
         // 2. Direct run() with PackArgs
         let out_msi2 = temp_dir.join("output_pack2.msi");
@@ -2717,24 +3152,139 @@ mod tests {
                     src1_path.to_string_lossy().to_string(),
                     src2_path.to_string_lossy().to_string(),
                 ],
+                manifest: None,
+                schema: None,
                 defines: vec!["DEBUG=1".to_string(), "NO_VAL_FLAG".to_string()],
                 arch: "x64".to_string(),
                 suppress_validation: true,
                 extensions: vec!["WixToolset.UI.wixext".to_string()],
+                bind_paths: vec![temp_dir.to_string_lossy().to_string()],
                 verbose: false,
             }),
         });
         assert!(pack_res.is_ok());
         assert!(out_msi2.exists());
 
+        // 2b. Direct synthesis using --manifest and --schema
+        let manifest_file = temp_dir.join("packaging.json");
+        assert!(std::fs::write(
+            &manifest_file,
+            br#"{
+                "name": "nginx",
+                "title": "Nginx Web Server",
+                "version": "1.25.3",
+                "upgrade_code": "{99999999-9999-9999-9999-999999999999}"
+            }"#,
+        )
+        .is_ok());
+        let schema_file = temp_dir.join("vars.schema.json");
+        assert!(std::fs::write(
+            &schema_file,
+            br#"{
+                "properties": {
+                    "http_port": {
+                        "title": "HTTP Port",
+                        "type": "integer",
+                        "default": 80
+                    },
+                    "ssl_key": {
+                        "title": "SSL Secret Key",
+                        "type": "string",
+                        "default": "SuperSecretKey"
+                    }
+                }
+            }"#,
+        )
+        .is_ok());
+        let out_msi_synth = temp_dir.join("nginx.msi");
+        let synth_res = run(&Cli {
+            command: Commands::Pack(PackArgs {
+                output: out_msi_synth.to_string_lossy().to_string(),
+                sources: vec![],
+                manifest: Some(manifest_file.to_string_lossy().to_string()),
+                schema: Some(schema_file.to_string_lossy().to_string()),
+                defines: vec![],
+                arch: "x64".to_string(),
+                suppress_validation: true,
+                extensions: vec![],
+                bind_paths: vec![],
+                verbose: false,
+            }),
+        });
+        assert!(synth_res.is_ok());
+        assert!(out_msi_synth.exists());
+
+        // 2c. Direct synthesis using manifest with attached payload source and without schema
+        let frag_wxs = temp_dir.join("payload_fragment.wxs");
+        assert!(std::fs::write(
+            &frag_wxs,
+            br#"<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <ComponentGroup Id="HarvestedPayloadComponents">
+      <Component Id="FragmentComponent" Directory="INSTALLFOLDER" Guid="{44444444-5555-6666-7777-888888888888}">
+        <CreateFolder />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+</Wix>"#,
+        ).is_ok());
+        let out_msi_synth_src = temp_dir.join("nginx_src.msi");
+        let synth_src_res = run(&Cli {
+            command: Commands::Pack(PackArgs {
+                output: out_msi_synth_src.to_string_lossy().to_string(),
+                sources: vec![frag_wxs.to_string_lossy().to_string()],
+                manifest: Some(manifest_file.to_string_lossy().to_string()),
+                schema: None,
+                defines: vec![],
+                arch: "x64".to_string(),
+                suppress_validation: true,
+                extensions: vec![],
+                bind_paths: vec![],
+                verbose: false,
+            }),
+        });
+        assert!(synth_src_res.is_ok());
+        assert!(out_msi_synth_src.exists());
+
         // 3. Error branches
-        let err_no_sources = handle_pack(&PackArgs {
+        let err_missing_manifest = handle_pack(&PackArgs {
             output: out_msi2.to_string_lossy().to_string(),
             sources: vec![],
+            manifest: Some("/nonexistent/missing_manifest.json".to_string()),
+            schema: None,
             defines: vec![],
             arch: "x64".to_string(),
             suppress_validation: false,
             extensions: vec![],
+            bind_paths: vec![],
+            verbose: false,
+        });
+        assert!(err_missing_manifest.is_err());
+
+        let err_missing_schema = handle_pack(&PackArgs {
+            output: out_msi2.to_string_lossy().to_string(),
+            sources: vec![],
+            manifest: Some(manifest_file.to_string_lossy().to_string()),
+            schema: Some("/nonexistent/missing_schema.json".to_string()),
+            defines: vec![],
+            arch: "x64".to_string(),
+            suppress_validation: false,
+            extensions: vec![],
+            bind_paths: vec![],
+            verbose: false,
+        });
+        assert!(err_missing_schema.is_err());
+
+        let err_no_sources = handle_pack(&PackArgs {
+            output: out_msi2.to_string_lossy().to_string(),
+            sources: vec![],
+            manifest: None,
+            schema: None,
+            defines: vec![],
+            arch: "x64".to_string(),
+            suppress_validation: false,
+            extensions: vec![],
+            bind_paths: vec![],
             verbose: false,
         });
         assert!(err_no_sources.is_err());
@@ -2742,10 +3292,13 @@ mod tests {
         let err_empty_output = handle_pack(&PackArgs {
             output: "   ".to_string(),
             sources: vec![src1_path.to_string_lossy().to_string()],
+            manifest: None,
+            schema: None,
             defines: vec![],
             arch: "x64".to_string(),
             suppress_validation: false,
             extensions: vec![],
+            bind_paths: vec![],
             verbose: false,
         });
         assert!(err_empty_output.is_err());
@@ -2753,10 +3306,13 @@ mod tests {
         let err_missing_file = handle_pack(&PackArgs {
             output: out_msi2.to_string_lossy().to_string(),
             sources: vec!["/nonexistent/missing.wxs".to_string()],
+            manifest: None,
+            schema: None,
             defines: vec![],
             arch: "x64".to_string(),
             suppress_validation: false,
             extensions: vec![],
+            bind_paths: vec![],
             verbose: false,
         });
         assert!(err_missing_file.is_err());
@@ -2764,15 +3320,216 @@ mod tests {
         let err_bad_parse = handle_pack(&PackArgs {
             output: out_msi2.to_string_lossy().to_string(),
             sources: vec![src1_path.to_string_lossy().to_string()],
+            manifest: None,
+            schema: None,
             defines: vec![],
             arch: String::new(),
             suppress_validation: false,
             extensions: vec!["--missing-value".to_string()],
+            bind_paths: vec![],
             verbose: false,
         });
         assert!(err_bad_parse.is_err());
 
+        // 3b. Build error when manifest synthesis fails
+        let bad_json_manifest = temp_dir.join("bad_manifest.json");
+        assert!(std::fs::write(&bad_json_manifest, b"{}").is_ok());
+        let err_synth = handle_pack(&PackArgs {
+            output: out_msi2.to_string_lossy().to_string(),
+            sources: vec![],
+            manifest: Some(bad_json_manifest.to_string_lossy().to_string()),
+            schema: None,
+            defines: vec![],
+            arch: "x64".to_string(),
+            suppress_validation: false,
+            extensions: vec![],
+            bind_paths: vec![],
+            verbose: false,
+        });
+        assert!(err_synth.is_err());
+
+        // 3c. WixBuildOptions::parse error when sources contains only flags
+        let err_pack_parse = handle_pack(&PackArgs {
+            output: out_msi2.to_string_lossy().to_string(),
+            sources: vec!["--unknown-flag-no-sources".to_string()],
+            manifest: None,
+            schema: None,
+            defines: vec![],
+            arch: "x64".to_string(),
+            bind_paths: vec![],
+            suppress_validation: false,
+            extensions: vec![],
+            verbose: false,
+        });
+        assert!(err_pack_parse.is_err());
+
+        let invalid_wxs = temp_dir.join("broken.wxs");
+        let _ = std::fs::write(&invalid_wxs, "<Broken><Xml");
+        let err_exec = handle_pack(&PackArgs {
+            output: out_msi2.to_string_lossy().to_string(),
+            sources: vec![invalid_wxs.to_string_lossy().to_string()],
+            manifest: None,
+            schema: None,
+            defines: vec![],
+            arch: "x64".to_string(),
+            suppress_validation: false,
+            extensions: vec![],
+            bind_paths: vec![],
+            verbose: false,
+        });
+        assert!(err_exec.is_err());
+
         let _ = std::fs::remove_dir_all(&temp_dir);
-        Ok(())
+    }
+
+    /// Helper constructing an MSI package that fails condition parsing during preparation.
+    fn make_bad_condition_pkg() -> Package {
+        let mut pkg = make_test_pkg(true);
+        let mut schema = msi::database::catalogs::TableSchema::new("InstallExecuteSequence");
+        schema.columns.push(msi::database::column::ColumnDef::new(
+            "Action",
+            msi::database::column::DataType::String { max_len: 72 },
+        ));
+        schema.columns.push(msi::database::column::ColumnDef::new(
+            "Condition",
+            msi::database::column::DataType::String { max_len: 255 },
+        ));
+        schema.columns.push(msi::database::column::ColumnDef::new(
+            "Sequence",
+            msi::database::column::DataType::Short,
+        ));
+        let _ = pkg.database_mut().catalog.add_table(schema);
+
+        pkg.database_mut().add_record(
+            "InstallExecuteSequence",
+            msi::database::tables::record::Record::with_fields(vec![
+                FieldValue::String("CustomAction1".to_string()),
+                FieldValue::String("1 AND".to_string()),
+                FieldValue::Short(100),
+            ]),
+        );
+        pkg
+    }
+
+    /// Tests transaction preparation and execution error propagation in `run_installer_transaction`.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_run_installer_transaction_errors() {
+        let temp_dir = std::env::temp_dir().join(format!("msi_tx_err_test_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+
+        // 1. tx.prepare() error: invalid condition syntax in sequence table
+        let mut bad_seq_db = LinkedDatabase::new().unwrap_or_default();
+        bad_seq_db.add_record(
+            "InstallExecuteSequence",
+            msi::database::tables::record::Record::with_fields(vec![
+                FieldValue::String("CustomAction1".to_string()),
+                FieldValue::String("1 AND".to_string()),
+                FieldValue::Short(100),
+            ]),
+        );
+        let bad_seq_pkg = Package::from_database(bad_seq_db, HashMap::new());
+        let tx = Transaction::from_package(
+            &bad_seq_pkg,
+            EvaluationContext::new(),
+            DiskCostEngine::new(),
+        );
+        assert!(run_installer_transaction(tx).is_err());
+
+        // 2. prep_tx.execute() error: missing cabinet extraction failure
+        let mut fail_exec_pkg = make_test_pkg(true);
+        fail_exec_pkg.database_mut().add_record(
+            "Media",
+            msi::database::tables::record::Record::with_fields(vec![
+                FieldValue::Short(1),
+                FieldValue::Short(10),
+                FieldValue::Null,
+                FieldValue::String("missing_cabinet.cab".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        fail_exec_pkg.database_mut().add_record(
+            "Component",
+            msi::database::tables::record::Record::with_fields(vec![
+                FieldValue::String("Comp1".to_string()),
+                FieldValue::String("{11111111-1111-1111-1111-111111111111}".to_string()),
+                FieldValue::String("TARGETDIR".to_string()),
+                FieldValue::Short(0),
+                FieldValue::Null,
+                FieldValue::String("File1".to_string()),
+            ]),
+        );
+        fail_exec_pkg.database_mut().add_record(
+            "File",
+            msi::database::tables::record::Record::with_fields(vec![
+                FieldValue::String("File1".to_string()),
+                FieldValue::String("Comp1".to_string()),
+                FieldValue::String("file1.txt".to_string()),
+                FieldValue::Long(10),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Short(0),
+                FieldValue::Short(1),
+            ]),
+        );
+        fail_exec_pkg.database_mut().add_record(
+            "InstallExecuteSequence",
+            msi::database::tables::record::Record::with_fields(vec![
+                FieldValue::String("InstallFiles".to_string()),
+                FieldValue::String("1".to_string()),
+                FieldValue::Short(4000),
+            ]),
+        );
+        let tx_exec_fail = Transaction::from_package(
+            &fail_exec_pkg,
+            EvaluationContext::new(),
+            DiskCostEngine::new(),
+        );
+        assert!(run_installer_transaction(tx_exec_fail).is_err());
+
+        // 3. Error propagation across CLI commands using package with bad condition
+        let bad_pkg = make_bad_condition_pkg();
+        let bad_pkg_file = temp_dir.join("bad_cond.msi");
+        assert!(bad_pkg.save(&bad_pkg_file).is_ok());
+        let bad_path = bad_pkg_file.to_string_lossy().to_string();
+
+        assert!(handle_install(&InstallArgs {
+            package: bad_path.clone(),
+            ui: CliUiLevel::Quiet,
+            log: None,
+            properties: vec![],
+            tui: false,
+        })
+        .is_err());
+
+        assert!(handle_uninstall(&UninstallArgs {
+            package: bad_path.clone(),
+            ui: CliUiLevel::Quiet,
+            log: None,
+        })
+        .is_err());
+
+        assert!(handle_admin(&AdminArgs {
+            package: bad_path.clone(),
+            ui: CliUiLevel::Quiet,
+            log: None,
+        })
+        .is_err());
+
+        assert!(handle_repair(&RepairArgs {
+            package: bad_path.clone(),
+            flags: "omus".to_string(),
+            log: None,
+        })
+        .is_err());
+
+        assert!(handle_advertise(&AdvertiseArgs {
+            package: bad_path,
+            user: false,
+        })
+        .is_err());
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }

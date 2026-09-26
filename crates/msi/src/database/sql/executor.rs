@@ -807,6 +807,63 @@ mod tests {
         )
         .is_err());
 
+        // Expression evaluation and parameter resolution errors
+        assert!(execute_sql(&mut db, "INSERT INTO NoPk (Col1) VALUES (?)", &[]).is_err());
+        assert!(execute_sql(&mut db, "INSERT INTO NoPk VALUES (?)", &[]).is_err());
+        assert!(execute_sql(
+            &mut db,
+            "UPDATE ShortRows SET Col2 = ? WHERE Col1 = 'same'",
+            &[]
+        )
+        .is_err());
+        assert!(execute_sql(
+            &mut db,
+            "UPDATE ShortRows SET Col2 = 1 WHERE UnknownCol = 1",
+            &[]
+        )
+        .is_err());
+        assert!(execute_sql(&mut db, "DELETE FROM ShortRows WHERE UnknownCol = 1", &[]).is_err());
+
+        // Re-populate ShortRows after DELETE error test
+        db.tables.insert(
+            "ShortRows".to_string(),
+            vec![Record::with_fields(vec![
+                FieldValue::String("same".to_string()),
+                FieldValue::Long(5),
+            ])],
+        );
+        assert!(execute_sql(
+            &mut db,
+            "SELECT * FROM ShortRows WHERE UnknownCol = 1 AND Col1 = 'same'",
+            &[]
+        )
+        .is_err());
+        assert!(execute_sql(
+            &mut db,
+            "SELECT * FROM ShortRows WHERE Col1 = 'same' AND UnknownCol = 1",
+            &[]
+        )
+        .is_err());
+        assert!(execute_sql(
+            &mut db,
+            "SELECT * FROM ShortRows WHERE UnknownCol = 1 OR Col1 = 'same'",
+            &[]
+        )
+        .is_err());
+        assert!(execute_sql(
+            &mut db,
+            "SELECT * FROM ShortRows WHERE Col1 = 'same' OR UnknownCol = 1",
+            &[]
+        )
+        .is_err());
+        assert!(execute_sql(
+            &mut db,
+            "SELECT * FROM ShortRows WHERE NOT UnknownCol = 1",
+            &[]
+        )
+        .is_err());
+        assert!(execute_sql(&mut db, "'unclosed string token", &[]).is_err());
+
         // Binary operations and comparisons:
         assert!(eval_binary_op(
             &FieldValue::Null,

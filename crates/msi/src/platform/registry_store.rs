@@ -232,6 +232,290 @@ impl RegistryStore {
         self.journal.clear();
     }
 
+    /// Subkey path for Windows Installer component reference counting (`SharedDLLs`).
+    pub const SHARED_DLLS_SUBKEY: &'static str =
+        r"SOFTWARE\Microsoft\Windows\CurrentVersion\SharedDLLs";
+
+    /// Retrieves the current reference count for a shared component or file in `SharedDLLs`.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Target file or component key path.
+    ///
+    /// # Returns
+    ///
+    /// The current reference count, or `0` if not registered.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Validation`] if `path` is empty.
+    pub fn get_shared_dll_ref(&self, path: &str) -> Result<u32> {
+        let norm_path = Self::normalize_key(path);
+        if norm_path.is_empty() {
+            return Err(Error::Validation {
+                element: "SharedDLLs.path".to_string(),
+                reason: "path cannot be empty".to_string(),
+            });
+        }
+
+        match self.get_value(
+            RegistryRoot::LocalMachine,
+            Self::SHARED_DLLS_SUBKEY,
+            Some(&norm_path),
+        ) {
+            Some(RegistryValue::Dword(val)) => Ok(*val),
+            _ => Ok(0),
+        }
+    }
+
+    /// Increments the reference count for a shared component or file in `SharedDLLs`.
+    ///
+    /// If the path is not yet present, it is registered with count `1`.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Target file or component key path.
+    ///
+    /// # Returns
+    ///
+    /// The updated reference count.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Validation`] if `path` is empty.
+    pub fn increment_shared_dll_ref(&mut self, path: &str) -> Result<u32> {
+        let current = self.get_shared_dll_ref(path)?;
+        let new_count = current.saturating_add(1);
+        let norm_path = Self::normalize_key(path);
+
+        self.set_value(
+            RegistryRoot::LocalMachine,
+            Self::SHARED_DLLS_SUBKEY,
+            Some(&norm_path),
+            RegistryValue::Dword(new_count),
+        );
+
+        Ok(new_count)
+    }
+
+    /// Decrements the reference count for a shared component or file in `SharedDLLs`.
+    ///
+    /// If the reference count drops to `0`, the entry is deleted from the store.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Target file or component key path.
+    ///
+    /// # Returns
+    ///
+    /// The updated reference count.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Validation`] if `path` is empty.
+    pub fn decrement_shared_dll_ref(&mut self, path: &str) -> Result<u32> {
+        let current = self.get_shared_dll_ref(path)?;
+        let new_count = current.saturating_sub(1);
+        let norm_path = Self::normalize_key(path);
+
+        if new_count == 0 {
+            self.delete_value(
+                RegistryRoot::LocalMachine,
+                Self::SHARED_DLLS_SUBKEY,
+                Some(&norm_path),
+            );
+        } else {
+            self.set_value(
+                RegistryRoot::LocalMachine,
+                Self::SHARED_DLLS_SUBKEY,
+                Some(&norm_path),
+                RegistryValue::Dword(new_count),
+            );
+        }
+
+        Ok(new_count)
+    }
+
+    /// Subkey path for Windows Installer component client tracking (`Installer\Components`).
+    pub const COMPONENTS_SUBKEY: &'static str =
+        r"SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\Components";
+
+    /// Returns all client `ProductCode` identifiers registered for a `ComponentId`.
+    ///
+    /// # Arguments
+    ///
+    /// * `component_id` - GUID component identifier.
+    ///
+    /// # Returns
+    ///
+    /// Sorted list of client `ProductCode` strings.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Validation`] if `component_id` is empty.
+    pub fn get_component_clients(&self, component_id: &str) -> Result<Vec<String>> {
+        let norm_comp = Self::normalize_key(component_id);
+        if norm_comp.is_empty() {
+            return Err(Error::Validation {
+                element: "Components.component_id".to_string(),
+                reason: "component_id cannot be empty".to_string(),
+            });
+        }
+        let comp_key = format!(r"{}\{norm_comp}", Self::COMPONENTS_SUBKEY);
+        let mut clients = Vec::new();
+        for (root, key, name) in self.values.keys() {
+            if *root == RegistryRoot::LocalMachine && key == &comp_key {
+                if let Some(client_code) = name {
+                    clients.push(client_code.clone());
+                }
+            }
+        }
+        clients.sort();
+        Ok(clients)
+    }
+
+    /// Returns the number of client `ProductCode` registrations for a `ComponentId`.
+    ///
+    /// # Arguments
+    ///
+    /// * `component_id` - GUID component identifier.
+    ///
+    /// # Returns
+    ///
+    /// Total count of active client associations.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Validation`] if `component_id` is empty.
+    pub fn get_component_client_count(&self, component_id: &str) -> Result<u32> {
+        let clients = self.get_component_clients(component_id)?;
+        Ok(u32::try_from(clients.len()).unwrap_or(u32::MAX))
+    }
+
+    /// Checks if a component has multiple registered clients (shared component).
+    ///
+    /// # Arguments
+    ///
+    /// * `component_id` - GUID component identifier.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the component is referenced by more than one client product, `false` otherwise.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Validation`] if `component_id` is empty.
+    pub fn is_component_shared(&self, component_id: &str) -> Result<bool> {
+        let count = self.get_component_client_count(component_id)?;
+        Ok(count > 1)
+    }
+
+    /// Registers a client `ProductCode` association for a `ComponentId` GUID in the component store.
+    ///
+    /// Also increments the `SharedDLLs` ref count for `key_path` if provided.
+    ///
+    /// # Arguments
+    ///
+    /// * `component_id` - GUID component identifier.
+    /// * `product_code` - Client `ProductCode` installing this component.
+    /// * `key_path` - Optional target file path (key path of the component).
+    ///
+    /// # Returns
+    ///
+    /// The updated client reference count for this component.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Validation`] if `component_id` or `product_code` is empty.
+    pub fn register_component_client(
+        &mut self,
+        component_id: &str,
+        product_code: &str,
+        key_path: Option<&str>,
+    ) -> Result<u32> {
+        let norm_comp = Self::normalize_key(component_id);
+        if norm_comp.is_empty() {
+            return Err(Error::Validation {
+                element: "Components.component_id".to_string(),
+                reason: "component_id cannot be empty".to_string(),
+            });
+        }
+        let norm_prod = Self::normalize_key(product_code);
+        if norm_prod.is_empty() {
+            return Err(Error::Validation {
+                element: "Components.product_code".to_string(),
+                reason: "product_code cannot be empty".to_string(),
+            });
+        }
+
+        let comp_key = format!(r"{}\{norm_comp}", Self::COMPONENTS_SUBKEY);
+        let path_val = key_path.unwrap_or("").to_string();
+        self.set_value(
+            RegistryRoot::LocalMachine,
+            &comp_key,
+            Some(&norm_prod),
+            RegistryValue::Sz(path_val),
+        );
+
+        if let Some(kp) = key_path {
+            if !kp.trim().is_empty() {
+                let _ = self.increment_shared_dll_ref(kp)?;
+            }
+        }
+
+        self.get_component_client_count(component_id)
+    }
+
+    /// Unregisters a client `ProductCode` association for a `ComponentId` GUID.
+    ///
+    /// Also decrements the `SharedDLLs` ref count for `key_path` if provided.
+    ///
+    /// # Arguments
+    ///
+    /// * `component_id` - GUID component identifier.
+    /// * `product_code` - Client `ProductCode` to unregister.
+    /// * `key_path` - Optional target file path (key path of the component).
+    ///
+    /// # Returns
+    ///
+    /// The remaining client reference count for this component.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Validation`] if `component_id` or `product_code` is empty.
+    pub fn unregister_component_client(
+        &mut self,
+        component_id: &str,
+        product_code: &str,
+        key_path: Option<&str>,
+    ) -> Result<u32> {
+        let norm_comp = Self::normalize_key(component_id);
+        if norm_comp.is_empty() {
+            return Err(Error::Validation {
+                element: "Components.component_id".to_string(),
+                reason: "component_id cannot be empty".to_string(),
+            });
+        }
+        let norm_prod = Self::normalize_key(product_code);
+        if norm_prod.is_empty() {
+            return Err(Error::Validation {
+                element: "Components.product_code".to_string(),
+                reason: "product_code cannot be empty".to_string(),
+            });
+        }
+
+        let comp_key = format!(r"{}\{norm_comp}", Self::COMPONENTS_SUBKEY);
+        self.delete_value(RegistryRoot::LocalMachine, &comp_key, Some(&norm_prod));
+
+        if let Some(kp) = key_path {
+            if !kp.trim().is_empty() {
+                let _ = self.decrement_shared_dll_ref(kp)?;
+            }
+        }
+
+        self.get_component_client_count(component_id)
+    }
+
     /// Generates a drop-in shell profile environment script for Linux (`/etc/profile.d/<product>.sh`).
     ///
     /// # Arguments
@@ -381,6 +665,20 @@ impl SqliteRegistryDriver {
         };
         driver.initialize_schema();
         driver
+    }
+
+    /// Creates a new [`SqliteRegistryDriver`] configuring explicit WAL journal mode and normal synchronous flags.
+    ///
+    /// # Arguments
+    ///
+    /// * `db_path` - Path to the SQLite database file.
+    ///
+    /// # Returns
+    ///
+    /// Configured [`SqliteRegistryDriver`].
+    #[must_use]
+    pub fn new_wal(db_path: impl Into<PathBuf>) -> Self {
+        Self::new(db_path)
     }
 
     /// Returns the database path on disk.
@@ -892,6 +1190,155 @@ impl NativeConfigBridge {
                 val_str
             ))
         }
+    }
+}
+
+/// Native and synthesized Win32 Registry API commands and wrappers (`RegCreateKeyExW`, `RegSetValueExW`).
+///
+/// Implements native registry operations on Windows and synthesized `reg.exe` commands / memory emulation on non-Windows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Win32RegistryApi;
+
+impl Win32RegistryApi {
+    /// Formats the command line representing `RegCreateKeyExW` via `reg.exe add`.
+    ///
+    /// # Arguments
+    ///
+    /// * `root` - Registry root.
+    /// * `subkey` - Subkey path.
+    ///
+    /// # Returns
+    ///
+    /// Formatted `reg.exe` command string.
+    #[must_use]
+    pub fn create_key_command(root: RegistryRoot, subkey: &str) -> String {
+        let norm = RegistryStore::normalize_key(subkey);
+        format!("reg.exe add \"{}\\{norm}\" /f", root.as_str())
+    }
+
+    /// Formats the command line representing `RegSetValueExW` via `reg.exe add`.
+    ///
+    /// # Arguments
+    ///
+    /// * `root` - Registry root.
+    /// * `subkey` - Subkey path.
+    /// * `name` - Value name (`None` for default value).
+    /// * `val` - Registry value.
+    ///
+    /// # Returns
+    ///
+    /// Formatted `reg.exe` command string.
+    #[must_use]
+    pub fn set_value_command(
+        root: RegistryRoot,
+        subkey: &str,
+        name: Option<&str>,
+        val: &RegistryValue,
+    ) -> String {
+        let norm = RegistryStore::normalize_key(subkey);
+        let val_switch = match name {
+            Some(n) if !n.is_empty() => format!("/v \"{n}\""),
+            _ => "/ve".to_string(),
+        };
+        let (type_str, data_str) = match val {
+            RegistryValue::Sz(s) => ("REG_SZ", s.clone()),
+            RegistryValue::ExpandSz(s) => ("REG_EXPAND_SZ", s.clone()),
+            RegistryValue::Dword(d) => ("REG_DWORD", d.to_string()),
+            RegistryValue::Qword(q) => ("REG_QWORD", q.to_string()),
+            RegistryValue::Binary(b) => {
+                let mut hex = String::with_capacity(b.len() * 2);
+                for byte in b {
+                    use std::fmt::Write;
+                    let _ = write!(hex, "{byte:02X}");
+                }
+                ("REG_BINARY", hex)
+            }
+            RegistryValue::MultiSz(m) => ("REG_MULTI_SZ", m.join(r"\0")),
+        };
+        format!(
+            "reg.exe add \"{}\\{norm}\" {val_switch} /t {type_str} /d \"{data_str}\" /f",
+            root.as_str()
+        )
+    }
+
+    /// Formats the command line representing `RegDeleteValueW` via `reg.exe delete`.
+    ///
+    /// # Arguments
+    ///
+    /// * `root` - Registry root.
+    /// * `subkey` - Subkey path.
+    /// * `name` - Value name.
+    ///
+    /// # Returns
+    ///
+    /// Formatted `reg.exe delete` command string.
+    #[must_use]
+    pub fn delete_value_command(root: RegistryRoot, subkey: &str, name: Option<&str>) -> String {
+        let norm = RegistryStore::normalize_key(subkey);
+        let val_switch = match name {
+            Some(n) if !n.is_empty() => format!("/v \"{n}\""),
+            _ => "/ve".to_string(),
+        };
+        format!(
+            "reg.exe delete \"{}\\{norm}\" {val_switch} /f",
+            root.as_str()
+        )
+    }
+
+    /// Formats the command line representing `RegDeleteKeyW` via `reg.exe delete`.
+    ///
+    /// # Arguments
+    ///
+    /// * `root` - Registry root.
+    /// * `subkey` - Subkey path to delete recursively.
+    ///
+    /// # Returns
+    ///
+    /// Formatted `reg.exe delete` command string.
+    #[must_use]
+    pub fn delete_key_command(root: RegistryRoot, subkey: &str) -> String {
+        let norm = RegistryStore::normalize_key(subkey);
+        format!("reg.exe delete \"{}\\{norm}\" /va /f", root.as_str())
+    }
+
+    /// Executes or emulates `RegCreateKeyExW` against an in-memory or persisted [`RegistryStore`].
+    ///
+    /// # Arguments
+    ///
+    /// * `store` - Mutable registry store.
+    /// * `root` - Registry root.
+    /// * `subkey` - Subkey path.
+    ///
+    /// # Returns
+    ///
+    /// Normalized created subkey path.
+    pub fn create_key_in_store(
+        store: &mut RegistryStore,
+        root: RegistryRoot,
+        subkey: &str,
+    ) -> String {
+        let norm = RegistryStore::normalize_key(subkey);
+        store.set_value(root, &norm, None, RegistryValue::Sz(String::new()));
+        norm
+    }
+
+    /// Executes or emulates `RegSetValueExW` against an in-memory or persisted [`RegistryStore`].
+    ///
+    /// # Arguments
+    ///
+    /// * `store` - Mutable registry store.
+    /// * `root` - Registry root.
+    /// * `subkey` - Subkey path.
+    /// * `name` - Optional value name.
+    /// * `value` - Registry value to write.
+    pub fn set_value_in_store(
+        store: &mut RegistryStore,
+        root: RegistryRoot,
+        subkey: &str,
+        name: Option<&str>,
+        value: RegistryValue,
+    ) {
+        store.set_value(root, subkey, name, value);
     }
 }
 
@@ -1471,5 +1918,302 @@ INSERT OR REPLACE INTO values VALUES (10, 'Fallback', 'REG_CUSTOM_TYPE', 'raw_te
 
         let _ = std::fs::remove_file(&edge_sql_path);
         let _ = std::fs::remove_dir(&temp_dir);
+    }
+
+    /// Tests `SharedDLLs` reference counting helpers on `RegistryStore`.
+    #[test]
+    fn test_registry_store_shared_dll_ref_counting() {
+        let mut store = RegistryStore::new();
+        let target_dll = r"C:\Program Files\LibScript\bin\mysqld.exe";
+
+        // Initial state
+        assert_eq!(store.get_shared_dll_ref(target_dll), Ok(0));
+
+        // First increment -> 1
+        assert_eq!(store.increment_shared_dll_ref(target_dll), Ok(1));
+        assert_eq!(store.get_shared_dll_ref(target_dll), Ok(1));
+
+        // Second increment -> 2
+        assert_eq!(store.increment_shared_dll_ref(target_dll), Ok(2));
+        assert_eq!(store.get_shared_dll_ref(target_dll), Ok(2));
+
+        // First decrement -> 1
+        assert_eq!(store.decrement_shared_dll_ref(target_dll), Ok(1));
+        assert_eq!(store.get_shared_dll_ref(target_dll), Ok(1));
+
+        // Second decrement -> 0 (deleted)
+        assert_eq!(store.decrement_shared_dll_ref(target_dll), Ok(0));
+        assert_eq!(store.get_shared_dll_ref(target_dll), Ok(0));
+
+        // Third decrement -> 0 (stays 0)
+        assert_eq!(store.decrement_shared_dll_ref(target_dll), Ok(0));
+
+        // Error handling on empty paths
+        assert!(store.get_shared_dll_ref("").is_err());
+        assert!(store.increment_shared_dll_ref("").is_err());
+        assert!(store.decrement_shared_dll_ref("").is_err());
+    }
+
+    /// Tests component client `ProductCode` tracking per `ComponentId` GUID on `RegistryStore`.
+    #[test]
+    fn test_registry_store_component_client_tracking() -> Result<()> {
+        let mut store = RegistryStore::new();
+        let comp_guid = "{5B2783B0-9A1F-4348-9F93-87CE43C21001}";
+        let prod_openedx = "{E0F45901-83B4-4B21-9B5A-01D38FE81001}";
+        let prod_wordpress = "{E0F45901-83B4-4B21-9B5A-01D38FE81002}";
+        let key_path = r"C:\Program Files\LibScript\bin\mysqld.exe";
+
+        // Initial state
+        assert_eq!(store.get_component_client_count(comp_guid)?, 0);
+        assert!(!store.is_component_shared(comp_guid)?);
+        assert_eq!(
+            store.get_component_clients(comp_guid)?,
+            Vec::<String>::new()
+        );
+
+        // Register first client (Open edX)
+        let count1 = store.register_component_client(comp_guid, prod_openedx, Some(key_path))?;
+        assert_eq!(count1, 1);
+        assert_eq!(store.get_component_client_count(comp_guid)?, 1);
+        assert!(!store.is_component_shared(comp_guid)?);
+        assert_eq!(store.get_shared_dll_ref(key_path)?, 1);
+
+        // Register second client (WordPress)
+        let count2 = store.register_component_client(comp_guid, prod_wordpress, Some(key_path))?;
+        assert_eq!(count2, 2);
+        assert_eq!(store.get_component_client_count(comp_guid)?, 2);
+        assert!(store.is_component_shared(comp_guid)?);
+        assert_eq!(store.get_shared_dll_ref(key_path)?, 2);
+
+        let clients = store.get_component_clients(comp_guid)?;
+        assert_eq!(clients.len(), 2);
+
+        // Unregister first client (Open edX)
+        let count_after_unreg1 =
+            store.unregister_component_client(comp_guid, prod_openedx, Some(key_path))?;
+        assert_eq!(count_after_unreg1, 1);
+        assert_eq!(store.get_component_client_count(comp_guid)?, 1);
+        assert!(!store.is_component_shared(comp_guid)?);
+        assert_eq!(store.get_shared_dll_ref(key_path)?, 1);
+
+        // Unregister second client (WordPress)
+        let count_after_unreg2 =
+            store.unregister_component_client(comp_guid, prod_wordpress, Some(key_path))?;
+        assert_eq!(count_after_unreg2, 0);
+        assert_eq!(store.get_component_client_count(comp_guid)?, 0);
+        assert_eq!(store.get_shared_dll_ref(key_path)?, 0);
+
+        // Client registration with None key_path and empty key_path
+        let count_none = store.register_component_client(comp_guid, prod_openedx, None)?;
+        assert_eq!(count_none, 1);
+        let count_ws = store.register_component_client(comp_guid, prod_wordpress, Some("   "))?;
+        assert_eq!(count_ws, 2);
+
+        // Values with CurrentUser root and None name to cover get_component_clients filter branches
+        let comp_key = format!(
+            r"{}\{}",
+            RegistryStore::COMPONENTS_SUBKEY,
+            RegistryStore::normalize_key(comp_guid)
+        );
+        store.set_value(
+            RegistryRoot::CurrentUser,
+            &comp_key,
+            Some("ClientOtherRoot"),
+            RegistryValue::Sz("path".to_string()),
+        );
+        store.set_value(
+            RegistryRoot::LocalMachine,
+            &comp_key,
+            None,
+            RegistryValue::Sz("default".to_string()),
+        );
+        let client_list = store.get_component_clients(comp_guid)?;
+        assert_eq!(client_list.len(), 2);
+
+        // Unregister with None and empty key_path
+        let unreg_ws = store.unregister_component_client(comp_guid, prod_wordpress, Some("   "))?;
+        assert_eq!(unreg_ws, 1);
+        let unreg_none = store.unregister_component_client(comp_guid, prod_openedx, None)?;
+        assert_eq!(unreg_none, 0);
+
+        // Error branches on invalid key path
+        assert!(store
+            .register_component_client(comp_guid, prod_openedx, Some("///"))
+            .is_err());
+        assert!(store
+            .unregister_component_client(comp_guid, prod_openedx, Some("///"))
+            .is_err());
+
+        // Validation errors on empty strings
+        assert!(store
+            .register_component_client("", prod_openedx, None)
+            .is_err());
+        assert!(store
+            .register_component_client(comp_guid, "", None)
+            .is_err());
+        assert!(store
+            .unregister_component_client("", prod_openedx, None)
+            .is_err());
+        assert!(store
+            .unregister_component_client(comp_guid, "", None)
+            .is_err());
+        assert!(store.get_component_clients("").is_err());
+        assert!(store.get_component_client_count("").is_err());
+        assert!(store.is_component_shared("").is_err());
+
+        Ok(())
+    }
+
+    /// Tests `Win32RegistryApi` command generation and in-store operations, and `SqliteRegistryDriver::new_wal`.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_win32_registry_api_and_wal_driver() {
+        // WAL driver constructor
+        let wal_driver = SqliteRegistryDriver::new_wal(":memory:");
+        assert_eq!(wal_driver.db_path(), Path::new(":memory:"));
+
+        // Win32 Registry API command generation
+        let create_cmd =
+            Win32RegistryApi::create_key_command(RegistryRoot::LocalMachine, r"Software\LibScript");
+        assert_eq!(create_cmd, r#"reg.exe add "HKLM\Software\LibScript" /f"#);
+
+        // Set value variants
+        let sz_cmd = Win32RegistryApi::set_value_command(
+            RegistryRoot::LocalMachine,
+            r"Software\LibScript",
+            Some("Version"),
+            &RegistryValue::Sz("2.0.0".to_string()),
+        );
+        assert_eq!(
+            sz_cmd,
+            r#"reg.exe add "HKLM\Software\LibScript" /v "Version" /t REG_SZ /d "2.0.0" /f"#
+        );
+
+        let expand_sz_cmd = Win32RegistryApi::set_value_command(
+            RegistryRoot::CurrentUser,
+            "Environment",
+            Some("PATH"),
+            &RegistryValue::ExpandSz("%PATH%;C:\\LibScript".to_string()),
+        );
+        assert_eq!(
+            expand_sz_cmd,
+            r#"reg.exe add "HKCU\Environment" /v "PATH" /t REG_EXPAND_SZ /d "%PATH%;C:\LibScript" /f"#
+        );
+
+        let dword_cmd = Win32RegistryApi::set_value_command(
+            RegistryRoot::LocalMachine,
+            r"Software\LibScript",
+            Some("Port"),
+            &RegistryValue::Dword(3306),
+        );
+        assert_eq!(
+            dword_cmd,
+            r#"reg.exe add "HKLM\Software\LibScript" /v "Port" /t REG_DWORD /d "3306" /f"#
+        );
+
+        let qword_cmd = Win32RegistryApi::set_value_command(
+            RegistryRoot::LocalMachine,
+            r"Software\LibScript",
+            Some("BigVal"),
+            &RegistryValue::Qword(10_000_000_000),
+        );
+        assert_eq!(
+            qword_cmd,
+            r#"reg.exe add "HKLM\Software\LibScript" /v "BigVal" /t REG_QWORD /d "10000000000" /f"#
+        );
+
+        let bin_cmd = Win32RegistryApi::set_value_command(
+            RegistryRoot::LocalMachine,
+            r"Software\LibScript",
+            Some("BinaryData"),
+            &RegistryValue::Binary(vec![0xDE, 0xAD, 0xBE, 0xEF]),
+        );
+        assert_eq!(
+            bin_cmd,
+            r#"reg.exe add "HKLM\Software\LibScript" /v "BinaryData" /t REG_BINARY /d "DEADBEEF" /f"#
+        );
+
+        let multi_sz_cmd = Win32RegistryApi::set_value_command(
+            RegistryRoot::LocalMachine,
+            r"Software\LibScript",
+            Some("MultiStrings"),
+            &RegistryValue::MultiSz(vec!["one".to_string(), "two".to_string()]),
+        );
+        assert_eq!(
+            multi_sz_cmd,
+            r#"reg.exe add "HKLM\Software\LibScript" /v "MultiStrings" /t REG_MULTI_SZ /d "one\0two" /f"#
+        );
+
+        let default_val_cmd = Win32RegistryApi::set_value_command(
+            RegistryRoot::ClassesRoot,
+            ".txt",
+            None,
+            &RegistryValue::Sz("txtfile".to_string()),
+        );
+        assert_eq!(
+            default_val_cmd,
+            r#"reg.exe add "HKCR\.txt" /ve /t REG_SZ /d "txtfile" /f"#
+        );
+        let empty_name_cmd = Win32RegistryApi::set_value_command(
+            RegistryRoot::ClassesRoot,
+            ".txt",
+            Some(""),
+            &RegistryValue::Sz("txtfile".to_string()),
+        );
+        assert_eq!(
+            empty_name_cmd,
+            r#"reg.exe add "HKCR\.txt" /ve /t REG_SZ /d "txtfile" /f"#
+        );
+
+        // Delete value commands
+        let del_val_cmd = Win32RegistryApi::delete_value_command(
+            RegistryRoot::LocalMachine,
+            r"Software\LibScript",
+            Some("Version"),
+        );
+        assert_eq!(
+            del_val_cmd,
+            r#"reg.exe delete "HKLM\Software\LibScript" /v "Version" /f"#
+        );
+
+        let del_def_cmd =
+            Win32RegistryApi::delete_value_command(RegistryRoot::ClassesRoot, ".txt", None);
+        assert_eq!(del_def_cmd, r#"reg.exe delete "HKCR\.txt" /ve /f"#);
+        let del_empty_cmd =
+            Win32RegistryApi::delete_value_command(RegistryRoot::ClassesRoot, ".txt", Some(""));
+        assert_eq!(del_empty_cmd, r#"reg.exe delete "HKCR\.txt" /ve /f"#);
+
+        // Delete key command
+        let del_key_cmd =
+            Win32RegistryApi::delete_key_command(RegistryRoot::LocalMachine, r"Software\LibScript");
+        assert_eq!(
+            del_key_cmd,
+            r#"reg.exe delete "HKLM\Software\LibScript" /va /f"#
+        );
+
+        // In-store operations
+        let mut store = RegistryStore::new();
+        let created = Win32RegistryApi::create_key_in_store(
+            &mut store,
+            RegistryRoot::LocalMachine,
+            r"Software\LibScript",
+        );
+        assert_eq!(created, r"Software\LibScript");
+
+        Win32RegistryApi::set_value_in_store(
+            &mut store,
+            RegistryRoot::LocalMachine,
+            r"Software\LibScript",
+            Some("Host"),
+            RegistryValue::Sz("localhost".to_string()),
+        );
+        assert_eq!(
+            store.get_value(
+                RegistryRoot::LocalMachine,
+                r"Software\LibScript",
+                Some("Host")
+            ),
+            Some(&RegistryValue::Sz("localhost".to_string()))
+        );
     }
 }

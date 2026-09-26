@@ -114,6 +114,21 @@ impl ServiceDefinition {
         self
     }
 
+    /// Adds a dependency service name to the `after` list.
+    ///
+    /// # Arguments
+    ///
+    /// * `service` - Service name dependency.
+    ///
+    /// # Returns
+    ///
+    /// Updated [`ServiceDefinition`].
+    #[must_use]
+    pub fn after(mut self, service: impl Into<String>) -> Self {
+        self.after.push(service.into());
+        self
+    }
+
     // --------------------------------------------------------------------------------
     // Linux systemd Unit Generation
     // --------------------------------------------------------------------------------
@@ -122,6 +137,12 @@ impl ServiceDefinition {
     #[must_use]
     pub fn systemd_unit_path(&self) -> PathBuf {
         PathBuf::from("/lib/systemd/system").join(format!("{}.service", self.name))
+    }
+
+    /// Returns the systemd system unit file installation path in `/etc/systemd/system/`.
+    #[must_use]
+    pub fn systemd_etc_unit_path(&self) -> PathBuf {
+        PathBuf::from("/etc/systemd/system").join(format!("{}.service", self.name))
     }
 
     /// Generates complete systemd unit file content (`[Unit]`, `[Service]`, `[Install]`).
@@ -318,6 +339,52 @@ impl ServiceDefinition {
         ]
     }
 
+    /// Returns the standard `launchctl load` command for macOS launchd (`launchctl load -w <path>`).
+    ///
+    /// # Arguments
+    ///
+    /// * `is_system_daemon` - `true` for system daemons in `/Library/LaunchDaemons`, `false` for user agents.
+    ///
+    /// # Returns
+    ///
+    /// Formatted `launchctl load` command string.
+    #[must_use]
+    pub fn launchd_load_command(&self, is_system_daemon: bool) -> String {
+        let path = self.launchd_plist_path(is_system_daemon);
+        let path_str = path.to_string_lossy().replace('\\', "/");
+        format!("launchctl load -w {path_str}")
+    }
+
+    /// Returns the standard `launchctl unload` command for macOS launchd (`launchctl unload -w <path>`).
+    ///
+    /// # Arguments
+    ///
+    /// * `is_system_daemon` - `true` for system daemons in `/Library/LaunchDaemons`, `false` for user agents.
+    ///
+    /// # Returns
+    ///
+    /// Formatted `launchctl unload` command string.
+    #[must_use]
+    pub fn launchd_unload_command(&self, is_system_daemon: bool) -> String {
+        let path = self.launchd_plist_path(is_system_daemon);
+        let path_str = path.to_string_lossy().replace('\\', "/");
+        format!("launchctl unload -w {path_str}")
+    }
+
+    /// Returns the lifecycle command sequence for Windows Win32 Service Control Manager (SCM).
+    ///
+    /// # Returns
+    ///
+    /// Vector of `sc.exe` command strings to create and optionally start the service.
+    #[must_use]
+    pub fn windows_scm_lifecycle_commands(&self) -> Vec<String> {
+        let mut cmds = vec![Win32ServiceManager::create_service_command(self)];
+        if self.auto_start {
+            cmds.push(Win32ServiceManager::start_service_command(&self.name));
+        }
+        cmds
+    }
+
     // --------------------------------------------------------------------------------
     // FreeBSD rc.d Control Script Generation
     // --------------------------------------------------------------------------------
@@ -457,6 +524,99 @@ impl ServiceDefinition {
     }
 }
 
+/// Windows Win32 Service Control Manager (SCM) command synthesizer and API abstraction.
+///
+/// Implements `CreateServiceW`, `StartServiceW`, `ControlServiceW`, and `DeleteService` workflows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Win32ServiceManager;
+
+impl Win32ServiceManager {
+    /// Synthesizes the `sc.exe create` command line representing `CreateServiceW`.
+    ///
+    /// # Arguments
+    ///
+    /// * `svc` - Service definition.
+    ///
+    /// # Returns
+    ///
+    /// Formatted `sc.exe create` command line string.
+    #[must_use]
+    #[allow(clippy::format_push_string)]
+    pub fn create_service_command(svc: &ServiceDefinition) -> String {
+        let mut bin = svc.exec_start.to_string_lossy().to_string();
+        for arg in &svc.arguments {
+            bin.push(' ');
+            bin.push_str(arg);
+        }
+        let start_type = if svc.auto_start { "auto" } else { "demand" };
+        let mut cmd = format!(
+            "sc.exe create \"{}\" binPath= \"{}\" start= {} DisplayName= \"{}\"",
+            svc.name, bin, start_type, svc.display_name
+        );
+        if !svc.after.is_empty() {
+            cmd.push_str(&format!(" depend= \"{}\"", svc.after.join("/")));
+        }
+        cmd
+    }
+
+    /// Synthesizes the `sc.exe start` command line representing `StartServiceW`.
+    ///
+    /// # Arguments
+    ///
+    /// * `service_name` - Service name.
+    ///
+    /// # Returns
+    ///
+    /// `sc.exe start` command string.
+    #[must_use]
+    pub fn start_service_command(service_name: &str) -> String {
+        format!("sc.exe start \"{service_name}\"")
+    }
+
+    /// Synthesizes the `sc.exe control` command line representing `ControlServiceW`.
+    ///
+    /// # Arguments
+    ///
+    /// * `service_name` - Service name.
+    /// * `control_code` - Control code string or numeric parameter (e.g. `paramchange`, `pause`, `continue`).
+    ///
+    /// # Returns
+    ///
+    /// `sc.exe control` command string.
+    #[must_use]
+    pub fn control_service_command(service_name: &str, control_code: &str) -> String {
+        format!("sc.exe control \"{service_name}\" {control_code}")
+    }
+
+    /// Synthesizes the `sc.exe stop` command line representing `ControlServiceW(SERVICE_CONTROL_STOP)`.
+    ///
+    /// # Arguments
+    ///
+    /// * `service_name` - Service name.
+    ///
+    /// # Returns
+    ///
+    /// `sc.exe stop` command string.
+    #[must_use]
+    pub fn stop_service_command(service_name: &str) -> String {
+        format!("sc.exe stop \"{service_name}\"")
+    }
+
+    /// Synthesizes the `sc.exe delete` command line representing `DeleteService`.
+    ///
+    /// # Arguments
+    ///
+    /// * `service_name` - Service name.
+    ///
+    /// # Returns
+    ///
+    /// `sc.exe delete` command string.
+    #[must_use]
+    pub fn delete_service_command(service_name: &str) -> String {
+        format!("sc.exe delete \"{service_name}\"")
+    }
+}
+
 /// Host service supervisor subsystem classifications.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SupervisorType {
@@ -468,12 +628,18 @@ pub enum SupervisorType {
     FreeBsdRc,
     /// `SunOS` / illumos Service Management Facility (SMF).
     Smf,
+    /// Windows Win32 Service Control Manager (SCM).
+    WindowsScm,
 }
 
 impl SupervisorType {
     /// Detects the host platform service supervisor based on target OS.
     #[must_use]
     pub const fn detect_host() -> Self {
+        #[cfg(target_os = "windows")]
+        {
+            Self::WindowsScm
+        }
         #[cfg(target_os = "macos")]
         {
             Self::Launchd
@@ -487,6 +653,7 @@ impl SupervisorType {
             Self::Smf
         }
         #[cfg(not(any(
+            target_os = "windows",
             target_os = "macos",
             target_os = "freebsd",
             target_os = "solaris",
@@ -638,6 +805,11 @@ impl HostSupervisorExecutor {
                 true,
             ),
             SupervisorType::Smf => (svc.smf_manifest_path(), svc.generate_smf_manifest(), false),
+            SupervisorType::WindowsScm => (
+                PathBuf::from(format!("etc/systemd/system/{}.service", svc.name)),
+                Win32ServiceManager::create_service_command(svc),
+                false,
+            ),
         };
 
         let target_path = if let Some(prefix) = root_prefix {
@@ -697,6 +869,7 @@ impl HostSupervisorExecutor {
     /// # Errors
     ///
     /// Returns [`Error::Io`] if service is not found or supervisor rejects command.
+    #[allow(clippy::too_many_lines)]
     pub fn execute_control(
         &mut self,
         svc_name: &str,
@@ -778,6 +951,29 @@ impl HostSupervisorExecutor {
             }
             (SupervisorType::Smf, ServiceControlAction::Delete) => {
                 format!("svccfg delete site/{svc_name}")
+            }
+
+            (SupervisorType::WindowsScm, ServiceControlAction::Start) => {
+                Win32ServiceManager::start_service_command(svc_name)
+            }
+            (SupervisorType::WindowsScm, ServiceControlAction::Stop) => {
+                Win32ServiceManager::stop_service_command(svc_name)
+            }
+            (SupervisorType::WindowsScm, ServiceControlAction::Restart) => {
+                format!(
+                    "{} && {}",
+                    Win32ServiceManager::stop_service_command(svc_name),
+                    Win32ServiceManager::start_service_command(svc_name)
+                )
+            }
+            (SupervisorType::WindowsScm, ServiceControlAction::Enable) => {
+                format!("sc.exe config \"{svc_name}\" start= auto")
+            }
+            (SupervisorType::WindowsScm, ServiceControlAction::Disable) => {
+                format!("sc.exe config \"{svc_name}\" start= disabled")
+            }
+            (SupervisorType::WindowsScm, ServiceControlAction::Delete) => {
+                Win32ServiceManager::delete_service_command(svc_name)
             }
         };
 
@@ -1233,6 +1429,10 @@ mod tests {
         let res_smf = executor.install_service(&svc, SupervisorType::Smf, Some(&temp_dir));
         assert!(res_smf.is_ok());
 
+        // Windows SCM
+        let res_scm = executor.install_service(&svc, SupervisorType::WindowsScm, Some(&temp_dir));
+        assert!(res_scm.is_ok());
+
         // Failure when parent path is blocked by a file (making create_dir_all fail)
         let file_as_dir = temp_dir.join("blocked_dir_file");
         let _ = fs::write(&file_as_dir, b"not a directory");
@@ -1299,5 +1499,137 @@ mod tests {
         let res = executor.rollback();
         assert!(res.is_ok());
         assert_eq!(executor.installed_services.len(), 0);
+    }
+
+    /// Tests `Win32ServiceManager` command synthesis, `/etc/systemd/system/` paths, launchd load/unload, and Windows SCM lifecycle dispatch.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_win32_service_manager_and_systemd_etc() {
+        let svc = ServiceDefinition::new("LibScript_MySQL", r"C:\Program Files\MySQL\mysqld.exe")
+            .display_name("MySQL Database Server")
+            .arg("--console")
+            .after("Tcpip")
+            .auto_start(true);
+
+        // Systemd /etc path
+        assert_eq!(
+            svc.systemd_etc_unit_path(),
+            PathBuf::from("/etc/systemd/system/LibScript_MySQL.service")
+        );
+
+        // Launchd load / unload
+        assert!(svc
+            .launchd_load_command(true)
+            .contains("launchctl load -w /Library/LaunchDaemons/"));
+        assert!(svc
+            .launchd_unload_command(true)
+            .contains("launchctl unload -w /Library/LaunchDaemons/"));
+
+        // Win32 SCM commands
+        let create_cmd = Win32ServiceManager::create_service_command(&svc);
+        assert!(create_cmd.contains("sc.exe create \"LibScript_MySQL\""));
+        assert!(create_cmd.contains("binPath= \"C:\\Program Files\\MySQL\\mysqld.exe --console\""));
+        assert!(create_cmd.contains("start= auto"));
+        assert!(create_cmd.contains("DisplayName= \"MySQL Database Server\""));
+        assert!(create_cmd.contains("depend= "));
+        assert!(create_cmd.contains("Tcpip"));
+
+        let mut manual_svc =
+            ServiceDefinition::new("LibScript_Manual", "C:\\bin\\manual.exe").auto_start(false);
+        manual_svc.after.clear();
+        let manual_create_cmd = Win32ServiceManager::create_service_command(&manual_svc);
+        assert!(manual_create_cmd.contains("start= demand"));
+        assert!(!manual_create_cmd.contains("depend="));
+        let manual_scm_cmds = manual_svc.windows_scm_lifecycle_commands();
+        assert_eq!(manual_scm_cmds.len(), 1);
+        assert!(manual_scm_cmds[0].contains("sc.exe create"));
+
+        assert_eq!(
+            Win32ServiceManager::start_service_command("LibScript_MySQL"),
+            "sc.exe start \"LibScript_MySQL\""
+        );
+        assert_eq!(
+            Win32ServiceManager::control_service_command("LibScript_MySQL", "paramchange"),
+            "sc.exe control \"LibScript_MySQL\" paramchange"
+        );
+        assert_eq!(
+            Win32ServiceManager::stop_service_command("LibScript_MySQL"),
+            "sc.exe stop \"LibScript_MySQL\""
+        );
+        assert_eq!(
+            Win32ServiceManager::delete_service_command("LibScript_MySQL"),
+            "sc.exe delete \"LibScript_MySQL\""
+        );
+
+        let scm_cmds = svc.windows_scm_lifecycle_commands();
+        assert_eq!(scm_cmds.len(), 2);
+        assert!(scm_cmds[0].contains("sc.exe create"));
+        assert_eq!(scm_cmds[1], "sc.exe start \"LibScript_MySQL\"");
+
+        // Dispatch via HostSupervisorExecutor
+        let mut executor = HostSupervisorExecutor::new();
+        assert!(executor
+            .execute_control(
+                "LibScript_MySQL",
+                ServiceControlAction::Start,
+                SupervisorType::WindowsScm,
+            )
+            .is_ok());
+        assert!(executor
+            .execute_control(
+                "LibScript_MySQL",
+                ServiceControlAction::Stop,
+                SupervisorType::WindowsScm,
+            )
+            .is_ok());
+        assert!(executor
+            .execute_control(
+                "LibScript_MySQL",
+                ServiceControlAction::Restart,
+                SupervisorType::WindowsScm,
+            )
+            .is_ok());
+        assert!(executor
+            .execute_control(
+                "LibScript_MySQL",
+                ServiceControlAction::Enable,
+                SupervisorType::WindowsScm,
+            )
+            .is_ok());
+        assert!(executor
+            .execute_control(
+                "LibScript_MySQL",
+                ServiceControlAction::Disable,
+                SupervisorType::WindowsScm,
+            )
+            .is_ok());
+        assert!(executor
+            .execute_control(
+                "LibScript_MySQL",
+                ServiceControlAction::Delete,
+                SupervisorType::WindowsScm,
+            )
+            .is_ok());
+
+        let cmds = executor.executed_commands();
+        assert_eq!(cmds.len(), 6);
+        assert_eq!(cmds[0], "sc.exe start \"LibScript_MySQL\"");
+        assert_eq!(cmds[1], "sc.exe stop \"LibScript_MySQL\"");
+        assert!(cmds[2].contains("sc.exe stop"));
+        assert!(cmds[2].contains("sc.exe start"));
+        assert_eq!(cmds[3], "sc.exe config \"LibScript_MySQL\" start= auto");
+        assert_eq!(cmds[4], "sc.exe config \"LibScript_MySQL\" start= disabled");
+        assert_eq!(cmds[5], "sc.exe delete \"LibScript_MySQL\"");
+
+        // Host detection
+        let host = SupervisorType::detect_host();
+        assert!(matches!(
+            host,
+            SupervisorType::WindowsScm
+                | SupervisorType::Systemd
+                | SupervisorType::Launchd
+                | SupervisorType::FreeBsdRc
+                | SupervisorType::Smf
+        ));
     }
 }

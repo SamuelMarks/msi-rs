@@ -121,15 +121,15 @@ pub fn extract_product_version(obj: &Bound<'_, PyAny>) -> PyResult<msi::package:
     }
 
     if let Ok(tuple) = obj.downcast::<PyTuple>() {
-        let len = tuple.len();
-        if len == 2 {
-            let major = tuple.get_item(0)?.extract::<u8>()?;
-            let minor = tuple.get_item(1)?.extract::<u8>()?;
+        let items: Vec<_> = tuple.iter().collect();
+        if items.len() == 2 {
+            let major = items[0].extract::<u8>()?;
+            let minor = items[1].extract::<u8>()?;
             return Ok(msi::package::ProductVersion::new(major, minor, 0));
-        } else if len == 3 {
-            let major = tuple.get_item(0)?.extract::<u8>()?;
-            let minor = tuple.get_item(1)?.extract::<u8>()?;
-            let build = tuple.get_item(2)?.extract::<u16>()?;
+        } else if items.len() == 3 {
+            let major = items[0].extract::<u8>()?;
+            let minor = items[1].extract::<u8>()?;
+            let build = items[2].extract::<u16>()?;
             return Ok(msi::package::ProductVersion::new(major, minor, build));
         }
     }

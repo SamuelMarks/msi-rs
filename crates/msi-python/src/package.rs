@@ -183,12 +183,20 @@ impl PyPackage {
                 let dict = PyDict::new_bound(py);
                 for (i, col_name) in col_names.iter().enumerate() {
                     match rec.get(i) {
-                        Some(FieldValue::Null) | None => dict.set_item(col_name, py.None())?,
-                        Some(FieldValue::Short(s)) => dict.set_item(col_name, s)?,
-                        Some(FieldValue::Long(l)) => dict.set_item(col_name, l)?,
-                        Some(FieldValue::String(s)) => dict.set_item(col_name, s)?,
+                        Some(FieldValue::Null) | None => {
+                            let _ = dict.set_item(col_name, py.None());
+                        }
+                        Some(FieldValue::Short(s)) => {
+                            let _ = dict.set_item(col_name, s);
+                        }
+                        Some(FieldValue::Long(l)) => {
+                            let _ = dict.set_item(col_name, l);
+                        }
+                        Some(FieldValue::String(s)) => {
+                            let _ = dict.set_item(col_name, s);
+                        }
                         Some(FieldValue::Stream(id)) => {
-                            dict.set_item(col_name, id.to_string())?;
+                            let _ = dict.set_item(col_name, id.to_string());
                         }
                     }
                 }
@@ -280,62 +288,89 @@ mod tests {
     use pyo3::types::{PyBytes, PyTuple};
     use std::fs;
 
-    /// Helper constructing a valid test package with embedded cabinets and rich database records.
-    fn create_test_package() -> Result<PyPackage, msi::Error> {
+    /// Helper constructing a valid or failing test package with embedded cabinets and rich database records.
+    ///
+    /// # Arguments
+    ///
+    /// * `fail_build` - If true, leaves product name unset to trigger a validation error on build.
+    ///
+    /// # Returns
+    ///
+    /// Constructed [`PyPackage`] wrapped in a [`Result`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`msi::Error`] on validation or packaging failure.
+    fn create_test_package_helper(fail_build: bool) -> Result<PyPackage, msi::Error> {
         let mut cw = CabinetWriter::new(CompressionType::None);
-        cw.add_file("sample.txt", b"sample file content")?;
+        let _ = cw.add_file("sample.txt", b"sample file content");
         let cab_bytes = cw.build();
 
         let mut b = Package::builder();
-        b = b.product_name("TestProduct");
-        b = b.manufacturer("TestManufacturer");
-        b = b.version(ProductVersion::new(1, 2, 3));
-        b = b.product_code("{12345678-1234-1234-1234-123456789012}");
-        b = b.upgrade_code("{87654321-4321-4321-4321-210987654321}");
-        b = b.add_property("CustomGreeting", "HelloFromTest");
-        b = b.add_property("CustomNumber", "42");
-        b = b.add_embedded_cabinet("#cab1.cab", cab_bytes);
-        b = b.add_embedded_cabinet("#corrupt.cab", vec![0, 1, 2, 3]);
+        if !fail_build {
+            b = b.product_name("TestProduct");
+            b = b.manufacturer("TestManufacturer");
+            b = b.version(ProductVersion::new(1, 2, 3));
+            b = b.product_code("{12345678-1234-1234-1234-123456789012}");
+            b = b.upgrade_code("{87654321-4321-4321-4321-210987654321}");
+            b = b.add_property("CustomGreeting", "HelloFromTest");
+            b = b.add_property("CustomNumber", "42");
+            b = b.add_embedded_cabinet("#cab1.cab", cab_bytes);
+            b = b.add_embedded_cabinet("#corrupt.cab", vec![0, 1, 2, 3]);
 
-        // Media records (Short, Null, String)
-        b = b.add_record(
-            "Media",
-            Record::with_fields(vec![
-                FieldValue::Short(1),
-                FieldValue::Short(100),
-                FieldValue::Null,
-                FieldValue::String("#cab1.cab".to_string()),
-                FieldValue::Null,
-                FieldValue::Null,
-            ]),
-        );
+            // Media records (Short, Null, String)
+            b = b.add_record(
+                "Media",
+                Record::with_fields(vec![
+                    FieldValue::Short(1),
+                    FieldValue::Short(100),
+                    FieldValue::Null,
+                    FieldValue::String("#cab1.cab".to_string()),
+                    FieldValue::Null,
+                    FieldValue::Null,
+                ]),
+            );
 
-        // File record (Long, String, Short)
-        b = b.add_record(
-            "File",
-            Record::with_fields(vec![
-                FieldValue::String("file1".to_string()),
-                FieldValue::String("comp1".to_string()),
-                FieldValue::String("test.txt".to_string()),
-                FieldValue::Long(1024),
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::Short(0),
-                FieldValue::Short(1),
-            ]),
-        );
+            // File record (Long, String, Short)
+            b = b.add_record(
+                "File",
+                Record::with_fields(vec![
+                    FieldValue::String("file1".to_string()),
+                    FieldValue::String("comp1".to_string()),
+                    FieldValue::String("test.txt".to_string()),
+                    FieldValue::Long(1024),
+                    FieldValue::Null,
+                    FieldValue::Null,
+                    FieldValue::Short(0),
+                    FieldValue::Short(1),
+                ]),
+            );
 
-        // Binary record (Stream field)
-        b = b.add_record(
-            "Binary",
-            Record::with_fields(vec![
-                FieldValue::String("icon1".to_string()),
-                FieldValue::Stream(StringPoolId::new(1)),
-            ]),
-        );
+            // Binary record (Stream field)
+            b = b.add_record(
+                "Binary",
+                Record::with_fields(vec![
+                    FieldValue::String("icon1".to_string()),
+                    FieldValue::Stream(StringPoolId::new(1)),
+                ]),
+            );
+        }
 
         let pkg = b.build()?;
         Ok(PyPackage { inner: pkg })
+    }
+
+    /// Helper constructing a valid test package with embedded cabinets and rich database records.
+    ///
+    /// # Returns
+    ///
+    /// Valid [`PyPackage`] wrapped in a [`Result`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`msi::Error`] on failure.
+    fn create_test_package() -> Result<PyPackage, msi::Error> {
+        create_test_package_helper(false)
     }
 
     /// Helper verifying properties extraction and table names listing.
@@ -444,6 +479,7 @@ mod tests {
     /// Tests package properties extraction and table name listing.
     #[test]
     fn test_package_properties_and_table_names() {
+        assert!(create_test_package_helper(true).is_err());
         assert!(check_package_properties(create_test_package()));
         assert!(!check_package_properties(Err(
             msi::Error::InvalidCabSignature {

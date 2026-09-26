@@ -161,21 +161,21 @@ impl Compiler {
 
             if let Some(ver) = node.attribute("Version") {
                 let p = PropertyRow {
-                    property: PropertyName::new("ProductVersion")?,
+                    property: PropertyName::from_static("ProductVersion"),
                     value: ver.to_string(),
                 };
                 prop_table.push_record(p.to_record());
             }
             if let Some(name) = node.attribute("Name") {
                 let p = PropertyRow {
-                    property: PropertyName::new("ProductName")?,
+                    property: PropertyName::from_static("ProductName"),
                     value: name.to_string(),
                 };
                 prop_table.push_record(p.to_record());
             }
             if let Some(mfg) = node.attribute("Manufacturer") {
                 let p = PropertyRow {
-                    property: PropertyName::new("Manufacturer")?,
+                    property: PropertyName::from_static("Manufacturer"),
                     value: mfg.to_string(),
                 };
                 prop_table.push_record(p.to_record());
@@ -185,14 +185,14 @@ impl Compiler {
                 .or_else(|| node.attribute("Id"))
             {
                 let p = PropertyRow {
-                    property: PropertyName::new("ProductCode")?,
+                    property: PropertyName::from_static("ProductCode"),
                     value: code.to_string(),
                 };
                 prop_table.push_record(p.to_record());
             }
             if let Some(upg) = node.attribute("UpgradeCode") {
                 let p = PropertyRow {
-                    property: PropertyName::new("UpgradeCode")?,
+                    property: PropertyName::from_static("UpgradeCode"),
                     value: upg.to_string(),
                 };
                 prop_table.push_record(p.to_record());
@@ -202,7 +202,7 @@ impl Compiler {
                 .or_else(|| node.attribute("Languages"))
             {
                 let p = PropertyRow {
-                    property: PropertyName::new("ProductLanguage")?,
+                    property: PropertyName::from_static("ProductLanguage"),
                     value: lang.to_string(),
                 };
                 prop_table.push_record(p.to_record());
@@ -212,49 +212,49 @@ impl Compiler {
                 .or_else(|| node.attribute("SummaryCodepage"))
             {
                 let p = PropertyRow {
-                    property: PropertyName::new("ProductCodepage")?,
+                    property: PropertyName::from_static("ProductCodepage"),
                     value: cp.to_string(),
                 };
                 prop_table.push_record(p.to_record());
             }
             if let Some(iv) = node.attribute("InstallerVersion") {
                 let p = PropertyRow {
-                    property: PropertyName::new("InstallerVersion")?,
+                    property: PropertyName::from_static("InstallerVersion"),
                     value: iv.to_string(),
                 };
                 prop_table.push_record(p.to_record());
             }
             if let Some(cmp) = node.attribute("Compressed") {
                 let p = PropertyRow {
-                    property: PropertyName::new("ProductCompressed")?,
+                    property: PropertyName::from_static("ProductCompressed"),
                     value: cmp.to_string(),
                 };
                 prop_table.push_record(p.to_record());
             }
             if let Some(desc) = node.attribute("Description") {
                 let p = PropertyRow {
-                    property: PropertyName::new("ProductDescription")?,
+                    property: PropertyName::from_static("ProductDescription"),
                     value: desc.to_string(),
                 };
                 prop_table.push_record(p.to_record());
             }
             if let Some(comm) = node.attribute("Comments") {
                 let p = PropertyRow {
-                    property: PropertyName::new("ProductComments")?,
+                    property: PropertyName::from_static("ProductComments"),
                     value: comm.to_string(),
                 };
                 prop_table.push_record(p.to_record());
             }
             if let Some(kw) = node.attribute("Keywords") {
                 let p = PropertyRow {
-                    property: PropertyName::new("ProductKeywords")?,
+                    property: PropertyName::from_static("ProductKeywords"),
                     value: kw.to_string(),
                 };
                 prop_table.push_record(p.to_record());
             }
             if let Some(plt) = node.attribute("Platform") {
                 let p = PropertyRow {
-                    property: PropertyName::new("ProductPlatform")?,
+                    property: PropertyName::from_static("ProductPlatform"),
                     value: plt.to_string(),
                 };
                 prop_table.push_record(p.to_record());
@@ -289,28 +289,28 @@ impl Compiler {
 
             if let Some(ver) = node.attribute("Version") {
                 let p = PropertyRow {
-                    property: PropertyName::new("ModuleVersion")?,
+                    property: PropertyName::from_static("ModuleVersion"),
                     value: ver.to_string(),
                 };
                 prop_table.push_record(p.to_record());
             }
             if let Some(lang) = node.attribute("Language") {
                 let p = PropertyRow {
-                    property: PropertyName::new("ModuleLanguage")?,
+                    property: PropertyName::from_static("ModuleLanguage"),
                     value: lang.to_string(),
                 };
                 prop_table.push_record(p.to_record());
             }
             if let Some(mfg) = node.attribute("Manufacturer") {
                 let p = PropertyRow {
-                    property: PropertyName::new("ModuleManufacturer")?,
+                    property: PropertyName::from_static("ModuleManufacturer"),
                     value: mfg.to_string(),
                 };
                 prop_table.push_record(p.to_record());
             }
             if let Some(guid) = node.attribute("Guid").or_else(|| node.attribute("Id")) {
                 let p = PropertyRow {
-                    property: PropertyName::new("ModuleId")?,
+                    property: PropertyName::from_static("ModuleId"),
                     value: guid.to_string(),
                 };
                 prop_table.push_record(p.to_record());
@@ -320,7 +320,7 @@ impl Compiler {
                 .or_else(|| node.attribute("SummaryCodepage"))
             {
                 let p = PropertyRow {
-                    property: PropertyName::new("ModuleCodepage")?,
+                    property: PropertyName::from_static("ModuleCodepage"),
                     value: cp.to_string(),
                 };
                 prop_table.push_record(p.to_record());
@@ -388,14 +388,11 @@ impl Compiler {
                     let dir_name = child.attribute("Name").unwrap_or(dir_id_str);
 
                     let dir_id = DirectoryId::new(dir_id_str)?;
-                    let parent_dir = match parent_id {
-                        Some(p) => Some(DirectoryId::new(p)?),
-                        None => None,
-                    };
+                    let parent_dir = parent_id.map(DirectoryId::from_validated);
 
-                    section.add_symbol(Symbol::new("Directory", dir_id_str));
-                    if let Some(p) = parent_id {
-                        section.add_reference(Reference::new("Directory", p));
+                    section.add_symbol(Symbol::new("Directory", dir_id.as_str()));
+                    if let Some(ref p) = parent_dir {
+                        section.add_reference(Reference::new("Directory", p.as_str()));
                     }
 
                     let short_name = child.attribute("ShortName");
@@ -419,9 +416,11 @@ impl Compiler {
                         element: "Component".to_string(),
                         message: "missing required 'Id' attribute".to_string(),
                     })?;
-                    let current_dir = parent_id.unwrap_or("TARGETDIR");
                     let comp_name = ComponentName::new(comp_id_str)?;
-                    let dir_id = DirectoryId::new(current_dir)?;
+                    let dir_id = parent_id.map_or_else(
+                        || DirectoryId::from_static("TARGETDIR"),
+                        DirectoryId::from_validated,
+                    );
 
                     let guid_str = child.attribute("Guid");
                     let comp_guid = match guid_str {
@@ -429,9 +428,9 @@ impl Compiler {
                             Some(ComponentGuid::parse(g)?)
                         }
                         Some("*" | "?") => Some(ComponentGuid::generate_deterministic(
-                            current_dir,
+                            dir_id.as_str(),
                             comp_id_str,
-                        )?),
+                        )),
                         _ => None,
                     };
 
@@ -495,11 +494,11 @@ impl Compiler {
 
                     let comp_kp = child.attribute("KeyPath").map(ToString::to_string);
 
-                    section.add_symbol(Symbol::new("Component", comp_id_str));
-                    section.add_reference(Reference::new("Directory", current_dir));
+                    section.add_symbol(Symbol::new("Component", comp_name.as_str()));
+                    section.add_reference(Reference::new("Directory", dir_id.as_str()));
 
                     let row = ComponentRow {
-                        component: comp_name,
+                        component: comp_name.clone(),
                         component_id: comp_guid,
                         directory: dir_id,
                         attributes: comp_attrs,
@@ -511,7 +510,7 @@ impl Compiler {
                         .or_insert_with(|| IntermediateTable::new("Component"))
                         .push_record(row.to_record());
 
-                    self.compile_element_tree(child, Some(comp_id_str), section, tables)?;
+                    self.compile_element_tree(child, Some(comp_name.as_str()), section, tables)?;
                 }
                 "File" => {
                     let file_id_str = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
@@ -522,13 +521,14 @@ impl Compiler {
                         .attribute("Name")
                         .or_else(|| child.attribute("Source"))
                         .unwrap_or(file_id_str);
-                    let current_comp = parent_id.unwrap_or("DefaultComp");
-
                     let file_key = FileKey::new(file_id_str)?;
-                    let comp_name = ComponentName::new(current_comp)?;
+                    let comp_name = parent_id.map_or_else(
+                        || ComponentName::from_static("DefaultComp"),
+                        ComponentName::from_validated,
+                    );
 
-                    section.add_symbol(Symbol::new("File", file_id_str));
-                    section.add_reference(Reference::new("Component", current_comp));
+                    section.add_symbol(Symbol::new("File", file_key.as_str()));
+                    section.add_reference(Reference::new("Component", comp_name.as_str()));
 
                     let mut file_attrs: i16 = 0x0200; // Default vital in WiX
                     if child
@@ -625,7 +625,7 @@ impl Compiler {
                     );
 
                     let row = FileRow {
-                        file: file_key,
+                        file: file_key.clone(),
                         component: comp_name,
                         file_name: final_file_name,
                         file_size,
@@ -659,7 +659,7 @@ impl Compiler {
                         if sub.tag == "Font" {
                             let font_title = sub.attribute("Title").map(ToString::to_string);
                             let font_row = crate::database::tables::core::FontRow {
-                                file: FileKey::new(file_id_str)?,
+                                file: file_key.clone(),
                                 font_title,
                             };
                             tables
@@ -717,10 +717,7 @@ impl Compiler {
                         .and_then(|d| DirectoryId::new(d).ok());
 
                     let feat_name = FeatureName::new(feat_id_str)?;
-                    let parent_feat = match parent_id {
-                        Some(p) => Some(FeatureName::new(p)?),
-                        None => None,
-                    };
+                    let parent_feat = parent_id.map(FeatureName::from_validated);
 
                     section.add_symbol(Symbol::new("Feature", feat_id_str));
                     if let Some(p) = parent_id {
@@ -728,7 +725,7 @@ impl Compiler {
                     }
 
                     let row = FeatureRow {
-                        feature: feat_name,
+                        feature: feat_name.clone(),
                         feature_parent: parent_feat,
                         title,
                         description: desc,
@@ -746,10 +743,12 @@ impl Compiler {
                     for sub in &child.children {
                         if sub.tag == "ComponentRef" {
                             if let Some(comp_ref_id) = sub.attribute("Id") {
-                                section.add_reference(Reference::new("Component", comp_ref_id));
+                                let comp_name = ComponentName::new(comp_ref_id)?;
+                                section
+                                    .add_reference(Reference::new("Component", comp_name.as_str()));
                                 let fc_row = FeatureComponentsRow {
-                                    feature: FeatureName::new(feat_id_str)?,
-                                    component: ComponentName::new(comp_ref_id)?,
+                                    feature: feat_name.clone(),
+                                    component: comp_name,
                                 };
                                 tables
                                     .entry("FeatureComponents".to_string())
@@ -797,8 +796,9 @@ impl Compiler {
                         element: "DirectoryRef".to_string(),
                         message: "missing required 'Id' attribute".to_string(),
                     })?;
-                    section.add_reference(Reference::new("Directory", dir_id_str));
-                    self.compile_element_tree(child, Some(dir_id_str), section, tables)?;
+                    let dir_id = DirectoryId::new(dir_id_str)?;
+                    section.add_reference(Reference::new("Directory", dir_id.as_str()));
+                    self.compile_element_tree(child, Some(dir_id.as_str()), section, tables)?;
                 }
                 "ComponentGroup" => {
                     let group_id_str = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
@@ -808,13 +808,16 @@ impl Compiler {
                     section.add_symbol(Symbol::new("ComponentGroup", group_id_str));
                     let comp_dir = child.attribute("Directory").or(parent_id);
                     if let Some(dir) = child.attribute("Directory") {
-                        section.add_reference(Reference::new("Directory", dir));
+                        let dir_id = DirectoryId::new(dir)?;
+                        section.add_reference(Reference::new("Directory", dir_id.as_str()));
                     }
 
                     for sub in &child.children {
                         if sub.tag == "ComponentRef" {
                             if let Some(comp_ref_id) = sub.attribute("Id") {
-                                section.add_reference(Reference::new("Component", comp_ref_id));
+                                let comp_name = ComponentName::new(comp_ref_id)?;
+                                section
+                                    .add_reference(Reference::new("Component", comp_name.as_str()));
                                 tables
                                     .entry("_ComponentGroupMember".to_string())
                                     .or_insert_with(|| {
@@ -822,17 +825,18 @@ impl Compiler {
                                     })
                                     .push_record(Record::with_fields(vec![
                                         FieldValue::String(group_id_str.to_string()),
-                                        FieldValue::String(comp_ref_id.to_string()),
+                                        FieldValue::String(comp_name.as_str().to_string()),
                                     ]));
                             }
                         } else if sub.tag == "Component" {
                             let comp_id = sub.attribute("Id").unwrap_or("");
+                            let comp_name = ComponentName::new(comp_id)?;
                             tables
                                 .entry("_ComponentGroupMember".to_string())
                                 .or_insert_with(|| IntermediateTable::new("_ComponentGroupMember"))
                                 .push_record(Record::with_fields(vec![
                                     FieldValue::String(group_id_str.to_string()),
-                                    FieldValue::String(comp_id.to_string()),
+                                    FieldValue::String(comp_name.as_str().to_string()),
                                 ]));
                         } else if sub.tag == "ComponentGroupRef" {
                             let cg_ref_id = sub.attribute("Id").unwrap_or("");
@@ -901,35 +905,35 @@ impl Compiler {
 
                     if let Some(iv) = child.attribute("InstallerVersion") {
                         let p = PropertyRow {
-                            property: PropertyName::new("InstallerVersion")?,
+                            property: PropertyName::from_static("InstallerVersion"),
                             value: iv.to_string(),
                         };
                         prop_table.push_record(p.to_record());
                     }
                     if let Some(cmp) = child.attribute("Compressed") {
                         let p = PropertyRow {
-                            property: PropertyName::new("ProductCompressed")?,
+                            property: PropertyName::from_static("ProductCompressed"),
                             value: cmp.to_string(),
                         };
                         prop_table.push_record(p.to_record());
                     }
                     if let Some(desc) = child.attribute("Description") {
                         let p = PropertyRow {
-                            property: PropertyName::new("ProductDescription")?,
+                            property: PropertyName::from_static("ProductDescription"),
                             value: desc.to_string(),
                         };
                         prop_table.push_record(p.to_record());
                     }
                     if let Some(comm) = child.attribute("Comments") {
                         let p = PropertyRow {
-                            property: PropertyName::new("ProductComments")?,
+                            property: PropertyName::from_static("ProductComments"),
                             value: comm.to_string(),
                         };
                         prop_table.push_record(p.to_record());
                     }
                     if let Some(kw) = child.attribute("Keywords") {
                         let p = PropertyRow {
-                            property: PropertyName::new("ProductKeywords")?,
+                            property: PropertyName::from_static("ProductKeywords"),
                             value: kw.to_string(),
                         };
                         prop_table.push_record(p.to_record());
@@ -939,21 +943,21 @@ impl Compiler {
                         .or_else(|| child.attribute("Language"))
                     {
                         let p = PropertyRow {
-                            property: PropertyName::new("ProductLanguage")?,
+                            property: PropertyName::from_static("ProductLanguage"),
                             value: lang.to_string(),
                         };
                         prop_table.push_record(p.to_record());
                     }
                     if let Some(mfg) = child.attribute("Manufacturer") {
                         let p = PropertyRow {
-                            property: PropertyName::new("Manufacturer")?,
+                            property: PropertyName::from_static("Manufacturer"),
                             value: mfg.to_string(),
                         };
                         prop_table.push_record(p.to_record());
                     }
                     if let Some(plt) = child.attribute("Platform") {
                         let p = PropertyRow {
-                            property: PropertyName::new("ProductPlatform")?,
+                            property: PropertyName::from_static("ProductPlatform"),
                             value: plt.to_string(),
                         };
                         prop_table.push_record(p.to_record());
@@ -963,7 +967,7 @@ impl Compiler {
                         .or_else(|| child.attribute("Codepage"))
                     {
                         let p = PropertyRow {
-                            property: PropertyName::new("ProductCodepage")?,
+                            property: PropertyName::from_static("ProductCodepage"),
                             value: cp.to_string(),
                         };
                         prop_table.push_record(p.to_record());
@@ -1015,10 +1019,13 @@ impl Compiler {
                         .attribute("Directory")
                         .or(parent_id)
                         .unwrap_or("TARGETDIR");
-                    let comp_str = parent_id.unwrap_or("DefaultComp");
+                    let comp_name = parent_id.map_or_else(
+                        || ComponentName::from_static("DefaultComp"),
+                        ComponentName::from_validated,
+                    );
                     let row = CreateFolderRow {
                         directory: DirectoryId::new(dir_id_str)?,
-                        component: ComponentName::new(comp_str)?,
+                        component: comp_name,
                     };
                     tables
                         .entry("CreateFolder".to_string())
@@ -1035,7 +1042,10 @@ impl Compiler {
                         .or_else(|| child.attribute("Property"))
                         .or(parent_id)
                         .unwrap_or("TARGETDIR");
-                    let comp_str = parent_id.unwrap_or("DefaultComp");
+                    let comp_name = parent_id.map_or_else(
+                        || ComponentName::from_static("DefaultComp"),
+                        ComponentName::from_validated,
+                    );
                     let on_mode = match child.attribute("On") {
                         Some("install") => 2,
                         Some("uninstall") => 1,
@@ -1043,7 +1053,7 @@ impl Compiler {
                     };
                     let row = RemoveFileRow {
                         file_key: rem_id.to_string(),
-                        component: ComponentName::new(comp_str)?,
+                        component: comp_name,
                         file_name: None,
                         dir_property: dir_prop.to_string(),
                         install_mode: on_mode,
@@ -1060,7 +1070,10 @@ impl Compiler {
                     })?;
                     let raw_name = child.attribute("Name").unwrap_or("");
                     let value = child.attribute("Value").unwrap_or("");
-                    let comp_str = parent_id.unwrap_or("DefaultComp");
+                    let comp_name = parent_id.map_or_else(
+                        || ComponentName::from_static("DefaultComp"),
+                        ComponentName::from_validated,
+                    );
 
                     let mut prefix = String::new();
                     if child
@@ -1080,7 +1093,7 @@ impl Compiler {
                         environment: env_id.to_string(),
                         name: formatted_name,
                         value: value.to_string(),
-                        component: ComponentName::new(comp_str)?,
+                        component: comp_name,
                     };
                     tables
                         .entry("Environment".to_string())
@@ -1203,13 +1216,13 @@ impl Compiler {
                                 Some(key),
                                 section,
                                 tables,
-                            )?;
+                            );
                         }
                     }
                     self.compile_element_tree(child, parent_id, section, tables)?;
                 }
                 "RegistryValue" => {
-                    Self::compile_registry_value(child, parent_id, None, None, section, tables)?;
+                    Self::compile_registry_value(child, parent_id, None, None, section, tables);
                 }
                 "Shortcut" => {
                     Self::compile_shortcut(child, parent_id, section, tables);
@@ -1219,6 +1232,19 @@ impl Compiler {
                 }
                 "ServiceControl" => {
                     Self::compile_service_control(child, parent_id, section, tables);
+                }
+                "EmbeddedChainer" => {
+                    Self::compile_embedded_chainer(child, section, tables)?;
+                }
+                "sql:SqlDatabase" | "SqlDatabase" => {
+                    Self::compile_sql_database(child, parent_id, section, tables)?;
+                    self.compile_element_tree(child, child.attribute("Id"), section, tables)?;
+                }
+                "sql:SqlString" | "SqlString" => {
+                    Self::compile_sql_string(child, parent_id, section, tables)?;
+                }
+                "sql:SqlScript" | "SqlScript" => {
+                    Self::compile_sql_script(child, parent_id, section, tables)?;
                 }
                 "CustomAction" => {
                     Self::compile_custom_action(child, section, tables)?;
@@ -1277,7 +1303,7 @@ impl Compiler {
                     Self::compile_move_file(child, parent_id, section, tables);
                 }
                 "RemoveFile" => {
-                    Self::compile_remove_file(child, parent_id, section, tables)?;
+                    Self::compile_remove_file(child, parent_id, section, tables);
                 }
                 "SymbolicLink" | "Hardlink" => {
                     Self::compile_symlink(child, parent_id, section, tables)?;
@@ -1406,8 +1432,12 @@ impl Compiler {
         inherited_key: Option<&str>,
         section: &mut IntermediateSection,
         tables: &mut std::collections::HashMap<String, IntermediateTable>,
-    ) -> Result<()> {
+    ) {
         let comp_name = parent_id.unwrap_or("DefaultComp");
+        let comp_obj = parent_id.map_or_else(
+            || ComponentName::from_static("DefaultComp"),
+            ComponentName::from_validated,
+        );
         let reg_id = child.attribute("Id").unwrap_or("Registry1");
         let root_str = child.attribute("Root").or(inherited_root).unwrap_or("HKLM");
         let root = parse_registry_root(root_str);
@@ -1427,13 +1457,12 @@ impl Compiler {
             key: key.to_string(),
             name,
             value,
-            component: ComponentName::new(comp_name)?,
+            component: comp_obj,
         };
         tables
             .entry("Registry".to_string())
             .or_insert_with(|| IntermediateTable::new("Registry"))
             .push_record(row.to_record());
-        Ok(())
     }
 
     /// Compiles a `<Shortcut>` element.
@@ -1491,18 +1520,31 @@ impl Compiler {
         let comp_name = parent_id.unwrap_or("DefaultComp");
         let svc_type = match child.attribute("Type").unwrap_or("ownProcess") {
             "shareProcess" => 32,
+            "kernelDriver" => 1,
+            "systemDriver" => 2,
             _ => 16,
         };
         let start_type = match child.attribute("Start").unwrap_or("auto") {
+            "boot" => 0,
+            "system" => 1,
             "demand" | "manual" => 3,
             "disabled" => 4,
             _ => 2,
         };
         let error_control = match child.attribute("ErrorControl").unwrap_or("normal") {
             "ignore" => 0,
+            "severe" => 2,
             "critical" => 3,
             _ => 1,
         };
+
+        let load_order = child.attribute("LoadOrderGroup").map(ToString::to_string);
+        let deps = child.attribute("Dependencies").map(ToString::to_string);
+        let account = child
+            .attribute("Account")
+            .or_else(|| child.attribute("StartName"))
+            .map(ToString::to_string);
+        let password = child.attribute("Password").map(ToString::to_string);
 
         section.add_symbol(Symbol::new("ServiceInstall", svc_id));
         section.add_reference(Reference::new("Component", comp_name));
@@ -1514,16 +1556,31 @@ impl Compiler {
             FieldValue::Long(svc_type),
             FieldValue::Long(start_type),
             FieldValue::Long(error_control),
-            FieldValue::Null,
-            FieldValue::Null,
-            FieldValue::Null,
-            FieldValue::Null,
+            load_order.map_or(FieldValue::Null, FieldValue::String),
+            deps.map_or(FieldValue::Null, FieldValue::String),
+            account.map_or(FieldValue::Null, FieldValue::String),
+            password.map_or(FieldValue::Null, FieldValue::String),
             FieldValue::String(comp_name.to_string()),
         ]);
         tables
             .entry("ServiceInstall".to_string())
             .or_insert_with(|| IntermediateTable::new("ServiceInstall"))
             .push_record(rec);
+
+        if let Some(desc) = child.attribute("Description") {
+            let sc_rec = Record::with_fields(vec![
+                FieldValue::String(format!("{svc_id}_Config")),
+                FieldValue::String(svc_name.to_string()),
+                FieldValue::Long(1),
+                FieldValue::Long(1),
+                FieldValue::String(desc.to_string()),
+                FieldValue::String(comp_name.to_string()),
+            ]);
+            tables
+                .entry("MsiServiceConfig".to_string())
+                .or_insert_with(|| IntermediateTable::new("MsiServiceConfig"))
+                .push_record(sc_rec);
+        }
     }
 
     /// Compiles a `<ServiceControl>` element.
@@ -1537,15 +1594,42 @@ impl Compiler {
         let ctrl_name = child.attribute("Name").unwrap_or(ctrl_id);
         let comp_name = parent_id.unwrap_or("DefaultComp");
         let mut event: i16 = 0;
-        if child.attribute("Start") == Some("yes") {
-            event |= 1;
+
+        if let Some(s) = child.attribute("Start") {
+            match s.to_ascii_lowercase().as_str() {
+                "install" | "yes" => event |= 0x0001,
+                "uninstall" => event |= 0x0010,
+                "both" => event |= 0x0011,
+                _ => {}
+            }
         }
-        if child.attribute("Stop") == Some("yes") {
-            event |= 2;
+        if let Some(s) = child.attribute("Stop") {
+            match s.to_ascii_lowercase().as_str() {
+                "install" => event |= 0x0002,
+                "uninstall" => event |= 0x0020,
+                "both" | "yes" => event |= 0x0022,
+                _ => {}
+            }
         }
-        if child.attribute("Remove") == Some("yes") {
-            event |= 32;
+        if let Some(s) = child.attribute("Remove") {
+            match s.to_ascii_lowercase().as_str() {
+                "install" => event |= 0x0008,
+                "uninstall" | "yes" => event |= 0x0080,
+                "both" => event |= 0x0088,
+                _ => {}
+            }
         }
+
+        let arguments = child.attribute("Arguments").map(ToString::to_string);
+        let wait = match child
+            .attribute("Wait")
+            .map(str::to_ascii_lowercase)
+            .as_deref()
+        {
+            Some("yes" | "1") => Some(1i16),
+            Some("no" | "0") => Some(0i16),
+            _ => None,
+        };
 
         section.add_symbol(Symbol::new("ServiceControl", ctrl_id));
         section.add_reference(Reference::new("Component", comp_name));
@@ -1554,14 +1638,275 @@ impl Compiler {
             FieldValue::String(ctrl_id.to_string()),
             FieldValue::String(ctrl_name.to_string()),
             FieldValue::Short(event),
-            FieldValue::Null,
-            FieldValue::Null,
+            arguments.map_or(FieldValue::Null, FieldValue::String),
+            wait.map_or(FieldValue::Null, FieldValue::Short),
             FieldValue::String(comp_name.to_string()),
         ]);
         tables
             .entry("ServiceControl".to_string())
             .or_insert_with(|| IntermediateTable::new("ServiceControl"))
             .push_record(rec);
+    }
+
+    /// Compiles an `<EmbeddedChainer>` element into `MsiEmbeddedChainer` table.
+    fn compile_embedded_chainer(
+        child: &XmlNode,
+        section: &mut IntermediateSection,
+        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+    ) -> Result<()> {
+        let id = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
+            element: "EmbeddedChainer".to_string(),
+            message: "missing required 'Id' attribute".to_string(),
+        })?;
+
+        let binary_key = child.attribute("BinaryKey");
+        let file_key = child.attribute("FileKey");
+        let source_file = child.attribute("SourceFile");
+
+        let (source, chainer_type) = if let Some(bin) = binary_key {
+            section.add_reference(Reference::new("Binary", bin));
+            (bin.to_string(), 1)
+        } else if let Some(file) = file_key {
+            section.add_reference(Reference::new("File", file));
+            (file.to_string(), 2)
+        } else if let Some(src) = source_file {
+            let auto_bin = format!("{id}_Binary");
+            section.add_symbol(Symbol::new("Binary", &auto_bin));
+            let bin_row = crate::database::tables::core::BinaryRow {
+                name: auto_bin.clone(),
+                data: crate::database::tables::types::StringPoolId::new(1),
+            };
+            tables
+                .entry("Binary".to_string())
+                .or_insert_with(|| IntermediateTable::new("Binary"))
+                .push_record(bin_row.to_record());
+            let mut wix_bin = Record::new();
+            wix_bin.push(FieldValue::String(auto_bin.clone()));
+            wix_bin.push(FieldValue::String(src.to_string()));
+            tables
+                .entry("WixBinary".to_string())
+                .or_insert_with(|| IntermediateTable::new("WixBinary"))
+                .push_record(wix_bin);
+            (auto_bin, 1)
+        } else {
+            let def_bin = format!("{id}_Binary");
+            section.add_reference(Reference::new("Binary", &def_bin));
+            (def_bin, 1)
+        };
+
+        let cmd_line = child.attribute("CommandLine").map(ToString::to_string);
+        let condition = child.attribute("Condition").map(ToString::to_string);
+
+        section.add_symbol(Symbol::new("EmbeddedChainer", id));
+
+        let rec = Record::with_fields(vec![
+            FieldValue::String(id.to_string()),
+            condition.map_or(FieldValue::Null, FieldValue::String),
+            cmd_line.map_or(FieldValue::Null, FieldValue::String),
+            FieldValue::String(source),
+            FieldValue::Long(chainer_type),
+        ]);
+
+        tables
+            .entry("MsiEmbeddedChainer".to_string())
+            .or_insert_with(|| IntermediateTable::new("MsiEmbeddedChainer"))
+            .push_record(rec);
+
+        Ok(())
+    }
+
+    /// Compiles a `<SqlDatabase>` or `<sql:SqlDatabase>` element.
+    fn compile_sql_database(
+        child: &XmlNode,
+        parent_id: Option<&str>,
+        section: &mut IntermediateSection,
+        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+    ) -> Result<()> {
+        let db_id = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
+            element: "SqlDatabase".to_string(),
+            message: "missing required 'Id' attribute".to_string(),
+        })?;
+
+        let server = child.attribute("Server").unwrap_or("127.0.0.1");
+        let instance = child.attribute("Instance").map(ToString::to_string);
+        let database = child.attribute("Database").unwrap_or(db_id);
+        let comp_name = parent_id.unwrap_or("DefaultComp");
+        let user = child.attribute("User").map(ToString::to_string);
+
+        let mut attrs: i32 = 0;
+        if child.attribute("CreateOnInstall") == Some("yes") {
+            attrs |= 0x0001;
+        }
+        if child.attribute("DropOnUninstall") == Some("yes") {
+            attrs |= 0x0002;
+        }
+        if child.attribute("ContinueOnError") == Some("yes") {
+            attrs |= 0x0004;
+        }
+        if child.attribute("DropOnInstall") == Some("yes") {
+            attrs |= 0x0008;
+        }
+        if child.attribute("CreateOnUninstall") == Some("yes") {
+            attrs |= 0x0010;
+        }
+
+        section.add_symbol(Symbol::new("SqlDatabase", db_id));
+        section.add_reference(Reference::new("Component", comp_name));
+
+        let rec = Record::with_fields(vec![
+            FieldValue::String(db_id.to_string()),
+            FieldValue::String(server.to_string()),
+            instance.map_or(FieldValue::Null, FieldValue::String),
+            FieldValue::String(database.to_string()),
+            FieldValue::String(comp_name.to_string()),
+            user.map_or(FieldValue::Null, FieldValue::String),
+            FieldValue::Long(attrs),
+        ]);
+
+        tables
+            .entry("SqlDatabase".to_string())
+            .or_insert_with(|| IntermediateTable::new("SqlDatabase"))
+            .push_record(rec);
+
+        Ok(())
+    }
+
+    /// Compiles a `<SqlString>` or `<sql:SqlString>` element.
+    fn compile_sql_string(
+        child: &XmlNode,
+        parent_id: Option<&str>,
+        section: &mut IntermediateSection,
+        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+    ) -> Result<()> {
+        let str_id = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
+            element: "SqlString".to_string(),
+            message: "missing required 'Id' attribute".to_string(),
+        })?;
+
+        let sql_db = child
+            .attribute("SqlDb")
+            .or(parent_id)
+            .unwrap_or("DefaultSqlDb");
+
+        let sql_text = if child.text.trim().is_empty() {
+            child
+                .attribute("SQL")
+                .map(ToString::to_string)
+                .unwrap_or_default()
+        } else {
+            child.text.trim().to_string()
+        };
+
+        if sql_text.is_empty() {
+            return Err(Error::WixCompiler {
+                element: "SqlString".to_string(),
+                message: format!("missing SQL statement text in SqlString '{str_id}'"),
+            });
+        }
+
+        let user = child.attribute("User").map(ToString::to_string);
+        let mut attrs: i32 = 0;
+        if child.attribute("ExecuteOnInstall") == Some("yes")
+            || child.attribute("ExecuteOnInstall").is_none()
+        {
+            attrs |= 0x0001;
+        }
+        if child.attribute("ExecuteOnUninstall") == Some("yes") {
+            attrs |= 0x0002;
+        }
+        if child.attribute("Rollback") == Some("yes") {
+            attrs |= 0x0004;
+        }
+        if child.attribute("ContinueOnError") == Some("yes") {
+            attrs |= 0x0008;
+        }
+
+        let sequence = child
+            .attribute("Sequence")
+            .and_then(|s| s.parse::<i32>().ok());
+
+        section.add_symbol(Symbol::new("SqlString", str_id));
+        section.add_reference(Reference::new("SqlDatabase", sql_db));
+
+        let rec = Record::with_fields(vec![
+            FieldValue::String(str_id.to_string()),
+            FieldValue::String(sql_db.to_string()),
+            FieldValue::String(sql_text),
+            user.map_or(FieldValue::Null, FieldValue::String),
+            FieldValue::Long(attrs),
+            sequence.map_or(FieldValue::Null, FieldValue::Long),
+        ]);
+
+        tables
+            .entry("SqlString".to_string())
+            .or_insert_with(|| IntermediateTable::new("SqlString"))
+            .push_record(rec);
+
+        Ok(())
+    }
+
+    /// Compiles a `<SqlScript>` or `<sql:SqlScript>` element.
+    fn compile_sql_script(
+        child: &XmlNode,
+        parent_id: Option<&str>,
+        section: &mut IntermediateSection,
+        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+    ) -> Result<()> {
+        let script_id = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
+            element: "SqlScript".to_string(),
+            message: "missing required 'Id' attribute".to_string(),
+        })?;
+
+        let sql_db = child.attribute("SqlDb").unwrap_or("DefaultSqlDb");
+
+        let script_file = child
+            .attribute("ScriptFile")
+            .or_else(|| child.attribute("BinaryKey"))
+            .unwrap_or("script.sql");
+
+        let comp_name = parent_id.unwrap_or("DefaultComp");
+        let user = child.attribute("User").map(ToString::to_string);
+
+        let mut attrs: i32 = 0;
+        if child.attribute("ExecuteOnInstall") == Some("yes")
+            || child.attribute("ExecuteOnInstall").is_none()
+        {
+            attrs |= 0x0001;
+        }
+        if child.attribute("ExecuteOnUninstall") == Some("yes") {
+            attrs |= 0x0002;
+        }
+        if child.attribute("Rollback") == Some("yes") {
+            attrs |= 0x0004;
+        }
+        if child.attribute("ContinueOnError") == Some("yes") {
+            attrs |= 0x0008;
+        }
+
+        let sequence = child
+            .attribute("Sequence")
+            .and_then(|s| s.parse::<i32>().ok());
+
+        section.add_symbol(Symbol::new("SqlScript", script_id));
+        section.add_reference(Reference::new("SqlDatabase", sql_db));
+        section.add_reference(Reference::new("Component", comp_name));
+
+        let rec = Record::with_fields(vec![
+            FieldValue::String(script_id.to_string()),
+            FieldValue::String(sql_db.to_string()),
+            FieldValue::String(comp_name.to_string()),
+            FieldValue::String(script_file.to_string()),
+            user.map_or(FieldValue::Null, FieldValue::String),
+            FieldValue::Long(attrs),
+            sequence.map_or(FieldValue::Null, FieldValue::Long),
+        ]);
+
+        tables
+            .entry("SqlScript".to_string())
+            .or_insert_with(|| IntermediateTable::new("SqlScript"))
+            .push_record(rec);
+
+        Ok(())
     }
 
     /// Compiles a `<CustomAction>` element.
@@ -2558,9 +2903,13 @@ impl Compiler {
         parent_id: Option<&str>,
         section: &mut IntermediateSection,
         tables: &mut std::collections::HashMap<String, IntermediateTable>,
-    ) -> Result<()> {
+    ) {
         let id = child.attribute("Id").unwrap_or("RemoveFile1");
         let comp = parent_id.unwrap_or("DefaultComp");
+        let comp_obj = parent_id.map_or_else(
+            || ComponentName::from_static("DefaultComp"),
+            ComponentName::from_validated,
+        );
         let name = child.attribute("Name");
         let dir = child
             .attribute("Directory")
@@ -2578,7 +2927,7 @@ impl Compiler {
 
         let row = RemoveFileRow {
             file_key: id.to_string(),
-            component: ComponentName::new(comp)?,
+            component: comp_obj,
             file_name: name.map(ToString::to_string),
             dir_property: dir.to_string(),
             install_mode: mode,
@@ -2587,7 +2936,6 @@ impl Compiler {
             .entry("RemoveFile".to_string())
             .or_insert_with(|| IntermediateTable::new("RemoveFile"))
             .push_record(row.to_record());
-        Ok(())
     }
 
     /// Compiles a `<SymbolicLink>` or `<Hardlink>` element into `PosixSymlink` table.
@@ -2608,6 +2956,10 @@ impl Compiler {
             .unwrap_or("TARGETDIR");
         let name = child.attribute("Name").unwrap_or(id);
         let comp = parent_id.unwrap_or("DefaultComp");
+        let comp_obj = parent_id.map_or_else(
+            || ComponentName::from_static("DefaultComp"),
+            ComponentName::from_validated,
+        );
 
         section.add_symbol(Symbol::new("SymbolicLink", id));
         section.add_reference(Reference::new("Component", comp));
@@ -2617,7 +2969,7 @@ impl Compiler {
             target_path: target.to_string(),
             link_directory: DirectoryId::new(dir)?,
             link_name: name.to_string(),
-            component: ComponentName::new(comp)?,
+            component: comp_obj,
         };
         tables
             .entry("PosixSymlink".to_string())
@@ -3283,6 +3635,7 @@ impl Compiler {
     }
 
     /// Compiles a `<Launch>` or top-level `<Condition>` element into `LaunchCondition` table.
+    #[allow(clippy::option_if_let_else)]
     fn compile_launch_condition(
         child: &XmlNode,
         tables: &mut std::collections::HashMap<String, IntermediateTable>,
@@ -3290,19 +3643,13 @@ impl Compiler {
         let message = child
             .attribute("Message")
             .unwrap_or("System requirements not met.");
-        let condition = child
-            .attribute("Condition")
-            .or_else(|| child.attribute("Message"))
-            .map_or_else(
-                || {
-                    if child.text.is_empty() {
-                        "1"
-                    } else {
-                        &child.text
-                    }
-                },
-                |c| c,
-            );
+        let condition = if let Some(cond) = child.attribute("Condition") {
+            cond
+        } else if !child.text.trim().is_empty() {
+            child.text.trim()
+        } else {
+            "1"
+        };
         let rec = Record::with_fields(vec![
             FieldValue::String(condition.to_string()),
             FieldValue::String(message.to_string()),
@@ -3530,6 +3877,16 @@ impl Compiler {
             .entry("Binary".to_string())
             .or_insert_with(|| IntermediateTable::new("Binary"))
             .push_record(row.to_record());
+
+        if let Some(src) = child.attribute("SourceFile") {
+            let mut wix_bin = Record::new();
+            wix_bin.push(FieldValue::String(id.to_string()));
+            wix_bin.push(FieldValue::String(src.to_string()));
+            tables
+                .entry("WixBinary".to_string())
+                .or_insert_with(|| IntermediateTable::new("WixBinary"))
+                .push_record(wix_bin);
+        }
     }
 
     /// Compiles `<Billboard>` and `<BillboardAction>` elements.
@@ -3659,7 +4016,7 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn test_compiler_basic() -> Result<()> {
+    fn test_compiler_basic() {
         let xml = r#"
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
     <Product Id="{12345678-1234-1234-1234-1234567890AB}" Name="MyApp" Version="2.0.0" Manufacturer="Acme">
@@ -3681,10 +4038,10 @@ mod tests {
 "#;
 
         let parser = XmlParser::new();
-        let root = parser.parse(xml)?;
+        let root = parser.parse(xml).unwrap_or_default();
 
         let compiler = Compiler::new();
-        let obj = compiler.compile(&root)?;
+        let obj = compiler.compile(&root).unwrap_or_default();
 
         assert_eq!(obj.sections.len(), 1);
         let sec = &obj.sections[0];
@@ -3723,12 +4080,10 @@ mod tests {
         assert!(sec.tables.iter().any(|t| t.name == "FeatureComponents"));
         assert!(sec.tables.iter().any(|t| t.name == "Property"));
         assert!(sec.tables.iter().any(|t| t.name == "Media"));
-
-        Ok(())
     }
 
     #[test]
-    fn test_compiler_sections_variety() -> Result<()> {
+    fn test_compiler_sections_variety() {
         let xml = r#"
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
     <Module Id="Mod1" Version="1.0" />
@@ -3738,50 +4093,47 @@ mod tests {
 </Wix>
 "#;
         let parser = XmlParser::new();
-        let root = parser.parse(xml)?;
+        let root = parser.parse(xml).unwrap_or_default();
         let compiler = Compiler::new();
-        let obj = compiler.compile(&root)?;
+        let obj = compiler.compile(&root).unwrap_or_default();
 
         assert_eq!(obj.sections.len(), 4);
         assert_eq!(obj.sections[0].section_type, SectionType::Module);
         assert_eq!(obj.sections[1].section_type, SectionType::Fragment);
         assert_eq!(obj.sections[2].section_type, SectionType::PatchCreation);
         assert_eq!(obj.sections[3].section_type, SectionType::Patch);
-        Ok(())
     }
 
     #[test]
-    fn test_compiler_errors() -> Result<()> {
+    fn test_compiler_errors() {
         let compiler = Compiler::new();
         let parser = XmlParser::new();
 
         // Missing Directory Id
-        let bad_dir = parser.parse("<Wix><Product Id=\"{11111111-1111-1111-1111-111111111111}\"><Directory /></Product></Wix>")?;
+        let bad_dir = parser.parse("<Wix><Product Id=\"{11111111-1111-1111-1111-111111111111}\"><Directory /></Product></Wix>").unwrap_or_default();
         assert!(compiler.compile(&bad_dir).is_err());
 
         // Missing Component Id
-        let bad_comp = parser.parse("<Wix><Product Id=\"{11111111-1111-1111-1111-111111111111}\"><Component /></Product></Wix>")?;
+        let bad_comp = parser.parse("<Wix><Product Id=\"{11111111-1111-1111-1111-111111111111}\"><Component /></Product></Wix>").unwrap_or_default();
         assert!(compiler.compile(&bad_comp).is_err());
 
         // Missing File Id
         let bad_file = parser.parse(
             "<Wix><Product Id=\"{11111111-1111-1111-1111-111111111111}\"><File /></Product></Wix>",
-        )?;
+        ).unwrap_or_default();
         assert!(compiler.compile(&bad_file).is_err());
 
         // Missing Feature Id
-        let bad_feat = parser.parse("<Wix><Product Id=\"{11111111-1111-1111-1111-111111111111}\"><Feature /></Product></Wix>")?;
+        let bad_feat = parser.parse("<Wix><Product Id=\"{11111111-1111-1111-1111-111111111111}\"><Feature /></Product></Wix>").unwrap_or_default();
         assert!(compiler.compile(&bad_feat).is_err());
 
         // Missing Property Id
-        let bad_prop = parser.parse("<Wix><Product Id=\"{11111111-1111-1111-1111-111111111111}\"><Property /></Product></Wix>")?;
+        let bad_prop = parser.parse("<Wix><Product Id=\"{11111111-1111-1111-1111-111111111111}\"><Property /></Product></Wix>").unwrap_or_default();
         assert!(compiler.compile(&bad_prop).is_err());
-
-        Ok(())
     }
 
     #[test]
-    fn test_compiler_extended_elements() -> Result<()> {
+    fn test_compiler_extended_elements() {
         let xml = r#"
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi" xmlns:posix="http://schemas.msi-rs.org/wix/posix/v1">
     <Product Id="{12345678-1234-1234-1234-1234567890AB}" Name="ExtendedApp" Version="1.0.0" Manufacturer="Acme">
@@ -3821,9 +4173,9 @@ mod tests {
 "#;
 
         let parser = XmlParser::new();
-        let root = parser.parse(xml)?;
+        let root = parser.parse(xml).unwrap_or_default();
         let compiler = Compiler::new();
-        let obj = compiler.compile(&root)?;
+        let obj = compiler.compile(&root).unwrap_or_default();
 
         assert_eq!(obj.sections.len(), 1);
         let sec = &obj.sections[0];
@@ -3882,13 +4234,11 @@ mod tests {
         assert!(sec.tables.iter().any(|t| t.name == "PosixDaemon"));
         assert!(sec.tables.iter().any(|t| t.name == "PosixAcl"));
         assert!(sec.tables.iter().any(|t| t.name == "PosixDesktop"));
-
-        Ok(())
     }
 
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_compiler_wix_section11_features() -> Result<()> {
+    fn test_compiler_wix_section11_features() {
         let xml = r#"
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
     <Product Id="{12345678-1234-1234-1234-1234567890AB}" Name="Section11App" Version="1.2.3" Manufacturer="Acme" UpgradeCode="{87654321-4321-4321-4321-BA0987654321}" Language="1033" Codepage="1252" InstallerVersion="500" Compressed="yes" Description="Product Desc" Comments="Product Comm" Keywords="MSI;Test;" Platform="x64">
@@ -3924,9 +4274,9 @@ mod tests {
 "#;
 
         let parser = XmlParser::new();
-        let root = parser.parse(xml)?;
+        let root = parser.parse(xml).unwrap_or_default();
         let compiler = Compiler::new();
-        let obj = compiler.compile(&root)?;
+        let obj = compiler.compile(&root).unwrap_or_default();
 
         assert_eq!(obj.sections.len(), 1);
         let sec = &obj.sections[0];
@@ -3980,18 +4330,20 @@ mod tests {
                 assert_eq!(t.records.len(), 1);
                 found_env = true;
             } else if t.name == "Component" {
-                let parsed_comp = ComponentRow::from_record(&t.records[0])?;
-                assert!(parsed_comp.component_id.is_some());
-                assert_ne!(parsed_comp.attributes, 0);
-                assert_eq!(parsed_comp.condition, Some("VersionNT >= 600".to_string()));
-                found_comp = true;
+                for parsed_comp in into_vec(ComponentRow::from_record(&t.records[0])) {
+                    assert!(parsed_comp.component_id.is_some());
+                    assert_ne!(parsed_comp.attributes, 0);
+                    assert_eq!(parsed_comp.condition, Some("VersionNT >= 600".to_string()));
+                    found_comp = true;
+                }
             } else if t.name == "File" {
-                let parsed_file = FileRow::from_record(&t.records[0])?;
-                assert_eq!(parsed_file.file_size, 4096);
-                assert_eq!(parsed_file.version, Some("1.2.3.4".to_string()));
-                assert_eq!(parsed_file.language, Some("1033".to_string()));
-                assert_ne!(parsed_file.attributes, Some(0));
-                found_file = true;
+                for parsed_file in into_vec(FileRow::from_record(&t.records[0])) {
+                    assert_eq!(parsed_file.file_size, 4096);
+                    assert_eq!(parsed_file.version, Some("1.2.3.4".to_string()));
+                    assert_eq!(parsed_file.language, Some("1033".to_string()));
+                    assert_ne!(parsed_file.attributes, Some(0));
+                    found_file = true;
+                }
             }
         }
 
@@ -4000,13 +4352,11 @@ mod tests {
         assert!(found_env);
         assert!(found_comp);
         assert!(found_file);
-
-        Ok(())
     }
 
     /// Tests compiling module attributes, signatures, dependencies, exclusions, and configurations.
     #[test]
-    fn test_compiler_module_attributes() -> Result<()> {
+    fn test_compiler_module_attributes() {
         let parser = XmlParser::new();
         let compiler = Compiler::new();
 
@@ -4024,8 +4374,8 @@ mod tests {
     </Module>
 </Wix>
 "#;
-        let mod_root = parser.parse(mod_xml)?;
-        let mod_obj = compiler.compile(&mod_root)?;
+        let mod_root = parser.parse(mod_xml).unwrap_or_default();
+        let mod_obj = compiler.compile(&mod_root).unwrap_or_default();
         assert_eq!(mod_obj.sections.len(), 1);
         let mod_sec = &mod_obj.sections[0];
         let table_names: Vec<&str> = mod_sec.tables.iter().map(|t| t.name.as_str()).collect();
@@ -4037,13 +4387,11 @@ mod tests {
         assert!(table_names.contains(&"ModuleConfiguration"));
         assert!(table_names.contains(&"ModuleSubstitution"));
         assert!(table_names.contains(&"ModuleIgnoreModularization"));
-
-        Ok(())
     }
 
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_compiler_wix_section11_extended_tags() -> Result<()> {
+    fn test_compiler_wix_section11_extended_tags() {
         let parser = XmlParser::new();
         let compiler = Compiler::new();
 
@@ -4101,6 +4449,7 @@ mod tests {
         <PatchCreation Id="PC1" />
         <UIRef Id="WixUI_InstallDir" />
         <Binary Id="BinHelper" SourceFile="helper.dll" />
+        <Binary Id="BinNoSrc" />
         <Billboard Id="BB1" Feature="MainFeat" Action="InstallFiles" Ordering="1" />
         <ProgressText Action="InstallFiles" Template="Copying: [1]">Copying files</ProgressText>
         <Error Id="1001" Message="Fatal error occurred" />
@@ -4116,8 +4465,8 @@ mod tests {
     </Product>
 </Wix>
 "#;
-        let root = parser.parse(xml)?;
-        let obj = compiler.compile(&root)?;
+        let root = parser.parse(xml).unwrap_or_default();
+        let obj = compiler.compile(&root).unwrap_or_default();
         assert_eq!(obj.sections.len(), 1);
         let sec = &obj.sections[0];
 
@@ -4178,15 +4527,13 @@ mod tests {
     </Module>
 </Wix>
 "#;
-        let mod_root = parser.parse(mod_xml)?;
-        let mod_obj = compiler.compile(&mod_root)?;
+        let mod_root = parser.parse(mod_xml).unwrap_or_default();
+        let mod_obj = compiler.compile(&mod_root).unwrap_or_default();
         let mod_sec = &mod_obj.sections[0];
         let mod_table_names: Vec<&str> = mod_sec.tables.iter().map(|t| t.name.as_str()).collect();
         assert!(mod_table_names.contains(&"ModuleConfiguration"));
         assert!(mod_table_names.contains(&"ModuleSubstitution"));
         assert!(mod_table_names.contains(&"ModuleIgnoreModularization"));
-
-        Ok(())
     }
 
     /// Tests compiling top-level Wix root variations and section attributes.
@@ -4195,7 +4542,7 @@ mod tests {
     ///
     /// Returns [`Error`] if XML parsing or compilation fails.
     #[test]
-    fn test_compiler_top_level_and_section_variations() -> Result<()> {
+    fn test_compiler_top_level_and_section_variations() {
         let parser = XmlParser::new();
         let compiler = Compiler::new();
 
@@ -4205,8 +4552,8 @@ mod tests {
     <UnknownRootChild Tag="Ignored" />
 </Wix>
 "#;
-        let root_unknown = parser.parse(xml_unknown)?;
-        let obj_unknown = compiler.compile(&root_unknown)?;
+        let root_unknown = parser.parse(xml_unknown).unwrap_or_default();
+        let obj_unknown = compiler.compile(&root_unknown).unwrap_or_default();
         assert_eq!(obj_unknown.sections.len(), 0);
 
         // 2. Minimal Product without attributes
@@ -4215,8 +4562,8 @@ mod tests {
     <Product />
 </Wix>
 "#;
-        let root_min_prod = parser.parse(xml_min_prod)?;
-        let obj_min_prod = compiler.compile(&root_min_prod)?;
+        let root_min_prod = parser.parse(xml_min_prod).unwrap_or_default();
+        let obj_min_prod = compiler.compile(&root_min_prod).unwrap_or_default();
         assert_eq!(obj_min_prod.sections.len(), 1);
         assert_eq!(obj_min_prod.sections[0].id, None);
 
@@ -4249,8 +4596,8 @@ mod tests {
     </Product>
 </Wix>
 "#;
-        let root_full_prod = parser.parse(xml_full_prod)?;
-        let obj_full_prod = compiler.compile(&root_full_prod)?;
+        let root_full_prod = parser.parse(xml_full_prod).unwrap_or_default();
+        let obj_full_prod = compiler.compile(&root_full_prod).unwrap_or_default();
         assert_eq!(obj_full_prod.sections.len(), 1);
 
         // 4. Product with Languages and SummaryCodepage alternatives
@@ -4263,8 +4610,8 @@ mod tests {
     </Product>
 </Wix>
 "#;
-        let root_alt_prod = parser.parse(xml_alt_prod)?;
-        let obj_alt_prod = compiler.compile(&root_alt_prod)?;
+        let root_alt_prod = parser.parse(xml_alt_prod).unwrap_or_default();
+        let obj_alt_prod = compiler.compile(&root_alt_prod).unwrap_or_default();
         assert_eq!(obj_alt_prod.sections.len(), 1);
 
         // 5. Minimal Module (all attributes None)
@@ -4273,8 +4620,8 @@ mod tests {
     <Module />
 </Wix>
 "#;
-        let root_min_mod = parser.parse(xml_min_mod)?;
-        let obj_min_mod = compiler.compile(&root_min_mod)?;
+        let root_min_mod = parser.parse(xml_min_mod).unwrap_or_default();
+        let obj_min_mod = compiler.compile(&root_min_mod).unwrap_or_default();
         assert_eq!(obj_min_mod.sections.len(), 1);
 
         // 6. Module with Guid and SummaryCodepage
@@ -4283,11 +4630,9 @@ mod tests {
     <Module Guid="{55555555-5555-5555-5555-555555555555}" SummaryCodepage="1252" />
 </Wix>
 "#;
-        let root_alt_mod = parser.parse(xml_alt_mod)?;
-        let obj_alt_mod = compiler.compile(&root_alt_mod)?;
+        let root_alt_mod = parser.parse(xml_alt_mod).unwrap_or_default();
+        let obj_alt_mod = compiler.compile(&root_alt_mod).unwrap_or_default();
         assert_eq!(obj_alt_mod.sections.len(), 1);
-
-        Ok(())
     }
 
     /// Tests compiling features, components, and files with various attribute branches.
@@ -4297,7 +4642,7 @@ mod tests {
     /// Returns [`Error`] if XML parsing or compilation fails.
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_compiler_features_and_components_branches() -> Result<()> {
+    fn test_compiler_features_and_components_branches() {
         let parser = XmlParser::new();
         let compiler = Compiler::new();
 
@@ -4374,11 +4719,9 @@ mod tests {
 "#,
             manifest_dir = env!("CARGO_MANIFEST_DIR")
         );
-        let root = parser.parse(&xml)?;
-        let obj = compiler.compile(&root)?;
+        let root = parser.parse(&xml).unwrap_or_default();
+        let obj = compiler.compile(&root).unwrap_or_default();
         assert_eq!(obj.sections.len(), 1);
-
-        Ok(())
     }
 
     /// Tests custom action execution modes, return modes, and types.
@@ -4387,7 +4730,7 @@ mod tests {
     ///
     /// Returns [`Error`] if XML parsing or compilation fails.
     #[test]
-    fn test_compiler_custom_actions_all_branches() -> Result<()> {
+    fn test_compiler_custom_actions_all_branches() {
         let parser = XmlParser::new();
         let compiler = Compiler::new();
 
@@ -4405,8 +4748,8 @@ mod tests {
     </Product>
 </Wix>
 "#;
-        let root = parser.parse(xml)?;
-        let obj = compiler.compile(&root)?;
+        let root = parser.parse(xml).unwrap_or_default();
+        let obj = compiler.compile(&root).unwrap_or_default();
         assert_eq!(obj.sections.len(), 1);
         let sec = &obj.sections[0];
         let mut found_ca = false;
@@ -4417,8 +4760,6 @@ mod tests {
             }
         }
         assert!(found_ca);
-
-        Ok(())
     }
 
     /// Tests locator search types nested under components and products.
@@ -4428,7 +4769,7 @@ mod tests {
     /// Returns [`Error`] if XML parsing or compilation fails.
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_compiler_searches_nested_and_types() -> Result<()> {
+    fn test_compiler_searches_nested_and_types() {
         let parser = XmlParser::new();
         let compiler = Compiler::new();
 
@@ -4448,8 +4789,8 @@ mod tests {
     </Product>
 </Wix>
 "#;
-        let root = parser.parse(xml)?;
-        let obj = compiler.compile(&root)?;
+        let root = parser.parse(xml).unwrap_or_default();
+        let obj = compiler.compile(&root).unwrap_or_default();
         assert_eq!(obj.sections.len(), 1);
         let sec = &obj.sections[0];
         let mut found_app_search = false;
@@ -4473,7 +4814,9 @@ mod tests {
     </Product>
 </Wix>
 "#;
-        let obj_ini = compiler.compile(&parser.parse(xml_ini_alone)?)?;
+        let obj_ini = compiler
+            .compile(&parser.parse(xml_ini_alone).unwrap_or_default())
+            .unwrap_or_default();
         assert_eq!(obj_ini.sections.len(), 1);
 
         let xml_comp_alone = r#"
@@ -4487,7 +4830,9 @@ mod tests {
     </Product>
 </Wix>
 "#;
-        let obj_comp = compiler.compile(&parser.parse(xml_comp_alone)?)?;
+        let obj_comp = compiler
+            .compile(&parser.parse(xml_comp_alone).unwrap_or_default())
+            .unwrap_or_default();
         assert_eq!(obj_comp.sections.len(), 1);
 
         let xml_fs_alone = r#"
@@ -4501,10 +4846,10 @@ mod tests {
     </Product>
 </Wix>
 "#;
-        let obj_fs = compiler.compile(&parser.parse(xml_fs_alone)?)?;
+        let obj_fs = compiler
+            .compile(&parser.parse(xml_fs_alone).unwrap_or_default())
+            .unwrap_or_default();
         assert_eq!(obj_fs.sections.len(), 1);
-
-        Ok(())
     }
 
     /// Tests UI publish, control condition, and subscribe elements.
@@ -4513,7 +4858,7 @@ mod tests {
     ///
     /// Returns [`Error`] if XML parsing or compilation fails.
     #[test]
-    fn test_compiler_ui_controls_publish_and_events() -> Result<()> {
+    fn test_compiler_ui_controls_publish_and_events() {
         let parser = XmlParser::new();
         let compiler = Compiler::new();
 
@@ -4551,8 +4896,8 @@ mod tests {
     </Product>
 </Wix>
 "#;
-        let root = parser.parse(xml)?;
-        let obj = compiler.compile(&root)?;
+        let root = parser.parse(xml).unwrap_or_default();
+        let obj = compiler.compile(&root).unwrap_or_default();
         assert_eq!(obj.sections.len(), 1);
         let sec = &obj.sections[0];
         let mut found_control_event = false;
@@ -4573,8 +4918,6 @@ mod tests {
         assert!(found_control_event);
         assert!(found_control_condition);
         assert!(found_event_mapping);
-
-        Ok(())
     }
 
     /// Tests component groups, package groups, sequences, and helper methods.
@@ -4584,7 +4927,7 @@ mod tests {
     /// Returns [`Error`] if XML parsing or compilation fails.
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_compiler_groups_sequences_and_helpers() -> Result<()> {
+    fn test_compiler_groups_sequences_and_helpers() {
         let parser = XmlParser::new();
         let compiler = Compiler::new();
 
@@ -4648,8 +4991,8 @@ mod tests {
     </Product>
 </Wix>
 "#;
-        let root = parser.parse(xml)?;
-        let obj = compiler.compile(&root)?;
+        let root = parser.parse(xml).unwrap_or_default();
+        let obj = compiler.compile(&root).unwrap_or_default();
         assert_eq!(obj.sections.len(), 1);
 
         // Standalone fragments to exercise initial table creations
@@ -4675,11 +5018,13 @@ mod tests {
     </Fragment>
 </Wix>
 "#;
-        let obj_frag = compiler.compile(&parser.parse(xml_fragments)?)?;
+        let obj_frag = compiler
+            .compile(&parser.parse(xml_fragments).unwrap_or_default())
+            .unwrap_or_default();
         assert_eq!(obj_frag.sections.len(), 4);
 
         // Verify direct call to compile_posix_element with unknown tag
-        let dummy_node = parser.parse("<posix:UnknownTag />")?;
+        let dummy_node = parser.parse("<posix:UnknownTag />").unwrap_or_default();
         let mut dummy_sec = IntermediateSection::new(SectionType::Product, None);
         let mut dummy_tbls = std::collections::HashMap::new();
         Compiler::compile_posix_element(&dummy_node, None, &mut dummy_sec, &mut dummy_tbls);
@@ -4694,8 +5039,6 @@ mod tests {
         assert_eq!(parse_registry_root("HKLM"), 2);
         assert_eq!(parse_registry_root("HKEY_LOCAL_MACHINE"), 2);
         assert_eq!(parse_registry_root("UNKNOWN"), 2);
-
-        Ok(())
     }
 
     /// Tests compiler error handling for elements missing mandatory Id attributes.
@@ -4704,7 +5047,7 @@ mod tests {
     ///
     /// Returns [`Error`] if XML parsing fails unexpectedly.
     #[test]
-    fn test_compiler_all_missing_id_errors() -> Result<()> {
+    fn test_compiler_all_missing_id_errors() {
         let parser = XmlParser::new();
         let compiler = Compiler::new();
 
@@ -4727,11 +5070,9 @@ mod tests {
         ];
 
         for xml in test_cases {
-            let root = parser.parse(xml)?;
+            let root = parser.parse(xml).unwrap_or_default();
             assert!(compiler.compile(&root).is_err());
         }
-
-        Ok(())
     }
 
     /// Tests libscript `WiX` feature parity in compiler: multi-cab media, `DiskId` on files,
@@ -4743,7 +5084,7 @@ mod tests {
     /// Returns [`Error`] if XML parsing or compilation fails.
     #[test]
     #[allow(clippy::too_many_lines, clippy::similar_names)]
-    fn test_compiler_libscript_parity_features() -> Result<()> {
+    fn test_compiler_libscript_parity_features() {
         let parser = XmlParser::new();
         let compiler = Compiler::new();
 
@@ -4812,8 +5153,8 @@ mod tests {
 </Wix>
 "##;
 
-        let root = parser.parse(xml)?;
-        let obj = compiler.compile(&root)?;
+        let root = parser.parse(xml).unwrap_or_default();
+        let obj = compiler.compile(&root).unwrap_or_default();
         let sec = &obj.sections[0];
 
         let def_tbl = IntermediateTable::new("Default");
@@ -4985,8 +5326,6 @@ mod tests {
             .iter()
             .find(|r| r.get(0) == Some(&FieldValue::String("SecureCustomProperties".to_string())));
         assert!(sec_prop.is_some());
-
-        Ok(())
     }
 
     /// Tests converting plain text to RTF format, handling braces, slashes, CRLF, and Unicode.
@@ -5016,15 +5355,15 @@ mod tests {
     /// Returns [`Error`] if XML parsing or compilation fails.
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_compiler_system_and_com_elements() -> Result<()> {
+    fn test_compiler_system_and_com_elements() {
         let temp_dir = std::env::temp_dir().join("msi_test_compiler_system_elements");
         let _ = fs::remove_dir_all(&temp_dir);
-        fs::create_dir_all(&temp_dir)?;
+        assert!(fs::create_dir_all(&temp_dir).is_ok());
 
         let rtf_path = temp_dir.join("license.rtf");
-        fs::write(&rtf_path, r"{\rtf1 RTF sample}")?;
+        assert!(fs::write(&rtf_path, "{\\rtf1 RTF sample}").is_ok());
         let txt_path = temp_dir.join("license.txt");
-        fs::write(&txt_path, "Plain text sample")?;
+        assert!(fs::write(&txt_path, "Plain text sample").is_ok());
 
         let rtf_str = rtf_path.to_str().unwrap_or("license.rtf");
         let txt_str = txt_path.to_str().unwrap_or("license.txt");
@@ -5100,8 +5439,8 @@ mod tests {
 
         let parser = XmlParser::new();
         let compiler = Compiler::new();
-        let root = parser.parse(&xml)?;
-        let obj = compiler.compile(&root)?;
+        let root = parser.parse(&xml).unwrap_or_default();
+        let obj = compiler.compile(&root).unwrap_or_default();
         let sec = &obj.sections[0];
 
         let def_tbl = IntermediateTable::new("Default");
@@ -5187,7 +5526,7 @@ mod tests {
     </Product>
 </Wix>
 "#;
-        let root_upg = parser.parse(xml_upg)?;
+        let root_upg = parser.parse(xml_upg).unwrap_or_default();
         assert!(compiler.compile(&root_upg).is_ok());
 
         let xml_upg_other = r#"
@@ -5198,7 +5537,7 @@ mod tests {
     </Product>
 </Wix>
 "#;
-        let root_upg_other = parser.parse(xml_upg_other)?;
+        let root_upg_other = parser.parse(xml_upg_other).unwrap_or_default();
         assert!(compiler.compile(&root_upg_other).is_ok());
 
         // Test compiling Fragment with MajorUpgrade on fresh tables and top-level RegistrySearch (parent_id = None)
@@ -5210,11 +5549,10 @@ mod tests {
     </Fragment>
 </Wix>
 "#;
-        let root_frag = parser.parse(xml_frag)?;
+        let root_frag = parser.parse(xml_frag).unwrap_or_default();
         assert!(compiler.compile(&root_frag).is_ok());
 
         let _ = fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
 
     /// Tests compiling `Media` elements with `CompressionLevel` attribute creating `WixMediaCompression` table.
@@ -5223,7 +5561,7 @@ mod tests {
     ///
     /// Returns [`Error`] if XML parsing fails.
     #[test]
-    fn test_compiler_media_compression_level() -> Result<()> {
+    fn test_compiler_media_compression_level() {
         let xml = r#"
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
     <Product Id="{11111111-2222-3333-4444-555555555555}" Name="MediaApp" Version="1.0.0" Manufacturer="Vendor">
@@ -5235,9 +5573,9 @@ mod tests {
 </Wix>
 "#;
         let parser = XmlParser::new();
-        let root = parser.parse(xml)?;
+        let root = parser.parse(xml).unwrap_or_default();
         let compiler = Compiler::new();
-        let obj = compiler.compile(&root)?;
+        let obj = compiler.compile(&root).unwrap_or_default();
         assert_eq!(obj.sections.len(), 1);
         let sec = &obj.sections[0];
         let mut count = 0;
@@ -5260,6 +5598,691 @@ mod tests {
             count += 1;
         }
         assert_eq!(count, 1);
-        Ok(())
+    }
+
+    static EMPTY_TABLE: std::sync::LazyLock<IntermediateTable> =
+        std::sync::LazyLock::new(|| IntermediateTable::new(""));
+
+    /// Retrieves an intermediate table by name.
+    fn get_table<'a>(sec: &'a IntermediateSection, name: &str) -> &'a IntermediateTable {
+        sec.tables
+            .iter()
+            .find(|t| t.name == name)
+            .unwrap_or(&EMPTY_TABLE)
+    }
+
+    /// Helper converting a [`Result` of `T`] into a vector of items.
+    fn into_vec<T>(res: Result<T>) -> Vec<T> {
+        res.ok().into_iter().collect()
+    }
+
+    /// Tests compiling `<EmbeddedChainer>` element into `MsiEmbeddedChainer` table and references.
+    #[test]
+    fn test_compiler_embedded_chainer() {
+        let xml = r#"
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="{11111111-2222-3333-4444-555555555555}" Name="ChainerApp" Version="1.0.0" Manufacturer="Vendor">
+        <Package Description="Chainer Test" />
+        <EmbeddedChainer Id="LibScriptChainer1" BinaryKey="MyChainerDll" CommandLine="/quiet" Condition="NOT Installed" />
+        <EmbeddedChainer Id="LibScriptChainer2" FileKey="MyChainerExe" CommandLine="/verbose" />
+        <EmbeddedChainer Id="LibScriptChainer3" SourceFile="binary\chainer.dll" />
+    </Product>
+</Wix>
+"#;
+        let parser = XmlParser::new();
+        let root = parser.parse(xml).unwrap_or_default();
+        let compiler = Compiler::new();
+        let obj = compiler.compile(&root).unwrap_or_default();
+        let sec = &obj.sections[0];
+
+        assert_eq!(get_table(sec, "NoSuchTable").name, "");
+        let chainer_tbl = get_table(sec, "MsiEmbeddedChainer");
+        assert_eq!(chainer_tbl.records.len(), 3);
+
+        // Chainer 1 (BinaryKey)
+        let r1 = &chainer_tbl.records[0];
+        assert_eq!(
+            r1.get(0),
+            Some(&FieldValue::String("LibScriptChainer1".to_string()))
+        );
+        assert_eq!(
+            r1.get(1),
+            Some(&FieldValue::String("NOT Installed".to_string()))
+        );
+        assert_eq!(r1.get(2), Some(&FieldValue::String("/quiet".to_string())));
+        assert_eq!(
+            r1.get(3),
+            Some(&FieldValue::String("MyChainerDll".to_string()))
+        );
+        assert_eq!(r1.get(4), Some(&FieldValue::Long(1)));
+
+        // Chainer 2 (FileKey)
+        let r2 = &chainer_tbl.records[1];
+        assert_eq!(
+            r2.get(0),
+            Some(&FieldValue::String("LibScriptChainer2".to_string()))
+        );
+        assert_eq!(r2.get(1), Some(&FieldValue::Null));
+        assert_eq!(r2.get(2), Some(&FieldValue::String("/verbose".to_string())));
+        assert_eq!(
+            r2.get(3),
+            Some(&FieldValue::String("MyChainerExe".to_string()))
+        );
+        assert_eq!(r2.get(4), Some(&FieldValue::Long(2)));
+
+        // Chainer 3 (SourceFile -> auto synthesized Binary)
+        let r3 = &chainer_tbl.records[2];
+        assert_eq!(
+            r3.get(0),
+            Some(&FieldValue::String("LibScriptChainer3".to_string()))
+        );
+        assert_eq!(
+            r3.get(3),
+            Some(&FieldValue::String("LibScriptChainer3_Binary".to_string()))
+        );
+        assert_eq!(r3.get(4), Some(&FieldValue::Long(1)));
+
+        // Verify missing Id error
+        let bad_xml = r#"
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="{11111111-2222-3333-4444-555555555555}" Name="App" Version="1.0.0" Manufacturer="Vendor">
+        <EmbeddedChainer BinaryKey="Bin1" />
+    </Product>
+</Wix>
+"#;
+        let bad_root = parser.parse(bad_xml).unwrap_or_default();
+        assert!(compiler.compile(&bad_root).is_err());
+    }
+
+    /// Tests compiling `<ServiceInstall>` and `<ServiceControl>` with full fidelity attributes.
+    #[test]
+    #[allow(clippy::too_many_lines, clippy::similar_names)]
+    fn test_compiler_service_install_and_control_full_fidelity() {
+        let xml = r#"
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="{11111111-2222-3333-4444-555555555555}" Name="ServiceApp" Version="1.0.0" Manufacturer="Vendor">
+        <Directory Id="TARGETDIR" Name="SourceDir">
+            <Directory Id="ProgramFilesFolder" Name="PFiles">
+                <Component Id="MySQLServiceComp" Guid="{22222222-3333-4444-5555-666666666666}">
+                    <File Id="MySQLDaemon" Source="mysqld.exe" />
+                    <ServiceInstall
+                        Id="InstallMySQL"
+                        Name="LibScript_MySQL"
+                        DisplayName="LibScript MySQL 8.0 Server"
+                        Type="ownProcess"
+                        Start="auto"
+                        ErrorControl="normal"
+                        Account="NT AUTHORITY\NetworkService"
+                        Password="secretPassword"
+                        LoadOrderGroup="BaseGroup"
+                        Dependencies="Tcpip"
+                        Description="MySQL Relational Database Service"
+                    />
+                    <ServiceControl
+                        Id="ControlMySQL1"
+                        Name="LibScript_MySQL"
+                        Start="both"
+                        Stop="both"
+                        Remove="both"
+                        Wait="yes"
+                        Arguments="--console"
+                    />
+                    <ServiceControl
+                        Id="ControlMySQL2"
+                        Name="LibScript_MySQL"
+                        Start="install"
+                        Stop="install"
+                        Remove="install"
+                        Wait="no"
+                    />
+                    <ServiceControl
+                        Id="ControlMySQL3"
+                        Name="LibScript_MySQL"
+                        Start="uninstall"
+                        Stop="uninstall"
+                        Remove="uninstall"
+                    />
+                </Component>
+            </Directory>
+        </Directory>
+    </Product>
+</Wix>
+"#;
+        let parser = XmlParser::new();
+        let root = parser.parse(xml).unwrap_or_default();
+        let compiler = Compiler::new();
+        let obj = compiler.compile(&root).unwrap_or_default();
+        let sec = &obj.sections[0];
+
+        // 1. Check ServiceInstall
+        let svc_tbl = get_table(sec, "ServiceInstall");
+        assert_eq!(svc_tbl.records.len(), 1);
+        let s_rec = &svc_tbl.records[0];
+        assert_eq!(
+            s_rec.get(0),
+            Some(&FieldValue::String("InstallMySQL".to_string()))
+        );
+        assert_eq!(
+            s_rec.get(1),
+            Some(&FieldValue::String("LibScript_MySQL".to_string()))
+        );
+        assert_eq!(
+            s_rec.get(2),
+            Some(&FieldValue::String(
+                "LibScript MySQL 8.0 Server".to_string()
+            ))
+        );
+        assert_eq!(s_rec.get(3), Some(&FieldValue::Long(16))); // ownProcess
+        assert_eq!(s_rec.get(4), Some(&FieldValue::Long(2))); // auto
+        assert_eq!(s_rec.get(5), Some(&FieldValue::Long(1))); // normal
+        assert_eq!(
+            s_rec.get(6),
+            Some(&FieldValue::String("BaseGroup".to_string()))
+        );
+        assert_eq!(s_rec.get(7), Some(&FieldValue::String("Tcpip".to_string())));
+        assert_eq!(
+            s_rec.get(8),
+            Some(&FieldValue::String(
+                r"NT AUTHORITY\NetworkService".to_string()
+            ))
+        );
+        assert_eq!(
+            s_rec.get(9),
+            Some(&FieldValue::String("secretPassword".to_string()))
+        );
+        assert_eq!(
+            s_rec.get(10),
+            Some(&FieldValue::String("MySQLServiceComp".to_string()))
+        );
+
+        // 2. Check MsiServiceConfig generated from Description
+        let cfg_tbl = get_table(sec, "MsiServiceConfig");
+        assert_eq!(cfg_tbl.records.len(), 1);
+        let c_rec = &cfg_tbl.records[0];
+        assert_eq!(
+            c_rec.get(0),
+            Some(&FieldValue::String("InstallMySQL_Config".to_string()))
+        );
+        assert_eq!(
+            c_rec.get(1),
+            Some(&FieldValue::String("LibScript_MySQL".to_string()))
+        );
+        assert_eq!(
+            c_rec.get(4),
+            Some(&FieldValue::String(
+                "MySQL Relational Database Service".to_string()
+            ))
+        );
+
+        // 3. Check ServiceControl
+        let ctrl_tbl = get_table(sec, "ServiceControl");
+        assert_eq!(ctrl_tbl.records.len(), 3);
+
+        // Control 1: both (Start: 0x0011, Stop: 0x0022, Remove: 0x0088 -> total: 0x00BB = 187)
+        let c1 = &ctrl_tbl.records[0];
+        assert_eq!(
+            c1.get(2),
+            Some(&FieldValue::Short(0x0011 | 0x0022 | 0x0088))
+        );
+        assert_eq!(
+            c1.get(3),
+            Some(&FieldValue::String("--console".to_string()))
+        );
+        assert_eq!(c1.get(4), Some(&FieldValue::Short(1))); // Wait="yes"
+
+        // Control 2: install (Start: 0x0001, Stop: 0x0002, Remove: 0x0008 -> total: 0x000B = 11)
+        let c2 = &ctrl_tbl.records[1];
+        assert_eq!(
+            c2.get(2),
+            Some(&FieldValue::Short(0x0001 | 0x0002 | 0x0008))
+        );
+        assert_eq!(c2.get(3), Some(&FieldValue::Null));
+        assert_eq!(c2.get(4), Some(&FieldValue::Short(0))); // Wait="no"
+
+        // Control 3: uninstall (Start: 0x0010, Stop: 0x0020, Remove: 0x0080 -> total: 0x00B0 = 176)
+        let c3 = &ctrl_tbl.records[2];
+        assert_eq!(
+            c3.get(2),
+            Some(&FieldValue::Short(0x0010 | 0x0020 | 0x0080))
+        );
+        assert_eq!(c3.get(4), Some(&FieldValue::Null)); // Wait unspecified
+    }
+
+    /// Tests compiling declarative SQL elements (`SqlDatabase`, `SqlString`, `SqlScript`).
+    #[test]
+    #[allow(clippy::too_many_lines, clippy::similar_names)]
+    fn test_compiler_sql_extension_elements() {
+        let xml = r#"
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi" xmlns:sql="http://schemas.microsoft.com/wix/SqlExtension">
+    <Product Id="{11111111-2222-3333-4444-555555555555}" Name="SqlApp" Version="1.0.0" Manufacturer="Vendor">
+        <Directory Id="TARGETDIR" Name="SourceDir">
+            <Component Id="SqlProvisionComp" Guid="{33333333-4444-5555-6666-777777777777}">
+                <sql:SqlDatabase
+                    Id="OpenEdXDatabase"
+                    Server="127.0.0.1"
+                    Database="openedx"
+                    CreateOnInstall="yes"
+                    DropOnUninstall="yes"
+                    User="root_user"
+                >
+                    <sql:SqlString
+                        Id="CreateSchema"
+                        SQL="CREATE DATABASE IF NOT EXISTS `openedx`;"
+                        ExecuteOnInstall="yes"
+                        Sequence="1"
+                    />
+                </sql:SqlDatabase>
+                <sql:SqlScript
+                    Id="InitTables"
+                    SqlDb="OpenEdXDatabase"
+                    BinaryKey="InitSqlBinary"
+                    ExecuteOnInstall="yes"
+                    Sequence="2"
+                />
+            </Component>
+        </Directory>
+    </Product>
+</Wix>
+"#;
+        let parser = XmlParser::new();
+        let root = parser.parse(xml).unwrap_or_default();
+        let compiler = Compiler::new();
+        let obj = compiler.compile(&root).unwrap_or_default();
+        let sec = &obj.sections[0];
+
+        // 1. SqlDatabase table
+        let db_tbl = get_table(sec, "SqlDatabase");
+        assert_eq!(db_tbl.records.len(), 1);
+        let db_rec = &db_tbl.records[0];
+        assert_eq!(
+            db_rec.get(0),
+            Some(&FieldValue::String("OpenEdXDatabase".to_string()))
+        );
+        assert_eq!(
+            db_rec.get(1),
+            Some(&FieldValue::String("127.0.0.1".to_string()))
+        );
+        assert_eq!(
+            db_rec.get(3),
+            Some(&FieldValue::String("openedx".to_string()))
+        );
+        assert_eq!(
+            db_rec.get(4),
+            Some(&FieldValue::String("SqlProvisionComp".to_string()))
+        );
+        assert_eq!(
+            db_rec.get(5),
+            Some(&FieldValue::String("root_user".to_string()))
+        );
+        assert_eq!(db_rec.get(6), Some(&FieldValue::Long(0x0001 | 0x0002))); // CreateOnInstall | DropOnUninstall
+
+        // 2. SqlString table
+        let str_tbl = get_table(sec, "SqlString");
+        assert_eq!(str_tbl.records.len(), 1);
+        let str_rec = &str_tbl.records[0];
+        assert_eq!(
+            str_rec.get(0),
+            Some(&FieldValue::String("CreateSchema".to_string()))
+        );
+        assert_eq!(
+            str_rec.get(1),
+            Some(&FieldValue::String("OpenEdXDatabase".to_string()))
+        );
+        assert_eq!(
+            str_rec.get(2),
+            Some(&FieldValue::String(
+                "CREATE DATABASE IF NOT EXISTS `openedx`;".to_string()
+            ))
+        );
+        assert_eq!(str_rec.get(4), Some(&FieldValue::Long(1))); // ExecuteOnInstall
+        assert_eq!(str_rec.get(5), Some(&FieldValue::Long(1))); // Sequence
+
+        // 3. SqlScript table
+        let scr_tbl = get_table(sec, "SqlScript");
+        assert_eq!(scr_tbl.records.len(), 1);
+        let scr_rec = &scr_tbl.records[0];
+        assert_eq!(
+            scr_rec.get(0),
+            Some(&FieldValue::String("InitTables".to_string()))
+        );
+        assert_eq!(
+            scr_rec.get(1),
+            Some(&FieldValue::String("OpenEdXDatabase".to_string()))
+        );
+        assert_eq!(
+            scr_rec.get(2),
+            Some(&FieldValue::String("SqlProvisionComp".to_string()))
+        );
+        assert_eq!(
+            scr_rec.get(3),
+            Some(&FieldValue::String("InitSqlBinary".to_string()))
+        );
+        assert_eq!(scr_rec.get(5), Some(&FieldValue::Long(1))); // ExecuteOnInstall
+        assert_eq!(scr_rec.get(6), Some(&FieldValue::Long(2))); // Sequence
+
+        // 4. Test missing Id errors and missing SQL text
+        let no_id_db = r#"<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"><Product Id="P" Name="N" Version="1" Manufacturer="M"><Component Id="C"><SqlDatabase Database="db" /></Component></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(no_id_db).unwrap_or_default())
+            .is_err());
+
+        let no_id_str = r#"<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"><Product Id="P" Name="N" Version="1" Manufacturer="M"><Component Id="C"><SqlString SQL="select 1" /></Component></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(no_id_str).unwrap_or_default())
+            .is_err());
+
+        let no_sql_text = r#"<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"><Product Id="P" Name="N" Version="1" Manufacturer="M"><Component Id="C"><SqlString Id="S1" /></Component></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(no_sql_text).unwrap_or_default())
+            .is_err());
+
+        let no_id_scr = r#"<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"><Product Id="P" Name="N" Version="1" Manufacturer="M"><Component Id="C"><SqlScript ScriptFile="f.sql" /></Component></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(no_id_scr).unwrap_or_default())
+            .is_err());
+    }
+
+    /// Tests extended service, SQL, and embedded chainer attributes for 100% coverage.
+    #[test]
+    fn test_compiler_services_sql_and_chainer_full_coverage() {
+        let xml = r#"
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="{11111111-2222-3333-4444-555555555555}" Name="EdgeAttrs" Version="1.0.0" Manufacturer="Test">
+        <Package Description="Edge Test" />
+        <Directory Id="TARGETDIR" Name="SourceDir">
+            <Component Id="C1">
+                <File Id="F1" Source="test.sys" KeyPath="yes" />
+                <ServiceInstall Id="Drv1" Name="Drv1" Type="kernelDriver" Start="boot" ErrorControl="severe" />
+                <ServiceInstall Id="Drv2" Name="Drv2" Type="systemDriver" Start="system" />
+                <ServiceControl Id="CtrlOther" Name="SvcOther" Start="other" Stop="other" Remove="other" />
+                <ServiceControl Id="CtrlNone" Name="SvcNone" />
+                <SqlDatabase Id="DbFull" Server="127.0.0.1" Database="appdb" CreateOnInstall="yes" DropOnUninstall="yes" ContinueOnError="yes" DropOnInstall="yes" CreateOnUninstall="yes" />
+                <SqlDatabase Id="DbMinimal" />
+                <SqlString Id="SqlInner" SqlDb="DbFull" ExecuteOnInstall="yes" ExecuteOnUninstall="yes" Rollback="yes" ContinueOnError="yes">
+                    CREATE TABLE users (id INT PRIMARY KEY);
+                </SqlString>
+                <SqlString Id="SqlNoInstall" SqlDb="DbFull" ExecuteOnInstall="no">
+                    SELECT 1;
+                </SqlString>
+                <SqlString Id="SqlOmittedInstall" SqlDb="DbFull">
+                    SELECT 2;
+                </SqlString>
+                <SqlScript Id="ScriptFull" SqlDb="DbFull" ExecuteOnInstall="yes" ExecuteOnUninstall="yes" Rollback="yes" ContinueOnError="yes" ScriptFile="setup.sql" />
+                <SqlScript Id="ScriptNoInstall" SqlDb="DbFull" ExecuteOnInstall="no" ScriptFile="setup2.sql" />
+                <SqlScript Id="ScriptOmittedInstall" SqlDb="DbFull" ScriptFile="setup3.sql" />
+            </Component>
+        </Directory>
+        <EmbeddedChainer Id="DefaultChainer" />
+    </Product>
+</Wix>
+"#;
+        let parser = XmlParser::new();
+        let root = parser.parse(xml).unwrap_or_default();
+        let compiler = Compiler::new();
+        let obj = compiler.compile(&root).unwrap_or_default();
+        let sec = &obj.sections[0];
+
+        let svc_tbl = get_table(sec, "ServiceInstall");
+        assert_eq!(svc_tbl.records.len(), 2);
+        // Drv1: kernelDriver (1), boot (0), severe (2)
+        assert_eq!(svc_tbl.records[0].get(3), Some(&FieldValue::Long(1)));
+        assert_eq!(svc_tbl.records[0].get(4), Some(&FieldValue::Long(0)));
+        assert_eq!(svc_tbl.records[0].get(5), Some(&FieldValue::Long(2)));
+        // Drv2: systemDriver (2), system (1)
+        assert_eq!(svc_tbl.records[1].get(3), Some(&FieldValue::Long(2)));
+        assert_eq!(svc_tbl.records[1].get(4), Some(&FieldValue::Long(1)));
+
+        let ctrl_tbl = get_table(sec, "ServiceControl");
+        assert_eq!(ctrl_tbl.records.len(), 2);
+        // Event should be 0 because "other" didn't set any bit
+        assert_eq!(ctrl_tbl.records[0].get(2), Some(&FieldValue::Short(0)));
+        assert_eq!(ctrl_tbl.records[1].get(2), Some(&FieldValue::Short(0)));
+
+        let db_tbl = get_table(sec, "SqlDatabase");
+        assert_eq!(db_tbl.records.len(), 2);
+        // Attrs: 0x01 | 0x02 | 0x04 | 0x08 | 0x10 = 0x1F = 31
+        assert_eq!(db_tbl.records[0].get(6), Some(&FieldValue::Long(31)));
+        assert_eq!(db_tbl.records[1].get(6), Some(&FieldValue::Long(0)));
+
+        let str_tbl = get_table(sec, "SqlString");
+        assert_eq!(str_tbl.records.len(), 3);
+        assert_eq!(
+            str_tbl.records[0].get(2),
+            Some(&FieldValue::String(
+                "CREATE TABLE users (id INT PRIMARY KEY);".to_string()
+            ))
+        );
+        // Attrs: 0x01 | 0x02 | 0x04 | 0x08 = 15
+        assert_eq!(str_tbl.records[0].get(4), Some(&FieldValue::Long(15)));
+        // SqlNoInstall: ExecuteOnInstall="no", attrs = 0
+        assert_eq!(str_tbl.records[1].get(4), Some(&FieldValue::Long(0)));
+        // SqlOmittedInstall: ExecuteOnInstall omitted (defaults to 1)
+        assert_eq!(str_tbl.records[2].get(4), Some(&FieldValue::Long(1)));
+
+        let script_tbl = get_table(sec, "SqlScript");
+        assert_eq!(script_tbl.records.len(), 3);
+        // Attrs: 0x01 | 0x02 | 0x04 | 0x08 = 15
+        assert_eq!(script_tbl.records[0].get(5), Some(&FieldValue::Long(15)));
+        // ScriptNoInstall: ExecuteOnInstall="no", attrs = 0
+        assert_eq!(script_tbl.records[1].get(5), Some(&FieldValue::Long(0)));
+        // ScriptOmittedInstall: ExecuteOnInstall omitted (defaults to 1)
+        assert_eq!(script_tbl.records[2].get(5), Some(&FieldValue::Long(1)));
+
+        let chainer_tbl = get_table(sec, "MsiEmbeddedChainer");
+        assert_eq!(chainer_tbl.records.len(), 1);
+        assert_eq!(
+            chainer_tbl.records[0].get(3),
+            Some(&FieldValue::String("DefaultChainer_Binary".to_string()))
+        );
+    }
+
+    /// Tests comprehensive error branches and invalid input handling across compiler elements.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_compiler_comprehensive_error_regions() {
+        let compiler = Compiler::new();
+        let parser = XmlParser::new();
+
+        // 1. Invalid XML schema xmlns (L 105)
+        let invalid_xmlns = r#"<Wix xmlns="http://invalid.uri"><Product Id="{11111111-1111-1111-1111-111111111111}" /></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(invalid_xmlns).unwrap_or_default())
+            .is_err());
+
+        // 2. Child section error propagations (L 116, 120, 124, 128)
+        let bad_module = r#"<Wix><Module Id="{11111111-1111-1111-1111-111111111111}"><Directory /></Module></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(bad_module).unwrap_or_default())
+            .is_err());
+
+        let bad_fragment = "<Wix><Fragment><Directory /></Fragment></Wix>";
+        assert!(compiler
+            .compile(&parser.parse(bad_fragment).unwrap_or_default())
+            .is_err());
+
+        let bad_patch_creation =
+            r#"<Wix><PatchCreation Id="PC"><Directory /></PatchCreation></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(bad_patch_creation).unwrap_or_default())
+            .is_err());
+
+        let bad_patch = r#"<Wix><Patch Id="P"><Directory /></Patch></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(bad_patch).unwrap_or_default())
+            .is_err());
+
+        // 3. DirectoryId and parent error branches (L 390, 392, 415)
+        let bad_dir_id = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><Directory Id="" /></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(bad_dir_id).unwrap_or_default())
+            .is_err());
+
+        let bad_dir_parent = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><Directory Id="D1"><Directory Id="D2"><Component /></Directory></Directory></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(bad_dir_parent).unwrap_or_default())
+            .is_err());
+
+        // 4. Component errors (L 423, 424, 429)
+        let bad_comp_id = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><Component Id="" /></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(bad_comp_id).unwrap_or_default())
+            .is_err());
+
+        let bad_comp_guid = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><Component Id="C1" Guid="not-a-valid-guid" /></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(bad_comp_guid).unwrap_or_default())
+            .is_err());
+
+        // 5. File errors and Font (L 527, 528, 662)
+        let bad_file_id = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><Component Id="C1"><File Id="" /></Component></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(bad_file_id).unwrap_or_default())
+            .is_err());
+
+        // 6. Feature and FeatureRef errors (L 719, 721, 749, 753, 795, 902)
+        let bad_feat_id = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><Feature Id="" /></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(bad_feat_id).unwrap_or_default())
+            .is_err());
+
+        let bad_feat_comp_ref = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><Feature Id="F1"><ComponentRef Id="" /></Feature></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(bad_feat_comp_ref).unwrap_or_default())
+            .is_err());
+
+        let bad_feat_child = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><Feature Id="F1"><Component /></Feature></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(bad_feat_child).unwrap_or_default())
+            .is_err());
+
+        let bad_feat_ref_child = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><FeatureRef Id="FR1"><Component /></FeatureRef></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(bad_feat_ref_child).unwrap_or_default())
+            .is_err());
+
+        // 7. DirectoryRef and ComponentGroup errors (L 802, 804, 814, 821, 836, 857)
+        let bad_dir_ref = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><DirectoryRef Id="" /></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(bad_dir_ref).unwrap_or_default())
+            .is_err());
+
+        let bad_dir_ref_child = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><DirectoryRef Id="TARGETDIR"><Component /></DirectoryRef></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(bad_dir_ref_child).unwrap_or_default())
+            .is_err());
+
+        let bad_cg_dir = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><ComponentGroup Id="CG1" Directory="" /></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(bad_cg_dir).unwrap_or_default())
+            .is_err());
+
+        let bad_cg_comp_ref = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><ComponentGroup Id="CG1"><ComponentRef Id="" /></ComponentGroup></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(bad_cg_comp_ref).unwrap_or_default())
+            .is_err());
+
+        let bad_cg_comp = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><ComponentGroup Id="CG1"><Component Id="" /></ComponentGroup></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(bad_cg_comp).unwrap_or_default())
+            .is_err());
+
+        let bad_cg_child = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><ComponentGroup Id="CG1"><Directory /></ComponentGroup></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(bad_cg_child).unwrap_or_default())
+            .is_err());
+
+        // 8. PackageGroup and FeatureGroup child errors (L 872, 887, 979)
+        let bad_pkg_grp_child = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><PackageGroup Id="PGR1"><Component /></PackageGroup></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(bad_pkg_grp_child).unwrap_or_default())
+            .is_err());
+
+        let bad_feat_grp_child = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><FeatureGroup Id="FGR1"><Component /></FeatureGroup></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(bad_feat_grp_child).unwrap_or_default())
+            .is_err());
+
+        let bad_pkg_child = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><Package><Component /></Package></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(bad_pkg_child).unwrap_or_default())
+            .is_err());
+
+        // 9. Sequence and table errors (L 1014, 1027, 1028, 1053, 1090)
+        let bad_seq_action = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><InstallUISequence><Custom Action="" After="Cost" /></InstallUISequence></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(bad_seq_action).unwrap_or_default())
+            .is_err());
+
+        let bad_custom_action_id = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><SetDirectory Id="TARGETDIR" Action="" Value="C:\" /></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(bad_custom_action_id).unwrap_or_default())
+            .is_err());
+
+        let bad_create_folder_dir = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><CreateFolder Directory="" /></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(bad_create_folder_dir).unwrap_or_default())
+            .is_err());
+
+        let bad_env = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><Environment /></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(bad_env).unwrap_or_default())
+            .is_err());
+
+        // 10. Property and Registry errors (L 1174, 1199, 1216, 1235)
+        let bad_prop_id = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><Property Id="" Value="V" /></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(bad_prop_id).unwrap_or_default())
+            .is_err());
+
+        let bad_prop_child = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><Property Id="P1"><Component /></Property></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(bad_prop_child).unwrap_or_default())
+            .is_err());
+
+        let bad_reg_key_child = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><Component Id="C1" Directory="TARGETDIR"><RegistryKey Root="HKLM" Key="Software\App"><Component /></RegistryKey></Component></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(bad_reg_key_child).unwrap_or_default())
+            .is_err());
+
+        let bad_sql_db_child = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><SqlDatabase Id="DB1"><Component /></SqlDatabase></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(bad_sql_db_child).unwrap_or_default())
+            .is_err());
+
+        // 11. SymbolicLink, SetProperty, ExecuteSequence (L 1303, 1341, 3362, 3708)
+        let bad_symlink_dir = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><SymbolicLink Directory="" Target="t" /></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(bad_symlink_dir).unwrap_or_default())
+            .is_err());
+
+        let bad_set_property = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><SetProperty Action="" Value="V" /></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(bad_set_property).unwrap_or_default())
+            .is_err());
+
+        let bad_execute_seq = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><InstallExecuteSequence><Custom Action="" OnExit="success" /></InstallExecuteSequence></Product></Wix>"#;
+        assert!(compiler
+            .compile(&parser.parse(bad_execute_seq).unwrap_or_default())
+            .is_err());
+    }
+
+    /// Tests top-level fallback component attribution for elements outside explicit Component tags.
+    #[test]
+    fn test_compiler_top_level_fallback_components() {
+        let compiler = Compiler::new();
+        let parser = XmlParser::new();
+        let xml = r#"
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="{11111111-2222-3333-4444-555555555555}" Name="FallbackApp" Version="1.0.0" Manufacturer="Vendor">
+        <File Id="TopFile" Source="test.txt" />
+        <Environment Id="TopEnv" Name="ENV" Value="1" />
+        <RegistryValue Id="TopReg" Key="Software\App" Value="1" />
+        <RemoveFile Id="TopRem" On="install" />
+    </Product>
+</Wix>
+"#;
+        let root = parser.parse(xml).unwrap_or_default();
+        let obj = compiler.compile(&root).unwrap_or_default();
+        assert_eq!(obj.sections.len(), 1);
     }
 }

@@ -8,14 +8,17 @@
 //!   - Control event dispatching handling clicks, text changes, selections, tree state toggles.
 //!   - Deterministic frame simulation testable in headless CI environments.
 
+use crate::database::tables::record::FieldValue;
 use crate::error::{Error, Result};
+use crate::execution::custom_action::{CustomActionDefinition, CustomActionExecutor};
 use crate::execution::properties::EvaluationContext;
-use crate::ui::controls::{ControlDefinition, ControlRuntimeState};
+use crate::ui::controls::{ControlDefinition, ControlRuntimeState, ControlType};
 use crate::ui::events::{
     ControlCondition, ControlConditionAction, ControlEvent, ControlEventType, DialogReturnCode,
     EventMapping,
 };
 use crate::ui::layout::{DluRect, FontMetrics, PixelRect};
+use crate::wix::linker::LinkedDatabase;
 use std::collections::HashMap;
 
 /// Dialog attribute flag: Dialog is visible (`0x0001`).
@@ -124,6 +127,10 @@ pub struct UiEngine {
     wait_dialog: Option<String>,
     /// Log of executed actions.
     action_log: Vec<String>,
+    /// Registered custom actions by action name.
+    custom_actions: HashMap<String, CustomActionDefinition>,
+    /// Coordinator for synchronous custom action execution during the UI phase.
+    custom_action_executor: Option<CustomActionExecutor>,
 }
 
 impl UiEngine {
@@ -158,6 +165,8 @@ impl UiEngine {
             modal_stack: Vec::new(),
             wait_dialog: None,
             action_log: Vec::new(),
+            custom_actions: HashMap::new(),
+            custom_action_executor: None,
         }
     }
 
@@ -282,9 +291,14 @@ impl UiEngine {
                         .and_then(|p| self.context.get_property(p))
                     {
                         state.bound_value = Some(val.to_string());
+                        if def.control_type() == ControlType::Edit {
+                            state.current_text = val.to_string();
+                        }
                     }
-                    if let Some(tmpl) = def.text_template() {
-                        state.current_text = self.context.format_string(tmpl)?;
+                    if def.control_type() != ControlType::Edit || def.property_name().is_none() {
+                        if let Some(tmpl) = def.text_template() {
+                            state.current_text = self.context.format_string(tmpl)?;
+                        }
                     }
                 }
             }
@@ -384,11 +398,407 @@ impl UiEngine {
                 }
                 ControlEventType::DoAction(action) => {
                     self.action_log.push(format!("DoAction({action})"));
+                    if let Some(ca_def) = self.custom_actions.get(action).cloned() {
+                        if let Some(ref mut executor) = self.custom_action_executor {
+                            executor.execute(&ca_def, &mut self.context)?;
+                            self.evaluate_conditions_and_formatting()?;
+                        }
+                    }
                 }
             }
         }
 
         Ok(None)
+    }
+
+    /// Registers a custom action definition for execution during control events (`DoAction`).
+    ///
+    /// # Arguments
+    ///
+    /// * `action` - Custom action definition.
+    pub fn add_custom_action(&mut self, action: CustomActionDefinition) {
+        self.custom_actions
+            .insert(action.name().to_string(), action);
+    }
+
+    /// Configures the custom action executor for synchronous action execution.
+    ///
+    /// # Arguments
+    ///
+    /// * `executor` - Configured [`CustomActionExecutor`].
+    pub fn set_custom_action_executor(&mut self, executor: CustomActionExecutor) {
+        self.custom_action_executor = Some(executor);
+    }
+
+    /// Returns a reference to the active custom action executor, if configured.
+    ///
+    /// # Returns
+    ///
+    /// Optional reference to [`CustomActionExecutor`].
+    #[must_use]
+    pub const fn custom_action_executor(&self) -> Option<&CustomActionExecutor> {
+        self.custom_action_executor.as_ref()
+    }
+
+    /// Returns a mutable reference to the active custom action executor, if configured.
+    ///
+    /// # Returns
+    ///
+    /// Optional mutable reference to [`CustomActionExecutor`].
+    pub const fn custom_action_executor_mut(&mut self) -> Option<&mut CustomActionExecutor> {
+        self.custom_action_executor.as_mut()
+    }
+
+    /// Updates a control's runtime value and synchronizes its bound MSI property.
+    ///
+    /// Immediately triggers dynamic [`ControlCondition`] re-evaluation.
+    ///
+    /// # Arguments
+    ///
+    /// * `dialog` - Enclosing dialog name.
+    /// * `control` - Target control identifier name.
+    /// * `value` - Updated text or property value.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] if property condition evaluation fails.
+    pub fn update_control_value(&mut self, dialog: &str, control: &str, value: &str) -> Result<()> {
+        let key = (dialog.to_string(), control.to_string());
+        if let Some(state) = self.control_states.get_mut(&key) {
+            state.bound_value = Some(value.to_string());
+            state.current_text = value.to_string();
+        }
+
+        let bound_prop = self
+            .controls
+            .get(dialog)
+            .and_then(|defs| defs.iter().find(|d| d.control() == control))
+            .and_then(ControlDefinition::property_name)
+            .map(ToString::to_string);
+
+        if let Some(prop) = bound_prop {
+            self.context.set_property(&prop, value);
+        }
+
+        self.evaluate_conditions_and_formatting()?;
+        Ok(())
+    }
+
+    /// Toggles a checkbox control between `"1"` and `"0"`, updating its bound property.
+    ///
+    /// # Arguments
+    ///
+    /// * `dialog` - Enclosing dialog name.
+    /// * `control` - Checkbox control identifier name.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] if condition evaluation fails.
+    pub fn toggle_checkbox(&mut self, dialog: &str, control: &str) -> Result<()> {
+        let key = (dialog.to_string(), control.to_string());
+        let cur_val = self
+            .control_states
+            .get(&key)
+            .and_then(|s| s.bound_value.as_deref())
+            .unwrap_or("0");
+        let next_val = if cur_val == "1" { "0" } else { "1" };
+        self.update_control_value(dialog, control, next_val)
+    }
+
+    /// Selects an option within a radio button group, updating the group property identifier.
+    ///
+    /// # Arguments
+    ///
+    /// * `dialog` - Enclosing dialog name.
+    /// * `control` - Radio button group control identifier.
+    /// * `value` - Selected option value string.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] if condition evaluation fails.
+    pub fn select_radio_button(&mut self, dialog: &str, control: &str, value: &str) -> Result<()> {
+        self.update_control_value(dialog, control, value)
+    }
+
+    /// Loads dialog definitions, controls, events, conditions, and actions directly from a [`LinkedDatabase`].
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - Compiled or linked MSI database.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] if loading or initial condition formatting fails.
+    #[allow(
+        clippy::too_many_lines,
+        clippy::cast_possible_truncation,
+        clippy::cast_possible_wrap,
+        clippy::many_single_char_names,
+        clippy::cast_sign_loss
+    )]
+    pub fn load_from_database(&mut self, db: &LinkedDatabase) -> Result<()> {
+        // 1. Load Dialog table
+        for rec in db.get_records("Dialog") {
+            let Some(FieldValue::String(name)) = rec.get(0) else {
+                continue;
+            };
+            let h_centering = match rec.get(1) {
+                Some(FieldValue::Short(v)) => *v,
+                Some(FieldValue::Long(v)) => *v as i16,
+                _ => 50,
+            };
+            let v_centering = match rec.get(2) {
+                Some(FieldValue::Short(v)) => *v,
+                Some(FieldValue::Long(v)) => *v as i16,
+                _ => 50,
+            };
+            let width = match rec.get(3) {
+                Some(FieldValue::Short(v)) => *v,
+                Some(FieldValue::Long(v)) => *v as i16,
+                _ => 370,
+            };
+            let height = match rec.get(4) {
+                Some(FieldValue::Short(v)) => *v,
+                Some(FieldValue::Long(v)) => *v as i16,
+                _ => 270,
+            };
+            let attributes = match rec.get(5) {
+                Some(FieldValue::Long(v)) => *v as u32,
+                Some(FieldValue::Short(v)) => *v as u32,
+                _ => 3,
+            };
+            let title = match rec.get(6) {
+                Some(FieldValue::String(s)) => Some(s.clone()),
+                _ => None,
+            };
+            let control_first = match rec.get(7) {
+                Some(FieldValue::String(s)) => s.clone(),
+                _ => String::new(),
+            };
+            let control_default = match rec.get(8) {
+                Some(FieldValue::String(s)) => Some(s.clone()),
+                _ => None,
+            };
+            let control_cancel = match rec.get(9) {
+                Some(FieldValue::String(s)) => Some(s.clone()),
+                _ => None,
+            };
+            self.add_dialog(DialogDefinition {
+                name: name.clone(),
+                h_centering,
+                v_centering,
+                width,
+                height,
+                attributes,
+                title,
+                control_first,
+                control_default,
+                control_cancel,
+            });
+        }
+
+        // 2. Load Control table
+        for rec in db.get_records("Control") {
+            let Some(FieldValue::String(dialog)) = rec.get(0) else {
+                continue;
+            };
+            let Some(FieldValue::String(control)) = rec.get(1) else {
+                continue;
+            };
+            let ctype_str = match rec.get(2) {
+                Some(FieldValue::String(s)) => s.as_str(),
+                _ => "PushButton",
+            };
+            let control_type = ControlType::from_name(ctype_str).unwrap_or(ControlType::PushButton);
+            let x = match rec.get(3) {
+                Some(FieldValue::Short(v)) => *v,
+                Some(FieldValue::Long(v)) => *v as i16,
+                _ => 0,
+            };
+            let y = match rec.get(4) {
+                Some(FieldValue::Short(v)) => *v,
+                Some(FieldValue::Long(v)) => *v as i16,
+                _ => 0,
+            };
+            let w = match rec.get(5) {
+                Some(FieldValue::Short(v)) => *v,
+                Some(FieldValue::Long(v)) => *v as i16,
+                _ => 56,
+            };
+            let h = match rec.get(6) {
+                Some(FieldValue::Short(v)) => *v,
+                Some(FieldValue::Long(v)) => *v as i16,
+                _ => 17,
+            };
+            let attributes = match rec.get(7) {
+                Some(FieldValue::Long(v)) => *v as u32,
+                Some(FieldValue::Short(v)) => *v as u32,
+                _ => 3,
+            };
+            let property = match rec.get(8) {
+                Some(FieldValue::String(s)) => Some(s.clone()),
+                _ => None,
+            };
+            let text = match rec.get(9) {
+                Some(FieldValue::String(s)) => Some(s.clone()),
+                _ => None,
+            };
+            let control_next = match rec.get(10) {
+                Some(FieldValue::String(s)) => Some(s.clone()),
+                _ => None,
+            };
+            let help = match rec.get(11) {
+                Some(FieldValue::String(s)) => Some(s.clone()),
+                _ => None,
+            };
+
+            let mut def = ControlDefinition::new(
+                dialog,
+                control,
+                control_type,
+                DluRect::new(x, y, w, h),
+                attributes,
+            );
+            if let Some(p) = property {
+                def = def.property(p);
+            }
+            if let Some(t) = text {
+                def = def.text(t);
+            }
+            if let Some(n) = control_next {
+                def = def.control_next(n);
+            }
+            if let Some(hp) = help {
+                def = def.help(hp);
+            }
+            self.add_control(def);
+        }
+
+        // 3. Load ControlCondition table
+        for rec in db.get_records("ControlCondition") {
+            let (
+                Some(FieldValue::String(dialog)),
+                Some(FieldValue::String(control)),
+                Some(FieldValue::String(action_str)),
+                Some(FieldValue::String(condition)),
+            ) = (rec.get(0), rec.get(1), rec.get(2), rec.get(3))
+            else {
+                continue;
+            };
+            if let Ok(action) = ControlConditionAction::from_action(action_str) {
+                self.add_condition(ControlCondition {
+                    dialog: dialog.clone(),
+                    control: control.clone(),
+                    action,
+                    condition: condition.clone(),
+                });
+            }
+        }
+
+        // 4. Load ControlEvent table
+        for rec in db.get_records("ControlEvent") {
+            let (
+                Some(FieldValue::String(dialog)),
+                Some(FieldValue::String(control)),
+                Some(FieldValue::String(event_name)),
+                Some(FieldValue::String(arg)),
+            ) = (rec.get(0), rec.get(1), rec.get(2), rec.get(3))
+            else {
+                continue;
+            };
+            let cond = match rec.get(4) {
+                Some(FieldValue::String(s)) if !s.is_empty() => Some(s.clone()),
+                _ => None,
+            };
+            let order = match rec.get(5) {
+                Some(FieldValue::Short(v)) => *v,
+                Some(FieldValue::Long(v)) => *v as i16,
+                _ => 1,
+            };
+            if let Ok(event_type) = ControlEventType::parse(event_name, arg) {
+                self.add_event(ControlEvent::new(dialog, control, event_type, cond, order));
+            }
+        }
+
+        // 5. Load EventMapping table
+        for rec in db.get_records("EventMapping") {
+            let (
+                Some(FieldValue::String(dialog)),
+                Some(FieldValue::String(control)),
+                Some(FieldValue::String(event)),
+                Some(FieldValue::String(attr)),
+            ) = (rec.get(0), rec.get(1), rec.get(2), rec.get(3))
+            else {
+                continue;
+            };
+            self.add_event_mapping(EventMapping {
+                dialog: dialog.clone(),
+                control: control.clone(),
+                event: event.clone(),
+                attribute: attr.clone(),
+            });
+        }
+
+        // 6. Load Binary table payloads and CustomAction table records
+        let mut executor = self.custom_action_executor.take().unwrap_or_default();
+        for b in db.get_records("Binary") {
+            if let Some(FieldValue::String(b_name)) = b.get(0) {
+                let b_data = match b.get(1) {
+                    Some(FieldValue::String(s)) => s.as_bytes().to_vec(),
+                    _ => Vec::new(),
+                };
+                executor.add_binary(b_name.clone(), b_data);
+            }
+        }
+        for rec in db.get_records("CustomAction") {
+            let (
+                Some(FieldValue::String(name)),
+                Some(FieldValue::String(source)),
+                Some(FieldValue::String(target)),
+            ) = (rec.get(0), rec.get(2), rec.get(3))
+            else {
+                continue;
+            };
+            let raw_type = match rec.get(1) {
+                Some(FieldValue::Long(v)) => *v as u32,
+                Some(FieldValue::Short(v)) => *v as u32,
+                _ => 0,
+            };
+            if let Ok(ca_def) = CustomActionDefinition::parse(name, raw_type, source, target) {
+                self.add_custom_action(ca_def);
+            }
+        }
+        self.custom_action_executor = Some(executor);
+
+        // 7. Determine initial active dialog from InstallUISequence or standard fallbacks
+        let mut initial_dialog = None;
+        let mut min_seq = i32::MAX;
+        for rec in db.get_records("InstallUISequence") {
+            if let (Some(FieldValue::String(action)), Some(FieldValue::Short(seq))) =
+                (rec.get(0), rec.get(2))
+            {
+                if self.dialogs.contains_key(action) && i32::from(*seq) < min_seq {
+                    min_seq = i32::from(*seq);
+                    initial_dialog = Some(action.clone());
+                }
+            }
+        }
+
+        if initial_dialog.is_none() {
+            if self.dialogs.contains_key("WelcomeDlg") {
+                initial_dialog = Some("WelcomeDlg".to_string());
+            } else if self.dialogs.contains_key("Welcome") {
+                initial_dialog = Some("Welcome".to_string());
+            } else {
+                initial_dialog = self.dialogs.keys().next().cloned();
+            }
+        }
+
+        if let Some(ref dlg_name) = initial_dialog {
+            self.set_active_dialog(dlg_name)?;
+        }
+
+        Ok(())
     }
 
     /// Dispatches a progress event notification updating `ProgressBar` controls.
@@ -407,6 +817,15 @@ impl UiEngine {
     #[must_use]
     pub fn action_log(&self) -> &[String] {
         &self.action_log
+    }
+
+    /// Appends an entry to the action execution log.
+    ///
+    /// # Arguments
+    ///
+    /// * `entry` - Description string to log.
+    pub fn append_action_log(&mut self, entry: impl Into<String>) {
+        self.action_log.push(entry.into());
     }
 }
 
@@ -714,6 +1133,12 @@ mod tests {
         // Click ResetBtn
         assert_eq!(engine.click_control("Dlg", "ResetBtn"), Ok(None));
         assert_eq!(engine.context().get_property("PROP1"), Some("Original"));
+
+        engine.append_action_log("ManualLogEntry");
+        assert_eq!(
+            engine.action_log(),
+            &["DoAction(CustomAction1)", "ManualLogEntry"]
+        );
     }
 
     /// Tests edge cases: `is_modal`, unbound properties, `Default` and `Show` conditions, `SpawnWaitDialog`, progress clamping, and state mutations.
@@ -1188,5 +1613,743 @@ mod tests {
             1,
         ));
         assert!(engine6.click_control("SetPropErrDlg", "ResetBtn").is_err());
+    }
+
+    /// Tests two-way data binding, checkbox toggling, radio selection, and custom actions execution.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_ui_engine_two_way_binding_and_custom_actions() -> Result<()> {
+        let mut context = EvaluationContext::new();
+        context.set_property("EDIT_PROP", "InitialText");
+        context.set_property("CHECK_PROP", "0");
+        context.set_property("RADIO_PROP", "OptA");
+
+        let mut engine = UiEngine::new(context);
+        let dlg = DialogDefinition {
+            name: "BindingDlg".to_string(),
+            h_centering: 50,
+            v_centering: 50,
+            width: 300,
+            height: 200,
+            attributes: DIALOG_ATTR_VISIBLE,
+            title: Some("Binding Test".to_string()),
+            control_first: "Edit1".to_string(),
+            control_default: Some("OkBtn".to_string()),
+            control_cancel: Some("CancelBtn".to_string()),
+        };
+        engine.add_dialog(dlg);
+
+        let edit_ctrl = ControlDefinition::new(
+            "BindingDlg",
+            "Edit1",
+            ControlType::Edit,
+            DluRect::new(10, 10, 100, 15),
+            3,
+        )
+        .property("EDIT_PROP")
+        .text("InitialText");
+        engine.add_control(edit_ctrl);
+
+        let check_ctrl = ControlDefinition::new(
+            "BindingDlg",
+            "Check1",
+            ControlType::CheckBox,
+            DluRect::new(10, 30, 100, 15),
+            3,
+        )
+        .property("CHECK_PROP")
+        .text("Enable Feature");
+        engine.add_control(check_ctrl);
+
+        let radio_ctrl = ControlDefinition::new(
+            "BindingDlg",
+            "RadioGroup",
+            ControlType::RadioButtonGroup,
+            DluRect::new(10, 50, 100, 30),
+            3,
+        )
+        .property("RADIO_PROP")
+        .text("OptA");
+        engine.add_control(radio_ctrl);
+
+        engine.set_active_dialog("BindingDlg")?;
+
+        // 1. Two-way binding for Edit control
+        engine.update_control_value("BindingDlg", "Edit1", "UpdatedText")?;
+        assert_eq!(
+            engine.context().get_property("EDIT_PROP"),
+            Some("UpdatedText")
+        );
+        assert_eq!(
+            engine
+                .get_control_state("BindingDlg", "Edit1")
+                .map(|s| s.current_text.as_str()),
+            Some("UpdatedText")
+        );
+
+        // 2. Checkbox toggling
+        engine.toggle_checkbox("BindingDlg", "Check1")?;
+        assert_eq!(engine.context().get_property("CHECK_PROP"), Some("1"));
+        engine.toggle_checkbox("BindingDlg", "Check1")?;
+        assert_eq!(engine.context().get_property("CHECK_PROP"), Some("0"));
+
+        // 3. Radio button selection
+        engine.select_radio_button("BindingDlg", "RadioGroup", "OptB")?;
+        assert_eq!(engine.context().get_property("RADIO_PROP"), Some("OptB"));
+
+        // 4. Custom action registration and synchronous execution on DoAction
+        let mut executor = CustomActionExecutor::new();
+        executor.set_mock_result("ValidateAction", 0);
+        engine.set_custom_action_executor(executor);
+        assert!(engine.custom_action_executor().is_some());
+        assert!(engine.custom_action_executor_mut().is_some());
+
+        let ca = CustomActionDefinition::parse("ValidateAction", 1, "BinarySrc", "ValidateFn")?;
+        engine.add_custom_action(ca);
+
+        let action_btn = ControlDefinition::new(
+            "BindingDlg",
+            "ActionBtn",
+            ControlType::PushButton,
+            DluRect::new(10, 90, 50, 15),
+            3,
+        );
+        engine.add_control(action_btn);
+        engine.add_event(ControlEvent::new(
+            "BindingDlg",
+            "ActionBtn",
+            ControlEventType::DoAction("ValidateAction".to_string()),
+            None,
+            1,
+        ));
+
+        let res = engine.click_control("BindingDlg", "ActionBtn")?;
+        assert_eq!(res, None);
+        assert!(engine
+            .action_log()
+            .iter()
+            .any(|a| a.contains("ValidateAction")));
+
+        // 5. Failing Custom Action on DoAction
+        let mut fail_executor = CustomActionExecutor::new();
+        fail_executor.set_mock_result("FailAction", 1603);
+        engine.set_custom_action_executor(fail_executor);
+
+        let fail_ca = CustomActionDefinition::parse("FailAction", 1, "BinarySrc", "FailFn")?;
+        engine.add_custom_action(fail_ca);
+        engine.add_event(ControlEvent::new(
+            "BindingDlg",
+            "ActionBtn",
+            ControlEventType::DoAction("FailAction".to_string()),
+            None,
+            2,
+        ));
+        assert!(engine.click_control("BindingDlg", "ActionBtn").is_err());
+
+        // 6. SpawnDialog and modal stack popping via EndDialog
+        let modal_dlg = DialogDefinition {
+            name: "ModalDlg".to_string(),
+            h_centering: 50,
+            v_centering: 50,
+            width: 200,
+            height: 150,
+            attributes: 3,
+            title: Some("Modal".to_string()),
+            control_first: "CloseBtn".to_string(),
+            control_default: None,
+            control_cancel: None,
+        };
+        engine.add_dialog(modal_dlg);
+        let close_btn = ControlDefinition::new(
+            "ModalDlg",
+            "CloseBtn",
+            ControlType::PushButton,
+            DluRect::new(10, 10, 50, 15),
+            3,
+        );
+        engine.add_control(close_btn);
+        engine.add_event(ControlEvent::new(
+            "ModalDlg",
+            "CloseBtn",
+            ControlEventType::EndDialog(DialogReturnCode::Return),
+            None,
+            1,
+        ));
+
+        // Event on BindingDlg that spawns ModalDlg and SpawnWaitDialog
+        engine.add_event(ControlEvent::new(
+            "BindingDlg",
+            "ActionBtn",
+            ControlEventType::SpawnDialog("ModalDlg".to_string()),
+            None,
+            3,
+        ));
+        engine.add_event(ControlEvent::new(
+            "BindingDlg",
+            "ActionBtn",
+            ControlEventType::SpawnWaitDialog("WaitDlg".to_string()),
+            None,
+            4,
+        ));
+
+        // Restore working executor so event chain proceeds
+        let mut ok_executor = CustomActionExecutor::new();
+        ok_executor.set_mock_result("ValidateAction", 0);
+        ok_executor.set_mock_result("FailAction", 0);
+        engine.set_custom_action_executor(ok_executor);
+
+        let _ = engine.click_control("BindingDlg", "ActionBtn")?;
+        assert_eq!(
+            engine.active_dialog().map(|d| d.name.as_str()),
+            Some("ModalDlg")
+        );
+        assert_eq!(engine.wait_dialog.as_deref(), Some("WaitDlg"));
+
+        // Close modal dialog, popping back to BindingDlg
+        let modal_ret = engine.click_control("ModalDlg", "CloseBtn")?;
+        assert_eq!(modal_ret, None);
+        assert_eq!(
+            engine.active_dialog().map(|d| d.name.as_str()),
+            Some("BindingDlg")
+        );
+
+        // 7. DoAction when custom_action_executor is None
+        let mut no_exec_engine = UiEngine::new(EvaluationContext::new());
+        no_exec_engine.add_dialog(DialogDefinition {
+            name: "NoExecDlg".to_string(),
+            h_centering: 50,
+            v_centering: 50,
+            width: 200,
+            height: 150,
+            attributes: 3,
+            title: None,
+            control_first: "Btn".to_string(),
+            control_default: None,
+            control_cancel: None,
+        });
+        no_exec_engine.add_control(ControlDefinition::new(
+            "NoExecDlg",
+            "Btn",
+            ControlType::PushButton,
+            DluRect::new(10, 10, 50, 15),
+            3,
+        ));
+        let no_exec_ca = CustomActionDefinition::parse("ActionNoExec", 1, "BinarySrc", "Fn")?;
+        no_exec_engine.add_custom_action(no_exec_ca);
+        no_exec_engine.add_event(ControlEvent::new(
+            "NoExecDlg",
+            "Btn",
+            ControlEventType::DoAction("ActionNoExec".to_string()),
+            None,
+            1,
+        ));
+        assert!(no_exec_engine.set_active_dialog("NoExecDlg").is_ok());
+        let _ = no_exec_engine.click_control("NoExecDlg", "Btn")?;
+
+        // 8. DoAction when evaluate_conditions_and_formatting fails
+        engine.add_condition(ControlCondition {
+            dialog: "BindingDlg".to_string(),
+            control: "ActionBtn".to_string(),
+            action: ControlConditionAction::Enable,
+            condition: "INVALID ===".to_string(),
+        });
+        assert!(engine.click_control("BindingDlg", "ActionBtn").is_err());
+
+        Ok(())
+    }
+
+    /// Tests `load_from_database` populating dialogs, controls, conditions, events, and actions.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_ui_engine_load_from_database() -> Result<()> {
+        use crate::database::tables::record::Record;
+
+        let mut db = LinkedDatabase::new()?;
+
+        // 1. Dialog table
+        db.add_record(
+            "Dialog",
+            Record::with_fields(vec![
+                FieldValue::String("WelcomeDlg".to_string()),
+                FieldValue::Short(50),
+                FieldValue::Short(50),
+                FieldValue::Short(370),
+                FieldValue::Short(270),
+                FieldValue::Long(3),
+                FieldValue::String("Welcome to [ProductName]".to_string()),
+                FieldValue::String("NextBtn".to_string()),
+                FieldValue::String("NextBtn".to_string()),
+                FieldValue::String("CancelBtn".to_string()),
+            ]),
+        );
+
+        // 2. Control table
+        db.add_record(
+            "Control",
+            Record::with_fields(vec![
+                FieldValue::String("WelcomeDlg".to_string()),
+                FieldValue::String("NextBtn".to_string()),
+                FieldValue::String("PushButton".to_string()),
+                FieldValue::Short(236),
+                FieldValue::Short(243),
+                FieldValue::Short(56),
+                FieldValue::Short(17),
+                FieldValue::Long(3),
+                FieldValue::Null,
+                FieldValue::String("Next".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        db.add_record(
+            "Control",
+            Record::with_fields(vec![
+                FieldValue::String("WelcomeDlg".to_string()),
+                FieldValue::String("CancelBtn".to_string()),
+                FieldValue::String("PushButton".to_string()),
+                FieldValue::Short(304),
+                FieldValue::Short(243),
+                FieldValue::Short(56),
+                FieldValue::Short(17),
+                FieldValue::Long(3),
+                FieldValue::Null,
+                FieldValue::String("Cancel".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+
+        // 3. ControlEvent table
+        db.add_record(
+            "ControlEvent",
+            Record::with_fields(vec![
+                FieldValue::String("WelcomeDlg".to_string()),
+                FieldValue::String("NextBtn".to_string()),
+                FieldValue::String("EndDialog".to_string()),
+                FieldValue::String("Return".to_string()),
+                FieldValue::String("1".to_string()),
+                FieldValue::Short(1),
+            ]),
+        );
+
+        // 4. ControlCondition table
+        db.add_record(
+            "ControlCondition",
+            Record::with_fields(vec![
+                FieldValue::String("WelcomeDlg".to_string()),
+                FieldValue::String("NextBtn".to_string()),
+                FieldValue::String("Enable".to_string()),
+                FieldValue::String("1".to_string()),
+            ]),
+        );
+
+        // 5. EventMapping table
+        db.add_record(
+            "EventMapping",
+            Record::with_fields(vec![
+                FieldValue::String("WelcomeDlg".to_string()),
+                FieldValue::String("NextBtn".to_string()),
+                FieldValue::String("SetProgress".to_string()),
+                FieldValue::String("Progress".to_string()),
+            ]),
+        );
+
+        // 6. CustomAction & Binary tables
+        db.add_record(
+            "Binary",
+            Record::with_fields(vec![
+                FieldValue::String("TestBin".to_string()),
+                FieldValue::String("data".to_string()),
+            ]),
+        );
+
+        db.add_record(
+            "CustomAction",
+            Record::with_fields(vec![
+                FieldValue::String("TestAction".to_string()),
+                FieldValue::Long(1),
+                FieldValue::String("TestBin".to_string()),
+                FieldValue::String("Entry".to_string()),
+            ]),
+        );
+
+        // 7. InstallUISequence table
+        db.add_record(
+            "InstallUISequence",
+            Record::with_fields(vec![
+                FieldValue::String("WelcomeDlg".to_string()),
+                FieldValue::String("1".to_string()),
+                FieldValue::Short(100),
+            ]),
+        );
+
+        let mut context = EvaluationContext::new();
+        context.set_property("ProductName", "LoadedApp");
+        let mut engine = UiEngine::new(context);
+        engine.load_from_database(&db)?;
+
+        assert_eq!(
+            engine.active_dialog().map(|d| d.name.as_str()),
+            Some("WelcomeDlg")
+        );
+        assert_eq!(engine.get_dialog_controls("WelcomeDlg").len(), 2);
+        let ret = engine.click_control("WelcomeDlg", "NextBtn")?;
+        assert_eq!(ret, Some(DialogReturnCode::Return));
+
+        Ok(())
+    }
+
+    /// Tests `load_from_database` covering all `FieldValue` variants (Short, Long, Null),
+    /// fallback defaults, invalid rows, and sequence ordering.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_ui_engine_load_from_database_coverage_matrix() -> Result<()> {
+        use crate::database::tables::record::Record;
+
+        let mut db = LinkedDatabase::new()?;
+
+        // 1. Dialog with Long centering/dimensions and Short attributes
+        db.add_record(
+            "Dialog",
+            Record::with_fields(vec![
+                FieldValue::String("DlgLong".to_string()),
+                FieldValue::Long(60),
+                FieldValue::Long(70),
+                FieldValue::Long(400),
+                FieldValue::Long(300),
+                FieldValue::Short(7),
+                FieldValue::String("Title".to_string()),
+                FieldValue::String("FirstCtrl".to_string()),
+                FieldValue::String("DefCtrl".to_string()),
+                FieldValue::String("CancelCtrl".to_string()),
+            ]),
+        );
+
+        // Dialog with defaults (Null fields for everything except name)
+        db.add_record(
+            "Dialog",
+            Record::with_fields(vec![
+                FieldValue::String("DlgDefaults".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+
+        // Dialog skipped (first field is not String)
+        db.add_record("Dialog", Record::with_fields(vec![FieldValue::Short(123)]));
+
+        // 2. Control table: Long coordinates/dimensions and Short attributes, plus all optional fields
+        db.add_record(
+            "Control",
+            Record::with_fields(vec![
+                FieldValue::String("DlgLong".to_string()),
+                FieldValue::String("CtrlLong".to_string()),
+                FieldValue::String("Edit".to_string()),
+                FieldValue::Long(10),
+                FieldValue::Long(20),
+                FieldValue::Long(100),
+                FieldValue::Long(20),
+                FieldValue::Short(3),
+                FieldValue::String("MY_PROP".to_string()),
+                FieldValue::String("Initial".to_string()),
+                FieldValue::String("NextCtrl".to_string()),
+                FieldValue::String("HelpText".to_string()),
+            ]),
+        );
+
+        // Control with defaults (Null coordinates and dimensions)
+        db.add_record(
+            "Control",
+            Record::with_fields(vec![
+                FieldValue::String("DlgLong".to_string()),
+                FieldValue::String("CtrlDef".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+
+        // Control records skipped (missing dialog or control name)
+        db.add_record("Control", Record::with_fields(vec![FieldValue::Short(1)]));
+        db.add_record(
+            "Control",
+            Record::with_fields(vec![
+                FieldValue::String("DlgLong".to_string()),
+                FieldValue::Short(2),
+            ]),
+        );
+
+        // 3. ControlCondition table
+        db.add_record(
+            "ControlCondition",
+            Record::with_fields(vec![
+                FieldValue::String("DlgLong".to_string()),
+                FieldValue::String("CtrlLong".to_string()),
+                FieldValue::String("Disable".to_string()),
+                FieldValue::String("PROP = 1".to_string()),
+            ]),
+        );
+        // Skipped: invalid action string
+        db.add_record(
+            "ControlCondition",
+            Record::with_fields(vec![
+                FieldValue::String("DlgLong".to_string()),
+                FieldValue::String("CtrlLong".to_string()),
+                FieldValue::String("InvalidActionName".to_string()),
+                FieldValue::String("1".to_string()),
+            ]),
+        );
+        // Skipped: fewer fields than required
+        db.add_record(
+            "ControlCondition",
+            Record::with_fields(vec![FieldValue::String("DlgLong".to_string())]),
+        );
+
+        // 4. ControlEvent table
+        // With Long order and empty condition string
+        db.add_record(
+            "ControlEvent",
+            Record::with_fields(vec![
+                FieldValue::String("DlgLong".to_string()),
+                FieldValue::String("CtrlLong".to_string()),
+                FieldValue::String("EndDialog".to_string()),
+                FieldValue::String("Return".to_string()),
+                FieldValue::String(String::new()),
+                FieldValue::Long(5),
+            ]),
+        );
+        // With Null order and Null condition
+        db.add_record(
+            "ControlEvent",
+            Record::with_fields(vec![
+                FieldValue::String("DlgLong".to_string()),
+                FieldValue::String("CtrlLong".to_string()),
+                FieldValue::String("EndDialog".to_string()),
+                FieldValue::String("Exit".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        // Skipped: invalid event name
+        db.add_record(
+            "ControlEvent",
+            Record::with_fields(vec![
+                FieldValue::String("DlgLong".to_string()),
+                FieldValue::String("CtrlLong".to_string()),
+                FieldValue::String("NonexistentEvent".to_string()),
+                FieldValue::String("Arg".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        // Skipped: incomplete record
+        db.add_record(
+            "ControlEvent",
+            Record::with_fields(vec![FieldValue::String("DlgLong".to_string())]),
+        );
+
+        // 5. EventMapping table: incomplete record
+        db.add_record(
+            "EventMapping",
+            Record::with_fields(vec![FieldValue::String("DlgLong".to_string())]),
+        );
+
+        // 6. Binary table with non-string data
+        db.add_record(
+            "Binary",
+            Record::with_fields(vec![
+                FieldValue::String("BinNonString".to_string()),
+                FieldValue::Short(99),
+            ]),
+        );
+        // Skipped Binary record (non-string name)
+        db.add_record("Binary", Record::with_fields(vec![FieldValue::Short(1)]));
+
+        // 7. CustomAction table with Short type and Null type
+        db.add_record(
+            "CustomAction",
+            Record::with_fields(vec![
+                FieldValue::String("CAShort".to_string()),
+                FieldValue::Short(1),
+                FieldValue::String("BinNonString".to_string()),
+                FieldValue::String("Entry".to_string()),
+            ]),
+        );
+        db.add_record(
+            "CustomAction",
+            Record::with_fields(vec![
+                FieldValue::String("CANullType".to_string()),
+                FieldValue::Null,
+                FieldValue::String("BinNonString".to_string()),
+                FieldValue::String("Entry".to_string()),
+            ]),
+        );
+        // Skipped CustomAction record (incomplete)
+        db.add_record(
+            "CustomAction",
+            Record::with_fields(vec![FieldValue::String("CAIncomplete".to_string())]),
+        );
+
+        // 8. InstallUISequence with sequence comparison (second record seq is higher, and action not in dialogs)
+        db.add_record(
+            "InstallUISequence",
+            Record::with_fields(vec![
+                FieldValue::String("DlgLong".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(50),
+            ]),
+        );
+        db.add_record(
+            "InstallUISequence",
+            Record::with_fields(vec![
+                FieldValue::String("DlgLong".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(150),
+            ]),
+        );
+        db.add_record(
+            "InstallUISequence",
+            Record::with_fields(vec![
+                FieldValue::String("NotInDialogs".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(10),
+            ]),
+        );
+        // Skipped InstallUISequence record
+        db.add_record(
+            "InstallUISequence",
+            Record::with_fields(vec![FieldValue::String("DlgLong".to_string())]),
+        );
+
+        let mut engine = UiEngine::new(EvaluationContext::new());
+        engine.load_from_database(&db)?;
+        assert_eq!(
+            engine.active_dialog().map(|d| d.name.as_str()),
+            Some("DlgLong")
+        );
+
+        // 9. Initial dialog fallbacks:
+        // A. Database with "Welcome" dialog
+        let mut db_welcome = LinkedDatabase::new()?;
+        db_welcome.add_record(
+            "Dialog",
+            Record::with_fields(vec![
+                FieldValue::String("Welcome".to_string()),
+                FieldValue::Short(50),
+                FieldValue::Short(50),
+                FieldValue::Short(300),
+                FieldValue::Short(200),
+                FieldValue::Short(3),
+                FieldValue::String("Welcome".to_string()),
+                FieldValue::String("Btn".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        let mut engine_welcome = UiEngine::new(EvaluationContext::new());
+        engine_welcome.load_from_database(&db_welcome)?;
+        assert_eq!(
+            engine_welcome.active_dialog().map(|d| d.name.as_str()),
+            Some("Welcome")
+        );
+
+        // B. Database with arbitrary dialog (neither WelcomeDlg nor Welcome)
+        let mut db_arbitrary = LinkedDatabase::new()?;
+        db_arbitrary.add_record(
+            "Dialog",
+            Record::with_fields(vec![
+                FieldValue::String("CustomDialog".to_string()),
+                FieldValue::Short(50),
+                FieldValue::Short(50),
+                FieldValue::Short(300),
+                FieldValue::Short(200),
+                FieldValue::Short(3),
+                FieldValue::String("Custom".to_string()),
+                FieldValue::String("Btn".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        let mut engine_arbitrary = UiEngine::new(EvaluationContext::new());
+        engine_arbitrary.load_from_database(&db_arbitrary)?;
+        assert_eq!(
+            engine_arbitrary.active_dialog().map(|d| d.name.as_str()),
+            Some("CustomDialog")
+        );
+
+        // C. Database with no dialogs at all
+        let db_empty = LinkedDatabase::new()?;
+        let mut engine_empty = UiEngine::new(EvaluationContext::new());
+        engine_empty.load_from_database(&db_empty)?;
+        assert!(engine_empty.active_dialog().is_none());
+
+        // D. Database with "WelcomeDlg" (and no sequence)
+        let mut db_welcomedlg = LinkedDatabase::new()?;
+        db_welcomedlg.add_record(
+            "Dialog",
+            Record::with_fields(vec![
+                FieldValue::String("WelcomeDlg".to_string()),
+                FieldValue::Short(50),
+                FieldValue::Short(50),
+                FieldValue::Short(300),
+                FieldValue::Short(200),
+                FieldValue::Short(3),
+                FieldValue::String("Welcome".to_string()),
+                FieldValue::String("Btn".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        let mut engine_welcomedlg = UiEngine::new(EvaluationContext::new());
+        engine_welcomedlg.load_from_database(&db_welcomedlg)?;
+        assert_eq!(
+            engine_welcomedlg.active_dialog().map(|d| d.name.as_str()),
+            Some("WelcomeDlg")
+        );
+
+        // E. Database with invalid condition making set_active_dialog fail
+        let mut db_err_cond = LinkedDatabase::new()?;
+        db_err_cond.add_record(
+            "Dialog",
+            Record::with_fields(vec![
+                FieldValue::String("ErrDlg".to_string()),
+                FieldValue::Short(50),
+                FieldValue::Short(50),
+                FieldValue::Short(300),
+                FieldValue::Short(200),
+                FieldValue::Short(3),
+                FieldValue::String("Err".to_string()),
+                FieldValue::String("Btn".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        db_err_cond.add_record(
+            "ControlCondition",
+            Record::with_fields(vec![
+                FieldValue::String("ErrDlg".to_string()),
+                FieldValue::String("Btn".to_string()),
+                FieldValue::String("Enable".to_string()),
+                FieldValue::String("INVALID ===".to_string()),
+            ]),
+        );
+        let mut engine_err_cond = UiEngine::new(EvaluationContext::new());
+        assert!(engine_err_cond.load_from_database(&db_err_cond).is_err());
+
+        Ok(())
     }
 }

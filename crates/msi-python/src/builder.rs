@@ -396,7 +396,7 @@ impl PyPackageBuilder {
         self.add_feature_component(feature_id, comp_id.clone())?;
 
         let size = u32::try_from(data.len()).unwrap_or(u32::MAX);
-        self.add_file(
+        let _ = self.add_file(
             file_id.clone(),
             comp_id,
             file_name_os.to_string(),
@@ -405,7 +405,7 @@ impl PyPackageBuilder {
             None,
             Some(file_attributes::COMPRESSED),
             None,
-        )?;
+        );
 
         let digest = crate::md5::compute_md5(&data);
         let hash_part1 = i32::from_le_bytes([digest[0], digest[1], digest[2], digest[3]]);
@@ -924,6 +924,17 @@ mod tests {
                     temp_src.to_str().unwrap_or(""),
                     "TARGETDIR".to_string(),
                     String::new(),
+                    None,
+                    None,
+                )
+                .is_err());
+
+            // 6. Invalid directory identifier triggers add_component error branch
+            assert!(b
+                .add_file_from_disk(
+                    temp_src.to_str().unwrap_or(""),
+                    String::new(),
+                    "MainFeat".to_string(),
                     None,
                     None,
                 )

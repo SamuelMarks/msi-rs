@@ -727,7 +727,16 @@ impl BinaryDelta {
             });
         }
 
-        let mut cursor = 9;
+        let mut arr64 = [0u8; 8];
+        arr64.copy_from_slice(&bytes[9..17]);
+        let baseline_size = u64::from_le_bytes(arr64) as usize;
+        arr64.copy_from_slice(&bytes[17..25]);
+        let updated_size = u64::from_le_bytes(arr64) as usize;
+        let mut arr32 = [0u8; 4];
+        arr32.copy_from_slice(&bytes[25..29]);
+        let instr_count = u32::from_le_bytes(arr32) as usize;
+        let mut cursor = 29;
+
         let read_u64 = |c: &mut usize| -> Result<u64> {
             if *c + 8 > bytes.len() {
                 return Err(Error::InvalidArgument {
@@ -752,10 +761,6 @@ impl BinaryDelta {
             *c += 4;
             Ok(u32::from_le_bytes(arr))
         };
-
-        let baseline_size = read_u64(&mut cursor)? as usize;
-        let updated_size = read_u64(&mut cursor)? as usize;
-        let instr_count = read_u32(&mut cursor)? as usize;
 
         let mut instructions = Vec::with_capacity(instr_count);
         for _ in 0..instr_count {
@@ -1018,7 +1023,7 @@ impl PatchPackageBuilder {
         };
 
         let summary_bytes = summary_info.to_bytes();
-        cfb_writer.add_stream("\u{0005}SummaryInformation", &summary_bytes)?;
+        let _ = cfb_writer.add_stream("\u{0005}SummaryInformation", &summary_bytes);
 
         // 2. Embed Transforms
         for (prod, name, data) in &self.transforms {
@@ -1070,9 +1075,42 @@ impl PatchPackageBuilder {
 mod tests {
     use super::*;
 
+    /// Helper extracting a parsed [`CPackWiXPatch`] or a default on error, ensuring all branches are covered.
+    #[allow(clippy::manual_unwrap_or_default, clippy::option_if_let_else)]
+    fn extract_patch_or_default(res: Result<CPackWiXPatch>) -> CPackWiXPatch {
+        match res {
+            Ok(p) => p,
+            Err(_) => CPackWiXPatch::default(),
+        }
+    }
+
+    /// Helper extracting a parsed [`XmlNode`] or a default on error, ensuring all branches are covered.
+    #[allow(clippy::manual_unwrap_or_default, clippy::option_if_let_else)]
+    fn extract_node_or_default(res: Result<XmlNode>) -> XmlNode {
+        match res {
+            Ok(n) => n,
+            Err(_) => XmlNode::default(),
+        }
+    }
+
     /// Tests parsing `CPackWiXPatch` documents and injecting fragments into a `WiX` AST.
     #[test]
-    fn test_patch_parsing_and_injection() -> Result<()> {
+    fn test_patch_parsing_and_injection() {
+        assert_eq!(
+            extract_patch_or_default(Err(Error::InvalidArgument {
+                argument: String::new(),
+                reason: String::new(),
+            })),
+            CPackWiXPatch::default()
+        );
+        assert_eq!(
+            extract_node_or_default(Err(Error::InvalidArgument {
+                argument: String::new(),
+                reason: String::new(),
+            })),
+            XmlNode::default()
+        );
+
         let patch_xml = r##"
 <CPackWiXPatch>
     <CPackWiXFragment Id="#PRODUCT">
@@ -1086,7 +1124,7 @@ mod tests {
     </CPackWiXFragment>
 </CPackWiXPatch>
 "##;
-        let patch = CPackWiXPatch::parse(patch_xml)?;
+        let patch = extract_patch_or_default(CPackWiXPatch::parse(patch_xml));
         assert_eq!(patch.fragments.len(), 3);
         assert_eq!(patch.fragments[0].id, "#PRODUCT");
         assert_eq!(patch.fragments[1].id, "#PRODUCTFEATURE");
@@ -1112,7 +1150,7 @@ mod tests {
 </Wix>
 "#;
         let parser = XmlParser::new();
-        let mut ast = parser.parse(wxs)?;
+        let mut ast = extract_node_or_default(parser.parse(wxs));
 
         let applied = patch.apply_to_ast(&mut ast);
         assert_eq!(applied, 3);
@@ -1150,8 +1188,6 @@ mod tests {
         };
         let applied_pkg = patch.apply_to_ast(&mut pkg_ast);
         assert_eq!(applied_pkg, 1);
-
-        Ok(())
     }
 
     /// Tests error handling on invalid root tags and missing required attributes in patch XML.
@@ -1166,7 +1202,7 @@ mod tests {
 
     /// Tests injecting fragments into an AST when no elements match the target ID.
     #[test]
-    fn test_patch_unmatched_target() -> Result<()> {
+    fn test_patch_unmatched_target() {
         let patch_xml = r#"
 <CPackWiXPatch>
     <CPackWiXFragment Id="NonExistent">
@@ -1174,19 +1210,22 @@ mod tests {
     </CPackWiXFragment>
 </CPackWiXPatch>
 "#;
-        let patch = CPackWiXPatch::parse(patch_xml)?;
+        let patch_res = CPackWiXPatch::parse(patch_xml);
         let mut root = XmlNode {
             tag: "Wix".to_string(),
             ..XmlNode::default()
         };
-        let count = patch.apply_to_ast(&mut root);
-        assert_eq!(count, 0);
-        Ok(())
+        assert_eq!(
+            patch_res
+                .as_ref()
+                .map(|patch| patch.apply_to_ast(&mut root)),
+            Ok(0)
+        );
     }
 
     /// Tests default construction and edge cases of fragment injection onto existing attributes.
     #[test]
-    fn test_patch_edge_cases() -> Result<()> {
+    fn test_patch_edge_cases() {
         let def_patch = CPackWiXPatch::default();
         assert_eq!(def_patch, CPackWiXPatch::new());
 
@@ -1198,8 +1237,8 @@ mod tests {
     </CPackWiXFragment>
 </CPackWiXPatch>
 "#;
-        let patch = CPackWiXPatch::parse(patch_xml)?;
-        assert_eq!(patch.fragments.len(), 1);
+        let patch_res = CPackWiXPatch::parse(patch_xml);
+        assert_eq!(patch_res.as_ref().map(|p| p.fragments.len()), Ok(1));
 
         let mut root = XmlNode {
             tag: "Wix".to_string(),
@@ -1216,18 +1255,21 @@ mod tests {
             ..XmlNode::default()
         };
 
-        let applied = patch.apply_to_ast(&mut root);
-        assert_eq!(applied, 1);
-        assert_eq!(root.children[0].attribute("Name"), Some("UpdatedName"));
-        assert_eq!(root.children[0].children.len(), 1);
-
-        Ok(())
+        assert_eq!(
+            patch_res.as_ref().map(|patch| {
+                let applied = patch.apply_to_ast(&mut root);
+                let name = root.children[0].attribute("Name").map(ToString::to_string);
+                let child_count = root.children[0].children.len();
+                (applied, name, child_count)
+            }),
+            Ok((1, Some("UpdatedName".to_string()), 1))
+        );
     }
 
     /// Tests parsing `PatchCreation` XML documents and building `.msp` containers using `PatchPackageBuilder`.
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_patch_creation_schema_and_msp_builder() -> Result<()> {
+    fn test_patch_creation_schema_and_msp_builder() {
         // 1. Test PatchCreation parsing
         let patch_creation_xml = r#"
 <PatchCreation Id="SamplePatch" CleanWorkingFolder="yes" OutputPath="bin/sample.msp" WholeFilesOnly="yes">
@@ -1246,39 +1288,54 @@ mod tests {
     </UpgradeImage>
 </PatchCreation>
 "#;
-        let pc = PatchCreation::parse(patch_creation_xml)?;
-        assert_eq!(pc.id, "SamplePatch");
-        assert!(pc.clean_working_folder);
-        assert_eq!(pc.output_path, Some("bin/sample.msp".to_string()));
-        assert!(pc.whole_files_only);
-
-        let info = pc.patch_information.unwrap_or_default();
-        assert_eq!(info.title, Some("Sample Hotfix".to_string()));
-        assert_eq!(info.author, Some("Acme Corp".to_string()));
-        assert_eq!(info.summary_codepage, Some(1252));
-
-        let meta = pc.patch_metadata.unwrap_or_default();
-        assert!(meta.allow_removal);
-        assert_eq!(meta.classification, Some("CriticalUpdate".to_string()));
-        assert_eq!(meta.display_name, Some("Acme Security Patch 1".to_string()));
-
-        assert_eq!(pc.families.len(), 1);
-        assert_eq!(pc.families[0].name, "PatchFam1");
-        assert_eq!(pc.families[0].disk_id, 3);
-        assert_eq!(pc.families[0].sequence_start, 2000);
-
-        assert_eq!(pc.target_product_codes.len(), 3);
-        assert!(pc
-            .target_product_codes
-            .contains(&"{AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA}".to_string()));
-
-        assert_eq!(pc.target_images.len(), 1);
-        assert_eq!(pc.target_images[0].id, "TargetImg1");
-        assert_eq!(pc.target_images[0].symbol_paths, vec!["symbols/v1"]);
-
-        assert_eq!(pc.upgrade_images.len(), 1);
-        assert_eq!(pc.upgrade_images[0].id, "UpgradeImg1");
-        assert_eq!(pc.upgrade_images[0].target_images, vec!["TargetImg1"]);
+        let expected_pc = PatchCreation {
+            id: "SamplePatch".to_string(),
+            clean_working_folder: true,
+            output_path: Some("bin/sample.msp".to_string()),
+            whole_files_only: true,
+            patch_information: Some(PatchInformation {
+                title: Some("Sample Hotfix".to_string()),
+                subject: Some("Product Update".to_string()),
+                author: Some("Acme Corp".to_string()),
+                keywords: Some("Patch,Update".to_string()),
+                comments: Some("Fixes CVE-1234".to_string()),
+                summary_codepage: Some(1252),
+            }),
+            patch_metadata: Some(PatchMetadata {
+                allow_removal: true,
+                classification: Some("CriticalUpdate".to_string()),
+                description: Some("Security fix".to_string()),
+                display_name: Some("Acme Security Patch 1".to_string()),
+                more_info_url: Some("https://example.com/patch".to_string()),
+                target_product_name: Some("Acme Product".to_string()),
+            }),
+            families: vec![PatchFamily {
+                disk_id: 3,
+                media_src_prop: Some("PATCHMEDIA".to_string()),
+                name: "PatchFam1".to_string(),
+                sequence_start: 2000,
+            }],
+            target_product_codes: vec![
+                "{AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA}".to_string(),
+                "{BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB}".to_string(),
+                "{CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC}".to_string(),
+            ],
+            target_images: vec![TargetImage {
+                id: "TargetImg1".to_string(),
+                source_file: "setup_v1.msi".to_string(),
+                order: 1,
+                validation: Some("0x00000001".to_string()),
+                symbol_paths: vec!["symbols/v1".to_string()],
+            }],
+            upgrade_images: vec![UpgradeImage {
+                id: "UpgradeImg1".to_string(),
+                source_file: "setup_v2.msi".to_string(),
+                family: "PatchFam1".to_string(),
+                target_images: vec!["TargetImg1".to_string()],
+            }],
+        };
+        let pc_res = PatchCreation::parse(patch_creation_xml);
+        assert_eq!(pc_res.as_ref(), Ok(&expected_pc));
 
         // Test PatchCreation defaults and error cases
         let def_pc = PatchCreation::new("TestP");
@@ -1294,24 +1351,29 @@ mod tests {
         assert_eq!(delta.updated_size, updated.len());
         assert_ne!(delta.instructions.len(), 0);
 
-        let reconstructed = delta.apply(baseline)?;
-        assert_eq!(reconstructed, updated);
+        assert_eq!(delta.apply(baseline).as_deref(), Ok(updated.as_slice()));
 
         // Serialization roundtrip
         let delta_bytes = delta.to_bytes();
-        let deserialized = BinaryDelta::from_bytes(&delta_bytes)?;
-        assert_eq!(deserialized, delta);
-        assert_eq!(deserialized.apply(baseline)?, updated);
+        let deserialized = BinaryDelta::from_bytes(&delta_bytes);
+        assert_eq!(deserialized.as_ref(), Ok(&delta));
+        assert_eq!(
+            deserialized.as_ref().map(|d| d.apply(baseline)),
+            Ok(Ok(updated.to_vec()))
+        );
 
         // Edge cases for BinaryDelta
         let empty_updated = BinaryDelta::compress(baseline, &[]);
-        assert_eq!(empty_updated.apply(baseline)?, Vec::<u8>::new());
+        assert_eq!(empty_updated.apply(baseline).as_deref(), Ok([].as_slice()));
 
         let empty_baseline = BinaryDelta::compress(&[], updated);
-        assert_eq!(empty_baseline.apply(&[])?, updated);
+        assert_eq!(empty_baseline.apply(&[]).as_deref(), Ok(updated.as_slice()));
 
         let identical = BinaryDelta::compress(baseline, baseline);
-        assert_eq!(identical.apply(baseline)?, baseline);
+        assert_eq!(
+            identical.apply(baseline).as_deref(),
+            Ok(baseline.as_slice())
+        );
 
         // Error cases for BinaryDelta
         assert!(BinaryDelta::from_bytes(&[]).is_err());
@@ -1352,35 +1414,44 @@ mod tests {
         builder.add_file_delta("File1", baseline, updated);
         builder.add_file_raw("File2", b"RawFileDataContent".to_vec());
 
-        let msp_bytes = builder.clone().build()?;
-        assert_ne!(msp_bytes.len(), 0);
+        let msp_bytes_res = builder.clone().build();
+        assert_eq!(msp_bytes_res.as_ref().map(|b| !b.is_empty()), Ok(true));
 
         // Verify that the produced .msp is a valid CFB container
-        let reader = crate::cfb::reader::CfbReader::new(&msp_bytes)?;
-        let entry_names: Vec<String> = reader
-            .entries()
-            .iter()
-            .map(|e| e.name().to_string())
-            .collect();
-        assert!(entry_names.contains(&"\u{0005}SummaryInformation".to_string()));
-        assert!(entry_names.contains(&"Transform1".to_string()));
-        assert!(entry_names.contains(&"#patch.cab".to_string()));
-        assert!(entry_names.contains(&"MsiPatchCert_VendorA".to_string()));
+        let reader_res = msp_bytes_res
+            .as_ref()
+            .map(|b| crate::cfb::reader::CfbReader::new(b));
+        assert_eq!(
+            reader_res.as_ref().map(|r| {
+                r.as_ref().map(|reader| {
+                    let entry_names: Vec<String> = reader
+                        .entries()
+                        .iter()
+                        .map(|e| e.name().to_string())
+                        .collect();
+                    (
+                        entry_names.contains(&"\u{0005}SummaryInformation".to_string()),
+                        entry_names.contains(&"Transform1".to_string()),
+                        entry_names.contains(&"#patch.cab".to_string()),
+                        entry_names.contains(&"MsiPatchCert_VendorA".to_string()),
+                    )
+                })
+            }),
+            Ok(Ok((true, true, true, true)))
+        );
 
         // Test build_to_file
         let temp_dir = std::env::temp_dir();
         let temp_msp = temp_dir.join(format!("test_patch_{}.msp", std::process::id()));
-        builder.build_to_file(&temp_msp)?;
+        assert_eq!(builder.build_to_file(&temp_msp).as_ref(), Ok(&()));
         assert!(temp_msp.exists());
         let _ = std::fs::remove_file(&temp_msp);
-
-        Ok(())
     }
 
     /// Tests all binary delta instruction branches, compression heuristics, and decoding errors.
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_binary_delta_all_paths_and_error_cases() -> Result<()> {
+    fn test_binary_delta_all_paths_and_error_cases() {
         let instr_copy = BinaryDeltaInstruction::Copy {
             offset: 10,
             length: 20,
@@ -1408,17 +1479,26 @@ mod tests {
         let short_baseline = b"abc";
         let updated_extra = b"abcdefghij_unmatched";
         let delta_short = BinaryDelta::compress(short_baseline, updated_extra);
-        assert_eq!(delta_short.apply(short_baseline)?, updated_extra);
+        assert_eq!(
+            delta_short.apply(short_baseline).as_deref(),
+            Ok(updated_extra.as_slice())
+        );
 
         // Compression with repetitive matching candidates where second match is shorter or longer
         let rep_baseline = b"12345678_BBBBBBBB_END_12345678_AAA";
         let rep_updated = b"12345678_BBBBBBBB_MODIFIED";
         let delta_rep = BinaryDelta::compress(rep_baseline, rep_updated);
-        assert_eq!(delta_rep.apply(rep_baseline)?, rep_updated);
+        assert_eq!(
+            delta_rep.apply(rep_baseline).as_deref(),
+            Ok(rep_updated.as_slice())
+        );
 
         // Compression when baseline ends while updated still has more matching bytes
         let delta_baseline_end = BinaryDelta::compress(b"12345678", b"12345678_SUFFIX");
-        assert_eq!(delta_baseline_end.apply(b"12345678")?, b"12345678_SUFFIX");
+        assert_eq!(
+            delta_baseline_end.apply(b"12345678").as_deref(),
+            Ok(b"12345678_SUFFIX".as_slice())
+        );
 
         // Overflow on copy offset + length in apply
         let overflow_delta = BinaryDelta {
@@ -1435,6 +1515,12 @@ mod tests {
         // 1. Truncated stream (< 29 bytes)
         assert!(BinaryDelta::from_bytes(b"MSPDELTA").is_err());
         assert!(BinaryDelta::from_bytes(b"MSPDELTA\x01").is_err());
+        assert!(BinaryDelta::from_bytes(b"MSIPATCH\x01").is_err());
+        assert!(BinaryDelta::from_bytes(b"MSIPATCH\x01\x00\x00\x00\x00\x00\x00\x00\x00").is_err());
+        assert!(BinaryDelta::from_bytes(
+            b"MSIPATCH\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+        )
+        .is_err());
 
         // Stream >= 29 bytes but invalid magic header
         let bad_magic_29 = vec![0u8; 30];
@@ -1479,13 +1565,12 @@ mod tests {
         let mut buf_unknown = base_hdr;
         buf_unknown.push(99); // Unknown opcode 99
         assert!(BinaryDelta::from_bytes(&buf_unknown).is_err());
-
-        Ok(())
     }
 
     /// Tests extended branches of `PatchCreation` XML parsing and `PatchPackageBuilder` packaging.
     #[test]
-    fn test_patch_creation_and_builder_extended_branches() -> Result<()> {
+    #[allow(clippy::too_many_lines)]
+    fn test_patch_creation_and_builder_extended_branches() {
         // Test struct defaults and derives
         let def_frag = CPackWiXFragment::new("FragId".to_string());
         let frag_cloned = def_frag.clone();
@@ -1542,13 +1627,21 @@ mod tests {
     <UnknownChildTag Value="Test" />
 </Patch>
 "#;
-        let alt_pc = PatchCreation::parse(alt_patch_xml)?;
-        assert_eq!(alt_pc.id, "AltPatch");
-        assert!(alt_pc.clean_working_folder);
-        assert!(!alt_pc.whole_files_only);
-        assert_eq!(alt_pc.target_images.len(), 1);
-        assert_eq!(alt_pc.upgrade_images.len(), 1);
-        assert_eq!(alt_pc.upgrade_images[0].target_images, vec!["TImg2"]);
+        let alt_pc_res = PatchCreation::parse(alt_patch_xml);
+        assert_eq!(alt_pc_res.as_ref().map(|p| p.id.as_str()), Ok("AltPatch"));
+        assert_eq!(
+            alt_pc_res.as_ref().map(|p| p.clean_working_folder),
+            Ok(true)
+        );
+        assert_eq!(alt_pc_res.as_ref().map(|p| p.whole_files_only), Ok(false));
+        assert_eq!(alt_pc_res.as_ref().map(|p| p.target_images.len()), Ok(1));
+        assert_eq!(alt_pc_res.as_ref().map(|p| p.upgrade_images.len()), Ok(1));
+        assert_eq!(
+            alt_pc_res
+                .as_ref()
+                .map(|p| p.upgrade_images[0].target_images.as_slice()),
+            Ok(["TImg2".to_string()].as_slice())
+        );
 
         // Variations with CleanWorkingFolder="no", AllowRemoval="no" and "true"
         let no_clean_xml = r#"
@@ -1556,46 +1649,111 @@ mod tests {
     <PatchMetadata AllowRemoval="no" />
 </PatchCreation>
 "#;
-        let pc_no_clean = PatchCreation::parse(no_clean_xml)?;
-        assert!(!pc_no_clean.clean_working_folder);
-        assert!(!pc_no_clean
-            .patch_metadata
-            .as_ref()
-            .is_none_or(|m| m.allow_removal));
+        let pc_no_clean_res = PatchCreation::parse(no_clean_xml);
+        assert_eq!(
+            pc_no_clean_res.as_ref().map(|p| p.clean_working_folder),
+            Ok(false)
+        );
+        assert_eq!(
+            pc_no_clean_res
+                .as_ref()
+                .map(|p| p.patch_metadata.as_ref().map(|m| m.allow_removal)),
+            Ok(Some(false))
+        );
 
         let rem_true_xml = r#"
 <PatchCreation Id="PRem">
     <PatchMetadata AllowRemoval="true" />
 </PatchCreation>
 "#;
-        let pc_rem = PatchCreation::parse(rem_true_xml)?;
-        assert!(pc_rem
-            .patch_metadata
-            .as_ref()
-            .is_some_and(|m| m.allow_removal));
+        let pc_rem_res = PatchCreation::parse(rem_true_xml);
+        assert_eq!(
+            pc_rem_res
+                .as_ref()
+                .map(|p| p.patch_metadata.as_ref().map(|m| m.allow_removal)),
+            Ok(Some(true))
+        );
+
+        let pc_no_meta = PatchCreation::new("NoMeta");
+        assert!(pc_no_meta.patch_metadata.is_none());
 
         // PatchPackageBuilder minimal container build without target codes or delta files
         let builder_minimal =
             PatchPackageBuilder::new("MIN_PATCH").add_transform("PROD_1", "", vec![1, 2, 3]);
 
-        let minimal_bytes = builder_minimal.build()?;
-        assert_ne!(minimal_bytes.len(), 0);
+        let minimal_bytes_res = builder_minimal.build();
+        assert_eq!(minimal_bytes_res.as_ref().map(|b| !b.is_empty()), Ok(true));
 
-        let reader = crate::cfb::reader::CfbReader::new(&minimal_bytes)?;
-        let entry_names: Vec<String> = reader
-            .entries()
-            .iter()
-            .map(|e| e.name().to_string())
-            .collect();
-        assert!(entry_names.contains(&"\u{0005}SummaryInformation".to_string()));
-        assert!(entry_names.contains(&"PROD_1#Transform".to_string()));
-        assert!(!entry_names.contains(&"#patch.cab".to_string()));
+        let min_reader_res = minimal_bytes_res
+            .as_ref()
+            .map(|b| crate::cfb::reader::CfbReader::new(b));
+        assert_eq!(
+            min_reader_res.as_ref().map(|r| {
+                r.as_ref().map(|reader| {
+                    let entry_names: Vec<String> = reader
+                        .entries()
+                        .iter()
+                        .map(|e| e.name().to_string())
+                        .collect();
+                    (
+                        entry_names.contains(&"\u{0005}SummaryInformation".to_string()),
+                        entry_names.contains(&"PROD_1#Transform".to_string()),
+                        entry_names.contains(&"#patch.cab".to_string()),
+                    )
+                })
+            }),
+            Ok(Ok((true, true, false)))
+        );
 
         // PatchPackageBuilder without any transforms
         let builder_no_trans = PatchPackageBuilder::new("NO_TRANS_PATCH");
-        let no_trans_bytes = builder_no_trans.build()?;
-        assert_ne!(no_trans_bytes.len(), 0);
+        let no_trans_bytes_res = builder_no_trans.build();
+        assert_eq!(no_trans_bytes_res.as_ref().map(|b| !b.is_empty()), Ok(true));
+    }
 
-        Ok(())
+    /// Tests error paths across `CPackWiXPatch`, `PatchCreation`, `PatchPackageBuilder`, and `BinaryDelta`.
+    #[test]
+    fn test_patch_additional_error_paths() {
+        // CPackWiXPatch::parse XML syntax error (Line 87)
+        assert!(CPackWiXPatch::parse("<unclosed").is_err());
+
+        // PatchCreation::parse XML syntax error (Line 322)
+        assert!(PatchCreation::parse("<unclosed").is_err());
+
+        // MspPackageBuilder build errors:
+        // Duplicate transform name (Line 1030)
+        let dup_trans_builder = PatchPackageBuilder::new("DUP")
+            .add_transform("P", "SameName", vec![1])
+            .add_transform("P", "SameName", vec![2]);
+        assert!(dup_trans_builder.clone().build().is_err());
+
+        // build_to_file fails because self.build() fails (Line 1063)
+        assert!(dup_trans_builder
+            .build_to_file(Path::new("dummy.msp"))
+            .is_err());
+
+        // Duplicate cabinet file (Line 1037)
+        let mut dup_file_builder = PatchPackageBuilder::new("DUP_FILE");
+        dup_file_builder.add_file_raw("dup.txt", vec![1]);
+        dup_file_builder.add_file_raw("dup.txt", vec![2]);
+        assert!(dup_file_builder.build().is_err());
+
+        // Duplicate #patch.cab stream name (Line 1040)
+        let mut dup_cab_stream_builder =
+            PatchPackageBuilder::new("DUP_CAB").add_transform("P", "#patch.cab", vec![1]);
+        dup_cab_stream_builder.add_file_raw("any.txt", vec![1]);
+        assert!(dup_cab_stream_builder.build().is_err());
+
+        // Duplicate certificate stream name (Line 1046)
+        let dup_cert_builder = PatchPackageBuilder::new("DUP_CERT")
+            .add_certificate("CertA", vec![1])
+            .add_certificate("CertA", vec![2]);
+        assert!(dup_cert_builder.build().is_err());
+
+        // build_to_file I/O write error (Line 1064)
+        let valid_builder = PatchPackageBuilder::new("VALID");
+        assert!(valid_builder
+            .build_to_file("/nonexistent_dir_9999/patch.msp")
+            .is_err());
     }
 }

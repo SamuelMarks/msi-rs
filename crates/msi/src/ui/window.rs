@@ -15,7 +15,7 @@
 //!   - Screen reader accessibility integration via `AccessKit` node tree publishing.
 
 use crate::error::Result;
-use crate::ui::controls::ControlType;
+use crate::ui::controls::{ControlDefinition, ControlType};
 use crate::ui::engine::UiEngine;
 use crate::ui::events::DialogReturnCode;
 use crate::ui::layout::{FontMetrics, PixelRect};
@@ -151,7 +151,7 @@ impl AccessKitBridge {
 }
 
 /// User input events delivered to the immediate-mode desktop GUI loop.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GuiInputEvent {
     /// Mouse primary click at specified canvas pixel coordinates.
     MouseClick {
@@ -168,6 +168,34 @@ pub enum GuiInputEvent {
     SubmitDefault,
     /// Escape key pressed to trigger dialog cancellation.
     CancelEscape,
+    /// Character typed into the currently focused edit control.
+    TextInput(char),
+    /// Backspace key pressed in the currently focused edit control.
+    TextBackspace,
+    /// Value modified in a control widget (e.g. edit field change).
+    ValueChange {
+        /// Target control name.
+        control: String,
+        /// New property / text value.
+        value: String,
+    },
+    /// Checkbox toggle event.
+    ToggleCheckBox {
+        /// Checkbox control name.
+        control: String,
+    },
+    /// Radio button selection event.
+    SelectRadio {
+        /// Radio group control name.
+        group: String,
+        /// Selected value.
+        value: String,
+    },
+    /// Vertical scroll in a scrollable widget.
+    Scroll {
+        /// Number of lines to scroll (positive down, negative up).
+        delta_lines: i32,
+    },
 }
 
 /// Lifecycle events of a desktop GUI window.
@@ -415,8 +443,28 @@ impl GuiDesktopRuntime {
     /// # Returns
     ///
     /// Tuple of `(dialog_bounds, widget_placements, draw_commands)`.
-    #[allow(clippy::cast_possible_wrap)]
+    #[allow(
+        clippy::cast_possible_wrap,
+        clippy::too_many_lines,
+        clippy::cast_sign_loss
+    )]
     pub fn render_frame(&mut self) -> (PixelRect, Vec<(PixelRect, UiWidget)>, Vec<DrawCommand>) {
+        if let Some(dlg) = self.engine.active_dialog() {
+            if let Some(ref title_tmpl) = dlg.title {
+                if let Ok(formatted) = self.engine.context().format_string(title_tmpl) {
+                    self.window_config.title = formatted;
+                }
+            }
+            if !self.window_config.resizable {
+                let w_px = FontMetrics::default().dlu_to_pixel_x(i32::from(dlg.width)) as u32;
+                let h_px = FontMetrics::default().dlu_to_pixel_y(i32::from(dlg.height)) as u32;
+                if w_px > 0 && h_px > 0 {
+                    self.window_config.width = w_px;
+                    self.window_config.height = h_px;
+                }
+            }
+        }
+
         let (dialog_bounds, widgets, mut draws) = self.layout_mapper.map_active_dialog(
             &self.engine,
             self.window_config.width as i32,
@@ -449,7 +497,7 @@ impl GuiDesktopRuntime {
                 UiWidget::Button {
                     text, is_enabled, ..
                 } => (AccessibleRole::Button, text.clone(), *is_enabled, None),
-                UiWidget::Label { text, .. } => {
+                UiWidget::Label { text, .. } | UiWidget::ScrollableText { text, .. } => {
                     (AccessibleRole::StaticText, text.clone(), true, None)
                 }
                 UiWidget::CheckBox {
@@ -470,6 +518,32 @@ impl GuiDesktopRuntime {
                     format!("{:.0}%", fraction * 100.0),
                     true,
                     None,
+                ),
+                UiWidget::SelectionTree { .. } => (
+                    AccessibleRole::StaticText,
+                    "Feature Selection Tree".to_string(),
+                    true,
+                    None,
+                ),
+                UiWidget::VolumeCostList { .. } => (
+                    AccessibleRole::StaticText,
+                    "Volume Cost List".to_string(),
+                    true,
+                    None,
+                ),
+                UiWidget::PathEdit { path, is_enabled } => {
+                    (AccessibleRole::TextInput, path.clone(), *is_enabled, None)
+                }
+                UiWidget::RadioButton {
+                    text,
+                    selected,
+                    is_enabled,
+                    ..
+                } => (
+                    AccessibleRole::CheckBox,
+                    text.clone(),
+                    *is_enabled,
+                    Some(*selected),
                 ),
                 UiWidget::Separator { .. } | UiWidget::Image { .. } => continue,
             };
@@ -528,7 +602,7 @@ impl GuiDesktopRuntime {
     /// # Errors
     ///
     /// Returns [`crate::error::Error`] if condition or action evaluation fails.
-    #[allow(clippy::cast_possible_wrap)]
+    #[allow(clippy::cast_possible_wrap, clippy::too_many_lines)]
     pub fn process_event(&mut self, event: GuiInputEvent) -> Result<Option<DialogReturnCode>> {
         let Some(dlg) = self.engine.active_dialog().cloned() else {
             return Ok(None);
@@ -546,6 +620,13 @@ impl GuiDesktopRuntime {
                         && y >= pixel_rect.y
                         && y < pixel_rect.y + pixel_rect.height
                     {
+                        if ctrl.control_type() == ControlType::CheckBox {
+                            self.engine.toggle_checkbox(&active_dlg, ctrl.control())?;
+                        } else if ctrl.control_type() == ControlType::RadioButtonGroup {
+                            let text = ctrl.text_template().unwrap_or_default();
+                            self.engine
+                                .select_radio_button(&active_dlg, ctrl.control(), text)?;
+                        }
                         return self.engine.click_control(&active_dlg, ctrl.control());
                     }
                 }
@@ -577,7 +658,126 @@ impl GuiDesktopRuntime {
                 }
                 Ok(Some(DialogReturnCode::Exit))
             }
+            GuiInputEvent::TextInput(ch) => {
+                if let Some(ctrl) =
+                    self.get_interactive_control_at_index(&active_dlg, self.focused_tab_index)
+                {
+                    if matches!(ctrl.control_type(), ControlType::Edit) {
+                        let cur_text = self
+                            .engine
+                            .get_control_state(&active_dlg, ctrl.control())
+                            .map_or_else(
+                                || ctrl.text_template().unwrap_or_default().to_string(),
+                                |s| s.current_text.clone(),
+                            );
+                        let mut new_text = cur_text;
+                        new_text.push(ch);
+                        self.engine
+                            .update_control_value(&active_dlg, ctrl.control(), &new_text)?;
+                    }
+                }
+                Ok(None)
+            }
+            GuiInputEvent::TextBackspace => {
+                if let Some(ctrl) =
+                    self.get_interactive_control_at_index(&active_dlg, self.focused_tab_index)
+                {
+                    if matches!(ctrl.control_type(), ControlType::Edit) {
+                        let cur_text = self
+                            .engine
+                            .get_control_state(&active_dlg, ctrl.control())
+                            .map_or_else(
+                                || ctrl.text_template().unwrap_or_default().to_string(),
+                                |s| s.current_text.clone(),
+                            );
+                        let mut new_text = cur_text;
+                        new_text.pop();
+                        self.engine
+                            .update_control_value(&active_dlg, ctrl.control(), &new_text)?;
+                    }
+                }
+                Ok(None)
+            }
+            GuiInputEvent::ValueChange { control, value } => {
+                self.engine
+                    .update_control_value(&active_dlg, &control, &value)?;
+                Ok(None)
+            }
+            GuiInputEvent::ToggleCheckBox { control } => {
+                self.engine.toggle_checkbox(&active_dlg, &control)?;
+                self.engine.click_control(&active_dlg, &control)
+            }
+            GuiInputEvent::SelectRadio { group, value } => {
+                self.engine
+                    .select_radio_button(&active_dlg, &group, &value)?;
+                self.engine.click_control(&active_dlg, &group)
+            }
+            GuiInputEvent::Scroll { .. } => Ok(None),
         }
+    }
+
+    /// Executes an immediate-mode interactive desktop event loop.
+    ///
+    /// Drives the render frame cycle, software buffer rasterization, and event processing
+    /// until dialog termination ([`DialogReturnCode`]) is returned or events are exhausted.
+    ///
+    /// # Arguments
+    ///
+    /// * `events` - Stream or sequence of input events.
+    ///
+    /// # Returns
+    ///
+    /// The final [`DialogReturnCode`] if dialog termination was requested, or `None`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::Error`] if event handling or action execution fails.
+    pub fn run_event_loop(
+        &mut self,
+        events: impl IntoIterator<Item = GuiInputEvent>,
+    ) -> Result<Option<DialogReturnCode>> {
+        let event_vec: Vec<GuiInputEvent> = events.into_iter().collect();
+        self.run_event_loop_slice(&event_vec)
+    }
+
+    /// Internal non-generic event loop runner processing event slices to ensure complete branch coverage.
+    ///
+    /// # Arguments
+    ///
+    /// * `events` - Slice of input events to dispatch sequentially.
+    ///
+    /// # Returns
+    ///
+    /// The final [`DialogReturnCode`] if dialog termination was requested, or `None`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::Error`] if event handling or action execution fails.
+    fn run_event_loop_slice(
+        &mut self,
+        events: &[GuiInputEvent],
+    ) -> Result<Option<DialogReturnCode>> {
+        let _ = self.process_lifecycle_event(WindowLifecycleEvent::Opened);
+        let _ = self.process_lifecycle_event(WindowLifecycleEvent::Focused);
+
+        let (_bounds, _widgets, draws) = self.render_frame();
+        let mut buffer = crate::ui::renderer::SoftwareBuffer::new(
+            self.window_config.width,
+            self.window_config.height,
+        );
+        buffer.render_commands(&draws);
+
+        for event in events {
+            if let Some(code) = self.process_event(event.clone())? {
+                let _ = self.process_lifecycle_event(WindowLifecycleEvent::CloseRequested);
+                return Ok(Some(code));
+            }
+            let (_b, _w, next_draws) = self.render_frame();
+            buffer.render_commands(&next_draws);
+        }
+
+        let _ = self.process_lifecycle_event(WindowLifecycleEvent::CloseRequested);
+        Ok(None)
     }
 
     /// Counts the interactive enabled controls eligible for tab stops in the active dialog.
@@ -586,7 +786,10 @@ impl GuiDesktopRuntime {
         for ctrl in self.engine.get_dialog_controls(dialog) {
             let is_interactive = matches!(
                 ctrl.control_type(),
-                ControlType::PushButton | ControlType::CheckBox | ControlType::Edit
+                ControlType::PushButton
+                    | ControlType::CheckBox
+                    | ControlType::Edit
+                    | ControlType::RadioButtonGroup
             );
             let state = self.engine.get_control_state(dialog, ctrl.control());
             let (is_enabled, is_visible) = state.map_or_else(
@@ -598,6 +801,36 @@ impl GuiDesktopRuntime {
             }
         }
         count
+    }
+
+    /// Returns the interactive control definition at the specified tab stop index.
+    fn get_interactive_control_at_index(
+        &self,
+        dialog: &str,
+        target_idx: usize,
+    ) -> Option<ControlDefinition> {
+        let mut current_idx = 0;
+        for ctrl in self.engine.get_dialog_controls(dialog) {
+            let is_interactive = matches!(
+                ctrl.control_type(),
+                ControlType::PushButton
+                    | ControlType::CheckBox
+                    | ControlType::Edit
+                    | ControlType::RadioButtonGroup
+            );
+            let state = self.engine.get_control_state(dialog, ctrl.control());
+            let (is_enabled, is_visible) = state.map_or_else(
+                || (ctrl.is_enabled_by_default(), ctrl.is_visible_by_default()),
+                |s| (s.is_enabled, s.is_visible),
+            );
+            if is_interactive && is_enabled && is_visible {
+                if current_idx == target_idx {
+                    return Some(ctrl.clone());
+                }
+                current_idx += 1;
+            }
+        }
+        None
     }
 }
 
@@ -989,7 +1222,7 @@ mod tests {
         assert!(format!("{bridge:?}").contains("AccessKitBridge"));
 
         let event = GuiInputEvent::MouseClick { x: 5, y: 10 };
-        let cloned_event = event;
+        let cloned_event = event.clone();
         assert_eq!(event, cloned_event);
         assert!(format!("{event:?}").contains("MouseClick"));
 
@@ -1180,5 +1413,551 @@ mod tests {
         };
         assert_eq!(lc_ev, lc_ev.clone());
         assert!(format!("{lc_ev:?}").contains("ResizeRequested"));
+    }
+
+    /// Tests `run_event_loop` and rich interactive input events (text editing, checkboxes, radios).
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_gui_runtime_event_loop_and_rich_events() {
+        let mut context = crate::execution::properties::EvaluationContext::new();
+        context.set_property("ProductName", "SuperApp");
+        context.set_property("TARGET_PORT", "80");
+        context.set_property("ENABLE_LOGGING", "0");
+        context.set_property("MODE", "Simple");
+
+        let mut engine = UiEngine::new(context);
+        engine.add_dialog(DialogDefinition {
+            name: "RichDlg".to_string(),
+            h_centering: 50,
+            v_centering: 50,
+            width: 370,
+            height: 270,
+            attributes: crate::ui::engine::DIALOG_ATTR_VISIBLE
+                | crate::ui::engine::DIALOG_ATTR_MODAL,
+            title: Some("[ProductName] Setup".to_string()),
+            control_first: "PortEdit".to_string(),
+            control_default: Some("NextBtn".to_string()),
+            control_cancel: Some("CancelBtn".to_string()),
+        });
+
+        let port_edit = ControlDefinition::new(
+            "RichDlg",
+            "PortEdit",
+            ControlType::Edit,
+            crate::ui::layout::DluRect::new(20, 20, 60, 15),
+            3,
+        )
+        .property("TARGET_PORT")
+        .text("80");
+
+        let log_check = ControlDefinition::new(
+            "RichDlg",
+            "LogCheck",
+            ControlType::CheckBox,
+            crate::ui::layout::DluRect::new(20, 45, 120, 15),
+            3,
+        )
+        .property("ENABLE_LOGGING")
+        .text("Enable Logging");
+
+        let mode_radio = ControlDefinition::new(
+            "RichDlg",
+            "ModeRadio",
+            ControlType::RadioButtonGroup,
+            crate::ui::layout::DluRect::new(20, 70, 100, 25),
+            3,
+        )
+        .property("MODE")
+        .text("Advanced");
+
+        let next_btn = ControlDefinition::new(
+            "RichDlg",
+            "NextBtn",
+            ControlType::PushButton,
+            crate::ui::layout::DluRect::new(200, 240, 50, 17),
+            3,
+        )
+        .text("Next >");
+
+        let cancel_btn = ControlDefinition::new(
+            "RichDlg",
+            "CancelBtn",
+            ControlType::PushButton,
+            crate::ui::layout::DluRect::new(260, 240, 50, 17),
+            3,
+        )
+        .text("Cancel");
+
+        let tree_ctrl = ControlDefinition::new(
+            "RichDlg",
+            "Features",
+            ControlType::SelectionTree,
+            crate::ui::layout::DluRect::new(20, 100, 150, 30),
+            3,
+        );
+
+        let volume_ctrl = ControlDefinition::new(
+            "RichDlg",
+            "Volumes",
+            ControlType::VolumeCostList,
+            crate::ui::layout::DluRect::new(20, 135, 150, 30),
+            3,
+        );
+
+        let path_ctrl = ControlDefinition::new(
+            "RichDlg",
+            "InstallDirEdit",
+            ControlType::Edit,
+            crate::ui::layout::DluRect::new(20, 170, 150, 15),
+            3,
+        )
+        .property("INSTALLDIR")
+        .text("C:\\Program Files\\App");
+
+        let hidden_ctrl = ControlDefinition::new(
+            "RichDlg",
+            "HiddenBtn",
+            ControlType::PushButton,
+            crate::ui::layout::DluRect::new(10, 10, 10, 10),
+            0,
+        );
+
+        let invisible_btn = ControlDefinition::new(
+            "RichDlg",
+            "InvisibleBtn",
+            ControlType::PushButton,
+            crate::ui::layout::DluRect::new(10, 10, 10, 10),
+            2, // Enabled (bit 1), but NOT visible (bit 0 = 0)
+        );
+
+        let no_text_edit = ControlDefinition::new(
+            "RichDlg",
+            "NoTextEdit",
+            ControlType::Edit,
+            crate::ui::layout::DluRect::new(20, 200, 100, 15),
+            3,
+        );
+
+        let no_text_radio = ControlDefinition::new(
+            "RichDlg",
+            "NoTextRadio",
+            ControlType::RadioButtonGroup,
+            crate::ui::layout::DluRect::new(20, 220, 100, 15),
+            3,
+        );
+
+        engine.add_control(port_edit);
+        engine.add_control(log_check);
+        engine.add_control(mode_radio);
+        engine.add_control(tree_ctrl);
+        engine.add_control(volume_ctrl);
+        engine.add_control(path_ctrl);
+        engine.add_control(hidden_ctrl);
+        engine.add_control(invisible_btn);
+        engine.add_control(no_text_edit);
+        engine.add_control(no_text_radio);
+        engine.add_control(next_btn);
+        engine.add_control(cancel_btn);
+
+        engine.add_event(crate::ui::events::ControlEvent::new(
+            "RichDlg",
+            "NextBtn",
+            crate::ui::events::ControlEventType::EndDialog(DialogReturnCode::Return),
+            None,
+            1,
+        ));
+        engine.add_event(crate::ui::events::ControlEvent::new(
+            "RichDlg",
+            "CancelBtn",
+            crate::ui::events::ControlEventType::EndDialog(DialogReturnCode::Exit),
+            None,
+            1,
+        ));
+
+        assert!(engine.set_active_dialog("RichDlg").is_ok());
+
+        let mut runtime = GuiDesktopRuntime::new(
+            engine,
+            WizardTheme::mondo(),
+            GuiHardwareBackend::SoftbufferHeadlessRasterizer,
+        );
+
+        // Frame rendering dynamically sets window title and dimensions
+        let (_bounds, widgets, _draws) = runtime.render_frame();
+        assert_eq!(runtime.window_config().title, "SuperApp Setup");
+        assert!(widgets.len() >= 5);
+
+        // Test TextInput and TextBackspace on focused edit field (index 0 is PortEdit)
+        assert_eq!(
+            runtime.process_event(GuiInputEvent::TextInput('8')),
+            Ok(None)
+        );
+        assert_eq!(
+            runtime.process_event(GuiInputEvent::TextInput('0')),
+            Ok(None)
+        );
+        assert_eq!(
+            runtime.engine().context().get_property("TARGET_PORT"),
+            Some("8080")
+        );
+        assert_eq!(
+            runtime.process_event(GuiInputEvent::TextBackspace),
+            Ok(None)
+        );
+        assert_eq!(
+            runtime.engine().context().get_property("TARGET_PORT"),
+            Some("808")
+        );
+
+        // Test ValueChange
+        assert_eq!(
+            runtime.process_event(GuiInputEvent::ValueChange {
+                control: "PortEdit".to_string(),
+                value: "9000".to_string(),
+            }),
+            Ok(None)
+        );
+        assert_eq!(
+            runtime.engine().context().get_property("TARGET_PORT"),
+            Some("9000")
+        );
+
+        // Test ToggleCheckBox
+        assert_eq!(
+            runtime.process_event(GuiInputEvent::ToggleCheckBox {
+                control: "LogCheck".to_string(),
+            }),
+            Ok(None)
+        );
+        assert_eq!(
+            runtime.engine().context().get_property("ENABLE_LOGGING"),
+            Some("1")
+        );
+
+        // Test SelectRadio
+        assert_eq!(
+            runtime.process_event(GuiInputEvent::SelectRadio {
+                group: "ModeRadio".to_string(),
+                value: "Advanced".to_string(),
+            }),
+            Ok(None)
+        );
+        assert_eq!(
+            runtime.engine().context().get_property("MODE"),
+            Some("Advanced")
+        );
+
+        // Test Scroll
+        assert_eq!(
+            runtime.process_event(GuiInputEvent::Scroll { delta_lines: 5 }),
+            Ok(None)
+        );
+
+        // Test MouseClick on CheckBox
+        let check_metrics = FontMetrics::default();
+        let check_px =
+            crate::ui::layout::DluRect::new(20, 45, 120, 15).to_pixel_rect(&check_metrics);
+        assert_eq!(
+            runtime.process_event(GuiInputEvent::MouseClick {
+                x: check_px.x + 2,
+                y: check_px.y + 2,
+            }),
+            Ok(None)
+        );
+        assert_eq!(
+            runtime.engine().context().get_property("ENABLE_LOGGING"),
+            Some("0")
+        );
+
+        // Test MouseClick on RadioButtonGroup
+        let radio_metrics = FontMetrics::default();
+        let radio_px =
+            crate::ui::layout::DluRect::new(20, 70, 100, 25).to_pixel_rect(&radio_metrics);
+        assert_eq!(
+            runtime.process_event(GuiInputEvent::MouseClick {
+                x: radio_px.x + 2,
+                y: radio_px.y + 2,
+            }),
+            Ok(None)
+        );
+        assert_eq!(
+            runtime.engine().context().get_property("MODE"),
+            Some("Advanced")
+        );
+
+        // Click on NoTextRadio (text_template is None)
+        let no_text_radio_px =
+            crate::ui::layout::DluRect::new(20, 220, 100, 15).to_pixel_rect(&radio_metrics);
+        assert_eq!(
+            runtime.process_event(GuiInputEvent::MouseClick {
+                x: no_text_radio_px.x + 2,
+                y: no_text_radio_px.y + 2,
+            }),
+            Ok(None)
+        );
+
+        // Test TabPrev navigation wrapping and non-wrapping
+        runtime.focused_tab_index = 0;
+        assert_eq!(runtime.process_event(GuiInputEvent::TabPrev), Ok(None));
+        assert!(runtime.focused_tab_index > 0);
+        let prev_idx = runtime.focused_tab_index;
+        assert_eq!(runtime.process_event(GuiInputEvent::TabPrev), Ok(None));
+        assert_eq!(runtime.focused_tab_index, prev_idx - 1);
+
+        // Test Cancel event
+        assert_eq!(
+            runtime.process_event(GuiInputEvent::CancelEscape),
+            Ok(Some(DialogReturnCode::Exit))
+        );
+
+        // Test window constraint enforcement
+        assert_eq!(
+            runtime.enforce_window_constraints(800, 600),
+            (
+                runtime.window_config().width,
+                runtime.window_config().height
+            )
+        );
+        runtime.window_config_mut().resizable = true;
+        assert_eq!(runtime.enforce_window_constraints(800, 600), (800, 600));
+        runtime.window_config_mut().resizable = false;
+
+        // Test backend fallback logic
+        assert_eq!(
+            GuiDesktopRuntime::select_backend_with_fallback(
+                GuiHardwareBackend::WgpuDirectXMetalVulkan,
+                false,
+                true,
+            ),
+            GuiHardwareBackend::GlowLegacyOpenGl
+        );
+        assert_eq!(
+            GuiDesktopRuntime::select_backend_with_fallback(
+                GuiHardwareBackend::WgpuDirectXMetalVulkan,
+                false,
+                false,
+            ),
+            GuiHardwareBackend::SoftbufferHeadlessRasterizer
+        );
+        assert_eq!(
+            GuiDesktopRuntime::select_backend_with_fallback(
+                GuiHardwareBackend::GlowLegacyOpenGl,
+                false,
+                false,
+            ),
+            GuiHardwareBackend::SoftbufferHeadlessRasterizer
+        );
+
+        // Test run_event_loop with events leading to DialogReturnCode::Return
+        let loop_events = [
+            GuiInputEvent::TabNext,
+            GuiInputEvent::TabPrev,
+            GuiInputEvent::SubmitDefault,
+        ];
+        let loop_res = runtime.run_event_loop(loop_events);
+        assert_eq!(loop_res, Ok(Some(DialogReturnCode::Return)));
+
+        // Test run_event_loop exhausting events without exit code
+        let empty_loop_res = runtime.run_event_loop([GuiInputEvent::TabNext]);
+        assert_eq!(empty_loop_res, Ok(None));
+
+        // Test typing when control states are cleared (executing fallback closures)
+        runtime.engine_mut().clear_control_states();
+        runtime.focused_tab_index = 0; // Focus on PortEdit
+        assert_eq!(
+            runtime.process_event(GuiInputEvent::TextInput('X')),
+            Ok(None)
+        );
+        assert_eq!(
+            runtime.process_event(GuiInputEvent::TextBackspace),
+            Ok(None)
+        );
+
+        // Focus on NoTextEdit and type / backspace (fallback when text_template is None)
+        assert_eq!(
+            runtime
+                .get_interactive_control_at_index("RichDlg", 4)
+                .map(|c| c.control().to_string()),
+            Some("NoTextEdit".to_string())
+        );
+        runtime.focused_tab_index = 4; // NoTextEdit index
+        assert_eq!(
+            runtime.process_event(GuiInputEvent::TextInput('Z')),
+            Ok(None)
+        );
+        assert_eq!(
+            runtime.process_event(GuiInputEvent::TextBackspace),
+            Ok(None)
+        );
+
+        // Focus on a PushButton and type text (matches!(ctrl_type, Edit) false branch)
+        runtime.focused_tab_index = 6; // NextBtn
+        assert_eq!(
+            runtime.process_event(GuiInputEvent::TextInput('A')),
+            Ok(None)
+        );
+        assert_eq!(
+            runtime.process_event(GuiInputEvent::TextBackspace),
+            Ok(None)
+        );
+
+        // Focused tab index out of range
+        runtime.focused_tab_index = 999;
+        assert_eq!(
+            runtime.process_event(GuiInputEvent::TextInput('B')),
+            Ok(None)
+        );
+        assert_eq!(
+            runtime.process_event(GuiInputEvent::TextBackspace),
+            Ok(None)
+        );
+
+        // Test render_frame when active_dialog is None
+        let mut empty_runtime = GuiDesktopRuntime::new(
+            UiEngine::new(crate::execution::properties::EvaluationContext::new()),
+            WizardTheme::mondo(),
+            GuiHardwareBackend::SoftbufferHeadlessRasterizer,
+        );
+        let _ = empty_runtime.render_frame();
+        assert_eq!(
+            empty_runtime.process_event(GuiInputEvent::TabNext),
+            Ok(None)
+        );
+
+        // Test render_frame when dialog has no title or invalid title template, resizable=false, width=0, height=0
+        let mut zero_dlg_engine =
+            UiEngine::new(crate::execution::properties::EvaluationContext::new());
+        zero_dlg_engine.add_dialog(DialogDefinition {
+            name: "ZeroDlg".to_string(),
+            h_centering: 0,
+            v_centering: 0,
+            width: 0,
+            height: 0,
+            attributes: 0,
+            title: Some("[Unclosed".to_string()),
+            control_first: String::new(),
+            control_default: None,
+            control_cancel: None,
+        });
+        assert!(zero_dlg_engine.set_active_dialog("ZeroDlg").is_ok());
+        let mut zero_runtime = GuiDesktopRuntime::new(
+            zero_dlg_engine,
+            WizardTheme::mondo(),
+            GuiHardwareBackend::SoftbufferHeadlessRasterizer,
+        );
+        let _ = zero_runtime.render_frame(); // resizable is false, width is 0 -> w_px > 0 false branch
+        zero_runtime.window_config_mut().resizable = true;
+        let _ = zero_runtime.render_frame(); // resizable is true branch
+
+        // Test render_frame when width > 0 and height == 0 (w_px > 0 true, h_px > 0 false)
+        let mut h_zero_engine =
+            UiEngine::new(crate::execution::properties::EvaluationContext::new());
+        h_zero_engine.add_dialog(DialogDefinition {
+            name: "HZeroDlg".to_string(),
+            h_centering: 0,
+            v_centering: 0,
+            width: 100,
+            height: 0,
+            attributes: 0,
+            title: None,
+            control_first: String::new(),
+            control_default: None,
+            control_cancel: None,
+        });
+        assert!(h_zero_engine.set_active_dialog("HZeroDlg").is_ok());
+        let mut h_zero_runtime = GuiDesktopRuntime::new(
+            h_zero_engine,
+            WizardTheme::mondo(),
+            GuiHardwareBackend::SoftbufferHeadlessRasterizer,
+        );
+        let _ = h_zero_runtime.render_frame();
+
+        // Also test with title = None and no controls
+        let mut notitle_engine =
+            UiEngine::new(crate::execution::properties::EvaluationContext::new());
+        notitle_engine.add_dialog(DialogDefinition {
+            name: "NoTitleDlg".to_string(),
+            h_centering: 0,
+            v_centering: 0,
+            width: 10,
+            height: 10,
+            attributes: 0,
+            title: None,
+            control_first: String::new(),
+            control_default: None,
+            control_cancel: None,
+        });
+        assert!(notitle_engine.set_active_dialog("NoTitleDlg").is_ok());
+        let mut notitle_runtime = GuiDesktopRuntime::new(
+            notitle_engine,
+            WizardTheme::mondo(),
+            GuiHardwareBackend::SoftbufferHeadlessRasterizer,
+        );
+        let _ = notitle_runtime.render_frame();
+        assert_eq!(
+            notitle_runtime.process_event(GuiInputEvent::SubmitDefault),
+            Ok(None)
+        );
+        assert_eq!(
+            notitle_runtime.process_event(GuiInputEvent::CancelEscape),
+            Ok(Some(DialogReturnCode::Exit))
+        );
+        assert_eq!(
+            notitle_runtime.process_event(GuiInputEvent::TabNext),
+            Ok(None)
+        );
+        assert_eq!(
+            notitle_runtime.process_event(GuiInputEvent::TabPrev),
+            Ok(None)
+        );
+
+        // Trigger condition evaluation failures to exercise error propagation paths in event handlers
+        let err_cond = crate::ui::events::ControlCondition {
+            dialog: "RichDlg".to_string(),
+            control: "NextBtn".to_string(),
+            action: crate::ui::events::ControlConditionAction::Enable,
+            condition: "INVALID ===".to_string(),
+        };
+        runtime.engine_mut().add_condition(err_cond);
+
+        assert!(runtime
+            .process_event(GuiInputEvent::ValueChange {
+                control: "PortEdit".to_string(),
+                value: "1".to_string(),
+            })
+            .is_err());
+        assert!(runtime
+            .process_event(GuiInputEvent::ToggleCheckBox {
+                control: "LogCheck".to_string(),
+            })
+            .is_err());
+        assert!(runtime
+            .process_event(GuiInputEvent::SelectRadio {
+                group: "ModeRadio".to_string(),
+                value: "Advanced".to_string(),
+            })
+            .is_err());
+        runtime.focused_tab_index = 0;
+        assert!(runtime
+            .process_event(GuiInputEvent::TextInput('Z'))
+            .is_err());
+        assert!(runtime.process_event(GuiInputEvent::TextBackspace).is_err());
+        assert!(runtime
+            .process_event(GuiInputEvent::MouseClick {
+                x: radio_px.x + 2,
+                y: radio_px.y + 2,
+            })
+            .is_err());
+        assert!(runtime
+            .process_event(GuiInputEvent::MouseClick {
+                x: check_px.x + 2,
+                y: check_px.y + 2,
+            })
+            .is_err());
+        assert!(runtime
+            .run_event_loop([GuiInputEvent::ToggleCheckBox {
+                control: "LogCheck".to_string(),
+            }])
+            .is_err());
     }
 }

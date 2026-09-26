@@ -176,6 +176,51 @@ impl EvaluationContext {
         }
     }
 
+    /// Checks if a property name represents sensitive data according to `MsiHiddenProperties` or keyword patterns.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The property name to check.
+    ///
+    /// # Returns
+    ///
+    /// `true` if sensitive, `false` otherwise.
+    #[must_use]
+    pub fn is_sensitive_property(&self, name: &str) -> bool {
+        if self.is_hidden_property(name) {
+            return true;
+        }
+        let upper = name.to_ascii_uppercase();
+        upper.contains("PASSWORD")
+            || upper.contains("SECRET")
+            || upper.contains("TOKEN")
+            || upper.contains("CREDENTIAL")
+            || upper.ends_with("_KEY")
+    }
+
+    /// Masks sensitive property values in an execution log line or message string.
+    ///
+    /// Any property value belonging to a property in `MsiHiddenProperties` or matching
+    /// sensitive keywords is replaced with `"******"`.
+    ///
+    /// # Arguments
+    ///
+    /// * `text` - Input log line or command string.
+    ///
+    /// # Returns
+    ///
+    /// Sanitized string with sensitive values replaced by `"******"`.
+    #[must_use]
+    pub fn mask_log_string(&self, text: &str) -> String {
+        let mut result = text.to_string();
+        for (prop_name, prop_value) in &self.properties {
+            if prop_value.len() >= 3 && self.is_sensitive_property(prop_name) {
+                result = result.replace(prop_value, "******");
+            }
+        }
+        result
+    }
+
     /// Sets requested action state for a Feature (`&Feature`).
     pub fn set_feature_action(&mut self, feature: impl Into<String>, state: InstallState) {
         self.feature_action_states.insert(feature.into(), state);
@@ -861,7 +906,11 @@ mod tests {
         ctx.set_property("PUBLIC_VAR", "visible_value");
         ctx.set_property("DB_PASSWORD", "secret_pass_123");
         ctx.set_property("API_KEY", "secret_token_abc");
-        ctx.set_property("MsiHiddenProperties", "DB_PASSWORD;API_KEY;AUTH_TOKEN");
+        ctx.set_property("CUSTOM_FLAG", "flag_val_123");
+        ctx.set_property(
+            "MsiHiddenProperties",
+            "DB_PASSWORD;API_KEY;AUTH_TOKEN;CUSTOM_FLAG",
+        );
 
         assert!(!ctx.is_hidden_property("PUBLIC_VAR"));
         assert!(ctx.is_hidden_property("DB_PASSWORD"));
@@ -884,6 +933,20 @@ mod tests {
         let empty_ctx = EvaluationContext::new();
         assert!(!empty_ctx.is_hidden_property("DB_PASSWORD"));
         assert_eq!(empty_ctx.mask_if_hidden("DB_PASSWORD", "pass"), "pass");
+
+        // Sensitive properties and mask_log_string coverage
+        assert!(ctx.is_sensitive_property("CUSTOM_FLAG"));
+        assert!(ctx.is_sensitive_property("DB_PASSWORD"));
+        assert!(ctx.is_sensitive_property("USER_PASSWORD"));
+        assert!(ctx.is_sensitive_property("SOME_SECRET_VALUE"));
+        assert!(ctx.is_sensitive_property("API_TOKEN"));
+        assert!(ctx.is_sensitive_property("USER_CREDENTIAL"));
+        assert!(ctx.is_sensitive_property("CLIENT_KEY"));
+        assert!(!ctx.is_sensitive_property("PUBLIC_VAR"));
+
+        let masked =
+            ctx.mask_log_string("Credentials: secret_pass_123 for PUBLIC_VAR visible_value");
+        assert_eq!(masked, "Credentials: ****** for PUBLIC_VAR visible_value");
     }
 
     #[test]

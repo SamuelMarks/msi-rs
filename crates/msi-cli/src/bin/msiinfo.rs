@@ -360,6 +360,7 @@ pub fn run(args: &[String]) -> i32 {
 /// # Returns
 ///
 /// Process [`ExitCode`].
+#[must_use = "process exit code must be handled"]
 pub fn run_app(args: &[String]) -> ExitCode {
     if run(args) == 0 {
         ExitCode::SUCCESS
@@ -369,6 +370,7 @@ pub fn run_app(args: &[String]) -> ExitCode {
 }
 
 /// Entry point for the `msiinfo` executable.
+#[must_use = "process exit code must be handled"]
 pub fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     run_app(&args)

@@ -141,6 +141,8 @@ def hook_clippy(repo_root: Path) -> int:
             "warnings",
             "-D",
             "clippy::pedantic",
+            "-A",
+            "clippy::assert_is_empty",
         ],
         cwd=repo_root,
     )

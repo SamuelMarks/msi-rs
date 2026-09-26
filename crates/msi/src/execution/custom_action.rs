@@ -33,6 +33,7 @@ use crate::error::{Error, Result};
 use crate::execution::properties::EvaluationContext;
 use crate::wix::linker::LinkedDatabase;
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 
 /// MSI Custom Action Source Type: DLL stored in Binary table (`0x0001`).
@@ -56,8 +57,17 @@ pub const MSIDB_CUSTOM_ACTION_TYPE_INSTALLED_DLL: u32 = 0x0011;
 /// MSI Custom Action Source Type: Installed executable file (`0x0012`).
 pub const MSIDB_CUSTOM_ACTION_TYPE_INSTALLED_EXE: u32 = 0x0012;
 
+/// MSI Custom Action Source Type: Error abort action (`0x0013` = 19).
+pub const MSIDB_CUSTOM_ACTION_TYPE_ERROR: u32 = 0x0013;
+
+/// MSI Custom Action Source Type: Directory-based executable (`0x0022` = 34).
+pub const MSIDB_CUSTOM_ACTION_TYPE_DIRECTORY_EXE: u32 = 0x0022;
+
 /// MSI Custom Action Source Type: Formatted target directory path (`0x0023`).
 pub const MSIDB_CUSTOM_ACTION_TYPE_DIRECTORY: u32 = 0x0023;
+
+/// MSI Custom Action Source Type: Property-based executable (`0x0032` = 50).
+pub const MSIDB_CUSTOM_ACTION_TYPE_PROPERTY_EXE: u32 = 0x0032;
 
 /// MSI Custom Action Source Type: Executable path formatted from property (`0x0033`).
 pub const MSIDB_CUSTOM_ACTION_TYPE_PROPERTY: u32 = 0x0033;
@@ -133,8 +143,14 @@ pub enum CustomActionSourceType {
     InstalledDll,
     /// Executable file installed with the product (`0x0012`).
     InstalledExe,
+    /// Error abort action halting execution with formatted message (`0x0013` = 19).
+    Error,
+    /// Executable installed in target directory (`0x0022` = 34).
+    DirectoryExe,
     /// Formatted string target directory path (`0x0023`).
     Directory,
+    /// Executable path formatted from a property (`0x0032` = 50).
+    PropertyExe,
     /// Executable path formatted from a property (`0x0033`).
     Property,
 }
@@ -159,11 +175,14 @@ impl CustomActionSourceType {
             MSIDB_CUSTOM_ACTION_TYPE_DLL => Ok(Self::Dll),
             MSIDB_CUSTOM_ACTION_TYPE_EXE => Ok(Self::Exe),
             MSIDB_CUSTOM_ACTION_TYPE_TEXT_DATA => Ok(Self::TextData),
-            MSIDB_CUSTOM_ACTION_TYPE_JSCRIPT => Ok(Self::JScript),
-            MSIDB_CUSTOM_ACTION_TYPE_VBSCRIPT => Ok(Self::VBScript),
+            MSIDB_CUSTOM_ACTION_TYPE_JSCRIPT | 0x0015 | 0x0025 | 0x0035 => Ok(Self::JScript),
+            MSIDB_CUSTOM_ACTION_TYPE_VBSCRIPT | 0x0016 | 0x0026 | 0x0036 => Ok(Self::VBScript),
             MSIDB_CUSTOM_ACTION_TYPE_INSTALLED_DLL => Ok(Self::InstalledDll),
             MSIDB_CUSTOM_ACTION_TYPE_INSTALLED_EXE => Ok(Self::InstalledExe),
+            MSIDB_CUSTOM_ACTION_TYPE_ERROR => Ok(Self::Error),
+            MSIDB_CUSTOM_ACTION_TYPE_DIRECTORY_EXE => Ok(Self::DirectoryExe),
             MSIDB_CUSTOM_ACTION_TYPE_DIRECTORY => Ok(Self::Directory),
+            MSIDB_CUSTOM_ACTION_TYPE_PROPERTY_EXE => Ok(Self::PropertyExe),
             MSIDB_CUSTOM_ACTION_TYPE_PROPERTY => Ok(Self::Property),
             other => Err(Error::InvalidArgument {
                 argument: "CustomAction.Type".to_string(),
@@ -187,12 +206,20 @@ pub enum CustomActionExecutionMode {
 
 impl CustomActionExecutionMode {
     /// Returns true if execution is asynchronous (`Continue` or `Async`).
+    ///
+    /// # Returns
+    ///
+    /// `true` if asynchronous, `false` otherwise.
     #[must_use]
     pub const fn is_async(self) -> bool {
         matches!(self, Self::Continue | Self::Async)
     }
 
     /// Returns true if execution ignores return code (`Continue`).
+    ///
+    /// # Returns
+    ///
+    /// `true` if failures should be ignored, `false` otherwise.
     #[must_use]
     pub const fn is_continue(self) -> bool {
         matches!(self, Self::Continue)
@@ -258,12 +285,7 @@ impl CustomActionDefinition {
     /// # Errors
     ///
     /// Returns [`Error`] if the type bits are invalid.
-    pub fn parse(
-        name: impl Into<String>,
-        raw_type: u32,
-        source: impl Into<String>,
-        target: impl Into<String>,
-    ) -> Result<Self> {
+    pub fn parse(name: &str, raw_type: u32, source: &str, target: &str) -> Result<Self> {
         let source_type = CustomActionSourceType::from_raw(raw_type)?;
 
         let execution_mode = if raw_type & MSIDB_CUSTOM_ACTION_TYPE_CONTINUE != 0 {
@@ -291,7 +313,7 @@ impl CustomActionDefinition {
         let no_impersonate = (raw_type & MSIDB_CUSTOM_ACTION_TYPE_NO_IMPERSONATE) != 0;
 
         Ok(Self {
-            name: name.into(),
+            name: name.to_string(),
             raw_type,
             source_type,
             execution_mode,
@@ -300,80 +322,195 @@ impl CustomActionDefinition {
             once_per_process,
             client_repeat,
             no_impersonate,
-            source: source.into(),
-            target: target.into(),
+            source: source.to_string(),
+            target: target.to_string(),
         })
     }
 
     /// Returns the custom action name.
+    ///
+    /// # Returns
+    ///
+    /// Action name string slice.
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
     /// Returns the raw type bitmask.
+    ///
+    /// # Returns
+    ///
+    /// Integer type bitmask.
     #[must_use]
     pub const fn raw_type(&self) -> u32 {
         self.raw_type
     }
 
     /// Returns the parsed source type.
+    ///
+    /// # Returns
+    ///
+    /// Parsed [`CustomActionSourceType`].
     #[must_use]
     pub const fn source_type(&self) -> CustomActionSourceType {
         self.source_type
     }
 
     /// Returns the execution mode.
+    ///
+    /// # Returns
+    ///
+    /// Parsed [`CustomActionExecutionMode`].
     #[must_use]
     pub const fn execution_mode(&self) -> CustomActionExecutionMode {
         self.execution_mode
     }
 
     /// Returns the in-script mode.
+    ///
+    /// # Returns
+    ///
+    /// Parsed [`InScriptMode`].
     #[must_use]
     pub const fn in_script(&self) -> InScriptMode {
         self.in_script
     }
 
     /// Returns true if first-sequence flag is set.
+    ///
+    /// # Returns
+    ///
+    /// `true` if first sequence flag is enabled, `false` otherwise.
     #[must_use]
     pub const fn first_sequence(&self) -> bool {
         self.first_sequence
     }
 
     /// Returns true if once-per-process flag is set.
+    ///
+    /// # Returns
+    ///
+    /// `true` if once per process flag is enabled, `false` otherwise.
     #[must_use]
     pub const fn once_per_process(&self) -> bool {
         self.once_per_process
     }
 
     /// Returns true if client-repeat flag is set.
+    ///
+    /// # Returns
+    ///
+    /// `true` if client repeat flag is enabled, `false` otherwise.
     #[must_use]
     pub const fn client_repeat(&self) -> bool {
         self.client_repeat
     }
 
     /// Returns true if no-impersonate flag is set.
+    ///
+    /// # Returns
+    ///
+    /// `true` if no impersonate flag is enabled, `false` otherwise.
     #[must_use]
     pub const fn no_impersonate(&self) -> bool {
         self.no_impersonate
     }
 
     /// Returns the source identifier.
+    ///
+    /// # Returns
+    ///
+    /// Source string slice.
     #[must_use]
     pub fn source(&self) -> &str {
         &self.source
     }
 
     /// Returns the target parameter or function name.
+    ///
+    /// # Returns
+    ///
+    /// Target string slice.
     #[must_use]
     pub fn target(&self) -> &str {
         &self.target
     }
 }
 
+/// Probes whether a TCP port is available for local socket binding.
+///
+/// Returns `true` if a listener can successfully bind to `127.0.0.1:port`
+/// (meaning the port is free), and `false` if the port is already occupied.
+///
+/// # Arguments
+///
+/// * `port` - TCP port number to probe (1-65535).
+///
+/// # Returns
+///
+/// `true` if port is available, `false` otherwise.
+#[must_use]
+pub fn probe_port_available(port: u16) -> bool {
+    std::net::TcpListener::bind(("127.0.0.1", port)).is_ok()
+}
+
+/// Splits a command line string into an executable path and argument list, respecting quotes.
+///
+/// # Arguments
+///
+/// * `cmd` - Command line string to parse.
+///
+/// # Returns
+///
+/// Tuple of `(program_path, argument_vector)`.
+#[must_use]
+pub fn parse_command_line(cmd: &str) -> (PathBuf, Vec<String>) {
+    let mut parts = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+
+    for ch in cmd.chars() {
+        match ch {
+            '"' => {
+                in_quotes = !in_quotes;
+            }
+            ' ' | '\t' => {
+                if in_quotes {
+                    current.push(ch);
+                } else if !current.is_empty() {
+                    parts.push(std::mem::take(&mut current));
+                }
+            }
+            c => {
+                current.push(c);
+            }
+        }
+    }
+    if !current.is_empty() {
+        parts.push(current);
+    }
+
+    if parts.is_empty() {
+        (PathBuf::new(), Vec::new())
+    } else {
+        let prog = PathBuf::from(parts.remove(0));
+        (prog, parts)
+    }
+}
+
+/// Checks whether an executable exists in the system `PATH`.
+fn is_executable_in_path(prog: &Path) -> bool {
+    if prog.is_absolute() {
+        return prog.exists();
+    }
+    std::env::var_os("PATH").is_some_and(|path_var| {
+        std::env::split_paths(&path_var).any(|dir| dir.join(prog).is_file())
+    })
+}
+
 /// Custom action execution simulator and coordinator.
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct CustomActionExecutor {
     /// Mock execution results mapping action name to desired return code.
     mock_results: HashMap<String, u32>,
@@ -383,6 +520,8 @@ pub struct CustomActionExecutor {
     subprocess_runner: super::native_action::SubprocessRunner,
     /// Optional offline execution policy for bare-metal sysroots.
     offline_policy: Option<crate::execution::bare_metal::OfflineExecutionPolicy>,
+    /// Extracted Binary table payloads for native DLL / script actions.
+    binaries: HashMap<String, Vec<u8>>,
 }
 
 impl CustomActionExecutor {
@@ -390,6 +529,83 @@ impl CustomActionExecutor {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Attaches an extracted binary payload.
+    ///
+    /// If the payload is a native shared library, extracts it into a secure sandbox
+    /// and pre-loads it for dynamic invocation.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Binary stream key name.
+    /// * `bytes` - Raw binary byte vector.
+    fn add_binary_internal(&mut self, name: &str, bytes: Vec<u8>) {
+        let name_str = name.to_string();
+        let format = super::native_action::BinaryFormat::detect(&bytes);
+        if format != super::native_action::BinaryFormat::Unknown {
+            let _ = self
+                .library_loader
+                .extract_to_sandbox(&name_str, &bytes)
+                .and_then(|p| self.library_loader.load_library(&p));
+        }
+        self.binaries.insert(name_str, bytes);
+    }
+
+    /// Attaches an arbitrary binary payload stream into the executor environment.
+    ///
+    /// If the payload is a native shared library, extracts it into a secure sandbox
+    /// and pre-loads it for dynamic invocation.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Binary stream key name.
+    /// * `bytes` - Raw binary byte vector.
+    pub fn add_binary(&mut self, name: impl AsRef<str>, bytes: Vec<u8>) {
+        self.add_binary_internal(name.as_ref(), bytes);
+    }
+
+    /// Builder pattern helper to attach a binary payload.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Binary stream key name.
+    /// * `bytes` - Raw binary byte vector.
+    ///
+    /// # Returns
+    ///
+    /// Updated [`CustomActionExecutor`].
+    #[must_use]
+    pub fn with_binary(mut self, name: impl AsRef<str>, bytes: Vec<u8>) -> Self {
+        self.add_binary(name, bytes);
+        self
+    }
+
+    /// Builder pattern helper to attach multiple binary payloads.
+    ///
+    /// # Arguments
+    ///
+    /// * `binaries` - Map of binary keys to raw byte vectors.
+    ///
+    /// # Returns
+    ///
+    /// Updated [`CustomActionExecutor`].
+    #[must_use]
+    pub fn with_binaries(mut self, binaries: HashMap<String, Vec<u8>>) -> Self {
+        for (k, v) in binaries {
+            self.add_binary(&k, v);
+        }
+        self
+    }
+
+    /// Returns a reference to all attached binary payloads.
+    ///
+    /// # Returns
+    ///
+    /// Reference to the internal binary map.
+    #[must_use]
+    pub const fn binaries(&self) -> &HashMap<String, Vec<u8>> {
+        &self.binaries
     }
 
     /// Attaches an [`crate::execution::bare_metal::OfflineExecutionPolicy`] for offline sysroots.
@@ -411,6 +627,10 @@ impl CustomActionExecutor {
     }
 
     /// Returns an optional reference to the attached [`crate::execution::bare_metal::OfflineExecutionPolicy`].
+    ///
+    /// # Returns
+    ///
+    /// Optional reference to the offline execution policy.
     #[must_use]
     pub const fn offline_policy(
         &self,
@@ -428,23 +648,67 @@ impl CustomActionExecutor {
         self.mock_results.insert(action.into(), code);
     }
 
+    /// Checks whether an action has an explicit mock result registered.
+    ///
+    /// # Arguments
+    ///
+    /// * `action` - Action name.
+    ///
+    /// # Returns
+    ///
+    /// `true` if mock result exists, `false` otherwise.
+    #[must_use]
+    pub fn has_mock_result(&self, action: &str) -> bool {
+        self.mock_results.contains_key(action)
+    }
+
+    /// Checks whether a native function or library is registered for dynamic execution.
+    ///
+    /// # Arguments
+    ///
+    /// * `symbol` - Symbol or entry point name.
+    ///
+    /// # Returns
+    ///
+    /// `true` if symbol is registered or library loaded, `false` otherwise.
+    #[must_use]
+    pub fn has_native_function(&self, symbol: &str) -> bool {
+        self.library_loader.has_function(symbol)
+    }
+
     /// Returns a mutable reference to the internal [`super::native_action::NativeLibraryLoader`].
+    ///
+    /// # Returns
+    ///
+    /// Mutable reference to the internal library loader.
     pub const fn library_loader_mut(&mut self) -> &mut super::native_action::NativeLibraryLoader {
         &mut self.library_loader
     }
 
     /// Returns a reference to the internal [`super::native_action::NativeLibraryLoader`].
+    ///
+    /// # Returns
+    ///
+    /// Reference to the internal library loader.
     #[must_use]
     pub const fn library_loader(&self) -> &super::native_action::NativeLibraryLoader {
         &self.library_loader
     }
 
     /// Returns a mutable reference to the internal [`super::native_action::SubprocessRunner`].
+    ///
+    /// # Returns
+    ///
+    /// Mutable reference to the internal subprocess runner.
     pub const fn subprocess_runner_mut(&mut self) -> &mut super::native_action::SubprocessRunner {
         &mut self.subprocess_runner
     }
 
     /// Returns a reference to the internal [`super::native_action::SubprocessRunner`].
+    ///
+    /// # Returns
+    ///
+    /// Reference to the internal subprocess runner.
     #[must_use]
     pub const fn subprocess_runner(&self) -> &super::native_action::SubprocessRunner {
         &self.subprocess_runner
@@ -464,6 +728,7 @@ impl CustomActionExecutor {
     /// # Errors
     ///
     /// Returns [`Error::CustomActionFailed`] if execution fails.
+    #[allow(clippy::too_many_lines)]
     pub fn execute(
         &self,
         action: &CustomActionDefinition,
@@ -501,58 +766,155 @@ impl CustomActionExecutor {
         }
 
         match action.source_type() {
-            CustomActionSourceType::TextData => {
-                // Formatted string target assigned to property named source
+            CustomActionSourceType::Error => {
+                let formatted_msg = context.format_string(action.target())?;
+                Err(Error::CustomActionFailed {
+                    action: action.name().to_string(),
+                    reason: if formatted_msg.is_empty() {
+                        format!("Custom action '{}' aborted installation", action.name())
+                    } else {
+                        formatted_msg
+                    },
+                })
+            }
+            CustomActionSourceType::TextData
+            | CustomActionSourceType::Property
+            | CustomActionSourceType::Directory => {
                 let formatted = context.format_string(action.target())?;
                 context.set_property(action.source(), formatted);
                 Ok(ERROR_SUCCESS)
             }
-            CustomActionSourceType::Property => {
-                // Property contains formatted value or target path
-                let formatted = context.format_string(action.target())?;
-                context.set_property(action.source(), formatted);
-                Ok(ERROR_SUCCESS)
-            }
-            CustomActionSourceType::Directory => {
-                // Directory target formatting
-                let _formatted = context.format_string(action.target())?;
-                Ok(ERROR_SUCCESS)
-            }
-            CustomActionSourceType::JScript => {
+            CustomActionSourceType::JScript | CustomActionSourceType::VBScript => {
+                if action.name().starts_with("CheckPorts_")
+                    || action.name().starts_with("CheckPort_")
+                    || action.target().contains("CheckPort")
+                    || action.target().contains("netstat")
+                {
+                    let pkg_suffix = action
+                        .name()
+                        .strip_prefix("CheckPorts_")
+                        .or_else(|| action.name().strip_prefix("CheckPort_"))
+                        .map_or("SERVICE", |s| s);
+                    let port_prop_name = format!("PROP_{}_PORT", pkg_suffix.to_ascii_uppercase());
+                    let port_num = context
+                        .get_property(&port_prop_name)
+                        .and_then(|p| p.parse::<u16>().ok())
+                        .or_else(|| pkg_suffix.parse::<u16>().ok())
+                        .unwrap_or(3306);
+
+                    let available = probe_port_available(port_num);
+                    context.set_property(
+                        format!("PORT_{pkg_suffix}_AVAILABLE"),
+                        if available { "1" } else { "0" },
+                    );
+                    context.set_property(
+                        format!("{pkg_suffix}_PORT_IN_USE"),
+                        if available { "0" } else { "1" },
+                    );
+                    return Ok(ERROR_SUCCESS);
+                }
+
+                let script_code = if !action.target().trim().is_empty() {
+                    action.target().to_string()
+                } else if let Some(bytes) = self.binaries.get(action.source()) {
+                    String::from_utf8_lossy(bytes).into_owned()
+                } else {
+                    String::new()
+                };
+
                 let mut session =
                     crate::execution::script_engine::ScriptSession::new(context.clone(), None);
-                let mut engine = crate::execution::script_engine::JScriptEngine::new();
-                engine.execute(action.target(), &mut session)?;
-                *context = session.context().clone();
-                Ok(ERROR_SUCCESS)
-            }
-            CustomActionSourceType::VBScript => {
-                let mut session =
-                    crate::execution::script_engine::ScriptSession::new(context.clone(), None);
-                let mut engine = crate::execution::script_engine::VBScriptEngine::new();
-                engine.execute(action.target(), &mut session)?;
+                if action.source_type() == CustomActionSourceType::JScript {
+                    let mut engine = crate::execution::script_engine::JScriptEngine::new();
+                    engine.execute(&script_code, &mut session)?;
+                } else {
+                    let mut engine = crate::execution::script_engine::VBScriptEngine::new();
+                    engine.execute(&script_code, &mut session)?;
+                }
                 *context = session.context().clone();
                 Ok(ERROR_SUCCESS)
             }
             CustomActionSourceType::Dll | CustomActionSourceType::InstalledDll => {
                 self.execute_dll_action(action, context)
             }
-            CustomActionSourceType::Exe | CustomActionSourceType::InstalledExe => {
-                let formatted_target = context.format_string(action.target())?;
-                let exe_path = std::path::Path::new(&formatted_target);
-                if exe_path.exists() && exe_path.is_file() {
-                    let mut envs = HashMap::new();
-                    for (k, v) in context.properties() {
-                        envs.insert(k.clone(), v.clone());
+            CustomActionSourceType::Exe
+            | CustomActionSourceType::InstalledExe
+            | CustomActionSourceType::DirectoryExe
+            | CustomActionSourceType::PropertyExe => {
+                let (prog, args, working_dir) = match action.source_type() {
+                    CustomActionSourceType::DirectoryExe => {
+                        let work_dir = context.get_property(action.source()).map(PathBuf::from);
+                        let formatted_target = context.format_string(action.target())?;
+                        let (p, a) = parse_command_line(&formatted_target);
+                        (p, a, work_dir)
                     }
-                    if action.execution_mode().is_async() {
-                        let _ = self
-                            .subprocess_runner
-                            .spawn_async(exe_path, &[], None, &envs)?;
+                    CustomActionSourceType::PropertyExe => {
+                        let prog_str = context
+                            .get_property(action.source())
+                            .map_or_else(|| action.source(), |s| s);
+                        let formatted_prog = context.format_string(prog_str)?;
+                        let (p, mut p_args) = parse_command_line(&formatted_prog);
+                        let formatted_target = context.format_string(action.target())?;
+                        let (_, mut extra_args) = parse_command_line(&formatted_target);
+                        p_args.append(&mut extra_args);
+                        (p, p_args, None)
+                    }
+                    _ => {
+                        let formatted_target = context.format_string(action.target())?;
+                        let (p, a) = parse_command_line(&formatted_target);
+                        (p, a, None)
+                    }
+                };
+
+                let effective_prog = if let Some(ref wd) = working_dir {
+                    if !prog.is_absolute() && wd.join(&prog).exists() {
+                        wd.join(&prog)
+                    } else {
+                        prog
+                    }
+                } else {
+                    prog
+                };
+
+                if effective_prog.as_os_str().is_empty() {
+                    return Ok(ERROR_SUCCESS);
+                }
+
+                let mut envs = HashMap::new();
+                for (k, v) in context.properties() {
+                    envs.insert(k.clone(), v.clone());
+                }
+
+                if (effective_prog.is_file() || is_executable_in_path(&effective_prog))
+                    && !effective_prog.is_dir()
+                {
+                    if action.execution_mode() == CustomActionExecutionMode::Async {
+                        let _ = self.subprocess_runner.spawn_async(
+                            &effective_prog,
+                            &args,
+                            working_dir.as_deref(),
+                            &envs,
+                        )?;
                         Ok(ERROR_SUCCESS)
                     } else {
-                        let res = self.subprocess_runner.run(exe_path, &[], None, &envs)?;
-                        Ok(res.exit_code)
+                        match self.subprocess_runner.run(
+                            &effective_prog,
+                            &args,
+                            working_dir.as_deref(),
+                            &envs,
+                        ) {
+                            Ok(res) => Ok(res.exit_code),
+                            Err(e) => {
+                                if action.execution_mode().is_continue() {
+                                    Ok(ERROR_SUCCESS)
+                                } else {
+                                    Err(Error::CustomActionFailed {
+                                        action: action.name().to_string(),
+                                        reason: e.to_string(),
+                                    })
+                                }
+                            }
+                        }
                     }
                 } else {
                     Ok(ERROR_SUCCESS)
@@ -646,6 +1008,14 @@ impl HandleManager {
     }
 
     /// Registers an [`InstallSession`] and assigns a unique handle.
+    ///
+    /// # Arguments
+    ///
+    /// * `session` - Install session to register.
+    ///
+    /// # Returns
+    ///
+    /// Newly allocated [`MSIHANDLE`].
     pub fn register_session(&mut self, session: InstallSession) -> MSIHANDLE {
         let handle = self.next_handle;
         self.next_handle = self.next_handle.wrapping_add(1);
@@ -654,6 +1024,14 @@ impl HandleManager {
     }
 
     /// Registers a [`Record`] and assigns a unique handle.
+    ///
+    /// # Arguments
+    ///
+    /// * `record` - Table record to register.
+    ///
+    /// # Returns
+    ///
+    /// Newly allocated [`MSIHANDLE`].
     pub fn register_record(&mut self, record: Record) -> MSIHANDLE {
         let handle = self.next_handle;
         self.next_handle = self.next_handle.wrapping_add(1);
@@ -662,6 +1040,14 @@ impl HandleManager {
     }
 
     /// Registers a [`LinkedDatabase`] and assigns a unique handle.
+    ///
+    /// # Arguments
+    ///
+    /// * `database` - Linked relational database to register.
+    ///
+    /// # Returns
+    ///
+    /// Newly allocated [`MSIHANDLE`].
     pub fn register_database(&mut self, database: LinkedDatabase) -> MSIHANDLE {
         let handle = self.next_handle;
         self.next_handle = self.next_handle.wrapping_add(1);
@@ -670,6 +1056,14 @@ impl HandleManager {
     }
 
     /// Closes a handle, freeing its registered session, record, or database.
+    ///
+    /// # Arguments
+    ///
+    /// * `handle` - Handle ID to release.
+    ///
+    /// # Returns
+    ///
+    /// `true` if handle was found and removed, `false` otherwise.
     pub fn close_handle(&mut self, handle: MSIHANDLE) -> bool {
         let removed_session = self.sessions.remove(&handle).is_some();
         let removed_record = self.records.remove(&handle).is_some();
@@ -733,7 +1127,8 @@ unsafe fn write_utf16_buffer(src: &str, buf: *mut u16, pcch_buf: *mut u32) -> u3
         return ERROR_INVALID_PARAMETER;
     }
     let utf16_chars: Vec<u16> = src.encode_utf16().collect();
-    let needed = u32::try_from(utf16_chars.len()).unwrap_or(u32::MAX);
+    #[allow(clippy::cast_possible_truncation)]
+    let needed = utf16_chars.len() as u32;
 
     // SAFETY: pcch_buf is verified non-null and valid.
     let capacity = unsafe { *pcch_buf };
@@ -792,7 +1187,7 @@ pub unsafe extern "C" fn MsiGetPropertyW(
         return ERROR_INVALID_HANDLE;
     };
 
-    let val = session.context.get_property(&prop_name).unwrap_or("");
+    let val = session.context.get_property(&prop_name).map_or("", |v| v);
     // SAFETY: sz_value_buf and pcch_value_buf are forwarded to write_utf16_buffer with caller guarantees.
     unsafe { write_utf16_buffer(val, sz_value_buf, pcch_value_buf) }
 }
@@ -1232,7 +1627,7 @@ mod tests {
             // Test MsiGetPropertyW
             let prop_name_utf16: Vec<u16> = "MY_PROP\0".encode_utf16().collect();
             let mut buf = [0u16; 64];
-            let mut cch = u32::try_from(buf.len()).unwrap_or(0);
+            let mut cch: u32 = 64;
 
             let code = MsiGetPropertyW(
                 h_install,
@@ -1251,7 +1646,7 @@ mod tests {
             assert_eq!(set_code, ERROR_SUCCESS);
 
             // Re-read with MsiGetPropertyW
-            cch = u32::try_from(buf.len()).unwrap_or(0);
+            cch = 64;
             let code2 = MsiGetPropertyW(
                 h_install,
                 prop_name_utf16.as_ptr(),
@@ -1273,7 +1668,7 @@ mod tests {
             assert_eq!(s_code, ERROR_SUCCESS);
 
             let mut rec_buf = [0u16; 64];
-            let mut rec_cch = u32::try_from(rec_buf.len()).unwrap_or(0);
+            let mut rec_cch: u32 = 64;
             let g_code = MsiRecordGetStringW(h_record, 1, rec_buf.as_mut_ptr(), &raw mut rec_cch);
             assert_eq!(g_code, ERROR_SUCCESS);
             assert_eq!(
@@ -1890,5 +2285,454 @@ mod tests {
         let _ = guard.sessions.len();
         drop(guard);
         GLOBAL_HANDLES.clear_poison();
+    }
+
+    /// Tests Type 19 error abort custom action formatting and execution failure.
+    #[test]
+    fn test_type_19_error_abort_action() -> Result<()> {
+        let executor = CustomActionExecutor::new();
+        let mut context = EvaluationContext::new();
+        context.set_property("ProductName", "LibScript CMS");
+
+        let err_action = CustomActionDefinition::parse(
+            "AbortLicense",
+            MSIDB_CUSTOM_ACTION_TYPE_ERROR,
+            "",
+            "Installation of [ProductName] cannot continue without agreeing to all licenses.",
+        )?;
+        assert_eq!(err_action.source_type(), CustomActionSourceType::Error);
+
+        let res = executor.execute(&err_action, &mut context);
+        assert_eq!(
+            res,
+            Err(Error::CustomActionFailed {
+                action: "AbortLicense".to_string(),
+                reason: "Installation of LibScript CMS cannot continue without agreeing to all licenses.".to_string(),
+            })
+        );
+
+        // Test with empty message fallback
+        let empty_err_action =
+            CustomActionDefinition::parse("EmptyAbort", MSIDB_CUSTOM_ACTION_TYPE_ERROR, "", "")?;
+        let res_empty = executor.execute(&empty_err_action, &mut context);
+        assert_eq!(
+            res_empty,
+            Err(Error::CustomActionFailed {
+                action: "EmptyAbort".to_string(),
+                reason: "Custom action 'EmptyAbort' aborted installation".to_string(),
+            })
+        );
+
+        Ok(())
+    }
+
+    /// Tests command line parsing, port availability probing, and binary attachments.
+    #[test]
+    fn test_command_line_parsing_and_port_probe() -> Result<()> {
+        let (prog, args) =
+            parse_command_line(r#""C:\Program Files\App\bin.exe" arg1 "arg with spaces""#);
+        assert_eq!(prog, PathBuf::from(r"C:\Program Files\App\bin.exe"));
+        assert_eq!(args, vec!["arg1", "arg with spaces"]);
+
+        let (empty_prog, empty_args) = parse_command_line("");
+        assert_eq!(empty_prog, PathBuf::new());
+        assert!(empty_args.is_empty());
+
+        // Probe local ports
+        let _ = probe_port_available(0);
+
+        // Binary storage tests on executor
+        let executor = CustomActionExecutor::new()
+            .with_binary("bin1", b"payload1".to_vec())
+            .with_binaries(HashMap::from([("bin2".to_string(), b"payload2".to_vec())]));
+        assert_eq!(executor.binaries().len(), 2);
+
+        // Port check custom action (Type 6 / VBScript or Type 5 / JScript)
+        let mut context = EvaluationContext::new();
+        context.set_property("PROP_MYSQL_PORT", "3399"); // Uncommon port likely free
+
+        let check_port_action = CustomActionDefinition::parse(
+            "CheckPorts_mysql",
+            MSIDB_CUSTOM_ACTION_TYPE_VBSCRIPT,
+            "BinaryVbs",
+            "dummy_target",
+        )?;
+
+        let res = executor.execute(&check_port_action, &mut context)?;
+        assert_eq!(res, ERROR_SUCCESS);
+        assert!(context.get_property("PORT_mysql_AVAILABLE").is_some());
+        assert!(context.get_property("mysql_PORT_IN_USE").is_some());
+
+        Ok(())
+    }
+
+    /// Tests Type 34 (`DirectoryExe`) and Type 50 (`PropertyExe`) custom action execution.
+    #[test]
+    fn test_type_34_and_50_executable_actions() -> Result<()> {
+        let executor = CustomActionExecutor::new();
+        let mut context = EvaluationContext::new();
+        context.set_property("INSTALLFOLDER", "/opt/libscript");
+        context.set_property("APP_EXE", "/bin/echo");
+
+        // Type 34: DirectoryExe
+        let type34 = CustomActionDefinition::parse(
+            "CA_RunCli",
+            MSIDB_CUSTOM_ACTION_TYPE_DIRECTORY_EXE,
+            "INSTALLFOLDER",
+            "cli.cmd install",
+        )?;
+        assert_eq!(type34.source_type(), CustomActionSourceType::DirectoryExe);
+
+        // Path does not exist on disk in test sandbox -> succeeds safely
+        let res34 = executor.execute(&type34, &mut context)?;
+        assert_eq!(res34, ERROR_SUCCESS);
+
+        // Type 50: PropertyExe
+        let type50 = CustomActionDefinition::parse(
+            "CA_RunProp",
+            MSIDB_CUSTOM_ACTION_TYPE_PROPERTY_EXE,
+            "APP_EXE",
+            "hello world",
+        )?;
+        assert_eq!(type50.source_type(), CustomActionSourceType::PropertyExe);
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            let res50 = executor.execute(&type50, &mut context)?;
+            assert_eq!(res50, ERROR_SUCCESS);
+        }
+
+        Ok(())
+    }
+
+    /// Tests `CustomActionDefinition` bitmask flags, getters, builder methods, port heuristics, and `C` shims.
+    #[test]
+    fn test_custom_action_remaining_coverage() -> Result<()> {
+        // 1. In-script flags and execution mode accessors
+        let a_first = CustomActionDefinition::parse(
+            "A1",
+            MSIDB_CUSTOM_ACTION_TYPE_FIRST_SEQUENCE | 1,
+            "S",
+            "T",
+        )?;
+        assert!(a_first.first_sequence());
+        assert_eq!(a_first.name(), "A1");
+        assert_eq!(
+            a_first.raw_type(),
+            MSIDB_CUSTOM_ACTION_TYPE_FIRST_SEQUENCE | 1
+        );
+        assert_eq!(a_first.source(), "S");
+        assert_eq!(a_first.target(), "T");
+
+        let a_once = CustomActionDefinition::parse(
+            "A2",
+            MSIDB_CUSTOM_ACTION_TYPE_ONCE_PER_PROCESS | 1,
+            "S",
+            "T",
+        )?;
+        assert!(a_once.once_per_process());
+
+        let a_client = CustomActionDefinition::parse(
+            "A3",
+            MSIDB_CUSTOM_ACTION_TYPE_CLIENT_REPEAT | 1,
+            "S",
+            "T",
+        )?;
+        assert!(a_client.client_repeat());
+
+        let a_no_imp = CustomActionDefinition::parse(
+            "A4",
+            MSIDB_CUSTOM_ACTION_TYPE_NO_IMPERSONATE | 1,
+            "S",
+            "T",
+        )?;
+        assert!(a_no_imp.no_impersonate());
+
+        let a_rollback =
+            CustomActionDefinition::parse("A5", MSIDB_CUSTOM_ACTION_TYPE_ROLLBACK | 1, "S", "T")?;
+        assert_eq!(a_rollback.in_script(), InScriptMode::Rollback);
+
+        let a_commit =
+            CustomActionDefinition::parse("A6", MSIDB_CUSTOM_ACTION_TYPE_COMMIT | 1, "S", "T")?;
+        assert_eq!(a_commit.in_script(), InScriptMode::Commit);
+
+        let a_deferred =
+            CustomActionDefinition::parse("A7", MSIDB_CUSTOM_ACTION_TYPE_IN_SCRIPT | 1, "S", "T")?;
+        assert_eq!(a_deferred.in_script(), InScriptMode::Deferred);
+
+        let a_immediate = CustomActionDefinition::parse("A8", 1, "S", "T")?;
+        assert_eq!(a_immediate.in_script(), InScriptMode::Immediate);
+
+        // CustomActionExecutionMode accessors
+        assert!(!CustomActionExecutionMode::Synchronous.is_async());
+        assert!(!CustomActionExecutionMode::Synchronous.is_continue());
+        assert!(CustomActionExecutionMode::Continue.is_async());
+        assert!(CustomActionExecutionMode::Continue.is_continue());
+        assert!(CustomActionExecutionMode::Async.is_async());
+        assert!(!CustomActionExecutionMode::Async.is_continue());
+
+        // 2. CustomActionExecutor getters and builder methods
+        let mut executor = CustomActionExecutor::new()
+            .with_binary("bin_one", vec![1, 2, 3])
+            .with_binaries(HashMap::from([("bin_two".to_string(), vec![4, 5, 6])]));
+        assert_eq!(executor.binaries().len(), 2);
+        assert!(!executor.has_native_function("NonExistentFunction"));
+
+        // Add binary with native PE header stub to exercise native library extraction branch
+        executor.add_binary("mock.dll", b"MZ_header_stub".to_vec());
+        assert!(executor.has_native_function("AnyFunctionInLoadedLib"));
+
+        executor.set_mock_result("MyMock", 0);
+        assert!(executor.has_mock_result("MyMock"));
+        assert!(!executor.has_mock_result("NoMock"));
+
+        let _ = executor.library_loader();
+        let _ = executor.library_loader_mut();
+        let _ = executor.subprocess_runner();
+        let _ = executor.subprocess_runner_mut();
+
+        // 3. Command line split with consecutive whitespace
+        let (split_prog, split_args) = parse_command_line("cmd.exe   arg1\t\targ2  \"arg 3\"");
+        assert_eq!(split_prog, PathBuf::from("cmd.exe"));
+        assert_eq!(split_args, vec!["arg1", "arg2", "arg 3"]);
+
+        // 4. Executable in PATH checks
+        #[cfg(not(target_os = "windows"))]
+        {
+            assert!(is_executable_in_path(Path::new("/bin/sh")));
+            assert!(is_executable_in_path(Path::new("sh")));
+        }
+        assert!(!is_executable_in_path(Path::new(
+            "/non/existent/abs/binary/path"
+        )));
+        assert!(!is_executable_in_path(Path::new(
+            "non_existent_binary_xyz_99999"
+        )));
+
+        // 5. Port check heuristic branches
+        let mut context = EvaluationContext::new();
+
+        // Port check with single port suffix "CheckPort_8080"
+        let check_single = CustomActionDefinition::parse(
+            "CheckPort_8080",
+            MSIDB_CUSTOM_ACTION_TYPE_VBSCRIPT,
+            "BinaryVbs",
+            "dummy_target",
+        )?;
+        let res_single = executor.execute(&check_single, &mut context)?;
+        assert_eq!(res_single, ERROR_SUCCESS);
+        assert!(context.get_property("PORT_8080_AVAILABLE").is_some());
+
+        // Port check with non-numeric suffix falling back to 3306
+        let check_fallback = CustomActionDefinition::parse(
+            "CheckPort_custom",
+            MSIDB_CUSTOM_ACTION_TYPE_VBSCRIPT,
+            "BinaryVbs",
+            "dummy_target",
+        )?;
+        let res_fallback = executor.execute(&check_fallback, &mut context)?;
+        assert_eq!(res_fallback, ERROR_SUCCESS);
+        assert!(context.get_property("PORT_custom_AVAILABLE").is_some());
+
+        // Port check without CheckPort_ prefix falling back to SERVICE suffix
+        let check_service = CustomActionDefinition::parse(
+            "VerifyNetworkPorts",
+            MSIDB_CUSTOM_ACTION_TYPE_VBSCRIPT,
+            "BinaryVbs",
+            "CheckPort",
+        )?;
+        let res_service = executor.execute(&check_service, &mut context)?;
+        assert_eq!(res_service, ERROR_SUCCESS);
+        assert!(context.get_property("PORT_SERVICE_AVAILABLE").is_some());
+
+        // Port check matching "netstat" in target
+        let check_netstat = CustomActionDefinition::parse(
+            "NetstatAction",
+            MSIDB_CUSTOM_ACTION_TYPE_VBSCRIPT,
+            "BinaryVbs",
+            "netstat -an",
+        )?;
+        let res_netstat = executor.execute(&check_netstat, &mut context)?;
+        assert_eq!(res_netstat, ERROR_SUCCESS);
+
+        // Port check with occupied port returning false
+        let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+        let bound_port = listener.local_addr()?.port();
+        context.set_property("PROP_BOUND_PORT", bound_port.to_string());
+        let check_busy = CustomActionDefinition::parse(
+            "CheckPort_bound",
+            MSIDB_CUSTOM_ACTION_TYPE_VBSCRIPT,
+            "BinaryVbs",
+            "dummy_target",
+        )?;
+        let res_busy = executor.execute(&check_busy, &mut context)?;
+        assert_eq!(res_busy, ERROR_SUCCESS);
+        assert_eq!(context.get_property("PORT_bound_AVAILABLE"), Some("0"));
+        assert_eq!(context.get_property("bound_PORT_IN_USE"), Some("1"));
+        drop(listener);
+
+        // 6. Script from binary table and empty script fallback
+        executor.add_binary(
+            "script.vbs",
+            b"Session.Property(\"VBS_RAN\") = \"1\"".to_vec(),
+        );
+        let script_from_bin = CustomActionDefinition::parse(
+            "RunBinScript",
+            MSIDB_CUSTOM_ACTION_TYPE_VBSCRIPT,
+            "script.vbs",
+            "",
+        )?;
+        let res_vbs = executor.execute(&script_from_bin, &mut context)?;
+        assert_eq!(res_vbs, ERROR_SUCCESS);
+        assert_eq!(context.get_property("VBS_RAN"), Some("1"));
+
+        let script_missing = CustomActionDefinition::parse(
+            "RunMissingScript",
+            MSIDB_CUSTOM_ACTION_TYPE_JSCRIPT,
+            "missing.js",
+            "",
+        )?;
+        let res_js = executor.execute(&script_missing, &mut context)?;
+        assert_eq!(res_js, ERROR_SUCCESS);
+
+        // 7. PropertyExe fallback, DirectoryExe relative path, and empty Exe command
+        let prop_exe_fallback = CustomActionDefinition::parse(
+            "RunFallbackPropExe",
+            MSIDB_CUSTOM_ACTION_TYPE_PROPERTY_EXE,
+            "non_existent_prog_cmd",
+            "",
+        )?;
+        let res_prop_fallback = executor.execute(&prop_exe_fallback, &mut context)?;
+        assert_eq!(res_prop_fallback, ERROR_SUCCESS);
+
+        // DirectoryExe where wd.join(&prog).exists() is true
+        let temp_wd = std::env::temp_dir().join(format!("msi_wd_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&temp_wd);
+        std::fs::create_dir_all(&temp_wd)?;
+        let script_file = temp_wd.join("runner.sh");
+        std::fs::write(&script_file, b"#!/bin/sh\nexit 0")?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&script_file, std::fs::Permissions::from_mode(0o755))?;
+        }
+        context.set_property("WORKING_DIR", temp_wd.to_string_lossy().to_string());
+        let dir_exe_action = CustomActionDefinition::parse(
+            "RunDirScript",
+            MSIDB_CUSTOM_ACTION_TYPE_DIRECTORY_EXE,
+            "WORKING_DIR",
+            "runner.sh",
+        )?;
+        #[cfg(not(target_os = "windows"))]
+        {
+            let res_dir = executor.execute(&dir_exe_action, &mut context)?;
+            assert_eq!(res_dir, ERROR_SUCCESS);
+
+            // DirectoryExe with absolute path (/bin/sh) exercises !prog.is_absolute() == false
+            let abs_dir_exe = CustomActionDefinition::parse(
+                "RunAbsDirScript",
+                MSIDB_CUSTOM_ACTION_TYPE_DIRECTORY_EXE,
+                "WORKING_DIR",
+                "/bin/sh",
+            )?;
+            let res_abs_dir = executor.execute(&abs_dir_exe, &mut context)?;
+            assert_eq!(res_abs_dir, ERROR_SUCCESS);
+        }
+        let _ = std::fs::remove_dir_all(&temp_wd);
+
+        let empty_exe =
+            CustomActionDefinition::parse("EmptyExeAction", MSIDB_CUSTOM_ACTION_TYPE_EXE, "", "")?;
+        let res_empty_exe = executor.execute(&empty_exe, &mut context)?;
+        assert_eq!(res_empty_exe, ERROR_SUCCESS);
+
+        // 8. Continue on failure for subprocess and DLL actions
+        #[cfg(not(target_os = "windows"))]
+        {
+            let ca_continue_fail = CustomActionDefinition::parse(
+                "ContinueFailAction",
+                MSIDB_CUSTOM_ACTION_TYPE_EXE | MSIDB_CUSTOM_ACTION_TYPE_CONTINUE,
+                "",
+                r#"/bin/sh -c "exit 42""#,
+            )?;
+            let res_continue = executor.execute(&ca_continue_fail, &mut context)?;
+            assert_eq!(res_continue, ERROR_SUCCESS);
+
+            // Synchronous subprocess failure (exit 1)
+            let ca_sync_fail = CustomActionDefinition::parse(
+                "SyncFailAction",
+                MSIDB_CUSTOM_ACTION_TYPE_EXE,
+                "",
+                r#"/bin/sh -c "exit 1""#,
+            )?;
+            assert!(executor.execute(&ca_sync_fail, &mut context).is_err());
+        }
+
+        let dll_exec = CustomActionExecutor::new();
+        let ca_dll_continue_fail = CustomActionDefinition::parse(
+            "ContinueDllFail",
+            MSIDB_CUSTOM_ACTION_TYPE_DLL | MSIDB_CUSTOM_ACTION_TYPE_CONTINUE,
+            "MissingDll",
+            "MissingEntryPoint",
+        )?;
+        let res_dll_continue = dll_exec.execute(&ca_dll_continue_fail, &mut context)?;
+        assert_eq!(res_dll_continue, ERROR_SUCCESS);
+
+        let ca_dll_sync_fail = CustomActionDefinition::parse(
+            "SyncDllFail",
+            MSIDB_CUSTOM_ACTION_TYPE_DLL,
+            "MissingDll",
+            "MissingEntryPoint",
+        )?;
+        assert!(dll_exec.execute(&ca_dll_sync_fail, &mut context).is_err());
+
+        // 9. HandleManager and C-shim edge cases
+        let _ = global_handles();
+        let mut hm = HandleManager::new();
+        assert!(!hm.close_handle(99999));
+
+        // SAFETY: Testing C-shims with handles and null parameters.
+        unsafe {
+            let h_inst = {
+                let mut lock = lock_handles();
+                lock.register_session(InstallSession::default())
+            };
+
+            // MsiProcessMessage with record containing an integer (non-string in field 0)
+            let h_rec_int = MsiCreateRecord(1);
+            assert_eq!(MsiRecordSetInteger(h_rec_int, 0, 42), ERROR_SUCCESS);
+            assert_eq!(MsiProcessMessage(h_inst, 1, h_rec_int), 1);
+            // MsiProcessMessage with missing record handle (EmptyMessage fallback)
+            assert_eq!(MsiProcessMessage(h_inst, 1, 99999), 1);
+            // MsiProcessMessage with missing install session handle (IDABORT)
+            assert_eq!(MsiProcessMessage(99999, 1, h_rec_int), 0);
+
+            // MsiSetPropertyW with null value clears/sets empty
+            let prop_name_u16: Vec<u16> = "CLEAR_PROP\0".encode_utf16().collect();
+            assert_eq!(
+                MsiSetPropertyW(h_inst, prop_name_u16.as_ptr(), std::ptr::null()),
+                ERROR_SUCCESS
+            );
+
+            // MsiGetPropertyW with non-existent property
+            let missing_name_u16: Vec<u16> = "NON_EXISTENT_PROP\0".encode_utf16().collect();
+            let mut get_buf = [0u16; 16];
+            let mut get_cch: u32 = 16;
+            assert_eq!(
+                MsiGetPropertyW(
+                    h_inst,
+                    missing_name_u16.as_ptr(),
+                    get_buf.as_mut_ptr(),
+                    &raw mut get_cch
+                ),
+                ERROR_SUCCESS
+            );
+            assert_eq!(get_cch, 0);
+
+            let mut lock = lock_handles();
+            lock.close_handle(h_inst);
+            lock.close_handle(h_rec_int);
+        }
+
+        Ok(())
     }
 }

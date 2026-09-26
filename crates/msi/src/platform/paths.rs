@@ -86,6 +86,8 @@ pub enum StandardDirectoryId {
     AppDataFolder,
     /// User desktop directory (`[DesktopFolder]`).
     DesktopFolder,
+    /// User or system Start Menu programs folder (`[ProgramMenuFolder]`).
+    ProgramMenuFolder,
     /// User profiles root directory (`[ProfilesFolder]`).
     ProfilesFolder,
     /// Temporary files directory (`[TempFolder]`).
@@ -116,6 +118,7 @@ impl StandardDirectoryId {
             "LocalAppDataFolder" => Some(Self::LocalAppDataFolder),
             "AppDataFolder" => Some(Self::AppDataFolder),
             "DesktopFolder" => Some(Self::DesktopFolder),
+            "ProgramMenuFolder" => Some(Self::ProgramMenuFolder),
             "ProfilesFolder" => Some(Self::ProfilesFolder),
             "TempFolder" => Some(Self::TempFolder),
             _ => None,
@@ -137,6 +140,7 @@ impl StandardDirectoryId {
             Self::LocalAppDataFolder => "LocalAppDataFolder",
             Self::AppDataFolder => "AppDataFolder",
             Self::DesktopFolder => "DesktopFolder",
+            Self::ProgramMenuFolder => "ProgramMenuFolder",
             Self::ProfilesFolder => "ProfilesFolder",
             Self::TempFolder => "TempFolder",
         }
@@ -328,6 +332,12 @@ impl PathResolver {
             (TargetOs::Windows | TargetOs::MacOs, StandardDirectoryId::DesktopFolder) => {
                 self.home_dir.join("Desktop")
             }
+            (TargetOs::Windows, StandardDirectoryId::ProgramMenuFolder) => self
+                .home_dir
+                .join(r"AppData\Roaming\Microsoft\Windows\Start Menu\Programs"),
+            (TargetOs::MacOs, StandardDirectoryId::ProgramMenuFolder) => {
+                self.home_dir.join("Applications")
+            }
             (TargetOs::Windows, StandardDirectoryId::TempFolder) => self
                 .env_vars
                 .get("TMPDIR")
@@ -424,6 +434,12 @@ impl PathResolver {
                 .env_vars
                 .get("XDG_DESKTOP_DIR")
                 .map_or_else(|| self.home_dir.join("Desktop"), PathBuf::from),
+            (_, StandardDirectoryId::ProgramMenuFolder) => {
+                self.env_vars.get("XDG_DATA_HOME").map_or_else(
+                    || self.home_dir.join(".local/share/applications"),
+                    |xdg_data| PathBuf::from(xdg_data).join("applications"),
+                )
+            }
             (_, StandardDirectoryId::TempFolder) => self
                 .env_vars
                 .get("TMPDIR")
@@ -459,6 +475,9 @@ impl PathResolver {
             (TargetOs::Windows, StandardDirectoryId::DesktopFolder) => {
                 sysroot.join("Users").join("Default").join("Desktop")
             }
+            (TargetOs::Windows, StandardDirectoryId::ProgramMenuFolder) => {
+                sysroot.join(r"ProgramData\Microsoft\Windows\Start Menu\Programs")
+            }
             (TargetOs::Windows, StandardDirectoryId::TempFolder) => {
                 sysroot.join("Windows").join("Temp")
             }
@@ -490,6 +509,7 @@ impl PathResolver {
                 sysroot.join("var/cache").join(&self.product)
             }
             (_, StandardDirectoryId::DesktopFolder) => sysroot.join("etc/skel/Desktop"),
+            (_, StandardDirectoryId::ProgramMenuFolder) => sysroot.join("usr/share/applications"),
             (_, StandardDirectoryId::TempFolder) => sysroot.join("tmp"),
         }
     }
@@ -527,6 +547,7 @@ mod tests {
             ),
             ("AppDataFolder", StandardDirectoryId::AppDataFolder),
             ("DesktopFolder", StandardDirectoryId::DesktopFolder),
+            ("ProgramMenuFolder", StandardDirectoryId::ProgramMenuFolder),
             ("TempFolder", StandardDirectoryId::TempFolder),
         ];
 
@@ -574,6 +595,10 @@ mod tests {
             PathBuf::from("/home/alice/Desktop")
         );
         assert_eq!(
+            resolver.resolve(StandardDirectoryId::ProgramMenuFolder),
+            PathBuf::from("/home/alice/.local/share/applications")
+        );
+        assert_eq!(
             resolver.resolve(StandardDirectoryId::TempFolder),
             PathBuf::from("/tmp")
         );
@@ -583,6 +608,11 @@ mod tests {
         resolver.set_env("XDG_CONFIG_HOME", "/custom/config");
         resolver.set_env("XDG_DESKTOP_DIR", "/custom/desktop");
         resolver.set_env("TMPDIR", "/var/tmp");
+
+        assert_eq!(
+            resolver.resolve(StandardDirectoryId::ProgramMenuFolder),
+            PathBuf::from("/custom/data/applications")
+        );
 
         assert_eq!(
             resolver.resolve(StandardDirectoryId::LocalAppDataFolder),
@@ -635,6 +665,10 @@ mod tests {
             resolver.resolve(StandardDirectoryId::DesktopFolder),
             PathBuf::from("/Users/bob/Desktop")
         );
+        assert_eq!(
+            resolver.resolve(StandardDirectoryId::ProgramMenuFolder),
+            PathBuf::from("/Users/bob/Applications")
+        );
     }
 
     /// Tests path resolution on FreeBSD and `SunOS`.
@@ -652,6 +686,10 @@ mod tests {
         assert_eq!(
             fbsd.resolve(StandardDirectoryId::CommonAppDataFolder),
             PathBuf::from("/var/db/DaemonApp")
+        );
+        assert_eq!(
+            fbsd.resolve(StandardDirectoryId::ProgramMenuFolder),
+            PathBuf::from("/home/user/.local/share/applications")
         );
 
         let sunos = PathResolver::new(TargetOs::SunOs, "SolarisApp");
@@ -712,6 +750,11 @@ mod tests {
         assert_eq!(
             win.resolve(StandardDirectoryId::DesktopFolder),
             PathBuf::from(r"C:\Users\user").join("Desktop")
+        );
+        assert_eq!(
+            win.resolve(StandardDirectoryId::ProgramMenuFolder),
+            PathBuf::from(r"C:\Users\user")
+                .join(r"AppData\Roaming\Microsoft\Windows\Start Menu\Programs")
         );
         assert_eq!(
             win.resolve(StandardDirectoryId::TempFolder),
@@ -848,6 +891,10 @@ mod tests {
             sysroot.join("Users").join("Default").join("Desktop")
         );
         assert_eq!(
+            win_resolver.resolve(StandardDirectoryId::ProgramMenuFolder),
+            sysroot.join(r"ProgramData\Microsoft\Windows\Start Menu\Programs")
+        );
+        assert_eq!(
             win_resolver.resolve(StandardDirectoryId::TempFolder),
             sysroot.join("Windows").join("Temp")
         );
@@ -890,12 +937,24 @@ mod tests {
             PathBuf::from("/mnt/target/usr/share")
         );
         assert_eq!(
-            linux_resolver.resolve(StandardDirectoryId::ProfilesFolder),
-            PathBuf::from("/mnt/target/home")
+            linux_resolver.resolve(StandardDirectoryId::DesktopFolder),
+            PathBuf::from("/mnt/target/etc/skel/Desktop")
+        );
+        assert_eq!(
+            linux_resolver.resolve(StandardDirectoryId::ProgramMenuFolder),
+            PathBuf::from("/mnt/target/usr/share/applications")
         );
         assert_eq!(
             linux_resolver.resolve(StandardDirectoryId::TempFolder),
             PathBuf::from("/mnt/target/tmp")
+        );
+        assert_eq!(
+            linux_resolver.resolve(StandardDirectoryId::AppDataFolder),
+            sysroot.join("home")
+        );
+        assert_eq!(
+            linux_resolver.resolve(StandardDirectoryId::ProfilesFolder),
+            sysroot.join("home")
         );
         assert_eq!(
             linux_resolver.resolve(StandardDirectoryId::ProgramFilesFolder),

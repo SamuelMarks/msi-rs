@@ -143,6 +143,30 @@ int main(void) {
     /* Destroy package */
     msi_package_destroy(package);
 
+    /* 4. Verify Multi-Package Transaction and Chaining API from C */
+    MsiTransactionHandle* tx = NULL;
+    res = msi_begin_transaction("CTransaction", &tx);
+    assert(res == MSI_SUCCESS);
+    assert(tx != NULL);
+
+    res = msi_join_transaction(tx, "CSession1");
+    assert(res == MSI_SUCCESS);
+
+    int32_t state = 0;
+    res = msi_query_product_state(tx, "{E0F45901-83B4-4B21-9B5A-01D38FE81001}", &state);
+    assert(res == MSI_SUCCESS);
+    assert(state == 2); /* Absent */
+
+    res = msi_install_product(tx, "libscript-mysql.msi", "PROP_MYSQL_PORT=3306");
+    assert(res == MSI_SUCCESS);
+
+    uint32_t exit_code = 0;
+    res = msi_end_transaction(tx, 1, &exit_code);
+    assert(res == MSI_SUCCESS);
+    assert(exit_code == 0);
+
+    msi_transaction_destroy(tx);
+
     puts("All C-ABI verification tests passed successfully!");
     return 0;
 }

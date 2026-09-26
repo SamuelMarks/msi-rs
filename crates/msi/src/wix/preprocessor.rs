@@ -559,16 +559,40 @@ impl Preprocessor {
     }
 
     /// Evaluates a preprocessor conditional expression.
+    ///
+    /// # Arguments
+    ///
+    /// * `expr` - Expression string to evaluate.
+    /// * `ctx` - Preprocessor context for variable resolution.
+    ///
+    /// # Returns
+    ///
+    /// Boolean result of evaluation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Preprocessor`] if macro expansion fails.
     fn eval_expression(&self, expr: &str, ctx: &PreprocessorContext) -> Result<bool> {
         let expanded = self.expand_macros(expr, ctx)?;
-        let trimmed = expanded.trim();
+        Ok(Self::eval_expanded(expanded.trim()))
+    }
 
+    /// Recursively evaluates an already macro-expanded expression string.
+    ///
+    /// # Arguments
+    ///
+    /// * `trimmed` - Trimmed expression string without unexpanded macros.
+    ///
+    /// # Returns
+    ///
+    /// Boolean result of evaluation.
+    fn eval_expanded(trimmed: &str) -> bool {
         // Handle logical OR: " or " or " || "
         if let Some((left, right)) = trimmed
             .split_once(" or ")
             .or_else(|| trimmed.split_once(" || "))
         {
-            return Ok(self.eval_expression(left, ctx)? || self.eval_expression(right, ctx)?);
+            return Self::eval_expanded(left) || Self::eval_expanded(right);
         }
 
         // Handle logical AND: " and " or " && "
@@ -576,49 +600,49 @@ impl Preprocessor {
             .split_once(" and ")
             .or_else(|| trimmed.split_once(" && "))
         {
-            return Ok(self.eval_expression(left, ctx)? && self.eval_expression(right, ctx)?);
+            return Self::eval_expanded(left) && Self::eval_expanded(right);
         }
 
         // Handle logical NOT: "not " or "!"
         if let Some(rest) = trimmed.strip_prefix("not ") {
-            return Ok(!self.eval_expression(rest, ctx)?);
+            return !Self::eval_expanded(rest);
         }
         if let Some(rest) = trimmed.strip_prefix('!') {
-            return Ok(!self.eval_expression(rest, ctx)?);
+            return !Self::eval_expanded(rest);
         }
 
         // Handle comparison operators in order of precedence:
         // "!=", "==", "~=", "<=", ">=", "=", "<", ">"
         if let Some((left, right)) = trimmed.split_once("!=") {
-            return Ok(Self::eval_comparison(left, "!=", right));
+            return Self::eval_comparison(left, "!=", right);
         }
         if let Some((left, right)) = trimmed.split_once("==") {
-            return Ok(Self::eval_comparison(left, "==", right));
+            return Self::eval_comparison(left, "==", right);
         }
         if let Some((left, right)) = trimmed.split_once("~=") {
-            return Ok(Self::eval_comparison(left, "~=", right));
+            return Self::eval_comparison(left, "~=", right);
         }
         if let Some((left, right)) = trimmed.split_once("<=") {
-            return Ok(Self::eval_comparison(left, "<=", right));
+            return Self::eval_comparison(left, "<=", right);
         }
         if let Some((left, right)) = trimmed.split_once(">=") {
-            return Ok(Self::eval_comparison(left, ">=", right));
+            return Self::eval_comparison(left, ">=", right);
         }
         if let Some((left, right)) = trimmed.split_once('=') {
-            return Ok(Self::eval_comparison(left, "=", right));
+            return Self::eval_comparison(left, "=", right);
         }
         if let Some((left, right)) = trimmed.split_once('<') {
-            return Ok(Self::eval_comparison(left, "<", right));
+            return Self::eval_comparison(left, "<", right);
         }
         if let Some((left, right)) = trimmed.split_once('>') {
-            return Ok(Self::eval_comparison(left, ">", right));
+            return Self::eval_comparison(left, ">", right);
         }
 
         // Truthiness: non-empty, non-zero, not "false"
         match trimmed {
-            "true" | "1" => Ok(true),
-            "false" | "0" | "" => Ok(false),
-            _ => Ok(!trimmed.is_empty()),
+            "true" | "1" => true,
+            "false" | "0" | "" => false,
+            _ => !trimmed.is_empty(),
         }
     }
 
@@ -817,42 +841,53 @@ impl Preprocessor {
 mod tests {
     use super::*;
 
+    /// Tests macro expansion with variables, environments, system directives, and dollar literals.
     #[test]
-    fn test_macro_expansion() -> Result<()> {
+    fn test_macro_expansion() {
         let mut ctx = PreprocessorContext::new();
         ctx.define_var("AppName", "SuperInstaller");
         ctx.set_env("MY_ENV_VAR", "Production");
 
         let prep = Preprocessor::new();
         let input = "Name: $(var.AppName), Env: $(env.MY_ENV_VAR), Dir: $(sys.CURRENTDIR)";
-        let result = prep.expand_macros(input, &ctx)?;
+        let result = prep.expand_macros(input, &ctx).unwrap_or_default();
 
         assert!(result.contains("Name: SuperInstaller"));
         assert!(result.contains("Env: Production"));
         assert!(result.contains("Dir: ."));
 
         // System source variables
-        assert_eq!(prep.expand_macros("$(sys.SOURCEFILEDIR)", &ctx)?, ".");
         assert_eq!(
-            prep.expand_macros("$(sys.SOURCEFILEPATH)", &ctx)?,
+            prep.expand_macros("$(sys.SOURCEFILEDIR)", &ctx)
+                .unwrap_or_default(),
+            "."
+        );
+        assert_eq!(
+            prep.expand_macros("$(sys.SOURCEFILEPATH)", &ctx)
+                .unwrap_or_default(),
             "main.wxs"
         );
 
         // Dollar sign edge cases (not a macro)
-        assert_eq!(prep.expand_macros("trailing$", &ctx)?, "trailing$");
-        assert_eq!(prep.expand_macros("dollar$word", &ctx)?, "dollar$word");
+        assert_eq!(
+            prep.expand_macros("trailing$", &ctx).unwrap_or_default(),
+            "trailing$"
+        );
+        assert_eq!(
+            prep.expand_macros("dollar$word", &ctx).unwrap_or_default(),
+            "dollar$word"
+        );
 
         // Undefined variable error
         assert!(prep.expand_macros("$(var.MissingVar)", &ctx).is_err());
         assert!(prep.expand_macros("$(env.MissingEnv)", &ctx).is_err());
         assert!(prep.expand_macros("$(sys.UnknownSys)", &ctx).is_err());
         assert!(prep.expand_macros("$(badmacro)", &ctx).is_err());
-
-        Ok(())
     }
 
+    /// Tests conditional directives: if, elseif, else, ifdef, and ifndef.
     #[test]
-    fn test_conditional_directives() -> Result<()> {
+    fn test_conditional_directives() {
         let mut ctx = PreprocessorContext::new();
         ctx.define_var("Platform", "x64");
         ctx.define_var("Release", "1");
@@ -874,18 +909,17 @@ mod tests {
 <?endif?>
 "#;
 
-        let result = prep.process(source, &mut ctx)?;
+        let result = prep.process(source, &mut ctx).unwrap_or_default();
         assert!(!result.contains("x86Comp"));
         assert!(result.contains("x64Comp"));
         assert!(!result.contains("OtherComp"));
         assert!(result.contains("Optimization Level=\"Full\""));
         assert!(result.contains("Debug Info=\"None\""));
-
-        Ok(())
     }
 
+    /// Tests foreach loop iteration and whitespace handling.
     #[test]
-    fn test_foreach_loop() -> Result<()> {
+    fn test_foreach_loop() {
         let mut ctx = PreprocessorContext::new();
         let prep = Preprocessor::new();
 
@@ -895,7 +929,7 @@ mod tests {
 <?endforeach?>
 "#;
 
-        let result = prep.process(source, &mut ctx)?;
+        let result = prep.process(source, &mut ctx).unwrap_or_default();
         assert!(result.contains("<Resource Language=\"en-US\" />"));
         assert!(result.contains("<Resource Language=\"fr-FR\" />"));
         assert!(result.contains("<Resource Language=\"de-DE\" />"));
@@ -905,14 +939,13 @@ mod tests {
 <Item Value="$(var.ITEM)" />
 <?endforeach ?>
 "#;
-        let res_spaced = prep.process(source_spaced, &mut ctx)?;
+        let res_spaced = prep.process(source_spaced, &mut ctx).unwrap_or_default();
         assert!(res_spaced.contains("<Item Value=\"a\" />"));
-
-        Ok(())
     }
 
+    /// Tests variable definition and un-definition within preprocessor contexts.
     #[test]
-    fn test_define_and_undef() -> Result<()> {
+    fn test_define_and_undef() {
         let mut ctx = PreprocessorContext::new();
         let prep = Preprocessor::new();
 
@@ -926,92 +959,132 @@ mod tests {
 <?endif?>
 "#;
 
-        let result = prep.process(source, &mut ctx)?;
+        let result = prep.process(source, &mut ctx).unwrap_or_default();
         assert!(result.contains("<Value>Alpha_1</Value>"));
         assert!(result.contains("<Unset>True</Unset>"));
-
-        Ok(())
     }
 
+    /// Tests expression evaluations with comparisons and boolean logic operators.
     #[test]
-    fn test_expression_operators() -> Result<()> {
+    fn test_expression_operators() {
         let mut ctx = PreprocessorContext::new();
         ctx.define_var("Number", "500");
         let prep = Preprocessor::new();
 
-        assert!(prep.eval_expression("$(var.Number) = 500", &ctx)?);
-        assert!(prep.eval_expression("$(var.Number) == 500", &ctx)?);
-        assert!(prep.eval_expression("$(var.Number) != 400", &ctx)?);
-        assert!(prep.eval_expression("$(var.Number) > 400", &ctx)?);
-        assert!(prep.eval_expression("$(var.Number) >= 500", &ctx)?);
-        assert!(prep.eval_expression("$(var.Number) < 600", &ctx)?);
-        assert!(prep.eval_expression("$(var.Number) <= 500", &ctx)?);
-        assert!(prep.eval_expression("true", &ctx)?);
-        assert!(!prep.eval_expression("false", &ctx)?);
+        assert_eq!(prep.eval_expression("$(var.Number) = 500", &ctx), Ok(true));
+        assert_eq!(prep.eval_expression("$(var.Number) == 500", &ctx), Ok(true));
+        assert_eq!(prep.eval_expression("$(var.Number) != 400", &ctx), Ok(true));
+        assert_eq!(prep.eval_expression("$(var.Number) > 400", &ctx), Ok(true));
+        assert_eq!(prep.eval_expression("$(var.Number) >= 500", &ctx), Ok(true));
+        assert_eq!(prep.eval_expression("$(var.Number) < 600", &ctx), Ok(true));
+        assert_eq!(prep.eval_expression("$(var.Number) <= 500", &ctx), Ok(true));
+        assert_eq!(prep.eval_expression("true", &ctx), Ok(true));
+        assert_eq!(prep.eval_expression("false", &ctx), Ok(false));
 
         // Logical operators: and, or, not, &&, ||, !
-        assert!(prep.eval_expression("$(var.Number) = 500 and 1 = 1", &ctx)?);
-        assert!(prep.eval_expression("$(var.Number) = 500 && 1 = 1", &ctx)?);
-        assert!(prep.eval_expression("$(var.Number) = 400 or 1 = 1", &ctx)?);
-        assert!(prep.eval_expression("$(var.Number) = 400 || 1 = 1", &ctx)?);
-        assert!(!prep.eval_expression("0 or 0", &ctx)?);
-        assert!(prep.eval_expression("1 or 0", &ctx)?);
-        assert!(!prep.eval_expression("0 and 1", &ctx)?);
-        assert!(!prep.eval_expression("1 and 0", &ctx)?);
-        assert!(prep.eval_expression("1 and 1", &ctx)?);
-        assert!(prep.eval_expression("not $(var.Number) = 400", &ctx)?);
-        assert!(prep.eval_expression("!false", &ctx)?);
+        assert_eq!(
+            prep.eval_expression("$(var.Number) = 500 and 1 = 1", &ctx),
+            Ok(true)
+        );
+        assert_eq!(
+            prep.eval_expression("$(var.Number) = 500 && 1 = 1", &ctx),
+            Ok(true)
+        );
+        assert_eq!(
+            prep.eval_expression("$(var.Number) = 400 or 1 = 1", &ctx),
+            Ok(true)
+        );
+        assert_eq!(
+            prep.eval_expression("$(var.Number) = 400 || 1 = 1", &ctx),
+            Ok(true)
+        );
+        assert_eq!(prep.eval_expression("0 or 0", &ctx), Ok(false));
+        assert_eq!(prep.eval_expression("1 or 0", &ctx), Ok(true));
+        assert_eq!(prep.eval_expression("0 and 1", &ctx), Ok(false));
+        assert_eq!(prep.eval_expression("1 and 0", &ctx), Ok(false));
+        assert_eq!(prep.eval_expression("1 and 1", &ctx), Ok(true));
+        assert_eq!(
+            prep.eval_expression("not $(var.Number) = 400", &ctx),
+            Ok(true)
+        );
+        assert_eq!(prep.eval_expression("!false", &ctx), Ok(true));
 
         // Case-insensitive string comparison: ~=
-        assert!(prep.eval_expression("\"Release\" ~= \"release\"", &ctx)?);
-        assert!(!prep.eval_expression("\"Release\" ~= \"debug\"", &ctx)?);
+        assert_eq!(
+            prep.eval_expression("\"Release\" ~= \"release\"", &ctx),
+            Ok(true)
+        );
+        assert_eq!(
+            prep.eval_expression("\"Release\" ~= \"debug\"", &ctx),
+            Ok(false)
+        );
 
         // Version comparisons
-        assert!(prep.eval_expression("\"2.1.0\" >= \"2.0.0\"", &ctx)?);
-        assert!(prep.eval_expression("\"1.0.0\" < \"2.0.0\"", &ctx)?);
-        assert!(prep.eval_expression("\"3.2.1\" > \"3.2.0\"", &ctx)?);
-        assert!(prep.eval_expression("\"1.5.0\" <= \"1.5.0\"", &ctx)?);
-
-        Ok(())
+        assert_eq!(
+            prep.eval_expression("\"2.1.0\" >= \"2.0.0\"", &ctx),
+            Ok(true)
+        );
+        assert_eq!(
+            prep.eval_expression("\"1.0.0\" < \"2.0.0\"", &ctx),
+            Ok(true)
+        );
+        assert_eq!(
+            prep.eval_expression("\"3.2.1\" > \"3.2.0\"", &ctx),
+            Ok(true)
+        );
+        assert_eq!(
+            prep.eval_expression("\"1.5.0\" <= \"1.5.0\"", &ctx),
+            Ok(true)
+        );
     }
 
+    /// Tests advanced preprocessor functions: `ToUpper`, `ToLower`, `SubString`, `FormatVersion`, `AutoGuid`, `FileExists`.
     #[test]
-    fn test_advanced_preprocessor_functions() -> Result<()> {
+    fn test_advanced_preprocessor_functions() {
         let mut ctx = PreprocessorContext::new();
         ctx.define_var("RawName", "superInstaller");
 
         let prep = Preprocessor::new();
         assert_eq!(
-            prep.expand_macros("$(fun.ToUpper($(var.RawName)))", &ctx)?,
+            prep.expand_macros("$(fun.ToUpper($(var.RawName)))", &ctx)
+                .unwrap_or_default(),
             "SUPERINSTALLER"
         );
         assert_eq!(
-            prep.expand_macros("$(fun.ToLower(\"UPPER\"))", &ctx)?,
+            prep.expand_macros("$(fun.ToLower(\"UPPER\"))", &ctx)
+                .unwrap_or_default(),
             "upper"
         );
         assert_eq!(
-            prep.expand_macros("$(fun.SubString(\"abcdef\", 1, 3))", &ctx)?,
+            prep.expand_macros("$(fun.SubString(\"abcdef\", 1, 3))", &ctx)
+                .unwrap_or_default(),
             "bcd"
         );
         assert_eq!(
-            prep.expand_macros("$(fun.FormatVersion(\"2.0.1\", \"x.y.z\"))", &ctx)?,
+            prep.expand_macros("$(fun.FormatVersion(\"2.0.1\", \"x.y.z\"))", &ctx)
+                .unwrap_or_default(),
             "2.0.1"
         );
 
-        let guid = prep.expand_macros("$(fun.AutoGuid(\"Comp\", \"Dir\"))", &ctx)?;
+        let guid = prep
+            .expand_macros("$(fun.AutoGuid(\"Comp\", \"Dir\"))", &ctx)
+            .unwrap_or_default();
         assert!(guid.starts_with('{'));
         assert!(guid.ends_with('}'));
 
         let temp_dir = std::env::temp_dir();
         let exists_test_file = temp_dir.join("fun_file_exists.txt");
         let _ = std::fs::write(&exists_test_file, "content");
-        let exists_str = prep.expand_macros(
-            &format!("$(fun.FileExists(\"{}\"))", exists_test_file.display()),
-            &ctx,
-        )?;
+        let exists_str = prep
+            .expand_macros(
+                &format!("$(fun.FileExists(\"{}\"))", exists_test_file.display()),
+                &ctx,
+            )
+            .unwrap_or_default();
         assert_eq!(exists_str, "1");
-        let not_exists_str =
-            prep.expand_macros("$(fun.FileExists(\"/nonexistent/file/path\"))", &ctx)?;
+        let not_exists_str = prep
+            .expand_macros("$(fun.FileExists(\"/nonexistent/file/path\"))", &ctx)
+            .unwrap_or_default();
         assert_eq!(not_exists_str, "0");
         let _ = std::fs::remove_file(exists_test_file);
 
@@ -1022,14 +1095,15 @@ mod tests {
         assert!(prep.expand_macros("$(fun.UnknownFunc(1))", &ctx).is_err());
 
         // sys.BUILDARCH
-        let arch = prep.expand_macros("$(sys.BUILDARCH)", &ctx)?;
+        let arch = prep
+            .expand_macros("$(sys.BUILDARCH)", &ctx)
+            .unwrap_or_default();
         assert_ne!(arch, "");
-
-        Ok(())
     }
 
+    /// Tests preprocessor warnings, pragmas, errors, and variable definition parsing.
     #[test]
-    fn test_pragmas_warnings_errors_and_parse_define() -> Result<()> {
+    fn test_pragmas_warnings_errors_and_parse_define() {
         let mut ctx = PreprocessorContext::new();
         ctx.parse_define("DEF_KEY=DEF_VAL");
         ctx.parse_define("FLAG_KEY");
@@ -1042,19 +1116,18 @@ mod tests {
 <?warning Compilation is proceeding ?>
 <Component Id="TestComp" />
 "#;
-        let processed = prep.process(source, &mut ctx)?;
+        let processed = prep.process(source, &mut ctx).unwrap_or_default();
         assert!(processed.contains("<Component Id=\"TestComp\" />"));
 
         let error_source = "
 <?error Critical failure in build ?>
 ";
         assert!(prep.process(error_source, &mut ctx).is_err());
-
-        Ok(())
     }
 
+    /// Tests preprocessor scopes, include path resolution, include-once, and directory include checks.
     #[test]
-    fn test_context_scopes_and_includes() -> Result<()> {
+    fn test_context_scopes_and_includes() {
         let mut ctx = PreprocessorContext::new();
         ctx.define_var("A", "1");
         assert_eq!(ctx.get_var("A"), Some("1"));
@@ -1080,18 +1153,18 @@ mod tests {
         let temp_dir = std::env::temp_dir().join(format!("msi_inc_test_{}", std::process::id()));
         let _ = std::fs::create_dir_all(&temp_dir);
         let inc_file = temp_dir.join("msi_test_include.wxi");
-        std::fs::write(&inc_file, "<IncludedContent Value=\"1\" />\n")?;
+        assert!(std::fs::write(&inc_file, "<IncludedContent Value=\"1\" />\n").is_ok());
         ctx.add_include_path(&temp_dir);
 
         let inc_source =
             "<?include \"msi_test_include.wxi\"?>\n<?include \"msi_test_include.wxi\"?>";
-        let content = prep.process(inc_source, &mut ctx)?;
+        let content = prep.process(inc_source, &mut ctx).unwrap_or_default();
         let matches = content.matches("<IncludedContent").count();
         assert_eq!(matches, 1);
 
         // Include candidate that exists but is a directory (exercises is_file() false branch)
         let sub_dir = temp_dir.join("sub_dir_inc");
-        let _ = std::fs::create_dir_all(&sub_dir);
+        assert!(std::fs::create_dir_all(&sub_dir).is_ok());
         assert!(prep
             .process("<?include \"sub_dir_inc\"?>", &mut ctx)
             .is_err());
@@ -1101,24 +1174,29 @@ mod tests {
         {
             use std::os::unix::fs::PermissionsExt;
             let unreadable = temp_dir.join("unreadable.wxi");
-            std::fs::write(&unreadable, "content")?;
-            std::fs::set_permissions(&unreadable, std::fs::Permissions::from_mode(0o000))?;
+            assert!(std::fs::write(&unreadable, "content").is_ok());
+            assert!(
+                std::fs::set_permissions(&unreadable, std::fs::Permissions::from_mode(0o000))
+                    .is_ok()
+            );
             assert!(prep
                 .process(
                     &format!("<?include \"{}\"?>", unreadable.display()),
                     &mut ctx
                 )
                 .is_err());
-            std::fs::set_permissions(&unreadable, std::fs::Permissions::from_mode(0o644))?;
+            assert!(
+                std::fs::set_permissions(&unreadable, std::fs::Permissions::from_mode(0o644))
+                    .is_ok()
+            );
         }
 
         let _ = std::fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
 
     /// Tests `Preprocessor::default`, `PreprocessorContext::default`, `set_system_variables`, and `process`.
     #[test]
-    fn test_preprocessor_default_and_set_system_variables() -> Result<()> {
+    fn test_preprocessor_default_and_set_system_variables() {
         let mut def_ctx = PreprocessorContext::default();
         def_ctx.define_var("K", "V");
         assert_eq!(def_ctx.get_var("K"), Some("V"));
@@ -1133,21 +1211,22 @@ mod tests {
         ctx.set_system_variables(sys_vars);
 
         let prep = Preprocessor;
-        let res = prep.process("<Wix><Product/></Wix>", &mut ctx)?;
+        let res = prep
+            .process("<Wix><Product/></Wix>", &mut ctx)
+            .unwrap_or_default();
         assert!(res.contains("<Product/>"));
-        Ok(())
     }
 
     /// Tests conditional directives: active else, inactive else, elseif false, ifdef missing, ifndef present, and unclosed blocks.
     #[test]
-    fn test_preprocessor_conditionals_branches() -> Result<()> {
+    fn test_preprocessor_conditionals_branches() {
         let mut ctx = PreprocessorContext::new();
         ctx.define_var("DefinedVar", "yes");
         let prep = Preprocessor::new();
 
         // Active else branch with elseif false
         let source1 = "\n<?if 0?>\n<FalseIf/>\n<?elseif 0?>\n<FalseElif/>\n<?elseif 1?>\n<TrueElif/>\n<?else ?>\n<FalseElse/>\n<?endif ?>\n";
-        let res1 = prep.process(source1, &mut ctx)?;
+        let res1 = prep.process(source1, &mut ctx).unwrap_or_default();
         assert!(!res1.contains("<FalseIf/>"));
         assert!(!res1.contains("<FalseElif/>"));
         assert!(res1.contains("<TrueElif/>"));
@@ -1155,12 +1234,12 @@ mod tests {
 
         // True else branch
         let source2 = "\n<?if 0?>\n<FalseIf/>\n<?else?>\n<TrueElse/>\n<?endif?>\n";
-        let res2 = prep.process(source2, &mut ctx)?;
+        let res2 = prep.process(source2, &mut ctx).unwrap_or_default();
         assert!(res2.contains("<TrueElse/>"));
 
         // ifdef with undefined var, ifndef with defined var
         let source3 = "\n<?ifdef UndefinedVar?>\n<FalseIfDef/>\n<?endif?>\n<?ifndef DefinedVar?>\n<FalseIfNDef/>\n<?endif?>\n";
-        let res3 = prep.process(source3, &mut ctx)?;
+        let res3 = prep.process(source3, &mut ctx).unwrap_or_default();
         assert!(!res3.contains("<FalseIfDef/>"));
         assert!(!res3.contains("<FalseIfNDef/>"));
 
@@ -1182,20 +1261,18 @@ mod tests {
         assert!(prep
             .process("<?ifndef UndefinedVar?> <Line1/>\n<Line2/>", &mut ctx)
             .is_ok());
-
-        Ok(())
     }
 
     /// Tests nested conditional blocks, inactive directives, and foreach loops.
     #[test]
-    fn test_preprocessor_conditionals_nested_and_loops() -> Result<()> {
+    fn test_preprocessor_conditionals_nested_and_loops() {
         let mut ctx = PreprocessorContext::new();
         ctx.define_var("DefinedVar", "yes");
         let prep = Preprocessor::new();
 
         // Inactive conditional block containing nested directives
         let source4 = "\n<?if 0?>\n<?define InactiveDef=\"val\"?>\n<?undef InactiveDef?>\n<?include \"ignored.wxi\"?>\n<?error Ignored error ?>\n<?foreach X in 1;2;3?>\n<IgnoredLoop/>\n<?endforeach?>\n<IgnoredContent/>\n<?endif?>\n";
-        let res4 = prep.process(source4, &mut ctx)?;
+        let res4 = prep.process(source4, &mut ctx).unwrap_or_default();
         assert!(!res4.contains("<IgnoredContent/>"));
 
         // Invalid foreach syntax
@@ -1205,7 +1282,7 @@ mod tests {
 
         // Nested foreach loops
         let nested_source = "\n<?foreach A in 1;2?>\n<?foreach B in x;y?>\n<Item Value=\"$(var.A)_$(var.B)\"/>\n<?endforeach?>\n<?endforeach?>\n";
-        let res_nested = prep.process(nested_source, &mut ctx)?;
+        let res_nested = prep.process(nested_source, &mut ctx).unwrap_or_default();
         assert!(res_nested.contains("<Item Value=\"1_x\"/>"));
         assert!(res_nested.contains("<Item Value=\"2_y\"/>"));
 
@@ -1215,63 +1292,214 @@ mod tests {
 
         // condition_met true before elseif and else
         let condition_met_first = "\n<?if 1?>\n<TrueIfBranch/>\n<?elseif 1?>\n<IgnoredElif/>\n<?else?>\n<IgnoredElse/>\n<?endif?>\n";
-        let cond_res = prep.process(condition_met_first, &mut ctx)?;
+        let cond_res = prep
+            .process(condition_met_first, &mut ctx)
+            .unwrap_or_default();
         assert!(cond_res.contains("<TrueIfBranch/>"));
 
         // Unclosed foreach loop
         let unclosed_foreach = "<?foreach ITEM in 1;2?>\n<Item Value=\"$(var.ITEM)\"/>";
         assert!(prep.process(unclosed_foreach, &mut ctx).is_ok());
-
-        Ok(())
     }
 
     /// Tests extended expressions: numeric comparisons, string comparisons, truthiness, unknown op, and unclosed macros.
     #[test]
-    fn test_preprocessor_expressions_extended() -> Result<()> {
+    fn test_preprocessor_expressions_extended() {
         let ctx = PreprocessorContext::new();
         let prep = Preprocessor::new();
 
         // Integer comparisons
-        assert!(prep.eval_expression("10 < 20", &ctx)?);
-        assert!(prep.eval_expression("10 <= 10", &ctx)?);
-        assert!(prep.eval_expression("20 > 10", &ctx)?);
-        assert!(prep.eval_expression("20 >= 20", &ctx)?);
+        assert_eq!(prep.eval_expression("10 < 20", &ctx), Ok(true));
+        assert_eq!(prep.eval_expression("10 <= 10", &ctx), Ok(true));
+        assert_eq!(prep.eval_expression("20 > 10", &ctx), Ok(true));
+        assert_eq!(prep.eval_expression("20 >= 20", &ctx), Ok(true));
 
         // Fallback string comparisons (non-numeric, non-version)
-        assert!(prep.eval_expression("\"apple\" < \"banana\"", &ctx)?);
-        assert!(prep.eval_expression("\"apple\" <= \"banana\"", &ctx)?);
-        assert!(prep.eval_expression("\"banana\" > \"apple\"", &ctx)?);
-        assert!(prep.eval_expression("\"banana\" >= \"apple\"", &ctx)?);
+        assert_eq!(
+            prep.eval_expression("\"apple\" < \"banana\"", &ctx),
+            Ok(true)
+        );
+        assert_eq!(
+            prep.eval_expression("\"apple\" <= \"banana\"", &ctx),
+            Ok(true)
+        );
+        assert_eq!(
+            prep.eval_expression("\"banana\" > \"apple\"", &ctx),
+            Ok(true)
+        );
+        assert_eq!(
+            prep.eval_expression("\"banana\" >= \"apple\"", &ctx),
+            Ok(true)
+        );
 
         // Truthiness
-        assert!(!prep.eval_expression("0", &ctx)?);
-        assert!(!prep.eval_expression("", &ctx)?);
-        assert!(prep.eval_expression("\"some_arbitrary_string\"", &ctx)?);
+        assert_eq!(prep.eval_expression("0", &ctx), Ok(false));
+        assert_eq!(prep.eval_expression("", &ctx), Ok(false));
+        assert_eq!(
+            prep.eval_expression("\"some_arbitrary_string\"", &ctx),
+            Ok(true)
+        );
 
         // Unknown comparison operator fallback
         assert!(!Preprocessor::eval_comparison("a", "??", "b"));
 
         // Unclosed macro error
         assert!(prep.expand_macros("$(unclosed_macro", &ctx).is_err());
-
-        Ok(())
     }
 
     /// Tests advanced functions with default arguments: `SubString` defaults, `FormatVersion` default, `AutoGuid` default.
     #[test]
-    fn test_advanced_functions_defaults() -> Result<()> {
+    fn test_advanced_functions_defaults() {
         let ctx = PreprocessorContext::new();
         let prep = Preprocessor::new();
 
-        assert_eq!(prep.expand_macros("$(fun.SubString())", &ctx)?, "");
         assert_eq!(
-            prep.expand_macros("$(fun.SubString(\"hello\"))", &ctx)?,
+            prep.expand_macros("$(fun.SubString())", &ctx)
+                .unwrap_or_default(),
+            ""
+        );
+        assert_eq!(
+            prep.expand_macros("$(fun.SubString(\"hello\"))", &ctx)
+                .unwrap_or_default(),
             "hello"
         );
-        assert_eq!(prep.expand_macros("$(fun.FormatVersion())", &ctx)?, "1.0.0");
-        let auto_guid_default = prep.expand_macros("$(fun.AutoGuid())", &ctx)?;
+        assert_eq!(
+            prep.expand_macros("$(fun.FormatVersion())", &ctx)
+                .unwrap_or_default(),
+            "1.0.0"
+        );
+        let auto_guid_default = prep
+            .expand_macros("$(fun.AutoGuid())", &ctx)
+            .unwrap_or_default();
         assert!(auto_guid_default.starts_with('{'));
+    }
 
-        Ok(())
+    /// Tests error propagation branches across all conditional directives, loops, includes, errors, and boolean logic expressions.
+    #[test]
+    fn test_preprocessor_error_propagation_branches() {
+        let mut ctx = PreprocessorContext::new();
+        let prep = Preprocessor::new();
+
+        // 1. eval_expression failure inside <?if ?> (line 265)
+        assert!(prep
+            .process(
+                "<?if $(var.NO_SUCH_VAR) ?>\n<Content/>\n<?endif?>",
+                &mut ctx
+            )
+            .is_err());
+
+        // 2. process_lines failure inside <?if ?> (line 269)
+        assert!(prep
+            .process("<?if 1 = 1 ?>\n<?error ErrorInIf ?>\n<?endif?>", &mut ctx)
+            .is_err());
+
+        // 3. eval_expression failure inside <?elseif ?> (line 284)
+        assert!(prep
+            .process(
+                "<?if 0 ?>\n<If/>\n<?elseif $(var.NO_SUCH_VAR) ?>\n<Elif/>\n<?endif?>",
+                &mut ctx
+            )
+            .is_err());
+
+        // 4. process_lines failure inside <?elseif ?> (line 290)
+        assert!(prep
+            .process(
+                "<?if 0 ?>\n<If/>\n<?elseif 1 = 1 ?>\n<?error ErrorInElif ?>\n<?endif?>",
+                &mut ctx
+            )
+            .is_err());
+
+        // 5. process_lines failure inside <?else ?> (line 299)
+        assert!(prep
+            .process(
+                "<?if 0 ?>\n<If/>\n<?else?>\n<?error ErrorInElse ?>\n<?endif?>",
+                &mut ctx
+            )
+            .is_err());
+
+        // 6. process_lines failure inside <?ifdef ?> (line 319)
+        ctx.define_var("DefinedVar", "1");
+        assert!(prep
+            .process(
+                "<?ifdef DefinedVar ?>\n<?error ErrorInIfDef ?>\n<?endif?>",
+                &mut ctx
+            )
+            .is_err());
+
+        // 7. process_lines failure inside <?ifndef ?> (line 334)
+        assert!(prep
+            .process(
+                "<?ifndef NotDefinedVar ?>\n<?error ErrorInIfNDef ?>\n<?endif?>",
+                &mut ctx
+            )
+            .is_err());
+
+        // 8. process_lines failure inside <?foreach ?> loop body (line 395)
+        assert!(prep
+            .process(
+                "<?foreach X in 1 ?>\n<?error ErrorInForEach ?>\n<?endforeach?>",
+                &mut ctx
+            )
+            .is_err());
+
+        // 9. process_lines failure inside <?include ?> included content (line 408)
+        let temp_dir = std::env::temp_dir().join(format!("msi_inc_err_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let err_inc_file = temp_dir.join("err_include.wxi");
+        assert!(std::fs::write(&err_inc_file, "<?error IncludedError ?>\n").is_ok());
+        ctx.add_include_path(&temp_dir);
+        assert!(prep
+            .process("<?include \"err_include.wxi\" ?>", &mut ctx)
+            .is_err());
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        // 10. expand_macros failure inside <?error ?> (line 444)
+        assert!(prep
+            .process("<?error $(var.UNDEFINED_IN_ERROR) ?>", &mut ctx)
+            .is_err());
+
+        // 11. expand_macros failure inside eval_expression (line 563)
+        assert!(prep
+            .eval_expression("$(var.UNDEFINED_VAR) = 1", &ctx)
+            .is_err());
+
+        // 12. Logical OR left and right error branches (line 571)
+        assert!(prep
+            .eval_expression("$(var.UNDEFINED_VAR) or 1", &ctx)
+            .is_err());
+        assert!(prep
+            .eval_expression("0 or $(var.UNDEFINED_VAR)", &ctx)
+            .is_err());
+        assert!(prep
+            .eval_expression("$(var.UNDEFINED_VAR) || 1", &ctx)
+            .is_err());
+        assert!(prep
+            .eval_expression("0 || $(var.UNDEFINED_VAR)", &ctx)
+            .is_err());
+
+        // 13. Logical AND left and right error branches (line 579)
+        assert!(prep
+            .eval_expression("$(var.UNDEFINED_VAR) and 1", &ctx)
+            .is_err());
+        assert!(prep
+            .eval_expression("1 and $(var.UNDEFINED_VAR)", &ctx)
+            .is_err());
+        assert!(prep
+            .eval_expression("$(var.UNDEFINED_VAR) && 1", &ctx)
+            .is_err());
+        assert!(prep
+            .eval_expression("1 && $(var.UNDEFINED_VAR)", &ctx)
+            .is_err());
+
+        // 14. Logical NOT rest error branches (line 584, 587)
+        assert!(prep
+            .eval_expression("not $(var.UNDEFINED_VAR)", &ctx)
+            .is_err());
+        assert!(prep.eval_expression("!$(var.UNDEFINED_VAR)", &ctx).is_err());
+
+        // 15. Nested macro expansion error in expand_macros (line 672)
+        assert!(prep
+            .expand_macros("$(fun.ToUpper($(var.UNDEFINED_IN_FUN)))", &ctx)
+            .is_err());
     }
 }

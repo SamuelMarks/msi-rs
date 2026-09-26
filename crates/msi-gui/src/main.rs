@@ -23,8 +23,8 @@
 use clap::{Parser, ValueEnum};
 use msi::execution::EvaluationContext;
 use msi::ui::{
-    DialogDefinition, GuiDesktopRuntime, GuiHardwareBackend, GuiInputEvent, SoftwareBuffer,
-    WizardStyle, WizardTheme,
+    DialogDefinition, GuiDesktopRuntime, GuiHardwareBackend, GuiInputEvent, WizardStyle,
+    WizardTheme,
 };
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -210,6 +210,7 @@ pub fn create_package_runtime(
     let mut runtime =
         create_standalone_runtime(theme_style, backend, width_override, height_override);
     *runtime.engine_mut().context_mut() = context;
+    let _ = runtime.engine_mut().load_from_database(package.database());
     runtime
 }
 
@@ -222,6 +223,7 @@ pub fn create_package_runtime(
 /// # Returns
 ///
 /// Process exit code (`ExitCode::SUCCESS` on clean exit).
+#[must_use = "process exit code must be handled"]
 pub fn run_gui(cli: &GuiCli) -> ExitCode {
     let resolved_backend =
         GuiDesktopRuntime::select_backend_with_fallback(cli.backend.into(), true, true);
@@ -244,10 +246,6 @@ pub fn run_gui(cli: &GuiCli) -> ExitCode {
             },
         );
 
-    // Window lifecycle initialization
-    let _ = runtime.process_lifecycle_event(msi::ui::WindowLifecycleEvent::Opened);
-    let _ = runtime.process_lifecycle_event(msi::ui::WindowLifecycleEvent::Focused);
-
     // Non-resizable modal dialog constraint checking
     let (req_w, req_h) = (
         cli.width.unwrap_or_else(|| runtime.window_config().width),
@@ -255,26 +253,18 @@ pub fn run_gui(cli: &GuiCli) -> ExitCode {
     );
     let (_constrained_w, _constrained_h) = runtime.enforce_window_constraints(req_w, req_h);
 
-    // Render initial frame
-    let (_dialog_bounds, _widgets, draw_commands) = runtime.render_frame();
+    // Interactive immediate-mode desktop event loop
+    let events = [
+        GuiInputEvent::TabNext,
+        GuiInputEvent::TabPrev,
+        GuiInputEvent::SubmitDefault,
+        GuiInputEvent::CancelEscape,
+    ];
 
-    // In software framebuffer mode, render commands to SoftwareBuffer
-    let mut buffer = SoftwareBuffer::new(
-        runtime.window_config().width,
-        runtime.window_config().height,
-    );
-    buffer.render_commands(&draw_commands);
-
-    // Verify keyboard navigation event processing
-    let _ = runtime.process_event(GuiInputEvent::TabNext);
-    let _ = runtime.process_event(GuiInputEvent::TabPrev);
-    let _ = runtime.process_event(GuiInputEvent::SubmitDefault);
-    let _ = runtime.process_event(GuiInputEvent::CancelEscape);
-
-    // Window lifecycle shutdown
-    let _ = runtime.process_lifecycle_event(msi::ui::WindowLifecycleEvent::CloseRequested);
-
-    ExitCode::SUCCESS
+    match runtime.run_event_loop(events) {
+        Ok(_) => ExitCode::SUCCESS,
+        Err(_) => ExitCode::FAILURE,
+    }
 }
 
 /// Internal non-generic CLI argument parser and runner to ensure complete branch coverage.
@@ -291,6 +281,7 @@ fn run_with_os_args(args: &[std::ffi::OsString]) -> ExitCode {
 /// # Returns
 ///
 /// Process exit code.
+#[must_use = "process exit code must be handled"]
 pub fn run_with_args<I, T>(args: I) -> ExitCode
 where
     I: IntoIterator<Item = T>,
@@ -305,6 +296,7 @@ where
 /// # Returns
 ///
 /// Process [`ExitCode`] denoting execution status.
+#[must_use = "process exit code must be handled"]
 pub fn main() -> ExitCode {
     run_with_args(std::env::args_os())
 }
@@ -500,5 +492,127 @@ mod tests {
 
         let _ = std::fs::remove_file(&pkg_path);
         let _ = std::fs::remove_dir(&temp_dir);
+    }
+
+    /// Tests GUI execution returning failure exit code when an event loop encounters an error.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_gui_run_event_loop_failure() {
+        let temp_dir = std::env::temp_dir().join("msi_gui_failure_test");
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let pkg_path = temp_dir.join("failure_test.msi");
+
+        let mut db = msi::wix::linker::LinkedDatabase::default();
+        let _ = db
+            .catalog
+            .add_table(msi::database::tables::ui::dialog_schema());
+        let _ = db
+            .catalog
+            .add_table(msi::database::tables::ui::control_schema());
+        let _ = db
+            .catalog
+            .add_table(msi::database::tables::ui::control_event_schema());
+
+        // 1. Dialog table: WelcomeDlg with NextButton as default control
+        let mut dlg_rec = msi::database::tables::record::Record::new();
+        dlg_rec.push(msi::database::tables::record::FieldValue::String(
+            "WelcomeDlg".to_string(),
+        ));
+        dlg_rec.push(msi::database::tables::record::FieldValue::Short(50));
+        dlg_rec.push(msi::database::tables::record::FieldValue::Short(50));
+        dlg_rec.push(msi::database::tables::record::FieldValue::Short(370));
+        dlg_rec.push(msi::database::tables::record::FieldValue::Short(270));
+        dlg_rec.push(msi::database::tables::record::FieldValue::Long(3));
+        dlg_rec.push(msi::database::tables::record::FieldValue::String(
+            "Welcome".to_string(),
+        ));
+        dlg_rec.push(msi::database::tables::record::FieldValue::String(
+            "NextButton".to_string(),
+        ));
+        dlg_rec.push(msi::database::tables::record::FieldValue::String(
+            "NextButton".to_string(),
+        ));
+        dlg_rec.push(msi::database::tables::record::FieldValue::String(
+            "CancelButton".to_string(),
+        ));
+        db.add_record("Dialog", dlg_rec);
+
+        // 2. Control table: NextButton
+        let mut ctrl_rec = msi::database::tables::record::Record::new();
+        ctrl_rec.push(msi::database::tables::record::FieldValue::String(
+            "WelcomeDlg".to_string(),
+        ));
+        ctrl_rec.push(msi::database::tables::record::FieldValue::String(
+            "NextButton".to_string(),
+        ));
+        ctrl_rec.push(msi::database::tables::record::FieldValue::String(
+            "PushButton".to_string(),
+        ));
+        ctrl_rec.push(msi::database::tables::record::FieldValue::Short(236));
+        ctrl_rec.push(msi::database::tables::record::FieldValue::Short(243));
+        ctrl_rec.push(msi::database::tables::record::FieldValue::Short(56));
+        ctrl_rec.push(msi::database::tables::record::FieldValue::Short(17));
+        ctrl_rec.push(msi::database::tables::record::FieldValue::Long(3));
+        ctrl_rec.push(msi::database::tables::record::FieldValue::String(
+            String::new(),
+        ));
+        ctrl_rec.push(msi::database::tables::record::FieldValue::String(
+            "Next".to_string(),
+        ));
+        ctrl_rec.push(msi::database::tables::record::FieldValue::String(
+            String::new(),
+        ));
+        ctrl_rec.push(msi::database::tables::record::FieldValue::String(
+            String::new(),
+        ));
+        db.add_record("Control", ctrl_rec);
+
+        // 3. ControlEvent table: NextButton triggers NewDialog to non-existent dialog
+        let mut event_rec = msi::database::tables::record::Record::new();
+        event_rec.push(msi::database::tables::record::FieldValue::String(
+            "WelcomeDlg".to_string(),
+        ));
+        event_rec.push(msi::database::tables::record::FieldValue::String(
+            "NextButton".to_string(),
+        ));
+        event_rec.push(msi::database::tables::record::FieldValue::String(
+            "NewDialog".to_string(),
+        ));
+        event_rec.push(msi::database::tables::record::FieldValue::String(
+            "NonExistentDlg".to_string(),
+        ));
+        event_rec.push(msi::database::tables::record::FieldValue::String(
+            "1".to_string(),
+        ));
+        event_rec.push(msi::database::tables::record::FieldValue::Short(1));
+        db.add_record("ControlEvent", event_rec);
+
+        let meta = msi::package::PackageMetadata::new(
+            "Fail App",
+            "Visual Systems",
+            msi::package::ProductVersion::new(1, 0, 0),
+            "{44444444-5555-6666-7777-888888888888}",
+        );
+        let pkg = msi::package::Package::new(
+            meta,
+            db,
+            msi::database::summary_info::SummaryInfo::default(),
+            std::collections::HashMap::new(),
+        );
+        let _ = pkg.save(&pkg_path);
+
+        let cli = GuiCli {
+            package: Some(pkg_path.clone()),
+            theme: CliTheme::Mondo,
+            backend: CliBackend::Softbuffer,
+            width: Some(600),
+            height: Some(400),
+        };
+
+        let exit_code = run_gui(&cli);
+        assert_eq!(exit_code, ExitCode::FAILURE);
+
+        let _ = std::fs::remove_file(pkg_path);
+        let _ = std::fs::remove_dir(temp_dir);
     }
 }

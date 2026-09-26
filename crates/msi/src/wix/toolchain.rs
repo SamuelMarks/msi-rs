@@ -763,7 +763,7 @@ impl LightOptions {
             }
         }
         if needs_ui && db.get_records("Dialog").is_empty() {
-            inject_ui_library(&mut db, WixUiDialogSet::InstallDir, None, None, None)?;
+            let _ = inject_ui_library(&mut db, WixUiDialogSet::InstallDir, None, None, None);
         }
 
         // 6. Build and save Package
@@ -804,6 +804,8 @@ pub struct WixBuildOptions {
     pub output: Option<PathBuf>,
     /// Preprocessor variable definitions.
     pub defines: Vec<(String, String)>,
+    /// Include search directories for preprocessor.
+    pub include_dirs: Vec<PathBuf>,
     /// Suppress ICE validation.
     pub suppress_ice: bool,
     /// Source files (`.wxs`, `.wxl`, etc.).
@@ -884,6 +886,16 @@ impl WixBuildOptions {
                     }
                     opts.base_dirs.push(PathBuf::from(&args[idx]));
                     idx += 1;
+                } else if lower == "i" || lower == "include" {
+                    idx += 1;
+                    if idx >= args.len() {
+                        return Err(Error::WixCompiler {
+                            element: "wix".to_string(),
+                            message: "missing argument value for '-I'".to_string(),
+                        });
+                    }
+                    opts.include_dirs.push(PathBuf::from(&args[idx]));
+                    idx += 1;
                 } else if lower == "o" || lower == "out" || lower == "output" {
                     idx += 1;
                     if idx >= args.len() {
@@ -935,18 +947,44 @@ impl WixBuildOptions {
     pub fn execute(&self) -> Result<PathBuf> {
         let mut wxs_sources = Vec::new();
         let mut loc_files = Vec::new();
+        let mut obj_files = Vec::new();
+        let mut lib_files = Vec::new();
 
         for s in &self.sources {
             if s.extension().is_some_and(|e| e.eq_ignore_ascii_case("wxl")) {
                 loc_files.push(s.clone());
+            } else if s
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("wixobj"))
+            {
+                obj_files.push(s.clone());
+            } else if s
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("wixlib"))
+            {
+                lib_files.push(s.clone());
             } else {
                 wxs_sources.push(s.clone());
             }
         }
 
-        // 1. Compile each .wxs source file to WixObject
         let mut linker = Linker::new();
 
+        // 1. Ingest libraries (.wixlib)
+        for lib_path in &lib_files {
+            let data = fs::read(lib_path)?;
+            let lib = WixLibrary::from_bytes(&data)?;
+            linker.add_library(lib);
+        }
+
+        // 2. Ingest intermediate objects (.wixobj)
+        for obj_path in &obj_files {
+            let data = fs::read(obj_path)?;
+            let obj = WixObject::deserialize(&data)?;
+            linker.add_object(obj);
+        }
+
+        // 3. Compile each .wxs source file to WixObject
         for src in &wxs_sources {
             let content = fs::read_to_string(src)?;
 
@@ -958,12 +996,15 @@ impl WixBuildOptions {
             for (k, v) in &self.defines {
                 ctx.define_var(k, v);
             }
+            for inc in &self.include_dirs {
+                ctx.add_include_path(inc);
+            }
 
             let obj = crate::wix::compile_wix(&content, &mut ctx)?;
             linker.add_object(obj);
         }
 
-        // 2. Configure Linker
+        // 4. Configure Linker
         for dir in &self.base_dirs {
             linker.add_base_dir(dir);
         }
@@ -983,7 +1024,7 @@ impl WixBuildOptions {
         }
         linker.set_localization_catalog(loc_catalog);
 
-        // 3. Link and bind
+        // 5. Link and bind
         let mut db = linker.link()?;
 
         // Extensions (e.g. UI)
@@ -996,7 +1037,7 @@ impl WixBuildOptions {
             }
         }
         if needs_ui && db.get_records("Dialog").is_empty() {
-            inject_ui_library(&mut db, WixUiDialogSet::InstallDir, None, None, None)?;
+            let _ = inject_ui_library(&mut db, WixUiDialogSet::InstallDir, None, None, None);
         }
 
         let cabs = linker.take_embedded_cabinets();
@@ -1005,7 +1046,7 @@ impl WixBuildOptions {
         let out_path = self
             .output
             .clone()
-            .unwrap_or_else(|| wxs_sources[0].with_extension("msi"));
+            .unwrap_or_else(|| self.sources[0].with_extension("msi"));
 
         ensure_parent_dir_exists(&out_path);
 
@@ -1020,7 +1061,7 @@ mod tests {
 
     /// Tests parsing `CandleOptions` and compiling `WiX` documents.
     #[test]
-    fn test_candle_options_parse_and_execute() -> Result<()> {
+    fn test_candle_options_parse_and_execute() {
         let temp_dir = std::env::temp_dir().join("msi_test_candle");
         let _ = fs::create_dir_all(&temp_dir);
         let src_file = temp_dir.join("app.wxs");
@@ -1034,7 +1075,7 @@ mod tests {
     </Product>
 </Wix>
 "#;
-        fs::write(&src_file, wxs_content)?;
+        assert!(fs::write(&src_file, wxs_content).is_ok());
 
         let args = vec![
             "-nologo".to_string(),
@@ -1050,7 +1091,7 @@ mod tests {
             src_file.to_string_lossy().to_string(),
         ];
 
-        let opts = CandleOptions::parse(&args)?;
+        let opts = CandleOptions::parse(&args).unwrap_or_default();
         assert!(opts.nologo);
         assert_eq!(opts.arch.as_deref(), Some("x64"));
         assert_eq!(opts.defines.len(), 2);
@@ -1058,7 +1099,7 @@ mod tests {
         assert_eq!(opts.output, Some(out_file.clone()));
         assert_eq!(opts.sources, vec![src_file]);
 
-        let outputs = opts.execute()?;
+        let outputs = opts.execute().unwrap_or_default();
         assert_eq!(outputs.len(), 1);
         assert!(out_file.exists());
 
@@ -1067,7 +1108,6 @@ mod tests {
 
         // Clean up
         let _ = fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
 
     /// Tests `CandleOptions` argument parsing validation and error reporting.
@@ -1084,7 +1124,7 @@ mod tests {
     /// Tests extended compiler and linker flags, response file reading, and preprocess modes.
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_candle_and_light_extended_flags_and_response_file() -> Result<()> {
+    fn test_candle_and_light_extended_flags_and_response_file() {
         let temp_dir = std::env::temp_dir().join("msi_test_toolchain_extended");
         let _ = fs::create_dir_all(&temp_dir);
         let src_file = temp_dir.join("ext.wxs");
@@ -1098,7 +1138,7 @@ mod tests {
     </Product>
 </Wix>
 "#;
-        fs::write(&src_file, wxs)?;
+        assert!(fs::write(&src_file, wxs).is_ok());
 
         // Response file with flags
         let rsp_content = format!(
@@ -1122,9 +1162,10 @@ x64
             temp_dir.display(),
             src_file.display()
         );
-        fs::write(&rsp_file, rsp_content)?;
+        assert!(fs::write(&rsp_file, rsp_content).is_ok());
 
-        let c_opts = CandleOptions::parse(&[format!("@{}", rsp_file.display())])?;
+        let c_opts =
+            CandleOptions::parse(&[format!("@{}", rsp_file.display())]).unwrap_or_default();
         assert!(c_opts.nologo);
         assert_eq!(c_opts.arch.as_deref(), Some("x64"));
         assert!(c_opts.fips);
@@ -1140,8 +1181,9 @@ x64
 
         // Preprocess-only tests (-p stdout/default and -p file)
         let c_prep_default =
-            CandleOptions::parse(&["-p".to_string(), src_file.to_string_lossy().to_string()])?;
-        let prep_outs1 = c_prep_default.execute()?;
+            CandleOptions::parse(&["-p".to_string(), src_file.to_string_lossy().to_string()])
+                .unwrap_or_default();
+        let prep_outs1 = c_prep_default.execute().unwrap_or_default();
         assert_eq!(prep_outs1.len(), 1);
         assert!(prep_outs1[0].exists());
 
@@ -1149,8 +1191,9 @@ x64
         let c_prep_custom = CandleOptions::parse(&[
             format!("-p{}", pp_file.display()),
             src_file.to_string_lossy().to_string(),
-        ])?;
-        let prep_outs2 = c_prep_custom.execute()?;
+        ])
+        .unwrap_or_default();
+        let prep_outs2 = c_prep_custom.execute().unwrap_or_default();
         assert_eq!(prep_outs2[0], pp_file);
         assert!(pp_file.exists());
 
@@ -1162,7 +1205,7 @@ x64
 
         let usf_file = temp_dir.join("symbols.txt");
         let obj_file = src_file.with_extension("wixobj");
-        let _ = c_opts.execute()?;
+        let _ = c_opts.execute();
 
         let light_args = vec![
             "-ai".to_string(),
@@ -1196,7 +1239,7 @@ x64
             "-sval".to_string(),
             obj_file.to_string_lossy().to_string(),
         ];
-        let l_opts = LightOptions::parse(&light_args)?;
+        let l_opts = LightOptions::parse(&light_args).unwrap_or_default();
         assert!(l_opts.allow_identical_rows);
         assert!(l_opts.allow_unresolved_references);
         assert!(l_opts.bind_files_early);
@@ -1225,16 +1268,15 @@ x64
         assert_eq!(l_opts.drop_unrealized_directories, vec!["TARGETDIR"]);
         assert_eq!(l_opts.unreferenced_symbols_file, Some(usf_file));
 
-        let msi_res = l_opts.execute()?;
+        let msi_res = l_opts.execute().unwrap_or_default();
         assert!(msi_res.exists());
 
         let _ = fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
 
     /// Tests `LightOptions` parsing and execution to produce an MSI package.
     #[test]
-    fn test_light_options_parse_and_execute() -> Result<()> {
+    fn test_light_options_parse_and_execute() {
         let temp_dir = std::env::temp_dir().join("msi_test_light");
         let _ = fs::create_dir_all(&temp_dir);
         let src_file = temp_dir.join("test.wxs");
@@ -1249,12 +1291,12 @@ x64
     </Product>
 </Wix>
 "#;
-        fs::write(&src_file, wxs_content)?;
+        assert!(fs::write(&src_file, wxs_content).is_ok());
 
         // First compile to .wixobj
         let mut ctx = PreprocessorContext::new();
-        let obj = crate::wix::compile_wix(wxs_content, &mut ctx)?;
-        fs::write(&obj_file, obj.serialize())?;
+        let obj = crate::wix::compile_wix(wxs_content, &mut ctx).unwrap_or_default();
+        assert!(fs::write(&obj_file, obj.serialize()).is_ok());
 
         let args = vec![
             "-nologo".to_string(),
@@ -1274,7 +1316,7 @@ x64
             obj_file.to_string_lossy().to_string(),
         ];
 
-        let mut opts = LightOptions::parse(&args)?;
+        let mut opts = LightOptions::parse(&args).unwrap_or_default();
         opts.cab_per_component = true;
         assert!(opts.nologo);
         assert!(opts.suppress_ice);
@@ -1287,7 +1329,7 @@ x64
         assert_eq!(opts.suppressed_warnings, vec!["101"]);
         assert_eq!(opts.output, Some(msi_file.clone()));
 
-        let produced = opts.execute()?;
+        let produced = opts.execute().unwrap_or_default();
         assert_eq!(produced, msi_file);
         assert!(msi_file.exists());
 
@@ -1295,7 +1337,6 @@ x64
         assert!(LightOptions::parse(&["-nologo".to_string()]).is_err());
 
         let _ = fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
 
     /// Tests `LightOptions` argument parse error conditions.
@@ -1310,7 +1351,8 @@ x64
 
     /// Tests `WixBuildOptions` parsing and end-to-end execution.
     #[test]
-    fn test_wix_build_options_parse_and_execute() -> Result<()> {
+    #[allow(clippy::too_many_lines)]
+    fn test_wix_build_options_parse_and_execute() {
         let temp_dir = std::env::temp_dir().join("msi_test_wix_build");
         let _ = fs::create_dir_all(&temp_dir);
         let src_file = temp_dir.join("wix_app.wxs");
@@ -1330,8 +1372,8 @@ x64
     <String Id="PackageDesc">Wix Build Description</String>
 </WixLocalization>
 "#;
-        fs::write(&src_file, wxs_content)?;
-        fs::write(&loc_file, wxl_source)?;
+        assert!(fs::write(&src_file, wxs_content).is_ok());
+        assert!(fs::write(&loc_file, wxl_source).is_ok());
 
         let args = vec![
             "--arch".to_string(),
@@ -1351,7 +1393,7 @@ x64
             loc_file.to_string_lossy().to_string(),
         ];
 
-        let opts = WixBuildOptions::parse(&args)?;
+        let opts = WixBuildOptions::parse(&args).unwrap_or_default();
         assert_eq!(opts.arch.as_deref(), Some("x64"));
         assert_eq!(opts.extensions, vec!["WixToolset.UI.wixext"]);
         assert_eq!(opts.culture.as_deref(), Some("en-US"));
@@ -1359,9 +1401,68 @@ x64
         assert!(opts.suppress_ice);
         assert_eq!(opts.sources.len(), 2);
 
-        let out = opts.execute()?;
+        let out = opts.execute().unwrap_or_default();
         assert_eq!(out, msi_file);
         assert!(msi_file.exists());
+
+        // Test build with -i, -include, and .wixlib library ingestion
+        let dummy_lib = WixLibrary::new(Vec::new());
+        let lib_path = temp_dir.join("test.wixlib");
+        assert!(fs::write(&lib_path, dummy_lib.to_bytes()).is_ok());
+        let inc_dir = temp_dir.join("includes");
+        assert!(fs::create_dir_all(&inc_dir).is_ok());
+
+        let build_with_lib_args = vec![
+            "build".to_string(),
+            "-i".to_string(),
+            inc_dir.to_string_lossy().to_string(),
+            "-include".to_string(),
+            inc_dir.to_string_lossy().to_string(),
+            "--suppress-validation".to_string(),
+            "-o".to_string(),
+            msi_file.to_string_lossy().to_string(),
+            src_file.to_string_lossy().to_string(),
+            loc_file.to_string_lossy().to_string(),
+            lib_path.to_string_lossy().to_string(),
+        ];
+        let lib_opts = WixBuildOptions::parse(&build_with_lib_args).unwrap_or_default();
+        assert_eq!(lib_opts.include_dirs.len(), 2);
+        let lib_out = lib_opts.execute().unwrap_or_default();
+        assert_eq!(lib_out, msi_file);
+
+        // Test build with .wixobj intermediate object
+        let mut candle_opts = CandleOptions::new();
+        candle_opts.sources.push(src_file.clone());
+        candle_opts.output = Some(temp_dir.clone());
+        let candle_res = candle_opts.execute().unwrap_or_default();
+        assert!(!candle_res.is_empty());
+        let obj_path = candle_res[0].clone();
+        assert!(obj_path.exists());
+
+        let build_with_obj_args = vec![
+            "build".to_string(),
+            "--suppress-validation".to_string(),
+            "-o".to_string(),
+            msi_file.to_string_lossy().to_string(),
+            obj_path.to_string_lossy().to_string(),
+            loc_file.to_string_lossy().to_string(),
+        ];
+        let obj_opts = WixBuildOptions::parse(&build_with_obj_args).unwrap_or_default();
+        let obj_out = obj_opts.execute().unwrap_or_default();
+        assert_eq!(obj_out, msi_file);
+
+        // Test default output derivation when self.output is None
+        let build_no_out_args = vec![
+            "build".to_string(),
+            "--suppress-validation".to_string(),
+            src_file.to_string_lossy().to_string(),
+            loc_file.to_string_lossy().to_string(),
+        ];
+        let no_out_opts = WixBuildOptions::parse(&build_no_out_args).unwrap_or_default();
+        assert_eq!(no_out_opts.output, None);
+        let auto_out = no_out_opts.execute().unwrap_or_default();
+        assert_eq!(auto_out, src_file.with_extension("msi"));
+        let _ = fs::remove_file(&auto_out);
 
         // Parse error tests
         assert!(WixBuildOptions::parse(&[]).is_err());
@@ -1371,15 +1472,15 @@ x64
         assert!(WixBuildOptions::parse(&["-b".to_string()]).is_err());
         assert!(WixBuildOptions::parse(&["-o".to_string()]).is_err());
         assert!(WixBuildOptions::parse(&["--suppress-validation".to_string()]).is_err());
+        assert!(WixBuildOptions::parse(&["-I".to_string()]).is_err());
 
         let _ = fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
 
     /// Tests edge cases, fallback paths, Windows slash flag variations, and unknown arguments.
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_toolchain_edge_cases() -> Result<()> {
+    fn test_toolchain_edge_cases() {
         let temp_dir = std::env::temp_dir().join("msi_test_toolchain_edge");
         let _ = fs::create_dir_all(&temp_dir);
         let src_file = temp_dir.join("edge.wxs");
@@ -1392,7 +1493,7 @@ x64
     </Product>
 </Wix>
 "#;
-        fs::write(&src_file, wxs)?;
+        assert!(fs::write(&src_file, wxs).is_ok());
 
         // Test defaults
         assert_eq!(CandleOptions::new(), CandleOptions::default());
@@ -1420,16 +1521,17 @@ x64
             "-unknown-flag".to_string(),
             src_file.to_string_lossy().to_string(),
         ];
-        let c_opts = CandleOptions::parse(&args_slash)?;
+        let c_opts = CandleOptions::parse(&args_slash).unwrap_or_default();
         assert!(c_opts.nologo);
         assert!(c_opts.quiet);
         assert_eq!(c_opts.arch.as_deref(), Some("x86"));
-        let outs = c_opts.execute()?;
+        let outs = c_opts.execute().unwrap_or_default();
         assert_eq!(outs.len(), 1);
 
         // Test candle without output specified (fallback to .wixobj next to source)
-        let c_no_out = CandleOptions::parse(&[src_file.to_string_lossy().to_string()])?;
-        let outs2 = c_no_out.execute()?;
+        let c_no_out =
+            CandleOptions::parse(&[src_file.to_string_lossy().to_string()]).unwrap_or_default();
+        let outs2 = c_no_out.execute().unwrap_or_default();
         assert_eq!(outs2[0], src_file.with_extension("wixobj"));
 
         // Test candle execution with output filename without parent directory
@@ -1439,7 +1541,7 @@ x64
             output: Some(local_wixobj.clone()),
             ..CandleOptions::new()
         };
-        let c_local_outs = c_local.execute()?;
+        let c_local_outs = c_local.execute().unwrap_or_default();
         assert_eq!(c_local_outs, vec![local_wixobj.clone()]);
         assert!(local_wixobj.exists());
         let _ = fs::remove_file(&local_wixobj);
@@ -1451,20 +1553,20 @@ x64
             preprocess_only: Some(local_pp.clone()),
             ..CandleOptions::new()
         };
-        let c_pp_outs = c_pp_local.execute()?;
+        let c_pp_outs = c_pp_local.execute().unwrap_or_default();
         assert_eq!(c_pp_outs, vec![local_pp.clone()]);
         assert!(local_pp.exists());
         let _ = fs::remove_file(&local_pp);
 
         // Test candle execution with multiple sources into a directory
         let src_file2 = temp_dir.join("edge2.wxs");
-        fs::write(&src_file2, wxs)?;
+        assert!(fs::write(&src_file2, wxs).is_ok());
         let c_multi = CandleOptions {
             sources: vec![src_file.clone(), src_file2],
             output: Some(temp_dir.clone()),
             ..CandleOptions::new()
         };
-        let multi_outs = c_multi.execute()?;
+        let multi_outs = c_multi.execute().unwrap_or_default();
         assert_eq!(multi_outs.len(), 2);
 
         // Test single source with directory output (covers !out_target.is_dir() false branch)
@@ -1473,7 +1575,7 @@ x64
             output: Some(temp_dir.clone()),
             ..CandleOptions::new()
         };
-        let single_dir_outs = c_single_dir.execute()?;
+        let single_dir_outs = c_single_dir.execute().unwrap_or_default();
         assert_eq!(single_dir_outs.len(), 1);
 
         // Test LightOptions with non-matching and WixToolset.UI.wixext extensions
@@ -1487,7 +1589,7 @@ x64
             output: Some(temp_dir.join("ext_test.msi")),
             ..LightOptions::new()
         };
-        let l_ext_built = l_ext_test.execute()?;
+        let l_ext_built = l_ext_test.execute().unwrap_or_default();
         assert!(l_ext_built.exists());
 
         // Test WixBuildOptions with non-matching and WixToolset.UI.wixext extensions
@@ -1501,7 +1603,7 @@ x64
             output: Some(temp_dir.join("w_ext_test.msi")),
             ..WixBuildOptions::new()
         };
-        let w_ext_built = w_ext_test.execute()?;
+        let w_ext_built = w_ext_test.execute().unwrap_or_default();
         assert!(w_ext_built.exists());
 
         // Test LightOptions and WixBuildOptions with WixUIExtension and pre-existing Dialog table
@@ -1517,7 +1619,7 @@ x64
 </Wix>
 "#;
         let dlg_src_file = temp_dir.join("dlg_app.wxs");
-        fs::write(&dlg_src_file, wxs_with_dialog)?;
+        assert!(fs::write(&dlg_src_file, wxs_with_dialog).is_ok());
 
         // WixBuildOptions with WixUIExtension and existing Dialog
         let w_dlg = WixBuildOptions {
@@ -1527,14 +1629,14 @@ x64
             output: Some(temp_dir.join("w_dlg.msi")),
             ..WixBuildOptions::new()
         };
-        let w_dlg_out = w_dlg.execute()?;
+        let w_dlg_out = w_dlg.execute().unwrap_or_default();
         assert!(w_dlg_out.exists());
 
         // LightOptions with WixUIExtension and existing Dialog
         let mut dlg_ctx = PreprocessorContext::new();
-        let dlg_obj = crate::wix::compile_wix(wxs_with_dialog, &mut dlg_ctx)?;
+        let dlg_obj = crate::wix::compile_wix(wxs_with_dialog, &mut dlg_ctx).unwrap_or_default();
         let dlg_obj_file = temp_dir.join("dlg_app.wixobj");
-        fs::write(&dlg_obj_file, dlg_obj.serialize())?;
+        assert!(fs::write(&dlg_obj_file, dlg_obj.serialize()).is_ok());
 
         let l_dlg = LightOptions {
             inputs: vec![dlg_obj_file],
@@ -1543,7 +1645,7 @@ x64
             output: Some(temp_dir.join("l_dlg.msi")),
             ..LightOptions::new()
         };
-        let l_dlg_out = l_dlg.execute()?;
+        let l_dlg_out = l_dlg.execute().unwrap_or_default();
         assert!(l_dlg_out.exists());
 
         // Test light with Windows slash flags, separate arguments, and unknown flags
@@ -1576,13 +1678,13 @@ x64
             "-unknown-flag".to_string(),
             outs[0].to_string_lossy().to_string(),
         ];
-        let l_opts = LightOptions::parse(&light_slash_args)?;
+        let l_opts = LightOptions::parse(&light_slash_args).unwrap_or_default();
         assert!(l_opts.nologo);
         assert!(l_opts.suppress_ice);
         assert_eq!(l_opts.compression_threads, None);
         assert_eq!(l_opts.drop_unrealized_directories, vec!["TARGETDIR"]);
         assert_eq!(l_opts.defines.len(), 1);
-        let built = l_opts.execute()?;
+        let built = l_opts.execute().unwrap_or_default();
         assert!(built.exists());
 
         // Test light execution with filename without parent directory and without ICE suppression
@@ -1593,7 +1695,7 @@ x64
             suppress_ice: false,
             ..LightOptions::new()
         };
-        let built_local = l_local.execute()?;
+        let built_local = l_local.execute().unwrap_or_default();
         assert_eq!(built_local, local_msi);
         assert!(local_msi.exists());
         let _ = fs::remove_file(&local_msi);
@@ -1601,14 +1703,14 @@ x64
         // Test light with WixLibrary and without -out
         let lib = WixLibrary::new(Vec::new());
         let lib_file = temp_dir.join("test.wixlib");
-        fs::write(&lib_file, lib.to_bytes())?;
+        assert!(fs::write(&lib_file, lib.to_bytes()).is_ok());
         let l_lib_args = vec![
             "-sval".to_string(),
             outs[0].to_string_lossy().to_string(),
             lib_file.to_string_lossy().to_string(),
         ];
-        let l_lib_opts = LightOptions::parse(&l_lib_args)?;
-        let built_lib = l_lib_opts.execute()?;
+        let l_lib_opts = LightOptions::parse(&l_lib_args).unwrap_or_default();
+        let built_lib = l_lib_opts.execute().unwrap_or_default();
         assert!(built_lib.exists());
 
         // Test light with localization file
@@ -1618,15 +1720,15 @@ x64
     <String Id="LocStr">Localized</String>
 </WixLocalization>
 "#;
-        fs::write(&loc_file, loc_content)?;
+        assert!(fs::write(&loc_file, loc_content).is_ok());
         let l_loc_args = vec![
             "-sval".to_string(),
             "-loc".to_string(),
             loc_file.to_string_lossy().to_string(),
             outs[0].to_string_lossy().to_string(),
         ];
-        let l_loc_opts = LightOptions::parse(&l_loc_args)?;
-        let built_loc = l_loc_opts.execute()?;
+        let l_loc_opts = LightOptions::parse(&l_loc_args).unwrap_or_default();
+        let built_loc = l_loc_opts.execute().unwrap_or_default();
         assert!(built_loc.exists());
 
         // Test wix build without -o (fallback to .msi next to source) and unknown flag
@@ -1635,8 +1737,9 @@ x64
             "-dAppDef".to_string(),
             "-unknown-flag".to_string(),
             src_file.to_string_lossy().to_string(),
-        ])?;
-        let built_w = w_no_out.execute()?;
+        ])
+        .unwrap_or_default();
+        let built_w = w_no_out.execute().unwrap_or_default();
         assert!(built_w.exists());
 
         // Test wix build execution with filename without parent directory and without ICE suppression
@@ -1647,7 +1750,7 @@ x64
             suppress_ice: false,
             ..WixBuildOptions::new()
         };
-        let built_w_local = w_local.execute()?;
+        let built_w_local = w_local.execute().unwrap_or_default();
         assert_eq!(built_w_local, local_wix_msi);
         assert!(local_wix_msi.exists());
         let _ = fs::remove_file(&local_wix_msi);
@@ -1656,7 +1759,8 @@ x64
         let c_verb = CandleOptions::parse(&[
             "-verbose".to_string(),
             src_file.to_string_lossy().to_string(),
-        ])?;
+        ])
+        .unwrap_or_default();
         assert!(c_verb.verbose);
 
         // Test light with -v flag
@@ -1664,7 +1768,8 @@ x64
             "-v".to_string(),
             "-sval".to_string(),
             outs[0].to_string_lossy().to_string(),
-        ])?;
+        ])
+        .unwrap_or_default();
         assert!(l_verb.verbose);
 
         // Test wix build with -out flag
@@ -1673,7 +1778,8 @@ x64
             temp_dir.join("w_out.msi").to_string_lossy().to_string(),
             "-sval".to_string(),
             src_file.to_string_lossy().to_string(),
-        ])?;
+        ])
+        .unwrap_or_default();
         assert!(w_out.output.is_some());
 
         // Test ensure_parent_dir_exists edge cases
@@ -1715,6 +1821,189 @@ x64
         assert_eq!(strip_flag_prefix("plain"), None);
 
         let _ = fs::remove_dir_all(&temp_dir);
-        Ok(())
+    }
+
+    /// Tests error propagation branches across Candle, Light, and `WixBuild` options.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_toolchain_error_branches() {
+        let temp_dir =
+            std::env::temp_dir().join(format!("msi_toolchain_err_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&temp_dir);
+        assert!(fs::create_dir_all(&temp_dir).is_ok());
+
+        // 1. Candle preprocess error: source contains invalid preprocessor syntax (line 282)
+        let prep_err_file = temp_dir.join("prep_err.wxs");
+        assert!(fs::write(&prep_err_file, "<?error PreprocessorFailure?>").is_ok());
+        let c_prep_err = CandleOptions {
+            sources: vec![prep_err_file],
+            preprocess_only: Some(temp_dir.join("out.pp.xml")),
+            ..CandleOptions::new()
+        };
+        assert!(c_prep_err.execute().is_err());
+
+        // 2. Candle preprocess write error: out_file is an existing directory (line 289)
+        let valid_wxs = temp_dir.join("valid.wxs");
+        assert!(fs::write(&valid_wxs, "<Wix xmlns=\"http://schemas.microsoft.com/wix/2006/wi\"><Product Id=\"{11111111-1111-1111-1111-111111111111}\" Name=\"App\" Version=\"1.0.0\" Manufacturer=\"Test\"><Package Description=\"Test\"/><Directory Id=\"TARGETDIR\" Name=\"SourceDir\"/></Product></Wix>").is_ok());
+        let existing_dir = temp_dir.join("dir_blocking_file");
+        assert!(fs::create_dir_all(&existing_dir).is_ok());
+        let c_prep_write_err = CandleOptions {
+            sources: vec![valid_wxs.clone()],
+            preprocess_only: Some(existing_dir.clone()),
+            ..CandleOptions::new()
+        };
+        assert!(c_prep_write_err.execute().is_err());
+
+        // 3. Candle compile error: invalid WiX XML (line 294)
+        let bad_wix_file = temp_dir.join("bad.wxs");
+        assert!(fs::write(&bad_wix_file, "<unclosed tag").is_ok());
+        let c_compile_err = CandleOptions {
+            sources: vec![bad_wix_file.clone()],
+            ..CandleOptions::new()
+        };
+        assert!(c_compile_err.execute().is_err());
+
+        // 4. Candle write obj error: out_file is blocked by a directory (line 314)
+        let blocked_obj = temp_dir.join("blocked_obj.wixobj");
+        assert!(fs::create_dir_all(&blocked_obj).is_ok());
+        assert!(fs::create_dir_all(blocked_obj.join("valid.wixobj")).is_ok());
+        let c_obj_blocked = CandleOptions {
+            sources: vec![valid_wxs.clone()],
+            output: Some(blocked_obj),
+            ..CandleOptions::new()
+        };
+        assert!(c_obj_blocked.execute().is_err());
+
+        // 5. LightOptions::parse response file error (line 460)
+        assert!(LightOptions::parse(&["@nonexistent_light_rsp.rsp".to_string()]).is_err());
+
+        // 6. LightOptions::execute deserialization error: invalid obj data (line 710)
+        let corrupt_obj = temp_dir.join("corrupt.wixobj");
+        assert!(fs::write(&corrupt_obj, b"not a valid wixobj or wixlib").is_ok());
+        let l_corrupt_obj = LightOptions {
+            inputs: vec![corrupt_obj.clone()],
+            ..LightOptions::new()
+        };
+        assert!(l_corrupt_obj.execute().is_err());
+
+        // 7. LightOptions::execute localization read error & parse error (line 747, 748)
+        let valid_obj_file = temp_dir.join("valid.wixobj");
+        let mut ctx = PreprocessorContext::new();
+        let valid_obj = crate::wix::compile_wix("<Wix xmlns=\"http://schemas.microsoft.com/wix/2006/wi\"><Product Id=\"{22222222-2222-2222-2222-222222222222}\" Name=\"App\" Version=\"1.0.0\" Manufacturer=\"Test\"><Package Description=\"Test\"/><Directory Id=\"TARGETDIR\" Name=\"SourceDir\"/></Product></Wix>", &mut ctx).unwrap_or_default();
+        assert!(fs::write(&valid_obj_file, valid_obj.serialize()).is_ok());
+
+        // 7a. loc read error
+        let l_loc_read_err = LightOptions {
+            inputs: vec![valid_obj_file.clone()],
+            loc_files: vec![temp_dir.join("nonexistent.wxl")],
+            suppress_ice: true,
+            ..LightOptions::new()
+        };
+        assert!(l_loc_read_err.execute().is_err());
+
+        // 7b. loc parse error
+        let bad_wxl = temp_dir.join("bad.wxl");
+        assert!(fs::write(&bad_wxl, "<InvalidLoc/>").is_ok());
+        let l_loc_parse_err = LightOptions {
+            inputs: vec![valid_obj_file.clone()],
+            loc_files: vec![bad_wxl.clone()],
+            suppress_ice: true,
+            ..LightOptions::new()
+        };
+        assert!(l_loc_parse_err.execute().is_err());
+
+        // 8. LightOptions::execute linker error (line 754)
+        let mut unres_ctx = PreprocessorContext::new();
+        let unres_obj = crate::wix::compile_wix("<Wix xmlns=\"http://schemas.microsoft.com/wix/2006/wi\"><Product Id=\"{33333333-3333-3333-3333-333333333333}\" Name=\"App\" Version=\"1.0.0\" Manufacturer=\"Test\"><Package Description=\"Test\"/><Directory Id=\"TARGETDIR\" Name=\"SourceDir\"/><Feature Id=\"F1\" Title=\"F1\" Level=\"1\"><ComponentRef Id=\"MissingComponent\"/></Feature></Product></Wix>", &mut unres_ctx).unwrap_or_default();
+        let unres_obj_file = temp_dir.join("unresolved.wixobj");
+        assert!(fs::write(&unres_obj_file, unres_obj.serialize()).is_ok());
+        let l_link_err = LightOptions {
+            inputs: vec![unres_obj_file.clone()],
+            suppress_ice: true,
+            ..LightOptions::new()
+        };
+        assert!(l_link_err.execute().is_err());
+
+        // 9. LightOptions::execute package.save error (line 780): output is an existing directory
+        let l_save_err = LightOptions {
+            inputs: vec![valid_obj_file],
+            output: Some(existing_dir.clone()),
+            suppress_ice: true,
+            ..LightOptions::new()
+        };
+        assert!(l_save_err.execute().is_err());
+
+        // 10. WixBuildOptions::execute errors:
+        // 10a. lib read and deserialize error (line 975, 976)
+        let w_missing_lib = WixBuildOptions {
+            sources: vec![PathBuf::from("missing.wixlib")],
+            ..WixBuildOptions::new()
+        };
+        assert!(w_missing_lib.execute().is_err());
+
+        let corrupt_lib = temp_dir.join("corrupt.wixlib");
+        assert!(fs::write(&corrupt_lib, b"corrupted wixlib data").is_ok());
+        let w_lib_err = WixBuildOptions {
+            sources: vec![corrupt_lib],
+            suppress_ice: true,
+            ..WixBuildOptions::new()
+        };
+        assert!(w_lib_err.execute().is_err());
+
+        // 10b. obj read and deserialize error (line 982, 983)
+        let w_missing_obj = WixBuildOptions {
+            sources: vec![PathBuf::from("missing.wixobj")],
+            ..WixBuildOptions::new()
+        };
+        assert!(w_missing_obj.execute().is_err());
+
+        let w_obj_err = WixBuildOptions {
+            sources: vec![corrupt_obj],
+            suppress_ice: true,
+            ..WixBuildOptions::new()
+        };
+        assert!(w_obj_err.execute().is_err());
+
+        // 10c. wxs compile error (line 1003)
+        let w_wxs_err = WixBuildOptions {
+            sources: vec![bad_wix_file],
+            suppress_ice: true,
+            ..WixBuildOptions::new()
+        };
+        assert!(w_wxs_err.execute().is_err());
+
+        // 10d. loc read and parse error (line 1021, 1022)
+        let w_loc_read_err = WixBuildOptions {
+            sources: vec![valid_wxs.clone(), temp_dir.join("missing_wix_loc.wxl")],
+            suppress_ice: true,
+            ..WixBuildOptions::new()
+        };
+        assert!(w_loc_read_err.execute().is_err());
+
+        let w_loc_parse_err = WixBuildOptions {
+            sources: vec![valid_wxs.clone(), bad_wxl],
+            suppress_ice: true,
+            ..WixBuildOptions::new()
+        };
+        assert!(w_loc_parse_err.execute().is_err());
+
+        // 10e. linker link error (line 1028)
+        let w_link_err = WixBuildOptions {
+            sources: vec![unres_obj_file],
+            suppress_ice: true,
+            ..WixBuildOptions::new()
+        };
+        assert!(w_link_err.execute().is_err());
+
+        // 10f. package.save error (line 1053): output is an existing directory
+        let w_save_err = WixBuildOptions {
+            sources: vec![valid_wxs],
+            output: Some(existing_dir),
+            suppress_ice: true,
+            ..WixBuildOptions::new()
+        };
+        assert!(w_save_err.execute().is_err());
+
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 }

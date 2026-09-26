@@ -86,6 +86,9 @@ typedef struct MsiRecordHandle MsiRecordHandle;
 /** Opaque handle representing Summary Information stream properties. */
 typedef struct MsiSummaryInfoHandle MsiSummaryInfoHandle;
 
+/** Opaque handle representing an atomic multi-package transaction. */
+typedef struct MsiTransactionHandle MsiTransactionHandle;
+
 /** Buffer descriptor representing allocated native memory. */
 typedef struct MsiBufferHandle {
     /** Pointer to the raw byte buffer. */
@@ -151,6 +154,12 @@ void msi_record_destroy(MsiRecordHandle* handle);
  * @param handle Summary info handle to destroy.
  */
 void msi_summary_info_destroy(MsiSummaryInfoHandle* handle);
+
+/**
+ * @brief Frees a transaction handle. Safe no-op if handle is NULL.
+ * @param handle Transaction handle to destroy.
+ */
+void msi_transaction_destroy(MsiTransactionHandle* handle);
 
 /**
  * @brief Frees a null-terminated C string allocated by the library. Safe no-op if ptr is NULL.
@@ -384,6 +393,65 @@ int32_t msi_compile_wix_source(const char* wxs_content, const char* output_msi_p
  * @brief Compiles a WiX XML source file directly to an .msi file.
  */
 int32_t msi_compile_wix_file(const char* wxs_path, const char* output_msi_path);
+
+/* ========================================================================= */
+/* Multi-Package Transaction & Chaining API                                  */
+/* ========================================================================= */
+
+/**
+ * @brief Begins a new Windows Installer atomic multi-package transaction (MsiBeginTransaction).
+ * @param name Null-terminated transaction identifier or name.
+ * @param out_handle Pointer receiving the allocated transaction handle.
+ * @return MSI_SUCCESS on success, or an error code.
+ */
+int32_t msi_begin_transaction(const char* name, MsiTransactionHandle** out_handle);
+
+/**
+ * @brief Allows a child installation session to join the active transaction boundary (MsiJoinTransaction).
+ * @param handle Transaction handle.
+ * @param session_id Null-terminated session identifier.
+ * @return MSI_SUCCESS on success, or an error code.
+ */
+int32_t msi_join_transaction(MsiTransactionHandle* handle, const char* session_id);
+
+/**
+ * @brief Installs a child package within an active transaction session (MsiInstallProduct).
+ * @param handle Transaction handle.
+ * @param package_path Null-terminated path or stream specifier for the child .msi file.
+ * @param command_line Optional null-terminated public properties string.
+ * @return MSI_SUCCESS on success, or an error code.
+ */
+int32_t msi_install_product(
+    MsiTransactionHandle* handle,
+    const char* package_path,
+    const char* command_line
+);
+
+/**
+ * @brief Queries the installation state of a product or family (MsiQueryProductState).
+ * @param handle Transaction handle.
+ * @param product_code Null-terminated product or upgrade GUID.
+ * @param out_state Pointer receiving the standard INSTALLSTATE numeric code.
+ * @return MSI_SUCCESS on success, or an error code.
+ */
+int32_t msi_query_product_state(
+    const MsiTransactionHandle* handle,
+    const char* product_code,
+    int32_t* out_state
+);
+
+/**
+ * @brief Commits or rolls back all nested installations within the transaction (MsiEndTransaction).
+ * @param handle Transaction handle.
+ * @param commit Non-zero to commit all installations, 0 to rollback.
+ * @param out_exit_code Pointer receiving the operation return code (0 success, 1603 rollback).
+ * @return MSI_SUCCESS on success, or an error code.
+ */
+int32_t msi_end_transaction(
+    MsiTransactionHandle* handle,
+    int32_t commit,
+    uint32_t* out_exit_code
+);
 
 #ifdef __cplusplus
 }

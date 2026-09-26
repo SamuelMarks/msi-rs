@@ -522,12 +522,12 @@ mod tests {
     }
 
     #[test]
-    fn test_parser_select_statements() -> Result<()> {
+    fn test_parser_select_statements() {
         let sql1 = "SELECT DISTINCT Col1, Col2 FROM T1, T2 WHERE Col1 = 'val' ORDER BY Col1 ASC, Col2 DESC";
-        let stmt1 = parse_query(sql1)?;
+        let stmt1 = parse_query(sql1);
         assert_eq!(
-            stmt1,
-            Statement::Select {
+            stmt1.as_ref(),
+            Ok(&Statement::Select {
                 distinct: true,
                 columns: vec!["Col1".to_string(), "Col2".to_string()],
                 table: "T1".to_string(),
@@ -547,27 +547,27 @@ mod tests {
                         direction: OrderDirection::Descending,
                     },
                 ],
-            }
+            })
         );
 
         let sql2 = "SELECT * FROM T1";
-        let stmt2 = parse_query(sql2)?;
+        let stmt2 = parse_query(sql2);
         assert_eq!(
-            stmt2,
-            Statement::Select {
+            stmt2.as_ref(),
+            Ok(&Statement::Select {
                 distinct: false,
                 columns: Vec::new(),
                 table: "T1".to_string(),
                 joins: Vec::new(),
                 where_clause: None,
                 order_by: Vec::new(),
-            }
+            })
         );
 
         let sql_default_order = "SELECT * FROM T ORDER BY Col1";
         assert_eq!(
-            parse_query(sql_default_order)?,
-            Statement::Select {
+            parse_query(sql_default_order).as_ref(),
+            Ok(&Statement::Select {
                 distinct: false,
                 columns: Vec::new(),
                 table: "T".to_string(),
@@ -577,7 +577,7 @@ mod tests {
                     column: "Col1".to_string(),
                     direction: OrderDirection::Ascending,
                 }],
-            }
+            })
         );
 
         let sql3 = "SELECT Col1 FROM T1 WHERE Col1 IS NULL";
@@ -588,8 +588,6 @@ mod tests {
 
         let sql5 = "SELECT Col1 FROM T1 WHERE NOT (Col1 < 10 AND Col2 > 20 OR Col3 <= 30 AND Col4 >= 40 OR Col5 != 50 OR Col6 LIKE 'abc%')";
         assert!(parse_query(sql5).is_ok());
-
-        Ok(())
     }
 
     #[test]
@@ -638,6 +636,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::similar_names)]
     fn test_parser_errors() {
         // Empty / leading token error
         assert!(parse_query("").is_err());
@@ -679,6 +678,51 @@ mod tests {
         assert!(parse_query("CREATE TABLE T (Col1)").is_err());
         assert!(parse_query("CREATE TABLE T (Col1").is_err());
         assert!(parse_query("CREATE TABLE T (Col1 CHAR(50)").is_err());
+
+        // Additional syntax and branch expectations
+        assert!(parse_query("SELECT * FROM T1, 123").is_err());
+        assert!(parse_query("INSERT T VALUES (1)").is_err());
+        assert!(parse_query("INSERT INTO T (Col1, 123) VALUES (1)").is_err());
+        assert!(parse_query("INSERT INTO T (Col1 VALUES (1)").is_err());
+        assert!(parse_query("INSERT INTO T VALUES (1").is_err());
+        assert!(parse_query("UPDATE T SET 123 = 1").is_err());
+        assert!(parse_query("UPDATE T SET Col1 = WHERE").is_err());
+        assert!(parse_query("UPDATE T SET Col1 = 1 WHERE").is_err());
+        assert!(parse_query("DELETE FROM 123").is_err());
+        assert!(parse_query("DELETE FROM T WHERE").is_err());
+        assert!(parse_query("CREATE TABLE T 123").is_err());
+        assert!(parse_query("CREATE TABLE T (Col1 LONG, PRIMARY 123)").is_err());
+        assert!(parse_query("CREATE TABLE T (Col1 LONG, PRIMARY KEY (123))").is_err());
+        assert!(parse_query("CREATE TABLE T (Col1 LONG, PRIMARY KEY (Col1").is_err());
+        assert!(parse_query("CREATE TABLE T (Col1 LONG, PRIMARY KEY 123)").is_err());
+        assert!(parse_query("ALTER TABLE T 123").is_err());
+        assert!(parse_query("ALTER TABLE T ADD").is_err());
+        assert!(parse_query("DROP TABLE 123").is_err());
+        assert!(parse_query("CREATE TABLE T (123 LONG)").is_err());
+        assert!(parse_query("CREATE TABLE T (Col1 CHAR(10").is_err());
+        assert!(parse_query("SELECT * FROM T WHERE Col1 = 1 OR").is_err());
+        assert!(parse_query("SELECT * FROM T WHERE Col1 = 1 AND").is_err());
+        assert!(parse_query("SELECT * FROM T WHERE NOT").is_err());
+        assert!(parse_query("SELECT * FROM T WHERE (").is_err());
+        assert!(parse_query("SELECT * FROM T WHERE (Col1 = 1").is_err());
+        assert!(parse_query("SELECT * FROM T WHERE Col1 =").is_err());
+        assert!(parse_query("SELECT * FROM T WHERE 'unclosed string").is_err());
+
+        // Direct method calls with wrong initial token
+        let mut p_sel = Parser::new(vec![Token::Insert]);
+        assert!(p_sel.parse_select().is_err());
+        let mut p_ins = Parser::new(vec![Token::Select]);
+        assert!(p_ins.parse_insert().is_err());
+        let mut p_upd = Parser::new(vec![Token::Select]);
+        assert!(p_upd.parse_update().is_err());
+        let mut p_del = Parser::new(vec![Token::Select]);
+        assert!(p_del.parse_delete().is_err());
+        let mut p_crt = Parser::new(vec![Token::Select]);
+        assert!(p_crt.parse_create_table().is_err());
+        let mut p_alt = Parser::new(vec![Token::Select]);
+        assert!(p_alt.parse_alter_table().is_err());
+        let mut p_drp = Parser::new(vec![Token::Select]);
+        assert!(p_drp.parse_drop_table().is_err());
     }
 
     #[test]

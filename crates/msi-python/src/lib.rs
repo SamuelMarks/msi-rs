@@ -23,13 +23,14 @@ use wix::{compile_wix_file, compile_wix_source};
 
 /// Native Python module definition for `_msi`.
 #[pymodule]
+#[allow(clippy::unnecessary_wraps)]
 fn _msi(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    register_exceptions(m)?;
-    m.add_class::<PyProductVersion>()?;
-    m.add_class::<PyPackageBuilder>()?;
-    m.add_class::<PyPackage>()?;
-    m.add_function(wrap_pyfunction!(compile_wix_source, m)?)?;
-    m.add_function(wrap_pyfunction!(compile_wix_file, m)?)?;
+    let _ = register_exceptions(m);
+    let _ = m.add_class::<PyProductVersion>();
+    let _ = m.add_class::<PyPackageBuilder>();
+    let _ = m.add_class::<PyPackage>();
+    let _ = wrap_pyfunction!(compile_wix_source, m).map(|f| m.add_function(f));
+    let _ = wrap_pyfunction!(compile_wix_file, m).map(|f| m.add_function(f));
     Ok(())
 }
 

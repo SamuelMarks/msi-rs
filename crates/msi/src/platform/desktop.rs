@@ -5,6 +5,9 @@
 //! - Generates macOS Application Bundles (`<Product>.app/Contents/Info.plist`) with executable structure.
 //! - Provides commands for cache updates (`update-desktop-database`, `gtk-update-icon-cache`, `lsregister`).
 
+#[allow(unused_imports)]
+use crate::error::Error;
+use crate::error::Result;
 use std::path::{Path, PathBuf};
 
 /// Freedesktop XDG Desktop Entry (`.desktop`) representation.
@@ -38,10 +41,10 @@ impl XdgDesktopEntry {
     ///
     /// A new [`XdgDesktopEntry`].
     #[must_use]
-    pub fn new(name: impl Into<String>, exec: impl Into<String>) -> Self {
+    pub fn new(name: &str, exec: &str) -> Self {
         Self {
-            name: name.into(),
-            exec: exec.into(),
+            name: name.to_string(),
+            exec: exec.to_string(),
             icon: None,
             terminal: false,
             categories: Vec::new(),
@@ -52,8 +55,8 @@ impl XdgDesktopEntry {
 
     /// Sets the icon name or path.
     #[must_use]
-    pub fn icon(mut self, icon: impl Into<String>) -> Self {
-        self.icon = Some(icon.into());
+    pub fn icon(mut self, icon: &str) -> Self {
+        self.icon = Some(icon.to_string());
         self
     }
 
@@ -66,22 +69,22 @@ impl XdgDesktopEntry {
 
     /// Adds a desktop menu category.
     #[must_use]
-    pub fn category(mut self, cat: impl Into<String>) -> Self {
-        self.categories.push(cat.into());
+    pub fn category(mut self, cat: &str) -> Self {
+        self.categories.push(cat.to_string());
         self
     }
 
     /// Adds a supported MIME type.
     #[must_use]
-    pub fn mime_type(mut self, mime: impl Into<String>) -> Self {
-        self.mime_types.push(mime.into());
+    pub fn mime_type(mut self, mime: &str) -> Self {
+        self.mime_types.push(mime.to_string());
         self
     }
 
     /// Sets the description comment.
     #[must_use]
-    pub fn comment(mut self, comment: impl Into<String>) -> Self {
-        self.comment = Some(comment.into());
+    pub fn comment(mut self, comment: &str) -> Self {
+        self.comment = Some(comment.to_string());
         self
     }
 
@@ -165,6 +168,39 @@ impl XdgDesktopEntry {
         out
     }
 
+    /// Returns the system applications directory (`/usr/share/applications`).
+    #[must_use]
+    pub fn system_applications_dir() -> PathBuf {
+        PathBuf::from("/usr/share/applications")
+    }
+
+    /// Returns the user applications directory (`~/.local/share/applications`).
+    #[must_use]
+    pub fn user_applications_dir() -> PathBuf {
+        PathBuf::from("~/.local/share/applications")
+    }
+
+    /// Writes this `.desktop` entry file into the specified directory.
+    ///
+    /// # Arguments
+    ///
+    /// * `dir` - Target directory path.
+    ///
+    /// # Returns
+    ///
+    /// The written `.desktop` file [`PathBuf`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on filesystem write failure.
+    pub fn install_to_directory(&self, dir: &Path) -> Result<PathBuf> {
+        let slug = self.name.to_lowercase().replace(' ', "-");
+        let file_path = dir.join(format!("{slug}.desktop"));
+        std::fs::create_dir_all(dir)?;
+        std::fs::write(&file_path, self.generate_desktop_file())?;
+        Ok(file_path)
+    }
+
     /// Returns post-installation cache update commands.
     ///
     /// # Returns
@@ -208,25 +244,20 @@ impl MacOsAppBundle {
     ///
     /// A new [`MacOsAppBundle`].
     #[must_use]
-    pub fn new(
-        product_name: impl Into<String>,
-        bundle_id: impl Into<String>,
-        version: impl Into<String>,
-        executable: impl Into<String>,
-    ) -> Self {
+    pub fn new(product_name: &str, bundle_id: &str, version: &str, executable: &str) -> Self {
         Self {
-            product_name: product_name.into(),
-            bundle_identifier: bundle_id.into(),
-            version: version.into(),
-            executable_name: executable.into(),
+            product_name: product_name.to_string(),
+            bundle_identifier: bundle_id.to_string(),
+            version: version.to_string(),
+            executable_name: executable.to_string(),
             icon_file: None,
         }
     }
 
     /// Sets the icon filename.
     #[must_use]
-    pub fn icon_file(mut self, icon: impl Into<String>) -> Self {
-        self.icon_file = Some(icon.into());
+    pub fn icon_file(mut self, icon: &str) -> Self {
+        self.icon_file = Some(icon.to_string());
         self
     }
 
@@ -316,6 +347,276 @@ impl MacOsAppBundle {
             bundle_path.display()
         )
     }
+
+    /// Creates a symbolic link in `/Applications` (or custom path) pointing to the application bundle directory.
+    ///
+    /// # Arguments
+    ///
+    /// * `bundle_path` - Path to the actual installed `.app` bundle directory.
+    /// * `link_name` - Optional custom name for the symlink (defaults to bundle directory name).
+    ///
+    /// # Returns
+    ///
+    /// Path to the created symlink.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Io`] on filesystem error.
+    pub fn create_applications_symlink(
+        bundle_path: &Path,
+        link_name: Option<&str>,
+    ) -> Result<PathBuf> {
+        let name = match link_name {
+            Some(n)
+                if Path::new(n)
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("app")) =>
+            {
+                n.to_string()
+            }
+            Some(n) => format!("{n}.app"),
+            None => bundle_path.file_name().map_or_else(
+                || "App.app".to_string(),
+                |f| f.to_string_lossy().to_string(),
+            ),
+        };
+        let link_target = PathBuf::from("/Applications").join(name);
+        #[cfg(unix)]
+        {
+            if link_target.exists() || link_target.is_symlink() {
+                let _ = std::fs::remove_file(&link_target);
+            }
+            std::os::unix::fs::symlink(bundle_path, &link_target)?;
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = (bundle_path, &link_target);
+        }
+        Ok(link_target)
+    }
+}
+
+/// Binary `.lnk` Shell Link generator compliant with MS-SHLLINK (Shell Link Binary File Format).
+///
+/// Supports icon resource associations, command line arguments, working directories, and window states.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Win32ShellLink {
+    /// Target application or file path.
+    target_path: String,
+    /// Optional command-line arguments.
+    arguments: Option<String>,
+    /// Optional working directory path.
+    working_dir: Option<String>,
+    /// Optional icon location path.
+    icon_location: Option<String>,
+    /// Zero-based icon resource index.
+    icon_index: i32,
+    /// Optional link description / tooltip.
+    description: Option<String>,
+    /// Window show command (1: `SW_SHOWNORMAL`, 3: `SW_SHOWMAXIMIZED`, 7: `SW_SHOWMINNOACTIVE`).
+    show_command: u32,
+}
+
+impl Win32ShellLink {
+    /// Creates a new [`Win32ShellLink`] pointing to a target path.
+    ///
+    /// # Arguments
+    ///
+    /// * `target_path` - Path to the target binary or script.
+    ///
+    /// # Returns
+    ///
+    /// A new [`Win32ShellLink`] instance.
+    #[must_use]
+    pub fn new(target_path: &str) -> Self {
+        Self {
+            target_path: target_path.to_string(),
+            arguments: None,
+            working_dir: None,
+            icon_location: None,
+            icon_index: 0,
+            description: None,
+            show_command: 1, // SW_SHOWNORMAL
+        }
+    }
+
+    /// Sets the command-line arguments.
+    ///
+    /// # Arguments
+    ///
+    /// * `args` - Argument string.
+    ///
+    /// # Returns
+    ///
+    /// Updated [`Win32ShellLink`].
+    #[must_use]
+    pub fn arguments(mut self, args: &str) -> Self {
+        self.arguments = Some(args.to_string());
+        self
+    }
+
+    /// Sets the working directory.
+    ///
+    /// # Arguments
+    ///
+    /// * `dir` - Working directory path.
+    ///
+    /// # Returns
+    ///
+    /// Updated [`Win32ShellLink`].
+    #[must_use]
+    pub fn working_dir(mut self, dir: &str) -> Self {
+        self.working_dir = Some(dir.to_string());
+        self
+    }
+
+    /// Sets the icon resource location and index.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Icon resource path (e.g. `.ico`, `.exe`, or `.dll`).
+    /// * `index` - Icon resource index.
+    ///
+    /// # Returns
+    ///
+    /// Updated [`Win32ShellLink`].
+    #[must_use]
+    pub fn icon(mut self, path: &str, index: i32) -> Self {
+        self.icon_location = Some(path.to_string());
+        self.icon_index = index;
+        self
+    }
+
+    /// Sets the link description / tooltip.
+    ///
+    /// # Arguments
+    ///
+    /// * `desc` - Description text.
+    ///
+    /// # Returns
+    ///
+    /// Updated [`Win32ShellLink`].
+    #[must_use]
+    pub fn description(mut self, desc: &str) -> Self {
+        self.description = Some(desc.to_string());
+        self
+    }
+
+    /// Sets the window show command.
+    ///
+    /// # Arguments
+    ///
+    /// * `cmd` - Show command (`1` for Normal, `3` for Maximized, `7` for Minimized).
+    ///
+    /// # Returns
+    ///
+    /// Updated [`Win32ShellLink`].
+    #[must_use]
+    pub const fn show_command(mut self, cmd: u32) -> Self {
+        self.show_command = cmd;
+        self
+    }
+
+    /// Serializes the shell link into a standard binary `.lnk` byte stream conforming to MS-SHLLINK.
+    ///
+    /// # Returns
+    ///
+    /// Byte vector containing the valid binary `.lnk` file.
+    #[must_use]
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(512);
+
+        // 1. ShellLinkHeader (76 bytes = 0x0000004C)
+        buf.extend_from_slice(&0x0000_004Cu32.to_le_bytes()); // HeaderSize
+                                                              // LinkCLSID: 00021401-0000-0000-C000-000000000046
+        buf.extend_from_slice(&[
+            0x01, 0x14, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x46,
+        ]);
+
+        let has_name = self.description.is_some();
+        let has_rel_path = !self.target_path.is_empty();
+        let has_working_dir = self.working_dir.is_some();
+        let has_arguments = self.arguments.is_some();
+        let has_icon_loc = self.icon_location.is_some();
+
+        let mut flags: u32 = 0x0000_0080; // IsUnicode
+        if has_name {
+            flags |= 0x0000_0004; // HasName
+        }
+        if has_rel_path {
+            flags |= 0x0000_0008; // HasRelativePath
+        }
+        if has_working_dir {
+            flags |= 0x0000_0010; // HasWorkingDir
+        }
+        if has_arguments {
+            flags |= 0x0000_0020; // HasArguments
+        }
+        if has_icon_loc {
+            flags |= 0x0000_0040; // HasIconLocation
+        }
+        buf.extend_from_slice(&flags.to_le_bytes()); // LinkFlags
+
+        buf.extend_from_slice(&0x0000_0020u32.to_le_bytes()); // FileAttributes: FILE_ATTRIBUTE_ARCHIVE
+        buf.extend_from_slice(&[0u8; 8]); // CreationTime (FILETIME)
+        buf.extend_from_slice(&[0u8; 8]); // AccessTime (FILETIME)
+        buf.extend_from_slice(&[0u8; 8]); // WriteTime (FILETIME)
+        buf.extend_from_slice(&0u32.to_le_bytes()); // FileSize
+        buf.extend_from_slice(&self.icon_index.to_le_bytes()); // IconIndex
+        buf.extend_from_slice(&self.show_command.to_le_bytes()); // ShowCommand
+        buf.extend_from_slice(&0u16.to_le_bytes()); // HotKey
+        buf.extend_from_slice(&0u16.to_le_bytes()); // Reserved1
+        buf.extend_from_slice(&0u32.to_le_bytes()); // Reserved2
+        buf.extend_from_slice(&0u32.to_le_bytes()); // Reserved3
+
+        // 2. String Data Blocks (UTF-16LE with 2-byte character length count)
+        if let Some(ref desc) = self.description {
+            Self::encode_string_data(desc, &mut buf);
+        }
+        if has_rel_path {
+            Self::encode_string_data(&self.target_path, &mut buf);
+        }
+        if let Some(ref dir) = self.working_dir {
+            Self::encode_string_data(dir, &mut buf);
+        }
+        if let Some(ref args) = self.arguments {
+            Self::encode_string_data(args, &mut buf);
+        }
+        if let Some(ref icon) = self.icon_location {
+            Self::encode_string_data(icon, &mut buf);
+        }
+
+        buf
+    }
+
+    /// Saves the `.lnk` shell link file to disk.
+    ///
+    /// # Arguments
+    ///
+    /// * `dest` - Destination file path (e.g. `C:\Users\Public\Desktop\App.lnk`).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Io`] on write failure.
+    pub fn save_to_disk(&self, dest: &Path) -> Result<()> {
+        let path = dest;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, self.to_bytes())?;
+        Ok(())
+    }
+
+    /// Helper encoding a string into UTF-16LE prefixed with its character length.
+    fn encode_string_data(s: &str, buf: &mut Vec<u8>) {
+        let utf16: Vec<u16> = s.encode_utf16().collect();
+        let len = u16::try_from(utf16.len()).unwrap_or(u16::MAX);
+        buf.extend_from_slice(&len.to_le_bytes());
+        for u in &utf16 {
+            buf.extend_from_slice(&u.to_le_bytes());
+        }
+    }
 }
 
 #[cfg(test)]
@@ -362,6 +663,10 @@ mod tests {
         assert!(!min_content.contains("Comment="));
         assert!(!min_content.contains("Icon="));
         assert!(!min_content.contains("Categories="));
+
+        // Trait derives
+        assert_eq!(&entry, &entry.clone());
+        assert!(!format!("{entry:?}").is_empty());
         assert!(!min_content.contains("MimeType="));
     }
 
@@ -398,5 +703,111 @@ mod tests {
         let reg_cmd =
             MacOsAppBundle::launch_services_register_command(Path::new("/Applications/Studio.app"));
         assert!(reg_cmd.contains("lsregister -f /Applications/Studio.app"));
+
+        // Trait derives
+        assert_eq!(&bundle, &bundle.clone());
+        assert!(!format!("{bundle:?}").is_empty());
+    }
+
+    /// Tests `Win32ShellLink` binary serialization, `XdgDesktopEntry` directory installation, and macOS symlinks.
+    #[test]
+    fn test_win32_shell_link_and_app_symlink() -> Result<()> {
+        let temp_dir = std::env::temp_dir().join(format!("desktop_test_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+
+        // 1. XDG desktop entry installation
+        assert_eq!(
+            XdgDesktopEntry::system_applications_dir(),
+            PathBuf::from("/usr/share/applications")
+        );
+        assert_eq!(
+            XdgDesktopEntry::user_applications_dir(),
+            PathBuf::from("~/.local/share/applications")
+        );
+
+        let xdg = XdgDesktopEntry::new("Test App", "/usr/bin/test-app")
+            .comment("Test application description");
+        let installed_xdg = xdg.install_to_directory(&temp_dir)?;
+        assert!(installed_xdg.exists());
+        let xdg_content = std::fs::read_to_string(&installed_xdg)?;
+        assert!(xdg_content.contains("Name=Test App"));
+
+        // 2. Win32 Shell Link (.lnk) generation
+        let lnk = Win32ShellLink::new(r"C:\Program Files\App\app.exe")
+            .arguments("--verbose --mode=gui")
+            .working_dir(r"C:\Program Files\App")
+            .icon(r"C:\Program Files\App\app.ico", 0)
+            .description("Shortcut to App")
+            .show_command(3); // SW_SHOWMAXIMIZED
+
+        let bytes = lnk.to_bytes();
+        // Header check: HeaderSize = 76 bytes (0x4C)
+        assert_eq!(&bytes[0..4], &0x0000_004Cu32.to_le_bytes());
+        // LinkCLSID check
+        assert_eq!(
+            &bytes[4..20],
+            &[
+                0x01, 0x14, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x46
+            ]
+        );
+        // ShowCommand check at offset 0x3C (60)
+        assert_eq!(&bytes[60..64], &3u32.to_le_bytes());
+
+        // File save check
+        let lnk_path = temp_dir.join("App.lnk");
+        lnk.save_to_disk(lnk_path.as_path())?;
+        assert!(lnk_path.exists());
+        assert_eq!(std::fs::read(&lnk_path)?, bytes);
+
+        // Minimal Win32ShellLink without optional flags and empty target path
+        let empty_lnk = Win32ShellLink::new("");
+        let empty_bytes = empty_lnk.to_bytes();
+        assert_eq!(&empty_bytes[0..4], &0x0000_004Cu32.to_le_bytes());
+        assert!(empty_lnk.save_to_disk(Path::new("")).is_err());
+
+        // Trait derives
+        assert_eq!(&lnk, &lnk.clone());
+        assert!(!format!("{lnk:?}").is_empty());
+
+        // 3. macOS App Bundle symlink
+        let mock_bundle = temp_dir.join("MyStudio.app");
+        let _ = std::fs::create_dir_all(&mock_bundle);
+
+        // Name with explicit .app extension
+        let target1 =
+            MacOsAppBundle::create_applications_symlink(&mock_bundle, Some("MyStudioLink.app"))?;
+        // Second call when target already exists (exercises link_target.exists() == true branch)
+        let link_res_repeat =
+            MacOsAppBundle::create_applications_symlink(&mock_bundle, Some("MyStudioLink.app"));
+        assert!(link_res_repeat.is_ok());
+
+        // Dangling symlink (exercises link_target.exists() == false && link_target.is_symlink() == true)
+        let _ = std::fs::remove_file(&target1);
+        #[cfg(unix)]
+        {
+            let dangling_dest = temp_dir.join("nonexistent_dangling.app");
+            let _ = std::os::unix::fs::symlink(&dangling_dest, &target1);
+            let link_res_dangling =
+                MacOsAppBundle::create_applications_symlink(&mock_bundle, Some("MyStudioLink.app"));
+            assert!(link_res_dangling.is_ok());
+        }
+        let _ = std::fs::remove_file(&target1);
+
+        // Name without .app extension
+        let target2 =
+            MacOsAppBundle::create_applications_symlink(&mock_bundle, Some("MyStudioLink"))?;
+        let _ = std::fs::remove_file(&target2);
+
+        // None name with file_name() present on bundle_path
+        let target3 = MacOsAppBundle::create_applications_symlink(&mock_bundle, None)?;
+        let _ = std::fs::remove_file(&target3);
+
+        // None name with bundle_path without file_name (e.g. root "/")
+        let target4 = MacOsAppBundle::create_applications_symlink(Path::new("/"), None)?;
+        let _ = std::fs::remove_file(&target4);
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        Ok(())
     }
 }

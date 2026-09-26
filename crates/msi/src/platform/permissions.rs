@@ -551,7 +551,13 @@ impl LiveSecurityApplier {
 
         #[cfg(not(any(target_os = "macos", target_os = "linux")))]
         {
-            let _ = (path, name, value);
+            let _ = (name, value);
+            if !path.exists() {
+                return Err(Error::Io(format!(
+                    "Failed to set xattr '{name}' on {}: No such file or directory",
+                    path.display()
+                )));
+            }
             Ok(())
         }
     }

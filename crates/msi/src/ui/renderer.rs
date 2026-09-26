@@ -93,6 +93,47 @@ pub enum UiWidget {
         /// Height.
         height: u32,
     },
+    /// Scrollable text viewport for RTF or plain-text license agreements.
+    ScrollableText {
+        /// Content text.
+        text: String,
+        /// Current scroll offset in lines.
+        scroll_offset: usize,
+        /// Total lines in text.
+        total_lines: usize,
+        /// Whether content is Rich Text Format (RTF).
+        is_rtf: bool,
+    },
+    /// Hierarchical tree control for feature selection.
+    SelectionTree {
+        /// Tree nodes.
+        nodes: Vec<crate::ui::controls::SelectionTreeNode>,
+    },
+    /// Volume cost table listing disk space usage per mount/drive.
+    VolumeCostList {
+        /// Volume cost entries.
+        entries: Vec<crate::ui::controls::VolumeCostEntry>,
+    },
+    /// Path edit field paired with directory picker.
+    PathEdit {
+        /// Selected directory path.
+        path: String,
+        /// Enabled flag.
+        is_enabled: bool,
+    },
+    /// Radio button option within a group.
+    RadioButton {
+        /// Display text.
+        text: String,
+        /// Selected state.
+        selected: bool,
+        /// Enabled flag.
+        is_enabled: bool,
+        /// Group identifier.
+        group: String,
+        /// Radio button value.
+        value: String,
+    },
 }
 
 /// Low-level 2D drawing primitive instruction.
@@ -178,7 +219,13 @@ impl EguiLayoutMapper {
     ///
     /// Tuple of `(dialog_pixel_bounds, widget_placements, draw_commands)`.
     #[must_use]
-    #[allow(clippy::too_many_lines)]
+    #[allow(
+        clippy::too_many_lines,
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        clippy::cast_sign_loss,
+        clippy::cast_possible_wrap
+    )]
     pub fn map_active_dialog(
         &self,
         engine: &UiEngine,
@@ -259,24 +306,116 @@ impl EguiLayoutMapper {
             }
 
             let widget = match def.control_type() {
-                ControlType::PushButton => UiWidget::Button {
-                    text: current_text,
-                    is_default: state.is_some_and(|s| s.is_default),
-                    is_enabled,
-                },
-                ControlType::CheckBox => UiWidget::CheckBox {
-                    text: current_text,
-                    checked: state.is_some_and(|s| s.bound_value.as_deref() == Some("1")),
-                    is_enabled,
-                },
-                ControlType::Edit => UiWidget::Edit {
-                    text: current_text,
-                    is_password: def.is_password_input(),
-                    is_enabled,
-                },
+                ControlType::PushButton => {
+                    draws.push(DrawCommand::StrokeRect {
+                        rect: ctrl_bounds,
+                        color: Color32::LINE_GRAY,
+                        width: 1.0,
+                    });
+                    draws.push(DrawCommand::DrawText {
+                        pos: (ctrl_bounds.x + 8, ctrl_bounds.y + 4),
+                        text: current_text.clone(),
+                        color: Color32::BLACK,
+                        font_size: self.theme.base_font_size,
+                    });
+                    UiWidget::Button {
+                        text: current_text,
+                        is_default: state.is_some_and(|s| s.is_default),
+                        is_enabled,
+                    }
+                }
+                ControlType::CheckBox => {
+                    let checked = state.is_some_and(|s| s.bound_value.as_deref() == Some("1"));
+                    let check_box_rect = PixelRect::new(ctrl_bounds.x, ctrl_bounds.y + 2, 12, 12);
+                    draws.push(DrawCommand::StrokeRect {
+                        rect: check_box_rect,
+                        color: Color32::BLACK,
+                        width: 1.0,
+                    });
+                    if checked {
+                        draws.push(DrawCommand::FillRect {
+                            rect: PixelRect::new(ctrl_bounds.x + 2, ctrl_bounds.y + 4, 8, 8),
+                            color: Color32::ACCENT_BLUE,
+                        });
+                    }
+                    draws.push(DrawCommand::DrawText {
+                        pos: (ctrl_bounds.x + 16, ctrl_bounds.y + 2),
+                        text: current_text.clone(),
+                        color: self.theme.text_color,
+                        font_size: self.theme.base_font_size,
+                    });
+                    UiWidget::CheckBox {
+                        text: current_text,
+                        checked,
+                        is_enabled,
+                    }
+                }
+                ControlType::Edit => {
+                    let is_path_edit = def.property_name().is_some_and(|p| {
+                        p.ends_with("DIR") || p.ends_with("FOLDER") || p.ends_with("PATH")
+                    });
+                    if is_path_edit {
+                        draws.push(DrawCommand::StrokeRect {
+                            rect: ctrl_bounds,
+                            color: Color32::LINE_GRAY,
+                            width: 1.0,
+                        });
+                        draws.push(DrawCommand::DrawText {
+                            pos: (ctrl_bounds.x + 4, ctrl_bounds.y + 4),
+                            text: current_text.clone(),
+                            color: Color32::BLACK,
+                            font_size: self.theme.base_font_size,
+                        });
+                        UiWidget::PathEdit {
+                            path: current_text,
+                            is_enabled,
+                        }
+                    } else {
+                        let is_pwd = def.is_password_input();
+                        draws.push(DrawCommand::StrokeRect {
+                            rect: ctrl_bounds,
+                            color: Color32::LINE_GRAY,
+                            width: 1.0,
+                        });
+                        let display_text = if is_pwd {
+                            "*".repeat(current_text.len())
+                        } else {
+                            current_text.clone()
+                        };
+                        draws.push(DrawCommand::DrawText {
+                            pos: (ctrl_bounds.x + 4, ctrl_bounds.y + 4),
+                            text: display_text,
+                            color: Color32::BLACK,
+                            font_size: self.theme.base_font_size,
+                        });
+                        UiWidget::Edit {
+                            text: current_text,
+                            is_password: is_pwd,
+                            is_enabled,
+                        }
+                    }
+                }
                 ControlType::ProgressBar => {
                     let pct = state.map_or(0, |s| s.progress_percent);
                     let frac = f32::from(u16::try_from(pct).unwrap_or(0)) / 100.0;
+                    draws.push(DrawCommand::StrokeRect {
+                        rect: ctrl_bounds,
+                        color: Color32::LINE_GRAY,
+                        width: 1.0,
+                    });
+                    let fill_w = ((ctrl_bounds.width as f32) * frac) as i32;
+                    if fill_w > 0 {
+                        let fill_rect = PixelRect::new(
+                            ctrl_bounds.x,
+                            ctrl_bounds.y,
+                            fill_w,
+                            ctrl_bounds.height,
+                        );
+                        draws.push(DrawCommand::FillRect {
+                            rect: fill_rect,
+                            color: Color32::ACCENT_BLUE,
+                        });
+                    }
                     UiWidget::ProgressBar { fraction: frac }
                 }
                 ControlType::Line => UiWidget::Separator {
@@ -286,18 +425,118 @@ impl EguiLayoutMapper {
                     width: u32::try_from(ctrl_bounds.width).unwrap_or(0),
                     height: u32::try_from(ctrl_bounds.height).unwrap_or(0),
                 },
-                ControlType::RadioButtonGroup
-                | ControlType::Text
+                ControlType::ScrollableText => {
+                    let is_rtf = current_text.starts_with(r"{\rtf");
+                    let total_lines = current_text.lines().count();
+                    draws.push(DrawCommand::FillRect {
+                        rect: ctrl_bounds,
+                        color: Color32::WHITE,
+                    });
+                    draws.push(DrawCommand::StrokeRect {
+                        rect: ctrl_bounds,
+                        color: Color32::LINE_GRAY,
+                        width: 1.0,
+                    });
+                    for (line_idx, line) in current_text
+                        .lines()
+                        .take(ctrl_bounds.height as usize / 16)
+                        .enumerate()
+                    {
+                        draws.push(DrawCommand::DrawText {
+                            pos: (
+                                ctrl_bounds.x + 4,
+                                ctrl_bounds.y + 4 + (line_idx as i32 * 16),
+                            ),
+                            text: line.to_string(),
+                            color: Color32::BLACK,
+                            font_size: self.theme.base_font_size,
+                        });
+                    }
+                    UiWidget::ScrollableText {
+                        text: current_text,
+                        scroll_offset: 0,
+                        total_lines,
+                        is_rtf,
+                    }
+                }
+                ControlType::SelectionTree => {
+                    draws.push(DrawCommand::FillRect {
+                        rect: ctrl_bounds,
+                        color: Color32::WHITE,
+                    });
+                    draws.push(DrawCommand::StrokeRect {
+                        rect: ctrl_bounds,
+                        color: Color32::LINE_GRAY,
+                        width: 1.0,
+                    });
+                    let nodes = state.map_or_else(Vec::new, |s| s.tree_nodes.clone());
+                    for (i, node) in nodes
+                        .iter()
+                        .take(ctrl_bounds.height as usize / 20)
+                        .enumerate()
+                    {
+                        draws.push(DrawCommand::DrawText {
+                            pos: (ctrl_bounds.x + 8, ctrl_bounds.y + 4 + (i as i32 * 20)),
+                            text: format!("├─ [X] {}", node.title),
+                            color: Color32::BLACK,
+                            font_size: self.theme.base_font_size,
+                        });
+                    }
+                    UiWidget::SelectionTree { nodes }
+                }
+                ControlType::VolumeCostList => {
+                    draws.push(DrawCommand::FillRect {
+                        rect: ctrl_bounds,
+                        color: Color32::WHITE,
+                    });
+                    draws.push(DrawCommand::StrokeRect {
+                        rect: ctrl_bounds,
+                        color: Color32::LINE_GRAY,
+                        width: 1.0,
+                    });
+                    let entries = state.map_or_else(Vec::new, |s| s.volume_entries.clone());
+                    draws.push(DrawCommand::DrawText {
+                        pos: (ctrl_bounds.x + 4, ctrl_bounds.y + 4),
+                        text: "Volume | Disk Size | Required | Available".to_string(),
+                        color: Color32::BLACK,
+                        font_size: self.theme.base_font_size,
+                    });
+                    UiWidget::VolumeCostList { entries }
+                }
+                ControlType::RadioButtonGroup => {
+                    let is_selected =
+                        state.is_some_and(|s| s.bound_value.as_deref() == Some(&current_text));
+                    let radio_mark = if is_selected { "(•) " } else { "( ) " };
+                    draws.push(DrawCommand::DrawText {
+                        pos: (ctrl_bounds.x, ctrl_bounds.y + 2),
+                        text: format!("{radio_mark}{current_text}"),
+                        color: self.theme.text_color,
+                        font_size: self.theme.base_font_size,
+                    });
+                    UiWidget::RadioButton {
+                        text: current_text.clone(),
+                        selected: is_selected,
+                        is_enabled,
+                        group: def.control().to_string(),
+                        value: current_text,
+                    }
+                }
+                ControlType::Text
                 | ControlType::ComboBox
                 | ControlType::ListBox
-                | ControlType::ListView
-                | ControlType::ScrollableText
-                | ControlType::VolumeCostList
-                | ControlType::SelectionTree => UiWidget::Label {
-                    text: current_text,
-                    font_size: self.theme.base_font_size,
-                    color: self.theme.text_color,
-                },
+                | ControlType::ListView => {
+                    draws.push(DrawCommand::DrawText {
+                        pos: (ctrl_bounds.x, ctrl_bounds.y + 2),
+                        text: current_text.clone(),
+                        color: self.theme.text_color,
+                        font_size: self.theme.base_font_size,
+                    });
+                    UiWidget::Label {
+                        text: current_text,
+                        font_size: self.theme.base_font_size,
+                        color: self.theme.text_color,
+                    }
+                }
             };
 
             widgets.push((ctrl_bounds, widget));
@@ -531,10 +770,48 @@ mod tests {
         assert_ne!(draws2.len(), 0);
     }
 
+    /// Helper to populate a selection tree node on a dialog control.
+    ///
+    /// # Arguments
+    ///
+    /// * `engine` - Active UI engine.
+    /// * `dlg` - Dialog identifier name.
+    /// * `ctrl` - Control identifier name.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or [`Error::Validation`] if the control state is missing.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Validation`] if the specified control does not exist.
+    #[allow(clippy::or_fun_call)]
+    fn add_selection_tree_node(
+        engine: &mut UiEngine,
+        dlg: &str,
+        ctrl: &str,
+    ) -> crate::error::Result<()> {
+        let tre_state =
+            engine
+                .get_control_state_mut(dlg, ctrl)
+                .ok_or(crate::error::Error::Validation {
+                    element: "Tre".to_string(),
+                    reason: "missing state".to_string(),
+                })?;
+        tre_state
+            .tree_nodes
+            .push(crate::ui::controls::SelectionTreeNode::new(
+                "Feat1",
+                "Main Feature",
+                1024,
+            ));
+        Ok(())
+    }
+
     /// Tests mapping all control types (`CheckBox`, `Edit`, `ProgressBar`, `Line`, `Bitmap`, `Text`, and invisible controls).
     #[test]
-    #[allow(clippy::too_many_lines)]
-    fn test_layout_mapper_all_control_variants() {
+    #[allow(clippy::too_many_lines, clippy::unnecessary_wraps)]
+    fn test_layout_mapper_all_control_variants() -> crate::error::Result<()> {
         let mapper = EguiLayoutMapper::new(WizardTheme::mondo(), FontMetrics::default());
         let mut engine = UiEngine::new(EvaluationContext::new());
 
@@ -659,6 +936,44 @@ mod tests {
             0,
         ));
 
+        // PathEdit variants (Edit controls with property ending in DIR, FOLDER, PATH)
+        engine.add_control(
+            ControlDefinition::new(
+                "ControlsDlg",
+                "EditDir",
+                ControlType::Edit,
+                DluRect::new(10, 220, 100, 14),
+                3,
+            )
+            .property("INSTALLDIR")
+            .text("C:\\Program Files\\App"),
+        );
+        engine.add_control(
+            ControlDefinition::new(
+                "ControlsDlg",
+                "EditFolder",
+                ControlType::Edit,
+                DluRect::new(10, 240, 100, 14),
+                3,
+            )
+            .property("TARGETFOLDER")
+            .text("C:\\Target"),
+        );
+        engine.add_control(
+            ControlDefinition::new(
+                "ControlsDlg",
+                "EditPath",
+                ControlType::Edit,
+                DluRect::new(10, 260, 100, 14),
+                3,
+            )
+            .property("MYPATH")
+            .text("C:\\Path"),
+        );
+
+        assert!(add_selection_tree_node(&mut engine, "ControlsDlg", "Tre").is_ok());
+        assert!(add_selection_tree_node(&mut engine, "ControlsDlg", "NoSuchControl").is_err());
+
         // Configure properties and conditions to trigger dynamic state mutations
         engine.context_mut().set_property("ACCEPT", "1");
         engine.add_condition(crate::ui::events::ControlCondition {
@@ -672,8 +987,8 @@ mod tests {
         engine.update_progress(50);
 
         // 1. Map with Some(state)
-        let (_bounds, widgets, _draws) = mapper.map_active_dialog(&engine, 1024, 768);
-        assert_eq!(widgets.len(), 14); // 14 visible controls, 1 hidden skipped
+        let (_bounds, widgets, draws) = mapper.map_active_dialog(&engine, 1024, 768);
+        assert_eq!(widgets.len(), 17); // 17 visible controls, 1 hidden skipped
 
         assert_eq!(
             widgets[0].1,
@@ -721,11 +1036,36 @@ mod tests {
                 is_enabled: true,
             }
         );
+        assert_eq!(
+            widgets[14].1,
+            UiWidget::PathEdit {
+                path: "C:\\Program Files\\App".to_string(),
+                is_enabled: true,
+            }
+        );
+        assert_eq!(
+            widgets[15].1,
+            UiWidget::PathEdit {
+                path: "C:\\Target".to_string(),
+                is_enabled: true,
+            }
+        );
+        assert_eq!(
+            widgets[16].1,
+            UiWidget::PathEdit {
+                path: "C:\\Path".to_string(),
+                is_enabled: true,
+            }
+        );
+        assert!(draws.iter().any(|d| match d {
+            DrawCommand::DrawText { text, .. } => text.contains("Main Feature"),
+            _ => false,
+        }));
 
         // 2. Map with None (states cleared)
         engine.clear_control_states();
         let (_bounds2, widgets2, _draws2) = mapper.map_active_dialog(&engine, 1024, 768);
-        assert_eq!(widgets2.len(), 14);
+        assert_eq!(widgets2.len(), 17);
         assert_eq!(
             widgets2[0].1,
             UiWidget::CheckBox {
@@ -743,6 +1083,7 @@ mod tests {
                 is_enabled: true,
             }
         );
+        Ok(())
     }
 
     /// Tests `SoftwareBuffer` rasterization, filling, stroking, text commands, and clipping.
@@ -794,6 +1135,7 @@ mod tests {
         assert_eq!(buffer.get_pixel(20, 20), Some(Color32::from_rgb(255, 0, 0)));
         assert_eq!(buffer.get_pixel(200, 200), None); // Out of bounds X and Y
         assert_eq!(buffer.get_pixel(10, 200), None); // In bounds X, out of bounds Y
+        assert_eq!(buffer.get_pixel(200, 10), None); // Out of bounds X, in bounds Y
     }
 
     /// Tests trait implementations for renderer types.

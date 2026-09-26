@@ -197,12 +197,9 @@ impl ComponentGuid {
     /// # Returns
     ///
     /// A deterministic [`ComponentGuid`].
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::Validation`] if formatting fails.
-    pub fn generate_deterministic(namespace_seed: &str, name: &str) -> Result<Self> {
-        Ok(Self::generate(namespace_seed, name))
+    #[must_use]
+    pub fn generate_deterministic(namespace_seed: &str, name: &str) -> Self {
+        Self::generate(namespace_seed, name)
     }
 
     /// Returns the string slice of this GUID.
@@ -579,6 +576,34 @@ impl FileKey {
         Ok(Self(sanitized))
     }
 
+    /// Creates a [`FileKey`] from a known valid static string slice.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - Known valid static file identifier.
+    ///
+    /// # Returns
+    ///
+    /// A new [`FileKey`].
+    #[must_use]
+    pub fn from_static(key: &'static str) -> Self {
+        Self(key.to_string())
+    }
+
+    /// Creates a [`FileKey`] from an already-validated string slice.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - Validated file identifier.
+    ///
+    /// # Returns
+    ///
+    /// A new [`FileKey`].
+    #[must_use]
+    pub fn from_validated(key: &str) -> Self {
+        Self(key.to_string())
+    }
+
     /// Returns the string slice.
     ///
     /// # Returns
@@ -626,6 +651,34 @@ impl FeatureName {
             });
         }
         Ok(Self(s))
+    }
+
+    /// Creates a [`FeatureName`] from a known valid static string slice.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Known valid static feature name.
+    ///
+    /// # Returns
+    ///
+    /// A new [`FeatureName`].
+    #[must_use]
+    pub fn from_static(name: &'static str) -> Self {
+        Self(name.to_string())
+    }
+
+    /// Creates a [`FeatureName`] from an already-validated string slice.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Validated feature name.
+    ///
+    /// # Returns
+    ///
+    /// A new [`FeatureName`].
+    #[must_use]
+    pub fn from_validated(name: &str) -> Self {
+        Self(name.to_string())
     }
 
     /// Returns the string slice.
@@ -678,6 +731,34 @@ impl ComponentName {
         Ok(Self(sanitized))
     }
 
+    /// Creates a [`ComponentName`] from a known valid static string slice.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Known valid static component name.
+    ///
+    /// # Returns
+    ///
+    /// A new [`ComponentName`].
+    #[must_use]
+    pub fn from_static(name: &'static str) -> Self {
+        Self(name.to_string())
+    }
+
+    /// Creates a [`ComponentName`] from an already-validated string slice.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Validated component name.
+    ///
+    /// # Returns
+    ///
+    /// A new [`ComponentName`].
+    #[must_use]
+    pub fn from_validated(name: &str) -> Self {
+        Self(name.to_string())
+    }
+
     /// Returns the string slice.
     ///
     /// # Returns
@@ -728,6 +809,34 @@ impl DirectoryId {
         Ok(Self(sanitized))
     }
 
+    /// Creates a [`DirectoryId`] from a known valid static string slice.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - Known valid static directory identifier.
+    ///
+    /// # Returns
+    ///
+    /// A new [`DirectoryId`].
+    #[must_use]
+    pub fn from_static(id: &'static str) -> Self {
+        Self(id.to_string())
+    }
+
+    /// Creates a [`DirectoryId`] from an already-validated string slice.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - Validated directory identifier.
+    ///
+    /// # Returns
+    ///
+    /// A new [`DirectoryId`].
+    #[must_use]
+    pub fn from_validated(id: &str) -> Self {
+        Self(id.to_string())
+    }
+
     /// Returns the string slice.
     ///
     /// # Returns
@@ -775,6 +884,20 @@ impl PropertyName {
             });
         }
         Ok(Self(s))
+    }
+
+    /// Creates a [`PropertyName`] from a known valid static string slice.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Known valid static property name.
+    ///
+    /// # Returns
+    ///
+    /// A new [`PropertyName`].
+    #[must_use]
+    pub fn from_static(name: &'static str) -> Self {
+        Self(name.to_string())
     }
 
     /// Returns the string slice.
@@ -879,6 +1002,28 @@ mod tests {
             assert_eq!(p.as_str(), "ProductName");
             assert_eq!(format!("{p}"), "ProductName");
         }
+        let static_p = PropertyName::from_static("StaticProp");
+        assert_eq!(static_p.as_str(), "StaticProp");
+
+        let static_f = FeatureName::from_static("StaticFeat");
+        assert_eq!(static_f.as_str(), "StaticFeat");
+        let val_f = FeatureName::from_validated("ValFeat");
+        assert_eq!(val_f.as_str(), "ValFeat");
+
+        let static_c = ComponentName::from_static("StaticComp");
+        assert_eq!(static_c.as_str(), "StaticComp");
+        let val_c = ComponentName::from_validated("ValComp");
+        assert_eq!(val_c.as_str(), "ValComp");
+
+        let static_d = DirectoryId::from_static("StaticDir");
+        assert_eq!(static_d.as_str(), "StaticDir");
+        let val_d = DirectoryId::from_validated("ValDir");
+        assert_eq!(val_d.as_str(), "ValDir");
+
+        let static_k = FileKey::from_static("StaticFile");
+        assert_eq!(static_k.as_str(), "StaticFile");
+        let val_k = FileKey::from_validated("ValFile");
+        assert_eq!(val_k.as_str(), "ValFile");
     }
 
     #[test]
@@ -1023,28 +1168,22 @@ mod tests {
         }
     }
 
-    #[allow(clippy::never_loop)]
     #[test]
     fn test_deterministic_guid() {
-        for guid1 in into_vec(ComponentGuid::generate_deterministic("INSTALLDIR", "Comp1")) {
-            for guid2 in into_vec(ComponentGuid::generate_deterministic("INSTALLDIR", "Comp1")) {
-                for guid3 in into_vec(ComponentGuid::generate_deterministic("INSTALLDIR", "Comp2"))
-                {
-                    assert_eq!(guid1, guid2);
-                    assert_ne!(guid1, guid3);
-                    assert!(guid1.as_str().starts_with('{'));
-                    assert!(guid1.as_str().ends_with('}'));
-                    assert_eq!(guid1.as_str().len(), 38);
+        let guid1 = ComponentGuid::generate_deterministic("INSTALLDIR", "Comp1");
+        let guid2 = ComponentGuid::generate_deterministic("INSTALLDIR", "Comp1");
+        let guid3 = ComponentGuid::generate_deterministic("INSTALLDIR", "Comp2");
+        assert_eq!(guid1, guid2);
+        assert_ne!(guid1, guid3);
+        assert!(guid1.as_str().starts_with('{'));
+        assert!(guid1.as_str().ends_with('}'));
+        assert_eq!(guid1.as_str().len(), 38);
 
-                    // Verify version 5 character at position 15
-                    assert_eq!(&guid1.as_str()[15..16], "5");
-                }
-            }
-        }
+        // Verify version 5 character at position 15
+        assert_eq!(&guid1.as_str()[15..16], "5");
 
         // Test empty input sha1 coverage
-        for empty_guid in into_vec(ComponentGuid::generate_deterministic("", "")) {
-            assert_eq!(empty_guid.as_str().len(), 38);
-        }
+        let empty_guid = ComponentGuid::generate_deterministic("", "");
+        assert_eq!(empty_guid.as_str().len(), 38);
     }
 }

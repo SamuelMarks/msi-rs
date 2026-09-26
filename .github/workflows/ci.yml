@@ -155,7 +155,7 @@ jobs:
       - name: Build & Install Python Package via Maturin
         run: |
           maturin build --manifest-path crates/msi-python/Cargo.toml --out target/wheels
-          pip install --find-links=target/wheels msi-python
+          pip install --no-index --find-links=target/wheels msi
 
       - name: Run Pytest Test Suite
         run: pytest tests/python

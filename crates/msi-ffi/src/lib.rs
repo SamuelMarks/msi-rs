@@ -27,12 +27,14 @@ pub mod builder;
 pub mod error;
 pub mod md5;
 pub mod package;
+pub mod transaction;
 pub mod types;
 pub mod wix;
 
 pub use builder::*;
 pub use error::*;
 pub use package::*;
+pub use transaction::*;
 pub use types::*;
 pub use wix::*;
 

@@ -39,6 +39,13 @@ pub struct MsiSummaryInfoHandle {
     pub inner: msi::database::summary_info::SummaryInfo,
 }
 
+/// Opaque wrapper for a multi-package transaction manager.
+#[derive(Debug)]
+pub struct MsiTransactionHandle {
+    /// Inner multi-package transaction manager.
+    pub inner: msi::execution::transaction::MultiPackageTransactionManager,
+}
+
 /// Contiguous buffer descriptor representing allocated native memory.
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -142,6 +149,26 @@ pub unsafe extern "C" fn msi_record_destroy(handle: *mut MsiRecordHandle) {
 /// `handle` must be a valid pointer obtained from the library, or NULL.
 #[no_mangle]
 pub unsafe extern "C" fn msi_summary_info_destroy(handle: *mut MsiSummaryInfoHandle) {
+    unsafe {
+        if !handle.is_null() {
+            drop(Box::from_raw(handle));
+        }
+    }
+}
+
+/// Frees an [`MsiTransactionHandle`] allocated by the library.
+///
+/// If `handle` is NULL, this function is a safe no-op.
+///
+/// # Arguments
+///
+/// * `handle` - Pointer to the transaction handle to destroy.
+///
+/// # Safety
+///
+/// `handle` must be a valid pointer obtained from `msi_begin_transaction`, or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn msi_transaction_destroy(handle: *mut MsiTransactionHandle) {
     unsafe {
         if !handle.is_null() {
             drop(Box::from_raw(handle));

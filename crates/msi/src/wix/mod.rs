@@ -11,6 +11,7 @@ pub mod compiler;
 pub mod harvest;
 pub mod linker;
 pub mod localization;
+pub mod manifest;
 pub mod parity;
 pub mod patch;
 pub mod preprocessor;
@@ -23,13 +24,17 @@ pub mod xml;
 
 pub use bundle::{BootstrapperApplication, BurnBundle, ChainPackage, ChainPackageType};
 pub use compiler::Compiler;
-pub use harvest::Harvester;
+pub use harvest::{HarvestPayloadOptions, HarvestPayloadResult, Harvester};
 pub use linker::{
     modularize_identifier, CubValidator, IceDiagnostic, IceDiagnosticType, IceRegistry, IceReport,
     IceRule, LinkedDatabase, Linker, MergeModule, StandardActionOrder, StandardDirectory,
     StandardIceRule, STANDARD_DIRECTORIES, STANDARD_INSTALL_EXECUTE_ACTIONS,
 };
 pub use localization::{LocalizationCatalog, WixLocString, WixLocalization};
+pub use manifest::{
+    is_sensitive_property_name, parse_vars_schema, synthesize_wix_xml, JsonValue,
+    ManifestMsiSynthesizer, PackagingManifest, SchemaProperty,
+};
 pub use parity::MsiDecompiler;
 pub use patch::{
     BinaryDelta, BinaryDeltaInstruction, CPackWiXFragment, CPackWiXPatch, PatchCreation,

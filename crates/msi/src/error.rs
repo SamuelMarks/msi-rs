@@ -562,6 +562,21 @@ pub enum Error {
         /// Detail regarding the failure.
         reason: String,
     },
+
+    /// An error occurred during transaction chaining or embedded chainer execution.
+    #[display("Chainer error: {_0}")]
+    #[error(ignore)]
+    Chainer(String),
+
+    /// An error occurred during in-process database or relational schema provisioning.
+    #[display("SQL provisioning error: {_0}")]
+    #[error(ignore)]
+    SqlProvisioning(String),
+
+    /// An error occurred during service installation or configuration.
+    #[display("Service configuration error: {_0}")]
+    #[error(ignore)]
+    ServiceConfiguration(String),
 }
 
 impl From<std::io::Error> for Error {
@@ -1147,6 +1162,40 @@ mod tests {
             reason: "manifest missing".to_string(),
         };
         assert_eq!(format!("{err_burn}"), "Burn bundle error: manifest missing");
+    }
+
+    /// Tests formatting of chainer, sql provisioning, and service configuration error variants.
+    #[test]
+    fn test_error_display_chainer_and_provisioning() {
+        let err_chainer = Error::Chainer("failed to join transaction".to_string());
+        assert_eq!(
+            format!("{err_chainer}"),
+            "Chainer error: failed to join transaction"
+        );
+        assert_eq!(
+            err_chainer,
+            Error::Chainer("failed to join transaction".to_string())
+        );
+
+        let err_sql = Error::SqlProvisioning("connection timeout".to_string());
+        assert_eq!(
+            format!("{err_sql}"),
+            "SQL provisioning error: connection timeout"
+        );
+        assert_eq!(
+            err_sql,
+            Error::SqlProvisioning("connection timeout".to_string())
+        );
+
+        let err_svc = Error::ServiceConfiguration("invalid failure action".to_string());
+        assert_eq!(
+            format!("{err_svc}"),
+            "Service configuration error: invalid failure action"
+        );
+        assert_eq!(
+            err_svc,
+            Error::ServiceConfiguration("invalid failure action".to_string())
+        );
     }
 
     /// Tests standard I/O error conversion via `From`.

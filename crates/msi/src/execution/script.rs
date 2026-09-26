@@ -136,6 +136,15 @@ pub enum ScriptOp {
         /// Target or parameter string.
         target: String,
     },
+    /// Extracts a file payload from a cabinet archive to a destination path.
+    ExtractCabinetFile {
+        /// Cabinet stream or filename (e.g. `#cab1.cab`).
+        cabinet: String,
+        /// File identifier or file name in cabinet.
+        file_key: String,
+        /// Destination file path on target filesystem.
+        destination: String,
+    },
 }
 
 impl ScriptOp {
@@ -158,6 +167,7 @@ impl ScriptOp {
             Self::StartService { .. } => 13,
             Self::StopService { .. } => 14,
             Self::CustomAction { .. } => 15,
+            Self::ExtractCabinetFile { .. } => 16,
         }
     }
 }
@@ -411,6 +421,15 @@ impl InstallScript {
                     write_string(&mut out, source);
                     write_string(&mut out, target);
                 }
+                ScriptOp::ExtractCabinetFile {
+                    cabinet,
+                    file_key,
+                    destination,
+                } => {
+                    write_string(&mut out, cabinet);
+                    write_string(&mut out, file_key);
+                    write_string(&mut out, destination);
+                }
             }
         }
 
@@ -584,6 +603,16 @@ impl InstallScript {
                         action_type,
                         source,
                         target,
+                    }
+                }
+                16 => {
+                    let cabinet = read_string(data, &mut offset)?;
+                    let file_key = read_string(data, &mut offset)?;
+                    let destination = read_string(data, &mut offset)?;
+                    ScriptOp::ExtractCabinetFile {
+                        cabinet,
+                        file_key,
+                        destination,
                     }
                 }
                 other => {
@@ -865,6 +894,14 @@ impl fmt::Display for ScriptOp {
             Self::StartService { name, .. } => write!(f, "StartService({name})"),
             Self::StopService { name } => write!(f, "StopService({name})"),
             Self::CustomAction { action, .. } => write!(f, "CustomAction({action})"),
+            Self::ExtractCabinetFile {
+                cabinet,
+                file_key,
+                destination,
+            } => write!(
+                f,
+                "ExtractCabinetFile({cabinet}:{file_key} -> {destination})"
+            ),
         }
     }
 }
@@ -1102,6 +1139,11 @@ mod tests {
             action_type: 1,
             source: "BinaryTableKey".to_string(),
             target: "EntryFn".to_string(),
+        });
+        script.push(ScriptOp::ExtractCabinetFile {
+            cabinet: "#cab1.cab".to_string(),
+            file_key: "fil_main_exe".to_string(),
+            destination: r"C:\Program Files\App\main.exe".to_string(),
         });
 
         let serialized = script.serialize();

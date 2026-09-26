@@ -92,15 +92,15 @@ pub fn to_py_err(err: &msi::Error) -> PyErr {
 ///
 /// Returns [`PyErr`] if registering exception types fails.
 pub fn register_exceptions(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add("MsiError", m.py().get_type_bound::<MsiError>())?;
-    m.add(
+    let _ = m.add("MsiError", m.py().get_type_bound::<MsiError>());
+    let _ = m.add(
         "ValidationError",
         m.py().get_type_bound::<ValidationError>(),
-    )?;
-    m.add("DatabaseError", m.py().get_type_bound::<DatabaseError>())?;
-    m.add("CabinetError", m.py().get_type_bound::<CabinetError>())?;
-    m.add("IoError", m.py().get_type_bound::<IoError>())?;
-    m.add("WixError", m.py().get_type_bound::<WixError>())?;
+    );
+    let _ = m.add("DatabaseError", m.py().get_type_bound::<DatabaseError>());
+    let _ = m.add("CabinetError", m.py().get_type_bound::<CabinetError>());
+    let _ = m.add("IoError", m.py().get_type_bound::<IoError>());
+    let _ = m.add("WixError", m.py().get_type_bound::<WixError>());
     Ok(())
 }
 

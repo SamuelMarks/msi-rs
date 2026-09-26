@@ -115,6 +115,25 @@ unsafe impl Send for NativeLibraryLoader {}
 // SAFETY: Function table lookups are synchronized and loaded function pointers are immutable.
 unsafe impl Sync for NativeLibraryLoader {}
 
+impl Clone for NativeLibraryLoader {
+    fn clone(&self) -> Self {
+        let mut loader = Self {
+            sandbox_dir: self.sandbox_dir.clone(),
+            library_path: self.library_path.clone(),
+            library_format: self.library_format,
+            wine_executable: self.wine_executable.clone(),
+            wine_mode: self.wine_mode.clone(),
+            #[cfg(unix)]
+            dl_handle: None,
+            functions: self.functions.clone(),
+        };
+        if let Some(ref p) = loader.library_path.clone() {
+            let _ = loader.load_library(p);
+        }
+        loader
+    }
+}
+
 impl Default for NativeLibraryLoader {
     fn default() -> Self {
         Self::new()
@@ -248,6 +267,20 @@ impl NativeLibraryLoader {
         self.functions.insert(entry_point.into(), function);
     }
 
+    /// Checks whether an in-memory entry point function or loaded library is present.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Function entry point name.
+    ///
+    /// # Returns
+    ///
+    /// `true` if registered or library loaded, `false` otherwise.
+    #[must_use]
+    pub fn has_function(&self, name: &str) -> bool {
+        self.functions.contains_key(name) || self.library_path.is_some()
+    }
+
     #[cfg(unix)]
     /// Formats a dlerror pointer into a safe string.
     fn format_dlerror(err_ptr: *mut std::os::raw::c_char) -> String {
@@ -375,7 +408,12 @@ impl NativeLibraryLoader {
 
         #[cfg(windows)]
         {
-            let _ = path;
+            if !path.exists() {
+                return Err(Error::CustomActionFailed {
+                    action: path.display().to_string(),
+                    reason: format!("dynamic library file not found: {}", path.display()),
+                });
+            }
             Ok(())
         }
     }
@@ -733,6 +771,384 @@ impl SubprocessRunner {
     }
 }
 
+/// Execution mode for SQL schema provisioning.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SqlProvisionerAction {
+    /// Create database, users, and grant privileges.
+    Install,
+    /// Uninstall phase (drops database/user only if `PURGE_DATA="1"`).
+    Uninstall,
+}
+
+/// Configuration parameters for in-process SQL provisioning.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SqlProvisionerConfig {
+    /// Host or IP address of target database server.
+    pub host: String,
+    /// TCP listening port of the database server.
+    pub port: u16,
+    /// Administrative database username (e.g. `root`).
+    pub root_user: String,
+    /// Administrative database password.
+    pub root_password: Option<String>,
+    /// Target application database name (e.g. `openedx` or `wordpress`).
+    pub target_database: String,
+    /// Target application username to provision.
+    pub target_user: Option<String>,
+    /// Target application user password.
+    pub target_password: Option<String>,
+    /// Character collation (e.g. `utf8mb4_unicode_ci`).
+    pub target_collation: String,
+    /// Whether to drop database and users on uninstall (`PURGE_DATA="1"`).
+    pub purge_data: bool,
+    /// Whether to operate in mock/offline mode (synthesizes and validates SQL queries without opening network socket).
+    pub mock_mode: bool,
+}
+
+impl Default for SqlProvisionerConfig {
+    /// Creates a default [`SqlProvisionerConfig`] matching standard defaults.
+    fn default() -> Self {
+        Self {
+            host: "127.0.0.1".to_string(),
+            port: 3306,
+            root_user: "root".to_string(),
+            root_password: None,
+            target_database: "openedx".to_string(),
+            target_user: None,
+            target_password: None,
+            target_collation: "utf8mb4_unicode_ci".to_string(),
+            purge_data: false,
+            mock_mode: false,
+        }
+    }
+}
+
+impl SqlProvisionerConfig {
+    /// Resolves configuration parameters from active [`crate::execution::properties::EvaluationContext`].
+    ///
+    /// # Arguments
+    ///
+    /// * `ctx` - The property evaluation context.
+    ///
+    /// # Returns
+    ///
+    /// Extracted and normalized [`SqlProvisionerConfig`].
+    #[must_use]
+    pub fn from_context(ctx: &crate::execution::properties::EvaluationContext) -> Self {
+        let host = ctx
+            .get_property("PROP_MYSQL_HOST")
+            .unwrap_or("127.0.0.1")
+            .to_string();
+
+        let port = ctx
+            .get_property("PROP_MYSQL_PORT")
+            .or_else(|| ctx.get_property("MYSQL_PORT"))
+            .and_then(|p| p.parse::<u16>().ok())
+            .unwrap_or(3306);
+
+        let root_user = ctx
+            .get_property("PROP_MYSQL_ROOT_USER")
+            .unwrap_or("root")
+            .to_string();
+
+        let root_password = ctx
+            .get_property("PROP_MYSQL_ROOT_PASSWORD")
+            .map(ToString::to_string);
+
+        let target_database = ctx
+            .get_property("PROP_PROVISION_DB_NAME")
+            .or_else(|| ctx.get_property("TARGET_DATABASE"))
+            .unwrap_or("openedx")
+            .to_string();
+
+        let target_user = ctx
+            .get_property("PROP_PROVISION_USER")
+            .or_else(|| ctx.get_property("TARGET_USER"))
+            .map(ToString::to_string);
+
+        let target_password = ctx
+            .get_property("PROP_PROVISION_PASSWORD")
+            .or_else(|| ctx.get_property("TARGET_PASSWORD"))
+            .map(ToString::to_string);
+
+        let target_collation = ctx
+            .get_property("PROP_PROVISION_COLLATION")
+            .unwrap_or("utf8mb4_unicode_ci")
+            .to_string();
+
+        let purge_data = ctx.get_property("PURGE_DATA").is_some_and(|v| v == "1");
+        let mock_mode = ctx
+            .get_property("SQL_PROVISION_MOCK")
+            .is_some_and(|v| v == "1")
+            || ctx.get_property("MOCK_OFFLINE").is_some_and(|v| v == "1");
+
+        Self {
+            host,
+            port,
+            root_user,
+            root_password,
+            target_database,
+            target_user,
+            target_password,
+            target_collation,
+            purge_data,
+            mock_mode,
+        }
+    }
+
+    /// Synthesizes the list of SQL statements to execute for the given action.
+    ///
+    /// # Arguments
+    ///
+    /// * `action` - The provisioning action (`Install` or `Uninstall`).
+    ///
+    /// # Returns
+    ///
+    /// Vector of SQL query strings.
+    #[must_use]
+    pub fn generate_statements(&self, action: SqlProvisionerAction) -> Vec<String> {
+        let mut stmts = Vec::new();
+        match action {
+            SqlProvisionerAction::Install => {
+                stmts.push(format!(
+                    "CREATE DATABASE IF NOT EXISTS `{}` CHARACTER SET utf8mb4 COLLATE {};",
+                    self.target_database, self.target_collation
+                ));
+
+                if let Some(ref user) = self.target_user {
+                    let pwd = self.target_password.as_deref().unwrap_or("");
+                    stmts.push(format!(
+                        "CREATE USER IF NOT EXISTS '{user}'@'%' IDENTIFIED BY '{pwd}';"
+                    ));
+                    stmts.push(format!(
+                        "GRANT ALL PRIVILEGES ON `{}`.* TO '{user}'@'%';",
+                        self.target_database
+                    ));
+                    stmts.push("FLUSH PRIVILEGES;".to_string());
+                }
+            }
+            SqlProvisionerAction::Uninstall => {
+                if self.purge_data {
+                    stmts.push(format!(
+                        "DROP DATABASE IF EXISTS `{}`;",
+                        self.target_database
+                    ));
+                    if let Some(ref user) = self.target_user {
+                        stmts.push(format!("DROP USER IF EXISTS '{user}'@'%';"));
+                        stmts.push("FLUSH PRIVILEGES;".to_string());
+                    }
+                }
+            }
+        }
+        stmts
+    }
+}
+
+/// Result of SQL provisioning execution.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SqlProvisionerResult {
+    /// Whether all statements executed successfully.
+    pub success: bool,
+    /// List of statements that were executed or synthesized.
+    pub executed_statements: Vec<String>,
+}
+
+/// In-process SQL provisioner capable of direct TCP MySQL protocol execution.
+#[derive(Debug)]
+pub struct SqlProvisionerClient {
+    /// Active configuration.
+    config: SqlProvisionerConfig,
+}
+
+/// Unified trait combining [`std::io::Read`] and [`std::io::Write`] for stream communication.
+pub trait ReadWrite: std::io::Read + std::io::Write {}
+impl<T: std::io::Read + std::io::Write + ?Sized> ReadWrite for T {}
+
+impl SqlProvisionerClient {
+    /// Creates a new [`SqlProvisionerClient`] with the provided configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - Provisioning configuration.
+    ///
+    /// # Returns
+    ///
+    /// A new [`SqlProvisionerClient`].
+    #[must_use]
+    pub const fn new(config: SqlProvisionerConfig) -> Self {
+        Self { config }
+    }
+
+    /// Executes database schema provisioning for the given action without spawning external `.exe` processes.
+    ///
+    /// # Arguments
+    ///
+    /// * `action` - Provisioning action (`Install` or `Uninstall`).
+    ///
+    /// # Returns
+    ///
+    /// [`SqlProvisionerResult`] with executed queries.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::SqlProvisioning`] on connection or execution failure.
+    pub fn execute(&self, action: SqlProvisionerAction) -> Result<SqlProvisionerResult> {
+        let statements = self.config.generate_statements(action);
+
+        if self.config.mock_mode || statements.is_empty() {
+            return Ok(SqlProvisionerResult {
+                success: true,
+                executed_statements: statements,
+            });
+        }
+
+        let addr = format!("{}:{}", self.config.host, self.config.port);
+        let sock_addr = match addr.parse() {
+            Ok(sa) => sa,
+            Err(e) => {
+                return Err(Error::SqlProvisioning(format!(
+                    "invalid socket address '{addr}': {e}"
+                )));
+            }
+        };
+
+        let stream_res =
+            std::net::TcpStream::connect_timeout(&sock_addr, Duration::from_millis(5000));
+        let mut stream = match stream_res {
+            Ok(s) => s,
+            Err(e) => {
+                return Err(Error::SqlProvisioning(format!(
+                    "failed to connect to MySQL server at {addr}: {e}"
+                )));
+            }
+        };
+
+        let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+        let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
+
+        self.execute_wire_session(&mut stream, &statements)?;
+
+        Ok(SqlProvisionerResult {
+            success: true,
+            executed_statements: statements,
+        })
+    }
+
+    /// Executes the MySQL wire protocol handshake, authentication, and SQL query batch over a stream.
+    ///
+    /// # Arguments
+    ///
+    /// * `stream` - The stream to communicate over.
+    /// * `statements` - List of SQL queries to execute.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::SqlProvisioning`] on communication, authentication, or query failure.
+    #[allow(clippy::too_many_lines)]
+    pub fn execute_wire_session(
+        &self,
+        stream: &mut dyn ReadWrite,
+        statements: &[String],
+    ) -> Result<()> {
+        let mut header = [0u8; 4];
+        stream.read_exact(&mut header).map_err(|e| {
+            Error::SqlProvisioning(format!("failed to read MySQL handshake packet header: {e}"))
+        })?;
+
+        let payload_len = (u32::from(header[0])
+            | (u32::from(header[1]) << 8)
+            | (u32::from(header[2]) << 16)) as usize;
+
+        let mut handshake_payload = vec![0u8; payload_len];
+        stream.read_exact(&mut handshake_payload).map_err(|e| {
+            Error::SqlProvisioning(format!("failed to read MySQL handshake payload: {e}"))
+        })?;
+
+        let mut response_payload = Vec::new();
+        response_payload.extend_from_slice(&0x0008_0201u32.to_le_bytes());
+        response_payload.extend_from_slice(&0x0100_0000u32.to_le_bytes());
+        response_payload.push(33);
+        response_payload.extend_from_slice(&[0u8; 23]);
+        response_payload.extend_from_slice(self.config.root_user.as_bytes());
+        response_payload.push(0);
+        response_payload.push(0);
+
+        let resp_len = u32::try_from(response_payload.len()).unwrap_or(0);
+        let mut resp_header = [0u8; 4];
+        resp_header[0] = (resp_len & 0xFF) as u8;
+        resp_header[1] = ((resp_len >> 8) & 0xFF) as u8;
+        resp_header[2] = ((resp_len >> 16) & 0xFF) as u8;
+        resp_header[3] = 1;
+
+        stream.write_all(&resp_header).map_err(|e| {
+            Error::SqlProvisioning(format!("failed to write handshake response header: {e}"))
+        })?;
+        stream.write_all(&response_payload).map_err(|e| {
+            Error::SqlProvisioning(format!("failed to write handshake response payload: {e}"))
+        })?;
+
+        let mut auth_header = [0u8; 4];
+        stream.read_exact(&mut auth_header).map_err(|e| {
+            Error::SqlProvisioning(format!("failed to read auth response packet: {e}"))
+        })?;
+        let auth_len = (u32::from(auth_header[0])
+            | (u32::from(auth_header[1]) << 8)
+            | (u32::from(auth_header[2]) << 16)) as usize;
+        let mut auth_result = vec![0u8; auth_len];
+        stream.read_exact(&mut auth_result).map_err(|e| {
+            Error::SqlProvisioning(format!("failed to read auth response payload: {e}"))
+        })?;
+
+        if !auth_result.is_empty() && auth_result[0] == 0xFF {
+            return Err(Error::SqlProvisioning(
+                "authentication failed with MySQL server".to_string(),
+            ));
+        }
+
+        let mut seq: u8 = 0;
+        for sql in statements {
+            seq = seq.wrapping_add(1);
+            let mut query_payload = Vec::with_capacity(sql.len() + 1);
+            query_payload.push(0x03);
+            query_payload.extend_from_slice(sql.as_bytes());
+
+            let q_len = u32::try_from(query_payload.len()).unwrap_or(0);
+            let mut q_header = [0u8; 4];
+            q_header[0] = (q_len & 0xFF) as u8;
+            q_header[1] = ((q_len >> 8) & 0xFF) as u8;
+            q_header[2] = ((q_len >> 16) & 0xFF) as u8;
+            q_header[3] = seq;
+
+            stream
+                .write_all(&q_header)
+                .map_err(|e| Error::SqlProvisioning(format!("failed to send query header: {e}")))?;
+            stream
+                .write_all(&query_payload)
+                .map_err(|e| Error::SqlProvisioning(format!("failed to send query text: {e}")))?;
+
+            let mut query_res_header = [0u8; 4];
+            stream.read_exact(&mut query_res_header).map_err(|e| {
+                Error::SqlProvisioning(format!("failed to read query response header: {e}"))
+            })?;
+            let r_len = (u32::from(query_res_header[0])
+                | (u32::from(query_res_header[1]) << 8)
+                | (u32::from(query_res_header[2]) << 16)) as usize;
+            let mut q_result = vec![0u8; r_len];
+            stream.read_exact(&mut q_result).map_err(|e| {
+                Error::SqlProvisioning(format!("failed to read query response payload: {e}"))
+            })?;
+
+            if !q_result.is_empty() && q_result[0] == 0xFF {
+                return Err(Error::SqlProvisioning(format!(
+                    "SQL execution error executing query '{sql}'"
+                )));
+            }
+        }
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -787,6 +1203,26 @@ mod tests {
         let res_missing = loader.invoke_action("UnknownAction", 100);
         assert!(res_missing.is_err());
 
+        // Test Clone implementation with library_path = None
+        let cloned_none = loader.clone();
+        assert_eq!(
+            cloned_none.invoke_action("SuccessAction", 100),
+            Ok(ERROR_SUCCESS)
+        );
+
+        // Test has_function branches
+        let empty_loader = NativeLibraryLoader::new();
+        assert!(!empty_loader.has_function("AnyFunc"));
+        assert!(loader.has_function("SuccessAction"));
+
+        // Test Clone implementation with library_path = Some(...)
+        let mut loaded_loader = NativeLibraryLoader::new();
+        let loaded_path = std::env::temp_dir().join("mock_lib.dll");
+        loaded_loader.library_path = Some(loaded_path);
+        let cloned_some = loaded_loader.clone();
+        assert_eq!(cloned_some.library_path, loaded_loader.library_path);
+        assert!(cloned_some.has_function("AnyOtherFunc"));
+
         // Test sandbox extraction and cleanup
         let extract_res = loader.extract_to_sandbox("test_ca.dll", b"MZ_MOCK_PE_HEADER");
         assert!(extract_res.is_ok());
@@ -801,14 +1237,28 @@ mod tests {
 
         // Test extract_to_sandbox directory creation failure
         let mut fail_dir_loader = NativeLibraryLoader::new();
-        let counter = SANDBOX_COUNTER.load(Ordering::SeqCst);
-        let pid = std::process::id();
-        let block_path = std::env::temp_dir().join(format!("msi_ca_{pid}_{counter}"));
-        let _ = fs::write(&block_path, b"blocking_file");
-        assert!(fail_dir_loader
-            .extract_to_sandbox("test.dll", b"data")
-            .is_err());
-        let _ = fs::remove_file(&block_path);
+        let mut block_paths = Vec::new();
+        let mut failed = false;
+        for _ in 0..50 {
+            let counter = SANDBOX_COUNTER.load(Ordering::SeqCst);
+            let pid = std::process::id();
+            for c in counter..counter + 200 {
+                let p = std::env::temp_dir().join(format!("msi_ca_{pid}_{c}"));
+                let _ = fs::write(&p, b"blocking_file");
+                block_paths.push(p);
+            }
+            if fail_dir_loader
+                .extract_to_sandbox("test.dll", b"data")
+                .is_err()
+            {
+                failed = true;
+                break;
+            }
+        }
+        assert!(failed);
+        for p in &block_paths {
+            let _ = fs::remove_file(p);
+        }
 
         // Test extract_to_sandbox file write failure (nonexistent subdirectory)
         let mut fail_write_loader = NativeLibraryLoader::new();
@@ -1091,5 +1541,495 @@ mod tests {
             );
             assert_eq!(res.as_ref().map(|o| o.exit_code), Ok(ERROR_SUCCESS));
         }
+    }
+
+    /// Tests SQL provisioner config extraction, statement generation, and execution in mock and error modes.
+    #[test]
+    fn test_sql_provisioner_configuration_and_mock_execution() -> Result<()> {
+        use crate::execution::properties::EvaluationContext;
+
+        // 1. Context parsing
+        let mut ctx = EvaluationContext::new();
+        ctx.set_property("PROP_MYSQL_HOST", "127.0.0.1");
+        ctx.set_property("PROP_MYSQL_PORT", "3306");
+        ctx.set_property("PROP_MYSQL_ROOT_USER", "root");
+        ctx.set_property("PROP_MYSQL_ROOT_PASSWORD", "root_secret");
+        ctx.set_property("PROP_PROVISION_DB_NAME", "openedx");
+        ctx.set_property("PROP_PROVISION_USER", "openedx");
+        ctx.set_property("PROP_PROVISION_PASSWORD", "edx_secret");
+        ctx.set_property("PROP_PROVISION_COLLATION", "utf8mb4_unicode_ci");
+        ctx.set_property("PURGE_DATA", "0");
+        ctx.set_property("SQL_PROVISION_MOCK", "1");
+
+        let cfg = SqlProvisionerConfig::from_context(&ctx);
+        assert_eq!(cfg.host, "127.0.0.1");
+        assert_eq!(cfg.port, 3306);
+        assert_eq!(cfg.root_user, "root");
+        assert_eq!(cfg.root_password, Some("root_secret".to_string()));
+        assert_eq!(cfg.target_database, "openedx");
+        assert_eq!(cfg.target_user, Some("openedx".to_string()));
+        assert_eq!(cfg.target_password, Some("edx_secret".to_string()));
+        assert_eq!(cfg.target_collation, "utf8mb4_unicode_ci");
+        assert!(!cfg.purge_data);
+        assert!(cfg.mock_mode);
+
+        // 2. Install statements generation
+        let install_stmts = cfg.generate_statements(SqlProvisionerAction::Install);
+        assert_eq!(install_stmts.len(), 4);
+        assert!(install_stmts[0].contains("CREATE DATABASE IF NOT EXISTS `openedx`"));
+        assert!(install_stmts[1].contains("CREATE USER IF NOT EXISTS 'openedx'@'%'"));
+        assert!(install_stmts[2].contains("GRANT ALL PRIVILEGES ON `openedx`.*"));
+        assert_eq!(install_stmts[3], "FLUSH PRIVILEGES;");
+
+        // 3. Uninstall statements generation with PURGE_DATA=0 (must be empty!)
+        let uninstall_stmts_nopurge = cfg.generate_statements(SqlProvisionerAction::Uninstall);
+        assert!(uninstall_stmts_nopurge.is_empty());
+
+        // 4. Uninstall statements with PURGE_DATA=1
+        let mut cfg_purge = cfg.clone();
+        cfg_purge.purge_data = true;
+        let uninstall_stmts_purge = cfg_purge.generate_statements(SqlProvisionerAction::Uninstall);
+        assert_eq!(uninstall_stmts_purge.len(), 3);
+        assert!(uninstall_stmts_purge[0].contains("DROP DATABASE IF EXISTS `openedx`"));
+        assert!(uninstall_stmts_purge[1].contains("DROP USER IF EXISTS 'openedx'@'%'"));
+        assert_eq!(uninstall_stmts_purge[2], "FLUSH PRIVILEGES;");
+
+        // 5. Mock mode execution
+        let client = SqlProvisionerClient::new(cfg);
+        let res = client.execute(SqlProvisionerAction::Install)?;
+        assert!(res.success);
+        assert_eq!(res.executed_statements.len(), 4);
+
+        // 6. Network error branches (non-mock mode with unreachable server)
+        let mut cfg_real = cfg_purge.clone();
+        cfg_real.mock_mode = false;
+        cfg_real.port = 1; // Unlikely to have MySQL running on port 1
+        let real_client = SqlProvisionerClient::new(cfg_real.clone());
+        let err = real_client.execute(SqlProvisionerAction::Install);
+        assert!(err.is_err());
+        assert!(matches!(err, Err(Error::SqlProvisioning(..))));
+
+        // 7. Invalid host address
+        let mut cfg_bad_addr = cfg_purge;
+        cfg_bad_addr.mock_mode = false;
+        cfg_bad_addr.host = "invalid.ip.address".to_string();
+        let bad_client = SqlProvisionerClient::new(cfg_bad_addr);
+        let err_addr = bad_client.execute(SqlProvisionerAction::Install);
+        assert!(err_addr.is_err());
+        assert!(matches!(err_addr, Err(Error::SqlProvisioning(..))));
+
+        // 8. Statements empty with non-mock mode
+        let mut cfg_no_stmts = cfg_real;
+        cfg_no_stmts.purge_data = false;
+        let empty_client = SqlProvisionerClient::new(cfg_no_stmts);
+        let empty_res = empty_client.execute(SqlProvisionerAction::Uninstall)?;
+        assert!(empty_res.success);
+        assert!(empty_res.executed_statements.is_empty());
+
+        Ok(())
+    }
+
+    /// Tests fallback properties and statement generation variations.
+    #[test]
+    fn test_sql_provisioner_from_context_fallbacks_and_variants() {
+        use crate::execution::properties::EvaluationContext;
+
+        // Default empty context
+        let empty_ctx = EvaluationContext::new();
+        let default_cfg = SqlProvisionerConfig::from_context(&empty_ctx);
+        assert_eq!(default_cfg.host, "127.0.0.1");
+        assert_eq!(default_cfg.port, 3306);
+        assert_eq!(default_cfg.root_user, "root");
+        assert!(default_cfg.root_password.is_none());
+        assert_eq!(default_cfg.target_database, "openedx");
+        assert!(default_cfg.target_user.is_none());
+        assert!(default_cfg.target_password.is_none());
+        assert_eq!(default_cfg.target_collation, "utf8mb4_unicode_ci");
+        assert!(!default_cfg.purge_data);
+        assert!(!default_cfg.mock_mode);
+
+        // Install without target_user
+        let no_user_install = default_cfg.generate_statements(SqlProvisionerAction::Install);
+        assert_eq!(no_user_install.len(), 1);
+
+        // Uninstall with purge_data = true but target_user = None
+        let mut purge_no_user = default_cfg;
+        purge_no_user.purge_data = true;
+        let drop_stmts = purge_no_user.generate_statements(SqlProvisionerAction::Uninstall);
+        assert_eq!(drop_stmts.len(), 1);
+        assert!(drop_stmts[0].contains("DROP DATABASE IF EXISTS `openedx`"));
+
+        // Context using secondary property names
+        let mut alt_ctx = EvaluationContext::new();
+        alt_ctx.set_property("MYSQL_PORT", "3307");
+        alt_ctx.set_property("TARGET_DATABASE", "custom_db");
+        alt_ctx.set_property("TARGET_USER", "custom_user");
+        alt_ctx.set_property("TARGET_PASSWORD", "custom_pwd");
+        alt_ctx.set_property("MOCK_OFFLINE", "1");
+        alt_ctx.set_property("PURGE_DATA", "1");
+
+        let alt_cfg = SqlProvisionerConfig::from_context(&alt_ctx);
+        assert_eq!(alt_cfg.port, 3307);
+        assert_eq!(alt_cfg.target_database, "custom_db");
+        assert_eq!(alt_cfg.target_user, Some("custom_user".to_string()));
+        assert_eq!(alt_cfg.target_password, Some("custom_pwd".to_string()));
+        assert!(alt_cfg.mock_mode);
+        assert!(alt_cfg.purge_data);
+
+        // Install with user and no password
+        let mut no_pwd_cfg = alt_cfg;
+        no_pwd_cfg.target_password = None;
+        let install_no_pwd = no_pwd_cfg.generate_statements(SqlProvisionerAction::Install);
+        assert_eq!(install_no_pwd.len(), 4);
+        assert!(install_no_pwd[1].contains("IDENTIFIED BY ''"));
+    }
+
+    /// Simulation modes for mock MySQL server behavior.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum MockServerBehavior {
+        /// Fully successful MySQL handshake, auth, and query processing.
+        Success,
+        /// Close socket immediately to simulate handshake header read error.
+        FailHandshakeHeader,
+        /// Send truncated packet to simulate handshake payload read error.
+        FailHandshakePayload,
+        /// Close socket before sending authentication response header.
+        FailAuthHeader,
+        /// Send truncated authentication response payload.
+        FailAuthPayload,
+        /// Return MySQL error packet on authentication.
+        AuthFailed,
+        /// Close socket before sending query response header.
+        FailQueryHeader,
+        /// Send truncated query response payload.
+        FailQueryPayload,
+        /// Return MySQL error packet on query execution.
+        QueryFailed,
+    }
+
+    /// Spawns an in-process mock MySQL server listening on a local loopback port.
+    ///
+    /// # Arguments
+    ///
+    /// * `behavior` - The desired test behavior.
+    ///
+    /// # Returns
+    ///
+    /// Tuple of bound port and thread join handle.
+    #[allow(clippy::too_many_lines, clippy::cast_possible_truncation)]
+    fn spawn_mock_mysql_server(
+        behavior: MockServerBehavior,
+    ) -> Result<(u16, std::thread::JoinHandle<()>)> {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+        let port = listener.local_addr()?.port();
+
+        let handle = std::thread::spawn(move || {
+            let _ = (|| -> std::io::Result<()> {
+                let (mut socket, _) = listener.accept()?;
+
+                match behavior {
+                    MockServerBehavior::FailHandshakeHeader => {
+                        let _ = socket.shutdown(std::net::Shutdown::Both);
+                        return Ok(());
+                    }
+                    MockServerBehavior::FailHandshakePayload => {
+                        socket.write_all(&[20, 0, 0, 0])?;
+                        let _ = socket.shutdown(std::net::Shutdown::Both);
+                        return Ok(());
+                    }
+                    _ => {}
+                }
+
+                // Normal handshake packet (seq 0)
+                let handshake_payload = [0u8; 10];
+                let hs_len = u32::try_from(handshake_payload.len()).unwrap_or(0);
+                let hs_header = [
+                    (hs_len & 0xFF) as u8,
+                    ((hs_len >> 8) & 0xFF) as u8,
+                    ((hs_len >> 16) & 0xFF) as u8,
+                    0,
+                ];
+                socket.write_all(&hs_header)?;
+                socket.write_all(&handshake_payload)?;
+
+                // Read client's handshake response
+                let mut client_resp_header = [0u8; 4];
+                socket.read_exact(&mut client_resp_header)?;
+                let resp_len = (u32::from(client_resp_header[0])
+                    | (u32::from(client_resp_header[1]) << 8)
+                    | (u32::from(client_resp_header[2]) << 16))
+                    as usize;
+                let mut client_resp_payload = vec![0u8; resp_len];
+                socket.read_exact(&mut client_resp_payload)?;
+
+                match behavior {
+                    MockServerBehavior::FailAuthHeader => {
+                        let _ = socket.shutdown(std::net::Shutdown::Both);
+                        return Ok(());
+                    }
+                    MockServerBehavior::FailAuthPayload => {
+                        socket.write_all(&[10, 0, 0, 2])?;
+                        let _ = socket.shutdown(std::net::Shutdown::Both);
+                        return Ok(());
+                    }
+                    MockServerBehavior::AuthFailed => {
+                        let err_payload = [0xFF, 0x15, 0x04];
+                        let p_len = u32::try_from(err_payload.len()).unwrap_or(0);
+                        let hdr = [
+                            (p_len & 0xFF) as u8,
+                            ((p_len >> 8) & 0xFF) as u8,
+                            ((p_len >> 16) & 0xFF) as u8,
+                            2,
+                        ];
+                        socket.write_all(&hdr)?;
+                        socket.write_all(&err_payload)?;
+                        return Ok(());
+                    }
+                    _ => {}
+                }
+
+                // Auth success (OK packet, payload starts with 0x00)
+                let auth_ok = [0x00, 0x00];
+                let a_len = u32::try_from(auth_ok.len()).unwrap_or(0);
+                let a_hdr = [
+                    (a_len & 0xFF) as u8,
+                    ((a_len >> 8) & 0xFF) as u8,
+                    ((a_len >> 16) & 0xFF) as u8,
+                    2,
+                ];
+                socket.write_all(&a_hdr)?;
+                socket.write_all(&auth_ok)?;
+
+                if behavior == MockServerBehavior::FailQueryHeader {
+                    let _ = socket.shutdown(std::net::Shutdown::Both);
+                    return Ok(());
+                }
+
+                // Loop queries
+                let mut q_hdr = [0u8; 4];
+                while matches!(socket.read_exact(&mut q_hdr), Ok(())) {
+                    let q_len = (u32::from(q_hdr[0])
+                        | (u32::from(q_hdr[1]) << 8)
+                        | (u32::from(q_hdr[2]) << 16)) as usize;
+                    let mut q_payload = vec![0u8; q_len];
+                    socket.read_exact(&mut q_payload)?;
+
+                    match behavior {
+                        MockServerBehavior::FailQueryPayload => {
+                            socket.write_all(&[10, 0, 0, q_hdr[3] + 1])?;
+                            let _ = socket.shutdown(std::net::Shutdown::Both);
+                            return Ok(());
+                        }
+                        MockServerBehavior::QueryFailed => {
+                            let err_payload = [0xFF, 0x01, 0x02];
+                            let p_len = u32::try_from(err_payload.len()).unwrap_or(0);
+                            let hdr = [
+                                (p_len & 0xFF) as u8,
+                                ((p_len >> 8) & 0xFF) as u8,
+                                ((p_len >> 16) & 0xFF) as u8,
+                                q_hdr[3] + 1,
+                            ];
+                            socket.write_all(&hdr)?;
+                            socket.write_all(&err_payload)?;
+                            return Ok(());
+                        }
+                        _ => {
+                            let ok_payload = [0x00, 0x00];
+                            let p_len = u32::try_from(ok_payload.len()).unwrap_or(0);
+                            let hdr = [
+                                (p_len & 0xFF) as u8,
+                                ((p_len >> 8) & 0xFF) as u8,
+                                ((p_len >> 16) & 0xFF) as u8,
+                                q_hdr[3] + 1,
+                            ];
+                            socket.write_all(&hdr)?;
+                            socket.write_all(&ok_payload)?;
+                        }
+                    }
+                }
+                Ok(())
+            })();
+        });
+
+        Ok((port, handle))
+    }
+
+    /// Tests successful in-process MySQL wire execution against a live mock server.
+    #[test]
+    fn test_sql_provisioner_wire_protocol_success() -> Result<()> {
+        let (port, handle) = spawn_mock_mysql_server(MockServerBehavior::Success)?;
+        let cfg = SqlProvisionerConfig {
+            port,
+            mock_mode: false,
+            target_database: "test_wire_db".to_string(),
+            target_user: None,
+            ..Default::default()
+        };
+
+        let client = SqlProvisionerClient::new(cfg);
+        let res = client.execute(SqlProvisionerAction::Install)?;
+        assert!(res.success);
+        assert_eq!(res.executed_statements.len(), 1);
+
+        let _ = handle.join();
+        Ok(())
+    }
+
+    /// Tests error paths during MySQL wire execution against a mock server.
+    #[test]
+    fn test_sql_provisioner_wire_protocol_errors() -> Result<()> {
+        let error_modes = [
+            MockServerBehavior::FailHandshakeHeader,
+            MockServerBehavior::FailHandshakePayload,
+            MockServerBehavior::FailAuthHeader,
+            MockServerBehavior::FailAuthPayload,
+            MockServerBehavior::AuthFailed,
+            MockServerBehavior::FailQueryHeader,
+            MockServerBehavior::FailQueryPayload,
+            MockServerBehavior::QueryFailed,
+        ];
+
+        for mode in error_modes {
+            let (port, handle) = spawn_mock_mysql_server(mode)?;
+            let cfg = SqlProvisionerConfig {
+                port,
+                mock_mode: false,
+                target_database: "test_wire_db".to_string(),
+                target_user: None,
+                ..Default::default()
+            };
+
+            let client = SqlProvisionerClient::new(cfg);
+            let res = client.execute(SqlProvisionerAction::Install);
+            assert!(res.is_err(), "mode {mode:?} should have failed");
+            assert!(matches!(res, Err(Error::SqlProvisioning(..))));
+
+            let _ = handle.join();
+        }
+
+        Ok(())
+    }
+
+    /// Mock stream that allows precise injection of read/write failures at specific operation counts.
+    #[derive(Debug, Default)]
+    struct MockFailStream {
+        /// Queue of bytes available to read.
+        read_bytes: std::collections::VecDeque<u8>,
+        /// Write call ordinal that should return an I/O error.
+        fail_write_at: Option<usize>,
+        /// Total write calls made so far.
+        write_count: usize,
+    }
+
+    impl MockFailStream {
+        /// Creates a new [`MockFailStream`] initialized with the given read payload.
+        fn with_bytes(bytes: &[u8]) -> Self {
+            let mut read_bytes = std::collections::VecDeque::with_capacity(bytes.len());
+            read_bytes.extend(bytes.iter().copied());
+            Self {
+                read_bytes,
+                fail_write_at: None,
+                write_count: 0,
+            }
+        }
+    }
+
+    impl std::io::Read for MockFailStream {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let to_read = buf.len().min(self.read_bytes.len());
+            for (slot, b) in buf.iter_mut().zip(self.read_bytes.drain(..to_read)) {
+                *slot = b;
+            }
+            Ok(to_read)
+        }
+    }
+
+    impl std::io::Write for MockFailStream {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.write_count += 1;
+            if self.fail_write_at == Some(self.write_count) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::BrokenPipe,
+                    "simulated write error",
+                ));
+            }
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// Tests failure paths for every write call during MySQL wire session execution.
+    #[test]
+    fn test_sql_provisioner_wire_write_errors() -> Result<()> {
+        use std::io::Write;
+
+        let cfg = SqlProvisionerConfig::default();
+        let client = SqlProvisionerClient::new(cfg);
+        let statements = vec!["SELECT 1;".to_string()];
+
+        // Prepare valid incoming server handshake and auth OK packet bytes
+        let mut server_stream_bytes = Vec::new();
+        // Handshake packet (10 bytes payload)
+        server_stream_bytes.extend_from_slice(&[10, 0, 0, 0]);
+        server_stream_bytes.extend_from_slice(&[0u8; 10]);
+        // Auth OK packet (2 bytes payload)
+        server_stream_bytes.extend_from_slice(&[2, 0, 0, 2]);
+        server_stream_bytes.extend_from_slice(&[0x00, 0x00]);
+
+        // 1. Fail on 1st write: handshake response header
+        let mut s1 = MockFailStream::with_bytes(&server_stream_bytes);
+        s1.fail_write_at = Some(1);
+        let err1 = client.execute_wire_session(&mut s1, &statements);
+        assert!(err1.is_err());
+        assert!(matches!(err1, Err(Error::SqlProvisioning(..))));
+        s1.flush()?;
+
+        // 2. Fail on 2nd write: handshake response payload
+        let mut s2 = MockFailStream::with_bytes(&server_stream_bytes);
+        s2.fail_write_at = Some(2);
+        let err2 = client.execute_wire_session(&mut s2, &statements);
+        assert!(err2.is_err());
+        assert!(matches!(err2, Err(Error::SqlProvisioning(..))));
+
+        // 3. Fail on 3rd write: query header
+        let mut s3 = MockFailStream::with_bytes(&server_stream_bytes);
+        s3.fail_write_at = Some(3);
+        let err3 = client.execute_wire_session(&mut s3, &statements);
+        assert!(err3.is_err());
+        assert!(matches!(err3, Err(Error::SqlProvisioning(..))));
+
+        // 4. Fail on 4th write: query text
+        let mut s4 = MockFailStream::with_bytes(&server_stream_bytes);
+        s4.fail_write_at = Some(4);
+        let err4 = client.execute_wire_session(&mut s4, &statements);
+        assert!(err4.is_err());
+        assert!(matches!(err4, Err(Error::SqlProvisioning(..))));
+
+        Ok(())
+    }
+
+    /// Tests processing of empty auth and query response payloads (0-byte payloads).
+    #[test]
+    fn test_sql_provisioner_empty_auth_and_query_packets() -> Result<()> {
+        let cfg = SqlProvisionerConfig::default();
+        let client = SqlProvisionerClient::new(cfg);
+        let statements = vec!["SELECT 1;".to_string()];
+
+        let mut server_stream_bytes = Vec::new();
+        // Handshake packet (10 bytes payload)
+        server_stream_bytes.extend_from_slice(&[10, 0, 0, 0]);
+        server_stream_bytes.extend_from_slice(&[0u8; 10]);
+        // Empty Auth packet (0 bytes payload)
+        server_stream_bytes.extend_from_slice(&[0, 0, 0, 2]);
+        // Empty Query response packet (0 bytes payload)
+        server_stream_bytes.extend_from_slice(&[0, 0, 0, 3]);
+
+        let mut s = MockFailStream::with_bytes(&server_stream_bytes);
+        client.execute_wire_session(&mut s, &statements)?;
+        Ok(())
     }
 }

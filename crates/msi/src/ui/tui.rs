@@ -277,6 +277,14 @@ pub struct TerminalWizard {
     engine: UiEngine,
     /// Currently focused control index within the active dialog.
     focused_index: usize,
+    /// Vertical scroll offset for scrollable controls (lines).
+    scroll_offset: usize,
+    /// Cursor character index within the active edit field.
+    cursor_pos: usize,
+    /// Whether the real-time live diagnostics log view is toggled open (F2).
+    diagnostics_log_open: bool,
+    /// Real-time step description text displayed during installation progress.
+    action_text: Option<String>,
 }
 
 impl TerminalWizard {
@@ -290,10 +298,21 @@ impl TerminalWizard {
     ///
     /// A new [`TerminalWizard`].
     #[must_use]
-    pub const fn new(engine: UiEngine) -> Self {
+    pub fn new(engine: UiEngine) -> Self {
+        let focused_index = engine.active_dialog().map_or(0, |dlg| {
+            engine
+                .get_dialog_controls(&dlg.name)
+                .iter()
+                .position(|c| c.control() == dlg.control_first)
+                .unwrap_or(0)
+        });
         Self {
             engine,
-            focused_index: 0,
+            focused_index,
+            scroll_offset: 0,
+            cursor_pos: 0,
+            diagnostics_log_open: false,
+            action_text: None,
         }
     }
 
@@ -306,6 +325,53 @@ impl TerminalWizard {
     /// Returns a mutable reference to the underlying [`UiEngine`].
     pub const fn engine_mut(&mut self) -> &mut UiEngine {
         &mut self.engine
+    }
+
+    /// Returns whether the diagnostics log view is toggled open.
+    #[must_use]
+    pub const fn is_diagnostics_log_open(&self) -> bool {
+        self.diagnostics_log_open
+    }
+
+    /// Toggles the diagnostics log view.
+    pub const fn toggle_diagnostics_log(&mut self) {
+        self.diagnostics_log_open = !self.diagnostics_log_open;
+    }
+
+    /// Sets the real-time action description text.
+    ///
+    /// # Arguments
+    ///
+    /// * `text` - Action description string (e.g. `"Installing service MySQL..."`).
+    pub fn set_action_text(&mut self, text: impl Into<String>) {
+        self.action_text = Some(text.into());
+    }
+
+    /// Returns the current real-time action description text, if set.
+    #[must_use]
+    pub fn action_text(&self) -> Option<&str> {
+        self.action_text.as_deref()
+    }
+
+    /// Returns the active vertical scroll offset.
+    #[must_use]
+    pub const fn scroll_offset(&self) -> usize {
+        self.scroll_offset
+    }
+
+    /// Sets the vertical scroll offset.
+    ///
+    /// # Arguments
+    ///
+    /// * `offset` - Vertical scroll offset in lines.
+    pub const fn set_scroll_offset(&mut self, offset: usize) {
+        self.scroll_offset = offset;
+    }
+
+    /// Returns the current text cursor position within the active edit control.
+    #[must_use]
+    pub const fn cursor_pos(&self) -> usize {
+        self.cursor_pos
     }
 
     /// Processes keyboard input, updating control focus or triggering dialog events.
@@ -321,6 +387,7 @@ impl TerminalWizard {
     /// # Errors
     ///
     /// Returns [`crate::error::Error`] on event execution failure.
+    #[allow(clippy::too_many_lines)]
     pub fn handle_key(&mut self, key: TuiKey) -> Result<Option<DialogReturnCode>> {
         let Some(dialog) = self.engine.active_dialog().cloned() else {
             return Ok(None);
@@ -333,6 +400,7 @@ impl TerminalWizard {
         match key {
             TuiKey::Tab => {
                 self.focused_index = (self.focused_index + 1) % controls.len();
+                self.cursor_pos = 0;
                 Ok(None)
             }
             TuiKey::BackTab => {
@@ -341,20 +409,40 @@ impl TerminalWizard {
                 } else {
                     self.focused_index - 1
                 };
+                self.cursor_pos = 0;
                 Ok(None)
             }
             TuiKey::Enter => {
-                let target_ctrl = if let Some(ref def_name) = dialog.control_default {
+                let target_ctrl = if let Some(ctrl) = controls.get(self.focused_index) {
+                    if ctrl.control_type() == ControlType::PushButton {
+                        ctrl.control()
+                    } else if let Some(ref def_name) = dialog.control_default {
+                        def_name.as_str()
+                    } else {
+                        ctrl.control()
+                    }
+                } else if let Some(ref def_name) = dialog.control_default {
                     def_name.as_str()
-                } else if let Some(ctrl) = controls.get(self.focused_index) {
-                    ctrl.control()
                 } else {
                     ""
                 };
                 if target_ctrl.is_empty() {
                     Ok(None)
                 } else {
-                    self.engine.click_control(&dialog.name, target_ctrl)
+                    self.scroll_offset = 0;
+                    self.cursor_pos = 0;
+                    let prev_dlg = dialog.name.clone();
+                    let res = self.engine.click_control(&dialog.name, target_ctrl)?;
+                    let cur_dlg = self.engine.active_dialog();
+                    if let Some(d) = cur_dlg.filter(|d| d.name != prev_dlg) {
+                        self.focused_index = self
+                            .engine
+                            .get_dialog_controls(&d.name)
+                            .iter()
+                            .position(|c| c.control() == d.control_first)
+                            .unwrap_or(0);
+                    }
+                    Ok(res)
                 }
             }
             TuiKey::Escape => {
@@ -366,30 +454,156 @@ impl TerminalWizard {
             }
             TuiKey::Space => {
                 if let Some(ctrl) = controls.get(self.focused_index) {
-                    if ctrl.control_type() == ControlType::CheckBox {
-                        if let Some(prop) = ctrl.property_name() {
-                            let cur_val = self.engine.context().get_property(prop).unwrap_or("0");
-                            let new_val = if cur_val == "1" { "0" } else { "1" };
-                            self.engine.context_mut().set_property(prop, new_val);
-                            self.engine.evaluate_conditions_and_formatting()?;
+                    match ctrl.control_type() {
+                        ControlType::CheckBox => {
+                            self.engine.toggle_checkbox(&dialog.name, ctrl.control())?;
                         }
-                    } else if ctrl.control_type() == ControlType::PushButton {
-                        return self.engine.click_control(&dialog.name, ctrl.control());
+                        ControlType::RadioButtonGroup => {
+                            let val = ctrl.text_template().unwrap_or("").to_string();
+                            self.engine
+                                .select_radio_button(&dialog.name, ctrl.control(), &val)?;
+                        }
+                        ControlType::PushButton => {
+                            return self.engine.click_control(&dialog.name, ctrl.control());
+                        }
+                        _ => {}
                     }
                 }
                 Ok(None)
             }
-            TuiKey::Up
-            | TuiKey::Down
-            | TuiKey::Left
-            | TuiKey::Right
-            | TuiKey::Char(_)
-            | TuiKey::F(_)
-            | TuiKey::Home
-            | TuiKey::End
-            | TuiKey::PageUp
-            | TuiKey::PageDown
-            | TuiKey::Backspace => Ok(None),
+            TuiKey::Char(c) => {
+                if let Some(ctrl) = controls.get(self.focused_index) {
+                    if ctrl.control_type() == ControlType::Edit {
+                        let cur_text = self
+                            .engine
+                            .get_control_state(&dialog.name, ctrl.control())
+                            .map_or_else(
+                                || ctrl.text_template().unwrap_or("").to_string(),
+                                |s| s.current_text.clone(),
+                            );
+                        let mut new_text = cur_text;
+                        if self.cursor_pos >= new_text.len() {
+                            new_text.push(c);
+                            self.cursor_pos = new_text.len();
+                        } else {
+                            new_text.insert(self.cursor_pos, c);
+                            self.cursor_pos += 1;
+                        }
+                        self.engine.update_control_value(
+                            &dialog.name,
+                            ctrl.control(),
+                            &new_text,
+                        )?;
+                    }
+                }
+                Ok(None)
+            }
+            TuiKey::Backspace => {
+                if let Some(ctrl) = controls.get(self.focused_index) {
+                    if ctrl.control_type() == ControlType::Edit {
+                        let cur_text = self
+                            .engine
+                            .get_control_state(&dialog.name, ctrl.control())
+                            .map_or_else(
+                                || ctrl.text_template().unwrap_or("").to_string(),
+                                |s| s.current_text.clone(),
+                            );
+                        let mut new_text = cur_text;
+                        if self.cursor_pos > 0 && !new_text.is_empty() {
+                            let remove_idx = (self.cursor_pos - 1).min(new_text.len() - 1);
+                            new_text.remove(remove_idx);
+                            self.cursor_pos = remove_idx;
+                            self.engine.update_control_value(
+                                &dialog.name,
+                                ctrl.control(),
+                                &new_text,
+                            )?;
+                        }
+                    }
+                }
+                Ok(None)
+            }
+            TuiKey::Left => {
+                if self.cursor_pos > 0 {
+                    self.cursor_pos -= 1;
+                }
+                Ok(None)
+            }
+            TuiKey::Right => {
+                if let Some(ctrl) = controls.get(self.focused_index) {
+                    let len = self
+                        .engine
+                        .get_control_state(&dialog.name, ctrl.control())
+                        .map_or_else(
+                            || ctrl.text_template().map_or(0, str::len),
+                            |s| s.current_text.len(),
+                        );
+                    if self.cursor_pos < len {
+                        self.cursor_pos += 1;
+                    }
+                }
+                Ok(None)
+            }
+            TuiKey::Up => {
+                if let Some(ctrl) = controls.get(self.focused_index) {
+                    if ctrl.control_type() == ControlType::ScrollableText {
+                        self.scroll_offset = self.scroll_offset.saturating_sub(1);
+                    } else if ctrl.control_type() == ControlType::RadioButtonGroup {
+                        let val = ctrl.text_template().unwrap_or("").to_string();
+                        self.engine
+                            .select_radio_button(&dialog.name, ctrl.control(), &val)?;
+                    }
+                }
+                Ok(None)
+            }
+            TuiKey::Down => {
+                if let Some(ctrl) = controls.get(self.focused_index) {
+                    if ctrl.control_type() == ControlType::ScrollableText {
+                        self.scroll_offset = self.scroll_offset.saturating_add(1);
+                    } else if ctrl.control_type() == ControlType::RadioButtonGroup {
+                        let val = ctrl.text_template().unwrap_or("").to_string();
+                        self.engine
+                            .select_radio_button(&dialog.name, ctrl.control(), &val)?;
+                    }
+                }
+                Ok(None)
+            }
+            TuiKey::PageUp => {
+                self.scroll_offset = self.scroll_offset.saturating_sub(10);
+                Ok(None)
+            }
+            TuiKey::PageDown => {
+                self.scroll_offset = self.scroll_offset.saturating_add(10);
+                Ok(None)
+            }
+            TuiKey::Home => {
+                self.scroll_offset = 0;
+                self.cursor_pos = 0;
+                Ok(None)
+            }
+            TuiKey::End => {
+                if let Some(ctrl) = controls.get(self.focused_index) {
+                    if ctrl.control_type() == ControlType::Edit {
+                        let len = self
+                            .engine
+                            .get_control_state(&dialog.name, ctrl.control())
+                            .map_or_else(
+                                || ctrl.text_template().map_or(0, str::len),
+                                |s| s.current_text.len(),
+                            );
+                        self.cursor_pos = len;
+                    } else if ctrl.control_type() == ControlType::ScrollableText {
+                        let total = ctrl.text_template().unwrap_or("").lines().count();
+                        self.scroll_offset = total.saturating_sub(10);
+                    }
+                }
+                Ok(None)
+            }
+            TuiKey::F(2) => {
+                self.toggle_diagnostics_log();
+                Ok(None)
+            }
+            TuiKey::F(_) => Ok(None),
         }
     }
 
@@ -515,8 +729,32 @@ impl TerminalWizard {
     ///
     /// Rendered [`TerminalBuffer`].
     #[must_use]
+    #[allow(clippy::too_many_lines, clippy::cast_possible_truncation)]
     pub fn render_frame(&self, cols: u16, rows: u16) -> TerminalBuffer {
         let mut buf = TerminalBuffer::new(cols, rows);
+
+        // If diagnostics console is open, overlay it
+        if self.diagnostics_log_open {
+            let log_w = cols.min(76);
+            let log_h = rows.min(18);
+            let log_x = cols.saturating_sub(log_w) / 2;
+            let log_y = rows.saturating_sub(log_h) / 2;
+            buf.draw_box(
+                log_x,
+                log_y,
+                log_w,
+                log_h,
+                Some("Diagnostics Log [F2: Close]"),
+            );
+            let logs = self.engine.action_log();
+            let max_lines = (log_h.saturating_sub(3)) as usize;
+            let start = logs.len().saturating_sub(max_lines);
+            for (i, entry) in logs.iter().skip(start).enumerate() {
+                buf.draw_string(log_x + 2, log_y + 2 + i as u16, entry);
+            }
+            return buf;
+        }
+
         let Some(dialog) = self.engine.active_dialog() else {
             return buf;
         };
@@ -526,7 +764,13 @@ impl TerminalWizard {
         let box_x = (cols.saturating_sub(box_w)) / 2;
         let box_y = (rows.saturating_sub(box_h)) / 2;
 
-        buf.draw_box(box_x, box_y, box_w, box_h, dialog.title.as_deref());
+        let formatted_title = dialog.title.as_deref().map(|t| {
+            self.engine
+                .context()
+                .format_string(t)
+                .unwrap_or_else(|_| t.to_string())
+        });
+        buf.draw_box(box_x, box_y, box_w, box_h, formatted_title.as_deref());
 
         let controls = self.engine.get_dialog_controls(&dialog.name);
         let mut line_offset = 2;
@@ -569,11 +813,72 @@ impl TerminalWizard {
                     buf.draw_string(col_x, row_y, &check_str);
                     line_offset += 2;
                 }
-                ControlType::Edit => {
+                ControlType::RadioButtonGroup => {
+                    let is_selected =
+                        state.is_some_and(|s| s.bound_value.as_deref() == Some(&text));
+                    let mark = if is_selected { "(•)" } else { "( )" };
                     let focus_cursor = if is_focused { '>' } else { ' ' };
-                    let edit_str = format!("{focus_cursor} [ {text} ]");
+                    let radio_str = format!("{focus_cursor} {mark} {text}");
+                    buf.draw_string(col_x, row_y, &radio_str);
+                    line_offset += 2;
+                }
+                ControlType::Edit => {
+                    let is_pwd = ctrl.is_password_input();
+                    let display_text = if is_pwd {
+                        "*".repeat(text.len())
+                    } else {
+                        text.clone()
+                    };
+                    let mut invalid_feedback = String::new();
+                    if let Some(prop) = ctrl.property_name() {
+                        if prop.contains("PORT") && !text.is_empty() && text.parse::<u16>().is_err()
+                        {
+                            invalid_feedback = " [!] Invalid port".to_string();
+                        }
+                    }
+                    let focus_cursor = if is_focused { '>' } else { ' ' };
+                    let edit_str = format!("{focus_cursor} [ {display_text} ]{invalid_feedback}");
                     buf.draw_string(col_x, row_y, &edit_str);
                     line_offset += 2;
+                }
+                ControlType::ScrollableText => {
+                    let all_lines: Vec<&str> = text.lines().collect();
+                    let total_lines = all_lines.len();
+                    let max_display_lines = (box_h.saturating_sub(line_offset + 3)) as usize;
+                    let start = self.scroll_offset.min(total_lines.saturating_sub(1));
+                    let end = (start + max_display_lines).min(total_lines);
+                    for line in &all_lines[start..end] {
+                        buf.draw_string(col_x, box_y + line_offset, line);
+                        line_offset += 1;
+                    }
+                    let scroll_ind = format!(
+                        "[Lines {}-{end} of {total_lines} - Up/Down/PageDown to scroll]",
+                        start + 1
+                    );
+                    buf.draw_string(col_x, box_y + line_offset, &scroll_ind);
+                    line_offset += 2;
+                }
+                ControlType::SelectionTree => {
+                    let nodes = state.map_or_else(Vec::new, |s| s.tree_nodes.clone());
+                    let focus_cursor = if is_focused { '>' } else { ' ' };
+                    buf.draw_string(
+                        col_x,
+                        row_y,
+                        &format!("{focus_cursor} Components Checklist:"),
+                    );
+                    line_offset += 1;
+                    for node in nodes.iter().take(4) {
+                        if line_offset + 1 >= box_h - 1 {
+                            break;
+                        }
+                        buf.draw_string(
+                            col_x + 2,
+                            box_y + line_offset,
+                            &format!("├─ [X] {}", node.title),
+                        );
+                        line_offset += 1;
+                    }
+                    line_offset += 1;
                 }
                 ControlType::ProgressBar => {
                     let pct = state.map_or(0, |s| s.progress_percent);
@@ -582,24 +887,82 @@ impl TerminalWizard {
                     bar.push_str(&"░".repeat(30usize.saturating_sub(filled)));
                     let prog_str = format!("[{bar}] {pct}%");
                     buf.draw_string(col_x, row_y, &prog_str);
-                    line_offset += 2;
+                    line_offset += 1;
+                    if let Some(ref action) = self.action_text {
+                        buf.draw_string(col_x, box_y + line_offset, action);
+                        line_offset += 1;
+                    }
+                    line_offset += 1;
                 }
-                ControlType::RadioButtonGroup
-                | ControlType::Text
+                ControlType::Text
                 | ControlType::ComboBox
                 | ControlType::ListBox
                 | ControlType::ListView
                 | ControlType::Bitmap
                 | ControlType::Line
-                | ControlType::ScrollableText
-                | ControlType::VolumeCostList
-                | ControlType::SelectionTree => {
+                | ControlType::VolumeCostList => {
                     buf.draw_string(col_x, row_y, &text);
                     line_offset += 1;
                 }
             }
         }
 
+        buf
+    }
+
+    /// Renders an exit summary screen displaying final installation status, ports, and services.
+    ///
+    /// # Arguments
+    ///
+    /// * `cols` - Terminal width in characters.
+    /// * `rows` - Terminal height in characters.
+    /// * `product_name` - Product name string.
+    /// * `ports` - Service and listening port mappings.
+    /// * `services` - Active service names.
+    ///
+    /// # Returns
+    ///
+    /// Rendered [`TerminalBuffer`].
+    #[must_use]
+    #[allow(clippy::cast_possible_truncation)]
+    pub fn render_exit_summary(
+        &self,
+        cols: u16,
+        rows: u16,
+        product_name: &str,
+        ports: &[(String, u16)],
+        services: &[String],
+    ) -> TerminalBuffer {
+        let mut buf = TerminalBuffer::new(cols, rows);
+        let box_w = cols.min(72);
+        let box_h = rows.min(22);
+        let box_x = cols.saturating_sub(box_w) / 2;
+        let box_y = rows.saturating_sub(box_h) / 2;
+
+        let title = format!("{product_name} - Setup Complete");
+        buf.draw_box(box_x, box_y, box_w, box_h, Some(&title));
+
+        buf.draw_string(box_x + 3, box_y + 2, "Installation finished successfully!");
+        buf.draw_string(box_x + 3, box_y + 4, "Active Services:");
+        for (i, s) in services.iter().enumerate().take(5) {
+            buf.draw_string(box_x + 5, box_y + 5 + i as u16, &format!("• {s} (running)"));
+        }
+
+        let port_y = box_y + 6 + services.len().min(5) as u16;
+        buf.draw_string(box_x + 3, port_y, "Listening Endpoints:");
+        for (i, (svc, port)) in ports.iter().enumerate().take(5) {
+            buf.draw_string(
+                box_x + 5,
+                port_y + 1 + i as u16,
+                &format!("• {svc}: http://localhost:{port}"),
+            );
+        }
+
+        buf.draw_string(
+            box_x + 3,
+            box_y + box_h - 2,
+            "Press Enter or Finish to exit.",
+        );
         buf
     }
 }
@@ -835,6 +1198,26 @@ mod tests {
         wiz_nodef.focused_index = 999;
         assert_eq!(wiz_nodef.handle_key(TuiKey::Enter)?, None);
 
+        // Enter when control_default is None and focused_index is 0 (RetryBtn)
+        wiz_nodef.focused_index = 0;
+        assert_eq!(
+            wiz_nodef.handle_key(TuiKey::Enter)?,
+            Some(DialogReturnCode::Retry)
+        );
+
+        // Reactivate NoDefDlg and enter on non-PushButton control when control_default is None (hits line 419 else { ctrl.control() })
+        wiz_nodef.engine_mut().set_active_dialog("NoDefDlg")?;
+        let edit_nodef = ControlDefinition::new(
+            "NoDefDlg",
+            "EditNoDef",
+            ControlType::Edit,
+            DluRect::new(10, 10, 80, 15),
+            3,
+        );
+        wiz_nodef.engine_mut().add_control(edit_nodef);
+        wiz_nodef.focused_index = 1; // EditNoDef
+        assert_eq!(wiz_nodef.handle_key(TuiKey::Enter)?, None);
+
         // Escape returns None when control_cancel is None
         wiz_nodef.engine_mut().set_active_dialog("NoDefDlg")?;
         assert_eq!(wiz_nodef.handle_key(TuiKey::Escape)?, None);
@@ -873,6 +1256,7 @@ mod tests {
 
     /// Tests rendering all supported control types, hidden controls, progress bar, edit, and overflow.
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_terminal_wizard_render_all_control_types() -> Result<()> {
         let mut engine = UiEngine::new(EvaluationContext::new());
         engine.add_dialog(DialogDefinition {
@@ -940,6 +1324,17 @@ mod tests {
         .text("Hidden");
         engine.add_control(hidden_ctrl);
 
+        // Password edit control
+        let pwd_ctrl = ControlDefinition::new(
+            "AllControlsDlg",
+            "Pwd1",
+            ControlType::Edit,
+            DluRect::new(10, 85, 80, 20),
+            3 | crate::ui::controls::CONTROL_ATTR_PASSWORD_INPUT,
+        )
+        .text("secret");
+        engine.add_control(pwd_ctrl);
+
         // Many controls to overflow dialog height box
         for i in 0..15 {
             engine.add_control(
@@ -962,6 +1357,7 @@ mod tests {
         let s = frame.render_to_string();
 
         assert!(s.contains("EditableText"));
+        assert!(s.contains("******"));
         assert!(s.contains("50%"));
         assert!(s.contains("Static Label"));
         assert!(!s.contains("Hidden"));
@@ -976,6 +1372,41 @@ mod tests {
         // Test Space key on non-checkbox, non-pushbutton control (e.g. Edit) -> None
         wizard.focused_index = 0; // Edit1
         assert_eq!(wizard.handle_key(TuiKey::Space)?, None);
+
+        // Test ScrollableText rendering
+        let mut scroll_engine = UiEngine::new(EvaluationContext::new());
+        scroll_engine.add_dialog(DialogDefinition {
+            name: "ScrollDlg".to_string(),
+            h_centering: 50,
+            v_centering: 50,
+            width: 300,
+            height: 200,
+            attributes: DIALOG_ATTR_VISIBLE,
+            title: Some("License Terms".to_string()),
+            control_first: "LicenseText".to_string(),
+            control_default: None,
+            control_cancel: None,
+        });
+
+        let license_body = "Line 1: Terms\nLine 2: Conditions\nLine 3: Permissions\nLine 4: Liability\nLine 5: Warranty\nLine 6: Termination\nLine 7: End";
+        scroll_engine.add_control(
+            ControlDefinition::new(
+                "ScrollDlg",
+                "LicenseText",
+                ControlType::ScrollableText,
+                DluRect::new(10, 10, 80, 80),
+                3,
+            )
+            .text(license_body),
+        );
+        scroll_engine.set_active_dialog("ScrollDlg")?;
+
+        let scroll_wizard = TerminalWizard::new(scroll_engine);
+        // Render with standard height to draw text and the scroll indicator
+        let scroll_frame = scroll_wizard.render_frame(80, 24);
+        let scroll_str = scroll_frame.render_to_string();
+        assert!(scroll_str.contains("Line 1: Terms"));
+        assert!(scroll_str.contains("Up/Down/PageDown to scroll"));
 
         Ok(())
     }
@@ -1155,6 +1586,414 @@ mod tests {
         let mut out3 = Vec::new();
         let code3 = wizard.run_event_stream(&mut FailingReader, &mut out3, 80, 24)?;
         assert_eq!(code3, DialogReturnCode::Return);
+
+        Ok(())
+    }
+
+    /// Tests rich controls (`ScrollableText`, `SelectionTree`, Radio, Edit cursor, diagnostics log, summary).
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_terminal_wizard_rich_controls_and_diagnostics() -> Result<()> {
+        let mut context = EvaluationContext::new();
+        context.set_property("MY_PORT", "abc"); // invalid port
+        context.set_property("SECRET_PWD", "pass");
+        let mut engine = UiEngine::new(context);
+
+        engine.add_dialog(DialogDefinition {
+            name: "RichDlg".to_string(),
+            h_centering: 50,
+            v_centering: 50,
+            width: 300,
+            height: 200,
+            attributes: DIALOG_ATTR_VISIBLE,
+            title: Some("Rich Controls".to_string()),
+            control_first: "PortInput".to_string(),
+            control_default: Some("OkBtn".to_string()),
+            control_cancel: Some("CancelBtn".to_string()),
+        });
+
+        engine.add_control(
+            ControlDefinition::new(
+                "RichDlg",
+                "PortInput",
+                ControlType::Edit,
+                DluRect::new(10, 10, 80, 15),
+                3,
+            )
+            .property("MY_PORT")
+            .text("abc"),
+        );
+        engine.add_control(
+            ControlDefinition::new(
+                "RichDlg",
+                "UserInput",
+                ControlType::Edit,
+                DluRect::new(10, 25, 80, 15),
+                3,
+            )
+            .property("USER_NAME")
+            .text("admin"),
+        );
+        engine.add_control(ControlDefinition::new(
+            "RichDlg",
+            "CompTree",
+            ControlType::SelectionTree,
+            DluRect::new(10, 45, 80, 20),
+            3,
+        ));
+        engine.add_control(ControlDefinition::new(
+            "RichDlg",
+            "Progress",
+            ControlType::ProgressBar,
+            DluRect::new(10, 70, 80, 15),
+            3,
+        ));
+        engine.add_control(
+            ControlDefinition::new(
+                "RichDlg",
+                "ModeOpt",
+                ControlType::RadioButtonGroup,
+                DluRect::new(10, 90, 80, 15),
+                3,
+            )
+            .text("Option X"),
+        );
+        engine.add_control(
+            ControlDefinition::new(
+                "RichDlg",
+                "LogOpt",
+                ControlType::CheckBox,
+                DluRect::new(10, 110, 80, 15),
+                3,
+            )
+            .property("ENABLE_LOGGING")
+            .text("Enable Logging"),
+        );
+        engine.add_control(
+            ControlDefinition::new(
+                "RichDlg",
+                "OkBtn",
+                ControlType::PushButton,
+                DluRect::new(10, 130, 50, 15),
+                3,
+            )
+            .text("OK"),
+        );
+        engine.add_event(ControlEvent::new(
+            "RichDlg",
+            "OkBtn",
+            ControlEventType::EndDialog(DialogReturnCode::Return),
+            None,
+            1,
+        ));
+        engine.add_control(
+            ControlDefinition::new(
+                "RichDlg",
+                "CancelBtn",
+                ControlType::PushButton,
+                DluRect::new(70, 130, 50, 15),
+                3,
+            )
+            .text("Cancel"),
+        );
+        engine.add_event(ControlEvent::new(
+            "RichDlg",
+            "CancelBtn",
+            ControlEventType::EndDialog(DialogReturnCode::Exit),
+            None,
+            1,
+        ));
+        let scroll_lines = (1..=20)
+            .map(|i| format!("Line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        engine.add_control(
+            ControlDefinition::new(
+                "RichDlg",
+                "ScrollDoc",
+                ControlType::ScrollableText,
+                DluRect::new(10, 150, 80, 40),
+                3,
+            )
+            .text(scroll_lines),
+        );
+
+        for name in ["CompTree", "Nonexistent"] {
+            if let Some(tree_state) = engine.get_control_state_mut("RichDlg", name) {
+                tree_state
+                    .tree_nodes
+                    .push(crate::ui::controls::SelectionTreeNode::new(
+                        "Feat",
+                        "Core Feature",
+                        1024,
+                    ));
+                tree_state
+                    .tree_nodes
+                    .push(crate::ui::controls::SelectionTreeNode::new(
+                        "Extra",
+                        "Extra Feature",
+                        2048,
+                    ));
+            }
+        }
+        engine.update_progress(60);
+
+        engine.set_active_dialog("RichDlg")?;
+        let mut wizard = TerminalWizard::new(engine);
+
+        // Edit control testing: cursor movement, backspace, delete, typing
+        assert_eq!(wizard.cursor_pos(), 0);
+        wizard.handle_key(TuiKey::Right)?;
+        assert_eq!(wizard.cursor_pos(), 1);
+        wizard.handle_key(TuiKey::Left)?;
+        assert_eq!(wizard.cursor_pos(), 0);
+        wizard.handle_key(TuiKey::Left)?;
+        assert_eq!(wizard.cursor_pos(), 0); // Left at 0
+        wizard.handle_key(TuiKey::Backspace)?;
+        assert_eq!(wizard.cursor_pos(), 0); // Backspace at 0
+        wizard.handle_key(TuiKey::Char('9'))?;
+        assert_eq!(wizard.cursor_pos(), 1);
+        wizard.handle_key(TuiKey::Home)?;
+        assert_eq!(wizard.cursor_pos(), 0);
+        wizard.handle_key(TuiKey::Char('1'))?; // Insert in middle
+        assert_eq!(wizard.cursor_pos(), 1);
+        wizard.handle_key(TuiKey::End)?;
+        assert!(wizard.cursor_pos() > 1);
+        wizard.handle_key(TuiKey::Right)?; // Right at end (cursor_pos >= len)
+
+        // F keys
+        wizard.handle_key(TuiKey::F(2))?;
+        assert!(wizard.is_diagnostics_log_open());
+        wizard.handle_key(TuiKey::F(2))?;
+        assert!(!wizard.is_diagnostics_log_open());
+        wizard.handle_key(TuiKey::F(5))?;
+
+        // Invalid port feedback rendering
+        wizard.set_action_text("Copying files...");
+        let invalid_buf = wizard.render_frame(80, 50).render_to_string();
+        assert!(invalid_buf.contains("[!] Invalid port"));
+        assert!(invalid_buf.contains("Core Feature")); // SelectionTree rendering
+        assert!(invalid_buf.contains("60%")); // ProgressBar rendering
+        assert!(invalid_buf.contains("Copying files..."));
+
+        // Valid port rendering (tests !text.is_empty() and text.parse::<u16>().is_ok())
+        wizard
+            .engine_mut()
+            .update_control_value("RichDlg", "PortInput", "8080")?;
+        let valid_buf = wizard.render_frame(80, 50).render_to_string();
+        assert!(!valid_buf.contains("[!] Invalid port"));
+
+        // Focus ScrollDoc (index 8)
+        wizard.focused_index = 8;
+        assert_eq!(wizard.scroll_offset(), 0);
+        wizard.set_scroll_offset(2);
+        assert_eq!(wizard.scroll_offset(), 2);
+        wizard.handle_key(TuiKey::Up)?;
+        assert_eq!(wizard.scroll_offset(), 1);
+        wizard.handle_key(TuiKey::Down)?;
+        assert_eq!(wizard.scroll_offset(), 2);
+        wizard.handle_key(TuiKey::PageDown)?;
+        assert_eq!(wizard.scroll_offset(), 12);
+        wizard.handle_key(TuiKey::PageUp)?;
+        assert_eq!(wizard.scroll_offset(), 2);
+        wizard.handle_key(TuiKey::Home)?;
+        assert_eq!(wizard.scroll_offset(), 0);
+        wizard.handle_key(TuiKey::End)?;
+        assert!(wizard.scroll_offset() > 0);
+
+        // Focus CompTree (index 2 - SelectionTree focused branch)
+        wizard.focused_index = 2;
+        let _tree_focused = wizard.render_frame(80, 50);
+
+        // Test render_frame with height 10 to trigger line 878 break in SelectionTree
+        assert_eq!(wizard.render_frame(80, 10).height, 10);
+
+        // Focus ModeOpt (index 4 - RadioButtonGroup focused branch)
+        wizard.focused_index = 4;
+        let _mode_focused = wizard.render_frame(80, 50);
+        wizard.handle_key(TuiKey::Up)?;
+        wizard.handle_key(TuiKey::Down)?;
+        wizard.handle_key(TuiKey::Space)?;
+
+        // Focus LogOpt (index 5 - CheckBox)
+        wizard.focused_index = 5;
+        wizard.handle_key(TuiKey::Space)?;
+
+        // Focus OkBtn (index 6 - PushButton)
+        wizard.focused_index = 6;
+        wizard.handle_key(TuiKey::Left)?;
+        wizard.handle_key(TuiKey::Home)?;
+        wizard.handle_key(TuiKey::PageUp)?;
+        wizard.handle_key(TuiKey::PageDown)?;
+        wizard.handle_key(TuiKey::End)?;
+        wizard.handle_key(TuiKey::Up)?; // Up on PushButton (hits lines 552/564 else)
+        wizard.handle_key(TuiKey::Down)?; // Down on PushButton
+        wizard.handle_key(TuiKey::Backspace)?; // Backspace on PushButton (hits line 477 false)
+
+        // Render frame while OkBtn is focused (renders all other controls with is_focused == false)
+        let _unfocused_buf = wizard.render_frame(80, 50);
+
+        // Test Escape on dialog with control_cancel defined (CancelBtn)
+        assert_eq!(
+            wizard.handle_key(TuiKey::Escape)?,
+            Some(DialogReturnCode::Exit)
+        );
+
+        // Reactivate RichDlg and test Enter on PortInput (activating default control OkBtn)
+        assert!(wizard.engine_mut().set_active_dialog("RichDlg").is_ok());
+        wizard.focused_index = 0;
+        assert_eq!(
+            wizard.handle_key(TuiKey::Enter)?,
+            Some(DialogReturnCode::Return)
+        );
+
+        // Reactivate RichDlg and test Enter when focused_index is out of range (activating default control)
+        assert!(wizard.engine_mut().set_active_dialog("RichDlg").is_ok());
+        wizard.focused_index = 999;
+        assert_eq!(
+            wizard.handle_key(TuiKey::Enter)?,
+            Some(DialogReturnCode::Return)
+        );
+
+        // Reactivate RichDlg and test Space on OkBtn (EndDialog Return)
+        assert!(wizard.engine_mut().set_active_dialog("RichDlg").is_ok());
+        wizard.focused_index = 6;
+        assert_eq!(
+            wizard.handle_key(TuiKey::Space)?,
+            Some(DialogReturnCode::Return)
+        );
+
+        // Reactivate RichDlg for remaining tests
+        assert!(wizard.engine_mut().set_active_dialog("RichDlg").is_ok());
+
+        // Test empty port rendering (!text.is_empty() is false) and backspace when cursor_pos > 0 but text is empty
+        wizard
+            .engine_mut()
+            .update_control_value("RichDlg", "PortInput", "")?;
+        wizard.focused_index = 0;
+        wizard.cursor_pos = 5;
+        wizard.handle_key(TuiKey::Backspace)?; // cursor_pos > 0 but new_text.is_empty() is true!
+        let empty_port_buf = wizard.render_frame(80, 50).render_to_string();
+        assert!(!empty_port_buf.contains("[!] Invalid port"));
+
+        // Out of bounds focused index
+        wizard.focused_index = 999;
+        assert_eq!(wizard.handle_key(TuiKey::Backspace)?, None);
+        assert_eq!(wizard.handle_key(TuiKey::End)?, None);
+
+        // Test typing and backspace when control states are cleared
+        wizard.engine_mut().clear_control_states();
+        wizard.focused_index = 0; // PortInput
+        wizard.cursor_pos = 0;
+        wizard.handle_key(TuiKey::Right)?;
+        wizard.handle_key(TuiKey::End)?;
+        wizard.handle_key(TuiKey::Char('X'))?;
+        wizard.handle_key(TuiKey::Backspace)?;
+
+        // Test NewDialog event updating active_dialog and focused_index
+        let next_dlg = DialogDefinition {
+            name: "NextDlg".to_string(),
+            h_centering: 50,
+            v_centering: 50,
+            width: 200,
+            height: 150,
+            attributes: DIALOG_ATTR_VISIBLE,
+            title: Some("[Unclosed".to_string()),
+            control_first: "NextFirst".to_string(),
+            control_default: None,
+            control_cancel: None,
+        };
+        wizard.engine_mut().add_dialog(next_dlg);
+        let next_first_btn = ControlDefinition::new(
+            "NextDlg",
+            "NextFirst",
+            ControlType::PushButton,
+            DluRect::new(10, 10, 50, 15),
+            3,
+        );
+        wizard.engine_mut().add_control(next_first_btn);
+
+        let nav_btn = ControlDefinition::new(
+            "RichDlg",
+            "NavBtn",
+            ControlType::PushButton,
+            DluRect::new(10, 180, 50, 15),
+            3,
+        );
+        wizard.engine_mut().add_control(nav_btn);
+        wizard.engine_mut().add_event(ControlEvent::new(
+            "RichDlg",
+            "NavBtn",
+            ControlEventType::NewDialog("NextDlg".to_string()),
+            None,
+            1,
+        ));
+
+        // Focus NavBtn (index 9) and press Enter
+        wizard.focused_index = 9;
+        wizard.handle_key(TuiKey::Enter)?;
+        assert_eq!(
+            wizard.engine().active_dialog().map(|d| d.name.as_str()),
+            Some("NextDlg")
+        );
+        assert_eq!(wizard.focused_index, 0);
+
+        // Render frame with unclosed title template
+        let next_buf = wizard.render_frame(80, 24).render_to_string();
+        assert!(next_buf.contains("[Unclosed"));
+
+        // Test typing on non-Edit control (NextFirst is PushButton at index 0)
+        wizard.focused_index = 0;
+        assert_eq!(wizard.handle_key(TuiKey::Char('A'))?, None);
+
+        // Test small terminal rendering
+        let small_buf = wizard.render_frame(10, 5);
+        assert_eq!(small_buf.width, 10);
+        assert_eq!(small_buf.height, 5);
+
+        // Test rendering when active dialog is None
+        let mut no_dlg_wizard = TerminalWizard::new(UiEngine::new(EvaluationContext::new()));
+        let no_dlg_buf = no_dlg_wizard.render_frame(80, 24);
+        assert_eq!(no_dlg_buf.width, 80);
+        assert_eq!(no_dlg_buf.height, 24);
+        assert_eq!(no_dlg_wizard.handle_key(TuiKey::Enter)?, None);
+        assert_eq!(no_dlg_wizard.handle_key(TuiKey::Escape)?, None);
+
+        // Test TerminalBuffer out-of-bounds safety
+        let mut tbuf = TerminalBuffer::new(10, 10);
+        tbuf.draw_box(0, 0, 1, 1, None);
+        tbuf.draw_string(20, 20, "out of bounds");
+        tbuf.set_char(20, 20, 'X');
+
+        // Action text and progress
+        wizard.set_action_text("Step 1 of 5");
+        assert_eq!(wizard.action_text(), Some("Step 1 of 5"));
+
+        // Diagnostics log toggle
+        assert!(!wizard.is_diagnostics_log_open());
+        wizard
+            .engine_mut()
+            .append_action_log("Action log diagnostic entry");
+        wizard.toggle_diagnostics_log();
+        assert!(wizard.is_diagnostics_log_open());
+        let diag_buf = wizard.render_frame(80, 24).render_to_string();
+        assert!(diag_buf.contains("Diagnostics Log [F2: Close]"));
+        assert!(diag_buf.contains("Action log diagnostic entry"));
+        wizard.toggle_diagnostics_log();
+        assert!(!wizard.is_diagnostics_log_open());
+
+        // Exit summary
+        let exit_buf = wizard.render_exit_summary(
+            80,
+            24,
+            "MyProduct",
+            &[("Web".to_string(), 8080)],
+            &["service1".to_string()],
+        );
+        let exit_str = exit_buf.render_to_string();
+        assert!(exit_str.contains("MyProduct - Setup Complete"));
+        assert!(exit_str.contains("service1 (running)"));
+        assert!(exit_str.contains("Web: http://localhost:8080"));
 
         Ok(())
     }

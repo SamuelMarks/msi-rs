@@ -2,6 +2,7 @@
 //!
 //! Grounded directly in the official Windows Installer SDK table schema reference.
 
+pub mod chainer;
 pub mod com;
 pub mod config;
 pub mod core;
@@ -9,9 +10,11 @@ pub mod file_mgmt;
 pub mod posix;
 pub mod record;
 pub mod sequence;
+pub mod sql;
 pub mod types;
 pub mod ui;
 
+pub use chainer::*;
 pub use com::*;
 pub use config::*;
 pub use core::*;
@@ -19,6 +22,7 @@ pub use file_mgmt::*;
 pub use posix::*;
 pub use record::*;
 pub use sequence::*;
+pub use sql::*;
 pub use types::*;
 pub use ui::*;
 
@@ -67,6 +71,8 @@ pub fn all_standard_schemas() -> Vec<TableSchema> {
         icon_schema(),
         service_install_schema(),
         service_control_schema(),
+        msi_service_config_schema(),
+        service_config_schema(),
         upgrade_schema(),
         condition_schema(),
         launch_condition_schema(),
@@ -115,6 +121,12 @@ pub fn all_standard_schemas() -> Vec<TableSchema> {
         posix_daemon_schema(),
         posix_acl_schema(),
         posix_desktop_schema(),
+        // Multi-Package Chaining
+        msi_embedded_chainer_schema(),
+        // Declarative Database Provisioning (WixSqlExtension)
+        sql_database_schema(),
+        sql_string_schema(),
+        sql_script_schema(),
     ]
 }
 
@@ -141,8 +153,8 @@ mod tests {
     #[test]
     fn test_all_standard_schemas_count() {
         let schemas = all_standard_schemas();
-        // 18 Core + 6 Seq + 17 Config + 6 FileMgmt + 8 COM + 15 UI + 5 POSIX = 75 tables!
-        assert_eq!(schemas.len(), 75);
+        // 18 Core + 6 Seq + 19 Config + 6 FileMgmt + 8 COM + 15 UI + 5 POSIX + 1 Chainer + 3 SQL = 81 tables!
+        assert_eq!(schemas.len(), 81);
 
         let mut catalog = DatabaseCatalog::new();
         assert!(populate_standard_tables(&mut catalog).is_ok());

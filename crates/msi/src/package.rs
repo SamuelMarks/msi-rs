@@ -769,6 +769,13 @@ impl Package {
     }
 }
 
+impl Default for Package {
+    /// Creates a default empty [`Package`].
+    fn default() -> Self {
+        Self::from_database(LinkedDatabase::default(), HashMap::new())
+    }
+}
+
 /// Builder for creating and configuring a [`Package`].
 #[derive(Debug, Default, Clone)]
 pub struct PackageBuilder {
