@@ -24,10 +24,14 @@ except ImportError:  # pragma: no cover
     try:
         import _msi
     except ImportError:
-        repo_root = Path(__file__).resolve().parent.parent.parent.parent
+        pkg_dir = Path(__file__).resolve().parent
+        repo_root = pkg_dir.parent.parent.parent.parent
         candidates = [
+            pkg_dir,
             repo_root / "target" / "debug",
             repo_root / "target" / "release",
+            repo_root / "crates" / "target" / "debug",
+            repo_root / "crates" / "target" / "release",
             Path("/tmp"),
         ]
         loaded = False
@@ -38,14 +42,25 @@ except ImportError:  # pragma: no cover
                 for p in (candidate_path, alt_path):
                     if p.exists():
                         import importlib.util
+                        from importlib.machinery import ExtensionFileLoader
 
-                        spec = importlib.util.spec_from_file_location("_msi", p)
-                        if spec and spec.loader:
-                            _msi = importlib.util.module_from_spec(spec)
-                            sys.modules["_msi"] = _msi
-                            spec.loader.exec_module(_msi)
-                            loaded = True
-                            break
+                        try:
+                            loader = ExtensionFileLoader("_msi", str(p))
+                            spec = importlib.util.spec_from_loader("_msi", loader)
+                            if spec:
+                                _msi = importlib.util.module_from_spec(spec)
+                                sys.modules["_msi"] = _msi
+                                loader.exec_module(_msi)
+                                loaded = True
+                                break
+                        except Exception:
+                            spec = importlib.util.spec_from_file_location("_msi", p)
+                            if spec and spec.loader:
+                                _msi = importlib.util.module_from_spec(spec)
+                                sys.modules["_msi"] = _msi
+                                spec.loader.exec_module(_msi)
+                                loaded = True
+                                break
                 if loaded:
                     break
             if loaded:

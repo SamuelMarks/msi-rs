@@ -44,7 +44,7 @@ This document provides a comprehensive technical reference for the architecture,
    - [Headless UI Engine & State Machine](#headless-ui-engine--state-machine)
    - [Dialog Math, Font Rasterization & Layout](#dialog-math-font-rasterization--layout)
    - [Desktop Native GUI Runtime (`msi-gui`)](#desktop-native-gui-runtime-msi-gui)
-   - [Terminal Text Wizard (`msi-gui-tui`)](#terminal-text-wizard-msi-gui-tui)
+   - [Terminal Text Wizard (`TerminalWizard` / `msi-cli --tui`)](#terminal-text-wizard-terminalwizard--msi-cli---tui)
 9. [Language Bindings & Foreign Function Interfaces](#9-language-bindings--foreign-function-interfaces)
    - [C-ABI Shared Library (`msi-ffi`)](#c-abi-shared-library-msi-ffi)
    - [Native Python Extension (`msi-python`)](#native-python-extension-msi-python)
@@ -64,7 +64,7 @@ graph TB
         CLI["msi-cli / msiexec<br/>(Drop-In CLI Drop)"]
         WIX_TOOLS["WiX Tools Binaries<br/>(candle, light, dark, heat, lit, pyro, torch, smoke, wix)"]
         GUI["msi-gui<br/>(egui / wgpu / glow / softbuffer)"]
-        TUI["msi-gui-tui<br/>(Raw Terminal Mode Wizard)"]
+        TUI["TerminalWizard<br/>(msi-cli --tui / Raw Mode)"]
     end
 
     subgraph BINDINGS["Language Interoperability"]
@@ -380,6 +380,8 @@ The compiler transforms preprocessed XML trees into an intermediate binary or XM
 - **`ICE03`**: Validates table field data types, primary keys, string lengths, and nullability constraints.
 - **`ICE04`**: Verifies that `File` sequence numbers are unique and contiguous.
 - **`ICE05`**: Checks for orphaned records in child tables.
+- **`ICE06`**: Validates column names, default values, and column sizing in database catalogs.
+- **`ICE07`**: Validates fonts and typography references in dialog controls.
 - **`ICE08`**: Validates component GUID formats and casing.
 - **`ICE18`**: Verifies that KeyPaths for components are valid and belong to the component.
 - **`ICE33`**: Validates registry table entries and root keys.
@@ -607,7 +609,7 @@ graph TD
 
     subgraph FRONTENDS["Rendering Frontends"]
         GUI_FRONTEND["msi-gui (Desktop GUI)<br/>EguiLayoutMapper"]
-        TUI_FRONTEND["msi-gui-tui (Terminal TUI)<br/>TerminalWizard & Raw Terminal Controller"]
+        TUI_FRONTEND["TerminalWizard (Terminal TUI)<br/>msi-cli --tui & Raw Terminal Controller"]
     end
 
     subgraph RENDERING_BACKENDS["Hardware & Software Backends"]
@@ -645,7 +647,8 @@ graph TD
 - Multi-backend rendering: hardware-accelerated GPU pipelines (`wgpu`, `glow`) with fallback to pure CPU software rasterization (`softbuffer`) for headless cloud instances or virtual environments without GPU drivers.
 - **Accessibility Integration**: Integrates with `AccessKit` to publish accessible node trees to operating system screen readers (VoiceOver on macOS, Orca on Linux, Narrator on Windows).
 
-### Terminal Text Wizard (`msi-gui-tui`)
+### Terminal Text Wizard (`TerminalWizard` / `msi-cli --tui`)
+- Implemented in `msi::ui::tui::TerminalWizard` and executed via `msi-cli install <package> --tui` (or activated automatically in headless/non-display environments).
 - Enables interactive graphical-style installations over SSH sessions or in headless server environments.
 - Implements raw-mode terminal management with ANSI/VT100 escape sequences.
 - Double-buffered virtual terminal screen (`TerminalBuffer`) with Unicode box-drawing primitives, interactive buttons, input text fields, radio lists, and live action progress bars.
@@ -666,7 +669,7 @@ graph TD
     end
 
     subgraph FFI_LAYER["Language Bindings"]
-        C_ABI["msi-ffi (C-ABI Shared / Static Lib)<br/>include/msi.h<br/>Opaque Handles: MsiPackageHandle, MsiBuilderHandle<br/>std::panic::catch_unwind Protection"]
+        C_ABI["msi-ffi (C-ABI Shared / Static Lib)<br/>include/msi.h<br/>Opaque Handles: MsiPackageHandle, MsiPackageBuilderHandle<br/>std::panic::catch_unwind Protection"]
         PY_EXT["msi-python (PyO3 Extension Module: _msi)<br/>Classes: ProductVersion, PackageBuilder, Package<br/>Compilation: compile_wix_source, compile_wix_file"]
     end
 
@@ -684,9 +687,9 @@ graph TD
 
 ### C-ABI Shared Library (`msi-ffi`)
 - **Header File**: Distributed with `include/msi.h`.
-- **Opaque Handle Model**: Exposes heap-allocated structs behind opaque pointer types (`MsiPackageHandle`, `MsiBuilderHandle`).
+- **Opaque Handle Model**: Exposes heap-allocated structs behind opaque pointer types (`MsiPackageHandle`, `MsiPackageBuilderHandle`).
 - **Panic Boundary Safety**: Every exported `extern "C"` function is wrapped in `std::panic::catch_unwind`. Unhandled Rust panics cannot cross the C-ABI boundary and are safely caught, returning `MSI_ERROR_PANIC (-99)`.
-- **Return Codes & Memory Lifecycle**: Standard integer error codes (`MSI_SUCCESS`, `MSI_ERROR_NULL_POINTER`, `MSI_ERROR_INVALID_ARGUMENT`). Explicit deallocation functions (`msi_string_free`, `msi_package_close`, `msi_builder_free`).
+- **Return Codes & Memory Lifecycle**: Standard integer error codes (`MSI_SUCCESS`, `MSI_ERROR_NULL_POINTER`, `MSI_ERROR_INVALID_ARGUMENT`). Explicit deallocation functions (`msi_string_free`, `msi_buffer_free`, `msi_package_destroy`, `msi_package_builder_destroy`).
 
 ### Native Python Extension (`msi-python`)
 - Implemented using PyO3, targeting Python 3.9+ with `abi3` wheel compatibility.

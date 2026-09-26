@@ -1237,28 +1237,13 @@ mod tests {
 
         // Test extract_to_sandbox directory creation failure
         let mut fail_dir_loader = NativeLibraryLoader::new();
-        let mut block_paths = Vec::new();
-        let mut failed = false;
-        for _ in 0..50 {
-            let counter = SANDBOX_COUNTER.load(Ordering::SeqCst);
-            let pid = std::process::id();
-            for c in counter..counter + 200 {
-                let p = std::env::temp_dir().join(format!("msi_ca_{pid}_{c}"));
-                let _ = fs::write(&p, b"blocking_file");
-                block_paths.push(p);
-            }
-            if fail_dir_loader
-                .extract_to_sandbox("test.dll", b"data")
-                .is_err()
-            {
-                failed = true;
-                break;
-            }
-        }
-        assert!(failed);
-        for p in &block_paths {
-            let _ = fs::remove_file(p);
-        }
+        let counter = SANDBOX_COUNTER.load(Ordering::SeqCst);
+        let pid = std::process::id();
+        let block_path = std::env::temp_dir().join(format!("msi_ca_{pid}_{counter}"));
+        let _ = fs::write(&block_path, b"blocking_file");
+        let res_dir_fail = fail_dir_loader.extract_to_sandbox("test.dll", b"data");
+        let _ = fs::remove_file(&block_path);
+        assert!(res_dir_fail.is_err());
 
         // Test extract_to_sandbox file write failure (nonexistent subdirectory)
         let mut fail_write_loader = NativeLibraryLoader::new();

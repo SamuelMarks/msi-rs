@@ -380,11 +380,27 @@ impl MacOsAppBundle {
                 |f| f.to_string_lossy().to_string(),
             ),
         };
-        let link_target = PathBuf::from("/Applications").join(name);
+        let app_dir = std::env::var("MSI_APPLICATIONS_DIR").map_or_else(
+            |_| {
+                #[cfg(target_os = "macos")]
+                {
+                    PathBuf::from("/Applications")
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    std::env::temp_dir().join("Applications")
+                }
+            },
+            PathBuf::from,
+        );
+        let _ = std::fs::create_dir_all(&app_dir);
+        let link_target = app_dir.join(name);
         #[cfg(unix)]
         {
-            if link_target.exists() || link_target.is_symlink() {
+            if link_target.is_symlink() || link_target.is_file() {
                 let _ = std::fs::remove_file(&link_target);
+            } else if link_target.is_dir() {
+                let _ = std::fs::remove_dir_all(&link_target);
             }
             std::os::unix::fs::symlink(bundle_path, &link_target)?;
         }
@@ -771,6 +787,9 @@ mod tests {
         assert!(!format!("{lnk:?}").is_empty());
 
         // 3. macOS App Bundle symlink
+        let app_test_dir = temp_dir.join("Applications");
+        std::env::set_var("MSI_APPLICATIONS_DIR", &app_test_dir);
+
         let mock_bundle = temp_dir.join("MyStudio.app");
         let _ = std::fs::create_dir_all(&mock_bundle);
 
@@ -781,6 +800,21 @@ mod tests {
         let link_res_repeat =
             MacOsAppBundle::create_applications_symlink(&mock_bundle, Some("MyStudioLink.app"));
         assert!(link_res_repeat.is_ok());
+
+        // Pre-existing directory target (exercises link_target.is_dir() branch)
+        let dir_target = app_test_dir.join("ExistingDir.app");
+        std::fs::create_dir_all(&dir_target)?;
+        let link_res_dir =
+            MacOsAppBundle::create_applications_symlink(&mock_bundle, Some("ExistingDir.app"))?;
+        assert!(link_res_dir.exists());
+        let _ = std::fs::remove_file(&link_res_dir);
+
+        // Test with MSI_APPLICATIONS_DIR unset
+        std::env::remove_var("MSI_APPLICATIONS_DIR");
+        let target_default =
+            MacOsAppBundle::create_applications_symlink(&mock_bundle, Some("DefaultApp.app"))?;
+        let _ = std::fs::remove_file(&target_default);
+        std::env::set_var("MSI_APPLICATIONS_DIR", &app_test_dir);
 
         // Dangling symlink (exercises link_target.exists() == false && link_target.is_symlink() == true)
         let _ = std::fs::remove_file(&target1);
@@ -807,6 +841,7 @@ mod tests {
         let target4 = MacOsAppBundle::create_applications_symlink(Path::new("/"), None)?;
         let _ = std::fs::remove_file(&target4);
 
+        std::env::remove_var("MSI_APPLICATIONS_DIR");
         let _ = std::fs::remove_dir_all(&temp_dir);
         Ok(())
     }

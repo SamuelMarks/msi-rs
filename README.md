@@ -15,7 +15,7 @@ A complete, memory-safe, cross-platform implementation of the Windows Installer 
 
 Traditionally, authoring, compiling, inspecting, and executing Windows Installer databases required Windows machines, the .NET Framework, official WiX toolchains, or heavy compatibility layers like Wine. `msi-rs` replaces this entire ecosystem with lightweight, dependency-free native binaries:
 
-### 1. Replacing WiX Toolset & msitools (15 Standalone Binaries)
+### 1. Replacing WiX Toolset & msitools (14 Standalone Binaries)
 `msi-rs` replaces the entire WiX compilation, linking, harvesting, and decompilation toolchain without requiring .NET, Java, or Windows SDKs:
 - **WiX Toolset Suite:**
   - **`candle`**: Full native parsing and compilation of WiX XML source files (`.wxs`, `.wxi`) across WiX v3, v4, and v5 schemas directly into typed intermediate `.wixobj` representations.
@@ -41,7 +41,7 @@ Traditionally, authoring, compiling, inspecting, and executing Windows Installer
 - **Two-Phase Transaction & Rollback Engine**: Translates MSI execution sequences into atomic operations with physical `.rbf` rollback quarantine preserving existing files and guaranteeing clean state restoration on failure or cancel.
 - **Privileged Worker Boundary**: Replaces the Windows `msiserver` RPC service with cross-process IPC (Unix domain sockets / Windows named pipes) and privilege escalation (`sudo`, PolicyKit `pkexec`, macOS `SMJobBless`, or `runas`).
 - **Standard Action Translation**: Translates MSI Win32 actions (`InstallFiles`, `WriteRegistryValues`, `CreateShortcuts`, `InstallServices`) into native POSIX filesystem hierarchies, service supervisors, and desktop launchers.
-- **Native GUI & TUI**: Delivers both a desktop GUI wizard (`msi-gui`) replicating classic WiX dialog layouts (`WixUI_Mondo`, `WixUI_InstallDir`, `WixUI_FeatureTree`) and an interactive terminal wizard (`msi-gui-tui`) for headless server installations.
+- **Native GUI & TUI**: Delivers both a desktop GUI wizard (`msi-gui`) replicating classic WiX dialog layouts (`WixUI_Mondo`, `WixUI_InstallDir`, `WixUI_FeatureTree`) and an interactive terminal wizard (`msi-cli install --tui`) for headless server installations.
 
 ---
 
@@ -60,8 +60,8 @@ Interactive desktop installation wizard rendered via `egui` and `wgpu` (DirectX 
 
 ---
 
-### Terminal TUI Wizard (`msi-gui-tui`)
-Interactive terminal text wizard powered by the exact same `UiEngine` state machine for headless or remote SSH environments:
+### Terminal TUI Wizard (`msi-cli --tui`)
+Interactive terminal text wizard powered by the exact same `UiEngine` state machine for headless or remote SSH environments (or run automatically when no display server is detected):
 
 ![Interactive Terminal TUI Wizard](https://raw.githubusercontent.com/SamuelMarks/cc0-assets/master/msi-rs/screenshots/tui_wizard.png)
 
@@ -126,7 +126,7 @@ The repository is organized as a Cargo workspace with five specialized crates:
 msi-rs/
 ├── crates/
 │   ├── msi/         # Core library: CFB, CAB, Database, WiX, Execution Engine, Platform translation, UI
-│   ├── msi-cli/     # msiexec-compatible CLI tool and 15 standalone binaries (candle, light, wix, etc.)
+│   ├── msi-cli/     # msiexec-compatible CLI tool and 14 standalone WiX/msitools binaries (candle, light, wix, etc.)
 │   ├── msi-gui/     # Desktop native GUI wizard application (eframe / egui / wgpu / softbuffer)
 │   ├── msi-ffi/     # C-compatible ABI shared and static libraries (include/msi.h)
 │   └── msi-python/  # Python 3 native PyO3 extension module (import msi)
@@ -158,8 +158,8 @@ msi.build_msi(
 
 # Advanced: inspect an existing package
 pkg = msi.Package.open("./MyApp-1.0.0.msi")
-print(f"Product: {pkg.product_name} v{pkg.product_version}")
-for table in pkg.tables():
+print(f"Product: {pkg.get_property('ProductName')} v{pkg.get_property('ProductVersion')}")
+for table in pkg.table_names:
     print(f"  Table: {table}")
 ```
 
@@ -169,7 +169,7 @@ See the complete Python guide and API documentation in [`docs/python_guide.md`](
 `msi-ffi` compiles to a shared (`.so` / `.dylib` / `.dll`) and static (`.a`) library exposing a clean C-ABI with standard header [`crates/msi-ffi/include/msi.h`](crates/msi-ffi/include/msi.h):
 - **Cross-Language Interop**: Ready for C, C++, Go, C#, Swift, Zig, and Rust FFI.
 - **Safety Boundary**: Strict panic isolation boundaries (`catch_unwind`) converting internal unwinds into defined error return codes (`MSI_ERROR_*`).
-- **Handle-Based API**: Opaque handles for package construction (`MsiBuilderHandle`) and inspection (`MsiPackageHandle`).
+- **Handle-Based API**: Opaque handles for package construction (`MsiPackageBuilderHandle`) and inspection (`MsiPackageHandle`).
 
 ---
 
@@ -194,13 +194,15 @@ See the complete Python guide and API documentation in [`docs/python_guide.md`](
 - **String Pool:** Dual-stream string pool (`_StringPool` / `_StringData`) with code page translation (ANSI 1252, UTF-8 65001).
 - **Summary Information:** Standard OLE Property Set stream (`\005SummaryInformation`) with GUIDs, creation timestamps, and wordcount flags.
 - **Relational Tables:** Complete typed representation of core MSI tables (`Component`, `Feature`, `Directory`, `File`, `FileHash`, `Media`, `Property`, `Registry`, `Shortcut`, `ServiceInstall`, `ServiceControl`, `Upgrade`, `LaunchCondition`, `Dialog`, `Control`, `ControlEvent`, `ControlCondition`).
+- **SQL Parser & Query Engine:** AST, lexer, recursive descent parser, and relational execution engine supporting the Windows Installer SQL dialect (`SELECT`, `INSERT`, `UPDATE`, `DELETE`, `CREATE TABLE`, `ALTER TABLE`, joins, and WHERE expressions).
+- **Transforms & IDT:** `.mst` database transform generation, diffing, and patching; IDT tab-delimited table import and export.
 - **POSIX Extensions:** Extension tables for POSIX permissions (`PosixFile`), symlinks (`PosixSymlink`), system daemons (`PosixDaemon`), ACLs (`PosixAcl`), and Freedesktop entries (`PosixDesktop`).
 
 ### 3. WiX Toolset Pipeline (`candle` & `light` Parity)
 - **Schema Compatibility:** Full support for WiX v3, WiX v4, WiX v5, and POSIX extension schemas.
 - **Preprocessor:** Variable stack (`$(var.NAME)`, `$(env.VAR)`, `$(sys.CURRENTDIR)`), conditional directives (`<?if?>`, `<?elseif?>`, `<?else?>`), loops (`<?foreach?>`), and include files (`<?include?>`).
 - **Compiler & Linker:** Intermediate object AST (`.wixobj`), symbol dependency solver, automatic standard action sequencing (`CostInitialize` through `InstallFinalize`), and Media disk layout binding.
-- **ICE Validator:** Built-in Internal Consistency Evaluators (`ICE01`, `ICE02`, `ICE03`, `ICE04`, `ICE05`, `ICE06`, `ICE08`, `ICE09`, `ICE18`, `ICE20`, `ICE30`, `ICE33`, `ICE38`, `ICE61`, `ICE80`, `ICE99`, `ICE101`, `ICE103`).
+- **ICE Validator:** Built-in Internal Consistency Evaluators (`ICE01`, `ICE02`, `ICE03`, `ICE04`, `ICE05`, `ICE06`, `ICE07`, `ICE08`, `ICE09`, `ICE18`, `ICE20`, `ICE30`, `ICE33`, `ICE38`, `ICE61`, `ICE80`, `ICE99`, `ICE101`, `ICE103`).
 
 ### 4. Cross-Platform Platform Translation (`msi-platform`)
 - **Filesystem Mapping:** Standard MSI directories (`[ProgramFiles64Folder]`, `[CommonAppDataFolder]`, `[DesktopFolder]`, `[SystemFolder]`) mapped to Linux FHS / XDG, macOS Apple File System (`/Applications`, `/Library/Application Support`), FreeBSD, and illumos paths.
@@ -218,6 +220,7 @@ See the complete Python guide and API documentation in [`docs/python_guide.md`](
 - **Rollback Quarantine:** Physical `.rbf` quarantine preserving original files with byte-for-byte rollback guarantees on failure or user cancellation.
 - **Script Engines:** Embedded ECMAScript / JScript and VBScript interpreters with COM automation `Session` object binding.
 - **Native Custom Actions:** Dynamic library loader (`dlopen` / `LoadLibraryW`) with temporary sandbox isolation and signal/SEH crash boundaries.
+- **Offline Sysroot & Bare-Metal Mode:** Offline pre-boot chroot sandboxing, mocked subsystem APIs (`SCM`, `RPC`), and disk-level rollback journaling for bare-metal OS provisioning.
 
 ---
 
@@ -232,7 +235,7 @@ See the complete Python guide and API documentation in [`docs/python_guide.md`](
 # Build all workspace crates and binaries
 cargo build --release
 
-# Run the complete test suite (550+ unit, integration, doc, and binding tests)
+# Run the complete test suite (780+ unit, integration, doc, and binding tests)
 cargo test --workspace
 
 # Verify strict quality and lints
@@ -246,23 +249,38 @@ cargo clippy --all-targets -- -D warnings -D clippy::pedantic
 ### Command-Line Interface (`msi-cli`)
 
 ```bash
-# Install a package silently with verbose logging
-msi-cli install ./ExampleApp.msi /qn /lvx ./install.log
+# Install a package silently with verbose logging (subcommand syntax)
+msi-cli install ./ExampleApp.msi --ui quiet --log ./install.log
 
 # Install with basic progress UI and property overrides
-msi-cli install ./ExampleApp.msi /qb INSTALLDIR="/opt/custom" APP_ENV="production"
+msi-cli install ./ExampleApp.msi --ui basic INSTALLDIR="/opt/custom" APP_ENV="production"
+
+# Direct msiexec flag parity (drop-in replacement)
+msi-cli /i ./ExampleApp.msi /qn /lvx ./install.log
+msi-cli /x ./ExampleApp.msi /qb
+msi-cli /fa ./ExampleApp.msi
 
 # Inspect package summary information and catalogs
 msi-cli info ./ExampleApp.msi
 
-# Repair missing or modified files
-msi-cli repair ./ExampleApp.msi /fa
+# Repair missing or modified files via subcommand
+msi-cli repair ./ExampleApp.msi --flags a
 
-# Uninstall an installed package
-msi-cli uninstall ./ExampleApp.msi /qb
+# Uninstall an installed package via subcommand
+msi-cli uninstall ./ExampleApp.msi --ui basic
 
 # Create a new MSI package scaffold from template
-msi-cli create --name "MyService" --version "1.0.0" --manufacturer "Acme Corp" --output ./MyService.msi
+msi-cli create --name "MyService" --version "1.0.0" --manufacturer "Acme Corp" --product-code "{12345678-1234-1234-1234-1234567890AB}"
+```
+
+### Terminal TUI Wizard
+
+```bash
+# Launch interactive terminal wizard in curses/TUI mode
+msi-cli install ./ExampleApp.msi --tui
+
+# Runs automatically when executing without a GUI display server (headless/SSH)
+msi-cli install ./ExampleApp.msi
 ```
 
 ### WiX Toolset & Utilities

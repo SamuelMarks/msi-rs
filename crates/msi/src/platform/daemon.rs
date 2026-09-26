@@ -1292,6 +1292,7 @@ mod tests {
                 | SupervisorType::Launchd
                 | SupervisorType::FreeBsdRc
                 | SupervisorType::Smf
+                | SupervisorType::WindowsScm
         ));
     }
 

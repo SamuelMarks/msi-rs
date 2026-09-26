@@ -1135,6 +1135,19 @@ mod tests {
     use super::*;
     use crate::database::tables::types::{ComponentName, DirectoryId, FeatureName, FileKey};
 
+    /// Tests [`Package::default`] constructor.
+    #[test]
+    fn test_package_default() {
+        let pkg = Package::default();
+        assert_eq!(pkg.metadata().product_name, "WiX Application");
+        assert!(pkg.database().tables.is_empty());
+        assert_eq!(
+            pkg.summary_info().title.as_deref(),
+            Some("Installation Database")
+        );
+        assert!(pkg.embedded_cabinets().is_empty());
+    }
+
     /// Tests [`ProductVersion`] constructor and getters.
     #[test]
     fn test_product_version_getters() {

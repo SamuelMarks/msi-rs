@@ -2610,11 +2610,13 @@ mod tests {
         let _ = std::fs::remove_dir_all(&temp_wd);
         std::fs::create_dir_all(&temp_wd)?;
         let script_file = temp_wd.join("runner.sh");
-        std::fs::write(&script_file, b"#!/bin/sh\nexit 0")?;
         #[cfg(unix)]
         {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&script_file, std::fs::Permissions::from_mode(0o755))?;
+            std::os::unix::fs::symlink("/bin/sh", &script_file)?;
+        }
+        #[cfg(not(unix))]
+        {
+            std::fs::write(&script_file, b"")?;
         }
         context.set_property("WORKING_DIR", temp_wd.to_string_lossy().to_string());
         let dir_exe_action = CustomActionDefinition::parse(

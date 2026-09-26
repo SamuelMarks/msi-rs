@@ -1270,7 +1270,10 @@ mod tests {
         let empty_xattr = LiveSecurityApplier::set_xattr(&temp_file, "user.empty", b"");
         assert!(empty_xattr.is_ok());
         let read_empty = LiveSecurityApplier::get_xattr(&temp_file, "user.empty");
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
         assert_eq!(read_empty, Ok(Some(Vec::new())));
+        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        assert_eq!(read_empty, Ok(None));
 
         // apply_mode failure on existing device/root path without root permissions
         #[cfg(unix)]
