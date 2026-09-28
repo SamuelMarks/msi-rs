@@ -474,7 +474,9 @@ pub fn probe_port_available(port: u16) -> bool {
 /// Tuple of `(translated_program_path, translated_argument_vector)`.
 #[must_use]
 pub fn translate_shell_command(prog: &Path, args: &[String]) -> (PathBuf, Vec<String>) {
+    #[cfg(not(target_os = "windows"))]
     let prog_str = prog.to_string_lossy();
+    #[cfg(not(target_os = "windows"))]
     let is_cmd_exe = prog_str.eq_ignore_ascii_case("cmd.exe")
         || prog_str.eq_ignore_ascii_case("cmd")
         || prog_str.ends_with(r"\cmd.exe")
@@ -2879,27 +2881,20 @@ mod tests {
         assert_eq!(res_prop_fallback, ERROR_SUCCESS);
 
         // DirectoryExe where wd.join(&prog).exists() is true
-        let temp_wd = std::env::temp_dir().join(format!("msi_wd_{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&temp_wd);
-        let _ = std::fs::create_dir_all(&temp_wd);
-        let script_file = temp_wd.join("runner.sh");
         #[cfg(unix)]
         {
+            let temp_wd = std::env::temp_dir().join(format!("msi_wd_{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&temp_wd);
+            let _ = std::fs::create_dir_all(&temp_wd);
+            let script_file = temp_wd.join("runner.sh");
             let _ = std::os::unix::fs::symlink("/bin/sh", &script_file);
-        }
-        #[cfg(not(unix))]
-        {
-            std::fs::write(&script_file, b"")?;
-        }
-        context.set_property("WORKING_DIR", temp_wd.to_string_lossy().to_string());
-        let dir_exe_action = unwrap_result(CustomActionDefinition::parse(
-            "RunDirScript",
-            MSIDB_CUSTOM_ACTION_TYPE_DIRECTORY_EXE,
-            "WORKING_DIR",
-            "runner.sh",
-        ));
-        #[cfg(not(target_os = "windows"))]
-        {
+            context.set_property("WORKING_DIR", temp_wd.to_string_lossy().to_string());
+            let dir_exe_action = unwrap_result(CustomActionDefinition::parse(
+                "RunDirScript",
+                MSIDB_CUSTOM_ACTION_TYPE_DIRECTORY_EXE,
+                "WORKING_DIR",
+                "runner.sh",
+            ));
             let res_dir = unwrap_result(executor.execute(&dir_exe_action, &mut context));
             assert_eq!(res_dir, ERROR_SUCCESS);
 
@@ -2912,8 +2907,8 @@ mod tests {
             ));
             let res_abs_dir = unwrap_result(executor.execute(&abs_dir_exe, &mut context));
             assert_eq!(res_abs_dir, ERROR_SUCCESS);
+            let _ = std::fs::remove_dir_all(&temp_wd);
         }
-        let _ = std::fs::remove_dir_all(&temp_wd);
 
         let empty_exe = unwrap_result(CustomActionDefinition::parse(
             "EmptyExeAction",
@@ -3034,6 +3029,7 @@ mod tests {
         #[cfg(target_os = "windows")]
         {
             assert_eq!(cmd_prog, PathBuf::from("cmd.exe"));
+            assert_eq!(cmd_args.len(), 2);
         }
 
         // Test translate_shell_command with non-cmd.exe program and /c attached prefix
@@ -3054,6 +3050,7 @@ mod tests {
         #[cfg(target_os = "windows")]
         {
             assert_eq!(bat_prog, PathBuf::from("cmd"));
+            assert_eq!(bat_args.len(), 2);
         }
 
         // Test translate_shell_command without /c parameter
@@ -3069,6 +3066,7 @@ mod tests {
         #[cfg(target_os = "windows")]
         {
             assert_eq!(bare_cmd_p, PathBuf::from("cmd.exe"));
+            assert_eq!(bare_cmd_a.len(), 2);
         }
 
         // Test translate_shell_command empty args
@@ -3082,6 +3080,7 @@ mod tests {
         #[cfg(target_os = "windows")]
         {
             assert_eq!(empty_cmd_p, PathBuf::from(r"C:\Windows\System32\cmd.exe"));
+            assert!(empty_cmd_a.is_empty());
         }
 
         // Test translate_shell_command with /k flag
@@ -3097,6 +3096,7 @@ mod tests {
         #[cfg(target_os = "windows")]
         {
             assert_eq!(k_prog, PathBuf::from("cmd.exe"));
+            assert_eq!(k_args.len(), 2);
         }
 
         // Test translate_shell_command with /C attached prefix and uppercase
@@ -3110,6 +3110,7 @@ mod tests {
         #[cfg(target_os = "windows")]
         {
             assert_eq!(cap_c_prog, PathBuf::from("cmd.exe"));
+            assert_eq!(cap_c_args.len(), 1);
         }
 
         // Test translate_shell_command with trailing /c and no target command
@@ -3123,6 +3124,7 @@ mod tests {
         #[cfg(target_os = "windows")]
         {
             assert_eq!(trail_c_prog, PathBuf::from("cmd.exe"));
+            assert_eq!(trail_c_args.len(), 1);
         }
 
         // 11. validate_*.vbs port check interception
@@ -3241,6 +3243,7 @@ mod tests {
         #[cfg(target_os = "windows")]
         {
             assert_eq!(direct_bat_p, PathBuf::from(r"C:\App\setup.cmd"));
+            assert_eq!(direct_bat_a.len(), 2);
         }
 
         let (complex_cmd_p, complex_cmd_a) = translate_shell_command(
@@ -3268,6 +3271,7 @@ mod tests {
         #[cfg(target_os = "windows")]
         {
             assert_eq!(complex_cmd_p, PathBuf::from("cmd.exe"));
+            assert_eq!(complex_cmd_a.len(), 2);
         }
 
         // 14. Execution logs capture and clear
@@ -3458,16 +3462,15 @@ mod tests {
         {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&non_exec_file, std::fs::Permissions::from_mode(0o644)).ok();
+            let bad_async = unwrap_result(CustomActionDefinition::parse(
+                "BadAsync",
+                0x0032 | MSIDB_CUSTOM_ACTION_TYPE_ASYNC,
+                "BAD_EXE",
+                "dummy_arg",
+            ));
+            ctx.set_property("BAD_EXE", non_exec_file.to_string_lossy());
+            assert!(fresh_executor.execute(&bad_async, &mut ctx).is_err());
         }
-        let bad_async = unwrap_result(CustomActionDefinition::parse(
-            "BadAsync",
-            0x0032 | MSIDB_CUSTOM_ACTION_TYPE_ASYNC,
-            "BAD_EXE",
-            "dummy_arg",
-        ));
-        ctx.set_property("BAD_EXE", non_exec_file.to_string_lossy());
-        #[cfg(unix)]
-        assert!(fresh_executor.execute(&bad_async, &mut ctx).is_err());
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }

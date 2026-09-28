@@ -403,9 +403,11 @@ def test_pre_commit_run_as_main() -> None:
     """Verifies execution when pre_commit.py is invoked as __main__."""
     script_path = scripts_dir / "pre_commit.py"
     with (
-        patch("pre_commit.main", return_value=0),
-        patch.object(sys, "argv", ["pre_commit.py", "shields"]),
+        patch("shutil.which", return_value="/usr/bin/cargo"),
+        patch("subprocess.run") as mock_run,
+        patch.object(sys, "argv", ["pre_commit.py", "fmt"]),
         patch.object(sys, "exit") as mock_exit,
     ):
+        mock_run.return_value = MagicMock(returncode=0)
         runpy.run_path(str(script_path), run_name="__main__")
         mock_exit.assert_called_once_with(0)

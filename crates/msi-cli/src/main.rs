@@ -2184,10 +2184,15 @@ mod tests {
         assert!(std::fs::write(&real_patch_file, patch_cfb.build()).is_ok());
         let real_patch_path = real_patch_file.to_string_lossy().to_string();
 
+        #[cfg(unix)]
+        let patch_arg = real_patch_path.clone();
+        #[cfg(not(unix))]
+        let patch_arg = real_patch_path;
+
         let patch_real_cli = Cli {
             command: Commands::Patch(PatchArgs {
                 package: pkg_path.clone(),
-                patch: real_patch_path.clone(),
+                patch: patch_arg,
                 ui: CliUiLevel::Basic,
                 log: None,
             }),

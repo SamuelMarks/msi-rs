@@ -17,12 +17,14 @@ def test_update_shields_main() -> None:
     update_shields = importlib.import_module("update-shields")
 
     with (
-        patch("update-shields.get_repo_root", return_value=repo_root),
-        patch("update-shields.calculate_doc_coverage", return_value=100.0) as mock_doc,
-        patch(
-            "update-shields.calculate_test_coverage", return_value=100.0
+        patch.object(update_shields, "get_repo_root", return_value=repo_root),
+        patch.object(
+            update_shields, "calculate_doc_coverage", return_value=100.0
+        ) as mock_doc,
+        patch.object(
+            update_shields, "calculate_test_coverage", return_value=100.0
         ) as mock_test,
-        patch("update-shields.update_readme_shields") as mock_update,
+        patch.object(update_shields, "update_readme_shields") as mock_update,
         patch.object(
             sys, "argv", ["update-shields.py", "--repo-root", str(repo_root), "--force"]
         ),

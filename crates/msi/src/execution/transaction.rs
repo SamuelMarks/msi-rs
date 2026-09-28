@@ -7019,6 +7019,7 @@ mod tests {
                 FieldValue::Short(800),
             ]),
         );
+        #[cfg(unix)]
         let empty_child_pkg = Package::from_database(empty_seq_db, HashMap::new());
         #[cfg(unix)]
         assert!(mgr_commit_fail
@@ -7033,117 +7034,120 @@ mod tests {
         let _ = std::fs::remove_dir_all(&temp_child_q);
 
         // 5. Bare metal journal rollback failure
-        let temp_ro_disk = std::env::temp_dir().join(format!("ro_disk_{}", std::process::id()));
-        let _ = std::fs::write(&temp_ro_disk, b"dummy disk content");
         #[cfg(unix)]
         {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&temp_ro_disk, std::fs::Permissions::from_mode(0o444));
+            let temp_ro_disk = std::env::temp_dir().join(format!("ro_disk_{}", std::process::id()));
+            let _ = std::fs::write(&temp_ro_disk, b"dummy disk content");
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ =
+                    std::fs::set_permissions(&temp_ro_disk, std::fs::Permissions::from_mode(0o444));
+            }
+
+            let mut worker_bm = WorkerContext::new();
+            let mut bm_journal = crate::execution::bare_metal::BareMetalRollbackJournal::new();
+            bm_journal.record_partition_wipe(
+                crate::platform::disk::BlockDevicePath::new(&temp_ro_disk),
+                0,
+                10,
+            );
+            worker_bm.bare_metal_journal = Some(bm_journal);
+            let empty_rollback = RollbackScript::new();
+            assert!(worker_bm.execute_rollback(&empty_rollback).is_err());
+
+            // Prepared rollback failure
+            let mut worker_bm_prep = WorkerContext::new();
+            let mut bm_journal_prep = crate::execution::bare_metal::BareMetalRollbackJournal::new();
+            bm_journal_prep.record_partition_wipe(
+                crate::platform::disk::BlockDevicePath::new(&temp_ro_disk),
+                0,
+                10,
+            );
+            worker_bm_prep.bare_metal_journal = Some(bm_journal_prep);
+            let tx_bm_prep = Transaction {
+                database: unwrap_result(LinkedDatabase::new()),
+                context: EvaluationContext::new(),
+                cost_engine: DiskCostEngine::new(),
+                install_script: InstallScript::new(),
+                rollback_script: RollbackScript::new(),
+                sequence_table: "InstallExecuteSequence".to_string(),
+                embedded_cabinets: HashMap::new(),
+                _state: PhantomData::<Prepared>,
+            };
+            assert!(tx_bm_prep.rollback(&mut worker_bm_prep).is_err());
+
+            // Executed rollback failure
+            let mut worker_bm2 = WorkerContext::new();
+            let mut bm_journal2 = crate::execution::bare_metal::BareMetalRollbackJournal::new();
+            bm_journal2.record_partition_wipe(
+                crate::platform::disk::BlockDevicePath::new(&temp_ro_disk),
+                0,
+                10,
+            );
+            worker_bm2.bare_metal_journal = Some(bm_journal2);
+            let tx_bm_exec = Transaction {
+                database: unwrap_result(LinkedDatabase::new()),
+                context: EvaluationContext::new(),
+                cost_engine: DiskCostEngine::new(),
+                install_script: InstallScript::new(),
+                rollback_script: RollbackScript::new(),
+                sequence_table: "InstallExecuteSequence".to_string(),
+                embedded_cabinets: HashMap::new(),
+                _state: PhantomData::<Executed>,
+            };
+            assert!(tx_bm_exec.rollback(&mut worker_bm2).is_err());
+            let _ = std::fs::remove_file(&temp_ro_disk);
         }
-
-        let mut worker_bm = WorkerContext::new();
-        let mut bm_journal = crate::execution::bare_metal::BareMetalRollbackJournal::new();
-        bm_journal.record_partition_wipe(
-            crate::platform::disk::BlockDevicePath::new(&temp_ro_disk),
-            0,
-            10,
-        );
-        worker_bm.bare_metal_journal = Some(bm_journal);
-        let empty_rollback = RollbackScript::new();
-        #[cfg(unix)]
-        assert!(worker_bm.execute_rollback(&empty_rollback).is_err());
-
-        // Prepared rollback failure
-        let mut worker_bm_prep = WorkerContext::new();
-        let mut bm_journal_prep = crate::execution::bare_metal::BareMetalRollbackJournal::new();
-        bm_journal_prep.record_partition_wipe(
-            crate::platform::disk::BlockDevicePath::new(&temp_ro_disk),
-            0,
-            10,
-        );
-        worker_bm_prep.bare_metal_journal = Some(bm_journal_prep);
-        let tx_bm_prep = Transaction {
-            database: unwrap_result(LinkedDatabase::new()),
-            context: EvaluationContext::new(),
-            cost_engine: DiskCostEngine::new(),
-            install_script: InstallScript::new(),
-            rollback_script: RollbackScript::new(),
-            sequence_table: "InstallExecuteSequence".to_string(),
-            embedded_cabinets: HashMap::new(),
-            _state: PhantomData::<Prepared>,
-        };
-        #[cfg(unix)]
-        assert!(tx_bm_prep.rollback(&mut worker_bm_prep).is_err());
-
-        // Executed rollback failure
-        let mut worker_bm2 = WorkerContext::new();
-        let mut bm_journal2 = crate::execution::bare_metal::BareMetalRollbackJournal::new();
-        bm_journal2.record_partition_wipe(
-            crate::platform::disk::BlockDevicePath::new(&temp_ro_disk),
-            0,
-            10,
-        );
-        worker_bm2.bare_metal_journal = Some(bm_journal2);
-        let tx_bm_exec = Transaction {
-            database: unwrap_result(LinkedDatabase::new()),
-            context: EvaluationContext::new(),
-            cost_engine: DiskCostEngine::new(),
-            install_script: InstallScript::new(),
-            rollback_script: RollbackScript::new(),
-            sequence_table: "InstallExecuteSequence".to_string(),
-            embedded_cabinets: HashMap::new(),
-            _state: PhantomData::<Executed>,
-        };
-        #[cfg(unix)]
-        assert!(tx_bm_exec.rollback(&mut worker_bm2).is_err());
-        let _ = std::fs::remove_file(&temp_ro_disk);
 
         // 6. Commit failure via live executor quarantine deletion failure
-        let temp_quarantine_dir =
-            std::env::temp_dir().join(format!("msi_tx_quarantine_fail_{}", std::process::id()));
-        let _ = std::fs::create_dir_all(&temp_quarantine_dir);
-        let inner_dir = temp_quarantine_dir.join("locked_subdir");
-        let _ = std::fs::create_dir_all(&inner_dir);
-        let dummy_file = inner_dir.join("dummy.rbf");
-        let _ = std::fs::write(&dummy_file, b"data");
         #[cfg(unix)]
         {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&inner_dir, std::fs::Permissions::from_mode(0o555));
-            let _ = std::fs::set_permissions(
+            let temp_quarantine_dir =
+                std::env::temp_dir().join(format!("msi_tx_quarantine_fail_{}", std::process::id()));
+            let _ = std::fs::create_dir_all(&temp_quarantine_dir);
+            let inner_dir = temp_quarantine_dir.join("locked_subdir");
+            let _ = std::fs::create_dir_all(&inner_dir);
+            let dummy_file = inner_dir.join("dummy.rbf");
+            let _ = std::fs::write(&dummy_file, b"data");
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ =
+                    std::fs::set_permissions(&inner_dir, std::fs::Permissions::from_mode(0o555));
+                let _ = std::fs::set_permissions(
+                    &temp_quarantine_dir,
+                    std::fs::Permissions::from_mode(0o555),
+                );
+            }
+            let live_exec = crate::execution::worker::LiveWorkerExecutor::new(
                 &temp_quarantine_dir,
-                std::fs::Permissions::from_mode(0o555),
+                "session_test",
             );
-        }
-        let live_exec =
-            crate::execution::worker::LiveWorkerExecutor::new(&temp_quarantine_dir, "session_test");
-        let mut worker_commit_fail = WorkerContext::new().with_live_executor(live_exec);
-        #[cfg(unix)]
-        assert!(worker_commit_fail.commit().is_err());
+            let mut worker_commit_fail = WorkerContext::new().with_live_executor(live_exec);
+            assert!(worker_commit_fail.commit().is_err());
 
-        let tx_commit_fail = Transaction {
-            database: unwrap_result(LinkedDatabase::new()),
-            context: EvaluationContext::new(),
-            cost_engine: DiskCostEngine::new(),
-            install_script: InstallScript::new(),
-            rollback_script: RollbackScript::new(),
-            sequence_table: "InstallExecuteSequence".to_string(),
-            embedded_cabinets: HashMap::new(),
-            _state: PhantomData::<Executed>,
-        };
-        #[cfg(unix)]
-        assert!(tx_commit_fail.commit(&mut worker_commit_fail).is_err());
+            let tx_commit_fail = Transaction {
+                database: unwrap_result(LinkedDatabase::new()),
+                context: EvaluationContext::new(),
+                cost_engine: DiskCostEngine::new(),
+                install_script: InstallScript::new(),
+                rollback_script: RollbackScript::new(),
+                sequence_table: "InstallExecuteSequence".to_string(),
+                embedded_cabinets: HashMap::new(),
+                _state: PhantomData::<Executed>,
+            };
+            assert!(tx_commit_fail.commit(&mut worker_commit_fail).is_err());
 
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(
-                &temp_quarantine_dir,
-                std::fs::Permissions::from_mode(0o755),
-            );
-            let _ = std::fs::set_permissions(&inner_dir, std::fs::Permissions::from_mode(0o755));
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(
+                    &temp_quarantine_dir,
+                    std::fs::Permissions::from_mode(0o755),
+                );
+                let _ =
+                    std::fs::set_permissions(&inner_dir, std::fs::Permissions::from_mode(0o755));
+            }
+            let _ = std::fs::remove_dir_all(&temp_quarantine_dir);
         }
-        let _ = std::fs::remove_dir_all(&temp_quarantine_dir);
 
         // install_child_package_from_path errors (line 1892)
         let mut mgr_path = unwrap_result(MultiPackageTransactionManager::begin_transaction(
