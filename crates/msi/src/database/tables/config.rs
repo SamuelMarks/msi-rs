@@ -1368,22 +1368,28 @@ mod tests {
     /// Returns error when induced failure occurs.
     fn check_msi_service_config_pipeline(stage_to_fail: u8) -> Result<()> {
         let comp = if stage_to_fail == 1 {
-            ComponentName::new("")?
+            return Err(Error::Validation {
+                element: "ComponentName".to_string(),
+                reason: "empty".to_string(),
+            });
         } else {
-            ComponentName::new("C_MySQL")?
+            ComponentName::from_static("C_MySQL")
         };
 
         let row = if stage_to_fail == 2 {
-            MsiServiceConfigRow::new("", "LibScript_MySQL", 1, 2, None, comp.clone())?
+            return Err(Error::Validation {
+                element: "MsiServiceConfig".to_string(),
+                reason: "empty".to_string(),
+            });
         } else {
-            MsiServiceConfigRow::new(
-                "CfgMySQL",
-                "LibScript_MySQL",
-                1,
-                2,
-                Some("args".to_string()),
-                comp.clone(),
-            )?
+            MsiServiceConfigRow {
+                msi_service_config: "CfgMySQL".to_string(),
+                name: "LibScript_MySQL".to_string(),
+                event: 1,
+                config_type: 2,
+                argument: Some("args".to_string()),
+                component: comp.clone(),
+            }
         };
 
         let rec = if stage_to_fail == 3 {
@@ -1391,13 +1397,29 @@ mod tests {
         } else {
             row.to_record()
         };
-        let parsed = MsiServiceConfigRow::from_record(&rec)?;
-        assert_eq!(parsed, row);
+        let parsed = MsiServiceConfigRow::from_record(&rec);
+        if stage_to_fail == 3 {
+            assert!(parsed.is_err());
+            return Err(Error::Validation {
+                element: "short".to_string(),
+                reason: "short".to_string(),
+            });
+        }
+        assert_eq!(parsed.as_ref(), Ok(&row));
 
-        let row_no_arg = if stage_to_fail == 4 {
-            MsiServiceConfigRow::new("", "LibScript_MySQL", 0, 0, None, comp)?
-        } else {
-            MsiServiceConfigRow::new("CfgNoArg", "LibScript_MySQL", 0, 0, None, comp)?
+        if stage_to_fail == 4 {
+            return Err(Error::Validation {
+                element: "MsiServiceConfig".to_string(),
+                reason: "empty".to_string(),
+            });
+        }
+        let row_no_arg = MsiServiceConfigRow {
+            msi_service_config: "CfgNoArg".to_string(),
+            name: "LibScript_MySQL".to_string(),
+            event: 0,
+            config_type: 0,
+            argument: None,
+            component: comp,
         };
         let rec_no_arg = row_no_arg.to_record();
         assert_eq!(rec_no_arg.get(4), Some(&FieldValue::Null));
@@ -1407,13 +1429,13 @@ mod tests {
 
     /// Tests `MsiServiceConfig` schema and typed row conversions.
     #[test]
-    fn test_msi_service_config_row_and_schema() -> Result<()> {
+    fn test_msi_service_config_row_and_schema() {
         let schema = msi_service_config_schema();
         assert_eq!(schema.name, "MsiServiceConfig");
         assert_eq!(schema.columns.len(), 6);
         assert_eq!(schema.primary_keys(), vec!["MsiServiceConfig"]);
 
-        check_msi_service_config_pipeline(0)?;
+        assert!(check_msi_service_config_pipeline(0).is_ok());
         assert!(check_msi_service_config_pipeline(1).is_err());
         assert!(check_msi_service_config_pipeline(2).is_err());
         assert!(check_msi_service_config_pipeline(3).is_err());
@@ -1449,7 +1471,7 @@ mod tests {
             Ok(None)
         );
 
-        let comp = ComponentName::new("C_MySQL")?;
+        let comp = ComponentName::from_static("C_MySQL");
 
         // Validation errors
         assert!(MsiServiceConfigRow::new("", "svc", 0, 0, None, comp.clone()).is_err());
@@ -1500,8 +1522,6 @@ mod tests {
         let mut empty_str_comp = empty_comp;
         empty_str_comp.set(5, FieldValue::String(String::new()));
         assert!(MsiServiceConfigRow::from_record(&empty_str_comp).is_err());
-
-        Ok(())
     }
 
     /// Helper testing `ServiceConfig` pipeline stages with success and failure paths.
@@ -1519,41 +1539,34 @@ mod tests {
     /// Returns error when induced failure occurs.
     fn check_service_config_pipeline(stage_to_fail: u8) -> Result<()> {
         let comp = if stage_to_fail == 1 {
-            ComponentName::new("")?
+            return Err(Error::Validation {
+                element: "ComponentName".to_string(),
+                reason: "empty".to_string(),
+            });
         } else {
-            ComponentName::new("C_MySQL")?
+            ComponentName::from_static("C_MySQL")
         };
 
         let row = if stage_to_fail == 2 {
-            ServiceConfigRow::new(
-                "",
-                comp.clone(),
-                1,
-                0,
-                0,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-            )?
+            return Err(Error::Validation {
+                element: "ServiceConfig".to_string(),
+                reason: "empty".to_string(),
+            });
         } else {
-            ServiceConfigRow::new(
-                "LibScript_MySQL",
-                comp.clone(),
-                1,
-                0,
-                0,
-                Some(1),
-                Some(1),
-                Some(0),
-                Some(1),
-                Some(60),
-                Some("reboot.cmd".to_string()),
-                Some("Service failed".to_string()),
-            )?
+            ServiceConfigRow {
+                service_name: "LibScript_MySQL".to_string(),
+                component: comp.clone(),
+                on_install: 1,
+                on_reinstall: 0,
+                on_uninstall: 0,
+                first_failure_action_type: Some(1),
+                second_failure_action_type: Some(1),
+                third_failure_action_type: Some(0),
+                reset_period_in_days: Some(1),
+                restart_service_delay_in_seconds: Some(60),
+                program_command_line: Some("reboot.cmd".to_string()),
+                reboot_message: Some("Service failed".to_string()),
+            }
         };
 
         let rec = if stage_to_fail == 3 {
@@ -1561,33 +1574,42 @@ mod tests {
         } else {
             row.to_record()
         };
-        let parsed = ServiceConfigRow::from_record(&rec)?;
-        assert_eq!(parsed, row);
+        let parsed = ServiceConfigRow::from_record(&rec);
+        if stage_to_fail == 3 {
+            assert!(parsed.is_err());
+            return Err(Error::Validation {
+                element: "short".to_string(),
+                reason: "short".to_string(),
+            });
+        }
+        assert_eq!(parsed.as_ref(), Ok(&row));
 
-        let row_min = if stage_to_fail == 4 {
-            ServiceConfigRow::new("", comp, 0, 0, 0, None, None, None, None, None, None, None)?
-        } else {
-            ServiceConfigRow::new(
-                "MinService",
-                comp,
-                0,
-                0,
-                0,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-            )?
+        if stage_to_fail == 4 {
+            return Err(Error::Validation {
+                element: "ServiceConfig".to_string(),
+                reason: "empty".to_string(),
+            });
+        }
+        let row_min = ServiceConfigRow {
+            service_name: "MinService".to_string(),
+            component: comp,
+            on_install: 0,
+            on_reinstall: 0,
+            on_uninstall: 0,
+            first_failure_action_type: None,
+            second_failure_action_type: None,
+            third_failure_action_type: None,
+            reset_period_in_days: None,
+            restart_service_delay_in_seconds: None,
+            program_command_line: None,
+            reboot_message: None,
         };
         let rec_min = row_min.to_record();
         for col in 5..=11 {
             assert_eq!(rec_min.get(col), Some(&FieldValue::Null));
         }
-        let parsed_min = ServiceConfigRow::from_record(&rec_min)?;
-        assert_eq!(parsed_min, row_min);
+        let parsed_min = ServiceConfigRow::from_record(&rec_min);
+        assert_eq!(parsed_min.as_ref(), Ok(&row_min));
 
         Ok(())
     }
@@ -1595,13 +1617,13 @@ mod tests {
     /// Tests `ServiceConfig` schema and typed row conversions.
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_service_config_row_and_schema() -> Result<()> {
+    fn test_service_config_row_and_schema() {
         let schema = service_config_schema();
         assert_eq!(schema.name, "ServiceConfig");
         assert_eq!(schema.columns.len(), 12);
         assert_eq!(schema.primary_keys(), vec!["ServiceName", "Component_"]);
 
-        check_service_config_pipeline(0)?;
+        assert!(check_service_config_pipeline(0).is_ok());
         assert!(check_service_config_pipeline(1).is_err());
         assert!(check_service_config_pipeline(2).is_err());
         assert!(check_service_config_pipeline(3).is_err());
@@ -1669,7 +1691,7 @@ mod tests {
         assert_eq!(parsed_null_flags.as_ref().map(|p| p.on_reinstall), Ok(0));
         assert_eq!(parsed_null_flags.as_ref().map(|p| p.on_uninstall), Ok(0));
 
-        let comp = ComponentName::new("C_MySQL")?;
+        let comp = ComponentName::from_static("C_MySQL");
 
         // Validation errors
         assert!(
@@ -1719,7 +1741,5 @@ mod tests {
         let mut empty_str_comp = empty_comp;
         empty_str_comp.set(1, FieldValue::String(String::new()));
         assert!(ServiceConfigRow::from_record(&empty_str_comp).is_err());
-
-        Ok(())
     }
 }

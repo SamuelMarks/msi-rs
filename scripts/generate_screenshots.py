@@ -4,8 +4,10 @@
 Generates pixel-perfect screenshots of:
 1. Native Desktop GUI Welcome Dialog (`gui_welcome_dialog.png`)
 2. Native Desktop GUI Feature Tree Dialog (`gui_feature_tree_dialog.png`)
-3. Interactive Terminal TUI Wizard (`tui_wizard.png`)
-4. Command-Line Installation Pipeline (`cli_install_output.png`)
+3. Native Desktop GUI Live Progress Dialog (`gui_progress_dialog.png`)
+4. Interactive Terminal TUI Wizard (`tui_wizard.png`)
+5. Command-Line Installation Pipeline (`cli_install_output.png`)
+6. Zero-.EXE Multi-Package EmbeddedChainer & Multi-Cabinet Pipeline (`cli_chainer_output.png`)
 """
 
 from pathlib import Path
@@ -734,6 +736,143 @@ def generate_tui_wizard(fonts: dict) -> Image.Image:
     return im
 
 
+def generate_gui_progress(fonts: dict) -> Image.Image:
+    """Generates Native Desktop GUI Live Installation Progress Dialog (`gui_progress_dialog.png`)."""
+    w, h = 540, 420
+    im = Image.new("RGBA", (w, h), (248, 249, 250, 255))
+    draw = ImageDraw.Draw(im)
+
+    # Title bar
+    draw_window_titlebar(
+        draw, w, h, "Open edX Stack Setup - msi-gui", fonts, dark=False
+    )
+
+    # Top banner (Classic WiX top banner: y=33 to y=92)
+    banner_bottom = 92
+    draw.rectangle([0, 33, w - 1, banner_bottom], fill=(255, 255, 255, 255))
+    draw.line(
+        [0, banner_bottom, w - 1, banner_bottom], fill=(215, 218, 224, 255), width=1
+    )
+
+    draw.text(
+        (22, 44),
+        "Installing Open edX Stack",
+        fill=(20, 25, 35, 255),
+        font=fonts["heading"],
+    )
+    draw.text(
+        (22, 65),
+        "Please wait while the setup wizard installs and provisions services.",
+        fill=(90, 95, 105, 255),
+        font=fonts["small"],
+    )
+
+    # Top banner right icon (package box)
+    icon_x = w - 60
+    draw.polygon(
+        [(icon_x + 10, 45), (icon_x + 35, 45), (icon_x + 45, 55), (icon_x + 20, 55)],
+        fill=(0, 102, 204, 180),
+    )
+    draw.polygon(
+        [(icon_x + 10, 45), (icon_x + 20, 55), (icon_x + 20, 80), (icon_x + 10, 70)],
+        fill=(0, 82, 163, 180),
+    )
+    draw.polygon(
+        [(icon_x + 20, 55), (icon_x + 45, 55), (icon_x + 45, 80), (icon_x + 20, 80)],
+        fill=(0, 122, 240, 180),
+    )
+
+    # Main Status Content Area
+    content_y = 125
+    draw.text(
+        (40, content_y),
+        "Status: Starting LibScript_MySQL daemon service...",
+        fill=(30, 35, 45, 255),
+        font=fonts["body_bold"],
+    )
+
+    # Progress bar container: x=40, y=content_y + 30, w=460, h=22
+    pb_x, pb_y, pb_w, pb_h = 40, content_y + 30, 460, 22
+    draw.rounded_rectangle(
+        [pb_x, pb_y, pb_x + pb_w, pb_y + pb_h],
+        radius=4,
+        fill=(230, 233, 238, 255),
+        outline=(200, 205, 214, 255),
+        width=1,
+    )
+
+    # Filled progress bar (68% complete)
+    fill_w = int(pb_w * 0.68)
+    draw.rounded_rectangle(
+        [pb_x + 1, pb_y + 1, pb_x + fill_w, pb_y + pb_h - 1],
+        radius=3,
+        fill=(0, 120, 215, 255),
+    )
+
+    # Action detail text & time remaining
+    draw.text(
+        (40, pb_y + 36),
+        "Action 14:28:02: StartServices. Starting service: LibScript_MySQL (Port 3306)",
+        fill=(100, 105, 115, 255),
+        font=fonts["small"],
+    )
+    draw.text(
+        (40, pb_y + 54),
+        "Estimated time remaining: 18 seconds (Transferred 420 MB of 618 MB)",
+        fill=(120, 125, 135, 255),
+        font=fonts["small"],
+    )
+
+    # Live diagnostics box preview
+    diag_x, diag_y, diag_w, diag_h = 40, pb_y + 80, 460, 85
+    draw.rounded_rectangle(
+        [diag_x, diag_y, diag_x + diag_w, diag_y + diag_h],
+        radius=4,
+        fill=(24, 27, 34, 255),
+        outline=(50, 55, 68, 255),
+        width=1,
+    )
+    draw.text(
+        (diag_x + 10, diag_y + 8),
+        "[WORKER IPC] In-process SqlProvisionerClient: Schema 'openedx' created",
+        fill=(140, 220, 160, 255),
+        font=fonts["mono_small"],
+    )
+    draw.text(
+        (diag_x + 10, diag_y + 26),
+        "[WORKER IPC] Socket probe 127.0.0.1:3306 -> Port bound and listening",
+        fill=(122, 162, 247, 255),
+        font=fonts["mono_small"],
+    )
+    draw.text(
+        (diag_x + 10, diag_y + 44),
+        "[TRANSACTION] Unwind journal active: rollback quarantine ready",
+        fill=(224, 175, 104, 255),
+        font=fonts["mono_small"],
+    )
+    draw.text(
+        (diag_x + 10, diag_y + 62),
+        "[SUPERVISOR] Native daemon registered: /Library/LaunchDaemons/...",
+        fill=(170, 175, 190, 255),
+        font=fonts["mono_small"],
+    )
+
+    # Bottom button bar
+    draw.line([0, h - 50, w - 1, h - 50], fill=(215, 218, 224, 255), width=1)
+    draw.rectangle([0, h - 49, w - 1, h - 1], fill=(240, 242, 245, 255))
+
+    btn_y = h - 38
+    draw_button(
+        draw, [w - 265, btn_y, 75, 26], "< Back", fonts["body"], is_disabled=True
+    )
+    draw_button(
+        draw, [w - 180, btn_y, 75, 26], "Next >", fonts["body"], is_disabled=True
+    )
+    draw_button(draw, [w - 95, btn_y, 75, 26], "Cancel", fonts["body"])
+
+    return im
+
+
 def generate_cli_workflow(fonts: dict) -> Image.Image:
     """Generates Command-Line Installation Execution screenshot (`cli_install_output.png`)."""
     w, h = 680, 360
@@ -873,6 +1012,150 @@ def generate_cli_workflow(fonts: dict) -> Image.Image:
     return im
 
 
+def generate_cli_chainer(fonts: dict) -> Image.Image:
+    """Generates Zero-.EXE Multi-Package EmbeddedChainer & Multi-Cabinet Pipeline screenshot (`cli_chainer_output.png`)."""
+    w, h = 680, 360
+    im = Image.new("RGBA", (w, h), (24, 25, 32, 255))
+    draw = ImageDraw.Draw(im)
+
+    # Window title bar (Dark terminal style)
+    draw_window_titlebar(
+        draw,
+        w,
+        h,
+        "Terminal — msi pack & EmbeddedChainer Execution",
+        fonts,
+        dark=True,
+    )
+
+    cli_output = [
+        (
+            "$ msi pack -o OpenEdX-Setup.msi --multi-fragment Product.wxs Payload.wxs",
+            (255, 255, 255, 255),
+            True,
+        ),
+        (
+            "[INFO] Partitioning multi-cabinet media layout:",
+            (122, 162, 247, 255),
+            True,
+        ),
+        (
+            "       * DiskId 1: engine.cab (MSZIP, 1,240 files, Seq 1..1240)",
+            (170, 175, 190, 255),
+            False,
+        ),
+        (
+            "       * DiskId 2: runtimes.cab (LZX High, Python 3.11 + Node.js, Seq 1241..3520)",
+            (170, 175, 190, 255),
+            False,
+        ),
+        (
+            "       * DiskId 3: databases.cab (LZX High, MySQL + Redis + MongoDB, Seq 3521..5180)",
+            (170, 175, 190, 255),
+            False,
+        ),
+        (
+            "       * DiskId 4: codebase.cab (LZX High, edx-platform codebase, Seq 5181..9420)",
+            (170, 175, 190, 255),
+            False,
+        ),
+        (
+            "[INFO] Synthesizing MsiEmbeddedChainer with 4 embedded child packages",
+            (122, 162, 247, 255),
+            True,
+        ),
+        (
+            "$ msi /i OpenEdX-Setup.msi /qn PROP_MYSQL_PORT=3306 PROP_REDIS_PORT=6379",
+            (255, 255, 255, 255),
+            True,
+        ),
+        (
+            "[CHAINER] Executing embedded child MSI 1/4: libscript-mysql.msi",
+            (224, 175, 104, 255),
+            True,
+        ),
+        (
+            "[PROBE] TCP Port availability check on 127.0.0.1:3306 -> Port is FREE",
+            (140, 220, 160, 255),
+            False,
+        ),
+        (
+            "[SQL] SqlProvisionerClient: In-process database creation & privilege grant",
+            (120, 220, 240, 255),
+            False,
+        ),
+        (
+            "[CHAINER] Executing embedded child MSI 2/4: libscript-redis.msi",
+            (224, 175, 104, 255),
+            True,
+        ),
+        (
+            "[REFCNT] SharedDllRefCount: MySQL linked to ProductCode {OPENEDX-2026-GUID}",
+            (187, 154, 247, 255),
+            False,
+        ),
+        (
+            "[SUCCESS] Chained multi-package transaction committed (Exit Code: 0)",
+            (120, 235, 140, 255),
+            True,
+        ),
+    ]
+
+    y = 42
+    for text, color, is_bold in cli_output:
+        font = fonts["mono_bold"] if is_bold else fonts["mono"]
+        if text.startswith("$"):
+            draw.text((24, y), "$ ", fill=(122, 162, 247, 255), font=fonts["mono_bold"])
+            draw.text(
+                (38, y), text[2:], fill=(255, 255, 255, 255), font=fonts["mono_bold"]
+            )
+        elif text.startswith("[SUCCESS]"):
+            draw.text((24, y), text, fill=(120, 235, 140, 255), font=fonts["mono_bold"])
+        elif text.startswith("[CHAINER]"):
+            draw.text(
+                (24, y), "[CHAINER]", fill=(224, 175, 104, 255), font=fonts["mono_bold"]
+            )
+            draw.text(
+                (24 + 76, y), text[9:], fill=(220, 225, 235, 255), font=fonts["mono"]
+            )
+        elif text.startswith("[PROBE]"):
+            draw.text(
+                (24, y), "[PROBE]", fill=(140, 220, 160, 255), font=fonts["mono_bold"]
+            )
+            draw.text(
+                (24 + 60, y), text[7:], fill=(170, 175, 190, 255), font=fonts["mono"]
+            )
+        elif text.startswith("[SQL]"):
+            draw.text(
+                (24, y), "[SQL]", fill=(120, 220, 240, 255), font=fonts["mono_bold"]
+            )
+            draw.text(
+                (24 + 46, y), text[5:], fill=(170, 175, 190, 255), font=fonts["mono"]
+            )
+        elif text.startswith("[REFCNT]"):
+            draw.text(
+                (24, y), "[REFCNT]", fill=(187, 154, 247, 255), font=fonts["mono_bold"]
+            )
+            draw.text(
+                (24 + 68, y), text[8:], fill=(170, 175, 190, 255), font=fonts["mono"]
+            )
+        elif text.startswith("[INFO]"):
+            draw.text(
+                (24, y), "[INFO]", fill=(122, 162, 247, 255), font=fonts["mono_bold"]
+            )
+            draw.text(
+                (24 + 52, y),
+                text[6:],
+                fill=(170, 175, 190, 255),
+                font=fonts["mono"],
+            )
+        else:
+            draw.text((24, y), text, fill=color, font=font)
+        y += 18
+
+    return im
+
+
 def main():
     """Generates all screenshots and saves them to target locations."""
     fonts = get_fonts()
@@ -880,8 +1163,10 @@ def main():
     images = {
         "gui_welcome_dialog.png": generate_gui_welcome(fonts),
         "gui_feature_tree_dialog.png": generate_gui_feature_tree(fonts),
+        "gui_progress_dialog.png": generate_gui_progress(fonts),
         "tui_wizard.png": generate_tui_wizard(fonts),
         "cli_install_output.png": generate_cli_workflow(fonts),
+        "cli_chainer_output.png": generate_cli_chainer(fonts),
     }
 
     # Output targets

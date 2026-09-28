@@ -30,6 +30,9 @@
 
 use crate::database::tables::record::{FieldValue, Record, MSI_NULL_INTEGER_32};
 use crate::error::{Error, Result};
+use crate::execution::native_action::{
+    SqlProvisionerAction, SqlProvisionerClient, SqlProvisionerConfig,
+};
 use crate::execution::properties::EvaluationContext;
 use crate::wix::linker::LinkedDatabase;
 use std::collections::HashMap;
@@ -455,6 +458,99 @@ pub fn probe_port_available(port: u16) -> bool {
     std::net::TcpListener::bind(("127.0.0.1", port)).is_ok()
 }
 
+/// Translates a Windows shell command line to POSIX syntax if executing on non-Windows platforms.
+///
+/// Converts invocations like `cmd.exe /c [INSTALLFOLDER]libscript\libscript.cmd ...` into
+/// `/bin/sh [INSTALLFOLDER]/libscript/libscript.sh ...` or dispatches to the corresponding script.
+/// On Windows, preserves native execution semantics.
+///
+/// # Arguments
+///
+/// * `prog` - Original executable program path.
+/// * `args` - Original command arguments.
+///
+/// # Returns
+///
+/// Tuple of `(translated_program_path, translated_argument_vector)`.
+#[must_use]
+pub fn translate_shell_command(prog: &Path, args: &[String]) -> (PathBuf, Vec<String>) {
+    let prog_str = prog.to_string_lossy();
+    let is_cmd_exe = prog_str.eq_ignore_ascii_case("cmd.exe")
+        || prog_str.eq_ignore_ascii_case("cmd")
+        || prog_str.ends_with(r"\cmd.exe")
+        || prog_str.ends_with("/cmd.exe");
+
+    #[cfg(not(target_os = "windows"))]
+    let is_batch = prog
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("cmd") || ext.eq_ignore_ascii_case("bat"));
+    #[cfg(not(target_os = "windows"))]
+    if is_batch {
+        let mut script_path_buf = prog.to_string_lossy().replace('\\', "/");
+        script_path_buf.truncate(script_path_buf.len() - 4);
+        script_path_buf.push_str(".sh");
+        let mut sh_args = vec![script_path_buf];
+        for a in args {
+            sh_args.push(a.replace('\\', "/"));
+        }
+        return (PathBuf::from("/bin/sh"), sh_args);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    if is_cmd_exe {
+        let mut new_args = Vec::new();
+        let mut skip_next = false;
+        let mut script_cmd_found = None;
+
+        for (idx, arg) in args.iter().enumerate() {
+            if skip_next {
+                skip_next = false;
+                continue;
+            }
+            if arg.eq_ignore_ascii_case("/c") || arg.eq_ignore_ascii_case("/k") {
+                // If there's an immediate next argument, that is the target script or command
+                if let Some(target_cmd) = args.get(idx + 1) {
+                    script_cmd_found = Some(target_cmd.clone());
+                    skip_next = true;
+                }
+            } else if arg.starts_with("/c") || arg.starts_with("/C") {
+                script_cmd_found = Some(arg[2..].trim().to_string());
+            } else if script_cmd_found.is_none() {
+                script_cmd_found = Some(arg.clone());
+            } else {
+                new_args.push(arg.clone());
+            }
+        }
+
+        if let Some(cmd_line) = script_cmd_found {
+            // Translate backslashes to forward slashes and `.cmd`/`.bat` to `.sh`
+            let normalized = cmd_line.replace('\\', "/");
+            let (script_path_str, mut script_args) = parse_command_line(&normalized);
+            let mut script_path_buf = script_path_str.to_string_lossy().to_string();
+            let is_script_ext = Path::new(&script_path_buf).extension().is_some_and(|ext| {
+                ext.eq_ignore_ascii_case("cmd") || ext.eq_ignore_ascii_case("bat")
+            });
+            if is_script_ext {
+                script_path_buf.truncate(script_path_buf.len() - 4);
+                script_path_buf.push_str(".sh");
+            }
+            for arg in &mut new_args {
+                *arg = arg.replace('\\', "/");
+            }
+            script_args.append(&mut new_args);
+
+            // Execute via /bin/sh
+            let mut sh_args = vec![script_path_buf];
+            sh_args.append(&mut script_args);
+            return (PathBuf::from("/bin/sh"), sh_args);
+        }
+
+        return (PathBuf::from("/bin/sh"), Vec::new());
+    }
+
+    (prog.to_path_buf(), args.to_vec())
+}
+
 /// Splits a command line string into an executable path and argument list, respecting quotes.
 ///
 /// # Arguments
@@ -510,7 +606,7 @@ fn is_executable_in_path(prog: &Path) -> bool {
 }
 
 /// Custom action execution simulator and coordinator.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug)]
 pub struct CustomActionExecutor {
     /// Mock execution results mapping action name to desired return code.
     mock_results: HashMap<String, u32>,
@@ -522,13 +618,75 @@ pub struct CustomActionExecutor {
     offline_policy: Option<crate::execution::bare_metal::OfflineExecutionPolicy>,
     /// Extracted Binary table payloads for native DLL / script actions.
     binaries: HashMap<String, Vec<u8>>,
+    /// Execution log messages captured from child process output and custom actions.
+    execution_logs: Mutex<Vec<String>>,
+}
+
+impl Default for CustomActionExecutor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Clone for CustomActionExecutor {
+    fn clone(&self) -> Self {
+        Self {
+            mock_results: self.mock_results.clone(),
+            library_loader: self.library_loader.clone(),
+            subprocess_runner: self.subprocess_runner,
+            offline_policy: self.offline_policy.clone(),
+            binaries: self.binaries.clone(),
+            execution_logs: Mutex::new(
+                self.execution_logs
+                    .lock()
+                    .map_or_else(|_| Vec::new(), |l| l.clone()),
+            ),
+        }
+    }
 }
 
 impl CustomActionExecutor {
     /// Creates a new [`CustomActionExecutor`].
     #[must_use]
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            mock_results: HashMap::new(),
+            library_loader: super::native_action::NativeLibraryLoader::default(),
+            subprocess_runner: super::native_action::SubprocessRunner::default(),
+            offline_policy: None,
+            binaries: HashMap::new(),
+            execution_logs: Mutex::new(Vec::new()),
+        }
+    }
+
+    /// Returns the captured execution log messages from custom action processes.
+    ///
+    /// # Returns
+    ///
+    /// Vector of captured log lines.
+    #[must_use]
+    pub fn execution_logs(&self) -> Vec<String> {
+        self.execution_logs
+            .lock()
+            .map_or_else(|_| Vec::new(), |l| l.clone())
+    }
+
+    /// Clears the captured execution logs.
+    pub fn clear_execution_logs(&self) {
+        if let Ok(mut l) = self.execution_logs.lock() {
+            l.clear();
+        }
+    }
+
+    /// Records a log entry into the execution logs.
+    ///
+    /// # Arguments
+    ///
+    /// * `msg` - Log message string.
+    pub fn log(&self, msg: impl Into<String>) {
+        if let Ok(mut l) = self.execution_logs.lock() {
+            l.push(msg.into());
+        }
     }
 
     /// Attaches an extracted binary payload.
@@ -787,14 +945,19 @@ impl CustomActionExecutor {
             CustomActionSourceType::JScript | CustomActionSourceType::VBScript => {
                 if action.name().starts_with("CheckPorts_")
                     || action.name().starts_with("CheckPort_")
+                    || action.name().starts_with("validate_")
+                    || action.name().starts_with("Validate_")
                     || action.target().contains("CheckPort")
+                    || action.target().contains("validate_")
                     || action.target().contains("netstat")
                 {
                     let pkg_suffix = action
                         .name()
                         .strip_prefix("CheckPorts_")
                         .or_else(|| action.name().strip_prefix("CheckPort_"))
-                        .map_or("SERVICE", |s| s);
+                        .or_else(|| action.name().strip_prefix("validate_"))
+                        .or_else(|| action.name().strip_prefix("Validate_"))
+                        .map_or("SERVICE", |s| s.strip_suffix(".vbs").unwrap_or(s));
                     let port_prop_name = format!("PROP_{}_PORT", pkg_suffix.to_ascii_uppercase());
                     let port_num = context
                         .get_property(&port_prop_name)
@@ -803,6 +966,12 @@ impl CustomActionExecutor {
                         .unwrap_or(3306);
 
                     let available = probe_port_available(port_num);
+                    let valid_val = if available { "1" } else { "0" };
+                    context.set_property(format!("VALID_{pkg_suffix}"), valid_val);
+                    context.set_property(
+                        format!("VALID_{}", pkg_suffix.to_ascii_uppercase()),
+                        valid_val,
+                    );
                     context.set_property(
                         format!("PORT_{pkg_suffix}_AVAILABLE"),
                         if available { "1" } else { "0" },
@@ -811,6 +980,12 @@ impl CustomActionExecutor {
                         format!("{pkg_suffix}_PORT_IN_USE"),
                         if available { "0" } else { "1" },
                     );
+
+                    if !available {
+                        eprintln!(
+                            "[WARNING] Port {port_num} required by '{pkg_suffix}' is already in use"
+                        );
+                    }
                     return Ok(ERROR_SUCCESS);
                 }
 
@@ -876,35 +1051,77 @@ impl CustomActionExecutor {
                     prog
                 };
 
-                if effective_prog.as_os_str().is_empty() {
+                let (final_prog, final_args) = translate_shell_command(&effective_prog, &args);
+
+                if final_prog.as_os_str().is_empty() {
                     return Ok(ERROR_SUCCESS);
                 }
 
                 let mut envs = HashMap::new();
                 for (k, v) in context.properties() {
                     envs.insert(k.clone(), v.clone());
+                    envs.insert(format!("MSI_PROPERTY_{k}"), v.clone());
                 }
 
-                if (effective_prog.is_file() || is_executable_in_path(&effective_prog))
-                    && !effective_prog.is_dir()
+                // If CustomActionData is set, ensure it is passed in the environment as well
+                if let Some(ca_data) = context.get_property("CustomActionData") {
+                    envs.insert("CustomActionData".to_string(), ca_data.to_string());
+                }
+
+                if (final_prog.is_file() || is_executable_in_path(&final_prog))
+                    && !final_prog.is_dir()
                 {
+                    if final_prog == Path::new("/bin/sh")
+                        && !final_args.is_empty()
+                        && !final_args[0].starts_with('-')
+                    {
+                        let script = Path::new(&final_args[0]);
+                        let exists = if script.is_absolute() {
+                            script.exists()
+                        } else if let Some(ref wd) = working_dir {
+                            wd.join(script).exists()
+                        } else {
+                            script.exists() || is_executable_in_path(script)
+                        };
+                        if !exists {
+                            return Ok(ERROR_SUCCESS);
+                        }
+                    }
+
                     if action.execution_mode() == CustomActionExecutionMode::Async {
                         let _ = self.subprocess_runner.spawn_async(
-                            &effective_prog,
-                            &args,
+                            &final_prog,
+                            &final_args,
                             working_dir.as_deref(),
                             &envs,
                         )?;
                         Ok(ERROR_SUCCESS)
                     } else {
                         match self.subprocess_runner.run(
-                            &effective_prog,
-                            &args,
+                            &final_prog,
+                            &final_args,
                             working_dir.as_deref(),
                             &envs,
                         ) {
-                            Ok(res) => Ok(res.exit_code),
+                            Ok(res) => {
+                                if !res.stdout.is_empty() {
+                                    self.log(format!(
+                                        "[CustomAction:{}] STDOUT: {}",
+                                        action.name(),
+                                        res.stdout.trim()
+                                    ));
+                                }
+                                if !res.stderr.is_empty() {
+                                    self.log(format!(
+                                        "[CustomAction:{}] STDERR: {}",
+                                        action.name(),
+                                        res.stderr.trim()
+                                    ));
+                                }
+                                Ok(res.exit_code)
+                            }
                             Err(e) => {
+                                self.log(format!("[CustomAction:{}] ERROR: {e}", action.name()));
                                 if action.execution_mode().is_continue() {
                                     Ok(ERROR_SUCCESS)
                                 } else {
@@ -929,6 +1146,41 @@ impl CustomActionExecutor {
         action: &CustomActionDefinition,
         context: &mut EvaluationContext,
     ) -> Result<u32> {
+        let is_sql_provisioner = action
+            .source()
+            .to_ascii_lowercase()
+            .contains("sql_provisioner")
+            || action
+                .name()
+                .to_ascii_lowercase()
+                .contains("sql_provisioner")
+            || action
+                .target()
+                .to_ascii_lowercase()
+                .contains("sql_provisioner");
+
+        if is_sql_provisioner {
+            let cfg = SqlProvisionerConfig::from_context(context);
+            let client = SqlProvisionerClient::new(cfg);
+            let prov_action = if action.in_script() == InScriptMode::Rollback {
+                SqlProvisionerAction::Uninstall
+            } else {
+                SqlProvisionerAction::Install
+            };
+            match client.execute(prov_action) {
+                Ok(_) => return Ok(ERROR_SUCCESS),
+                Err(e) => {
+                    if action.execution_mode().is_continue() {
+                        return Ok(ERROR_SUCCESS);
+                    }
+                    return Err(Error::CustomActionFailed {
+                        action: action.name().to_string(),
+                        reason: e.to_string(),
+                    });
+                }
+            }
+        }
+
         let session = InstallSession {
             context: context.clone(),
             database: None,
@@ -1465,11 +1717,20 @@ pub extern "C" fn MsiCloseHandle(h_any: MSIHANDLE) -> u32 {
 mod tests {
     use super::*;
 
+    fn unwrap_result<T, E: std::fmt::Debug>(res: std::result::Result<T, E>) -> T {
+        match res {
+            Ok(v) => v,
+            Err(e) => panic!("unexpected error: {e:?}"),
+        }
+    }
+
     /// Tests custom action source type and execution mode bitmask parsing.
     #[test]
-    fn test_custom_action_definition_parsing() -> Result<()> {
+    fn test_custom_action_definition_parsing() {
         // Type 1: DLL in Binary table, synchronous
-        let ca_dll = CustomActionDefinition::parse("CADll", 0x0001, "MyDll", "MyFn")?;
+        let ca_dll = unwrap_result(CustomActionDefinition::parse(
+            "CADll", 0x0001, "MyDll", "MyFn",
+        ));
         assert_eq!(ca_dll.source_type(), CustomActionSourceType::Dll);
         assert_eq!(
             ca_dll.execution_mode(),
@@ -1479,43 +1740,43 @@ mod tests {
         assert!(!ca_dll.no_impersonate());
 
         // Type 0x0C02: EXE in Binary table + InScript Deferred + NoImpersonate
-        let ca_exe_def = CustomActionDefinition::parse(
+        let ca_exe_def = unwrap_result(CustomActionDefinition::parse(
             "CAExe",
             MSIDB_CUSTOM_ACTION_TYPE_EXE
                 | MSIDB_CUSTOM_ACTION_TYPE_IN_SCRIPT
                 | MSIDB_CUSTOM_ACTION_TYPE_NO_IMPERSONATE,
             "MyExe",
             "/install",
-        )?;
+        ));
         assert_eq!(ca_exe_def.source_type(), CustomActionSourceType::Exe);
         assert_eq!(ca_exe_def.in_script(), InScriptMode::Deferred);
         assert!(ca_exe_def.no_impersonate());
 
         // Type 0x0501: Rollback DLL action
-        let ca_rb = CustomActionDefinition::parse(
+        let ca_rb = unwrap_result(CustomActionDefinition::parse(
             "CARollback",
             MSIDB_CUSTOM_ACTION_TYPE_DLL | MSIDB_CUSTOM_ACTION_TYPE_ROLLBACK,
             "MyDll",
             "RollbackFn",
-        )?;
+        ));
         assert_eq!(ca_rb.in_script(), InScriptMode::Rollback);
 
         // Type 0x0601: Commit DLL action
-        let ca_commit = CustomActionDefinition::parse(
+        let ca_commit = unwrap_result(CustomActionDefinition::parse(
             "CACommit",
             MSIDB_CUSTOM_ACTION_TYPE_DLL | MSIDB_CUSTOM_ACTION_TYPE_COMMIT,
             "MyDll",
             "CommitFn",
-        )?;
+        ));
         assert_eq!(ca_commit.in_script(), InScriptMode::Commit);
 
         // Type 0x0043: Text data + Continue async
-        let ca_text = CustomActionDefinition::parse(
+        let ca_text = unwrap_result(CustomActionDefinition::parse(
             "CAText",
             MSIDB_CUSTOM_ACTION_TYPE_TEXT_DATA | MSIDB_CUSTOM_ACTION_TYPE_CONTINUE,
             "TARGET_PROP",
             "[SOURCE_PROP]",
-        )?;
+        ));
         assert_eq!(ca_text.source_type(), CustomActionSourceType::TextData);
         assert_eq!(
             ca_text.execution_mode(),
@@ -1523,12 +1784,12 @@ mod tests {
         );
 
         // Type 0x0085: JScript + Async
-        let ca_js = CustomActionDefinition::parse(
+        let ca_js = unwrap_result(CustomActionDefinition::parse(
             "CAJS",
             MSIDB_CUSTOM_ACTION_TYPE_JSCRIPT | MSIDB_CUSTOM_ACTION_TYPE_ASYNC,
             "ScriptKey",
             "RunScript",
-        )?;
+        ));
         assert_eq!(ca_js.source_type(), CustomActionSourceType::JScript);
         assert_eq!(ca_js.execution_mode(), CustomActionExecutionMode::Async);
 
@@ -1556,23 +1817,22 @@ mod tests {
 
         // Unrecognized source type returns error
         assert!(CustomActionSourceType::from_raw(0x002F).is_err());
-        Ok(())
     }
 
     /// Tests [`CustomActionExecutor`] executing `TextData`, Property, and Script actions.
     #[test]
-    fn test_custom_action_executor() -> Result<()> {
+    fn test_custom_action_executor() {
         let mut executor = CustomActionExecutor::new();
         let mut context = EvaluationContext::new();
         context.set_property("PRODUCT", "MyApplication");
 
         // TextData formatting
-        let ca_text = CustomActionDefinition::parse(
+        let ca_text = unwrap_result(CustomActionDefinition::parse(
             "SetGreeting",
             MSIDB_CUSTOM_ACTION_TYPE_TEXT_DATA,
             "GREETING",
             "Welcome to [PRODUCT]!",
-        )?;
+        ));
         let res = executor.execute(&ca_text, &mut context);
         assert_eq!(res, Ok(ERROR_SUCCESS));
         assert_eq!(
@@ -1581,24 +1841,24 @@ mod tests {
         );
 
         // Script simulation
-        let ca_script = CustomActionDefinition::parse(
+        let ca_script = unwrap_result(CustomActionDefinition::parse(
             "SetVal",
             MSIDB_CUSTOM_ACTION_TYPE_JSCRIPT,
             "BinaryKey",
             r#"MY_FLAG = "ACTIVE""#,
-        )?;
+        ));
         let res_s = executor.execute(&ca_script, &mut context);
         assert_eq!(res_s, Ok(ERROR_SUCCESS));
         assert_eq!(context.get_property("MY_FLAG"), Some("ACTIVE"));
 
         // Mock failure
         executor.set_mock_result("FailingAction", 1603);
-        let ca_fail = CustomActionDefinition::parse(
+        let ca_fail = unwrap_result(CustomActionDefinition::parse(
             "FailingAction",
             MSIDB_CUSTOM_ACTION_TYPE_DLL,
             "DllKey",
             "BadFn",
-        )?;
+        ));
         let res_f = executor.execute(&ca_fail, &mut context);
         assert_eq!(
             res_f,
@@ -1607,17 +1867,16 @@ mod tests {
                 reason: "Mock failure code 1603".to_string(),
             })
         );
-        Ok(())
     }
 
     /// Tests MSI C API shims: `MsiGetPropertyW`, `MsiSetPropertyW`, `MsiEvaluateConditionW`, etc.
     #[test]
-    fn test_msi_api_c_shims() -> Result<()> {
+    fn test_msi_api_c_shims() {
         // SAFETY: C API shims are exercised in tests with valid handles and pointers.
         unsafe {
             let mut session = InstallSession::default();
             session.context.set_property("MY_PROP", "InitialValue");
-            session.database = Some(LinkedDatabase::new()?);
+            session.database = Some(unwrap_result(LinkedDatabase::new()));
 
             let h_install = {
                 let mut guard = lock_handles();
@@ -1722,7 +1981,6 @@ mod tests {
             assert_eq!(MsiCloseHandle(h_record), ERROR_SUCCESS);
             assert_eq!(MsiCloseHandle(h_install), ERROR_SUCCESS);
             assert_eq!(MsiCloseHandle(999_999), ERROR_INVALID_HANDLE);
-            Ok(())
         }
     }
 
@@ -1748,7 +2006,7 @@ mod tests {
 
     /// Tests native library and subprocess execution in `CustomActionExecutor`.
     #[test]
-    fn test_custom_action_executor_native_and_subprocess() -> Result<()> {
+    fn test_custom_action_executor_native_and_subprocess() {
         let mut executor = CustomActionExecutor::new();
         let mut ctx = EvaluationContext::new();
 
@@ -1775,31 +2033,31 @@ mod tests {
             .register_function("ClosingEntry", mock_closing_action);
 
         // DLL action with registered symbol mutating property
-        let dll_def = CustomActionDefinition::parse(
+        let dll_def = unwrap_result(CustomActionDefinition::parse(
             "DllAction",
             MSIDB_CUSTOM_ACTION_TYPE_DLL,
             "BinaryKey",
             "MyNativeEntry",
-        )?;
-        assert_eq!(executor.execute(&dll_def, &mut ctx)?, ERROR_SUCCESS);
+        ));
+        assert_eq!(executor.execute(&dll_def, &mut ctx), Ok(ERROR_SUCCESS));
         assert_eq!(ctx.get_property("CUSTOM_PROP"), Some("CustomValue"));
 
         // DLL action closing its session handle early
-        let closing_dll = CustomActionDefinition::parse(
+        let closing_dll = unwrap_result(CustomActionDefinition::parse(
             "ClosingDll",
             MSIDB_CUSTOM_ACTION_TYPE_DLL,
             "BinaryKey",
             "ClosingEntry",
-        )?;
-        assert_eq!(executor.execute(&closing_dll, &mut ctx)?, ERROR_SUCCESS);
+        ));
+        assert_eq!(executor.execute(&closing_dll, &mut ctx), Ok(ERROR_SUCCESS));
 
         // DLL action returning failure without continue -> should fail
-        let failing_dll = CustomActionDefinition::parse(
+        let failing_dll = unwrap_result(CustomActionDefinition::parse(
             "FailingEntry",
             MSIDB_CUSTOM_ACTION_TYPE_DLL,
             "BinaryKey",
             "FailingEntry",
-        )?;
+        ));
         assert_eq!(
             executor.execute(&failing_dll, &mut ctx),
             Err(Error::CustomActionFailed {
@@ -1809,83 +2067,82 @@ mod tests {
         );
 
         // DLL action returning failure with continue -> should succeed
-        let failing_continue_dll = CustomActionDefinition::parse(
+        let failing_continue_dll = unwrap_result(CustomActionDefinition::parse(
             "FailingContinueDll",
             MSIDB_CUSTOM_ACTION_TYPE_DLL | MSIDB_CUSTOM_ACTION_TYPE_CONTINUE,
             "BinaryKey",
             "FailingEntry",
-        )?;
+        ));
         assert_eq!(
-            executor.execute(&failing_continue_dll, &mut ctx)?,
+            unwrap_result(executor.execute(&failing_continue_dll, &mut ctx)),
             ERROR_SUCCESS
         );
 
         // Installed DLL action with unregistered symbol and continue flag
-        let unreg_dll = CustomActionDefinition::parse(
+        let unreg_dll = unwrap_result(CustomActionDefinition::parse(
             "UnregDll",
             MSIDB_CUSTOM_ACTION_TYPE_INSTALLED_DLL | MSIDB_CUSTOM_ACTION_TYPE_CONTINUE,
             "BinaryKey",
             "NonExistentEntry",
-        )?;
-        assert_eq!(executor.execute(&unreg_dll, &mut ctx)?, ERROR_SUCCESS);
+        ));
+        assert_eq!(executor.execute(&unreg_dll, &mut ctx), Ok(ERROR_SUCCESS));
 
         // Installed DLL action with unregistered symbol without continue -> should fail
-        let unreg_strict_dll = CustomActionDefinition::parse(
+        let unreg_strict_dll = unwrap_result(CustomActionDefinition::parse(
             "UnregStrictDll",
             MSIDB_CUSTOM_ACTION_TYPE_INSTALLED_DLL,
             "BinaryKey",
             "NonExistentEntry",
-        )?;
+        ));
         assert!(executor.execute(&unreg_strict_dll, &mut ctx).is_err());
 
         // Exe action pointing to non-existent path
-        let exe_def = CustomActionDefinition::parse(
+        let exe_def = unwrap_result(CustomActionDefinition::parse(
             "ExeAction",
             MSIDB_CUSTOM_ACTION_TYPE_EXE,
             "BinaryKey",
             "/path/to/nonexistent/executable",
-        )?;
-        assert_eq!(executor.execute(&exe_def, &mut ctx)?, ERROR_SUCCESS);
+        ));
+        assert_eq!(executor.execute(&exe_def, &mut ctx), Ok(ERROR_SUCCESS));
 
         // Exe action pointing to directory (exists but is not a file)
-        let dir_exe = CustomActionDefinition::parse(
+        let dir_exe = unwrap_result(CustomActionDefinition::parse(
             "DirExe",
             MSIDB_CUSTOM_ACTION_TYPE_EXE,
             "BinaryKey",
             "/",
-        )?;
-        assert_eq!(executor.execute(&dir_exe, &mut ctx)?, ERROR_SUCCESS);
+        ));
+        assert_eq!(executor.execute(&dir_exe, &mut ctx), Ok(ERROR_SUCCESS));
 
         // Exe action pointing to existing binary (e.g. /bin/sh or cmd.exe)
         #[cfg(not(target_os = "windows"))]
         {
-            let real_exe = CustomActionDefinition::parse(
+            ctx.set_property("CustomActionData", "MyCustomData");
+            let real_exe = unwrap_result(CustomActionDefinition::parse(
                 "RealExe",
                 MSIDB_CUSTOM_ACTION_TYPE_EXE,
                 "BinaryKey",
                 "/bin/sh",
-            )?;
+            ));
             assert!(!real_exe.execution_mode().is_async());
-            assert_eq!(executor.execute(&real_exe, &mut ctx)?, ERROR_SUCCESS);
+            assert_eq!(executor.execute(&real_exe, &mut ctx), Ok(ERROR_SUCCESS));
 
             // Async exe action
-            let async_exe = CustomActionDefinition::parse(
+            let async_exe = unwrap_result(CustomActionDefinition::parse(
                 "AsyncExe",
                 MSIDB_CUSTOM_ACTION_TYPE_EXE | MSIDB_CUSTOM_ACTION_TYPE_ASYNC,
                 "BinaryKey",
                 "/bin/sh",
-            )?;
+            ));
             assert!(async_exe.execution_mode().is_async());
-            assert_eq!(executor.execute(&async_exe, &mut ctx)?, ERROR_SUCCESS);
+            assert_eq!(executor.execute(&async_exe, &mut ctx), Ok(ERROR_SUCCESS));
         }
-
-        Ok(())
     }
 
     /// Tests all accessors and predicate methods on `CustomActionDefinition` and related enums.
     #[test]
-    fn test_custom_action_definition_accessors_and_modes() -> Result<()> {
-        let ca = CustomActionDefinition::parse(
+    fn test_custom_action_definition_accessors_and_modes() {
+        let ca = unwrap_result(CustomActionDefinition::parse(
             "ActionFull",
             MSIDB_CUSTOM_ACTION_TYPE_DLL
                 | MSIDB_CUSTOM_ACTION_TYPE_CONTINUE
@@ -1893,7 +2150,7 @@ mod tests {
                 | MSIDB_CUSTOM_ACTION_TYPE_NO_IMPERSONATE,
             "SrcKey",
             "TargetFn",
-        )?;
+        ));
 
         assert_eq!(ca.name(), "ActionFull");
         assert_eq!(
@@ -1913,22 +2170,22 @@ mod tests {
         assert_eq!(ca.source(), "SrcKey");
         assert_eq!(ca.target(), "TargetFn");
 
-        let ca_once = CustomActionDefinition::parse(
+        let ca_once = unwrap_result(CustomActionDefinition::parse(
             "ActionOnce",
             MSIDB_CUSTOM_ACTION_TYPE_EXE | MSIDB_CUSTOM_ACTION_TYPE_ONCE_PER_PROCESS,
             "SrcExe",
             "RunExe",
-        )?;
+        ));
         assert!(!ca_once.first_sequence());
         assert!(ca_once.once_per_process());
         assert!(!ca_once.client_repeat());
 
-        let ca_repeat = CustomActionDefinition::parse(
+        let ca_repeat = unwrap_result(CustomActionDefinition::parse(
             "ActionRepeat",
             MSIDB_CUSTOM_ACTION_TYPE_TEXT_DATA | MSIDB_CUSTOM_ACTION_TYPE_CLIENT_REPEAT,
             "PropName",
             "PropVal",
-        )?;
+        ));
         assert!(!ca_repeat.first_sequence());
         assert!(!ca_repeat.once_per_process());
         assert!(ca_repeat.client_repeat());
@@ -1944,8 +2201,6 @@ mod tests {
             CustomActionExecutionMode::Synchronous
         );
         assert_eq!(InScriptMode::default(), InScriptMode::Immediate);
-
-        Ok(())
     }
 
     /// Mock custom action returning reboot required.
@@ -1955,7 +2210,7 @@ mod tests {
 
     /// Tests extended executor features: mock success, property actions, directory actions, vbscript, and name fallbacks.
     #[test]
-    fn test_custom_action_executor_extended() -> Result<()> {
+    fn test_custom_action_executor_extended() {
         let mut executor = CustomActionExecutor::new();
         let mut context = EvaluationContext::new();
         context.set_property("BASE_DIR", "/opt/app");
@@ -1964,55 +2219,58 @@ mod tests {
 
         // Mock success (code 0)
         executor.set_mock_result("MockSuccessAction", ERROR_SUCCESS);
-        let ca_mock_ok = CustomActionDefinition::parse(
+        let ca_mock_ok = unwrap_result(CustomActionDefinition::parse(
             "MockSuccessAction",
             MSIDB_CUSTOM_ACTION_TYPE_DLL,
             "DllSrc",
             "Fn",
-        )?;
-        assert_eq!(executor.execute(&ca_mock_ok, &mut context)?, ERROR_SUCCESS);
+        ));
+        assert_eq!(
+            executor.execute(&ca_mock_ok, &mut context),
+            Ok(ERROR_SUCCESS)
+        );
 
         // Property action (type 0x0033)
-        let ca_prop = CustomActionDefinition::parse(
+        let ca_prop = unwrap_result(CustomActionDefinition::parse(
             "SetCombinedProp",
             MSIDB_CUSTOM_ACTION_TYPE_PROPERTY,
             "COMBINED",
             "[PART1] [PART2]!",
-        )?;
-        assert_eq!(executor.execute(&ca_prop, &mut context)?, ERROR_SUCCESS);
+        ));
+        assert_eq!(executor.execute(&ca_prop, &mut context), Ok(ERROR_SUCCESS));
         assert_eq!(context.get_property("COMBINED"), Some("Hello World!"));
 
         // Directory action (type 0x0023)
-        let ca_dir = CustomActionDefinition::parse(
+        let ca_dir = unwrap_result(CustomActionDefinition::parse(
             "SetDir",
             MSIDB_CUSTOM_ACTION_TYPE_DIRECTORY,
             "TARGETDIR",
             "[BASE_DIR]/subdir",
-        )?;
-        assert_eq!(executor.execute(&ca_dir, &mut context)?, ERROR_SUCCESS);
+        ));
+        assert_eq!(executor.execute(&ca_dir, &mut context), Ok(ERROR_SUCCESS));
 
         // VBScript action (type 0x0006)
-        let ca_vbs = CustomActionDefinition::parse(
+        let ca_vbs = unwrap_result(CustomActionDefinition::parse(
             "RunVbs",
             MSIDB_CUSTOM_ACTION_TYPE_VBSCRIPT,
             "BinaryVbs",
             "Session.Property(\"VBS_OUTPUT\") = \"ExecutedVbs\"",
-        )?;
-        assert_eq!(executor.execute(&ca_vbs, &mut context)?, ERROR_SUCCESS);
+        ));
+        assert_eq!(executor.execute(&ca_vbs, &mut context), Ok(ERROR_SUCCESS));
         assert_eq!(context.get_property("VBS_OUTPUT"), Some("ExecutedVbs"));
 
         // DLL action returning ERROR_SUCCESS_REBOOT_REQUIRED
         executor
             .library_loader_mut()
             .register_function("RebootEntry", mock_reboot_action);
-        let ca_reboot = CustomActionDefinition::parse(
+        let ca_reboot = unwrap_result(CustomActionDefinition::parse(
             "RebootAction",
             MSIDB_CUSTOM_ACTION_TYPE_DLL,
             "BinaryDll",
             "RebootEntry",
-        )?;
+        ));
         assert_eq!(
-            executor.execute(&ca_reboot, &mut context)?,
+            unwrap_result(executor.execute(&ca_reboot, &mut context)),
             crate::execution::native_action::ERROR_SUCCESS_REBOOT_REQUIRED
         );
 
@@ -2020,15 +2278,16 @@ mod tests {
         executor
             .library_loader_mut()
             .register_function("FallbackByName", mock_executor_action);
-        let ca_fallback = CustomActionDefinition::parse(
+        let ca_fallback = unwrap_result(CustomActionDefinition::parse(
             "FallbackByName",
             MSIDB_CUSTOM_ACTION_TYPE_DLL,
             "BinaryDll",
             "NonExistentTargetName",
-        )?;
-        assert_eq!(executor.execute(&ca_fallback, &mut context)?, ERROR_SUCCESS);
-
-        Ok(())
+        ));
+        assert_eq!(
+            executor.execute(&ca_fallback, &mut context),
+            Ok(ERROR_SUCCESS)
+        );
     }
 
     /// Tests UTF-16 pointer conversion and buffer writing helpers directly.
@@ -2079,7 +2338,7 @@ mod tests {
 
     /// Tests extended error and edge case paths across MSI C API shims.
     #[test]
-    fn test_msi_api_c_shims_extended_error_paths() -> Result<()> {
+    fn test_msi_api_c_shims_extended_error_paths() {
         // SAFETY: Exercising C API shims with null/invalid handles and corner-case buffers.
         unsafe {
             let session = InstallSession {
@@ -2225,13 +2484,12 @@ mod tests {
 
             let _ = MsiCloseHandle(h_rec_empty);
             let _ = MsiCloseHandle(h_install);
-            Ok(())
         }
     }
 
     /// Tests `CustomActionExecutor` integration with `OfflineExecutionPolicy`.
     #[test]
-    fn test_custom_action_executor_offline_policy() -> Result<()> {
+    fn test_custom_action_executor_offline_policy() {
         use crate::execution::bare_metal::{OfflineActionPolicyMode, OfflineExecutionPolicy};
 
         let mut context = EvaluationContext::new();
@@ -2242,12 +2500,12 @@ mod tests {
         let executor_strict = CustomActionExecutor::new().with_offline_policy(strict_policy);
         assert!(executor_strict.offline_policy().is_some());
 
-        let ca_dll = CustomActionDefinition::parse(
+        let ca_dll = unwrap_result(CustomActionDefinition::parse(
             "UnsafeAction",
             1, // Dll in binary table
             "BinaryKey",
             "EntryPoint",
-        )?;
+        ));
         let res_reject = executor_strict.execute(&ca_dll, &mut context);
         assert!(matches!(res_reject, Err(Error::CustomActionFailed { .. })));
 
@@ -2259,17 +2517,15 @@ mod tests {
         assert_eq!(res_skip, Ok(ERROR_SUCCESS));
 
         // 3. Safe property action proceeds even in strict mode
-        let ca_prop = CustomActionDefinition::parse(
+        let ca_prop = unwrap_result(CustomActionDefinition::parse(
             "SetPropAction",
             51, // Formatted text into property
             "MY_PROP",
             "PropertyValue",
-        )?;
+        ));
         let res_prop = executor_strict.execute(&ca_prop, &mut context);
         assert_eq!(res_prop, Ok(ERROR_SUCCESS));
         assert_eq!(context.get_property("MY_PROP"), Some("PropertyValue"));
-
-        Ok(())
     }
 
     /// Tests `lock_handles` mutex poison recovery.
@@ -2289,17 +2545,17 @@ mod tests {
 
     /// Tests Type 19 error abort custom action formatting and execution failure.
     #[test]
-    fn test_type_19_error_abort_action() -> Result<()> {
+    fn test_type_19_error_abort_action() {
         let executor = CustomActionExecutor::new();
         let mut context = EvaluationContext::new();
         context.set_property("ProductName", "LibScript CMS");
 
-        let err_action = CustomActionDefinition::parse(
+        let err_action = unwrap_result(CustomActionDefinition::parse(
             "AbortLicense",
             MSIDB_CUSTOM_ACTION_TYPE_ERROR,
             "",
             "Installation of [ProductName] cannot continue without agreeing to all licenses.",
-        )?;
+        ));
         assert_eq!(err_action.source_type(), CustomActionSourceType::Error);
 
         let res = executor.execute(&err_action, &mut context);
@@ -2312,8 +2568,12 @@ mod tests {
         );
 
         // Test with empty message fallback
-        let empty_err_action =
-            CustomActionDefinition::parse("EmptyAbort", MSIDB_CUSTOM_ACTION_TYPE_ERROR, "", "")?;
+        let empty_err_action = unwrap_result(CustomActionDefinition::parse(
+            "EmptyAbort",
+            MSIDB_CUSTOM_ACTION_TYPE_ERROR,
+            "",
+            "",
+        ));
         let res_empty = executor.execute(&empty_err_action, &mut context);
         assert_eq!(
             res_empty,
@@ -2322,13 +2582,11 @@ mod tests {
                 reason: "Custom action 'EmptyAbort' aborted installation".to_string(),
             })
         );
-
-        Ok(())
     }
 
     /// Tests command line parsing, port availability probing, and binary attachments.
     #[test]
-    fn test_command_line_parsing_and_port_probe() -> Result<()> {
+    fn test_command_line_parsing_and_port_probe() {
         let (prog, args) =
             parse_command_line(r#""C:\Program Files\App\bin.exe" arg1 "arg with spaces""#);
         assert_eq!(prog, PathBuf::from(r"C:\Program Files\App\bin.exe"));
@@ -2351,70 +2609,73 @@ mod tests {
         let mut context = EvaluationContext::new();
         context.set_property("PROP_MYSQL_PORT", "3399"); // Uncommon port likely free
 
-        let check_port_action = CustomActionDefinition::parse(
+        let check_port_action = unwrap_result(CustomActionDefinition::parse(
             "CheckPorts_mysql",
             MSIDB_CUSTOM_ACTION_TYPE_VBSCRIPT,
             "BinaryVbs",
             "dummy_target",
-        )?;
+        ));
 
-        let res = executor.execute(&check_port_action, &mut context)?;
+        let res = unwrap_result(executor.execute(&check_port_action, &mut context));
         assert_eq!(res, ERROR_SUCCESS);
         assert!(context.get_property("PORT_mysql_AVAILABLE").is_some());
         assert!(context.get_property("mysql_PORT_IN_USE").is_some());
-
-        Ok(())
     }
 
     /// Tests Type 34 (`DirectoryExe`) and Type 50 (`PropertyExe`) custom action execution.
     #[test]
-    fn test_type_34_and_50_executable_actions() -> Result<()> {
+    fn test_type_34_and_50_executable_actions() {
         let executor = CustomActionExecutor::new();
         let mut context = EvaluationContext::new();
         context.set_property("INSTALLFOLDER", "/opt/libscript");
         context.set_property("APP_EXE", "/bin/echo");
 
         // Type 34: DirectoryExe
-        let type34 = CustomActionDefinition::parse(
+        let type34 = unwrap_result(CustomActionDefinition::parse(
             "CA_RunCli",
             MSIDB_CUSTOM_ACTION_TYPE_DIRECTORY_EXE,
             "INSTALLFOLDER",
             "cli.cmd install",
-        )?;
+        ));
         assert_eq!(type34.source_type(), CustomActionSourceType::DirectoryExe);
 
         // Path does not exist on disk in test sandbox -> succeeds safely
-        let res34 = executor.execute(&type34, &mut context)?;
+        let res34 = unwrap_result(executor.execute(&type34, &mut context));
         assert_eq!(res34, ERROR_SUCCESS);
 
         // Type 50: PropertyExe
-        let type50 = CustomActionDefinition::parse(
+        let type50 = unwrap_result(CustomActionDefinition::parse(
             "CA_RunProp",
             MSIDB_CUSTOM_ACTION_TYPE_PROPERTY_EXE,
             "APP_EXE",
             "hello world",
-        )?;
+        ));
         assert_eq!(type50.source_type(), CustomActionSourceType::PropertyExe);
 
         #[cfg(not(target_os = "windows"))]
         {
-            let res50 = executor.execute(&type50, &mut context)?;
+            let res50 = unwrap_result(executor.execute(&type50, &mut context));
             assert_eq!(res50, ERROR_SUCCESS);
         }
-
-        Ok(())
     }
 
     /// Tests `CustomActionDefinition` bitmask flags, getters, builder methods, port heuristics, and `C` shims.
     #[test]
-    fn test_custom_action_remaining_coverage() -> Result<()> {
+    fn test_custom_action_remaining_coverage() {
+        {
+            let exec_orig = CustomActionExecutor::new();
+            let cloned_exec = exec_orig.clone();
+            assert!(cloned_exec.execution_logs().is_empty());
+            assert_eq!(exec_orig.execution_logs().len(), 0);
+        }
+
         // 1. In-script flags and execution mode accessors
-        let a_first = CustomActionDefinition::parse(
+        let a_first = unwrap_result(CustomActionDefinition::parse(
             "A1",
             MSIDB_CUSTOM_ACTION_TYPE_FIRST_SEQUENCE | 1,
             "S",
             "T",
-        )?;
+        ));
         assert!(a_first.first_sequence());
         assert_eq!(a_first.name(), "A1");
         assert_eq!(
@@ -2424,43 +2685,55 @@ mod tests {
         assert_eq!(a_first.source(), "S");
         assert_eq!(a_first.target(), "T");
 
-        let a_once = CustomActionDefinition::parse(
+        let a_once = unwrap_result(CustomActionDefinition::parse(
             "A2",
             MSIDB_CUSTOM_ACTION_TYPE_ONCE_PER_PROCESS | 1,
             "S",
             "T",
-        )?;
+        ));
         assert!(a_once.once_per_process());
 
-        let a_client = CustomActionDefinition::parse(
+        let a_client = unwrap_result(CustomActionDefinition::parse(
             "A3",
             MSIDB_CUSTOM_ACTION_TYPE_CLIENT_REPEAT | 1,
             "S",
             "T",
-        )?;
+        ));
         assert!(a_client.client_repeat());
 
-        let a_no_imp = CustomActionDefinition::parse(
+        let a_no_imp = unwrap_result(CustomActionDefinition::parse(
             "A4",
             MSIDB_CUSTOM_ACTION_TYPE_NO_IMPERSONATE | 1,
             "S",
             "T",
-        )?;
+        ));
         assert!(a_no_imp.no_impersonate());
 
-        let a_rollback =
-            CustomActionDefinition::parse("A5", MSIDB_CUSTOM_ACTION_TYPE_ROLLBACK | 1, "S", "T")?;
+        let a_rollback = unwrap_result(CustomActionDefinition::parse(
+            "A5",
+            MSIDB_CUSTOM_ACTION_TYPE_ROLLBACK | 1,
+            "S",
+            "T",
+        ));
         assert_eq!(a_rollback.in_script(), InScriptMode::Rollback);
 
-        let a_commit =
-            CustomActionDefinition::parse("A6", MSIDB_CUSTOM_ACTION_TYPE_COMMIT | 1, "S", "T")?;
+        let a_commit = unwrap_result(CustomActionDefinition::parse(
+            "A6",
+            MSIDB_CUSTOM_ACTION_TYPE_COMMIT | 1,
+            "S",
+            "T",
+        ));
         assert_eq!(a_commit.in_script(), InScriptMode::Commit);
 
-        let a_deferred =
-            CustomActionDefinition::parse("A7", MSIDB_CUSTOM_ACTION_TYPE_IN_SCRIPT | 1, "S", "T")?;
+        let a_deferred = unwrap_result(CustomActionDefinition::parse(
+            "A7",
+            MSIDB_CUSTOM_ACTION_TYPE_IN_SCRIPT | 1,
+            "S",
+            "T",
+        ));
         assert_eq!(a_deferred.in_script(), InScriptMode::Deferred);
 
-        let a_immediate = CustomActionDefinition::parse("A8", 1, "S", "T")?;
+        let a_immediate = unwrap_result(CustomActionDefinition::parse("A8", 1, "S", "T"));
         assert_eq!(a_immediate.in_script(), InScriptMode::Immediate);
 
         // CustomActionExecutionMode accessors
@@ -2513,59 +2786,59 @@ mod tests {
         let mut context = EvaluationContext::new();
 
         // Port check with single port suffix "CheckPort_8080"
-        let check_single = CustomActionDefinition::parse(
+        let check_single = unwrap_result(CustomActionDefinition::parse(
             "CheckPort_8080",
             MSIDB_CUSTOM_ACTION_TYPE_VBSCRIPT,
             "BinaryVbs",
             "dummy_target",
-        )?;
-        let res_single = executor.execute(&check_single, &mut context)?;
+        ));
+        let res_single = unwrap_result(executor.execute(&check_single, &mut context));
         assert_eq!(res_single, ERROR_SUCCESS);
         assert!(context.get_property("PORT_8080_AVAILABLE").is_some());
 
         // Port check with non-numeric suffix falling back to 3306
-        let check_fallback = CustomActionDefinition::parse(
+        let check_fallback = unwrap_result(CustomActionDefinition::parse(
             "CheckPort_custom",
             MSIDB_CUSTOM_ACTION_TYPE_VBSCRIPT,
             "BinaryVbs",
             "dummy_target",
-        )?;
-        let res_fallback = executor.execute(&check_fallback, &mut context)?;
+        ));
+        let res_fallback = unwrap_result(executor.execute(&check_fallback, &mut context));
         assert_eq!(res_fallback, ERROR_SUCCESS);
         assert!(context.get_property("PORT_custom_AVAILABLE").is_some());
 
         // Port check without CheckPort_ prefix falling back to SERVICE suffix
-        let check_service = CustomActionDefinition::parse(
+        let check_service = unwrap_result(CustomActionDefinition::parse(
             "VerifyNetworkPorts",
             MSIDB_CUSTOM_ACTION_TYPE_VBSCRIPT,
             "BinaryVbs",
             "CheckPort",
-        )?;
-        let res_service = executor.execute(&check_service, &mut context)?;
+        ));
+        let res_service = unwrap_result(executor.execute(&check_service, &mut context));
         assert_eq!(res_service, ERROR_SUCCESS);
         assert!(context.get_property("PORT_SERVICE_AVAILABLE").is_some());
 
         // Port check matching "netstat" in target
-        let check_netstat = CustomActionDefinition::parse(
+        let check_netstat = unwrap_result(CustomActionDefinition::parse(
             "NetstatAction",
             MSIDB_CUSTOM_ACTION_TYPE_VBSCRIPT,
             "BinaryVbs",
             "netstat -an",
-        )?;
-        let res_netstat = executor.execute(&check_netstat, &mut context)?;
+        ));
+        let res_netstat = unwrap_result(executor.execute(&check_netstat, &mut context));
         assert_eq!(res_netstat, ERROR_SUCCESS);
 
         // Port check with occupied port returning false
-        let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
-        let bound_port = listener.local_addr()?.port();
+        let listener = unwrap_result(std::net::TcpListener::bind("127.0.0.1:0"));
+        let bound_port = unwrap_result(listener.local_addr()).port();
         context.set_property("PROP_BOUND_PORT", bound_port.to_string());
-        let check_busy = CustomActionDefinition::parse(
+        let check_busy = unwrap_result(CustomActionDefinition::parse(
             "CheckPort_bound",
             MSIDB_CUSTOM_ACTION_TYPE_VBSCRIPT,
             "BinaryVbs",
             "dummy_target",
-        )?;
-        let res_busy = executor.execute(&check_busy, &mut context)?;
+        ));
+        let res_busy = unwrap_result(executor.execute(&check_busy, &mut context));
         assert_eq!(res_busy, ERROR_SUCCESS);
         assert_eq!(context.get_property("PORT_bound_AVAILABLE"), Some("0"));
         assert_eq!(context.get_property("bound_PORT_IN_USE"), Some("1"));
@@ -2576,115 +2849,119 @@ mod tests {
             "script.vbs",
             b"Session.Property(\"VBS_RAN\") = \"1\"".to_vec(),
         );
-        let script_from_bin = CustomActionDefinition::parse(
+        let script_from_bin = unwrap_result(CustomActionDefinition::parse(
             "RunBinScript",
             MSIDB_CUSTOM_ACTION_TYPE_VBSCRIPT,
             "script.vbs",
             "",
-        )?;
-        let res_vbs = executor.execute(&script_from_bin, &mut context)?;
+        ));
+        let res_vbs = unwrap_result(executor.execute(&script_from_bin, &mut context));
         assert_eq!(res_vbs, ERROR_SUCCESS);
         assert_eq!(context.get_property("VBS_RAN"), Some("1"));
 
-        let script_missing = CustomActionDefinition::parse(
+        let script_missing = unwrap_result(CustomActionDefinition::parse(
             "RunMissingScript",
             MSIDB_CUSTOM_ACTION_TYPE_JSCRIPT,
             "missing.js",
             "",
-        )?;
-        let res_js = executor.execute(&script_missing, &mut context)?;
+        ));
+        let res_js = unwrap_result(executor.execute(&script_missing, &mut context));
         assert_eq!(res_js, ERROR_SUCCESS);
 
         // 7. PropertyExe fallback, DirectoryExe relative path, and empty Exe command
-        let prop_exe_fallback = CustomActionDefinition::parse(
+        let prop_exe_fallback = unwrap_result(CustomActionDefinition::parse(
             "RunFallbackPropExe",
             MSIDB_CUSTOM_ACTION_TYPE_PROPERTY_EXE,
             "non_existent_prog_cmd",
             "",
-        )?;
-        let res_prop_fallback = executor.execute(&prop_exe_fallback, &mut context)?;
+        ));
+        let res_prop_fallback = unwrap_result(executor.execute(&prop_exe_fallback, &mut context));
         assert_eq!(res_prop_fallback, ERROR_SUCCESS);
 
         // DirectoryExe where wd.join(&prog).exists() is true
         let temp_wd = std::env::temp_dir().join(format!("msi_wd_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&temp_wd);
-        std::fs::create_dir_all(&temp_wd)?;
+        let _ = std::fs::create_dir_all(&temp_wd);
         let script_file = temp_wd.join("runner.sh");
         #[cfg(unix)]
         {
-            std::os::unix::fs::symlink("/bin/sh", &script_file)?;
+            let _ = std::os::unix::fs::symlink("/bin/sh", &script_file);
         }
         #[cfg(not(unix))]
         {
             std::fs::write(&script_file, b"")?;
         }
         context.set_property("WORKING_DIR", temp_wd.to_string_lossy().to_string());
-        let dir_exe_action = CustomActionDefinition::parse(
+        let dir_exe_action = unwrap_result(CustomActionDefinition::parse(
             "RunDirScript",
             MSIDB_CUSTOM_ACTION_TYPE_DIRECTORY_EXE,
             "WORKING_DIR",
             "runner.sh",
-        )?;
+        ));
         #[cfg(not(target_os = "windows"))]
         {
-            let res_dir = executor.execute(&dir_exe_action, &mut context)?;
+            let res_dir = unwrap_result(executor.execute(&dir_exe_action, &mut context));
             assert_eq!(res_dir, ERROR_SUCCESS);
 
             // DirectoryExe with absolute path (/bin/sh) exercises !prog.is_absolute() == false
-            let abs_dir_exe = CustomActionDefinition::parse(
+            let abs_dir_exe = unwrap_result(CustomActionDefinition::parse(
                 "RunAbsDirScript",
                 MSIDB_CUSTOM_ACTION_TYPE_DIRECTORY_EXE,
                 "WORKING_DIR",
                 "/bin/sh",
-            )?;
-            let res_abs_dir = executor.execute(&abs_dir_exe, &mut context)?;
+            ));
+            let res_abs_dir = unwrap_result(executor.execute(&abs_dir_exe, &mut context));
             assert_eq!(res_abs_dir, ERROR_SUCCESS);
         }
         let _ = std::fs::remove_dir_all(&temp_wd);
 
-        let empty_exe =
-            CustomActionDefinition::parse("EmptyExeAction", MSIDB_CUSTOM_ACTION_TYPE_EXE, "", "")?;
-        let res_empty_exe = executor.execute(&empty_exe, &mut context)?;
+        let empty_exe = unwrap_result(CustomActionDefinition::parse(
+            "EmptyExeAction",
+            MSIDB_CUSTOM_ACTION_TYPE_EXE,
+            "",
+            "",
+        ));
+        let res_empty_exe = unwrap_result(executor.execute(&empty_exe, &mut context));
         assert_eq!(res_empty_exe, ERROR_SUCCESS);
 
         // 8. Continue on failure for subprocess and DLL actions
         #[cfg(not(target_os = "windows"))]
         {
-            let ca_continue_fail = CustomActionDefinition::parse(
+            let ca_continue_fail = unwrap_result(CustomActionDefinition::parse(
                 "ContinueFailAction",
                 MSIDB_CUSTOM_ACTION_TYPE_EXE | MSIDB_CUSTOM_ACTION_TYPE_CONTINUE,
                 "",
                 r#"/bin/sh -c "exit 42""#,
-            )?;
-            let res_continue = executor.execute(&ca_continue_fail, &mut context)?;
+            ));
+            let res_continue = unwrap_result(executor.execute(&ca_continue_fail, &mut context));
             assert_eq!(res_continue, ERROR_SUCCESS);
 
             // Synchronous subprocess failure (exit 1)
-            let ca_sync_fail = CustomActionDefinition::parse(
+            let ca_sync_fail = unwrap_result(CustomActionDefinition::parse(
                 "SyncFailAction",
                 MSIDB_CUSTOM_ACTION_TYPE_EXE,
                 "",
                 r#"/bin/sh -c "exit 1""#,
-            )?;
+            ));
             assert!(executor.execute(&ca_sync_fail, &mut context).is_err());
         }
 
         let dll_exec = CustomActionExecutor::new();
-        let ca_dll_continue_fail = CustomActionDefinition::parse(
+        let ca_dll_continue_fail = unwrap_result(CustomActionDefinition::parse(
             "ContinueDllFail",
             MSIDB_CUSTOM_ACTION_TYPE_DLL | MSIDB_CUSTOM_ACTION_TYPE_CONTINUE,
             "MissingDll",
             "MissingEntryPoint",
-        )?;
-        let res_dll_continue = dll_exec.execute(&ca_dll_continue_fail, &mut context)?;
+        ));
+        let res_dll_continue = unwrap_result(dll_exec.execute(&ca_dll_continue_fail, &mut context));
         assert_eq!(res_dll_continue, ERROR_SUCCESS);
 
-        let ca_dll_sync_fail = CustomActionDefinition::parse(
+        let ca_dll_sync_fail = unwrap_result(CustomActionDefinition::parse(
             "SyncDllFail",
             MSIDB_CUSTOM_ACTION_TYPE_DLL,
             "MissingDll",
             "MissingEntryPoint",
-        )?;
+        ));
         assert!(dll_exec.execute(&ca_dll_sync_fail, &mut context).is_err());
 
         // 9. HandleManager and C-shim edge cases
@@ -2735,6 +3012,462 @@ mod tests {
             lock.close_handle(h_rec_int);
         }
 
-        Ok(())
+        // 10. Shell command translation tests
+        let (cmd_prog, cmd_args) = translate_shell_command(
+            Path::new("cmd.exe"),
+            &[
+                "/c".to_string(),
+                r#""[INSTALLFOLDER]\libscript\libscript.cmd" --arg1"#.to_string(),
+            ],
+        );
+        #[cfg(not(target_os = "windows"))]
+        {
+            assert_eq!(cmd_prog, PathBuf::from("/bin/sh"));
+            assert_eq!(
+                cmd_args,
+                vec![
+                    "[INSTALLFOLDER]/libscript/libscript.sh".to_string(),
+                    "--arg1".to_string()
+                ]
+            );
+        }
+        #[cfg(target_os = "windows")]
+        {
+            assert_eq!(cmd_prog, PathBuf::from("cmd.exe"));
+        }
+
+        // Test translate_shell_command with non-cmd.exe program and /c attached prefix
+        let (non_cmd_p, non_cmd_a) =
+            translate_shell_command(Path::new("custom.exe"), &["arg".to_string()]);
+        assert_eq!(non_cmd_p, PathBuf::from("custom.exe"));
+        assert_eq!(non_cmd_a, vec!["arg".to_string()]);
+
+        let (bat_prog, bat_args) = translate_shell_command(
+            Path::new("cmd"),
+            &["/crun.bat".to_string(), "extra".to_string()],
+        );
+        #[cfg(not(target_os = "windows"))]
+        {
+            assert_eq!(bat_prog, PathBuf::from("/bin/sh"));
+            assert_eq!(bat_args, vec!["run.sh".to_string(), "extra".to_string()]);
+        }
+        #[cfg(target_os = "windows")]
+        {
+            assert_eq!(bat_prog, PathBuf::from("cmd"));
+        }
+
+        // Test translate_shell_command without /c parameter
+        let (bare_cmd_p, bare_cmd_a) = translate_shell_command(
+            Path::new("cmd.exe"),
+            &["script.py".to_string(), "arg".to_string()],
+        );
+        #[cfg(not(target_os = "windows"))]
+        {
+            assert_eq!(bare_cmd_p, PathBuf::from("/bin/sh"));
+            assert_eq!(bare_cmd_a, vec!["script.py".to_string(), "arg".to_string()]);
+        }
+        #[cfg(target_os = "windows")]
+        {
+            assert_eq!(bare_cmd_p, PathBuf::from("cmd.exe"));
+        }
+
+        // Test translate_shell_command empty args
+        let (empty_cmd_p, empty_cmd_a) =
+            translate_shell_command(Path::new(r"C:\Windows\System32\cmd.exe"), &[]);
+        #[cfg(not(target_os = "windows"))]
+        {
+            assert_eq!(empty_cmd_p, PathBuf::from("/bin/sh"));
+            assert!(empty_cmd_a.is_empty());
+        }
+        #[cfg(target_os = "windows")]
+        {
+            assert_eq!(empty_cmd_p, PathBuf::from(r"C:\Windows\System32\cmd.exe"));
+        }
+
+        // Test translate_shell_command with /k flag
+        let (k_prog, k_args) = translate_shell_command(
+            Path::new("cmd.exe"),
+            &["/k".to_string(), "run.cmd".to_string()],
+        );
+        #[cfg(not(target_os = "windows"))]
+        {
+            assert_eq!(k_prog, PathBuf::from("/bin/sh"));
+            assert_eq!(k_args, vec!["run.sh".to_string()]);
+        }
+        #[cfg(target_os = "windows")]
+        {
+            assert_eq!(k_prog, PathBuf::from("cmd.exe"));
+        }
+
+        // Test translate_shell_command with /C attached prefix and uppercase
+        let (cap_c_prog, cap_c_args) =
+            translate_shell_command(Path::new("cmd.exe"), &["/Ctest.bat".to_string()]);
+        #[cfg(not(target_os = "windows"))]
+        {
+            assert_eq!(cap_c_prog, PathBuf::from("/bin/sh"));
+            assert_eq!(cap_c_args, vec!["test.sh".to_string()]);
+        }
+        #[cfg(target_os = "windows")]
+        {
+            assert_eq!(cap_c_prog, PathBuf::from("cmd.exe"));
+        }
+
+        // Test translate_shell_command with trailing /c and no target command
+        let (trail_c_prog, trail_c_args) =
+            translate_shell_command(Path::new("cmd.exe"), &["/c".to_string()]);
+        #[cfg(not(target_os = "windows"))]
+        {
+            assert_eq!(trail_c_prog, PathBuf::from("/bin/sh"));
+            assert!(trail_c_args.is_empty());
+        }
+        #[cfg(target_os = "windows")]
+        {
+            assert_eq!(trail_c_prog, PathBuf::from("cmd.exe"));
+        }
+
+        // 11. validate_*.vbs port check interception
+        let mut vbs_ctx = EvaluationContext::new();
+        vbs_ctx.set_property("PROP_REDIS_PORT", "46379");
+        let vbs_val_action = unwrap_result(CustomActionDefinition::parse(
+            "validate_redis.vbs",
+            MSIDB_CUSTOM_ACTION_TYPE_VBSCRIPT,
+            "BinaryVbs",
+            "dummy_target",
+        ));
+        let vbs_res = unwrap_result(executor.execute(&vbs_val_action, &mut vbs_ctx));
+        assert_eq!(vbs_res, ERROR_SUCCESS);
+        assert_eq!(vbs_ctx.get_property("VALID_redis"), Some("1"));
+        assert_eq!(vbs_ctx.get_property("VALID_REDIS"), Some("1"));
+
+        // 12. sql_provisioner.dll interception (Mock mode and Rollback)
+        let mut sql_ctx = EvaluationContext::new();
+        sql_ctx.set_property("SQL_PROVISION_MOCK", "1");
+        sql_ctx.set_property("PROP_PROVISION_DB_NAME", "testdb");
+        let sql_action = unwrap_result(CustomActionDefinition::parse(
+            "ProvisionDatabase",
+            MSIDB_CUSTOM_ACTION_TYPE_DLL,
+            "sql_provisioner.dll",
+            "ProvisionEntry",
+        ));
+        let sql_res = unwrap_result(executor.execute(&sql_action, &mut sql_ctx));
+        assert_eq!(sql_res, ERROR_SUCCESS);
+
+        // Rollback sql provisioner
+        let sql_rb_action = unwrap_result(CustomActionDefinition::parse(
+            "RollbackDatabase",
+            MSIDB_CUSTOM_ACTION_TYPE_DLL | MSIDB_CUSTOM_ACTION_TYPE_ROLLBACK,
+            "sql_provisioner.dll",
+            "RollbackEntry",
+        ));
+        let sql_rb_res = unwrap_result(executor.execute(&sql_rb_action, &mut sql_ctx));
+        assert_eq!(sql_rb_res, ERROR_SUCCESS);
+
+        // Sql provisioner non-mock failure with Continue flag vs regular failure
+        let mut sql_fail_ctx = EvaluationContext::new();
+        sql_fail_ctx.set_property("SQL_PROVISION_MOCK", "0");
+        sql_fail_ctx.set_property("TARGET_HOST", "invalid-domain-that-does-not-exist.example");
+        sql_fail_ctx.set_property("TARGET_PORT", "9999");
+        let sql_fail_continue = unwrap_result(CustomActionDefinition::parse(
+            "ProvisionFailContinue",
+            MSIDB_CUSTOM_ACTION_TYPE_DLL | MSIDB_CUSTOM_ACTION_TYPE_CONTINUE,
+            "sql_provisioner.dll",
+            "ProvisionEntry",
+        ));
+        let sql_fail_continue_res =
+            unwrap_result(executor.execute(&sql_fail_continue, &mut sql_fail_ctx));
+        assert_eq!(sql_fail_continue_res, ERROR_SUCCESS);
+
+        let sql_fail_sync = unwrap_result(CustomActionDefinition::parse(
+            "ProvisionFailSync",
+            MSIDB_CUSTOM_ACTION_TYPE_DLL,
+            "sql_provisioner.dll",
+            "ProvisionEntry",
+        ));
+        assert!(executor.execute(&sql_fail_sync, &mut sql_fail_ctx).is_err());
+
+        // Cover action.name().starts_with("Validate_") branch
+        let cap_validate_action = unwrap_result(CustomActionDefinition::parse(
+            "Validate_nginx",
+            MSIDB_CUSTOM_ACTION_TYPE_VBSCRIPT,
+            "BinaryVbs",
+            "dummy_target",
+        ));
+        assert_eq!(
+            unwrap_result(executor.execute(&cap_validate_action, &mut vbs_ctx)),
+            ERROR_SUCCESS
+        );
+
+        // Cover action.target().contains("validate_") branch
+        let validate_in_target_action = unwrap_result(CustomActionDefinition::parse(
+            "CustomCheckAction",
+            MSIDB_CUSTOM_ACTION_TYPE_VBSCRIPT,
+            "BinaryVbs",
+            "call validate_ports()",
+        ));
+        assert_eq!(
+            unwrap_result(executor.execute(&validate_in_target_action, &mut vbs_ctx)),
+            ERROR_SUCCESS
+        );
+
+        // Cover action.name().to_ascii_lowercase().contains("sql_provisioner") branch
+        let sql_name_action = unwrap_result(CustomActionDefinition::parse(
+            "Run_sql_provisioner_action",
+            MSIDB_CUSTOM_ACTION_TYPE_DLL,
+            "custom_helper.dll",
+            "Entry",
+        ));
+        assert_eq!(
+            unwrap_result(executor.execute(&sql_name_action, &mut sql_ctx)),
+            ERROR_SUCCESS
+        );
+
+        // 13. Direct batch file translation and complex quotes
+        let (direct_bat_p, direct_bat_a) = translate_shell_command(
+            Path::new(r"C:\App\setup.cmd"),
+            &["--opt".to_string(), r"sub\dir".to_string()],
+        );
+        #[cfg(not(target_os = "windows"))]
+        {
+            assert_eq!(direct_bat_p, PathBuf::from("/bin/sh"));
+            assert_eq!(
+                direct_bat_a,
+                vec![
+                    "C:/App/setup.sh".to_string(),
+                    "--opt".to_string(),
+                    "sub/dir".to_string()
+                ]
+            );
+        }
+        #[cfg(target_os = "windows")]
+        {
+            assert_eq!(direct_bat_p, PathBuf::from(r"C:\App\setup.cmd"));
+        }
+
+        let (complex_cmd_p, complex_cmd_a) = translate_shell_command(
+            Path::new("cmd.exe"),
+            &[
+                "/c".to_string(),
+                r#""C:\Program Files\App\setup.cmd" --dir "C:\Data Folder" --name "Test Service""#
+                    .to_string(),
+            ],
+        );
+        #[cfg(not(target_os = "windows"))]
+        {
+            assert_eq!(complex_cmd_p, PathBuf::from("/bin/sh"));
+            assert_eq!(
+                complex_cmd_a,
+                vec![
+                    "C:/Program Files/App/setup.sh".to_string(),
+                    "--dir".to_string(),
+                    "C:/Data Folder".to_string(),
+                    "--name".to_string(),
+                    "Test Service".to_string(),
+                ]
+            );
+        }
+        #[cfg(target_os = "windows")]
+        {
+            assert_eq!(complex_cmd_p, PathBuf::from("cmd.exe"));
+        }
+
+        // 14. Execution logs capture and clear
+        executor.clear_execution_logs();
+        assert!(executor.execution_logs().is_empty());
+        executor.log("Test log entry");
+        assert_eq!(
+            executor.execution_logs(),
+            vec!["Test log entry".to_string()]
+        );
+        executor.clear_execution_logs();
+        assert!(executor.execution_logs().is_empty());
+    }
+
+    /// Tests remaining uncovered paths in `CustomActionExecutor` and definition handlers.
+    #[test]
+    fn test_custom_action_uncovered_paths() {
+        // Exercise unwrap_result Ok and Err branches
+        unwrap_result::<(), &str>(Ok(()));
+        let _ = std::panic::catch_unwind(|| unwrap_result::<(), _>(Err("expected_err")));
+
+        // 1. Poisoned execution_logs Mutex
+        let executor = CustomActionExecutor::new();
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _lock = executor.execution_logs.lock().map(|_| panic!("poison"));
+        }));
+        let cloned = executor.clone();
+        assert!(cloned.execution_logs().is_empty());
+        assert!(executor.execution_logs().is_empty());
+        executor.clear_execution_logs();
+        executor.log("ignored");
+        assert!(executor.execution_logs().is_empty());
+
+        // 2. format_string unclosed bracket errors in execute
+        let mut fresh_executor = CustomActionExecutor::new();
+        let mut ctx = EvaluationContext::new();
+
+        // Type 19 error abort with unclosed format
+        let err_abort = unwrap_result(CustomActionDefinition::parse(
+            "ErrAbort",
+            MSIDB_CUSTOM_ACTION_TYPE_ERROR,
+            "",
+            "[UNCLOSED",
+        ));
+        assert!(fresh_executor.execute(&err_abort, &mut ctx).is_err());
+
+        // Type 51 property formatted with unclosed format
+        let prop_act = unwrap_result(CustomActionDefinition::parse(
+            "PropAct",
+            MSIDB_CUSTOM_ACTION_TYPE_PROPERTY,
+            "PROP",
+            "[UNCLOSED",
+        ));
+        assert!(fresh_executor.execute(&prop_act, &mut ctx).is_err());
+
+        // Type 38 JScript inline with unclosed format
+        let js_act = unwrap_result(CustomActionDefinition::parse(
+            "JsAct",
+            0x0005 | 0x0030,
+            "",
+            "[UNCLOSED",
+        ));
+        assert!(fresh_executor.execute(&js_act, &mut ctx).is_err());
+
+        // Type 50 PropertyExe with unclosed format in property
+        ctx.set_property("EXE_PROP", "[UNCLOSED");
+        let prop_exe1 = unwrap_result(CustomActionDefinition::parse(
+            "PropExe1", 0x0032, "EXE_PROP", "args",
+        ));
+        assert!(fresh_executor.execute(&prop_exe1, &mut ctx).is_err());
+
+        // Type 50 PropertyExe with unclosed format in target
+        ctx.set_property("EXE_PROP2", "echo");
+        let prop_exe2 = unwrap_result(CustomActionDefinition::parse(
+            "PropExe2",
+            0x0032,
+            "EXE_PROP2",
+            "[UNCLOSED",
+        ));
+        assert!(fresh_executor.execute(&prop_exe2, &mut ctx).is_err());
+
+        // Type 34 DirectoryExe with unclosed format in target
+        ctx.set_property("DIR_PROP", "/tmp");
+        let dir_exe = unwrap_result(CustomActionDefinition::parse(
+            "DirExe",
+            0x0022,
+            "DIR_PROP",
+            "[UNCLOSED",
+        ));
+        assert!(fresh_executor.execute(&dir_exe, &mut ctx).is_err());
+
+        // Type 2 Exe in Binary with unclosed format in target
+        let type2_bad = unwrap_result(CustomActionDefinition::parse(
+            "BadType2",
+            MSIDB_CUSTOM_ACTION_TYPE_EXE,
+            "BinKey",
+            "[UNCLOSED",
+        ));
+        assert!(fresh_executor.execute(&type2_bad, &mut ctx).is_err());
+
+        // 3. Script syntax errors
+        fresh_executor.add_binary("BadJs", b"function (".to_vec());
+        let bad_js = unwrap_result(CustomActionDefinition::parse(
+            "BadJsAct",
+            MSIDB_CUSTOM_ACTION_TYPE_JSCRIPT,
+            "BadJs",
+            "",
+        ));
+        assert!(fresh_executor.execute(&bad_js, &mut ctx).is_err());
+
+        fresh_executor.add_binary("BadVbs", b"Sub (".to_vec());
+        let bad_vbs = unwrap_result(CustomActionDefinition::parse(
+            "BadVbsAct",
+            MSIDB_CUSTOM_ACTION_TYPE_VBSCRIPT,
+            "BadVbs",
+            "",
+        ));
+        assert!(fresh_executor.execute(&bad_vbs, &mut ctx).is_err());
+
+        // 4. Stderr logging and script path checks
+        let stderr_action = unwrap_result(CustomActionDefinition::parse(
+            "StderrAct",
+            0x0032,
+            "SH_EXE",
+            "dummy \"echo custom_error_msg 1>&2\"",
+        ));
+        ctx.set_property("SH_EXE", "/bin/sh -c");
+        let res = fresh_executor.execute(&stderr_action, &mut ctx);
+        assert_eq!(res, Ok(ERROR_SUCCESS));
+        assert!(fresh_executor
+            .execution_logs()
+            .iter()
+            .any(|l| l.contains("STDERR: custom_error_msg")));
+
+        // Script checks: absolute non-existent script
+        ctx.set_property("SH_EXE", "/bin/sh");
+        let nonexistent_abs = unwrap_result(CustomActionDefinition::parse(
+            "AbsScript",
+            0x0032,
+            "SH_EXE",
+            "dummy /nonexistent_dir_12345/nonexistent_script.sh",
+        ));
+        assert_eq!(
+            fresh_executor.execute(&nonexistent_abs, &mut ctx),
+            Ok(ERROR_SUCCESS)
+        );
+
+        // Script checks: relative non-existent script with no working_dir
+        let nonexistent_rel = unwrap_result(CustomActionDefinition::parse(
+            "RelScript",
+            0x0032,
+            "SH_EXE",
+            "dummy nonexistent_script_12345.sh",
+        ));
+        assert_eq!(
+            fresh_executor.execute(&nonexistent_rel, &mut ctx),
+            Ok(ERROR_SUCCESS)
+        );
+
+        // Script checks: existing script file
+        let exist_dir = std::env::temp_dir().join("msi_test_exist_sh_dir");
+        std::fs::create_dir_all(&exist_dir).ok();
+        let exist_sh = exist_dir.join("exist.sh");
+        std::fs::write(&exist_sh, b"#!/bin/sh\nexit 0\n").ok();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&exist_sh, std::fs::Permissions::from_mode(0o755)).ok();
+        }
+        let exist_act = unwrap_result(CustomActionDefinition::parse(
+            "ExistScript",
+            0x0032,
+            "SH_EXE",
+            &format!("dummy {}", exist_sh.to_string_lossy()),
+        ));
+        assert_eq!(
+            fresh_executor.execute(&exist_act, &mut ctx),
+            Ok(ERROR_SUCCESS)
+        );
+        let _ = std::fs::remove_dir_all(&exist_dir);
+
+        // 5. Async executable failure
+        let temp_dir = std::env::temp_dir().join("msi_test_bad_spawn");
+        std::fs::create_dir_all(&temp_dir).ok();
+        let non_exec_file = temp_dir.join("non_exec.bin");
+        std::fs::write(&non_exec_file, b"not executable").ok();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&non_exec_file, std::fs::Permissions::from_mode(0o644)).ok();
+        }
+        let bad_async = unwrap_result(CustomActionDefinition::parse(
+            "BadAsync",
+            0x0032 | MSIDB_CUSTOM_ACTION_TYPE_ASYNC,
+            "BAD_EXE",
+            "dummy_arg",
+        ));
+        ctx.set_property("BAD_EXE", non_exec_file.to_string_lossy());
+        #[cfg(unix)]
+        assert!(fresh_executor.execute(&bad_async, &mut ctx).is_err());
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }

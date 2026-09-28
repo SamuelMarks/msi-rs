@@ -114,6 +114,13 @@ impl MsiInfoOptions {
             return Ok(opts);
         }
 
+        if first.starts_with('-') {
+            return Err(
+                "missing arguments. Usage: msiinfo <msi> [options] | msiinfo <tables|schema|streams|export|extract> <msi> [args]"
+                    .to_string(),
+            );
+        }
+
         // Default mode: summary inspection or property editing
         let msi_path = PathBuf::from(first);
         let mut opts = Self {
@@ -411,6 +418,7 @@ mod tests {
 
         // 1. Parse errors
         assert_eq!(run(&[]), 1);
+        assert_eq!(run(&["-invalid".to_string()]), 1);
         assert_eq!(run(&["tables".to_string()]), 1);
         assert_eq!(run(&["schema".to_string()]), 1);
         assert_eq!(run(&["streams".to_string()]), 1);

@@ -727,7 +727,8 @@ mod tests {
 
     /// Tests `Win32ShellLink` binary serialization, `XdgDesktopEntry` directory installation, and macOS symlinks.
     #[test]
-    fn test_win32_shell_link_and_app_symlink() -> Result<()> {
+    #[allow(clippy::too_many_lines)]
+    fn test_win32_shell_link_and_app_symlink() {
         let temp_dir = std::env::temp_dir().join(format!("desktop_test_{}", std::process::id()));
         let _ = std::fs::create_dir_all(&temp_dir);
 
@@ -743,10 +744,22 @@ mod tests {
 
         let xdg = XdgDesktopEntry::new("Test App", "/usr/bin/test-app")
             .comment("Test application description");
-        let installed_xdg = xdg.install_to_directory(&temp_dir)?;
+        let installed_xdg = temp_dir.join("test-app.desktop");
+        assert_eq!(
+            xdg.install_to_directory(&temp_dir).as_ref(),
+            Ok(&installed_xdg)
+        );
         assert!(installed_xdg.exists());
-        let xdg_content = std::fs::read_to_string(&installed_xdg)?;
-        assert!(xdg_content.contains("Name=Test App"));
+        assert!(std::fs::read_to_string(&installed_xdg).is_ok_and(|c| c.contains("Name=Test App")));
+
+        // Negative path for XDG install
+        let invalid_path = Path::new("/dev/null/impossible/path");
+        assert!(xdg.install_to_directory(invalid_path).is_err());
+
+        // Error path for std::fs::write when target file path is an existing directory
+        let bad_dir = temp_dir.join("bad_dir");
+        let _ = std::fs::create_dir_all(bad_dir.join("test-app.desktop"));
+        assert!(xdg.install_to_directory(&bad_dir).is_err());
 
         // 2. Win32 Shell Link (.lnk) generation
         let lnk = Win32ShellLink::new(r"C:\Program Files\App\app.exe")
@@ -772,9 +785,12 @@ mod tests {
 
         // File save check
         let lnk_path = temp_dir.join("App.lnk");
-        lnk.save_to_disk(lnk_path.as_path())?;
+        assert!(lnk.save_to_disk(lnk_path.as_path()).is_ok());
         assert!(lnk_path.exists());
-        assert_eq!(std::fs::read(&lnk_path)?, bytes);
+        assert!(std::fs::read(&lnk_path).is_ok_and(|b| b == bytes));
+
+        // Negative path for lnk save
+        assert!(lnk.save_to_disk(invalid_path).is_err());
 
         // Minimal Win32ShellLink without optional flags and empty target path
         let empty_lnk = Win32ShellLink::new("");
@@ -794,8 +810,13 @@ mod tests {
         let _ = std::fs::create_dir_all(&mock_bundle);
 
         // Name with explicit .app extension
-        let target1 =
-            MacOsAppBundle::create_applications_symlink(&mock_bundle, Some("MyStudioLink.app"))?;
+        let target1 = app_test_dir.join("MyStudioLink.app");
+        assert_eq!(
+            MacOsAppBundle::create_applications_symlink(&mock_bundle, Some("MyStudioLink.app"))
+                .as_ref(),
+            Ok(&target1)
+        );
+
         // Second call when target already exists (exercises link_target.exists() == true branch)
         let link_res_repeat =
             MacOsAppBundle::create_applications_symlink(&mock_bundle, Some("MyStudioLink.app"));
@@ -803,17 +824,31 @@ mod tests {
 
         // Pre-existing directory target (exercises link_target.is_dir() branch)
         let dir_target = app_test_dir.join("ExistingDir.app");
-        std::fs::create_dir_all(&dir_target)?;
-        let link_res_dir =
-            MacOsAppBundle::create_applications_symlink(&mock_bundle, Some("ExistingDir.app"))?;
-        assert!(link_res_dir.exists());
-        let _ = std::fs::remove_file(&link_res_dir);
+        let _ = std::fs::create_dir_all(&dir_target);
+        assert_eq!(
+            MacOsAppBundle::create_applications_symlink(&mock_bundle, Some("ExistingDir.app"))
+                .as_ref(),
+            Ok(&dir_target)
+        );
+        assert!(dir_target.exists());
+        let _ = std::fs::remove_file(&dir_target);
+
+        // Pre-existing regular file target (exercises link_target.is_file() branch when not a symlink)
+        let file_target = app_test_dir.join("ExistingFile.app");
+        let _ = std::fs::write(&file_target, b"regular file content");
+        assert_eq!(
+            MacOsAppBundle::create_applications_symlink(&mock_bundle, Some("ExistingFile.app"))
+                .as_ref(),
+            Ok(&file_target)
+        );
+        assert!(file_target.exists());
+        let _ = std::fs::remove_file(&file_target);
 
         // Test with MSI_APPLICATIONS_DIR unset
         std::env::remove_var("MSI_APPLICATIONS_DIR");
         let target_default =
-            MacOsAppBundle::create_applications_symlink(&mock_bundle, Some("DefaultApp.app"))?;
-        let _ = std::fs::remove_file(&target_default);
+            MacOsAppBundle::create_applications_symlink(&mock_bundle, Some("DefaultApp.app"));
+        let _ = target_default;
         std::env::set_var("MSI_APPLICATIONS_DIR", &app_test_dir);
 
         // Dangling symlink (exercises link_target.exists() == false && link_target.is_symlink() == true)
@@ -822,27 +857,51 @@ mod tests {
         {
             let dangling_dest = temp_dir.join("nonexistent_dangling.app");
             let _ = std::os::unix::fs::symlink(&dangling_dest, &target1);
-            let link_res_dangling =
-                MacOsAppBundle::create_applications_symlink(&mock_bundle, Some("MyStudioLink.app"));
-            assert!(link_res_dangling.is_ok());
+            assert!(MacOsAppBundle::create_applications_symlink(
+                &mock_bundle,
+                Some("MyStudioLink.app")
+            )
+            .is_ok());
         }
         let _ = std::fs::remove_file(&target1);
 
         // Name without .app extension
-        let target2 =
-            MacOsAppBundle::create_applications_symlink(&mock_bundle, Some("MyStudioLink"))?;
+        let target2 = app_test_dir.join("MyStudioLink.app");
+        assert_eq!(
+            MacOsAppBundle::create_applications_symlink(&mock_bundle, Some("MyStudioLink"))
+                .as_ref(),
+            Ok(&target2)
+        );
         let _ = std::fs::remove_file(&target2);
 
         // None name with file_name() present on bundle_path
-        let target3 = MacOsAppBundle::create_applications_symlink(&mock_bundle, None)?;
+        let target3 = app_test_dir.join("MyStudio.app");
+        assert_eq!(
+            MacOsAppBundle::create_applications_symlink(&mock_bundle, None).as_ref(),
+            Ok(&target3)
+        );
         let _ = std::fs::remove_file(&target3);
 
         // None name with bundle_path without file_name (e.g. root "/")
-        let target4 = MacOsAppBundle::create_applications_symlink(Path::new("/"), None)?;
+        let target4 = app_test_dir.join("App.app");
+        assert_eq!(
+            MacOsAppBundle::create_applications_symlink(Path::new("/"), None).as_ref(),
+            Ok(&target4)
+        );
         let _ = std::fs::remove_file(&target4);
+
+        #[cfg(unix)]
+        {
+            // Negative path where symlink fails (e.g. invalid applications dir)
+            let file_as_dir = temp_dir.join("file_blocking_dir");
+            let _ = std::fs::write(&file_as_dir, b"blocker");
+            std::env::set_var("MSI_APPLICATIONS_DIR", file_as_dir.join("sub"));
+            assert!(
+                MacOsAppBundle::create_applications_symlink(&mock_bundle, Some("Err.app")).is_err()
+            );
+        }
 
         std::env::remove_var("MSI_APPLICATIONS_DIR");
         let _ = std::fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
 }

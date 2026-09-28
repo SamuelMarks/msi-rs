@@ -735,37 +735,44 @@ mod tests {
     /// Tests `SqlDatabase` schema and typed row conversions.
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_sql_database_schema_and_row() -> Result<()> {
+    fn test_sql_database_schema_and_row() {
         let schema = sql_database_schema();
         assert_eq!(schema.name, "SqlDatabase");
         assert_eq!(schema.columns.len(), 7);
         assert_eq!(schema.primary_keys(), vec!["SqlDatabase"]);
 
-        let comp = ComponentName::new("C_Db")?;
+        let comp = ComponentName::from_static("C_Db");
 
-        let row = SqlDatabaseRow::new(
-            "OpenEdXDb",
-            "127.0.0.1",
-            Some("DEFAULT".to_string()),
-            "openedx",
-            comp.clone(),
-            Some("root_user".to_string()),
-            1,
-        )?;
+        let row = SqlDatabaseRow {
+            sql_database: "OpenEdXDb".to_string(),
+            server: "127.0.0.1".to_string(),
+            instance: Some("DEFAULT".to_string()),
+            database: "openedx".to_string(),
+            component: comp.clone(),
+            user: Some("root_user".to_string()),
+            attributes: 1,
+        };
 
         let rec = row.to_record();
         assert_eq!(rec.len(), 7);
-        let parsed = SqlDatabaseRow::from_record(&rec)?;
-        assert_eq!(parsed, row);
+        let parsed = SqlDatabaseRow::from_record(&rec);
+        assert_eq!(parsed.as_ref(), Ok(&row));
 
         // Minimal row (None branches for instance and user)
-        let row_min =
-            SqlDatabaseRow::new("MinDb", "localhost", None, "mindb", comp.clone(), None, 0)?;
+        let row_min = SqlDatabaseRow {
+            sql_database: "MinDb".to_string(),
+            server: "localhost".to_string(),
+            instance: None,
+            database: "mindb".to_string(),
+            component: comp.clone(),
+            user: None,
+            attributes: 0,
+        };
         let rec_min = row_min.to_record();
         assert_eq!(rec_min.get(2), Some(&FieldValue::Null));
         assert_eq!(rec_min.get(5), Some(&FieldValue::Null));
-        let parsed_min = SqlDatabaseRow::from_record(&rec_min)?;
-        assert_eq!(parsed_min, row_min);
+        let parsed_min = SqlDatabaseRow::from_record(&rec_min);
+        assert_eq!(parsed_min.as_ref(), Ok(&row_min));
 
         // from_record with empty string for optional fields (instance, user)
         let rec_empty_opts = Record::with_fields(vec![
@@ -777,22 +784,31 @@ mod tests {
             FieldValue::String(String::new()),
             FieldValue::Short(2),
         ]);
-        let parsed_empty_opts = SqlDatabaseRow::from_record(&rec_empty_opts)?;
-        assert_eq!(parsed_empty_opts.instance, None);
-        assert_eq!(parsed_empty_opts.user, None);
-        assert_eq!(parsed_empty_opts.attributes, 2);
+        let parsed_empty_opts = SqlDatabaseRow::from_record(&rec_empty_opts);
+        assert_eq!(
+            parsed_empty_opts.as_ref().map(|p| p.instance.as_deref()),
+            Ok(None)
+        );
+        assert_eq!(
+            parsed_empty_opts.as_ref().map(|p| p.user.as_deref()),
+            Ok(None)
+        );
+        assert_eq!(parsed_empty_opts.as_ref().map(|p| p.attributes), Ok(2));
 
         // from_record with Null user (covering line 227 _ => None branch)
         let mut rec_null_user = rec_empty_opts.clone();
         rec_null_user.set(5, FieldValue::Null);
-        let parsed_null_user = SqlDatabaseRow::from_record(&rec_null_user)?;
-        assert_eq!(parsed_null_user.user, None);
+        let parsed_null_user = SqlDatabaseRow::from_record(&rec_null_user);
+        assert_eq!(
+            parsed_null_user.as_ref().map(|p| p.user.as_deref()),
+            Ok(None)
+        );
 
         // from_record with Null attributes (fallback to 0)
         let mut rec_null_attrs = rec_empty_opts;
         rec_null_attrs.set(6, FieldValue::Null);
-        let parsed_null_attrs = SqlDatabaseRow::from_record(&rec_null_attrs)?;
-        assert_eq!(parsed_null_attrs.attributes, 0);
+        let parsed_null_attrs = SqlDatabaseRow::from_record(&rec_null_attrs);
+        assert_eq!(parsed_null_attrs.as_ref().map(|p| p.attributes), Ok(0));
 
         // Validation errors
         assert!(SqlDatabaseRow::new("", "srv", None, "db", comp.clone(), None, 0).is_err());
@@ -911,40 +927,45 @@ mod tests {
         let row_cloned = row.clone();
         assert_eq!(row_cloned, row);
         assert!(format!("{row:?}").contains("OpenEdXDb"));
-
-        Ok(())
     }
 
     /// Tests `SqlString` schema and typed row conversions.
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_sql_string_schema_and_row() -> Result<()> {
+    fn test_sql_string_schema_and_row() {
         let schema = sql_string_schema();
         assert_eq!(schema.name, "SqlString");
         assert_eq!(schema.columns.len(), 6);
         assert_eq!(schema.primary_keys(), vec!["SqlString"]);
 
-        let row = SqlStringRow::new(
-            "CreateSchema",
-            "OpenEdXDb",
-            "CREATE DATABASE IF NOT EXISTS `openedx`;",
-            Some("root_user".to_string()),
-            1,
-            Some(10),
-        )?;
+        let row = SqlStringRow {
+            sql_string: "CreateSchema".to_string(),
+            sql_database: "OpenEdXDb".to_string(),
+            sql: "CREATE DATABASE IF NOT EXISTS `openedx`;".to_string(),
+            user: Some("root_user".to_string()),
+            attributes: 1,
+            sequence: Some(10),
+        };
 
         let rec = row.to_record();
         assert_eq!(rec.len(), 6);
-        let parsed = SqlStringRow::from_record(&rec)?;
-        assert_eq!(parsed, row);
+        let parsed = SqlStringRow::from_record(&rec);
+        assert_eq!(parsed.as_ref(), Ok(&row));
 
         // Minimal row (None branches for user and sequence)
-        let row_min = SqlStringRow::new("MinSql", "Db", "SELECT 1;", None, 0, None)?;
+        let row_min = SqlStringRow {
+            sql_string: "MinSql".to_string(),
+            sql_database: "Db".to_string(),
+            sql: "SELECT 1;".to_string(),
+            user: None,
+            attributes: 0,
+            sequence: None,
+        };
         let rec_min = row_min.to_record();
         assert_eq!(rec_min.get(3), Some(&FieldValue::Null));
         assert_eq!(rec_min.get(5), Some(&FieldValue::Null));
-        let parsed_min = SqlStringRow::from_record(&rec_min)?;
-        assert_eq!(parsed_min, row_min);
+        let parsed_min = SqlStringRow::from_record(&rec_min);
+        assert_eq!(parsed_min.as_ref(), Ok(&row_min));
 
         // from_record with empty string for user
         let rec_empty_user = Record::with_fields(vec![
@@ -955,24 +976,30 @@ mod tests {
             FieldValue::Short(2),
             FieldValue::Short(5),
         ]);
-        let parsed_empty_user = SqlStringRow::from_record(&rec_empty_user)?;
-        assert_eq!(parsed_empty_user.user, None);
-        assert_eq!(parsed_empty_user.attributes, 2);
-        assert_eq!(parsed_empty_user.sequence, Some(5));
+        let parsed_empty_user = SqlStringRow::from_record(&rec_empty_user);
+        assert_eq!(
+            parsed_empty_user.as_ref().map(|p| p.user.as_deref()),
+            Ok(None)
+        );
+        assert_eq!(parsed_empty_user.as_ref().map(|p| p.attributes), Ok(2));
+        assert_eq!(parsed_empty_user.as_ref().map(|p| p.sequence), Ok(Some(5)));
 
         // from_record with Null user (covering line 430 _ => None branch)
         let mut rec_null_user = rec_empty_user.clone();
         rec_null_user.set(3, FieldValue::Null);
-        let parsed_null_user = SqlStringRow::from_record(&rec_null_user)?;
-        assert_eq!(parsed_null_user.user, None);
+        let parsed_null_user = SqlStringRow::from_record(&rec_null_user);
+        assert_eq!(
+            parsed_null_user.as_ref().map(|p| p.user.as_deref()),
+            Ok(None)
+        );
 
         // from_record with Null attributes and Null sequence
         let mut rec_null_attrs = rec_empty_user;
         rec_null_attrs.set(4, FieldValue::Null);
         rec_null_attrs.set(5, FieldValue::Null);
-        let parsed_null_attrs = SqlStringRow::from_record(&rec_null_attrs)?;
-        assert_eq!(parsed_null_attrs.attributes, 0);
-        assert_eq!(parsed_null_attrs.sequence, None);
+        let parsed_null_attrs = SqlStringRow::from_record(&rec_null_attrs);
+        assert_eq!(parsed_null_attrs.as_ref().map(|p| p.attributes), Ok(0));
+        assert_eq!(parsed_null_attrs.as_ref().map(|p| p.sequence), Ok(None));
 
         // Validation errors
         assert!(SqlStringRow::new("", "Db", "SQL", None, 0, None).is_err());
@@ -1058,54 +1085,52 @@ mod tests {
         let row_cloned = row.clone();
         assert_eq!(row_cloned, row);
         assert!(format!("{row:?}").contains("CreateSchema"));
-
-        Ok(())
     }
 
     /// Tests `SqlScript` schema and typed row conversions.
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_sql_script_schema_and_row() -> Result<()> {
+    fn test_sql_script_schema_and_row() {
         let schema = sql_script_schema();
         assert_eq!(schema.name, "SqlScript");
         assert_eq!(schema.columns.len(), 7);
         assert_eq!(schema.primary_keys(), vec!["SqlScript"]);
 
-        let comp = ComponentName::new("C_Db")?;
+        let comp = ComponentName::from_static("C_Db");
 
-        let row = SqlScriptRow::new(
-            "InitScript",
-            "OpenEdXDb",
-            comp.clone(),
-            "[#schema.sql]",
-            None,
-            0,
-            Some(1),
-        )?;
+        let row = SqlScriptRow {
+            sql_script: "InitScript".to_string(),
+            sql_database: "OpenEdXDb".to_string(),
+            component: comp.clone(),
+            script_file: "[#schema.sql]".to_string(),
+            user: None,
+            attributes: 0,
+            sequence: Some(1),
+        };
 
         let rec = row.to_record();
         assert_eq!(rec.len(), 7);
-        let parsed = SqlScriptRow::from_record(&rec)?;
-        assert_eq!(parsed, row);
+        let parsed = SqlScriptRow::from_record(&rec);
+        assert_eq!(parsed.as_ref(), Ok(&row));
 
         // Row with user present (Some branch for user in to_record)
-        let row_with_user = SqlScriptRow::new(
-            "ScriptUser",
-            "OpenEdXDb",
-            comp.clone(),
-            "file.sql",
-            Some("admin".to_string()),
-            1,
-            None,
-        )?;
+        let row_with_user = SqlScriptRow {
+            sql_script: "ScriptUser".to_string(),
+            sql_database: "OpenEdXDb".to_string(),
+            component: comp.clone(),
+            script_file: "file.sql".to_string(),
+            user: Some("admin".to_string()),
+            attributes: 1,
+            sequence: None,
+        };
         let rec_user = row_with_user.to_record();
         assert_eq!(
             rec_user.get(4),
             Some(&FieldValue::String("admin".to_string()))
         );
         assert_eq!(rec_user.get(6), Some(&FieldValue::Null));
-        let parsed_user = SqlScriptRow::from_record(&rec_user)?;
-        assert_eq!(parsed_user, row_with_user);
+        let parsed_user = SqlScriptRow::from_record(&rec_user);
+        assert_eq!(parsed_user.as_ref(), Ok(&row_with_user));
 
         // from_record with empty user, Short attributes, Short sequence
         let rec_empty_user = Record::with_fields(vec![
@@ -1117,24 +1142,30 @@ mod tests {
             FieldValue::Short(4),
             FieldValue::Short(8),
         ]);
-        let parsed_empty_user = SqlScriptRow::from_record(&rec_empty_user)?;
-        assert_eq!(parsed_empty_user.user, None);
-        assert_eq!(parsed_empty_user.attributes, 4);
-        assert_eq!(parsed_empty_user.sequence, Some(8));
+        let parsed_empty_user = SqlScriptRow::from_record(&rec_empty_user);
+        assert_eq!(
+            parsed_empty_user.as_ref().map(|p| p.user.as_deref()),
+            Ok(None)
+        );
+        assert_eq!(parsed_empty_user.as_ref().map(|p| p.attributes), Ok(4));
+        assert_eq!(parsed_empty_user.as_ref().map(|p| p.sequence), Ok(Some(8)));
 
         // from_record with Null user (covering line 654 _ => None branch)
         let mut rec_null_user = rec_empty_user.clone();
         rec_null_user.set(4, FieldValue::Null);
-        let parsed_null_user = SqlScriptRow::from_record(&rec_null_user)?;
-        assert_eq!(parsed_null_user.user, None);
+        let parsed_null_user = SqlScriptRow::from_record(&rec_null_user);
+        assert_eq!(
+            parsed_null_user.as_ref().map(|p| p.user.as_deref()),
+            Ok(None)
+        );
 
         // from_record with Null attributes and Null sequence
         let mut rec_null = rec_empty_user;
         rec_null.set(5, FieldValue::Null);
         rec_null.set(6, FieldValue::Null);
-        let parsed_null = SqlScriptRow::from_record(&rec_null)?;
-        assert_eq!(parsed_null.attributes, 0);
-        assert_eq!(parsed_null.sequence, None);
+        let parsed_null = SqlScriptRow::from_record(&rec_null);
+        assert_eq!(parsed_null.as_ref().map(|p| p.attributes), Ok(0));
+        assert_eq!(parsed_null.as_ref().map(|p| p.sequence), Ok(None));
 
         // Validation errors
         assert!(SqlScriptRow::new("", "Db", comp.clone(), "f.sql", None, 0, None).is_err());
@@ -1251,7 +1282,5 @@ mod tests {
         let row_cloned = row.clone();
         assert_eq!(row_cloned, row);
         assert!(format!("{row:?}").contains("InitScript"));
-
-        Ok(())
     }
 }

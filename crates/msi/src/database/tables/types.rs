@@ -131,6 +131,11 @@ fn compute_sha1(data: &[u8]) -> [u8; 20] {
     out
 }
 
+/// Standard `LibScript` and `WiX` root namespace UUID bytes (`6ba7b810-9dad-11d1-80b4-00c04fd430c8`).
+pub const LIBSCRIPT_ROOT_NAMESPACE_GUID: [u8; 16] = [
+    0x6b, 0xa7, 0xb8, 0x10, 0x9d, 0xad, 0x11, 0xd1, 0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8,
+];
+
 /// Strongly-typed Component GUID (e.g. `{12345678-1234-1234-1234-1234567890AB}`).
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ComponentGuid(String);
@@ -151,6 +156,45 @@ impl ComponentGuid {
         let s = normalize_guid(&guid.into());
         validate_guid(&s, "ComponentGuid")?;
         Ok(Self(s))
+    }
+
+    /// Generates a deterministic RFC-4122 version 5 UUID from a 16-byte namespace GUID and name string.
+    ///
+    /// Follows RFC 4122 section 4.3 using SHA-1 over namespace bytes concatenated with resource name.
+    ///
+    /// # Arguments
+    ///
+    /// * `namespace_bytes` - 16-byte namespace identifier (e.g. [`LIBSCRIPT_ROOT_NAMESPACE_GUID`]).
+    /// * `name` - Resource name string.
+    ///
+    /// # Returns
+    ///
+    /// A deterministic [`ComponentGuid`].
+    ///
+    /// # Panics
+    ///
+    /// This function does not panic.
+    #[must_use]
+    pub fn generate_rfc4122_v5(namespace_bytes: &[u8; 16], name: &str) -> Self {
+        let mut input = Vec::with_capacity(16 + name.len());
+        input.extend_from_slice(namespace_bytes);
+        input.extend_from_slice(name.as_bytes());
+
+        let mut digest = compute_sha1(&input);
+        // RFC 4122 version 5 (SHA-1 name based): set top 4 bits of octet 6 to 0101 (5)
+        digest[6] = (digest[6] & 0x0F) | 0x50;
+        // RFC 4122 variant: set top 2 bits of octet 8 to 10
+        digest[8] = (digest[8] & 0x3F) | 0x80;
+
+        let formatted = format!(
+            "{{{:02X}{:02X}{:02X}{:02X}-{:02X}{:02X}-{:02X}{:02X}-{:02X}{:02X}-{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}}}",
+            digest[0], digest[1], digest[2], digest[3],
+            digest[4], digest[5],
+            digest[6], digest[7],
+            digest[8], digest[9],
+            digest[10], digest[11], digest[12], digest[13], digest[14], digest[15]
+        );
+        Self(formatted)
     }
 
     /// Generates a deterministic RFC-4122 v5 UUID based on namespace and name strings.

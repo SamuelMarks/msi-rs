@@ -61,7 +61,7 @@ impl MsiBuildOptions {
     ///
     /// Returns error string on missing arguments or target files.
     pub fn parse(args: &[String]) -> Result<Self, String> {
-        if args.is_empty() {
+        if args.is_empty() || args[0].starts_with('-') {
             return Err(
                 "missing arguments. Usage: msibuild <msi> [-a <stream> <file>] [-s <stream>]"
                     .to_string(),
@@ -244,6 +244,7 @@ mod tests {
 
         // 1. Parse errors
         assert_eq!(run(&[]), 1);
+        assert_eq!(run(&["-a".to_string()]), 1);
         assert_eq!(
             run(&[msi_file.to_string_lossy().to_string(), "-a".to_string()]),
             1

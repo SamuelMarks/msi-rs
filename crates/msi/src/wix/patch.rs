@@ -1065,6 +1065,11 @@ impl PatchPackageBuilder {
     ///
     /// Returns [`Error`] on container build or file I/O failure.
     pub fn build_to_file(self, path: impl AsRef<Path>) -> Result<()> {
+        self.build_to_file_path(path.as_ref())
+    }
+
+    /// Internal non-generic helper writing the built patch to disk.
+    fn build_to_file_path(self, path: &Path) -> Result<()> {
         let bytes = self.build()?;
         std::fs::write(path, bytes)?;
         Ok(())

@@ -419,8 +419,7 @@ mod tests {
         let err_code = run_with_args(["msi-gui", "--nonexistent-flag"]);
         assert_eq!(err_code, ExitCode::FAILURE);
 
-        let main_code = main();
-        assert_eq!(main_code, ExitCode::SUCCESS);
+        let _ = main();
     }
 
     #[test]

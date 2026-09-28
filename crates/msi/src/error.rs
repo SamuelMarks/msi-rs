@@ -1,5 +1,6 @@
 //! Error types and results for the MSI library.
 
+use crate::platform::paths::TargetOs;
 use derive_more::{Display, Error};
 
 /// Primary error enum for all MSI operations.
@@ -525,6 +526,17 @@ pub enum Error {
         /// Operating system or architecture name.
         platform: String,
         /// Reason the operation is not supported.
+        reason: String,
+    },
+
+    /// A feature or operation is unsupported on the target operating system.
+    #[display("Feature '{feature}' is unsupported on target OS {target_os:?}: {reason}")]
+    UnsupportedPlatformFeature {
+        /// Name of the unsupported MSI feature or action.
+        feature: String,
+        /// Target operating system where the feature is unsupported.
+        target_os: TargetOs,
+        /// Concrete technical reason why the feature makes no sense on this OS.
         reason: String,
     },
 
@@ -1124,6 +1136,16 @@ mod tests {
         assert_eq!(
             format!("{err_unsupported_plat}"),
             "Unsupported platform 'Windows PE': Wine not found"
+        );
+
+        let err_unsupported_plat_feat = Error::UnsupportedPlatformFeature {
+            feature: "KernelDriver".to_string(),
+            target_os: TargetOs::SunOs,
+            reason: "Windows NT kernel driver service is not supported on illumos".to_string(),
+        };
+        assert_eq!(
+            format!("{err_unsupported_plat_feat}"),
+            "Feature 'KernelDriver' is unsupported on target OS SunOs: Windows NT kernel driver service is not supported on illumos"
         );
 
         let err_gui = Error::GuiError {

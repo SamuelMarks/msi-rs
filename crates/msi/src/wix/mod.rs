@@ -9,6 +9,7 @@
 pub mod bundle;
 pub mod compiler;
 pub mod harvest;
+pub mod ice;
 pub mod linker;
 pub mod localization;
 pub mod manifest;
@@ -50,7 +51,7 @@ pub use ui_library::{
 };
 pub use wixlib::WixLibrary;
 pub use wixobj::{
-    IntermediateSection, IntermediateTable, Reference, SectionType, Symbol, WixObject,
+    IntermediateSection, IntermediateTable, Reference, SectionType, SourceSpan, Symbol, WixObject,
     WIXOBJ_MAGIC, WIXOBJ_VERSION,
 };
 pub use xml::{XmlNode, XmlParser};

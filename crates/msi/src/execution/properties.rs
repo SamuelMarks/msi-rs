@@ -950,45 +950,43 @@ mod tests {
     }
 
     #[test]
-    fn test_formatted_string() -> Result<()> {
+    fn test_formatted_string() {
         let mut ctx = EvaluationContext::new();
         ctx.set_property("ProductName", "Acme Widget");
         ctx.set_file_path("MainExe", r"C:\Program Files\Acme\widget.exe");
         ctx.set_component_dir("MainComp", r"C:\Program Files\Acme");
 
-        let res =
-            ctx.format_string("Installing [ProductName] to [$MainComp] (binary: [#MainExe])")?;
+        let res = ctx.format_string("Installing [ProductName] to [$MainComp] (binary: [#MainExe])");
         assert_eq!(
             res,
-            r"Installing Acme Widget to C:\Program Files\Acme (binary: C:\Program Files\Acme\widget.exe)"
+            Ok(r"Installing Acme Widget to C:\Program Files\Acme (binary: C:\Program Files\Acme\widget.exe)".to_string())
         );
 
         // Escape test
-        let esc = ctx.format_string(r"Escaped: [\[]bracket[\]] and [\{]brace[\}]")?;
-        assert_eq!(esc, "Escaped: [bracket] and {brace}");
+        let esc = ctx.format_string(r"Escaped: [\[]bracket[\]] and [\{]brace[\}]");
+        assert_eq!(esc, Ok("Escaped: [bracket] and {brace}".to_string()));
 
         // Individual escapes test
-        let esc_rb = ctx.format_string(r"[\]]")?;
-        assert_eq!(esc_rb, "]");
-        let esc_rbr = ctx.format_string(r"[\}]")?;
-        assert_eq!(esc_rbr, "}");
+        let esc_rb = ctx.format_string(r"[\]]");
+        assert_eq!(esc_rb, Ok("]".to_string()));
+        let esc_rbr = ctx.format_string(r"[\}]");
+        assert_eq!(esc_rbr, Ok("}".to_string()));
 
         // Non-matching escapes and missing keys
         let missing = ctx.format_string(
             "Missing: [#MissingFile] [$MissingComp] [%MISSING_ENV_VAR] [MissingProp]",
-        )?;
-        assert_eq!(missing, "Missing:    ");
+        );
+        assert_eq!(missing, Ok("Missing:    ".to_string()));
 
         // Trailing backslash inside bracket
         assert!(ctx.format_string(r"Bad [Prop\]").is_err());
         assert!(ctx.format_string(r"Bad [Prop\").is_err());
 
         assert!(ctx.format_string("Unclosed [Prop").is_err());
-        Ok(())
     }
 
     #[test]
-    fn test_condition_evaluation() -> Result<()> {
+    fn test_condition_evaluation() {
         let mut ctx = EvaluationContext::new();
         ctx.set_property("VersionNT", "601");
         ctx.set_property("ACTION", "INSTALL");
@@ -999,70 +997,78 @@ mod tests {
         ctx.set_component_installed("CompB", InstallState::Local);
 
         // Test feature and component symbols at end-of-string to cover while loops terminating at chars.len()
-        assert!(ctx.evaluate_condition("&MainFeature")?);
-        assert!(ctx.evaluate_condition("!OldFeature")?);
-        assert!(ctx.evaluate_condition("$CompA")?);
-        assert!(ctx.evaluate_condition("?CompB")?);
+        assert_eq!(ctx.evaluate_condition("&MainFeature"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("!OldFeature"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("$CompA"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("?CompB"), Ok(true));
 
         // Test feature and component symbols starting with and containing underscores
         ctx.set_feature_action("_F_1", InstallState::Local);
         ctx.set_feature_installed("_F_2", InstallState::Local);
         ctx.set_component_action("_C_1", InstallState::Local);
         ctx.set_component_installed("_C_2", InstallState::Local);
-        assert!(ctx.evaluate_condition("&_F_1")?);
-        assert!(ctx.evaluate_condition("!_F_2")?);
-        assert!(ctx.evaluate_condition("$_C_1")?);
-        assert!(ctx.evaluate_condition("?_C_2")?);
+        assert_eq!(ctx.evaluate_condition("&_F_1"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("!_F_2"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("$_C_1"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("?_C_2"), Ok(true));
 
         // Test isolated '!' at end-of-string (i + 1 < chars.len() is false)
         assert!(ctx.evaluate_condition("1 = 1 AND !").is_err());
 
         // Test bitwise operators followed by non-alphanumeric (such as space or digit)
-        assert!(ctx.evaluate_condition("5 & 1")?);
-        assert!(!ctx.evaluate_condition("4 & 1")?);
+        assert_eq!(ctx.evaluate_condition("5 & 1"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("4 & 1"), Ok(false));
 
         // Test logical NOT followed by non-alphanumeric or space
-        assert!(ctx.evaluate_condition("NOT 0")?);
-        assert!(ctx.evaluate_condition("! 0")?);
+        assert_eq!(ctx.evaluate_condition("NOT 0"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("! 0"), Ok(true));
 
         // Test unterminated string literal in condition (i < chars.len() is false at quote check)
         assert!(ctx.evaluate_condition("\"unterminated").is_ok());
         ctx.set_feature_installed("MainFeature", InstallState::Absent);
 
-        assert!(ctx.evaluate_condition("")?);
-        assert!(ctx.evaluate_condition(r#"VersionNT >= 600 AND ACTION = "INSTALL""#)?);
-        assert!(ctx.evaluate_condition("NOT (VersionNT < 500)")?);
-        assert!(ctx.evaluate_condition("! VersionNT < 500")?);
-        assert!(ctx.evaluate_condition(r#"FEATURE_STATE ~= "enabled""#)?);
-        assert!(ctx.evaluate_condition(r#"ACTION >< "NST""#)?);
-        assert!(ctx.evaluate_condition(r#"ACTION << "IN""#)?);
-        assert!(ctx.evaluate_condition(r#"ACTION >> "ALL""#)?);
-        assert!(ctx.evaluate_condition("&MainFeature = 3 AND !MainFeature = 2")?);
+        assert_eq!(ctx.evaluate_condition(""), Ok(true));
+        assert_eq!(
+            ctx.evaluate_condition(r#"VersionNT >= 600 AND ACTION = "INSTALL""#),
+            Ok(true)
+        );
+        assert_eq!(ctx.evaluate_condition("NOT (VersionNT < 500)"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("! VersionNT < 500"), Ok(true));
+        assert_eq!(
+            ctx.evaluate_condition(r#"FEATURE_STATE ~= "enabled""#),
+            Ok(true)
+        );
+        assert_eq!(ctx.evaluate_condition(r#"ACTION >< "NST""#), Ok(true));
+        assert_eq!(ctx.evaluate_condition(r#"ACTION << "IN""#), Ok(true));
+        assert_eq!(ctx.evaluate_condition(r#"ACTION >> "ALL""#), Ok(true));
+        assert_eq!(
+            ctx.evaluate_condition("&MainFeature = 3 AND !MainFeature = 2"),
+            Ok(true)
+        );
 
         // Bitwise test
         ctx.set_property("FLAGS", "5");
-        assert!(ctx.evaluate_condition("FLAGS & 4")?);
-        assert!(!ctx.evaluate_condition("FLAGS & 2")?);
+        assert_eq!(ctx.evaluate_condition("FLAGS & 4"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("FLAGS & 2"), Ok(false));
 
         // Logical XOR
-        assert!(ctx.evaluate_condition("1 XOR 0")?);
-        assert!(!ctx.evaluate_condition("1 XOR 1")?);
+        assert_eq!(ctx.evaluate_condition("1 XOR 0"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("1 XOR 1"), Ok(false));
 
         // Logical OR combinations
-        assert!(ctx.evaluate_condition("0 OR 1")?);
-        assert!(ctx.evaluate_condition("1 OR 0")?);
-        assert!(!ctx.evaluate_condition("0 OR 0")?);
+        assert_eq!(ctx.evaluate_condition("0 OR 1"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("1 OR 0"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("0 OR 0"), Ok(false));
 
         // Standalone bitwise and symbols at end of expression or before operator
-        assert!(ctx.evaluate_condition("FLAGS & 4")?);
-        assert!(!ctx.evaluate_condition("! 1")?);
-        assert!(ctx.evaluate_condition("! 0")?);
-
-        Ok(())
+        assert_eq!(ctx.evaluate_condition("FLAGS & 4"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("! 1"), Ok(false));
+        assert_eq!(ctx.evaluate_condition("! 0"), Ok(true));
     }
 
     #[test]
-    fn test_condition_evaluation_extended() -> Result<()> {
+    #[allow(clippy::too_many_lines)]
+    fn test_condition_evaluation_extended() {
         let mut ctx = EvaluationContext::new();
         ctx.set_property("VersionNT", "601");
         ctx.set_property("FLAGS", "5");
@@ -1070,51 +1076,60 @@ mod tests {
         // Component state symbols ($Component and ?Component)
         ctx.set_component_action("Comp1", InstallState::Local);
         ctx.set_component_installed("Comp1", InstallState::Source);
-        assert!(ctx.evaluate_condition("$Comp1 = 3")?);
-        assert!(ctx.evaluate_condition("?Comp1 = 4")?);
+        assert_eq!(ctx.evaluate_condition("$Comp1 = 3"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("?Comp1 = 4"), Ok(true));
 
         // Unset component and feature states fallback to InstallState::Absent (2)
-        assert!(ctx.evaluate_condition("$UnsetComp = 2")?);
-        assert!(ctx.evaluate_condition("?UnsetComp = 2")?);
-        assert!(ctx.evaluate_condition("&UnsetFeat = 2")?);
-        assert!(ctx.evaluate_condition("!UnsetFeat = 2")?);
+        assert_eq!(ctx.evaluate_condition("$UnsetComp = 2"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("?UnsetComp = 2"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("&UnsetFeat = 2"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("!UnsetFeat = 2"), Ok(true));
 
         // Relational comparisons
-        assert!(ctx.evaluate_condition("10 < 20")?);
-        assert!(ctx.evaluate_condition("20 > 10")?);
-        assert!(ctx.evaluate_condition("10 <= 10")?);
-        assert!(ctx.evaluate_condition("10 >= 10")?);
-        assert!(ctx.evaluate_condition("10 <> 20")?);
-        assert!(ctx.evaluate_condition("FLAGS | 2")?);
+        assert_eq!(ctx.evaluate_condition("10 < 20"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("20 > 10"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("10 <= 10"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("10 >= 10"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("10 <> 20"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("FLAGS | 2"), Ok(true));
 
         // String non-integer comparisons for all operators
-        assert!(!ctx.evaluate_condition("10 >< 20")?);
-        assert!(!ctx.evaluate_condition(r#""a" & "b""#)?);
-        assert!(ctx.evaluate_condition(r#""a" <> "b""#)?);
-        assert!(ctx.evaluate_condition(r#""a" <= "b""#)?);
-        assert!(ctx.evaluate_condition(r#""b" >= "a""#)?);
-        assert!(ctx.evaluate_condition(r#""apple" < "banana""#)?);
-        assert!(ctx.evaluate_condition(r#""banana" > "apple""#)?);
-        assert!(ctx.evaluate_condition(r#""APPLE" ~< "banana""#)?);
-        assert!(ctx.evaluate_condition(r#""banana" ~> "apple""#)?);
-        assert!(!ctx.evaluate_condition(r#""apple" ~> "banana""#)?);
-        assert!(ctx.evaluate_condition(r#""banana" ~> "APPLE""#)?);
-        assert!(ctx.evaluate_condition(r#""APPLE" ~<= "apple""#)?);
-        assert!(ctx.evaluate_condition(r#""APPLE" ~>= "apple""#)?);
-        assert!(ctx.evaluate_condition(r#""APPLE" ~<> "orange""#)?);
-        assert!(ctx.evaluate_condition(r#""hello world" ~>< "WORLD""#)?);
-        assert!(ctx.evaluate_condition(r#""hello world" ~<< "HELLO""#)?);
-        assert!(ctx.evaluate_condition(r#""hello world" ~>> "WORLD""#)?);
+        assert_eq!(ctx.evaluate_condition("10 >< 20"), Ok(false));
+        assert_eq!(ctx.evaluate_condition(r#""a" & "b""#), Ok(false));
+        assert_eq!(ctx.evaluate_condition(r#""a" <> "b""#), Ok(true));
+        assert_eq!(ctx.evaluate_condition(r#""a" <= "b""#), Ok(true));
+        assert_eq!(ctx.evaluate_condition(r#""b" >= "a""#), Ok(true));
+        assert_eq!(ctx.evaluate_condition(r#""apple" < "banana""#), Ok(true));
+        assert_eq!(ctx.evaluate_condition(r#""banana" > "apple""#), Ok(true));
+        assert_eq!(ctx.evaluate_condition(r#""APPLE" ~< "banana""#), Ok(true));
+        assert_eq!(ctx.evaluate_condition(r#""banana" ~> "apple""#), Ok(true));
+        assert_eq!(ctx.evaluate_condition(r#""apple" ~> "banana""#), Ok(false));
+        assert_eq!(ctx.evaluate_condition(r#""banana" ~> "APPLE""#), Ok(true));
+        assert_eq!(ctx.evaluate_condition(r#""APPLE" ~<= "apple""#), Ok(true));
+        assert_eq!(ctx.evaluate_condition(r#""APPLE" ~>= "apple""#), Ok(true));
+        assert_eq!(ctx.evaluate_condition(r#""APPLE" ~<> "orange""#), Ok(true));
+        assert_eq!(
+            ctx.evaluate_condition(r#""hello world" ~>< "WORLD""#),
+            Ok(true)
+        );
+        assert_eq!(
+            ctx.evaluate_condition(r#""hello world" ~<< "HELLO""#),
+            Ok(true)
+        );
+        assert_eq!(
+            ctx.evaluate_condition(r#""hello world" ~>> "WORLD""#),
+            Ok(true)
+        );
 
         // Truthiness
-        assert!(ctx.evaluate_condition("VersionNT")?);
-        assert!(!ctx.evaluate_condition("0")?);
-        assert!(ctx.evaluate_condition(r#""non_numeric_string""#)?);
+        assert_eq!(ctx.evaluate_condition("VersionNT"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("0"), Ok(false));
+        assert_eq!(ctx.evaluate_condition(r#""non_numeric_string""#), Ok(true));
 
         // Environment variable in format_string
         std::env::set_var("MSI_TEST_VAR", "TestVal");
-        let formatted_env = ctx.format_string("[%MSI_TEST_VAR]")?;
-        assert_eq!(formatted_env, "TestVal");
+        let formatted_env = ctx.format_string("[%MSI_TEST_VAR]");
+        assert_eq!(formatted_env, Ok("TestVal".to_string()));
 
         // InstallState conversions
         assert_eq!(InstallState::from_i32(2), Some(InstallState::Absent));
@@ -1125,19 +1140,19 @@ mod tests {
 
         // Feature and component identifiers at end of string
         ctx.set_feature_action("MainFeature", InstallState::Local);
-        assert!(ctx.evaluate_condition("&MainFeature")?);
-        assert!(ctx.evaluate_condition("!MainFeature")?);
-        assert!(ctx.evaluate_condition("$Comp1")?);
-        assert!(ctx.evaluate_condition("?Comp1")?);
+        assert_eq!(ctx.evaluate_condition("&MainFeature"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("!MainFeature"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("$Comp1"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("?Comp1"), Ok(true));
 
         // Standalone prefix symbols
         assert!(ctx.evaluate_condition("&").is_err());
-        assert!(ctx.evaluate_condition("$")?);
-        assert!(ctx.evaluate_condition("?")?);
+        assert_eq!(ctx.evaluate_condition("$"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("?"), Ok(true));
 
         // Standalone ~ and unknown operator starting with ~
-        assert!(ctx.evaluate_condition("~")?);
-        assert!(ctx.evaluate_condition("~?")?);
+        assert_eq!(ctx.evaluate_condition("~"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("~?"), Ok(true));
 
         // Trailing comparison operators at EOF (syntax errors covering EOF branch)
         assert!(ctx.evaluate_condition("1 <").is_err());
@@ -1155,13 +1170,11 @@ mod tests {
         assert!(ctx.evaluate_condition("1 = =").is_err());
 
         // Unclosed quotes
-        assert!(ctx.evaluate_condition(r#""unclosed quote"#)?);
+        assert_eq!(ctx.evaluate_condition(r#""unclosed quote"#), Ok(true));
 
         // Syntax error
         assert!(ctx.evaluate_condition("(VersionNT = 601").is_err());
         assert!(ctx.evaluate_condition("(=").is_err());
         assert!(ctx.evaluate_condition("=").is_err());
-
-        Ok(())
     }
 }

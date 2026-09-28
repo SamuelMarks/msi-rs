@@ -176,6 +176,7 @@ fn test_harvest_payload_end_to_end_linking() -> Result<()> {
         manifest_file: Some(manifest_file.clone()),
         output_dir: Some(out_dir.clone()),
         include_cache: None,
+        include_msi: false,
     };
 
     let result = harvester.harvest_payload(&repo_dir, &options)?;

@@ -14,7 +14,7 @@
 //!   - High-contrast focus ring rendering (`Color32::FOCUS_RING`).
 //!   - Screen reader accessibility integration via `AccessKit` node tree publishing.
 
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::ui::controls::{ControlDefinition, ControlType};
 use crate::ui::engine::UiEngine;
 use crate::ui::events::DialogReturnCode;
@@ -196,6 +196,156 @@ pub enum GuiInputEvent {
         /// Number of lines to scroll (positive down, negative up).
         delta_lines: i32,
     },
+    /// Directory/file chosen from native browse dialog.
+    BrowsePath {
+        /// Target control name or bound directory property.
+        control_or_property: String,
+        /// Selected path string.
+        selected_path: String,
+    },
+}
+
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::thread::{self, JoinHandle};
+
+/// Real-time progress tick streamed from the background transaction worker to the UI.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TransactionProgressTick {
+    /// Percentage complete (0..=100) mapped to `ProgressBar`.
+    pub percent: u32,
+    /// Estimated time remaining in seconds, if available.
+    pub time_remaining_secs: Option<u64>,
+    /// Step 1 progress unit (e.g. current component or file count).
+    pub progress1: u32,
+    /// Step 2 progress unit (e.g. total component or file count).
+    pub progress2: u32,
+    /// Human-readable `ActionText` ticker message describing current installation action.
+    pub action_text: String,
+}
+
+/// Commands sent from the UI thread to control the background transaction worker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TransactionWorkerCommand {
+    /// Request worker to cancel transaction and unwind rollback script.
+    Cancel,
+}
+
+/// Background transaction worker executing installation pipelines on a separate thread.
+#[derive(Debug)]
+pub struct BackgroundTransactionWorker {
+    /// Channel receiver for progress ticks streamed from the transaction thread.
+    progress_rx: Receiver<TransactionProgressTick>,
+    /// Channel sender to send control commands (e.g. Cancel) to worker.
+    command_tx: Sender<TransactionWorkerCommand>,
+    /// Join handle for the worker background thread.
+    worker_handle: Option<JoinHandle<Result<bool>>>,
+    /// Latest action ticker text received.
+    current_action_text: String,
+    /// Latest progress percentage.
+    current_percent: u32,
+    /// Whether cancellation has been signaled.
+    cancelled: bool,
+}
+
+impl BackgroundTransactionWorker {
+    /// Spawns a background worker thread executing a transactional task.
+    ///
+    /// # Arguments
+    ///
+    /// * `task` - Closure executing the transaction while checking for cancellation.
+    ///
+    /// # Returns
+    ///
+    /// Configured [`BackgroundTransactionWorker`].
+    pub fn spawn<F>(task: F) -> Self
+    where
+        F: FnOnce(
+                Sender<TransactionProgressTick>,
+                Receiver<TransactionWorkerCommand>,
+            ) -> Result<bool>
+            + Send
+            + 'static,
+    {
+        let (tick_tx, tick_rx) = channel();
+        let (cmd_tx, cmd_rx) = channel();
+
+        let handle = thread::spawn(move || task(tick_tx, cmd_rx));
+
+        Self {
+            progress_rx: tick_rx,
+            command_tx: cmd_tx,
+            worker_handle: Some(handle),
+            current_action_text: String::new(),
+            current_percent: 0,
+            cancelled: false,
+        }
+    }
+
+    /// Polls non-blocking for progress updates and updates internal state.
+    ///
+    /// # Returns
+    ///
+    /// Latest [`TransactionProgressTick`] if a new tick was received.
+    pub fn poll_progress(&mut self) -> Option<TransactionProgressTick> {
+        let mut latest = None;
+        while let Ok(tick) = self.progress_rx.try_recv() {
+            self.current_percent = tick.percent;
+            self.current_action_text.clone_from(&tick.action_text);
+            latest = Some(tick);
+        }
+        latest
+    }
+
+    /// Sends a cancel request to the background worker thread.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] if command dispatch fails.
+    pub fn request_cancel(&mut self) -> Result<()> {
+        self.cancelled = true;
+        self.command_tx
+            .send(TransactionWorkerCommand::Cancel)
+            .map_err(|e| Error::WorkerIpcError {
+                reason: format!("Failed to send cancel command to worker thread: {e}"),
+            })
+    }
+
+    /// Checks whether cancellation was requested.
+    #[must_use]
+    pub const fn is_cancelled(&self) -> bool {
+        self.cancelled
+    }
+
+    /// Returns the current progress percentage.
+    #[must_use]
+    pub const fn current_percent(&self) -> u32 {
+        self.current_percent
+    }
+
+    /// Returns the current `ActionText` ticker string.
+    #[must_use]
+    pub fn current_action_text(&self) -> &str {
+        &self.current_action_text
+    }
+
+    /// Waits for the background worker thread to finish execution and returns the outcome.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(true)` if transaction committed successfully, `Ok(false)` if cancelled/rolled back.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] if the worker task failed or panicked.
+    pub fn join(mut self) -> Result<bool> {
+        if let Some(handle) = self.worker_handle.take() {
+            handle.join().map_err(|_| Error::WorkerIpcError {
+                reason: "Transaction worker thread panicked".to_string(),
+            })?
+        } else {
+            Ok(false)
+        }
+    }
 }
 
 /// Lifecycle events of a desktop GUI window.
@@ -713,6 +863,28 @@ impl GuiDesktopRuntime {
                 self.engine.click_control(&active_dlg, &group)
             }
             GuiInputEvent::Scroll { .. } => Ok(None),
+            GuiInputEvent::BrowsePath {
+                control_or_property,
+                selected_path,
+            } => {
+                // If control exists in active dialog, update its value; also update property directly
+                if self
+                    .engine
+                    .get_control_state(&active_dlg, &control_or_property)
+                    .is_some()
+                {
+                    self.engine.update_control_value(
+                        &active_dlg,
+                        &control_or_property,
+                        &selected_path,
+                    )?;
+                } else {
+                    self.engine
+                        .context_mut()
+                        .set_property(&control_or_property, &selected_path);
+                }
+                Ok(None)
+            }
         }
     }
 
@@ -1959,5 +2131,128 @@ mod tests {
                 control: "LogCheck".to_string(),
             }])
             .is_err());
+
+        // 3. Test GuiInputEvent::BrowsePath
+        let browse_engine = create_test_engine();
+        let mut browse_runtime = GuiDesktopRuntime::new(
+            browse_engine,
+            WizardTheme::mondo(),
+            GuiHardwareBackend::SoftbufferHeadlessRasterizer,
+        );
+        // BrowsePath targeting existing control
+        assert_eq!(
+            browse_runtime.process_event(GuiInputEvent::BrowsePath {
+                control_or_property: "NextButton".to_string(),
+                selected_path: "/opt/custom".to_string(),
+            }),
+            Ok(None)
+        );
+        // BrowsePath targeting existing control with error in condition evaluation
+        let err_cond_browse = crate::ui::events::ControlCondition {
+            dialog: "WelcomeDlg".to_string(),
+            control: "NextButton".to_string(),
+            action: crate::ui::events::ControlConditionAction::Enable,
+            condition: "INVALID ===".to_string(),
+        };
+        browse_runtime.engine_mut().add_condition(err_cond_browse);
+        assert!(browse_runtime
+            .process_event(GuiInputEvent::BrowsePath {
+                control_or_property: "NextButton".to_string(),
+                selected_path: "/opt/fail".to_string(),
+            })
+            .is_err());
+        // BrowsePath targeting property directly
+        assert_eq!(
+            browse_runtime.process_event(GuiInputEvent::BrowsePath {
+                control_or_property: "TARGETDIR".to_string(),
+                selected_path: "/usr/local/bin".to_string(),
+            }),
+            Ok(None)
+        );
+        assert_eq!(
+            browse_runtime.engine().context().get_property("TARGETDIR"),
+            Some("/usr/local/bin")
+        );
+
+        // 4. Test BackgroundTransactionWorker lifecycle: successful execution
+        let worker = BackgroundTransactionWorker::spawn(|tx, rx| {
+            thread::sleep(std::time::Duration::from_millis(5));
+            let _ = tx.send(TransactionProgressTick {
+                percent: 25,
+                time_remaining_secs: Some(60),
+                progress1: 1,
+                progress2: 4,
+                action_text: "Extracting engine.cab".to_string(),
+            });
+            let _ = tx.send(TransactionProgressTick {
+                percent: 100,
+                time_remaining_secs: Some(0),
+                progress1: 4,
+                progress2: 4,
+                action_text: "Installation complete".to_string(),
+            });
+            // Check for cancel request
+            Ok(rx.try_recv().is_err())
+        });
+
+        // Spin until progress received
+        let mut w = worker;
+        while w.poll_progress().is_none() {
+            thread::yield_now();
+        }
+        assert!(w.current_percent() > 0);
+        assert!(!w.current_action_text().is_empty());
+        assert!(!w.is_cancelled());
+        let res = w.join().unwrap_or(false);
+        assert!(res);
+
+        // Test BackgroundTransactionWorker cancellation
+        let mut cancel_worker = BackgroundTransactionWorker::spawn(|tx, rx| {
+            thread::sleep(std::time::Duration::from_millis(5));
+            let _ = tx.send(TransactionProgressTick {
+                percent: 10,
+                time_remaining_secs: None,
+                progress1: 1,
+                progress2: 10,
+                action_text: "Starting service...".to_string(),
+            });
+            // Wait for cancel signal
+            loop {
+                if rx.try_recv() == Ok(TransactionWorkerCommand::Cancel) {
+                    return Ok(false); // Unwind rollback
+                }
+                thread::sleep(std::time::Duration::from_millis(10));
+            }
+        });
+
+        while cancel_worker.poll_progress().is_none() {
+            thread::yield_now();
+        }
+        assert_eq!(cancel_worker.current_percent(), 10);
+        assert!(cancel_worker.request_cancel().is_ok());
+        assert!(cancel_worker.is_cancelled());
+        let cancel_res = cancel_worker.join().unwrap_or(true);
+        assert!(!cancel_res);
+
+        // Test BackgroundTransactionWorker request_cancel failure when command receiver is dropped
+        let mut fail_cancel_worker = BackgroundTransactionWorker::spawn(|_tx, rx| {
+            drop(rx);
+            thread::sleep(std::time::Duration::from_millis(10));
+            Ok(true)
+        });
+        thread::sleep(std::time::Duration::from_millis(20));
+        assert!(fail_cancel_worker.request_cancel().is_err());
+        assert!(fail_cancel_worker.join().unwrap_or(false));
+
+        // Test BackgroundTransactionWorker join when worker thread panics
+        let panic_worker = BackgroundTransactionWorker::spawn(|_tx, _rx| {
+            std::panic::resume_unwind(Box::new("simulated worker thread panic"))
+        });
+        assert!(panic_worker.join().is_err());
+
+        // Test BackgroundTransactionWorker join when worker_handle is None
+        let mut none_handle_worker = BackgroundTransactionWorker::spawn(|_tx, _rx| Ok(true));
+        none_handle_worker.worker_handle = None;
+        assert_eq!(none_handle_worker.join().ok(), Some(false));
     }
 }

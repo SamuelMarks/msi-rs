@@ -70,6 +70,14 @@ path = "src/bin/msidiff.rs"
 name = "msiextract"
 path = "src/bin/msiextract.rs"
 
+[[bin]]
+name = "msiexec"
+path = "src/bin/msiexec.rs"
+
+[[bin]]
+name = "wixl"
+path = "src/bin/wixl.rs"
+
 [lints]
 workspace = true
 

@@ -578,3 +578,347 @@ fn test_wix_mixed_wxs_and_wixobj_inputs() -> Result<()> {
     let _ = fs::remove_dir_all(&temp_dir);
     Ok(())
 }
+
+/// Tests multi-hop cross-fragment directory attachment where subdirectories and components
+/// attach across multiple separate fragments.
+///
+/// # Errors
+///
+/// Returns [`Error`] if file I/O, compilation, or verification fails.
+#[test]
+#[allow(clippy::too_many_lines)]
+fn test_wix_cross_fragment_directory_attachment_chain() -> Result<()> {
+    let temp_dir = create_test_temp_dir("dir_chain")?;
+    let bin_file = write_test_file(&temp_dir, "app.bin", "BIN_PAYLOAD")?;
+    let plug_file = write_test_file(&temp_dir, "plug.so", "PLUGIN_PAYLOAD")?;
+
+    // Fragment A: Defines TARGETDIR -> ProgramFilesFolder -> INSTALLFOLDER
+    let frag_a = write_test_file(
+        &temp_dir,
+        "FragmentA.wxs",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="INSTALLFOLDER" Name="ChainedApp" />
+      </Directory>
+    </Directory>
+  </Fragment>
+</Wix>
+"#,
+    )?;
+
+    // Fragment B: DirectoryRef to INSTALLFOLDER, declares BINDIR with a Component
+    let frag_b = write_test_file(
+        &temp_dir,
+        "FragmentB.wxs",
+        &format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Directory Id="BINDIR" Name="bin">
+        <Component Id="CmpBin" Guid="*">
+          <File Id="FileBin" Source="{}" KeyPath="yes" />
+        </Component>
+      </Directory>
+    </DirectoryRef>
+  </Fragment>
+</Wix>
+"#,
+            bin_file.display()
+        ),
+    )?;
+
+    // Fragment C: DirectoryRef to BINDIR (from Fragment B), declares PLUGINDIR with a Component
+    let frag_c = write_test_file(
+        &temp_dir,
+        "FragmentC.wxs",
+        &format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <DirectoryRef Id="BINDIR">
+      <Directory Id="PLUGINDIR" Name="plugins">
+        <Component Id="CmpPlug" Guid="*">
+          <File Id="FilePlug" Source="{}" KeyPath="yes" />
+        </Component>
+      </Directory>
+    </DirectoryRef>
+  </Fragment>
+</Wix>
+"#,
+            plug_file.display()
+        ),
+    )?;
+
+    // Product referencing components from fragments
+    let product_wxs = write_test_file(
+        &temp_dir,
+        "Product.wxs",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="{11223344-5566-7788-99AA-BBCCDDEEFF00}" Name="ChainDirApp" Language="1033" Version="1.0.0" Manufacturer="Vendor" UpgradeCode="{AABBCCDD-EEFF-1122-3344-556677889900}">
+    <Package Description="Chain Directory Test" />
+    <Media Id="1" Cabinet="engine.cab" EmbedCab="yes" />
+
+    <Feature Id="MainFeature" Title="Core" Level="1">
+      <ComponentRef Id="CmpBin" />
+      <ComponentRef Id="CmpPlug" />
+    </Feature>
+  </Product>
+</Wix>
+"#,
+    )?;
+
+    let out_msi = temp_dir.join("ChainDirApp.msi");
+    let build_opts = WixBuildOptions {
+        sources: vec![product_wxs, frag_a, frag_b, frag_c],
+        output: Some(out_msi.clone()),
+        suppress_ice: true,
+        ..WixBuildOptions::new()
+    };
+
+    let res = build_opts.execute()?;
+    assert!(res.exists());
+
+    let pkg = Package::open(&out_msi)?;
+    let db = pkg.database();
+
+    // Verify Directory table records
+    let dirs = db.get_records("Directory");
+    assert!(dirs.iter().any(|r| r.get(0)
+        == Some(&FieldValue::String("INSTALLFOLDER".to_string()))
+        && r.get(1) == Some(&FieldValue::String("ProgramFilesFolder".to_string()))));
+    assert!(dirs.iter().any(
+        |r| r.get(0) == Some(&FieldValue::String("BINDIR".to_string()))
+            && r.get(1) == Some(&FieldValue::String("INSTALLFOLDER".to_string()))
+    ));
+    assert!(dirs.iter().any(
+        |r| r.get(0) == Some(&FieldValue::String("PLUGINDIR".to_string()))
+            && r.get(1) == Some(&FieldValue::String("BINDIR".to_string()))
+    ));
+
+    // Verify Component table records
+    let comps = db.get_records("Component");
+    assert!(comps.iter().any(
+        |r| r.get(0) == Some(&FieldValue::String("CmpBin".to_string()))
+            && r.get(2) == Some(&FieldValue::String("BINDIR".to_string()))
+    ));
+    assert!(comps.iter().any(
+        |r| r.get(0) == Some(&FieldValue::String("CmpPlug".to_string()))
+            && r.get(2) == Some(&FieldValue::String("PLUGINDIR".to_string()))
+    ));
+
+    let _ = fs::remove_dir_all(&temp_dir);
+    Ok(())
+}
+
+/// Tests cross-fragment `FeatureRef` binding to `ComponentRef` and `ComponentGroupRef` across compilation units.
+///
+/// # Errors
+///
+/// Returns [`Error`] if file I/O, compilation, or verification fails.
+#[test]
+fn test_wix_cross_fragment_feature_ref_bindings() -> Result<()> {
+    let temp_dir = create_test_temp_dir("feat_ref")?;
+    let f1 = write_test_file(&temp_dir, "f1.dat", "DATA_ONE")?;
+    let f2 = write_test_file(&temp_dir, "f2.dat", "DATA_TWO")?;
+
+    // Product defines the feature and directory
+    let product_wxs = write_test_file(
+        &temp_dir,
+        "Product.wxs",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="{22334455-6677-8899-AABB-CCDDEEFF0011}" Name="FeatRefApp" Language="1033" Version="1.0.0" Manufacturer="Vendor" UpgradeCode="{BBCCDDEE-FF00-1122-3344-556677889911}">
+    <Package Description="FeatureRef Binding Test" />
+    <Media Id="1" Cabinet="engine.cab" EmbedCab="yes" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="INSTALLFOLDER" Name="FeatRefApp" />
+      </Directory>
+    </Directory>
+
+    <Feature Id="MainFeature" Title="Core" Level="1" />
+  </Product>
+</Wix>
+"#,
+    )?;
+
+    // Fragment 1: FeatureRef attaches ComponentRef and ComponentGroupRef
+    let frag1 = write_test_file(
+        &temp_dir,
+        "Frag1.wxs",
+        &format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="CmpDirect" Guid="*">
+        <File Id="FileDirect" Source="{}" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <FeatureRef Id="MainFeature">
+      <ComponentRef Id="CmpDirect" />
+      <ComponentGroupRef Id="CompanionGroup" />
+    </FeatureRef>
+  </Fragment>
+</Wix>
+"#,
+            f1.display()
+        ),
+    )?;
+
+    // Fragment 2: Defines CompanionGroup with a Component
+    let frag2 = write_test_file(
+        &temp_dir,
+        "Frag2.wxs",
+        &format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="CmpGrouped" Guid="*">
+        <File Id="FileGrouped" Source="{}" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <ComponentGroup Id="CompanionGroup">
+      <ComponentRef Id="CmpGrouped" />
+    </ComponentGroup>
+  </Fragment>
+</Wix>
+"#,
+            f2.display()
+        ),
+    )?;
+
+    let out_msi = temp_dir.join("FeatRefApp.msi");
+    let build_opts = WixBuildOptions {
+        sources: vec![product_wxs, frag1, frag2],
+        output: Some(out_msi.clone()),
+        suppress_ice: true,
+        ..WixBuildOptions::new()
+    };
+
+    let res = build_opts.execute()?;
+    assert!(res.exists());
+
+    let pkg = Package::open(&out_msi)?;
+    let db = pkg.database();
+
+    // Verify FeatureComponents contains both CmpDirect and CmpGrouped linked to MainFeature
+    let fc_records = db.get_records("FeatureComponents");
+    assert!(fc_records.iter().any(|r| r.get(0)
+        == Some(&FieldValue::String("MainFeature".to_string()))
+        && r.get(1) == Some(&FieldValue::String("CmpDirect".to_string()))));
+    assert!(fc_records.iter().any(|r| r.get(0)
+        == Some(&FieldValue::String("MainFeature".to_string()))
+        && r.get(1) == Some(&FieldValue::String("CmpGrouped".to_string()))));
+
+    let _ = fs::remove_dir_all(&temp_dir);
+    Ok(())
+}
+
+/// Tests that undefined directory, component, and feature references return descriptive errors with source spans.
+///
+/// # Errors
+///
+/// Returns [`Error`] if file I/O fails unexpectedly.
+#[test]
+fn test_wix_negative_undefined_symbol_references() -> Result<()> {
+    let temp_dir = create_test_temp_dir("neg_refs")?;
+
+    // 1. Undefined Directory reference
+    let undef_dir_wxs = write_test_file(
+        &temp_dir,
+        "UndefDir.wxs",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="{33445566-7788-99AA-BBCC-DDEEFF001122}" Name="UndefDirApp" Language="1033" Version="1.0.0" Manufacturer="Vendor" UpgradeCode="{CCDDEEFF-0011-2233-4455-667788990022}">
+    <Package Description="Undef Dir Test" />
+    <Media Id="1" Cabinet="engine.cab" />
+    <DirectoryRef Id="NonExistentParentDir" />
+    <Feature Id="Main" Title="M" Level="1" />
+  </Product>
+</Wix>
+"#,
+    )?;
+
+    let opts1 = WixBuildOptions {
+        sources: vec![undef_dir_wxs],
+        output: Some(temp_dir.join("out1.msi")),
+        suppress_ice: true,
+        ..WixBuildOptions::new()
+    };
+    let res1 = opts1.execute();
+    assert!(
+        matches!(res1, Err(Error::WixLinker { ref message }) if message.contains("unresolved symbol reference 'Directory:NonExistentParentDir'") && message.contains("line 6")),
+        "Expected Error::WixLinker with line 6, got {res1:?}"
+    );
+
+    // 2. Undefined Component reference
+    let undef_comp_wxs = write_test_file(
+        &temp_dir,
+        "UndefComp.wxs",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="{44556677-8899-AABB-CCDD-EEFF00112233}" Name="UndefCompApp" Language="1033" Version="1.0.0" Manufacturer="Vendor" UpgradeCode="{DDEEFF00-1122-3344-5566-778899001133}">
+    <Package Description="Undef Comp Test" />
+    <Media Id="1" Cabinet="engine.cab" />
+    <Directory Id="TARGETDIR" Name="SourceDir" />
+    <Feature Id="Main" Title="M" Level="1">
+      <ComponentRef Id="NonExistentComponentRef" />
+    </Feature>
+  </Product>
+</Wix>
+"#,
+    )?;
+
+    let opts2 = WixBuildOptions {
+        sources: vec![undef_comp_wxs],
+        output: Some(temp_dir.join("out2.msi")),
+        suppress_ice: true,
+        ..WixBuildOptions::new()
+    };
+    let res2 = opts2.execute();
+    assert!(
+        matches!(res2, Err(Error::WixLinker { ref message }) if message.contains("unresolved symbol reference 'Component:NonExistentComponentRef'") && message.contains("line 8")),
+        "Expected Error::WixLinker with line 8, got {res2:?}"
+    );
+
+    // 3. Undefined Feature reference
+    let undef_feat_wxs = write_test_file(
+        &temp_dir,
+        "UndefFeat.wxs",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="{55667788-99AA-BBCC-DDEE-FF0011223344}" Name="UndefFeatApp" Language="1033" Version="1.0.0" Manufacturer="Vendor" UpgradeCode="{EEFF0011-2233-4455-6677-889900112244}">
+    <Package Description="Undef Feat Test" />
+    <Media Id="1" Cabinet="engine.cab" />
+    <Directory Id="TARGETDIR" Name="SourceDir" />
+    <FeatureRef Id="NonExistentFeatureRef" />
+  </Product>
+</Wix>
+"#,
+    )?;
+
+    let opts3 = WixBuildOptions {
+        sources: vec![undef_feat_wxs],
+        output: Some(temp_dir.join("out3.msi")),
+        suppress_ice: true,
+        ..WixBuildOptions::new()
+    };
+    let res3 = opts3.execute();
+    assert!(
+        matches!(res3, Err(Error::WixLinker { ref message }) if message.contains("unresolved symbol reference 'Feature:NonExistentFeatureRef'") && message.contains("line 7")),
+        "Expected Error::WixLinker with line 7, got {res3:?}"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+    Ok(())
+}

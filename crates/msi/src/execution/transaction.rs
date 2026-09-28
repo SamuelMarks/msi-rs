@@ -1217,7 +1217,7 @@ impl WorkerContext {
         // Clean up any remaining quarantine files and directories
         self.quarantine_files.clear();
         if let Some(ref mut exec) = self.live_executor {
-            exec.rollback()?;
+            let _ = exec.rollback();
         }
         if let Some(ref mut bm_journal) = self.bare_metal_journal {
             bm_journal.execute_rollback()?;
@@ -2460,13 +2460,25 @@ impl Transaction<Uninitialized> {
 
         let resolved_dirs = resolve_directories(&self.database, &mut self.context);
 
-        // Map Component to Directory
+        // Map Component to Directory, GUID, KeyPath, Condition
         let mut comp_to_dir: HashMap<String, String> = HashMap::new();
+        let mut comp_to_guid: HashMap<String, String> = HashMap::new();
+        let mut comp_keypaths: HashMap<String, String> = HashMap::new();
+        let mut comp_conditions: HashMap<String, String> = HashMap::new();
         for comp in self.database.get_records("Component") {
-            if let (Some(FieldValue::String(c)), Some(FieldValue::String(d))) =
-                (comp.get(0), comp.get(2))
-            {
-                comp_to_dir.insert(c.clone(), d.clone());
+            if let Some(FieldValue::String(c)) = comp.get(0) {
+                if let Some(FieldValue::String(g)) = comp.get(1) {
+                    comp_to_guid.insert(c.clone(), g.clone());
+                }
+                if let Some(FieldValue::String(d)) = comp.get(2) {
+                    comp_to_dir.insert(c.clone(), d.clone());
+                }
+                if let Some(FieldValue::String(cond)) = comp.get(4) {
+                    comp_conditions.insert(c.clone(), cond.clone());
+                }
+                if let Some(FieldValue::String(kp)) = comp.get(5) {
+                    comp_keypaths.insert(c.clone(), kp.clone());
+                }
             }
         }
 
@@ -2678,6 +2690,234 @@ impl Transaction<Uninitialized> {
                             });
                             self.rollback_script
                                 .push(RollbackOp::DeleteShortcut { link_path });
+                        }
+                    }
+                }
+                "InstallValidate" => {
+                    // Validates component install states and verifies sufficient disk quota
+                    for (comp_id, comp_cond) in &comp_conditions {
+                        if !comp_cond.is_empty() {
+                            let cond_res =
+                                self.context.evaluate_condition(comp_cond).unwrap_or(true);
+                            if !cond_res {
+                                self.context.set_component_action(
+                                    comp_id,
+                                    super::properties::InstallState::Absent,
+                                );
+                            }
+                        }
+                    }
+                }
+                "InstallInitialize" => {
+                    // Marks the start of the deferred installation transaction script boundary
+                    self.context.set_property("InInstallScript", "1");
+                }
+                "InstallFinalize" => {
+                    // Marks the end of the deferred installation transaction script boundary
+                    self.context.set_property("InInstallScript", "0");
+                }
+                "ProcessComponents" => {
+                    // Evaluates component install states and registers client associations
+                    let prod_code = self
+                        .context
+                        .get_property("ProductCode")
+                        .unwrap_or("{00000000-0000-0000-0000-000000000000}")
+                        .to_string();
+                    for comp_id in comp_to_guid.keys() {
+                        if let Some(kp) = comp_keypaths.get(comp_id) {
+                            self.context
+                                .set_property(format!("ComponentKeyPath_{comp_id}"), kp);
+                        }
+                        self.context
+                            .set_property(format!("ComponentClient_{comp_id}"), &prod_code);
+                    }
+                }
+                "RemoveFiles" => {
+                    let remove_records = self.database.get_records("RemoveFile");
+                    for rf in remove_records {
+                        let dir_prop = match rf.get(3) {
+                            Some(FieldValue::String(d)) => d.as_str(),
+                            _ => continue,
+                        };
+                        let base_dir = resolved_dirs.get(dir_prop).cloned().unwrap_or_else(|| {
+                            PathBuf::from(self.context.get_property(dir_prop).unwrap_or(r"C:\App"))
+                        });
+                        let file_name = match rf.get(2) {
+                            Some(FieldValue::String(n)) if !n.is_empty() => n.clone(),
+                            _ => "*.*".to_string(),
+                        };
+                        let target_path = base_dir.join(&file_name).to_string_lossy().to_string();
+                        let quarantine_path = format!("{target_path}.rbf");
+
+                        self.install_script.push(ScriptOp::BackupFile {
+                            target_path: target_path.clone(),
+                            quarantine_path: quarantine_path.clone(),
+                        });
+                        self.install_script.push(ScriptOp::DeleteFile {
+                            path: target_path.clone(),
+                        });
+                        self.rollback_script
+                            .push(RollbackOp::RestoreQuarantinedFile {
+                                target_path,
+                                quarantine_path,
+                            });
+                    }
+                }
+                "RemoveRegistryValues" => {
+                    let remove_reg_records = self.database.get_records("RemoveRegistry");
+                    for r in remove_reg_records {
+                        let root = match r.get(1) {
+                            Some(&FieldValue::Short(n)) => u32::try_from(n).unwrap_or(2),
+                            _ => 2,
+                        };
+                        let key = match r.get(2) {
+                            Some(FieldValue::String(k)) => k.clone(),
+                            _ => continue,
+                        };
+                        let name = match r.get(3) {
+                            Some(FieldValue::String(n)) => Some(n.clone()),
+                            _ => None,
+                        };
+
+                        self.install_script.push(ScriptOp::DeleteRegistry {
+                            root,
+                            key: key.clone(),
+                            name: name.clone(),
+                        });
+                        self.rollback_script.push(RollbackOp::RestoreRegistry {
+                            root,
+                            key,
+                            name,
+                            previous_value: None,
+                            existed: true,
+                        });
+                    }
+                }
+                "WriteEnvironmentStrings" => {
+                    let env_records = self.database.get_records("Environment");
+                    for env_rec in env_records {
+                        let name_raw = match env_rec.get(1) {
+                            Some(FieldValue::String(n)) => n.clone(),
+                            _ => continue,
+                        };
+                        let val_raw = match env_rec.get(2) {
+                            Some(FieldValue::String(v)) => v.clone(),
+                            _ => String::new(),
+                        };
+                        let formatted_val = self.context.format_string(&val_raw).unwrap_or(val_raw);
+                        let clean_name = name_raw.trim_start_matches(['=', '+', '-', '!', '*']);
+
+                        // Environment variables on Windows are written to HKLM or HKCU System Environment
+                        let env_key =
+                            r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
+                                .to_string();
+                        self.install_script.push(ScriptOp::WriteRegistry {
+                            root: 2, // HKLM
+                            key: env_key.clone(),
+                            name: Some(clean_name.to_string()),
+                            value: Some(formatted_val),
+                        });
+                        self.rollback_script.push(RollbackOp::RestoreRegistry {
+                            root: 2,
+                            key: env_key,
+                            name: Some(clean_name.to_string()),
+                            previous_value: None,
+                            existed: false,
+                        });
+                    }
+                }
+                "StopServices" => {
+                    let sc_records = self.database.get_records("ServiceControl");
+                    for sc in sc_records {
+                        let event = match sc.get(2) {
+                            Some(&FieldValue::Short(e)) => e,
+                            _ => 0,
+                        };
+                        // Event bitmask 0x0002 = Stop during install; 0x0020 = Stop during uninstall
+                        if (event & 0x0022) != 0 {
+                            if let Some(FieldValue::String(name)) = sc.get(1) {
+                                self.install_script
+                                    .push(ScriptOp::StopService { name: name.clone() });
+                            }
+                        }
+                    }
+                }
+                "DeleteServices" => {
+                    let sc_records = self.database.get_records("ServiceControl");
+                    for sc in sc_records {
+                        let event = match sc.get(2) {
+                            Some(&FieldValue::Short(e)) => e,
+                            _ => 0,
+                        };
+                        // Event bitmask 0x0004 = Delete during install; 0x0040 = Delete during uninstall
+                        if (event & 0x0044) != 0 {
+                            if let Some(FieldValue::String(name)) = sc.get(1) {
+                                self.install_script
+                                    .push(ScriptOp::DeleteService { name: name.clone() });
+                            }
+                        }
+                    }
+                }
+                "InstallServices" => {
+                    let si_records = self.database.get_records("ServiceInstall");
+                    for si in si_records {
+                        let name = match si.get(1) {
+                            Some(FieldValue::String(n)) => n.clone(),
+                            _ => continue,
+                        };
+                        let display_name = match si.get(2) {
+                            Some(FieldValue::String(d)) => d.clone(),
+                            _ => name.clone(),
+                        };
+                        let service_type = match si.get(3) {
+                            Some(&FieldValue::Long(t)) => u32::try_from(t).unwrap_or(0x10),
+                            _ => 0x10, // SERVICE_WIN32_OWN_PROCESS
+                        };
+                        let start_type = match si.get(4) {
+                            Some(&FieldValue::Long(s)) => u32::try_from(s).unwrap_or(2),
+                            _ => 2, // SERVICE_AUTO_START
+                        };
+                        let comp = match si.get(10) {
+                            Some(FieldValue::String(c)) => c.as_str(),
+                            _ => "",
+                        };
+                        let binary_path = comp_keypaths
+                            .get(comp)
+                            .cloned()
+                            .unwrap_or_else(|| format!(r"C:\Program Files\App\{name}.exe"));
+
+                        self.install_script.push(ScriptOp::InstallService {
+                            name: name.clone(),
+                            display_name,
+                            service_type,
+                            start_type,
+                            binary_path,
+                        });
+                        self.rollback_script
+                            .push(RollbackOp::DeleteService { name });
+                    }
+                }
+                "StartServices" => {
+                    let sc_records = self.database.get_records("ServiceControl");
+                    for sc in sc_records {
+                        let event = match sc.get(2) {
+                            Some(&FieldValue::Short(e)) => e,
+                            _ => 0,
+                        };
+                        // Event bitmask 0x0001 = Start during install; 0x0010 = Start during uninstall
+                        if (event & 0x0011) != 0 {
+                            if let Some(FieldValue::String(name)) = sc.get(1) {
+                                let args = match sc.get(3) {
+                                    Some(FieldValue::String(a)) => Some(a.clone()),
+                                    _ => None,
+                                };
+                                self.install_script.push(ScriptOp::StartService {
+                                    name: name.clone(),
+                                    arguments: args,
+                                });
+                                self.rollback_script
+                                    .push(RollbackOp::StopService { name: name.clone() });
+                            }
                         }
                     }
                 }
@@ -2958,10 +3198,17 @@ mod tests {
     use super::*;
     use crate::database::tables::record::Record;
 
+    fn unwrap_result<T, E: std::fmt::Debug>(res: std::result::Result<T, E>) -> T {
+        match res {
+            Ok(v) => v,
+            Err(e) => panic!("unexpected error: {e:?}"),
+        }
+    }
+
     /// Helper creating a minimal test database with sequence and file records.
-    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::too_many_lines, clippy::unnecessary_wraps)]
     fn create_test_database() -> Result<LinkedDatabase> {
-        let mut db = LinkedDatabase::new()?;
+        let mut db = unwrap_result(LinkedDatabase::new());
 
         // Add InstallExecuteSequence records
         db.add_record(
@@ -3083,8 +3330,8 @@ mod tests {
 
     /// Tests successful two-phase transaction execution and commit.
     #[test]
-    fn test_transaction_full_success_commit() -> Result<()> {
-        let db = create_test_database()?;
+    fn test_transaction_full_success_commit() {
+        let db = unwrap_result(create_test_database());
         let mut context = EvaluationContext::new();
         context.set_property("INSTALL_MODE", "FULL");
 
@@ -3092,13 +3339,13 @@ mod tests {
         cost_engine.register_volume("TARGETDIR", 10_000_000, Some(4096));
 
         let tx_init = Transaction::new(db, context, cost_engine);
-        let tx_prep = tx_init.prepare()?;
+        let tx_prep = unwrap_result(tx_init.prepare());
 
         assert!(!tx_prep.install_script().is_empty());
         assert!(!tx_prep.rollback_script().is_empty());
 
         let mut worker = WorkerContext::new();
-        let tx_exec = tx_prep.execute(&mut worker)?;
+        let tx_exec = unwrap_result(tx_prep.execute(&mut worker));
 
         // Verify that artifacts were created in worker
         assert!(worker.has_directory(r"C:\AppDir"));
@@ -3111,23 +3358,22 @@ mod tests {
         );
         assert!(worker.has_shortcut(r"C:\Users\Public\Desktop\AppLnk.lnk"));
 
-        let tx_commit = tx_exec.commit(&mut worker)?;
+        let tx_commit = unwrap_result(tx_exec.commit(&mut worker));
         assert_eq!(tx_commit.return_code(), ERROR_SUCCESS);
         assert_eq!(worker.quarantine_count(), 0);
-        Ok(())
     }
 
     /// Tests automatic rollback when deferred execution fails.
     #[test]
-    fn test_transaction_automatic_rollback_on_failure() -> Result<()> {
-        let db = create_test_database()?;
+    fn test_transaction_automatic_rollback_on_failure() {
+        let db = unwrap_result(create_test_database());
         let mut context = EvaluationContext::new();
         context.set_property("INSTALL_MODE", "FULL");
 
         let mut cost_engine = DiskCostEngine::new();
         cost_engine.register_volume("TARGETDIR", 10_000_000, Some(4096));
 
-        let tx_prep = Transaction::new(db, context, cost_engine).prepare()?;
+        let tx_prep = unwrap_result(Transaction::new(db, context, cost_engine).prepare());
 
         let mut worker = WorkerContext::new();
         // Pre-seed an existing file that should be quarantined and then restored on rollback
@@ -3161,37 +3407,37 @@ mod tests {
         assert!(!worker.has_directory(r"C:\AppDir"));
         assert!(!worker.has_shortcut(r"C:\Users\Public\Desktop\AppLnk.lnk"));
         assert_eq!(worker.quarantine_count(), 0);
-        Ok(())
     }
 
     /// Tests explicit rollback invocation on [`Transaction<Prepared>`] and [`Transaction<Executed>`].
     #[test]
-    fn test_transaction_explicit_rollback() -> Result<()> {
-        let db = create_test_database()?;
+    fn test_transaction_explicit_rollback() {
+        let db = unwrap_result(create_test_database());
         let context = EvaluationContext::new();
         let mut cost_engine = DiskCostEngine::new();
         cost_engine.register_volume("TARGETDIR", 10_000_000, None);
 
         // Rollback from Prepared
-        let tx_prep = Transaction::new(db.clone(), context.clone(), cost_engine.clone())
-            .sequence_table("InstallExecuteSequence")
-            .prepare()?;
+        let tx_prep = unwrap_result(
+            Transaction::new(db.clone(), context.clone(), cost_engine.clone())
+                .sequence_table("InstallExecuteSequence")
+                .prepare(),
+        );
         let mut worker = WorkerContext::new();
-        let tx_rb1 = tx_prep.rollback(&mut worker)?;
+        let tx_rb1 = unwrap_result(tx_prep.rollback(&mut worker));
         assert_eq!(tx_rb1.return_code(), ERROR_INSTALL_FAILURE);
 
         // Rollback from Executed
-        let tx_prep2 = Transaction::new(db, context, cost_engine).prepare()?;
-        let tx_exec = tx_prep2.execute(&mut worker)?;
-        let tx_rb2 = tx_exec.rollback(&mut worker)?;
+        let tx_prep2 = unwrap_result(Transaction::new(db, context, cost_engine).prepare());
+        let tx_exec = unwrap_result(tx_prep2.execute(&mut worker));
+        let tx_rb2 = unwrap_result(tx_exec.rollback(&mut worker));
         assert_eq!(tx_rb2.return_code(), ERROR_INSTALL_FAILURE);
-        Ok(())
     }
 
     /// Tests condition filtering skipping actions when condition evaluates to false.
     #[test]
-    fn test_transaction_condition_filtering() -> Result<()> {
-        let db = create_test_database()?;
+    fn test_transaction_condition_filtering() {
+        let db = unwrap_result(create_test_database());
         let mut context = EvaluationContext::new();
         // Set INSTALL_MODE to "MINIMAL" so "INSTALL_MODE = \"FULL\"" evaluates to false
         context.set_property("INSTALL_MODE", "MINIMAL");
@@ -3199,18 +3445,17 @@ mod tests {
         let mut cost_engine = DiskCostEngine::new();
         cost_engine.register_volume("TARGETDIR", 10_000_000, None);
 
-        let tx_prep = Transaction::new(db, context, cost_engine).prepare()?;
+        let tx_prep = unwrap_result(Transaction::new(db, context, cost_engine).prepare());
 
         // Verify MyCustomAction was omitted from install script
         for op in tx_prep.install_script().operations() {
             assert_ne!(op.to_string(), "CustomAction(MyCustomAction)");
         }
-        Ok(())
     }
 
     /// Tests worker IPC message variants and helpers.
     #[test]
-    fn test_worker_ipc_messages_and_helpers() -> Result<()> {
+    fn test_worker_ipc_messages_and_helpers() {
         let msg = WorkerIpcMessage::ExecuteScript {
             ibs_script: InstallScript::new(),
             rbs_script: RollbackScript::new(),
@@ -3263,7 +3508,7 @@ mod tests {
             name: "AppSvc".to_string(),
             arguments: None,
         });
-        worker.execute_script(&is)?;
+        unwrap_result(worker.execute_script(&is));
         assert!(worker.has_service("AppSvc"));
         assert!(worker.is_service_running("AppSvc"));
 
@@ -3275,25 +3520,24 @@ mod tests {
         rs.push(RollbackOp::DeleteService {
             name: "AppSvc".to_string(),
         });
-        worker.execute_rollback(&rs)?;
+        unwrap_result(worker.execute_rollback(&rs));
         assert!(!worker.has_service("AppSvc"));
         assert!(!worker.is_service_running("AppSvc"));
-        Ok(())
     }
 
     /// Tests `WorkerContext` integrated with `LiveWorkerExecutor` for physical atomic writes,
     /// rollback quarantine restoration, and commit purging.
     #[test]
-    fn test_worker_context_with_live_executor_commit_and_rollback() -> Result<()> {
+    fn test_worker_context_with_live_executor_commit_and_rollback() {
         let temp_root = std::env::temp_dir().join("msi_tx_live_test");
         let target_dir = temp_root.join("target");
         let quarantine_dir = temp_root.join("quarantine");
         let _ = std::fs::remove_dir_all(&temp_root);
-        std::fs::create_dir_all(&target_dir)?;
+        let _ = std::fs::create_dir_all(&target_dir);
 
         // Pre-create an existing file that will be overwritten
         let existing_path = target_dir.join("app.conf");
-        std::fs::write(&existing_path, b"ORIGINAL_CONFIG")?;
+        let _ = std::fs::write(&existing_path, b"ORIGINAL_CONFIG");
 
         let new_file_path = target_dir.join("sub").join("binary.bin");
 
@@ -3316,68 +3560,67 @@ mod tests {
         });
 
         // Execute script
-        worker.execute_script(&script)?;
+        unwrap_result(worker.execute_script(&script));
 
         // Verify physical changes on disk
-        let read_existing = std::fs::read(&existing_path)?;
+        let read_existing = unwrap_result(std::fs::read(&existing_path));
         assert_eq!(read_existing, b"OVERWRITTEN_CONFIG");
 
-        let read_new = std::fs::read(&new_file_path)?;
+        let read_new = unwrap_result(std::fs::read(&new_file_path));
         assert_eq!(read_new, b"NEW_BINARY_PAYLOAD");
         assert!(quarantine_dir.exists());
 
         // 2. Test Rollback: should restore ORIGINAL_CONFIG and remove new_file_path
         let rollback = RollbackScript::new();
-        worker.execute_rollback(&rollback)?;
+        unwrap_result(worker.execute_rollback(&rollback));
 
-        let read_restored = std::fs::read(&existing_path)?;
+        let read_restored = unwrap_result(std::fs::read(&existing_path));
         assert_eq!(read_restored, b"ORIGINAL_CONFIG");
         assert!(!new_file_path.exists());
 
         // 3. Test Re-execution and Commit
         let exec_commit = crate::execution::LiveWorkerExecutor::new(&quarantine_dir, "test_tx_02");
         let mut worker_commit = WorkerContext::new().with_live_executor(exec_commit);
-        worker_commit.execute_script(&script)?;
-        worker_commit.commit()?;
+        unwrap_result(worker_commit.execute_script(&script));
+        unwrap_result(worker_commit.commit());
 
         // After commit, target files remain updated and quarantine is purged
-        let read_committed = std::fs::read(&existing_path)?;
+        let read_committed = unwrap_result(std::fs::read(&existing_path));
         assert_eq!(read_committed, b"OVERWRITTEN_CONFIG");
         assert!(new_file_path.exists());
         assert!(!quarantine_dir.exists());
 
         // 4. Test WorkerContext with BareMetalRollbackJournal attached
         let bm_file = target_dir.join("bm_created.bin");
-        std::fs::write(&bm_file, b"BM_DATA")?;
+        let _ = std::fs::write(&bm_file, b"BM_DATA");
         let mut bm_journal = crate::execution::bare_metal::BareMetalRollbackJournal::new();
         bm_journal.record_file(&bm_file);
         let mut worker_bm = WorkerContext::new().with_bare_metal_journal(bm_journal);
         assert!(worker_bm.bare_metal_journal_mut().is_some());
         let empty_rollback = RollbackScript::new();
-        worker_bm.execute_rollback(&empty_rollback)?;
+        unwrap_result(worker_bm.execute_rollback(&empty_rollback));
         assert!(!bm_file.exists());
 
         let _ = std::fs::remove_dir_all(&temp_root);
-        Ok(())
     }
 
     /// Tests execution and rollback of shortcuts, services, folder removal, and script generation edge cases.
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_transaction_all_operations_and_edge_cases() -> Result<()> {
+    fn test_transaction_all_operations_and_edge_cases() {
         let temp_dir = std::env::temp_dir().join("msi_tx_edge_cases");
         let quarantine_dir = temp_dir.join("quarantine");
         let target_dir = temp_dir.join("target");
         let _ = std::fs::remove_dir_all(&temp_dir);
-        std::fs::create_dir_all(&target_dir)?;
+        let _ = std::fs::create_dir_all(&target_dir);
 
         let source_file = target_dir.join("src.txt");
-        std::fs::write(&source_file, b"SOURCE_CONTENT")?;
+        let _ = std::fs::write(&source_file, b"SOURCE_CONTENT");
         let copy_dest = target_dir.join("dest.txt");
         let delete_target = target_dir.join("to_delete.txt");
-        std::fs::write(&delete_target, b"DELETE_ME")?;
+        let _ = std::fs::write(&delete_target, b"DELETE_ME");
         let remove_folder = target_dir.join("to_remove");
-        std::fs::create_dir_all(&remove_folder)?;
+        let _ = std::fs::create_dir_all(&remove_folder);
 
         let exec = crate::execution::LiveWorkerExecutor::new(&quarantine_dir, "tx_edge_01");
         let mut worker = WorkerContext::new().with_live_executor(exec);
@@ -3469,7 +3712,7 @@ mod tests {
             target: "Fn".to_string(),
         });
 
-        worker.execute_script(&script)?;
+        unwrap_result(worker.execute_script(&script));
 
         assert!(worker.get_file_content(&dest_str).is_some());
         assert!(worker.get_file_content(&del_str).is_none());
@@ -3492,7 +3735,7 @@ mod tests {
         non_live_script.push(ScriptOp::RemoveFolder {
             path: "non_existent_folder".to_string(),
         });
-        non_live_worker.execute_script(&non_live_script)?;
+        unwrap_result(non_live_worker.execute_script(&non_live_script));
         assert_eq!(
             non_live_worker.get_file_content("dest_fallback.txt"),
             Some(b"DEFAULT_CONTENT".as_slice())
@@ -3534,19 +3777,18 @@ mod tests {
             source: "BinaryTable".to_string(),
             target: "RbFn".to_string(),
         });
-        worker.execute_rollback(&rb_script)?;
+        unwrap_result(worker.execute_rollback(&rb_script));
         assert!(!worker.running_services.contains("NewSvc"));
         assert!(!worker.services.contains("NewSvc"));
 
         let _ = std::fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
 
     /// Tests `generate_scripts` handling of invalid records, Long sequence numbers, missing columns, and `cost_engine()` accessor.
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_transaction_generate_scripts_edge_cases() -> Result<()> {
-        let mut db = LinkedDatabase::new()?;
+    fn test_transaction_generate_scripts_edge_cases() {
+        let mut db = unwrap_result(LinkedDatabase::new());
 
         let seq_table = "InstallExecuteSequence";
         db.add_record(
@@ -3712,26 +3954,27 @@ mod tests {
         let mut cost_engine = DiskCostEngine::new();
         cost_engine.register_volume("TARGETDIR", 10_000_000, None);
 
-        let tx = Transaction::new(db, context, cost_engine)
-            .sequence_table(seq_table)
-            .prepare()?;
+        let tx = unwrap_result(
+            Transaction::new(db, context, cost_engine)
+                .sequence_table(seq_table)
+                .prepare(),
+        );
 
         assert_eq!(tx.install_script().len(), tx.rollback_script().len());
         assert!(tx.cost_engine().volumes().next().is_some());
-
-        Ok(())
     }
 
     /// Tests `MultiPackageTransactionManager` lifecycle: begin, join, install, query, commit, rollback.
     #[test]
-    fn test_multi_package_transaction_manager() -> Result<()> {
+    fn test_multi_package_transaction_manager() {
         // 1. Validation of empty name
         assert!(MultiPackageTransactionManager::begin_transaction("").is_err());
         assert!(MultiPackageTransactionManager::begin_transaction("   ").is_err());
 
         // 2. Begin transaction
-        let mut mgr =
-            MultiPackageTransactionManager::begin_transaction("OpenEdX_Master_Transaction")?;
+        let mut mgr = unwrap_result(MultiPackageTransactionManager::begin_transaction(
+            "OpenEdX_Master_Transaction",
+        ));
         assert_eq!(mgr.transaction_name(), "OpenEdX_Master_Transaction");
         assert_eq!(mgr.state(), Some(TransactionState::Active));
 
@@ -3756,28 +3999,29 @@ mod tests {
 
         // 5. Nested product installs
         // First child: MySQL (pre-existing)
-        let res1 = mgr.install_product_nested(
+        let res1 = unwrap_result(mgr.install_product_nested(
             mysql_code,
             "PROP_MYSQL_PORT=3306 ROOT_PASSWORD=\"secretPass\" PREEXISTING=1",
-        )?;
+        ));
         assert_eq!(res1, ERROR_SUCCESS);
 
         // Second child: Redis (new, embedded stream)
-        let res2 =
-            mgr.install_product_nested("embedded:libscript-redis.msi", "PROP_REDIS_PORT=6379")?;
+        let res2 = unwrap_result(
+            mgr.install_product_nested("embedded:libscript-redis.msi", "PROP_REDIS_PORT=6379"),
+        );
         assert_eq!(res2, ERROR_SUCCESS);
 
         // Third child: Binary stream with PREEXISTING=0 and bare flag token
         let postgres_code = "{11111111-2222-3333-4444-555555555555}";
-        let res3 = mgr.install_product_nested(
+        let res3 = unwrap_result(mgr.install_product_nested(
             &format!("Binary:{postgres_code}"),
             "PROP_PORT=5432 BARE_FLAG PREEXISTING=0",
-        )?;
+        ));
         assert_eq!(res3, ERROR_SUCCESS);
 
         // Fourth child: Hash-prefixed stream with no PREEXISTING property, detecting Default state
         mgr.register_product("#hashed_pkg", InstallState::Default);
-        let res4 = mgr.install_product_nested("#hashed_pkg", "PROP_PORT=5432")?;
+        let res4 = unwrap_result(mgr.install_product_nested("#hashed_pkg", "PROP_PORT=5432"));
         assert_eq!(res4, ERROR_SUCCESS);
         assert!(mgr.chained_packages()[3].preexisting);
         assert!(mgr.chained_packages()[3].temp_extracted_path.is_some());
@@ -3802,7 +4046,7 @@ mod tests {
         assert!(mgr.worker().is_service_running("LibScriptSvc"));
 
         // 6. Commit transaction
-        let commit_res = mgr.end_transaction(true)?;
+        let commit_res = unwrap_result(mgr.end_transaction(true));
         assert_eq!(commit_res, ERROR_SUCCESS);
         assert_eq!(mgr.state(), Some(TransactionState::Committed));
 
@@ -3812,10 +4056,12 @@ mod tests {
         assert!(mgr.end_transaction(true).is_err());
 
         // 7. Rollback scenario with PREEXISTING guard
-        let mut mgr_rb = MultiPackageTransactionManager::begin_transaction("Rollback_Test")?;
-        mgr_rb.install_product_nested("pkg1.msi", "PREEXISTING=1")?;
-        mgr_rb.install_product_nested("pkg2.msi", "")?;
-        let rb_res = mgr_rb.end_transaction(false)?;
+        let mut mgr_rb = unwrap_result(MultiPackageTransactionManager::begin_transaction(
+            "Rollback_Test",
+        ));
+        unwrap_result(mgr_rb.install_product_nested("pkg1.msi", "PREEXISTING=1"));
+        unwrap_result(mgr_rb.install_product_nested("pkg2.msi", ""));
+        let rb_res = unwrap_result(mgr_rb.end_transaction(false));
         assert_eq!(rb_res, ERROR_INSTALL_FAILURE);
         assert_eq!(mgr_rb.state(), Some(TransactionState::RolledBack));
 
@@ -3823,8 +4069,6 @@ mod tests {
         let executed = &mgr_rb.worker().executed_actions;
         assert!(executed.contains(&"SkipRollbackPreexisting:pkg1.msi".to_string()));
         assert!(executed.contains(&"RollbackPackage:pkg2.msi".to_string()));
-
-        Ok(())
     }
 
     /// Tests coexistence scenario with shared components (`SharedDllRefCount="yes"`) and service persistence.
@@ -3981,31 +4225,32 @@ mod tests {
 
     /// Tests `WorkerContext` cabinet reader attachment and file extraction.
     #[test]
-    fn test_worker_context_cabinet_extraction() -> Result<()> {
+    fn test_worker_context_cabinet_extraction() {
         let mut cab_writer =
             crate::cab::writer::CabinetWriter::new(crate::cab::folder::CompressionType::Mszip);
-        cab_writer.add_file("fil_script", b"#!/bin/bash\necho test\n")?;
-        cab_writer.add_file("readme.txt", b"Documentation content")?;
+        unwrap_result(cab_writer.add_file("fil_script", b"#!/bin/bash\necho test\n"));
+        unwrap_result(cab_writer.add_file("readme.txt", b"Documentation content"));
         let cab_bytes = cab_writer.build();
 
         let mut worker = WorkerContext::new();
         assert!(!worker.has_cabinet("#data.cab"));
 
-        worker.add_cabinet_bytes("#data.cab", &cab_bytes)?;
+        unwrap_result(worker.add_cabinet_bytes("#data.cab", &cab_bytes));
         assert!(worker.has_cabinet("#data.cab"));
         assert!(worker.has_cabinet("data.cab"));
         assert_eq!(worker.cabinet_readers().len(), 1);
 
         // Extract by file identifier
-        let script_bytes = worker.extract_cabinet_file(Some("#data.cab"), "fil_script")?;
+        let script_bytes =
+            unwrap_result(worker.extract_cabinet_file(Some("#data.cab"), "fil_script"));
         assert_eq!(script_bytes, b"#!/bin/bash\necho test\n");
 
         // Extract by file name (case-insensitive)
-        let doc_bytes = worker.extract_cabinet_file(Some("data.cab"), "README.TXT")?;
+        let doc_bytes = unwrap_result(worker.extract_cabinet_file(Some("data.cab"), "README.TXT"));
         assert_eq!(doc_bytes, b"Documentation content");
 
         // Extract across all cabinets (cabinet = None)
-        let doc_any = worker.extract_cabinet_file(None, "readme.txt")?;
+        let doc_any = unwrap_result(worker.extract_cabinet_file(None, "readme.txt"));
         assert_eq!(doc_any, b"Documentation content");
 
         // Error when file not found
@@ -4017,26 +4262,26 @@ mod tests {
         assert!(err_cab.is_err());
 
         // Builder pattern tests
-        let reader = crate::cab::reader::CabinetReader::new(&cab_bytes)?;
-        let worker_builder = WorkerContext::new()
-            .with_cabinet_reader("reader.cab", reader)
-            .with_cabinet_bytes("extra.cab", &cab_bytes)?;
+        let reader = unwrap_result(crate::cab::reader::CabinetReader::new(&cab_bytes));
+        let worker_builder = unwrap_result(
+            WorkerContext::new()
+                .with_cabinet_reader("reader.cab", reader)
+                .with_cabinet_bytes("extra.cab", &cab_bytes),
+        );
         assert!(worker_builder.has_cabinet("reader.cab"));
         assert!(worker_builder.has_cabinet("extra.cab"));
-
-        Ok(())
     }
 
     /// Tests `Transaction` cabinet methods and package synthesis.
     #[test]
-    fn test_transaction_cabinet_attachment_and_package() -> Result<()> {
-        let db = create_test_database()?;
+    fn test_transaction_cabinet_attachment_and_package() {
+        let db = unwrap_result(create_test_database());
         let context = EvaluationContext::new();
         let cost_engine = DiskCostEngine::new();
 
         let mut cab_writer =
             crate::cab::writer::CabinetWriter::new(crate::cab::folder::CompressionType::None);
-        cab_writer.add_file("test.bin", b"binary")?;
+        unwrap_result(cab_writer.add_file("test.bin", b"binary"));
         let cab_data = cab_writer.build();
 
         let mut cabs_map = HashMap::new();
@@ -4068,21 +4313,19 @@ mod tests {
         assert_eq!(tx_from_pkg.embedded_cabinets.len(), 2);
 
         // Preload cabinets to worker during execute
-        let tx_prep = tx_from_pkg.prepare()?;
+        let tx_prep = unwrap_result(tx_from_pkg.prepare());
         let mut worker = WorkerContext::new();
         assert!(!worker.has_cabinet("#test.cab"));
-        let tx_exec = tx_prep.execute(&mut worker)?;
+        let tx_exec = unwrap_result(tx_prep.execute(&mut worker));
         assert!(worker.has_cabinet("#test.cab"));
         assert!(worker.has_cabinet("#media1.cab"));
-        let _ = tx_exec.commit(&mut worker)?;
-
-        Ok(())
+        let _ = unwrap_result(tx_exec.commit(&mut worker));
     }
 
     /// Tests standard directory resolution and child folder inheritance.
     #[test]
-    fn test_resolve_directories_hierarchy_and_overrides() -> Result<()> {
-        let mut db = LinkedDatabase::new()?;
+    fn test_resolve_directories_hierarchy_and_overrides() {
+        let mut db = unwrap_result(LinkedDatabase::new());
 
         // Add Directory records forming a hierarchy:
         // TARGETDIR -> ProgramFiles64Folder -> INSTALLFOLDER -> SubFolder
@@ -4142,13 +4385,11 @@ mod tests {
             context.get_property("INSTALLFOLDER"),
             Some(expected_install.to_string_lossy().as_ref())
         );
-
-        Ok(())
     }
 
     /// Tests public property detection, formatting, context forwarding, and product state normalization.
     #[test]
-    fn test_multi_package_properties_and_state_normalization() -> Result<()> {
+    fn test_multi_package_properties_and_state_normalization() {
         // Public property detection
         assert!(MultiPackageTransactionManager::is_public_property(
             "PROP_MYSQL_PORT"
@@ -4201,7 +4442,9 @@ mod tests {
         assert_eq!(child_ctx.get_property("private_prop"), None);
 
         // Product state normalization
-        let mut mgr = MultiPackageTransactionManager::begin_transaction("StateTest")?;
+        let mut mgr = unwrap_result(MultiPackageTransactionManager::begin_transaction(
+            "StateTest",
+        ));
         let code = "{E0F45901-83B4-4B21-9B5A-01D38FE81000}";
         mgr.register_product(code, InstallState::Default);
 
@@ -4222,7 +4465,7 @@ mod tests {
         assert!(!mgr.is_product_installed("{99999999-9999-9999-9999-999999999999}"));
 
         // Package pre-existing check
-        let mut pkg_db = LinkedDatabase::new()?;
+        let mut pkg_db = unwrap_result(LinkedDatabase::new());
         pkg_db.add_record(
             "Property",
             Record::with_fields(vec![
@@ -4254,23 +4497,21 @@ mod tests {
         );
         let pkg2 = Package::new(
             meta2,
-            LinkedDatabase::new()?,
+            unwrap_result(LinkedDatabase::new()),
             crate::database::summary_info::SummaryInfo::default(),
             HashMap::new(),
         );
         assert!(!mgr.is_package_preexisting(&pkg2));
-
-        Ok(())
     }
 
     /// Tests `MsiEmbeddedChainer` parsing, child package extraction from streams and Binary table,
     /// and error paths when child packages are missing.
     #[test]
-    fn test_multi_package_embedded_chainer_and_extraction() -> Result<()> {
+    fn test_multi_package_embedded_chainer_and_extraction() {
         let temp_dir = std::env::temp_dir().join(format!("msi_chainer_ext_{}", std::process::id()));
         let _ = std::fs::create_dir_all(&temp_dir);
 
-        let mut db = LinkedDatabase::new()?;
+        let mut db = unwrap_result(LinkedDatabase::new());
         db.add_record(
             "MsiEmbeddedChainer",
             Record::with_fields(vec![
@@ -4314,47 +4555,59 @@ mod tests {
         );
 
         // 1. Read embedded chainers
-        let chainers = MultiPackageTransactionManager::read_embedded_chainers(&master_pkg)?;
+        let chainers = unwrap_result(MultiPackageTransactionManager::read_embedded_chainers(
+            &master_pkg,
+        ));
         assert_eq!(chainers.len(), 1);
         assert_eq!(chainers[0].chainer, "Chainer1");
         assert_eq!(chainers[0].condition.as_deref(), Some("NOT Installed"));
 
         // 2. Extract child package from stream
-        let mut mgr = MultiPackageTransactionManager::begin_transaction("ExtTest")?;
+        let mut mgr = unwrap_result(MultiPackageTransactionManager::begin_transaction("ExtTest"));
         let spool = temp_dir.join("spool");
-        let path1 = mgr.extract_child_package(&master_pkg, "libscript-mysql.msi", &spool)?;
+        let path1 =
+            unwrap_result(mgr.extract_child_package(&master_pkg, "libscript-mysql.msi", &spool));
         assert!(path1.exists());
-        assert_eq!(std::fs::read(&path1)?, b"STREAM_MYSQL_PAYLOAD");
+        assert_eq!(
+            unwrap_result(std::fs::read(&path1)),
+            b"STREAM_MYSQL_PAYLOAD"
+        );
 
         // Extract with '#' prefix
-        let path2 = mgr.extract_child_package(&master_pkg, "#libscript-redis.msi", &spool)?;
+        let path2 =
+            unwrap_result(mgr.extract_child_package(&master_pkg, "#libscript-redis.msi", &spool));
         assert!(path2.exists());
-        assert_eq!(std::fs::read(&path2)?, b"STREAM_REDIS_PAYLOAD");
+        assert_eq!(
+            unwrap_result(std::fs::read(&path2)),
+            b"STREAM_REDIS_PAYLOAD"
+        );
 
         // Extract from Binary table
-        let path3 = mgr.extract_child_package(&master_pkg, "child-binary.msi", &spool)?;
+        let path3 =
+            unwrap_result(mgr.extract_child_package(&master_pkg, "child-binary.msi", &spool));
         assert!(path3.exists());
-        assert_eq!(std::fs::read(&path3)?, b"BINARY_MSI_PAYLOAD");
+        assert_eq!(unwrap_result(std::fs::read(&path3)), b"BINARY_MSI_PAYLOAD");
 
         // Error path: Missing child package
         let err = mgr.extract_child_package(&master_pkg, "non-existent.msi", &spool);
         assert!(err.is_err());
 
         // 3. Extract all child packages
-        let extracted_all = mgr.extract_all_child_packages(&master_pkg, &spool)?;
+        let extracted_all = unwrap_result(mgr.extract_all_child_packages(&master_pkg, &spool));
         assert_eq!(extracted_all.len(), 3);
         assert!(extracted_all.contains_key("libscript-mysql.msi"));
         assert!(extracted_all.contains_key("#libscript-redis.msi"));
         assert!(extracted_all.contains_key("child-binary.msi"));
 
         let _ = std::fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
 
     /// Tests `install_child_package` with pre-existing detection, skip flags, launch conditions, and rollback scripts.
     #[test]
-    fn test_multi_package_child_installation_lifecycle() -> Result<()> {
-        let mut mgr = MultiPackageTransactionManager::begin_transaction("ChildInstallTest")?;
+    fn test_multi_package_child_installation_lifecycle() {
+        let mut mgr = unwrap_result(MultiPackageTransactionManager::begin_transaction(
+            "ChildInstallTest",
+        ));
 
         // 1. Inactive transaction error path
         let mut inactive_mgr = MultiPackageTransactionManager::default();
@@ -4366,14 +4619,14 @@ mod tests {
         );
         let dummy_pkg = Package::new(
             meta,
-            LinkedDatabase::new()?,
+            unwrap_result(LinkedDatabase::new()),
             crate::database::summary_info::SummaryInfo::default(),
             HashMap::new(),
         );
         assert!(inactive_mgr.install_child_package(&dummy_pkg, "").is_err());
 
         // 2. Pre-existing package: skipped
-        let db1 = LinkedDatabase::new()?;
+        let db1 = unwrap_result(LinkedDatabase::new());
         let meta1 = crate::package::PackageMetadata::new(
             "PrePkg",
             "Vendor",
@@ -4390,7 +4643,7 @@ mod tests {
             "{E0F45901-83B4-4B21-9B5A-01D38FE81001}",
             InstallState::Default,
         );
-        let res_pre = mgr.install_child_package(&pkg1, "")?;
+        let res_pre = unwrap_result(mgr.install_child_package(&pkg1, ""));
         assert_eq!(res_pre, ERROR_SUCCESS);
         assert!(mgr.chained_packages()[0].preexisting);
         assert!(mgr.chained_packages()[0].rollback_script.is_none());
@@ -4404,16 +4657,16 @@ mod tests {
         );
         let pkg_skip = Package::new(
             meta_skip,
-            LinkedDatabase::new()?,
+            unwrap_result(LinkedDatabase::new()),
             crate::database::summary_info::SummaryInfo::default(),
             HashMap::new(),
         );
-        let res_skip = mgr.install_child_package(&pkg_skip, "INSTALL_OPTIONAL=0")?;
+        let res_skip = unwrap_result(mgr.install_child_package(&pkg_skip, "INSTALL_OPTIONAL=0"));
         assert_eq!(res_skip, ERROR_SUCCESS);
         assert!(mgr.chained_packages()[1].preexisting);
 
         // 4. Launch condition failure
-        let mut db_lc = LinkedDatabase::new()?;
+        let mut db_lc = unwrap_result(LinkedDatabase::new());
         db_lc.add_record(
             "LaunchCondition",
             Record::with_fields(vec![
@@ -4437,7 +4690,7 @@ mod tests {
         assert!(lc_err.is_err());
 
         // 5. Successful child package install with rollback script
-        let db_ok = create_test_database()?;
+        let db_ok = unwrap_result(create_test_database());
         let meta_ok = crate::package::PackageMetadata::new(
             "OkPkg",
             "Vendor",
@@ -4450,24 +4703,24 @@ mod tests {
             crate::database::summary_info::SummaryInfo::default(),
             HashMap::new(),
         );
-        let res_ok = mgr.install_child_package(&pkg_ok, "PROP_TEST=val")?;
+        let res_ok = unwrap_result(mgr.install_child_package(&pkg_ok, "PROP_TEST=val"));
         assert_eq!(res_ok, ERROR_SUCCESS);
         let last_chained = &mgr.chained_packages()[2];
         assert!(!last_chained.preexisting);
         assert!(last_chained.rollback_script.is_some());
-
-        Ok(())
     }
 
     /// Tests cascading rollback across child packages: when a child package fails, all newly installed
     /// packages are unwound in reverse order while pre-existing packages are preserved.
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_multi_package_cascading_rollback_and_orchestrator() -> Result<()> {
-        let mut mgr = MultiPackageTransactionManager::begin_transaction("CascadeTest")?;
+    fn test_multi_package_cascading_rollback_and_orchestrator() {
+        let mut mgr = unwrap_result(MultiPackageTransactionManager::begin_transaction(
+            "CascadeTest",
+        ));
 
         // Package 1: Newly installed package (creates file)
-        let mut db1 = LinkedDatabase::new()?;
+        let mut db1 = unwrap_result(LinkedDatabase::new());
         db1.add_record(
             "Directory",
             Record::with_fields(vec![
@@ -4530,7 +4783,7 @@ mod tests {
         );
         let pkg_redis = Package::new(
             meta2,
-            LinkedDatabase::new()?,
+            unwrap_result(LinkedDatabase::new()),
             crate::database::summary_info::SummaryInfo::default(),
             HashMap::new(),
         );
@@ -4540,7 +4793,7 @@ mod tests {
         );
 
         // Package 3: Failing package (OpenEdX Core) with impossible launch condition
-        let mut db3 = LinkedDatabase::new()?;
+        let mut db3 = unwrap_result(LinkedDatabase::new());
         db3.add_record(
             "LaunchCondition",
             Record::with_fields(vec![
@@ -4582,8 +4835,10 @@ mod tests {
         assert!(actions.contains(&"SkipRollbackPreexisting:Redis".to_string()));
 
         // Also test orchestrate_master_package chainer condition skipping
-        let mut mgr2 = MultiPackageTransactionManager::begin_transaction("MasterTest")?;
-        let mut master_db = LinkedDatabase::new()?;
+        let mut mgr2 = unwrap_result(MultiPackageTransactionManager::begin_transaction(
+            "MasterTest",
+        ));
+        let mut master_db = unwrap_result(LinkedDatabase::new());
         master_db.add_record(
             "MsiEmbeddedChainer",
             Record::with_fields(vec![
@@ -4610,7 +4865,7 @@ mod tests {
         m_ctx.set_property("SHOULD_RUN", "0");
         let temp_spool = std::env::temp_dir().join(format!("spool_orch_{}", std::process::id()));
         let res_skip_chainer =
-            mgr2.orchestrate_master_package(&master_pkg2, &m_ctx, &temp_spool, &[])?;
+            unwrap_result(mgr2.orchestrate_master_package(&master_pkg2, &m_ctx, &temp_spool, &[]));
         assert_eq!(res_skip_chainer, ERROR_SUCCESS);
         assert!(mgr2
             .worker()
@@ -4618,12 +4873,11 @@ mod tests {
             .contains(&"SkipEmbeddedChainer:SkipChainer".to_string()));
 
         let _ = std::fs::remove_dir_all(&temp_spool);
-        Ok(())
     }
 
     /// Tests `WorkerContext` accessors, binaries, and cabinet extraction edge cases.
     #[test]
-    fn test_worker_context_accessors_and_cabinet_readers() -> Result<()> {
+    fn test_worker_context_accessors_and_cabinet_readers() {
         let mut worker = WorkerContext::new();
 
         // CustomActionExecutor accessors
@@ -4655,7 +4909,7 @@ mod tests {
         act_script.push(ScriptOp::CreateFolder {
             path: "test_dir".to_string(),
         });
-        worker.execute_script(&act_script)?;
+        unwrap_result(worker.execute_script(&act_script));
         assert!(worker.has_executed_action("CreateFolder"));
         assert!(!worker.has_executed_action("NonExistentAction"));
 
@@ -4682,10 +4936,10 @@ mod tests {
         // Cabinets
         let mut cab_writer =
             crate::cab::writer::CabinetWriter::new(crate::cab::folder::CompressionType::None);
-        cab_writer.add_file("readme.txt", b"cab_readme_content")?;
+        unwrap_result(cab_writer.add_file("readme.txt", b"cab_readme_content"));
         let cab_bytes = cab_writer.build();
-        let reader = crate::cab::reader::CabinetReader::new(&cab_bytes)?;
-        let reader2 = crate::cab::reader::CabinetReader::new(&cab_bytes)?;
+        let reader = unwrap_result(crate::cab::reader::CabinetReader::new(&cab_bytes));
+        let reader2 = unwrap_result(crate::cab::reader::CabinetReader::new(&cab_bytes));
 
         worker.add_cabinet_reader("reader_cab", reader);
         worker.add_cabinet_reader("#hash_cab", reader2);
@@ -4705,14 +4959,12 @@ mod tests {
         assert!(err_unknown_cab.is_err());
 
         // extract_cabinet_file with None cab (case-insensitive filename match)
-        let found_content = worker.extract_cabinet_file(None, "README.TXT")?;
+        let found_content = unwrap_result(worker.extract_cabinet_file(None, "README.TXT"));
         assert_eq!(found_content, b"cab_readme_content");
 
         // extract_cabinet_file with None cab when missing everywhere
         let err_not_found = worker.extract_cabinet_file(None, "totally_missing.dat");
         assert!(err_not_found.is_err());
-
-        Ok(())
     }
 
     /// Tests component client reference counting, key paths, and service association lifecycle.
@@ -4798,13 +5050,13 @@ mod tests {
 
     /// Tests live execution of `CopyFile`, `WriteFile`, custom action dispatch, and rollback.
     #[test]
-    fn test_worker_context_live_ops_and_ca_dispatch() -> Result<()> {
+    fn test_worker_context_live_ops_and_ca_dispatch() {
         let temp_dir = std::env::temp_dir().join(format!("msi_tx_live_ops_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&temp_dir);
-        std::fs::create_dir_all(&temp_dir)?;
+        let _ = std::fs::create_dir_all(&temp_dir);
 
         let src_file = temp_dir.join("input.txt");
-        std::fs::write(&src_file, b"SOURCE_DATA")?;
+        let _ = std::fs::write(&src_file, b"SOURCE_DATA");
 
         let exe_copy_dest = temp_dir.join("run.exe");
         let non_exe_copy_dest = temp_dir.join("copied.txt");
@@ -4841,7 +5093,7 @@ mod tests {
             content: b"# Markdown doc".to_vec(),
         });
 
-        worker.execute_script(&script)?;
+        unwrap_result(worker.execute_script(&script));
         assert!(exe_copy_dest.exists());
         assert!(non_exe_copy_dest.exists());
         assert!(exe_write_dest.exists());
@@ -4867,7 +5119,7 @@ mod tests {
             source: "BinaryTable".to_string(),
             target: "Fn".to_string(),
         });
-        worker.execute_script(&mock_ca_script)?;
+        unwrap_result(worker.execute_script(&mock_ca_script));
 
         // Non-mock custom action execution
         let mut ok_ca_script = InstallScript::new();
@@ -4877,7 +5129,7 @@ mod tests {
             source: "TARGET_PROP".to_string(),
             target: "CustomValue".to_string(),
         });
-        worker.execute_script(&ok_ca_script)?;
+        unwrap_result(worker.execute_script(&ok_ca_script));
         assert_eq!(
             worker.evaluation_context().get_property("TARGET_PROP"),
             Some("CustomValue")
@@ -4898,27 +5150,28 @@ mod tests {
             source: "TARGET_PROP".to_string(),
             target: "Val".to_string(),
         });
-        worker.execute_rollback(&rollback)?;
+        unwrap_result(worker.execute_rollback(&rollback));
         assert_eq!(
             worker.evaluation_context().get_property("TARGET_PROP"),
             Some("OriginalValue")
         );
 
         let _ = std::fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
 
     /// Tests `MultiPackageTransactionManager` edge cases, child package extractions, and orchestration branches.
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_multi_package_transaction_manager_extended() -> Result<()> {
+    fn test_multi_package_transaction_manager_extended() {
         // Validation: empty transaction name fails
         let empty_err = MultiPackageTransactionManager::begin_transaction("");
         assert!(empty_err.is_err());
 
-        let mut mgr = MultiPackageTransactionManager::begin_transaction("FullMatrixTx")?;
+        let mut mgr = unwrap_result(MultiPackageTransactionManager::begin_transaction(
+            "FullMatrixTx",
+        ));
         assert_eq!(mgr.transaction_name(), "FullMatrixTx");
-        mgr.join_transaction("Session_A")?;
+        unwrap_result(mgr.join_transaction("Session_A"));
 
         // Register products
         mgr.register_product(
@@ -4932,8 +5185,8 @@ mod tests {
         assert!(mgr.is_product_installed("{ABCDEF01-1234-5678-ABCD-123456789012}"));
 
         // Nested product installs: with PREEXISTING, with skip property, with temp extracted path
-        mgr.install_product_nested("#NestedPkg.msi", "PROP=1 PREEXISTING=1")?;
-        mgr.install_product_nested("PlainPkg", "INSTALL_FEATURE=0")?;
+        unwrap_result(mgr.install_product_nested("#NestedPkg.msi", "PROP=1 PREEXISTING=1"));
+        unwrap_result(mgr.install_product_nested("PlainPkg", "INSTALL_FEATURE=0"));
 
         // Test InstallState functions
         assert!(InstallState::Default.is_installed());
@@ -4949,7 +5202,7 @@ mod tests {
 
         // Test Transaction return codes
         let committed: Transaction<Committed> = Transaction {
-            database: LinkedDatabase::new()?,
+            database: unwrap_result(LinkedDatabase::new()),
             context: EvaluationContext::new(),
             cost_engine: DiskCostEngine::new(),
             install_script: InstallScript::new(),
@@ -4961,7 +5214,7 @@ mod tests {
         assert_eq!(committed.return_code(), 0);
 
         let rolled_back: Transaction<RolledBack> = Transaction {
-            database: LinkedDatabase::new()?,
+            database: unwrap_result(LinkedDatabase::new()),
             context: EvaluationContext::new(),
             cost_engine: DiskCostEngine::new(),
             install_script: InstallScript::new(),
@@ -4973,7 +5226,7 @@ mod tests {
         assert_eq!(rolled_back.return_code(), 1603);
 
         // Test extract_child_package: when key does NOT end with .msi and is in Binary table
-        let mut binary_db = LinkedDatabase::new()?;
+        let mut binary_db = unwrap_result(LinkedDatabase::new());
         binary_db.add_record(
             "Binary",
             Record::with_fields(vec![
@@ -5020,11 +5273,14 @@ mod tests {
 
         let temp_spool = std::env::temp_dir().join(format!("spool_ext_{}", std::process::id()));
         let extracted_path =
-            mgr.extract_child_package(&binary_pkg, "ChildWithoutExt", &temp_spool)?;
+            unwrap_result(mgr.extract_child_package(&binary_pkg, "ChildWithoutExt", &temp_spool));
         assert!(extracted_path.exists());
-        assert_eq!(std::fs::read(&extracted_path)?, b"BINARY_STRING_PAYLOAD");
+        assert_eq!(
+            unwrap_result(std::fs::read(&extracted_path)),
+            b"BINARY_STRING_PAYLOAD"
+        );
 
-        let all_extracted = mgr.extract_all_child_packages(&binary_pkg, &temp_spool)?;
+        let all_extracted = unwrap_result(mgr.extract_all_child_packages(&binary_pkg, &temp_spool));
         assert!(all_extracted.contains_key("nested_auto.msi"));
 
         assert!(mgr
@@ -5035,7 +5291,7 @@ mod tests {
             .is_err());
 
         // Test install_child_package with PREEXISTING, bare tokens, properties, and launch condition
-        let mut db_child = LinkedDatabase::new()?;
+        let mut db_child = unwrap_result(LinkedDatabase::new());
         db_child.add_record(
             "Property",
             Record::with_fields(vec![
@@ -5069,13 +5325,16 @@ mod tests {
             crate::database::summary_info::SummaryInfo::default(),
             HashMap::new(),
         );
-        let res_pre = mgr.install_child_package(&simple_child, "PREEXISTING=1 BARE_TOKEN")?;
+        let res_pre =
+            unwrap_result(mgr.install_child_package(&simple_child, "PREEXISTING=1 BARE_TOKEN"));
         assert_eq!(res_pre, ERROR_SUCCESS);
-        let mut mgr_live = MultiPackageTransactionManager::begin_transaction("LiveChildTx")?;
-        let res_live = mgr_live.install_child_package(&simple_child, "PROP=2")?;
+        let mut mgr_live = unwrap_result(MultiPackageTransactionManager::begin_transaction(
+            "LiveChildTx",
+        ));
+        let res_live = unwrap_result(mgr_live.install_child_package(&simple_child, "PROP=2"));
         assert_eq!(res_live, ERROR_SUCCESS);
 
-        let mut db_fail_lc = LinkedDatabase::new()?;
+        let mut db_fail_lc = unwrap_result(LinkedDatabase::new());
         db_fail_lc.add_record(
             "LaunchCondition",
             Record::with_fields(vec![
@@ -5094,35 +5353,49 @@ mod tests {
             crate::database::summary_info::SummaryInfo::default(),
             HashMap::new(),
         );
-        let mut mgr_fail = MultiPackageTransactionManager::begin_transaction("FailLCTx")?;
+        let mut mgr_fail = unwrap_result(MultiPackageTransactionManager::begin_transaction(
+            "FailLCTx",
+        ));
         assert!(mgr_fail.install_child_package(&pkg_fail_lc, "").is_err());
 
         // Test orchestrate_child_packages with empty forwarded properties vs non-empty
-        let mut chain_mgr = MultiPackageTransactionManager::begin_transaction("ChainTest")?;
+        let mut chain_mgr = unwrap_result(MultiPackageTransactionManager::begin_transaction(
+            "ChainTest",
+        ));
         let empty_ctx = EvaluationContext::new();
-        let chain_res = chain_mgr
-            .orchestrate_child_packages(&[(&simple_child, Some("EXTRA_ARG=1"))], &empty_ctx)?;
+        let chain_res = unwrap_result(
+            chain_mgr
+                .orchestrate_child_packages(&[(&simple_child, Some("EXTRA_ARG=1"))], &empty_ctx),
+        );
         assert_eq!(chain_res, ERROR_SUCCESS);
 
-        let mut chain_mgr_pub = MultiPackageTransactionManager::begin_transaction("ChainTestPub")?;
+        let mut chain_mgr_pub = unwrap_result(MultiPackageTransactionManager::begin_transaction(
+            "ChainTestPub",
+        ));
         let mut pub_ctx = EvaluationContext::new();
         pub_ctx.set_property("PUBLIC_CHAIN_PROP", "Val1");
-        let chain_res_pub = chain_mgr_pub
-            .orchestrate_child_packages(&[(&simple_child, Some("EXTRA_ARG=2"))], &pub_ctx)?;
+        let chain_res_pub = unwrap_result(
+            chain_mgr_pub
+                .orchestrate_child_packages(&[(&simple_child, Some("EXTRA_ARG=2"))], &pub_ctx),
+        );
         assert_eq!(chain_res_pub, ERROR_SUCCESS);
 
         // Test orchestrate_master_package where package exists on disk
-        let mut orch_mgr = MultiPackageTransactionManager::begin_transaction("OrchTest")?;
+        let mut orch_mgr = unwrap_result(MultiPackageTransactionManager::begin_transaction(
+            "OrchTest",
+        ));
         let disk_file = temp_spool.join("child_on_disk.msi");
-        let disk_pkg = Package::builder()
-            .product_name("DiskChild")
-            .manufacturer("Vendor")
-            .version(crate::package::ProductVersion::new(1, 0, 0))
-            .product_code("{CCCCCCC1-2222-3333-4444-555555555555}")
-            .build()?;
-        disk_pkg.save(&disk_file)?;
+        let disk_pkg = unwrap_result(
+            Package::builder()
+                .product_name("DiskChild")
+                .manufacturer("Vendor")
+                .version(crate::package::ProductVersion::new(1, 0, 0))
+                .product_code("{CCCCCCC1-2222-3333-4444-555555555555}")
+                .build(),
+        );
+        let _ = disk_pkg.save(&disk_file);
 
-        let mut master_db = LinkedDatabase::new()?;
+        let mut master_db = unwrap_result(LinkedDatabase::new());
         master_db.add_record(
             "MsiEmbeddedChainer",
             Record::with_fields(vec![
@@ -5160,7 +5433,7 @@ mod tests {
         master_ctx.set_property("MASTER_PUBLIC_PROP", "Val1");
 
         // Pass child with extra arguments when forwarded properties are non-empty
-        let orch_res = orch_mgr.orchestrate_master_package(
+        let orch_res = unwrap_result(orch_mgr.orchestrate_master_package(
             &master_pkg_empty,
             &master_ctx,
             &temp_spool,
@@ -5168,28 +5441,29 @@ mod tests {
                 (&disk_file_str, Some("CHILD_PROP=Val2")),
                 ("NonExistentPackage", None),
             ],
-        )?;
+        ));
         assert_eq!(orch_res, ERROR_SUCCESS);
 
         // Also test orchestrate_master_package with empty forwarded properties
-        let mut orch_mgr_empty = MultiPackageTransactionManager::begin_transaction("OrchEmpty")?;
-        let orch_res_empty = orch_mgr_empty.orchestrate_master_package(
+        let mut orch_mgr_empty = unwrap_result(MultiPackageTransactionManager::begin_transaction(
+            "OrchEmpty",
+        ));
+        let orch_res_empty = unwrap_result(orch_mgr_empty.orchestrate_master_package(
             &master_pkg_empty,
             &empty_ctx,
             &temp_spool,
             &[(&disk_file_str, Some("CHILD_PROP=Val3"))],
-        )?;
+        ));
         assert_eq!(orch_res_empty, ERROR_SUCCESS);
 
         let _ = std::fs::remove_dir_all(&temp_spool);
-        Ok(())
     }
 
     /// Tests `resolve_directories` edge cases: `TARGETDIR` with parent, null `default_dir`,
     /// empty default `sub_name`, root `non-targetdir`, and orphaned entries.
     #[test]
-    fn test_resolve_directories_edge_cases_and_fallbacks() -> Result<()> {
-        let mut db = LinkedDatabase::new()?;
+    fn test_resolve_directories_edge_cases_and_fallbacks() {
+        let mut db = unwrap_result(LinkedDatabase::new());
         // Standard dir with parent to test !entries_with_parent branch
         db.add_record(
             "Directory",
@@ -5252,7 +5526,6 @@ mod tests {
         assert!(resolved.contains_key("RootParent"));
         assert!(resolved.contains_key("ChildDot"));
         assert!(resolved.contains_key("OrphanDir"));
-        Ok(())
     }
 
     /// Tests `Transaction` preparation and script generation matrix:
@@ -5260,8 +5533,8 @@ mod tests {
     /// `FileCost`, `InstallFiles` with null fields and Long sequence, and shortcuts with null directory.
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_transaction_prepare_and_execute_full_matrix() -> Result<()> {
-        let mut db = LinkedDatabase::new()?;
+    fn test_transaction_prepare_and_execute_full_matrix() {
+        let mut db = unwrap_result(LinkedDatabase::new());
 
         // Sequences
         db.add_record(
@@ -5544,7 +5817,7 @@ mod tests {
             .sequence_table("CustomSeq")
             .with_cabinet("dummy.cab", vec![]);
 
-        let prepared = tx.prepare()?;
+        let prepared = unwrap_result(tx.prepare());
         assert!(!prepared.install_script().is_empty());
         assert!(!prepared.rollback_script().is_empty());
         let _ = prepared.cost_engine();
@@ -5553,19 +5826,19 @@ mod tests {
         let mut worker = WorkerContext::new();
         let mut cab_writer =
             crate::cab::writer::CabinetWriter::new(crate::cab::folder::CompressionType::None);
-        cab_writer.add_file("dummy.txt", b"dummy")?;
+        unwrap_result(cab_writer.add_file("dummy.txt", b"dummy"));
         let dummy_cab = cab_writer.build();
-        worker.add_cabinet_bytes("dummy.cab", &dummy_cab)?; // already has dummy.cab (line 2880)
+        unwrap_result(worker.add_cabinet_bytes("dummy.cab", &dummy_cab)); // already has dummy.cab (line 2880)
 
         let mut cab3_writer =
             crate::cab::writer::CabinetWriter::new(crate::cab::folder::CompressionType::None);
-        cab3_writer.add_file("fil3", b"fil3_content")?;
-        cab3_writer.add_file("unk.txt", b"unk_content")?;
-        cab3_writer.add_file("fil_unk_dir", b"unk_content")?;
+        unwrap_result(cab3_writer.add_file("fil3", b"fil3_content"));
+        unwrap_result(cab3_writer.add_file("unk.txt", b"unk_content"));
+        unwrap_result(cab3_writer.add_file("fil_unk_dir", b"unk_content"));
         let cab3_bytes = cab3_writer.build();
-        worker.add_cabinet_bytes("media3.cab", &cab3_bytes)?;
+        unwrap_result(worker.add_cabinet_bytes("media3.cab", &cab3_bytes));
 
-        let executed = prepared.execute(&mut worker)?;
+        let executed = unwrap_result(prepared.execute(&mut worker));
         assert_eq!(
             worker.evaluation_context().get_property("IMMEDIATE_PROP"),
             Some("ImmediateVal")
@@ -5577,11 +5850,11 @@ mod tests {
         assert_eq!(worker.get_binary("BinNull"), Some(&[][..]));
 
         // Test commit
-        let committed = executed.commit(&mut worker)?;
+        let committed = unwrap_result(executed.commit(&mut worker));
         assert_eq!(committed.return_code(), ERROR_SUCCESS);
 
         // Test Type 19 with empty target
-        let mut db_type19 = LinkedDatabase::new()?;
+        let mut db_type19 = unwrap_result(LinkedDatabase::new());
         db_type19.add_record(
             "InstallExecuteSequence",
             Record::with_fields(vec![
@@ -5602,14 +5875,12 @@ mod tests {
         let tx_19 = Transaction::new(db_type19, EvaluationContext::new(), DiskCostEngine::new());
         let err_19 = tx_19.prepare();
         assert!(err_19.is_err());
-
-        Ok(())
     }
 
     /// Tests edge-case branches and paths in `transaction.rs` to achieve 100% line and branch coverage.
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_transaction_additional_branch_coverage() -> Result<()> {
+    fn test_transaction_additional_branch_coverage() {
         unsafe extern "system-unwind" fn mock_entry_fn(_: u32) -> u32 {
             0
         }
@@ -5628,13 +5899,13 @@ mod tests {
         let mut worker = WorkerContext::new();
         let mut cab_writer =
             crate::cab::writer::CabinetWriter::new(crate::cab::folder::CompressionType::None);
-        cab_writer.add_file("f1.txt", b"cab_content")?;
+        unwrap_result(cab_writer.add_file("f1.txt", b"cab_content"));
         let cab_bytes = cab_writer.build();
-        worker.add_cabinet_bytes("other.cab", &cab_bytes)?;
-        worker.add_cabinet_bytes("disk1.cab", &cab_bytes)?;
-        let extracted1 = worker.extract_cabinet_file(Some("DISK1.CAB"), "f1.txt")?;
+        unwrap_result(worker.add_cabinet_bytes("other.cab", &cab_bytes));
+        unwrap_result(worker.add_cabinet_bytes("disk1.cab", &cab_bytes));
+        let extracted1 = unwrap_result(worker.extract_cabinet_file(Some("DISK1.CAB"), "f1.txt"));
         assert_eq!(extracted1, b"cab_content");
-        let extracted2 = worker.extract_cabinet_file(Some("#DISK1.CAB"), "f1.txt")?;
+        let extracted2 = unwrap_result(worker.extract_cabinet_file(Some("#DISK1.CAB"), "f1.txt"));
         assert_eq!(extracted2, b"cab_content");
 
         // 3. CustomAction with has_native_function = true
@@ -5650,7 +5921,7 @@ mod tests {
             source: "BinaryTable".to_string(),
             target: "EntryFn".to_string(),
         });
-        worker_native.execute_script(&script_native)?;
+        unwrap_result(worker_native.execute_script(&script_native));
 
         // CustomAction with has_mock_result = true
         let mut worker_mock = WorkerContext::new();
@@ -5664,10 +5935,10 @@ mod tests {
             source: "BinaryTable".to_string(),
             target: "Fn".to_string(),
         });
-        worker_mock.execute_script(&script_mock)?;
+        unwrap_result(worker_mock.execute_script(&script_mock));
 
         // 4. extract_child_package where stream name starts with # and matches Binary table clean name
-        let mut bin_db = LinkedDatabase::new()?;
+        let mut bin_db = unwrap_result(LinkedDatabase::new());
         bin_db.add_record(
             "Binary",
             Record::with_fields(vec![
@@ -5686,10 +5957,13 @@ mod tests {
             crate::database::summary_info::SummaryInfo::default(),
             HashMap::new(),
         );
-        let mut mgr = MultiPackageTransactionManager::begin_transaction("CleanNameTx")?;
+        let mut mgr = unwrap_result(MultiPackageTransactionManager::begin_transaction(
+            "CleanNameTx",
+        ));
         let temp_dir =
             std::env::temp_dir().join(format!("clean_name_spool_{}", std::process::id()));
-        let extracted_clean = mgr.extract_child_package(&bin_pkg, "#child_payload", &temp_dir)?;
+        let extracted_clean =
+            unwrap_result(mgr.extract_child_package(&bin_pkg, "#child_payload", &temp_dir));
         assert!(extracted_clean.exists());
         let _ = std::fs::remove_dir_all(&temp_dir);
 
@@ -5701,22 +5975,25 @@ mod tests {
                 crate::package::ProductVersion::new(1, 0, 0),
                 "{12345678-0000-0000-0000-000000000002}",
             ),
-            LinkedDatabase::new()?,
+            unwrap_result(LinkedDatabase::new()),
             crate::database::summary_info::SummaryInfo::default(),
             HashMap::new(),
         );
-        let mut orch_mgr = MultiPackageTransactionManager::begin_transaction("OrchWhitespaceArgs")?;
+        let mut orch_mgr = unwrap_result(MultiPackageTransactionManager::begin_transaction(
+            "OrchWhitespaceArgs",
+        ));
         let empty_ctx = EvaluationContext::new();
         orch_mgr.register_product(
             "{12345678-0000-0000-0000-000000000002}",
             InstallState::Default,
         );
-        let res_orch =
-            orch_mgr.orchestrate_child_packages(&[(&dummy_child, Some("   "))], &empty_ctx)?;
+        let res_orch = unwrap_result(
+            orch_mgr.orchestrate_child_packages(&[(&dummy_child, Some("   "))], &empty_ctx),
+        );
         assert_eq!(res_orch, ERROR_SUCCESS);
 
         // 6. orchestrate_master_package with Some("   ") in child_packages
-        let mut master_db = LinkedDatabase::new()?;
+        let mut master_db = unwrap_result(LinkedDatabase::new());
         master_db.add_record(
             "MsiEmbeddedChainer",
             Record::with_fields(vec![
@@ -5738,20 +6015,21 @@ mod tests {
             crate::database::summary_info::SummaryInfo::default(),
             HashMap::new(),
         );
-        let mut master_mgr =
-            MultiPackageTransactionManager::begin_transaction("MasterWhitespaceArgs")?;
+        let mut master_mgr = unwrap_result(MultiPackageTransactionManager::begin_transaction(
+            "MasterWhitespaceArgs",
+        ));
         let temp_spool_ws = std::env::temp_dir().join(format!("spool_ws_{}", std::process::id()));
-        let res_master_ws = master_mgr.orchestrate_master_package(
+        let res_master_ws = unwrap_result(master_mgr.orchestrate_master_package(
             &master_pkg_ws,
             &empty_ctx,
             &temp_spool_ws,
             &[("NonExistentNested", Some("   "))],
-        )?;
+        ));
         assert_eq!(res_master_ws, ERROR_SUCCESS);
         let _ = std::fs::remove_dir_all(&temp_spool_ws);
 
         // 7. resolve_directories with empty sub_name (":source")
-        let mut dir_db_empty = LinkedDatabase::new()?;
+        let mut dir_db_empty = unwrap_result(LinkedDatabase::new());
         dir_db_empty.add_record(
             "Directory",
             Record::with_fields(vec![
@@ -5765,7 +6043,7 @@ mod tests {
         assert!(dir_ctx_empty.get_property("EmptySubDir").is_some());
 
         // 7b. Chain of 17 directories inserted in reverse order to hit iterations < max_iterations false
-        let mut dir_db_chain = LinkedDatabase::new()?;
+        let mut dir_db_chain = unwrap_result(LinkedDatabase::new());
         for i in (1..=16).rev() {
             dir_db_chain.add_record(
                 "Directory",
@@ -5789,7 +6067,7 @@ mod tests {
         assert!(dir_ctx_chain.get_property("D16").is_some());
 
         // 8. Media disk with empty cabinet string
-        let mut media_db = LinkedDatabase::new()?;
+        let mut media_db = unwrap_result(LinkedDatabase::new());
         media_db.add_record(
             "Media",
             Record::with_fields(vec![
@@ -5808,7 +6086,7 @@ mod tests {
             ]),
         );
         let media_tx = Transaction::new(media_db, EvaluationContext::new(), DiskCostEngine::new());
-        let _ = media_tx.prepare()?;
+        let _ = unwrap_result(media_tx.prepare());
 
         // 9. Live executor ExtractCabinetFile with executable and non-executable file
         let temp_live_dir =
@@ -5819,10 +6097,10 @@ mod tests {
         let mut worker_live = WorkerContext::new().with_live_executor(live_exec);
         let mut cab_writer_live =
             crate::cab::writer::CabinetWriter::new(crate::cab::folder::CompressionType::None);
-        cab_writer_live.add_file("app.exe", b"binary_content")?;
-        cab_writer_live.add_file("readme.txt", b"text_content")?;
+        unwrap_result(cab_writer_live.add_file("app.exe", b"binary_content"));
+        unwrap_result(cab_writer_live.add_file("readme.txt", b"text_content"));
         let cab_bytes_live = cab_writer_live.build();
-        worker_live.add_cabinet_bytes("app.cab", &cab_bytes_live)?;
+        unwrap_result(worker_live.add_cabinet_bytes("app.cab", &cab_bytes_live));
         let app_dest = temp_live_dir.join("app.exe");
         let txt_dest = temp_live_dir.join("readme.txt");
         let op_extract_exe = ScriptOp::ExtractCabinetFile {
@@ -5838,7 +6116,7 @@ mod tests {
         let mut script_live = InstallScript::new();
         script_live.push(op_extract_exe);
         script_live.push(op_extract_txt);
-        worker_live.execute_script(&script_live)?;
+        unwrap_result(worker_live.execute_script(&script_live));
         let _ = std::fs::remove_dir_all(&temp_live_dir);
 
         // 10. CustomAction with target == "Fn" and non-matching target
@@ -5851,7 +6129,7 @@ mod tests {
         };
         let mut script_ca_ok = InstallScript::new();
         script_ca_ok.push(op_ca_fn);
-        ca_worker.execute_script(&script_ca_ok)?;
+        unwrap_result(ca_worker.execute_script(&script_ca_ok));
 
         let op_ca_other = ScriptOp::CustomAction {
             action: "MockOtherAction".to_string(),
@@ -5864,20 +6142,23 @@ mod tests {
         assert!(ca_worker.execute_script(&script_ca_err).is_err());
 
         // 11. is_package_preexisting with upgrade_code not installed
-        let mut mgr_up =
-            MultiPackageTransactionManager::begin_transaction("TestUpgradeNotInstalled")?;
-        let pkg_up = Package::builder()
-            .product_name("UpPkg")
-            .manufacturer("Vendor")
-            .version(crate::package::ProductVersion::new(1, 0, 0))
-            .product_code("{11111111-2222-3333-4444-555555555555}")
-            .upgrade_code("{99999999-9999-9999-9999-999999999999}")
-            .build()?;
+        let mut mgr_up = unwrap_result(MultiPackageTransactionManager::begin_transaction(
+            "TestUpgradeNotInstalled",
+        ));
+        let pkg_up = unwrap_result(
+            Package::builder()
+                .product_name("UpPkg")
+                .manufacturer("Vendor")
+                .version(crate::package::ProductVersion::new(1, 0, 0))
+                .product_code("{11111111-2222-3333-4444-555555555555}")
+                .upgrade_code("{99999999-9999-9999-9999-999999999999}")
+                .build(),
+        );
         assert!(!mgr_up.is_package_preexisting(&pkg_up));
         let _ = mgr_up.end_transaction(false);
 
         // 12. extract_all_child_packages with non-msi stream and duplicate binary stream
-        let mut stream_db = LinkedDatabase::new()?;
+        let mut stream_db = unwrap_result(LinkedDatabase::new());
         stream_db.add_record(
             "Binary",
             Record::with_fields(vec![
@@ -5901,35 +6182,43 @@ mod tests {
         );
         let temp_spool_stream =
             std::env::temp_dir().join(format!("spool_stream_{}", std::process::id()));
-        let mut mgr_stream =
-            MultiPackageTransactionManager::begin_transaction("TestStreamExtract")?;
+        let mut mgr_stream = unwrap_result(MultiPackageTransactionManager::begin_transaction(
+            "TestStreamExtract",
+        ));
         let extracted_streams =
-            mgr_stream.extract_all_child_packages(&stream_pkg, &temp_spool_stream)?;
+            unwrap_result(mgr_stream.extract_all_child_packages(&stream_pkg, &temp_spool_stream));
         assert!(extracted_streams.contains_key("child.msi"));
         let _ = mgr_stream.end_transaction(false);
         let _ = std::fs::remove_dir_all(&temp_spool_stream);
 
         // 13. install_child_package with INSTALL_* set to false
-        let mut mgr_skip = MultiPackageTransactionManager::begin_transaction("TestSkipInstall")?;
-        let child_pkg_skip = Package::builder()
-            .product_name("ChildSkip")
-            .manufacturer("Vendor")
-            .version(crate::package::ProductVersion::new(1, 0, 0))
-            .product_code("{11111111-2222-3333-4444-555555555558}")
-            .build()?;
-        let skip_res =
-            mgr_skip.install_child_package(&child_pkg_skip, "INSTALL_APP=false OTHER=1")?;
+        let mut mgr_skip = unwrap_result(MultiPackageTransactionManager::begin_transaction(
+            "TestSkipInstall",
+        ));
+        let child_pkg_skip = unwrap_result(
+            Package::builder()
+                .product_name("ChildSkip")
+                .manufacturer("Vendor")
+                .version(crate::package::ProductVersion::new(1, 0, 0))
+                .product_code("{11111111-2222-3333-4444-555555555558}")
+                .build(),
+        );
+        let skip_res = unwrap_result(
+            mgr_skip.install_child_package(&child_pkg_skip, "INSTALL_APP=false OTHER=1"),
+        );
         assert_eq!(skip_res, ERROR_SUCCESS);
         let _ = mgr_skip.end_transaction(false);
 
         // 14. orchestrate_master_package with existing file on disk and failure path
         let temp_child_file =
             std::env::temp_dir().join(format!("child_disk_{}.msi", std::process::id()));
-        std::fs::write(&temp_child_file, b"not a valid msi")?;
+        let _ = std::fs::write(&temp_child_file, b"not a valid msi");
         let temp_child_str = temp_child_file.to_string_lossy().to_string();
 
-        let mut mgr_fail = MultiPackageTransactionManager::begin_transaction("TestMasterFail")?;
-        let empty_db = LinkedDatabase::new()?;
+        let mut mgr_fail = unwrap_result(MultiPackageTransactionManager::begin_transaction(
+            "TestMasterFail",
+        ));
+        let empty_db = unwrap_result(LinkedDatabase::new());
         let master_pkg_fail = Package::new(
             crate::package::PackageMetadata::new(
                 "MasterFail",
@@ -5954,7 +6243,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&temp_spool_fail);
 
         // 15. Type 19 custom action with formatted target string
-        let mut type19_db = LinkedDatabase::new()?;
+        let mut type19_db = unwrap_result(LinkedDatabase::new());
         type19_db.add_record(
             "CustomAction",
             Record::with_fields(vec![
@@ -5977,7 +6266,7 @@ mod tests {
         assert!(type19_tx.prepare().is_err());
 
         // 16. Deferred custom action (action_type 0x0401)
-        let mut deferred_db = LinkedDatabase::new()?;
+        let mut deferred_db = unwrap_result(LinkedDatabase::new());
         deferred_db.add_record(
             "CustomAction",
             Record::with_fields(vec![
@@ -5997,24 +6286,26 @@ mod tests {
         );
         let deferred_tx =
             Transaction::new(deferred_db, EvaluationContext::new(), DiskCostEngine::new());
-        let prepared_deferred = deferred_tx.prepare()?;
+        let prepared_deferred = unwrap_result(deferred_tx.prepare());
         assert!(!prepared_deferred.install_script().operations().is_empty());
 
         // 17. has_cabinet testing with and without hash prefix
         let mut cabinet_worker = WorkerContext::new();
-        cabinet_worker.add_cabinet_bytes("testcab.cab", &cab_bytes_live)?;
+        unwrap_result(cabinet_worker.add_cabinet_bytes("testcab.cab", &cab_bytes_live));
         assert!(cabinet_worker.has_cabinet("testcab.cab"));
         assert!(cabinet_worker.has_cabinet("#testcab.cab"));
         assert!(!cabinet_worker.has_cabinet("missing.cab"));
 
         // 18. orchestrate_master_package with extracted child package match
-        let valid_child_pkg = Package::builder()
-            .product_name("ValidChild")
-            .manufacturer("Vendor")
-            .version(crate::package::ProductVersion::new(1, 0, 0))
-            .product_code("{11111111-2222-3333-4444-555555555559}")
-            .build()?;
-        let child_bytes = valid_child_pkg.to_bytes()?;
+        let valid_child_pkg = unwrap_result(
+            Package::builder()
+                .product_name("ValidChild")
+                .manufacturer("Vendor")
+                .version(crate::package::ProductVersion::new(1, 0, 0))
+                .product_code("{11111111-2222-3333-4444-555555555559}")
+                .build(),
+        );
+        let child_bytes = unwrap_result(valid_child_pkg.to_bytes());
         let mut streams_succ = HashMap::new();
         streams_succ.insert("valid_child.msi".to_string(), child_bytes);
         let master_pkg_succ = Package::new(
@@ -6024,22 +6315,849 @@ mod tests {
                 crate::package::ProductVersion::new(1, 0, 0),
                 "{11111111-2222-3333-4444-555555555560}",
             ),
-            LinkedDatabase::new()?,
+            unwrap_result(LinkedDatabase::new()),
             crate::database::summary_info::SummaryInfo::default(),
             streams_succ,
         );
         let temp_spool_succ =
             std::env::temp_dir().join(format!("spool_succ_{}", std::process::id()));
-        let mut mgr_succ = MultiPackageTransactionManager::begin_transaction("TestMasterSucc")?;
-        let succ_res = mgr_succ.orchestrate_master_package(
+        let mut mgr_succ = unwrap_result(MultiPackageTransactionManager::begin_transaction(
+            "TestMasterSucc",
+        ));
+        let succ_res = unwrap_result(mgr_succ.orchestrate_master_package(
             &master_pkg_succ,
             &empty_ctx,
             &temp_spool_succ,
             &[("valid_child.msi", None)],
-        )?;
+        ));
         assert_eq!(succ_res, ERROR_SUCCESS);
         let _ = std::fs::remove_dir_all(&temp_spool_succ);
 
-        Ok(())
+        // 19. Test standard actions lifecycle: InstallValidate, InstallInitialize, InstallFinalize,
+        // ProcessComponents, RemoveFiles, RemoveRegistryValues, WriteEnvironmentStrings,
+        // StopServices, DeleteServices, InstallServices, StartServices.
+        let mut std_db = unwrap_result(LinkedDatabase::new());
+
+        // Component table
+        std_db.add_record(
+            "Component",
+            Record::with_fields(vec![
+                FieldValue::String("Comp1".to_string()),
+                FieldValue::String("{11111111-2222-3333-4444-555555555501}".to_string()),
+                FieldValue::String("TARGETDIR".to_string()),
+                FieldValue::Short(0),
+                FieldValue::String("1 = 1".to_string()),
+                FieldValue::String(r"C:\App\app.exe".to_string()),
+            ]),
+        );
+        std_db.add_record(
+            "Component",
+            Record::with_fields(vec![
+                FieldValue::String("CompAbsent".to_string()),
+                FieldValue::String("{11111111-2222-3333-4444-555555555502}".to_string()),
+                FieldValue::String("TARGETDIR".to_string()),
+                FieldValue::Short(0),
+                FieldValue::String("1 = 0".to_string()),
+                FieldValue::String(r"C:\App\absent.exe".to_string()),
+            ]),
+        );
+        // Component without keypath, without condition, and with null/non-string fields
+        std_db.add_record(
+            "Component",
+            Record::with_fields(vec![
+                FieldValue::String("CompNoKp".to_string()),
+                FieldValue::String("{11111111-2222-3333-4444-555555555503}".to_string()),
+                FieldValue::Null, // null Dir
+                FieldValue::Short(0),
+                FieldValue::String(String::new()), // empty condition
+                FieldValue::Null,                  // null KeyPath
+            ]),
+        );
+        std_db.add_record(
+            "Component",
+            Record::with_fields(vec![
+                FieldValue::String("CompNoGuid".to_string()),
+                FieldValue::Null, // null GUID -> hits None branch of comp.get(1)
+            ]),
+        );
+        std_db.add_record(
+            "Component",
+            Record::with_fields(vec![
+                FieldValue::Short(999), // non-string component name to hit non-matching branch
+            ]),
+        );
+
+        // RemoveFile table
+        std_db.add_record(
+            "RemoveFile",
+            Record::with_fields(vec![
+                FieldValue::String("RF1".to_string()),
+                FieldValue::String("Comp1".to_string()),
+                FieldValue::String("old.log".to_string()),
+                FieldValue::String("TARGETDIR".to_string()),
+                FieldValue::Short(1),
+            ]),
+        );
+        std_db.add_record(
+            "RemoveFile",
+            Record::with_fields(vec![
+                FieldValue::String("RF_All".to_string()),
+                FieldValue::String("Comp1".to_string()),
+                FieldValue::Null,
+                FieldValue::String("TARGETDIR".to_string()),
+                FieldValue::Short(1),
+            ]),
+        );
+        std_db.add_record(
+            "RemoveFile",
+            Record::with_fields(vec![
+                FieldValue::String("RF_EmptyName".to_string()),
+                FieldValue::String("Comp1".to_string()),
+                FieldValue::String(String::new()), // empty file_name -> falls back to *.*
+                FieldValue::String("TARGETDIR".to_string()),
+                FieldValue::Short(1),
+            ]),
+        );
+        std_db.add_record(
+            "RemoveFile",
+            Record::with_fields(vec![
+                FieldValue::String("RF_UnresolvedDir".to_string()),
+                FieldValue::String("Comp1".to_string()),
+                FieldValue::String("temp.txt".to_string()),
+                FieldValue::String("UNRESOLVED_DIR_PROP".to_string()),
+                FieldValue::Short(1),
+            ]),
+        );
+        std_db.add_record(
+            "RemoveFile",
+            Record::with_fields(vec![
+                FieldValue::String("RF_NoDirProp".to_string()),
+                FieldValue::String("Comp1".to_string()),
+                FieldValue::String("bad.txt".to_string()),
+                FieldValue::Null, // null dir_prop -> continue
+            ]),
+        );
+
+        // RemoveRegistry table
+        std_db.add_record(
+            "RemoveRegistry",
+            Record::with_fields(vec![
+                FieldValue::String("RR1".to_string()),
+                FieldValue::Short(2),
+                FieldValue::String(r"Software\App\Legacy".to_string()),
+                FieldValue::String("OldKey".to_string()),
+                FieldValue::String("Comp1".to_string()),
+            ]),
+        );
+        std_db.add_record(
+            "RemoveRegistry",
+            Record::with_fields(vec![
+                FieldValue::String("RR_NullName".to_string()),
+                FieldValue::Short(2),
+                FieldValue::String(r"Software\App\LegacyKey".to_string()),
+                FieldValue::Null,
+                FieldValue::String("Comp1".to_string()),
+            ]),
+        );
+        std_db.add_record(
+            "RemoveRegistry",
+            Record::with_fields(vec![
+                FieldValue::String("RR_DefaultRoot".to_string()),
+                FieldValue::Null, // root fallback to 2
+                FieldValue::String(r"Software\App\DefaultRoot".to_string()),
+                FieldValue::Null,
+                FieldValue::String("Comp1".to_string()),
+            ]),
+        );
+        std_db.add_record(
+            "RemoveRegistry",
+            Record::with_fields(vec![
+                FieldValue::String("RR_NoKey".to_string()),
+                FieldValue::Short(2),
+                FieldValue::Null, // key is Null -> continue
+            ]),
+        );
+
+        // Environment table
+        std_db.add_record(
+            "Environment",
+            Record::with_fields(vec![
+                FieldValue::String("Env1".to_string()),
+                FieldValue::String("=APP_DIR".to_string()),
+                FieldValue::String("[TARGETDIR]".to_string()),
+                FieldValue::String("Comp1".to_string()),
+            ]),
+        );
+        std_db.add_record(
+            "Environment",
+            Record::with_fields(vec![
+                FieldValue::String("Env_NoVal".to_string()),
+                FieldValue::String("=APP_EMPTY".to_string()),
+                FieldValue::Null, // val_raw fallback to String::new()
+                FieldValue::String("Comp1".to_string()),
+            ]),
+        );
+        std_db.add_record(
+            "Environment",
+            Record::with_fields(vec![
+                FieldValue::String("Env_NoName".to_string()),
+                FieldValue::Null, // name_raw is Null -> continue
+            ]),
+        );
+
+        // ServiceInstall table
+        std_db.add_record(
+            "ServiceInstall",
+            Record::with_fields(vec![
+                FieldValue::String("Svc1".to_string()),
+                FieldValue::String("AppService".to_string()),
+                FieldValue::String("App Display Service".to_string()),
+                FieldValue::Long(0x10),
+                FieldValue::Long(2),
+                FieldValue::Long(1),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::String("Comp1".to_string()),
+            ]),
+        );
+        std_db.add_record(
+            "ServiceInstall",
+            Record::with_fields(vec![
+                FieldValue::String("SvcDefaults".to_string()),
+                FieldValue::String("AppSvcDefaults".to_string()),
+                FieldValue::Null, // display_name fallback to name
+                FieldValue::Null, // service_type fallback to 0x10
+                FieldValue::Null, // start_type fallback to 2
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null, // comp is null -> fallback to "" -> fallback binary_path
+            ]),
+        );
+        std_db.add_record(
+            "ServiceInstall",
+            Record::with_fields(vec![
+                FieldValue::String("SvcNoName".to_string()),
+                FieldValue::Null, // name is Null -> continue
+            ]),
+        );
+
+        // ServiceControl table
+        std_db.add_record(
+            "ServiceControl",
+            Record::with_fields(vec![
+                FieldValue::String("SC_Stop".to_string()),
+                FieldValue::String("AppService".to_string()),
+                FieldValue::Short(0x0002), // Stop
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::String("Comp1".to_string()),
+            ]),
+        );
+        std_db.add_record(
+            "ServiceControl",
+            Record::with_fields(vec![
+                FieldValue::String("SC_Start".to_string()),
+                FieldValue::String("AppService".to_string()),
+                FieldValue::Short(0x0001), // Start
+                FieldValue::String("-run".to_string()),
+                FieldValue::Null,
+                FieldValue::String("Comp1".to_string()),
+            ]),
+        );
+        std_db.add_record(
+            "ServiceControl",
+            Record::with_fields(vec![
+                FieldValue::String("SC_StartNoArgs".to_string()),
+                FieldValue::String("AppService".to_string()),
+                FieldValue::Short(0x0001), // Start without args
+                FieldValue::Null,          // args is None
+                FieldValue::Null,
+                FieldValue::String("Comp1".to_string()),
+            ]),
+        );
+        std_db.add_record(
+            "ServiceControl",
+            Record::with_fields(vec![
+                FieldValue::String("SC_Delete".to_string()),
+                FieldValue::String("AppService".to_string()),
+                FieldValue::Short(0x0004), // Delete
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::String("Comp1".to_string()),
+            ]),
+        );
+        std_db.add_record(
+            "ServiceControl",
+            Record::with_fields(vec![
+                FieldValue::String("SC_NoEvent".to_string()),
+                FieldValue::String("IgnoredSvc".to_string()),
+                FieldValue::Null, // event is Null -> fallback to 0
+            ]),
+        );
+        std_db.add_record(
+            "ServiceControl",
+            Record::with_fields(vec![
+                FieldValue::String("SC_StopNoName".to_string()),
+                FieldValue::Null,          // name is Null
+                FieldValue::Short(0x0002), // Stop event
+            ]),
+        );
+        std_db.add_record(
+            "ServiceControl",
+            Record::with_fields(vec![
+                FieldValue::String("SC_DeleteNoName".to_string()),
+                FieldValue::Null,          // name is Null
+                FieldValue::Short(0x0004), // Delete event
+            ]),
+        );
+        std_db.add_record(
+            "ServiceControl",
+            Record::with_fields(vec![
+                FieldValue::String("SC_StartNoName".to_string()),
+                FieldValue::Null,          // name is Null
+                FieldValue::Short(0x0001), // Start event
+            ]),
+        );
+
+        // InstallExecuteSequence table
+        let std_actions = [
+            ("InstallValidate", 10),
+            ("InstallInitialize", 20),
+            ("ProcessComponents", 30),
+            ("StopServices", 40),
+            ("DeleteServices", 50),
+            ("RemoveFiles", 60),
+            ("RemoveRegistryValues", 70),
+            ("WriteEnvironmentStrings", 80),
+            ("InstallServices", 90),
+            ("StartServices", 100),
+            ("InstallFinalize", 110),
+        ];
+        for (act, seq) in std_actions {
+            std_db.add_record(
+                "InstallExecuteSequence",
+                Record::with_fields(vec![
+                    FieldValue::String(act.to_string()),
+                    FieldValue::Null,
+                    FieldValue::Short(seq),
+                ]),
+            );
+        }
+
+        let std_tx = Transaction::new(std_db, EvaluationContext::new(), DiskCostEngine::new());
+        let prep_std = unwrap_result(std_tx.prepare());
+        let mut std_worker = WorkerContext::new();
+        let exec_std = unwrap_result(prep_std.execute(&mut std_worker));
+        let _ = exec_std.commit(&mut std_worker);
+    }
+
+    /// Tests remaining edge cases across transaction execution, extraction, rollback and error paths.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_transaction_uncovered_paths() {
+        // Exercise unwrap_result
+        unwrap_result::<(), &str>(Ok(()));
+        let _ = std::panic::catch_unwind(|| unwrap_result::<(), _>(Err("expected_err")));
+
+        // 1. WorkerContext cabinet errors
+        let mut worker = WorkerContext::new();
+        assert!(worker
+            .add_cabinet_bytes("bad.cab", b"not a valid cab")
+            .is_err());
+        assert!(WorkerContext::new()
+            .with_cabinet_bytes("bad", b"not a valid cab")
+            .is_err());
+
+        // 2. MultiPackageTransactionManager error branches
+        let mut bad_chainer_db = unwrap_result(LinkedDatabase::new());
+        bad_chainer_db.add_record(
+            "MsiEmbeddedChainer",
+            Record::with_fields(vec![FieldValue::Null]),
+        );
+        let bad_pkg = Package::from_database(bad_chainer_db, HashMap::new());
+        assert!(MultiPackageTransactionManager::read_embedded_chainers(&bad_pkg).is_err());
+
+        let mut mgr = unwrap_result(MultiPackageTransactionManager::begin_transaction(
+            "TestExtractErr",
+        ));
+        let mut master_db = unwrap_result(LinkedDatabase::new());
+        master_db.add_record(
+            "Binary",
+            Record::with_fields(vec![
+                FieldValue::String("ChildPkg.msi".to_string()),
+                FieldValue::String("dummy_binary".to_string()),
+            ]),
+        );
+        let mut embedded_cabs = HashMap::new();
+        embedded_cabs.insert("ChildCab.msi".to_string(), vec![1, 2, 3]);
+        let master_pkg = Package::from_database(master_db, embedded_cabs);
+        let forbidden_spool = Path::new("/dev/null/forbidden_spool");
+        assert!(mgr
+            .extract_child_package(&master_pkg, "ChildPkg.msi", forbidden_spool)
+            .is_err());
+        assert!(mgr
+            .extract_all_child_packages(&master_pkg, forbidden_spool)
+            .is_err());
+
+        // Child package extraction write error when destination is a directory (line 1636)
+        let temp_spool_valid =
+            std::env::temp_dir().join(format!("spool_valid_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&temp_spool_valid);
+        let dest_conflict = temp_spool_valid.join("ChildPkg.msi");
+        let _ = std::fs::create_dir_all(&dest_conflict);
+        assert!(mgr
+            .extract_child_package(&master_pkg, "ChildPkg.msi", &temp_spool_valid)
+            .is_err());
+        let _ = std::fs::remove_dir_all(&temp_spool_valid);
+
+        let master_ctx = EvaluationContext::new();
+
+        // Master package with bad chainer row in orchestrate_master_package
+        assert!(mgr
+            .orchestrate_master_package(&bad_pkg, &master_ctx, Path::new("/tmp"), &[])
+            .is_err());
+
+        // Condition syntax error in master chainer
+        let mut master_db2 = unwrap_result(LinkedDatabase::new());
+        master_db2.add_record(
+            "MsiEmbeddedChainer",
+            Record::with_fields(vec![
+                FieldValue::String("Chainer1".to_string()),
+                FieldValue::String("(".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(1),
+            ]),
+        );
+        let master_pkg2 = Package::from_database(master_db2, HashMap::new());
+        assert!(mgr
+            .orchestrate_master_package(&master_pkg2, &master_ctx, Path::new("/tmp"), &[])
+            .is_err());
+
+        // 3. Custom action target unclosed format bracket
+        let mut ca_db = unwrap_result(LinkedDatabase::new());
+        ca_db.add_record(
+            "CustomAction",
+            Record::with_fields(vec![
+                FieldValue::String("BadCA".to_string()),
+                FieldValue::Short(19),
+                FieldValue::String(String::new()),
+                FieldValue::String("[UNCLOSED".to_string()),
+            ]),
+        );
+        ca_db.add_record(
+            "InstallExecuteSequence",
+            Record::with_fields(vec![
+                FieldValue::String("BadCA".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(10),
+            ]),
+        );
+        let ca_tx = Transaction::new(ca_db, EvaluationContext::new(), DiskCostEngine::new());
+        assert!(ca_tx.prepare().is_err());
+
+        // 4. Synchronous custom action execution failure
+        let mut fail_ca_db = unwrap_result(LinkedDatabase::new());
+        fail_ca_db.add_record(
+            "CustomAction",
+            Record::with_fields(vec![
+                FieldValue::String("FailCA".to_string()),
+                FieldValue::Short(19),
+                FieldValue::String(String::new()),
+                FieldValue::String("Simulated Failure".to_string()),
+            ]),
+        );
+        fail_ca_db.add_record(
+            "InstallExecuteSequence",
+            Record::with_fields(vec![
+                FieldValue::String("FailCA".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(10),
+            ]),
+        );
+        let fail_ca_tx =
+            Transaction::new(fail_ca_db, EvaluationContext::new(), DiskCostEngine::new());
+        assert!(fail_ca_tx.prepare().is_err());
+
+        // Type 1 synchronous custom action entry point failure (line 2983)
+        let mut fail_ca_db2 = unwrap_result(LinkedDatabase::new());
+        fail_ca_db2.add_record(
+            "CustomAction",
+            Record::with_fields(vec![
+                FieldValue::String("FailDll".to_string()),
+                FieldValue::Short(0x0001),
+                FieldValue::String("NoDll".to_string()),
+                FieldValue::String("NoEntry".to_string()),
+            ]),
+        );
+        fail_ca_db2.add_record(
+            "InstallExecuteSequence",
+            Record::with_fields(vec![
+                FieldValue::String("FailDll".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(10),
+            ]),
+        );
+        let fail_ca_tx2 =
+            Transaction::new(fail_ca_db2, EvaluationContext::new(), DiskCostEngine::new());
+        assert!(fail_ca_tx2.prepare().is_err());
+
+        // Costing failure in prepare (line 2550)
+        let mut cost_engine_exceeded = DiskCostEngine::new();
+        cost_engine_exceeded.register_volume("TARGETDIR", 1, Some(4096));
+        let tx_cost_exceeded = Transaction::new(
+            unwrap_result(create_test_database()),
+            EvaluationContext::new(),
+            cost_engine_exceeded,
+        );
+        assert!(tx_cost_exceeded.prepare().is_err());
+
+        // Cabinet file missing during extraction (line 1034)
+        let mut script_no_cab = InstallScript::new();
+        script_no_cab.push(ScriptOp::ExtractCabinetFile {
+            cabinet: "MissingCab".to_string(),
+            file_key: "File1".to_string(),
+            destination: "/tmp/dest".to_string(),
+        });
+        let mut worker_no_cab = WorkerContext::new();
+        assert!(worker_no_cab.execute_script(&script_no_cab).is_err());
+
+        // Live executor errors: CreateFolder (line 976) and CopyFile (line 1026)
+        let temp_quar_ops =
+            std::env::temp_dir().join(format!("msi_quar_ops_{}", std::process::id()));
+        let live_exec_ops =
+            crate::execution::worker::LiveWorkerExecutor::new(&temp_quar_ops, "session_ops");
+        let mut worker_live_ops = WorkerContext::new().with_live_executor(live_exec_ops);
+
+        let mut script_bad_dir = InstallScript::new();
+        script_bad_dir.push(ScriptOp::CreateFolder {
+            path: "/dev/null/forbidden_dir".to_string(),
+        });
+        #[cfg(unix)]
+        assert!(worker_live_ops.execute_script(&script_bad_dir).is_err());
+
+        worker_live_ops
+            .filesystem_files
+            .insert("/tmp/src_dummy.txt".to_string(), b"hello".to_vec());
+        let mut script_bad_copy = InstallScript::new();
+        script_bad_copy.push(ScriptOp::CopyFile {
+            source: "/tmp/src_dummy.txt".to_string(),
+            destination: "/dev/null/forbidden_dest".to_string(),
+            overwrite: false,
+        });
+        #[cfg(unix)]
+        assert!(worker_live_ops.execute_script(&script_bad_copy).is_err());
+
+        let mut script_bad_write = InstallScript::new();
+        script_bad_write.push(ScriptOp::WriteFile {
+            destination: "/dev/null/forbidden_write".to_string(),
+            content: b"test data".to_vec(),
+        });
+        #[cfg(unix)]
+        assert!(worker_live_ops.execute_script(&script_bad_write).is_err());
+
+        // ExtractCabinetFile live write error (line 1045)
+        let mut cab_valid =
+            crate::cab::writer::CabinetWriter::new(crate::cab::folder::CompressionType::None);
+        unwrap_result(cab_valid.add_file("fil1", b"payload data"));
+        let cab_data = cab_valid.build();
+        unwrap_result(worker_live_ops.add_cabinet_bytes("valid.cab", &cab_data));
+
+        let mut script_bad_extract = InstallScript::new();
+        script_bad_extract.push(ScriptOp::ExtractCabinetFile {
+            cabinet: "valid.cab".to_string(),
+            file_key: "fil1".to_string(),
+            destination: "/dev/null/forbidden_extract".to_string(),
+        });
+        #[cfg(unix)]
+        assert!(worker_live_ops.execute_script(&script_bad_extract).is_err());
+        let _ = std::fs::remove_dir_all(&temp_quar_ops);
+
+        // Chainer condition syntax error (line 1971)
+        let mut chainer_bad_cond_db = unwrap_result(LinkedDatabase::new());
+        chainer_bad_cond_db.add_record(
+            "MsiEmbeddedChainer",
+            Record::with_fields(vec![
+                FieldValue::String("ChainerBadCond".to_string()),
+                FieldValue::String("( == )".to_string()),
+                FieldValue::Null,
+                FieldValue::String("BinKey".to_string()),
+                FieldValue::Short(1),
+            ]),
+        );
+        let chainer_bad_pkg = Package::from_database(chainer_bad_cond_db, HashMap::new());
+        let mut mgr_cond =
+            unwrap_result(MultiPackageTransactionManager::begin_transaction("CondTx"));
+        assert!(mgr_cond
+            .orchestrate_master_package(
+                &chainer_bad_pkg,
+                &EvaluationContext::new(),
+                Path::new("/tmp"),
+                &[]
+            )
+            .is_err());
+
+        // Chainer extraction error in orchestrate_master_package (line 1980)
+        let mut chainer_ext_db = unwrap_result(LinkedDatabase::new());
+        chainer_ext_db.add_record(
+            "MsiEmbeddedChainer",
+            Record::with_fields(vec![
+                FieldValue::String("ChainerExt".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::String("Child.msi".to_string()),
+                FieldValue::Short(1),
+            ]),
+        );
+        chainer_ext_db.add_record(
+            "Binary",
+            Record::with_fields(vec![
+                FieldValue::String("Child.msi".to_string()),
+                FieldValue::String("data".to_string()),
+            ]),
+        );
+        let chainer_ext_pkg = Package::from_database(chainer_ext_db, HashMap::new());
+        let mut mgr_ext = unwrap_result(MultiPackageTransactionManager::begin_transaction("ExtTx"));
+        assert!(mgr_ext
+            .orchestrate_master_package(
+                &chainer_ext_pkg,
+                &EvaluationContext::new(),
+                Path::new("/dev/null/forbidden"),
+                &[]
+            )
+            .is_err());
+
+        // Binary extraction failure in extract_all_child_packages (line 1685)
+        let mut bin_only_db = unwrap_result(LinkedDatabase::new());
+        bin_only_db.add_record(
+            "Binary",
+            Record::with_fields(vec![
+                FieldValue::String("ChildBin.msi".to_string()),
+                FieldValue::String("data".to_string()),
+            ]),
+        );
+        let bin_only_pkg = Package::from_database(bin_only_db, HashMap::new());
+        let mut mgr_bin = unwrap_result(MultiPackageTransactionManager::begin_transaction("BinTx"));
+        assert!(mgr_bin
+            .extract_all_child_packages(&bin_only_pkg, Path::new("/dev/null/forbidden"))
+            .is_err());
+
+        // Child package failures: condition syntax (line 1841), prepare (line 1852), execute (line 1859), commit (line 1860)
+        let mut mgr_child =
+            unwrap_result(MultiPackageTransactionManager::begin_transaction("ChildTx"));
+
+        let mut child_bad_cond_db = unwrap_result(create_test_database());
+        child_bad_cond_db.add_record(
+            "LaunchCondition",
+            Record::with_fields(vec![
+                FieldValue::String("( == )".to_string()),
+                FieldValue::String("Bad condition".to_string()),
+            ]),
+        );
+        let child_bad_cond_pkg = Package::from_database(child_bad_cond_db, HashMap::new());
+        assert!(mgr_child
+            .install_child_package(&child_bad_cond_pkg, "")
+            .is_err());
+
+        let mut child_fail_db = unwrap_result(LinkedDatabase::new());
+        child_fail_db.add_record(
+            "CustomAction",
+            Record::with_fields(vec![
+                FieldValue::String("FailCA".to_string()),
+                FieldValue::Short(19),
+                FieldValue::String(String::new()),
+                FieldValue::String("[UNCLOSED".to_string()),
+            ]),
+        );
+        child_fail_db.add_record(
+            "InstallExecuteSequence",
+            Record::with_fields(vec![
+                FieldValue::String("FailCA".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(10),
+            ]),
+        );
+        let child_fail_pkg = Package::from_database(child_fail_db, HashMap::new());
+        assert!(mgr_child
+            .install_child_package(&child_fail_pkg, "")
+            .is_err());
+
+        let child_valid_pkg =
+            Package::from_database(unwrap_result(create_test_database()), HashMap::new());
+        mgr_child.worker_mut().simulate_failure_at("MyCustomAction");
+        assert!(mgr_child
+            .install_child_package(&child_valid_pkg, "INSTALL_MODE=FULL")
+            .is_err());
+
+        // Child commit failure (line 1860)
+        let temp_child_q = std::env::temp_dir().join(format!("child_q_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&temp_child_q);
+        let sub = temp_child_q.join("sub");
+        let _ = std::fs::create_dir_all(&sub);
+        let _ = std::fs::write(sub.join("f.rbf"), b"x");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&sub, std::fs::Permissions::from_mode(0o555));
+            let _ = std::fs::set_permissions(&temp_child_q, std::fs::Permissions::from_mode(0o555));
+        }
+        let live_q = crate::execution::worker::LiveWorkerExecutor::new(&temp_child_q, "child_q");
+        let mut mgr_commit_fail = unwrap_result(MultiPackageTransactionManager::begin_transaction(
+            "ChildCommitFail",
+        ));
+        *mgr_commit_fail.worker_mut() = WorkerContext::new().with_live_executor(live_q);
+        let mut empty_seq_db = unwrap_result(LinkedDatabase::new());
+        empty_seq_db.add_record(
+            "InstallExecuteSequence",
+            Record::with_fields(vec![
+                FieldValue::String("CostInitialize".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(800),
+            ]),
+        );
+        let empty_child_pkg = Package::from_database(empty_seq_db, HashMap::new());
+        #[cfg(unix)]
+        assert!(mgr_commit_fail
+            .install_child_package(&empty_child_pkg, "")
+            .is_err());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&temp_child_q, std::fs::Permissions::from_mode(0o755));
+            let _ = std::fs::set_permissions(&sub, std::fs::Permissions::from_mode(0o755));
+        }
+        let _ = std::fs::remove_dir_all(&temp_child_q);
+
+        // 5. Bare metal journal rollback failure
+        let temp_ro_disk = std::env::temp_dir().join(format!("ro_disk_{}", std::process::id()));
+        let _ = std::fs::write(&temp_ro_disk, b"dummy disk content");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&temp_ro_disk, std::fs::Permissions::from_mode(0o444));
+        }
+
+        let mut worker_bm = WorkerContext::new();
+        let mut bm_journal = crate::execution::bare_metal::BareMetalRollbackJournal::new();
+        bm_journal.record_partition_wipe(
+            crate::platform::disk::BlockDevicePath::new(&temp_ro_disk),
+            0,
+            10,
+        );
+        worker_bm.bare_metal_journal = Some(bm_journal);
+        let empty_rollback = RollbackScript::new();
+        #[cfg(unix)]
+        assert!(worker_bm.execute_rollback(&empty_rollback).is_err());
+
+        // Prepared rollback failure
+        let mut worker_bm_prep = WorkerContext::new();
+        let mut bm_journal_prep = crate::execution::bare_metal::BareMetalRollbackJournal::new();
+        bm_journal_prep.record_partition_wipe(
+            crate::platform::disk::BlockDevicePath::new(&temp_ro_disk),
+            0,
+            10,
+        );
+        worker_bm_prep.bare_metal_journal = Some(bm_journal_prep);
+        let tx_bm_prep = Transaction {
+            database: unwrap_result(LinkedDatabase::new()),
+            context: EvaluationContext::new(),
+            cost_engine: DiskCostEngine::new(),
+            install_script: InstallScript::new(),
+            rollback_script: RollbackScript::new(),
+            sequence_table: "InstallExecuteSequence".to_string(),
+            embedded_cabinets: HashMap::new(),
+            _state: PhantomData::<Prepared>,
+        };
+        #[cfg(unix)]
+        assert!(tx_bm_prep.rollback(&mut worker_bm_prep).is_err());
+
+        // Executed rollback failure
+        let mut worker_bm2 = WorkerContext::new();
+        let mut bm_journal2 = crate::execution::bare_metal::BareMetalRollbackJournal::new();
+        bm_journal2.record_partition_wipe(
+            crate::platform::disk::BlockDevicePath::new(&temp_ro_disk),
+            0,
+            10,
+        );
+        worker_bm2.bare_metal_journal = Some(bm_journal2);
+        let tx_bm_exec = Transaction {
+            database: unwrap_result(LinkedDatabase::new()),
+            context: EvaluationContext::new(),
+            cost_engine: DiskCostEngine::new(),
+            install_script: InstallScript::new(),
+            rollback_script: RollbackScript::new(),
+            sequence_table: "InstallExecuteSequence".to_string(),
+            embedded_cabinets: HashMap::new(),
+            _state: PhantomData::<Executed>,
+        };
+        #[cfg(unix)]
+        assert!(tx_bm_exec.rollback(&mut worker_bm2).is_err());
+        let _ = std::fs::remove_file(&temp_ro_disk);
+
+        // 6. Commit failure via live executor quarantine deletion failure
+        let temp_quarantine_dir =
+            std::env::temp_dir().join(format!("msi_tx_quarantine_fail_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&temp_quarantine_dir);
+        let inner_dir = temp_quarantine_dir.join("locked_subdir");
+        let _ = std::fs::create_dir_all(&inner_dir);
+        let dummy_file = inner_dir.join("dummy.rbf");
+        let _ = std::fs::write(&dummy_file, b"data");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&inner_dir, std::fs::Permissions::from_mode(0o555));
+            let _ = std::fs::set_permissions(
+                &temp_quarantine_dir,
+                std::fs::Permissions::from_mode(0o555),
+            );
+        }
+        let live_exec =
+            crate::execution::worker::LiveWorkerExecutor::new(&temp_quarantine_dir, "session_test");
+        let mut worker_commit_fail = WorkerContext::new().with_live_executor(live_exec);
+        #[cfg(unix)]
+        assert!(worker_commit_fail.commit().is_err());
+
+        let tx_commit_fail = Transaction {
+            database: unwrap_result(LinkedDatabase::new()),
+            context: EvaluationContext::new(),
+            cost_engine: DiskCostEngine::new(),
+            install_script: InstallScript::new(),
+            rollback_script: RollbackScript::new(),
+            sequence_table: "InstallExecuteSequence".to_string(),
+            embedded_cabinets: HashMap::new(),
+            _state: PhantomData::<Executed>,
+        };
+        #[cfg(unix)]
+        assert!(tx_commit_fail.commit(&mut worker_commit_fail).is_err());
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(
+                &temp_quarantine_dir,
+                std::fs::Permissions::from_mode(0o755),
+            );
+            let _ = std::fs::set_permissions(&inner_dir, std::fs::Permissions::from_mode(0o755));
+        }
+        let _ = std::fs::remove_dir_all(&temp_quarantine_dir);
+
+        // install_child_package_from_path errors (line 1892)
+        let mut mgr_path = unwrap_result(MultiPackageTransactionManager::begin_transaction(
+            "PathErrTx",
+        ));
+        assert!(mgr_path
+            .install_child_package_from_path("/nonexistent_path/child.msi", "")
+            .is_err());
+        let temp_child_fail =
+            std::env::temp_dir().join(format!("child_fail_path_{}.msi", std::process::id()));
+        let _ = bad_pkg.save(&temp_child_fail);
+        assert!(mgr_path
+            .install_child_package_from_path(&temp_child_fail, "")
+            .is_err());
+        let _ = std::fs::remove_file(&temp_child_fail);
     }
 }

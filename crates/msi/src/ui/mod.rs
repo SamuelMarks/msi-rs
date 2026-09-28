@@ -53,8 +53,9 @@ pub use tui::{
     TerminalBuffer, TerminalController, TerminalEvent, TerminalSafetyGuard, TerminalWizard, TuiKey,
 };
 pub use window::{
-    AccessKitBridge, AccessibleNode, AccessibleRole, GuiDesktopRuntime, GuiHardwareBackend,
-    GuiInputEvent, WindowConfig, WindowLifecycleEvent,
+    AccessKitBridge, AccessibleNode, AccessibleRole, BackgroundTransactionWorker,
+    GuiDesktopRuntime, GuiHardwareBackend, GuiInputEvent, TransactionProgressTick,
+    TransactionWorkerCommand, WindowConfig, WindowLifecycleEvent,
 };
 pub use wizard::{
     BareMetalInstallationWizard, DiagnosticsLogConsole, DiskSelectionDialog,

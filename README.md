@@ -58,6 +58,10 @@ Interactive desktop installation wizard rendered via `egui` and `wgpu` (DirectX 
 
 *Figure 2: `msi-gui` interactive feature selection tree with volume disk space calculation and custom component selection.*
 
+![Native Desktop GUI Installer - Live Progress Dialog](https://raw.githubusercontent.com/SamuelMarks/cc0-assets/master/msi-rs/screenshots/gui_progress_dialog.png)
+
+*Figure 3: `msi-gui` real-time transaction worker streaming `ActionText` tickers, time remaining estimates, socket binding probes, and rollback quarantine monitoring.*
+
 ---
 
 ### Terminal TUI Wizard (`msi-cli --tui`)
@@ -65,7 +69,7 @@ Interactive terminal text wizard powered by the exact same `UiEngine` state mach
 
 ![Interactive Terminal TUI Wizard](https://raw.githubusercontent.com/SamuelMarks/cc0-assets/master/msi-rs/screenshots/tui_wizard.png)
 
-*Figure 3: Curses/raw-terminal mode TUI installation wizard displaying Unicode box drawing, interactive controls, and real-time action progress.*
+*Figure 4: Curses/raw-terminal mode TUI installation wizard displaying Unicode box drawing, interactive controls, and real-time action progress.*
 
 ---
 
@@ -74,7 +78,11 @@ CLI tool providing drop-in command-line parity with Microsoft Win32 `msiexec.exe
 
 ![Command-Line Installation Execution](https://raw.githubusercontent.com/SamuelMarks/cc0-assets/master/msi-rs/screenshots/cli_install_output.png)
 
-*Figure 4: `msi-cli` running a transaction with volume costing, privileged worker IPC transition, LZX cabinet decompression, and POSIX translations.*
+*Figure 5: `msi-cli` running a transaction with volume costing, privileged worker IPC transition, LZX cabinet decompression, and POSIX translations.*
+
+![Zero-.EXE Multi-Package EmbeddedChainer & Multi-Cabinet Pipeline](https://raw.githubusercontent.com/SamuelMarks/cc0-assets/master/msi-rs/screenshots/cli_chainer_output.png)
+
+*Figure 6: `msi-cli` multi-cabinet media partitioning (`engine.cab`, `runtimes.cab`, `databases.cab`, `codebase.cab`) and zero-.EXE `MsiEmbeddedChainer` orchestration.*
 
 ---
 
@@ -198,29 +206,72 @@ See the complete Python guide and API documentation in [`docs/python_guide.md`](
 - **Transforms & IDT:** `.mst` database transform generation, diffing, and patching; IDT tab-delimited table import and export.
 - **POSIX Extensions:** Extension tables for POSIX permissions (`PosixFile`), symlinks (`PosixSymlink`), system daemons (`PosixDaemon`), ACLs (`PosixAcl`), and Freedesktop entries (`PosixDesktop`).
 
-### 3. WiX Toolset Pipeline (`candle` & `light` Parity)
-- **Schema Compatibility:** Full support for WiX v3, WiX v4, WiX v5, and POSIX extension schemas.
-- **Preprocessor:** Variable stack (`$(var.NAME)`, `$(env.VAR)`, `$(sys.CURRENTDIR)`), conditional directives (`<?if?>`, `<?elseif?>`, `<?else?>`), loops (`<?foreach?>`), and include files (`<?include?>`).
-- **Compiler & Linker:** Intermediate object AST (`.wixobj`), symbol dependency solver, automatic standard action sequencing (`CostInitialize` through `InstallFinalize`), and Media disk layout binding.
-- **ICE Validator:** Built-in Internal Consistency Evaluators (`ICE01`, `ICE02`, `ICE03`, `ICE04`, `ICE05`, `ICE06`, `ICE07`, `ICE08`, `ICE09`, `ICE18`, `ICE20`, `ICE30`, `ICE33`, `ICE38`, `ICE61`, `ICE80`, `ICE99`, `ICE101`, `ICE103`).
+### 3. WiX Toolset Pipeline & Pure-Rust `.msi` Creation
+- **WiX Compiler & Linker:**
+  - Multi-source `.wxs` input support (`msi pack -o App.msi --multi-fragment Product.wxs Payload.wxs`).
+  - Cross-fragment symbol resolution (`<ComponentGroupRef Id="..." />`).
+  - Preprocessor defines (`-d VAR=VAL` / `-dVAR=VAL`) and suppression flags (`-sval`, `-sice:<rule>`).
+  - Built-in `WixUIExtension` support with standard dialog presets (`WixUI_Mondo`, `WixUI_InstallDir`, `WixUI_FeatureTree`, `WixUI_Minimal`), fonts (`WixUI_Font_Normal`, `WixUI_Font_Title`), and branding variables (`WixUIBannerBmp`, `WixUIDialogBmp`, `WixUILicenseRtf`).
+  - Authoring of platform daemons and services (`<ServiceInstall>` & `<ServiceControl>`) with automatic standard action injection (`StopServices`, `DeleteServices`, `InstallServices`, `StartServices`).
+  - Authoring of desktop and Start Menu shortcuts, system environment variables, registry searches (`<RegistrySearch>`, `<FileSearch>`), and launch conditions (`<Condition Message="...">`).
+  - Multi-cabinet deterministic media partitioning for offline air-gapped installers (`engine.cab`, `runtimes.cab`, `databases.cab`, `codebase.cab`) with non-overlapping sequence boundaries and compression levels (`high` with LZX vs `medium` with MSZIP).
+  - Native Payload Harvester (`msi harvest`) drop-in replacement for shell harvesting scripts: strictly respects `.gitignore`, generates deterministic RFC 4122 v5 UUIDs, and auto-hashes identifiers exceeding 72 characters (`CMP_<hash>`, `FIL_<hash>`).
+- **Complete Internal Consistency Evaluators (100% ICE Suite / 105 Rules):**
+  - Full modular validation engine (`crates/msi/src/wix/ice/`) implementing all 105 official Windows Installer rules across 7 categories:
+    - **Structural & Metadata**: `ICE16`, `ICE29`, `ICE35`, `ICE37`, `ICE39`, `ICE40`, `ICE41`, `ICE45`, `ICE46`, `ICE48`, `ICE51`, `ICE53`, `ICE58`, `ICE70`, `ICE71`, `ICE73`, `ICE74`, `ICE82`, `ICE84`, `ICE87`, `ICE92`, `ICE93`, `ICE95`.
+    - **Sequence Tables & Pipeline**: `ICE11`, `ICE12`, `ICE26`, `ICE27`, `ICE28`, `ICE42`, `ICE63`, `ICE67`, `ICE68`, `ICE72`, `ICE75`, `ICE77`, `ICE78`, `SequenceGraph`.
+    - **Components & Relational Integrity**: `ICE10`, `ICE14`, `ICE19`, `ICE21`, `ICE22`, `ICE43`, `ICE47`, `ICE57`, `ICE59`, `ICE64`, `ICE69`, `ICE79`, `ICE89`, `ICE90`, `ICE91`.
+    - **UI & Dialog Controls**: `ICE13`, `ICE23`, `ICE24`, `ICE34`, `ICE44`, `ICE86`, `ICE102`, `ICE104`.
+    - **File Table Rules**: `ICE31`, `ICE54`, `ICE60`, `ICE96`.
+    - **System & Search Tables**: `ICE15`, `ICE17`, `ICE32`, `ICE36`, `ICE49`, `ICE50`, `ICE52`, `ICE55`, `ICE56`, `ICE65`, `ICE85`, `ICE88`, `ICE100`.
+    - **Advanced Subsystems**: `ICE25`, `ICE62`, `ICE66`, `ICE76`, `ICE81`, `ICE83`, `ICE94`, `ICE97`, `ICE98`, `ICE105`.
+  - Registered in `IceRegistry::with_standard_rules()` and exposed through `smoke.exe`, `light.exe`, and `msibuild.exe`.
 
 ### 4. Cross-Platform Platform Translation (`msi-platform`)
-- **Filesystem Mapping:** Standard MSI directories (`[ProgramFiles64Folder]`, `[CommonAppDataFolder]`, `[DesktopFolder]`, `[SystemFolder]`) mapped to Linux FHS / XDG, macOS Apple File System (`/Applications`, `/Library/Application Support`), FreeBSD, and illumos paths.
+- **Transparent Directory Translation:**
+  - Standard Windows directories translated automatically across Windows, Linux FHS/XDG, macOS Darwin/Library, FreeBSD `hier(7)`, and SunOS/illumos:
+    - `ProgramFiles64Folder`: `/opt/<Vendor>` (Linux, SunOS) / `/usr/local/<Vendor>` (FreeBSD) / `/Applications` (macOS).
+    - `CommonFilesFolder`: `/usr/share` (Linux, SunOS) / `/usr/local/share` (FreeBSD) / `/Library/Application Support` (macOS).
+    - `CommonAppDataFolder`: `/var/lib/<Product>` (Linux) / `/var/db/<Product>` (FreeBSD) / `/etc/opt/<Product>` (SunOS).
+    - `AppDataFolder`: `$XDG_CONFIG_HOME/<Product>` (Linux, FreeBSD, SunOS) / `~/Library/Application Support/<Product>` (macOS).
+    - `DesktopFolder`: `$XDG_DESKTOP_DIR` / XDG `.desktop` (Linux, FreeBSD, SunOS) / `~/Desktop` or `.app` alias (macOS).
+    - `TempFolder`: `$TMPDIR` / `/tmp`.
 - **Service Supervisors:**
-  - Linux `systemd`: Generates and manages `.service` units via `systemctl`.
-  - macOS `launchd`: Generates and manages `.plist` daemons via `launchctl`.
-  - FreeBSD `rc.d`: Generates `rc.subr` scripts and manages via `sysrc` and `service`.
-  - illumos/Solaris `SMF`: Generates XML manifests and manages via `svccfg` and `svcadm`.
+  - Linux `systemd`: Auto-generates unit files in `/etc/systemd/system/<service>.service`, managed via `systemctl`.
+  - macOS `launchd`: Auto-generates property lists in `/Library/LaunchDaemons/<service>.plist`, managed via `launchctl`.
+  - FreeBSD `rc.d`: Auto-generates `rc.subr` scripts in `/usr/local/etc/rc.d/<service>`, managed via `sysrc` and `service`.
+  - SunOS/illumos `SMF`: Auto-generates XML manifests in `/var/svc/manifest/site/`, managed via `svccfg` and `svcadm`.
+  - Windows: Native Windows Service Control Manager (`sc.exe` / SCM API).
+- **Strict Incompatibility Rejection:**
+  - Rejects Windows-only kernel mechanisms (`SERVICE_KERNEL_DRIVER`, file system filter drivers, COM+ DCOM catalog registration `ICE97`) with typed `Error::UnsupportedPlatformFeature { feature, target_os, reason }` ensuring zero silent failures or corruption.
 - **Desktop Integration:** Freedesktop `.desktop` application launchers and macOS `.app` bundle synthesis with icon conversion.
-- **Registry Emulation:** Embedded ACID SQLite database store (`/var/lib/msi/registry.db` and user config) with WAL mode, transaction log replays, and native bridges (`defaults write` / `dconf`).
+- **Registry Emulation:** Embedded ACID `RegistryStore` database mapping `HKLM`, `HKCU`, `HKCR`, and `HKU` to JSON or SQLite files on POSIX, and native Win32 Registry APIs on Windows.
 
 ### 5. Execution Engine & Two-Phase Transaction Lifecycle
-- **Immediate Phase:** Condition evaluation, volume costing (`statvfs` / `GetDiskFreeSpaceExW`), script generation (`.ibs` install script and `.rbs` rollback script).
-- **Deferred Phase:** Privilege boundary transition to worker via Unix domain sockets or Windows named pipes.
-- **Rollback Quarantine:** Physical `.rbf` quarantine preserving original files with byte-for-byte rollback guarantees on failure or user cancellation.
-- **Script Engines:** Embedded ECMAScript / JScript and VBScript interpreters with COM automation `Session` object binding.
-- **Native Custom Actions:** Dynamic library loader (`dlopen` / `LoadLibraryW`) with temporary sandbox isolation and signal/SEH crash boundaries.
-- **Offline Sysroot & Bare-Metal Mode:** Offline pre-boot chroot sandboxing, mocked subsystem APIs (`SCM`, `RPC`), and disk-level rollback journaling for bare-metal OS provisioning.
+- **Standard Actions Sequence Lifecycle:**
+  - `CostInitialize`, `FileCost`, `CostFinalize` with volume and mount point space calculations.
+  - `InstallValidate` checking component run states and disk quotas.
+  - `InstallInitialize` and `InstallFinalize` managing transactional boundaries.
+  - `ProcessComponents` evaluating install states and reference counting.
+  - `InstallFiles` and `RemoveFiles` with atomic writes, backup quarantine, and rollback journals.
+  - `WriteRegistryValues`, `WriteEnvironmentStrings`, `CreateShortcuts`.
+- **Custom Action Translation & Interception:**
+  - **Type 18 / 34 Shell Command Translation**: Translates `cmd.exe /c [INSTALLFOLDER]libscript\libscript.cmd ...` to `/bin/sh [INSTALLFOLDER]/libscript/libscript.sh ...` on POSIX, passing `CustomActionData` in the environment.
+  - **Type 6 VBScript Replacement**: Intercepts `validate_*.vbs` port checks and executes in-process socket probes using `std::net::TcpListener::bind`, setting `VALID_<pkg>="1"` / `VALID_<pkg>="0"` with diagnostics.
+  - **Type 1 DLL In-Process SQL Provisioning**: Intercepts `sql_provisioner.dll` actions, running schema creation, user creation, and grants in-process via `SqlProvisionerClient`, respecting `PURGE_DATA="1"` on rollback.
+- **Zero-.EXE Multi-Package Orchestration (`EmbeddedChainer`):**
+  - Reads `MsiEmbeddedChainer` table and extracts child packages to secure temporary spool storage.
+  - Sequentially executes child packages within an atomic multi-package transaction with cascading rollback.
+- **Shared Component Reference Counting (`SharedDllRefCount`):**
+  - Tracks client `ProductCode` associations per `ComponentId` GUID in `RegistryStore`.
+  - Retains shared services and files until reference count reaches zero.
+- **Non-Blocking Background Worker (`BackgroundTransactionWorker`):**
+  - Runs the installation transaction on a background thread while keeping GUI responsive at 60 FPS.
+  - Cross-thread progress channel streaming `percent`, `time_remaining_secs`, `progress1`, `progress2`, and `action_text` ticker messages.
+  - Handles cancel requests gracefully, unwinding compensating rollback script actions.
+- **Terminal TUI Wizard (`TerminalWizard`):**
+  - Unicode box-drawing console windowing, interactive EULA viewer, radio mode selector, component checklist, sensitive password masking, live progress bar, F2 diagnostics log drawer, and exit summary screen.
+  - Auto-launches when interactive TTY is detected without a display server.
 
 ---
 

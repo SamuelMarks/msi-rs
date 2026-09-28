@@ -458,7 +458,7 @@ pub const STANDARD_INSTALL_UI_ACTIONS: &[StandardActionOrder] = &[
 ];
 
 /// Result of ICE validation reporting warnings or errors.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct IceReport {
     /// ICE identifier (e.g. "ICE01", "ICE03").
     pub ice: String,
@@ -466,6 +466,13 @@ pub struct IceReport {
     pub is_error: bool,
     /// Detailed diagnostic message.
     pub message: String,
+}
+
+impl fmt::Display for IceReport {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let severity = if self.is_error { "error" } else { "warning" };
+        write!(f, "{}: {} - {}", self.ice, severity, self.message)
+    }
 }
 
 /// Linked database representation holding resolved tables and records.
@@ -590,6 +597,80 @@ impl LinkedDatabase {
     #[must_use]
     pub fn get_records(&self, table: &str) -> &[Record] {
         self.tables.get(table).map_or(&[], Vec::as_slice)
+    }
+
+    /// Returns an optional slice of records for the given table, or `None` if the table does not exist.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Table name.
+    ///
+    /// # Returns
+    ///
+    /// Optional slice of [`Record`].
+    #[must_use]
+    pub fn get_table(&self, name: &str) -> Option<&[Record]> {
+        self.tables.get(name).map(Vec::as_slice)
+    }
+
+    /// Extracts a string field from a record at the specified column index.
+    ///
+    /// # Arguments
+    ///
+    /// * `record` - Target record.
+    /// * `col` - 0-based column index.
+    ///
+    /// # Returns
+    ///
+    /// Optional borrowed string slice if column exists and contains a string.
+    #[must_use]
+    pub fn get_string_field<'a>(&self, record: &'a Record, col: usize) -> Option<&'a str> {
+        match record.get(col) {
+            Some(FieldValue::String(s)) => Some(s.as_str()),
+            _ => None,
+        }
+    }
+
+    /// Extracts an integer field from a record at the specified column index.
+    ///
+    /// # Arguments
+    ///
+    /// * `record` - Target record.
+    /// * `col` - 0-based column index.
+    ///
+    /// # Returns
+    ///
+    /// Optional 32-bit signed integer if column exists and contains an integer.
+    #[must_use]
+    pub fn get_int_field(&self, record: &Record, col: usize) -> Option<i32> {
+        match record.get(col) {
+            Some(FieldValue::Short(s)) => Some(i32::from(*s)),
+            Some(FieldValue::Long(l)) => Some(*l),
+            _ => None,
+        }
+    }
+
+    /// Returns the primary key column names for the specified table.
+    ///
+    /// # Arguments
+    ///
+    /// * `table` - Target table name.
+    ///
+    /// # Returns
+    ///
+    /// Vector of primary key column names.
+    #[must_use]
+    pub fn get_primary_keys(&self, table: &str) -> Vec<String> {
+        self.catalog
+            .get_table(table)
+            .map_or_else(Vec::new, |schema| {
+                schema
+                    .columns
+                    .iter()
+                    .filter(|c| c.primary_key)
+                    .map(|c| c.name.clone())
+                    .collect()
+            })
     }
 
     /// Converts this [`LinkedDatabase`] into an automation [`ScriptDatabase`].
@@ -1236,103 +1317,121 @@ impl IceRegistry {
     ///
     /// A populated [`IceRegistry`].
     #[must_use]
+    #[allow(clippy::too_many_lines, clippy::type_complexity)]
     pub fn with_standard_rules() -> Self {
         let mut registry = Self::new();
-        registry.register(StandardIceRule::new(
-            "ICE01",
-            "Verifies that required system and packaging tables exist in the database catalog",
-            Linker::validate_ice01,
-        ));
-        registry.register(StandardIceRule::new(
-            "ICE02",
-            "Verifies Feature-to-Feature circular dependencies",
-            Linker::validate_ice02,
-        ));
-        registry.register(StandardIceRule::new(
-            "ICE03",
-            "Comprehensive table data validation (nullability, string lengths, types)",
-            Linker::validate_ice03,
-        ));
-        registry.register(StandardIceRule::new(
-            "ICE04",
-            "Verifies contiguous sequence numbers in the File table",
-            Linker::validate_ice04,
-        ));
-        registry.register(StandardIceRule::new(
-            "ICE05",
-            "Verifies sequence ranges in Media table match File table sequences",
-            Linker::validate_ice05,
-        ));
-        registry.register(StandardIceRule::new(
-            "ICE06",
-            "Verifies that files missing versions are not installed to shared directories without keypaths",
-            Linker::validate_ice06,
-        ));
-        registry.register(StandardIceRule::new(
-            "ICE07",
-            "Verifies font file registrations",
-            Linker::validate_ice07,
-        ));
-        registry.register(StandardIceRule::new(
-            "ICE08",
-            "Verifies that duplicate GUIDs are not assigned to different components",
-            Linker::validate_ice08,
-        ));
-        registry.register(StandardIceRule::new(
-            "ICE09",
-            "Verifies that keypaths are valid files or registry keys",
-            Linker::validate_ice09,
-        ));
-        registry.register(StandardIceRule::new(
-            "ICE18",
-            "Verifies that keypaths for keypath files match component directory",
-            Linker::validate_ice18,
-        ));
-        registry.register(StandardIceRule::new(
-            "ICE20",
-            "Verifies standard action execution order in sequence tables",
-            Linker::validate_ice20,
-        ));
-        registry.register(StandardIceRule::new(
-            "ICE30",
-            "Validates cross-component file name collisions in same target directory",
-            Linker::validate_ice30,
-        ));
-        registry.register(StandardIceRule::new(
-            "ICE33",
-            "Validates Registry table entries for COM class and ProgID registration",
-            Linker::validate_ice33,
-        ));
-        registry.register(StandardIceRule::new(
-            "ICE38",
-            "Validates components installed to user profiles use HKCU keypaths",
-            Linker::validate_ice38,
-        ));
-        registry.register(StandardIceRule::new(
-            "ICE61",
-            "Validates Upgrade table version ranges against current ProductVersion",
-            Linker::validate_ice61,
-        ));
-        registry.register(StandardIceRule::new(
-            "ICE80",
-            "Validates mixing 32-bit and 64-bit components in packages",
-            Linker::validate_ice80,
-        ));
-        registry.register(StandardIceRule::new(
-            "ICE99",
-            "Validates Directory table has no circular references and exactly one root",
-            Linker::validate_ice99,
-        ));
-        registry.register(StandardIceRule::new(
-            "ICE101",
-            "Validates that files in File table have proper sequence references",
-            Linker::validate_ice101,
-        ));
-        registry.register(StandardIceRule::new(
-            "ICE103",
-            "Validates that shortcut icon indices and service accounts are valid",
-            Linker::validate_ice103,
-        ));
+        let all_rules: &[(&'static str, &'static str, fn(&LinkedDatabase) -> Option<IceReport>)] = &[
+            ("ICE01", "Verifies that required system and packaging tables exist in the database catalog", Linker::validate_ice01),
+            ("ICE02", "Verifies Feature-to-Feature circular dependencies", Linker::validate_ice02),
+            ("ICE03", "Comprehensive table data validation (nullability, string lengths, types)", Linker::validate_ice03),
+            ("ICE04", "Verifies contiguous sequence numbers in the File table", Linker::validate_ice04),
+            ("ICE05", "Verifies sequence ranges in Media table match File table sequences", Linker::validate_ice05),
+            ("ICE06", "Verifies that files missing versions are not installed to shared directories without keypaths", Linker::validate_ice06),
+            ("ICE07", "Verifies font file registrations", Linker::validate_ice07),
+            ("ICE08", "Verifies that duplicate GUIDs are not assigned to different components", Linker::validate_ice08),
+            ("ICE09", "Verifies that keypaths are valid files or registry keys", Linker::validate_ice09),
+            ("ICE10", "Verifies advertised shortcuts point to valid feature components", Linker::validate_ice10),
+            ("ICE11", "Verifies nested installer execution contexts and concurrency", Linker::validate_ice11),
+            ("ICE12", "Validates custom action target existence", Linker::validate_ice12),
+            ("ICE13", "Validates dialog size, margins, and screen bounds", Linker::validate_ice13),
+            ("ICE14", "Verifies features do not install components directly to root drive", Linker::validate_ice14),
+            ("ICE15", "Validates MIME-to-Extension circular mappings", Linker::validate_ice15),
+            ("ICE16", "Verifies ProductName in Summary Information matches Property table", Linker::validate_ice16),
+            ("ICE17", "Validates ConfigSearch table syntax and signatures", Linker::validate_ice17),
+            ("ICE18", "Verifies that keypaths for keypath files match component directory", Linker::validate_ice18),
+            ("ICE19", "Validates advertised shortcuts have valid component keypaths", Linker::validate_ice19),
+            ("ICE20", "Verifies standard action execution order in sequence tables", Linker::validate_ice20),
+            ("ICE21", "Validates Component-to-Feature mapping validity and orphan checks", Linker::validate_ice21),
+            ("ICE22", "Validates Feature install levels and conditions syntax", Linker::validate_ice22),
+            ("ICE23", "Validates dialog tab stops, tab loops, and control focus", Linker::validate_ice23),
+            ("ICE24", "Validates properties in conditions are defined or in Property table", Linker::validate_ice24),
+            ("ICE25", "Validates merge module cross-dependencies and exclusions", Linker::validate_ice25),
+            ("ICE26", "Validates sequence order of standard action elevation requirements", Linker::validate_ice26),
+            ("ICE27", "Validates sequence continuity between UI and Execute sequences", Linker::validate_ice27),
+            ("ICE28", "Validates ForceReboot action placement and schedule validity", Linker::validate_ice28),
+            ("ICE29", "Validates stream name lengths and valid characters in Binary/Icon", Linker::validate_ice29),
+            ("ICE30", "Validates cross-component file name collisions in same target directory", Linker::validate_ice30),
+            ("ICE31", "Validates TrueType font files placed strictly into FontsFolder", Linker::validate_ice31),
+            ("ICE32", "Validates foreign key integrity across catalog relationships", Linker::validate_ice32),
+            ("ICE33", "Validates Registry table entries for COM class and ProgID registration", Linker::validate_ice33),
+            ("ICE34", "Validates RadioButtonGroup control integer values and defaults", Linker::validate_ice34),
+            ("ICE35", "Validates Cabinet file naming conventions and syntax", Linker::validate_ice35),
+            ("ICE36", "Validates Icon table entries referenced by Shortcut or ProgID", Linker::validate_ice36),
+            ("ICE37", "Validates standard directory properties not overridden illegally", Linker::validate_ice37),
+            ("ICE38", "Validates components installed to user profiles use HKCU keypaths", Linker::validate_ice38),
+            ("ICE39", "Validates required Summary Information properties and code page", Linker::validate_ice39),
+            ("ICE40", "Validates MIME content-type string format and extension linkage", Linker::validate_ice40),
+            ("ICE41", "Validates Component GUID formatting, nullability, and registry keys", Linker::validate_ice41),
+            ("ICE42", "Validates in-script actions accessing restricted session properties", Linker::validate_ice42),
+            ("ICE43", "Validates non-advertised shortcuts point to keypath components", Linker::validate_ice43),
+            ("ICE44", "Validates dialog Help button presence and event connections", Linker::validate_ice44),
+            ("ICE45", "Validates Win32 reserved filenames and restricted characters", Linker::validate_ice45),
+            ("ICE46", "Validates public properties uppercase and property naming rules", Linker::validate_ice46),
+            ("ICE47", "Validates feature component ownership hierarchy and nesting", Linker::validate_ice47),
+            ("ICE48", "Validates hardcoded drive letters in Directory definitions", Linker::validate_ice48),
+            ("ICE49", "Validates registry value types, prefixes, and sizes", Linker::validate_ice49),
+            ("ICE50", "Validates shortcut icon format and local vs advertised execution", Linker::validate_ice50),
+            ("ICE51", "Validates font titles syntax and Font table completeness", Linker::validate_ice51),
+            ("ICE52", "Validates AppSearch / RegLocator / IniLocator attribute checks", Linker::validate_ice52),
+            ("ICE53", "Validates registry Key path format, trailing slashes, roots", Linker::validate_ice53),
+            ("ICE54", "Validates companion file version references and cycle detection", Linker::validate_ice54),
+            ("ICE55", "Validates LockPermissions table object existence and domain checks", Linker::validate_ice55),
+            ("ICE56", "Validates standard system directories mapped to valid root paths", Linker::validate_ice56),
+            ("ICE57", "Validates mixed per-user and per-machine data within single component", Linker::validate_ice57),
+            ("ICE58", "Validates media DiskId sequence order and cabinet spanning", Linker::validate_ice58),
+            ("ICE59", "Validates advertised shortcuts targeting parent or subfeatures", Linker::validate_ice59),
+            ("ICE60", "Validates versioned files without language or invalid version syntax", Linker::validate_ice60),
+            ("ICE61", "Validates Upgrade table version ranges against current ProductVersion", Linker::validate_ice61),
+            ("ICE62", "Validates isolated component references and DLL redirection", Linker::validate_ice62),
+            ("ICE63", "Validates sequence table action condition syntax and mutually exclusives", Linker::validate_ice63),
+            ("ICE64", "Validates roaming folder components using user profile paths", Linker::validate_ice64),
+            ("ICE65", "Validates environment variable prefix syntax", Linker::validate_ice65),
+            ("ICE66", "Validates schema version matches Installer capabilities used", Linker::validate_ice66),
+            ("ICE67", "Validates non-standard custom actions placed in valid sequences", Linker::validate_ice67),
+            ("ICE68", "Validates custom action execution flags (Deferred, Commit, Rollback)", Linker::validate_ice68),
+            ("ICE69", "Validates Verb / Extension references crossing component boundaries", Linker::validate_ice69),
+            ("ICE70", "Validates shortcut argument string formatting and path references", Linker::validate_ice70),
+            ("ICE71", "Validates cabinet compression attributes and disk prompt text", Linker::validate_ice71),
+            ("ICE72", "Validates custom action source type matches target table", Linker::validate_ice72),
+            ("ICE73", "Validates package code valid format, uppercase GUID, no brackets", Linker::validate_ice73),
+            ("ICE74", "Validates FASTOEM property syntax and restricted usage", Linker::validate_ice74),
+            ("ICE75", "Validates sequence restrictions for actions modifying system state", Linker::validate_ice75),
+            ("ICE76", "Validates side-by-side assembly manifest and identity attributes", Linker::validate_ice76),
+            ("ICE77", "Validates deferred actions scheduled between InstallInitialize and InstallFinalize", Linker::validate_ice77),
+            ("ICE78", "Validates advertise sequence table action restrictions", Linker::validate_ice78),
+            ("ICE79", "Validates feature-to-component references across modules/features", Linker::validate_ice79),
+            ("ICE80", "Validates mixing 32-bit and 64-bit components in packages", Linker::validate_ice80),
+            ("ICE81", "Validates digital signatures and certificate table references", Linker::validate_ice81),
+            ("ICE82", "Validates duplicate sequence numbers within identical sequence tables", Linker::validate_ice82),
+            ("ICE83", "Validates MsiAssembly foreign keys and win32 assembly components", Linker::validate_ice83),
+            ("ICE84", "Validates ActionText descriptions and template parameter formats", Linker::validate_ice84),
+            ("ICE85", "Validates CCPSearch and CompLocator compliance", Linker::validate_ice85),
+            ("ICE86", "Validates Combo, ListBox, and ListView items reference valid properties", Linker::validate_ice86),
+            ("ICE87", "Validates file table attribute bitmasks validity", Linker::validate_ice87),
+            ("ICE88", "Validates DrLocator parent directory searches and depth bounds", Linker::validate_ice88),
+            ("ICE89", "Validates ProgId and Class registration table relationships", Linker::validate_ice89),
+            ("ICE90", "Validates shortcuts pointing to files in uninstalled directories", Linker::validate_ice90),
+            ("ICE91", "Validates per-user vs per-machine target directory destinations", Linker::validate_ice91),
+            ("ICE92", "Validates component Directory_ column references valid directory", Linker::validate_ice92),
+            ("ICE93", "Validates GUID formatting across all primary and foreign key columns", Linker::validate_ice93),
+            ("ICE94", "Validates aggregated script and DLL custom action calling conventions", Linker::validate_ice94),
+            ("ICE95", "Validates font title format and Font table attribute flags", Linker::validate_ice95),
+            ("ICE96", "Validates RemoveFile table install mode flags and wildcards", Linker::validate_ice96),
+            ("ICE97", "Validates COM+ application component registrations", Linker::validate_ice97),
+            ("ICE98", "Validates ODBC data sources, drivers, and translator attributes", Linker::validate_ice98),
+            ("ICE99", "Validates Directory table has no circular references and exactly one root", Linker::validate_ice99),
+            ("ICE100", "Validates ServiceInstall and ServiceControl key collision / account", Linker::validate_ice100),
+            ("ICE101", "Validates that files in File table have proper sequence references", Linker::validate_ice101),
+            ("ICE102", "Validates feature condition syntax evaluation without runtime state", Linker::validate_ice102),
+            ("ICE103", "Validates that shortcut icon indices and service accounts are valid", Linker::validate_ice103),
+            ("ICE104", "Validates ControlEvent and EventMapping target arguments & events", Linker::validate_ice104),
+            ("ICE105", "Validates patch transform stream consistency and target table delta", Linker::validate_ice105),
+        ];
+
+        for &(name, desc, validator) in all_rules {
+            registry.register(StandardIceRule::new(name, desc, validator));
+        }
+
         registry
     }
 
@@ -1902,6 +2001,27 @@ impl Linker {
         // 5c. Resolve WiX variables, bind bitmaps, and extract EULA
         self.resolve_wix_variables(&mut db);
 
+        // 5c2. Ensure standard WiX font presets exist in TextStyle
+        if db.get_records("TextStyle").is_empty() {
+            let text_styles = [
+                ("WixUI_Font_Normal", "Tahoma", 8, 0, 0),
+                ("WixUI_Font_Bigger", "Tahoma", 12, 0, 1),
+                ("WixUI_Font_Title", "Tahoma", 9, 0, 1),
+            ];
+            for (name, face, sz, color, bits) in text_styles {
+                db.add_record(
+                    "TextStyle",
+                    Record::with_fields(vec![
+                        FieldValue::String(name.to_string()),
+                        FieldValue::String(face.to_string()),
+                        FieldValue::Short(sz),
+                        FieldValue::Long(color),
+                        FieldValue::Short(bits),
+                    ]),
+                );
+            }
+        }
+
         // 5d. Validate MsiEmbeddedChainer references
         Self::validate_embedded_chainers(&db)?;
 
@@ -2115,8 +2235,8 @@ impl Linker {
     ///
     /// * `db` - The [`LinkedDatabase`] to update.
     #[allow(clippy::too_many_lines)]
-    fn resolve_wix_variables(&self, db: &mut LinkedDatabase) {
-        let wix_vars = db.tables.remove("WixVariable").unwrap_or_default();
+    fn resolve_wix_variables(&mut self, db: &mut LinkedDatabase) {
+        let wix_vars = db.tables.get("WixVariable").cloned().unwrap_or_default();
         if wix_vars.is_empty() {
             return;
         }
@@ -2150,7 +2270,7 @@ impl Linker {
 
         if let Some(banner_path) = var_map.get("WixUIBannerBmp") {
             if let Some(real_path) = self.resolve_source_path(banner_path) {
-                if let Ok(_data) = std::fs::read(&real_path) {
+                if let Ok(data) = std::fs::read(&real_path) {
                     db.add_record(
                         "Binary",
                         Record::with_fields(vec![
@@ -2160,13 +2280,26 @@ impl Linker {
                             )),
                         ]),
                     );
+                    db.add_record(
+                        "Binary",
+                        Record::with_fields(vec![
+                            FieldValue::String("WixUI_Bmp_Banner".to_string()),
+                            FieldValue::Stream(crate::database::tables::types::StringPoolId::new(
+                                1,
+                            )),
+                        ]),
+                    );
+                    self.embedded_cabinets
+                        .insert("WixUIBannerBmp".to_string(), data.clone());
+                    self.embedded_cabinets
+                        .insert("WixUI_Bmp_Banner".to_string(), data);
                 }
             }
         }
 
         if let Some(dialog_path) = var_map.get("WixUIDialogBmp") {
             if let Some(real_path) = self.resolve_source_path(dialog_path) {
-                if let Ok(_data) = std::fs::read(&real_path) {
+                if let Ok(data) = std::fs::read(&real_path) {
                     db.add_record(
                         "Binary",
                         Record::with_fields(vec![
@@ -2176,6 +2309,19 @@ impl Linker {
                             )),
                         ]),
                     );
+                    db.add_record(
+                        "Binary",
+                        Record::with_fields(vec![
+                            FieldValue::String("WixUI_Bmp_Dialog".to_string()),
+                            FieldValue::Stream(crate::database::tables::types::StringPoolId::new(
+                                2,
+                            )),
+                        ]),
+                    );
+                    self.embedded_cabinets
+                        .insert("WixUIDialogBmp".to_string(), data.clone());
+                    self.embedded_cabinets
+                        .insert("WixUI_Bmp_Dialog".to_string(), data);
                 }
             }
         }
@@ -2191,7 +2337,7 @@ impl Linker {
         {
             if let Some(ico_path) = var_map.get(*icon_var) {
                 if let Some(real_path) = self.resolve_source_path(ico_path) {
-                    if let Ok(_data) = std::fs::read(&real_path) {
+                    if let Ok(data) = std::fs::read(&real_path) {
                         db.add_record(
                             "Binary",
                             Record::with_fields(vec![
@@ -2203,6 +2349,7 @@ impl Linker {
                                 ),
                             ]),
                         );
+                        self.embedded_cabinets.insert((*icon_var).to_string(), data);
                     }
                 }
             }
@@ -2629,6 +2776,27 @@ impl Linker {
             }
         }
 
+        // Build map of feature extending sections (sections containing FeatureRef with component bindings)
+        let mut feature_extenders: HashMap<String, Vec<usize>> = HashMap::new();
+        for (sec_idx, sec) in all_sections.iter().enumerate() {
+            for rf in &sec.references {
+                if rf.namespace == "Feature" {
+                    let has_extension = sec.tables.iter().any(|t| {
+                        (t.name == "FeatureComponents" || t.name == "_FeatureComponentGroupRef")
+                            && t.records
+                                .iter()
+                                .any(|r| r.get(0) == Some(&FieldValue::String(rf.id.clone())))
+                    });
+                    if has_extension {
+                        feature_extenders
+                            .entry(rf.id.clone())
+                            .or_default()
+                            .push(sec_idx);
+                    }
+                }
+            }
+        }
+
         // Resolve references starting from entry point
         let mut included_section_indices: HashSet<usize> = HashSet::new();
         let mut queue: Vec<usize> = Vec::new();
@@ -2645,6 +2813,20 @@ impl Linker {
 
         while let Some(current_idx) = queue.pop() {
             let current_sec = all_sections[current_idx];
+
+            // If this section defines features, pull in any sections extending them via FeatureRef
+            for sym in &current_sec.symbols {
+                if sym.namespace == "Feature" {
+                    if let Some(extender_indices) = feature_extenders.get(&sym.id) {
+                        for &ext_idx in extender_indices {
+                            if included_section_indices.insert(ext_idx) {
+                                queue.push(ext_idx);
+                            }
+                        }
+                    }
+                }
+            }
+
             for rf in &current_sec.references {
                 let target_sym = Symbol::new(&rf.namespace, &rf.id);
                 let mut target_sec_indices = defined_symbols.get(&target_sym).cloned();
@@ -2661,9 +2843,12 @@ impl Linker {
                         }
                     }
                 } else if !is_special_reference(rf, &defined_symbols) {
+                    let loc_info = rf.span.map_or_else(String::new, |span| {
+                        format!(" at line {}, column {}", span.line, span.column)
+                    });
                     return Err(Error::WixLinker {
                         message: format!(
-                            "unresolved symbol reference '{rf}' in section {:?}",
+                            "unresolved symbol reference '{rf}' in section {:?}{loc_info}",
                             current_sec.id
                         ),
                     });
@@ -2928,10 +3113,26 @@ impl Linker {
             })
             .collect();
 
+        let eval_ctx = EvaluationContext::new();
+
         for rec in chainers {
             let Some(FieldValue::String(chainer_id)) = rec.get(0) else {
                 continue;
             };
+
+            if let Some(cond) = rec.get(1).and_then(|f| match f {
+                FieldValue::String(s) if !s.trim().is_empty() => Some(s.as_str()),
+                _ => None,
+            }) {
+                if let Err(e) = eval_ctx.evaluate_condition(cond.trim()) {
+                    return Err(Error::WixLinker {
+                        message: format!(
+                            "invalid Condition syntax '{cond}' in EmbeddedChainer '{chainer_id}': {e}"
+                        ),
+                    });
+                }
+            }
+
             let Some(FieldValue::String(source)) = rec.get(3) else {
                 continue;
             };
@@ -2949,10 +3150,18 @@ impl Linker {
                         ),
                     });
                 }
-            } else if chainer_type == 2 && !existing_files.contains(source) {
+            } else if chainer_type == 2 {
+                if !existing_files.contains(source) {
+                    return Err(Error::WixLinker {
+                        message: format!(
+                            "unresolved file reference '{source}' for EmbeddedChainer '{chainer_id}'"
+                        ),
+                    });
+                }
+            } else {
                 return Err(Error::WixLinker {
                     message: format!(
-                        "unresolved file reference '{source}' for EmbeddedChainer '{chainer_id}'"
+                        "invalid Type '{chainer_type}' for EmbeddedChainer '{chainer_id}': expected 1 (Binary) or 2 (File)"
                     ),
                 });
             }
@@ -3093,6 +3302,7 @@ impl Linker {
     /// # Errors
     ///
     /// Returns [`Error::IceValidation`] on the first failing ICE error rule encountered.
+    #[allow(clippy::too_many_lines)]
     pub fn run_ice_validations_filtered(
         db: &LinkedDatabase,
         selected: &[String],
@@ -3110,16 +3320,102 @@ impl Linker {
             ("ICE07", Self::validate_ice07),
             ("ICE08", Self::validate_ice08),
             ("ICE09", Self::validate_ice09),
+            ("ICE10", Self::validate_ice10),
+            ("ICE11", Self::validate_ice11),
+            ("ICE12", Self::validate_ice12),
+            ("ICE13", Self::validate_ice13),
+            ("ICE14", Self::validate_ice14),
+            ("ICE15", Self::validate_ice15),
+            ("ICE16", Self::validate_ice16),
+            ("ICE17", Self::validate_ice17),
             ("ICE18", Self::validate_ice18),
+            ("ICE19", Self::validate_ice19),
             ("ICE20", Self::validate_ice20),
+            ("ICE21", Self::validate_ice21),
+            ("ICE22", Self::validate_ice22),
+            ("ICE23", Self::validate_ice23),
+            ("ICE24", Self::validate_ice24),
+            ("ICE25", Self::validate_ice25),
+            ("ICE26", Self::validate_ice26),
+            ("ICE27", Self::validate_ice27),
+            ("ICE28", Self::validate_ice28),
+            ("ICE29", Self::validate_ice29),
             ("ICE30", Self::validate_ice30),
+            ("ICE31", Self::validate_ice31),
+            ("ICE32", Self::validate_ice32),
             ("ICE33", Self::validate_ice33),
+            ("ICE34", Self::validate_ice34),
+            ("ICE35", Self::validate_ice35),
+            ("ICE36", Self::validate_ice36),
+            ("ICE37", Self::validate_ice37),
             ("ICE38", Self::validate_ice38),
+            ("ICE39", Self::validate_ice39),
+            ("ICE40", Self::validate_ice40),
+            ("ICE41", Self::validate_ice41),
+            ("ICE42", Self::validate_ice42),
+            ("ICE43", Self::validate_ice43),
+            ("ICE44", Self::validate_ice44),
+            ("ICE45", Self::validate_ice45),
+            ("ICE46", Self::validate_ice46),
+            ("ICE47", Self::validate_ice47),
+            ("ICE48", Self::validate_ice48),
+            ("ICE49", Self::validate_ice49),
+            ("ICE50", Self::validate_ice50),
+            ("ICE51", Self::validate_ice51),
+            ("ICE52", Self::validate_ice52),
+            ("ICE53", Self::validate_ice53),
+            ("ICE54", Self::validate_ice54),
+            ("ICE55", Self::validate_ice55),
+            ("ICE56", Self::validate_ice56),
+            ("ICE57", Self::validate_ice57),
+            ("ICE58", Self::validate_ice58),
+            ("ICE59", Self::validate_ice59),
+            ("ICE60", Self::validate_ice60),
             ("ICE61", Self::validate_ice61),
+            ("ICE62", Self::validate_ice62),
+            ("ICE63", Self::validate_ice63),
+            ("ICE64", Self::validate_ice64),
+            ("ICE65", Self::validate_ice65),
+            ("ICE66", Self::validate_ice66),
+            ("ICE67", Self::validate_ice67),
+            ("ICE68", Self::validate_ice68),
+            ("ICE69", Self::validate_ice69),
+            ("ICE70", Self::validate_ice70),
+            ("ICE71", Self::validate_ice71),
+            ("ICE72", Self::validate_ice72),
+            ("ICE73", Self::validate_ice73),
+            ("ICE74", Self::validate_ice74),
+            ("ICE75", Self::validate_ice75),
+            ("ICE76", Self::validate_ice76),
+            ("ICE77", Self::validate_ice77),
+            ("ICE78", Self::validate_ice78),
+            ("ICE79", Self::validate_ice79),
             ("ICE80", Self::validate_ice80),
+            ("ICE81", Self::validate_ice81),
+            ("ICE82", Self::validate_ice82),
+            ("ICE83", Self::validate_ice83),
+            ("ICE84", Self::validate_ice84),
+            ("ICE85", Self::validate_ice85),
+            ("ICE86", Self::validate_ice86),
+            ("ICE87", Self::validate_ice87),
+            ("ICE88", Self::validate_ice88),
+            ("ICE89", Self::validate_ice89),
+            ("ICE90", Self::validate_ice90),
+            ("ICE91", Self::validate_ice91),
+            ("ICE92", Self::validate_ice92),
+            ("ICE93", Self::validate_ice93),
+            ("ICE94", Self::validate_ice94),
+            ("ICE95", Self::validate_ice95),
+            ("ICE96", Self::validate_ice96),
+            ("ICE97", Self::validate_ice97),
+            ("ICE98", Self::validate_ice98),
             ("ICE99", Self::validate_ice99),
+            ("ICE100", Self::validate_ice100),
             ("ICE101", Self::validate_ice101),
+            ("ICE102", Self::validate_ice102),
             ("ICE103", Self::validate_ice103),
+            ("ICE104", Self::validate_ice104),
+            ("ICE105", Self::validate_ice105),
         ];
 
         let mut reports = Vec::new();
@@ -3756,6 +4052,532 @@ impl Linker {
         }
         None
     }
+
+    /// Converts a modular ICE report to a linker [`IceReport`].
+    #[allow(clippy::single_option_map)]
+    fn convert_ice(rep: Option<crate::wix::ice::types::IceReport>) -> Option<IceReport> {
+        rep.map(|r| IceReport {
+            ice: r.ice,
+            is_error: r.is_error,
+            message: r.message,
+        })
+    }
+
+    /// ICE10: Advertised shortcuts point to valid feature components.
+    #[must_use]
+    pub fn validate_ice10(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::components::validate_ice10(db))
+    }
+
+    /// ICE11: Nested installer execution contexts.
+    #[must_use]
+    pub fn validate_ice11(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::sequences::validate_ice11(db))
+    }
+
+    /// ICE12: Custom action types 17, 18, 19, 21, 22 targets.
+    #[must_use]
+    pub fn validate_ice12(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::sequences::validate_ice12(db))
+    }
+
+    /// ICE13: Dialog size and screen bounds.
+    #[must_use]
+    pub fn validate_ice13(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::ui::validate_ice13(db))
+    }
+
+    /// ICE14: Root volume installation checks.
+    #[must_use]
+    pub fn validate_ice14(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::components::validate_ice14(db))
+    }
+
+    /// ICE15: MIME and Extension circular mappings.
+    #[must_use]
+    pub fn validate_ice15(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::system::validate_ice15(db))
+    }
+
+    /// ICE16: `ProductName` in Summary Information.
+    #[must_use]
+    pub fn validate_ice16(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::structural::validate_ice16(db))
+    }
+
+    /// ICE17: `ConfigSearch` table syntax and signatures.
+    #[must_use]
+    pub fn validate_ice17(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::system::validate_ice17(db))
+    }
+
+    /// ICE19: Advertised shortcuts keypath validation.
+    #[must_use]
+    pub fn validate_ice19(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::components::validate_ice19(db))
+    }
+
+    /// ICE21: Component-to-Feature mapping integrity.
+    #[must_use]
+    pub fn validate_ice21(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::components::validate_ice21(db))
+    }
+
+    /// ICE22: Feature install levels and conditions.
+    #[must_use]
+    pub fn validate_ice22(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::components::validate_ice22(db))
+    }
+
+    /// ICE23: Dialog tab stops and tab loops.
+    #[must_use]
+    pub fn validate_ice23(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::ui::validate_ice23(db))
+    }
+
+    /// ICE24: Properties in conditions defined.
+    #[must_use]
+    pub fn validate_ice24(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::ui::validate_ice24(db))
+    }
+
+    /// ICE25: Merge module dependencies and exclusions.
+    #[must_use]
+    pub fn validate_ice25(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::advanced::validate_ice25(db))
+    }
+
+    /// ICE26: Execution elevation sequence requirements.
+    #[must_use]
+    pub fn validate_ice26(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::sequences::validate_ice26(db))
+    }
+
+    /// ICE27: Cross-sequence continuity.
+    #[must_use]
+    pub fn validate_ice27(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::sequences::validate_ice27(db))
+    }
+
+    /// ICE28: `ForceReboot` action placement and conditions.
+    #[must_use]
+    pub fn validate_ice28(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::sequences::validate_ice28(db))
+    }
+
+    /// ICE29: Stream name lengths and characters.
+    #[must_use]
+    pub fn validate_ice29(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::structural::validate_ice29(db))
+    }
+
+    /// ICE31: TrueType font files in `FontsFolder`.
+    #[must_use]
+    pub fn validate_ice31(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::files::validate_ice31(db))
+    }
+
+    /// ICE32: Universal foreign key integrity.
+    #[must_use]
+    pub fn validate_ice32(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::system::validate_ice32(db))
+    }
+
+    /// ICE34: `RadioButtonGroup` values and defaults.
+    #[must_use]
+    pub fn validate_ice34(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::ui::validate_ice34(db))
+    }
+
+    /// ICE35: Cabinet file naming conventions.
+    #[must_use]
+    pub fn validate_ice35(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::structural::validate_ice35(db))
+    }
+
+    /// ICE36: Icon table references.
+    #[must_use]
+    pub fn validate_ice36(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::system::validate_ice36(db))
+    }
+
+    /// ICE37: Standard directory property overrides.
+    #[must_use]
+    pub fn validate_ice37(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::structural::validate_ice37(db))
+    }
+
+    /// ICE39: Summary Information required fields.
+    #[must_use]
+    pub fn validate_ice39(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::structural::validate_ice39(db))
+    }
+
+    /// ICE40: MIME Content-Type syntax.
+    #[must_use]
+    pub fn validate_ice40(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::structural::validate_ice40(db))
+    }
+
+    /// ICE41: Component GUID formatting.
+    #[must_use]
+    pub fn validate_ice41(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::structural::validate_ice41(db))
+    }
+
+    /// ICE42: In-script custom action session property access.
+    #[must_use]
+    pub fn validate_ice42(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::sequences::validate_ice42(db))
+    }
+
+    /// ICE43: Non-advertised shortcuts keypath.
+    #[must_use]
+    pub fn validate_ice43(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::components::validate_ice43(db))
+    }
+
+    /// ICE44: Dialog Help button events.
+    #[must_use]
+    pub fn validate_ice44(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::ui::validate_ice44(db))
+    }
+
+    /// ICE45: Win32 filename restrictions.
+    #[must_use]
+    pub fn validate_ice45(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::structural::validate_ice45(db))
+    }
+
+    /// ICE46: Property identifier naming conventions.
+    #[must_use]
+    pub fn validate_ice46(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::structural::validate_ice46(db))
+    }
+
+    /// ICE47: Feature component ownership hierarchy.
+    #[must_use]
+    pub fn validate_ice47(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::components::validate_ice47(db))
+    }
+
+    /// ICE48: Hardcoded drive letters.
+    #[must_use]
+    pub fn validate_ice48(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::structural::validate_ice48(db))
+    }
+
+    /// ICE49: Registry value types and prefixes.
+    #[must_use]
+    pub fn validate_ice49(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::system::validate_ice49(db))
+    }
+
+    /// ICE50: Shortcut icon format.
+    #[must_use]
+    pub fn validate_ice50(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::system::validate_ice50(db))
+    }
+
+    /// ICE51: Font title syntax.
+    #[must_use]
+    pub fn validate_ice51(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::structural::validate_ice51(db))
+    }
+
+    /// ICE52: `AppSearch` locator validation.
+    #[must_use]
+    pub fn validate_ice52(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::system::validate_ice52(db))
+    }
+
+    /// ICE53: Registry key path syntax.
+    #[must_use]
+    pub fn validate_ice53(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::structural::validate_ice53(db))
+    }
+
+    /// ICE54: Companion file version cycles.
+    #[must_use]
+    pub fn validate_ice54(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::files::validate_ice54(db))
+    }
+
+    /// ICE55: `LockPermissions` table validation.
+    #[must_use]
+    pub fn validate_ice55(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::system::validate_ice55(db))
+    }
+
+    /// ICE56: Standard system directory rooting.
+    #[must_use]
+    pub fn validate_ice56(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::system::validate_ice56(db))
+    }
+
+    /// ICE57: Mixed per-user and per-machine components.
+    #[must_use]
+    pub fn validate_ice57(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::components::validate_ice57(db))
+    }
+
+    /// ICE58: Media `DiskId` sequencing.
+    #[must_use]
+    pub fn validate_ice58(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::structural::validate_ice58(db))
+    }
+
+    /// ICE59: Advertised shortcuts targeting parent features.
+    #[must_use]
+    pub fn validate_ice59(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::components::validate_ice59(db))
+    }
+
+    /// ICE60: Versioned files without language.
+    #[must_use]
+    pub fn validate_ice60(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::files::validate_ice60(db))
+    }
+
+    /// ICE62: Isolated component references.
+    #[must_use]
+    pub fn validate_ice62(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::advanced::validate_ice62(db))
+    }
+
+    /// ICE63: Sequence table mutually exclusive conditions.
+    #[must_use]
+    pub fn validate_ice63(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::sequences::validate_ice63(db))
+    }
+
+    /// ICE64: Roaming folder user profile paths.
+    #[must_use]
+    pub fn validate_ice64(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::components::validate_ice64(db))
+    }
+
+    /// ICE65: Environment variable prefix syntax.
+    #[must_use]
+    pub fn validate_ice65(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::system::validate_ice65(db))
+    }
+
+    /// ICE66: Schema version requirement consistency.
+    #[must_use]
+    pub fn validate_ice66(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::advanced::validate_ice66(db))
+    }
+
+    /// ICE67: Non-standard custom action scheduling.
+    #[must_use]
+    pub fn validate_ice67(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::sequences::validate_ice67(db))
+    }
+
+    /// ICE68: Custom action execution flags.
+    #[must_use]
+    pub fn validate_ice68(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::sequences::validate_ice68(db))
+    }
+
+    /// ICE69: Verb and Extension cross-component crossing.
+    #[must_use]
+    pub fn validate_ice69(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::components::validate_ice69(db))
+    }
+
+    /// ICE70: Shortcut argument formatting.
+    #[must_use]
+    pub fn validate_ice70(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::structural::validate_ice70(db))
+    }
+
+    /// ICE71: Cabinet compression attributes.
+    #[must_use]
+    pub fn validate_ice71(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::structural::validate_ice71(db))
+    }
+
+    /// ICE72: Custom action source type consistency.
+    #[must_use]
+    pub fn validate_ice72(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::sequences::validate_ice72(db))
+    }
+
+    /// ICE73: Package code formatting.
+    #[must_use]
+    pub fn validate_ice73(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::structural::validate_ice73(db))
+    }
+
+    /// ICE74: FASTOEM property usage.
+    #[must_use]
+    pub fn validate_ice74(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::structural::validate_ice74(db))
+    }
+
+    /// ICE75: System state modification in sequence.
+    #[must_use]
+    pub fn validate_ice75(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::sequences::validate_ice75(db))
+    }
+
+    /// ICE76: Side-by-side assembly manifest attributes.
+    #[must_use]
+    pub fn validate_ice76(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::advanced::validate_ice76(db))
+    }
+
+    /// ICE77: Deferred custom actions in installation script.
+    #[must_use]
+    pub fn validate_ice77(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::sequences::validate_ice77(db))
+    }
+
+    /// ICE78: Advertise sequence table restrictions.
+    #[must_use]
+    pub fn validate_ice78(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::sequences::validate_ice78(db))
+    }
+
+    /// ICE79: Feature-to-Component duplicate mappings.
+    #[must_use]
+    pub fn validate_ice79(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::components::validate_ice79(db))
+    }
+
+    /// ICE81: Digital signatures and certificate table validation.
+    #[must_use]
+    pub fn validate_ice81(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::advanced::validate_ice81(db))
+    }
+
+    /// ICE82: Duplicate sequence numbers in sequence tables.
+    #[must_use]
+    pub fn validate_ice82(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::structural::validate_ice82(db))
+    }
+
+    /// ICE83: `MsiAssembly` foreign key references.
+    #[must_use]
+    pub fn validate_ice83(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::advanced::validate_ice83(db))
+    }
+
+    /// ICE84: `ActionText` descriptions and templates.
+    #[must_use]
+    pub fn validate_ice84(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::structural::validate_ice84(db))
+    }
+
+    /// ICE85: `CCPSearch` and `CompLocator` compliance.
+    #[must_use]
+    pub fn validate_ice85(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::system::validate_ice85(db))
+    }
+
+    /// ICE86: `ComboBox` and `ListBox` property references.
+    #[must_use]
+    pub fn validate_ice86(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::ui::validate_ice86(db))
+    }
+
+    /// ICE87: File attribute bitmask validity.
+    #[must_use]
+    pub fn validate_ice87(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::structural::validate_ice87(db))
+    }
+
+    /// ICE88: `DrLocator` directory search depth bounds.
+    #[must_use]
+    pub fn validate_ice88(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::system::validate_ice88(db))
+    }
+
+    /// ICE89: `ProgId` and Class registration relationships.
+    #[must_use]
+    pub fn validate_ice89(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::components::validate_ice89(db))
+    }
+
+    /// ICE90: Shortcuts to uninstalled directories.
+    #[must_use]
+    pub fn validate_ice90(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::components::validate_ice90(db))
+    }
+
+    /// ICE91: Per-user vs per-machine target directories.
+    #[must_use]
+    pub fn validate_ice91(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::components::validate_ice91(db))
+    }
+
+    /// ICE92: Component Directory_ reference in Directory table.
+    #[must_use]
+    pub fn validate_ice92(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::structural::validate_ice92(db))
+    }
+
+    /// ICE93: Global GUID format consistency.
+    #[must_use]
+    pub fn validate_ice93(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::structural::validate_ice93(db))
+    }
+
+    /// ICE94: Script and DLL custom action calling conventions.
+    #[must_use]
+    pub fn validate_ice94(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::advanced::validate_ice94(db))
+    }
+
+    /// ICE95: Font table attribute bitmask.
+    #[must_use]
+    pub fn validate_ice95(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::structural::validate_ice95(db))
+    }
+
+    /// ICE96: `RemoveFile` table install mode flags.
+    #[must_use]
+    pub fn validate_ice96(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::files::validate_ice96(db))
+    }
+
+    /// ICE97: COM+ application registration.
+    #[must_use]
+    pub fn validate_ice97(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::advanced::validate_ice97(db))
+    }
+
+    /// ICE98: ODBC data sources and drivers.
+    #[must_use]
+    pub fn validate_ice98(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::advanced::validate_ice98(db))
+    }
+
+    /// ICE100: `ServiceInstall` and `ServiceControl` validation.
+    #[must_use]
+    pub fn validate_ice100(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::system::validate_ice100(db))
+    }
+
+    /// ICE102: Feature condition syntax evaluation.
+    #[must_use]
+    pub fn validate_ice102(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::ui::validate_ice102(db))
+    }
+
+    /// ICE104: `ControlEvent` and `EventMapping` validation.
+    #[must_use]
+    pub fn validate_ice104(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::ui::validate_ice104(db))
+    }
+
+    /// ICE105: Patch transform stream delta validation.
+    #[must_use]
+    pub fn validate_ice105(db: &LinkedDatabase) -> Option<IceReport> {
+        Self::convert_ice(crate::wix::ice::advanced::validate_ice105(db))
+    }
 }
 
 /// Inspects executable file binary data to extract Windows PE version and language.
@@ -4169,6 +4991,24 @@ mod tests {
         assert_eq!(linked.get_records("Component").len(), 1);
         assert_ne!(linked.get_records("Directory"), []);
         assert!(linked.get_records("InstallExecuteSequence").len() >= 15);
+
+        // Test database inspection helpers
+        assert!(linked.get_table("Component").is_some());
+        assert!(linked.get_table("NonExistentTable").is_none());
+
+        let comp_rec = &linked.get_records("Component")[0];
+        assert_eq!(linked.get_string_field(comp_rec, 0), Some("Comp1"));
+        assert_eq!(linked.get_string_field(comp_rec, 3), None); // Short integer
+        assert_eq!(linked.get_string_field(comp_rec, 99), None); // Out of bounds
+
+        assert_eq!(linked.get_int_field(comp_rec, 3), Some(0));
+        assert_eq!(linked.get_int_field(comp_rec, 0), None); // String
+        assert_eq!(linked.get_int_field(comp_rec, 99), None); // Out of bounds
+
+        let comp_pks = linked.get_primary_keys("Component");
+        assert_eq!(comp_pks, vec!["Component"]);
+        let missing_pks = linked.get_primary_keys("NonExistentTable");
+        assert!(missing_pks.is_empty());
 
         Ok(())
     }
@@ -6329,8 +7169,34 @@ mod tests {
         };
         assert_eq!(ice_rep, ice_rep.clone());
         assert!(format!("{ice_rep:?}").contains("IceReport"));
+        assert_eq!(format!("{ice_rep}"), "ICE99: error - test message");
+
+        let ice_rep_warn = IceReport {
+            ice: "ICE98".to_string(),
+            is_error: false,
+            message: "warn message".to_string(),
+        };
+        assert_eq!(format!("{ice_rep_warn}"), "ICE98: warning - warn message");
+
+        let converted = Linker::convert_ice(Some(crate::wix::ice::types::IceReport {
+            ice: "ICE01".to_string(),
+            is_error: true,
+            message: "converted err".to_string(),
+            table: None,
+            column: None,
+        }));
+        assert_eq!(
+            converted,
+            Some(IceReport {
+                ice: "ICE01".to_string(),
+                is_error: true,
+                message: "converted err".to_string(),
+            })
+        );
 
         let db_default = LinkedDatabase::default();
+        let rec_long = Record::with_fields(vec![FieldValue::Long(42)]);
+        assert_eq!(db_default.get_int_field(&rec_long, 0), Some(42));
         assert_eq!(db_default, db_default.clone());
         assert!(format!("{db_default:?}").contains("LinkedDatabase"));
 
@@ -7169,11 +8035,11 @@ mod tests {
 
         // 3. Test IceRegistry with standard rules and custom rule
         let registry = IceRegistry::with_standard_rules();
-        assert_eq!(format!("{registry:?}"), "IceRegistry { rule_count: 19 }");
+        assert_eq!(format!("{registry:?}"), "IceRegistry { rule_count: 105 }");
         let rule_names = registry.rule_names();
         assert!(rule_names.contains(&"ICE01"));
         assert!(rule_names.contains(&"ICE103"));
-        assert_eq!(registry.rules().len(), 19);
+        assert_eq!(registry.rules().len(), 105);
 
         let db = LinkedDatabase::default();
         let all_diags = registry.execute_all(&db);
@@ -8205,7 +9071,7 @@ mod tests {
         assert!(Linker::solve_relative_sequences(&mut cyclic_db).is_err());
 
         // 6. Test WixVariable Resolution and EULA binding
-        let linker = Linker::new();
+        let mut linker = Linker::new();
         let mut var_db = LinkedDatabase::default();
 
         let temp_dir =
@@ -9604,8 +10470,9 @@ mod tests {
             ]),
         );
 
-        // Cover chainer with other type (e.g. 3, skipping binary and file checks)
-        chainer_db.add_record(
+        // Cover chainer with invalid type (e.g. 3, expected 1 or 2)
+        let mut chainer_db_invalid_type = chainer_db.clone();
+        chainer_db_invalid_type.add_record(
             "MsiEmbeddedChainer",
             Record::with_fields(vec![
                 FieldValue::String("ChainerOtherType".to_string()),
@@ -9615,7 +10482,48 @@ mod tests {
                 FieldValue::Long(3),
             ]),
         );
+        let err_type = Linker::validate_embedded_chainers(&chainer_db_invalid_type);
+        assert!(err_type.is_err());
+        assert!(format!("{err_type:?}").contains("expected 1 (Binary) or 2 (File)"));
 
+        // Cover chainer with malformed condition syntax
+        let mut chainer_db_bad_cond = chainer_db.clone();
+        chainer_db_bad_cond.add_record(
+            "MsiEmbeddedChainer",
+            Record::with_fields(vec![
+                FieldValue::String("ChainerBadCond".to_string()),
+                FieldValue::String("(NOT Installed".to_string()),
+                FieldValue::Null,
+                FieldValue::String("MissingBinary".to_string()),
+                FieldValue::Long(1),
+            ]),
+        );
+        let err_cond = Linker::validate_embedded_chainers(&chainer_db_bad_cond);
+        assert!(err_cond.is_err());
+        assert!(format!("{err_cond:?}").contains("invalid Condition syntax"));
+
+        // Cover chainer with valid condition syntax
+        chainer_db.add_record(
+            "MsiEmbeddedChainer",
+            Record::with_fields(vec![
+                FieldValue::String("ChainerValidCond".to_string()),
+                FieldValue::String("NOT Installed".to_string()),
+                FieldValue::Null,
+                FieldValue::String("MissingBinary".to_string()),
+                FieldValue::Long(1),
+            ]),
+        );
+        // Cover chainer with whitespace condition string (exercises False branch of !s.trim().is_empty())
+        chainer_db.add_record(
+            "MsiEmbeddedChainer",
+            Record::with_fields(vec![
+                FieldValue::String("ChainerEmptyCond".to_string()),
+                FieldValue::String("   ".to_string()),
+                FieldValue::Null,
+                FieldValue::String("MissingBinary".to_string()),
+                FieldValue::Long(1),
+            ]),
+        );
         assert!(Linker::validate_embedded_chainers(&chainer_db).is_ok());
 
         Ok(())
@@ -9981,5 +10889,84 @@ mod tests {
             .bind_files_and_pack_cabinets(&mut db_dup_file)
             .is_err());
         let _ = std::fs::remove_file(&temp_payload);
+    }
+
+    /// Tests `solve_symbol_graph` feature extender resolution and dialog action fallback.
+    #[test]
+    fn test_solve_symbol_graph_feature_extenders_and_dialog_action() {
+        let mut obj = WixObject::new();
+
+        // Section 0: Product section defining Feature:MainFeature and Feature:SecondaryFeature
+        let mut prod = IntermediateSection::new(SectionType::Product, Some("Prod".to_string()));
+        prod.add_symbol(Symbol::new("Product", "ProdCode"));
+        prod.add_symbol(Symbol::new("Feature", "MainFeature"));
+        prod.add_symbol(Symbol::new("Feature", "SecondaryFeature"));
+        // prod references Action:WelcomeDialog (which will resolve via Dialog fallback in Section 5)
+        prod.add_reference(Reference::new("Action", "WelcomeDialog"));
+
+        // Section 1: Fragment extending both MainFeature and SecondaryFeature via FeatureComponents table
+        let mut frag1 = IntermediateSection::new(SectionType::Fragment, Some("Frag1".to_string()));
+        frag1.add_symbol(Symbol::new("Component", "Comp1"));
+        frag1.add_reference(Reference::new("Feature", "MainFeature"));
+        frag1.add_reference(Reference::new("Feature", "SecondaryFeature"));
+        let mut table1 = IntermediateTable::new("FeatureComponents");
+        table1.records.push(Record::with_fields(vec![
+            FieldValue::String("MainFeature".to_string()),
+            FieldValue::String("Comp1".to_string()),
+        ]));
+        table1.records.push(Record::with_fields(vec![
+            FieldValue::String("SecondaryFeature".to_string()),
+            FieldValue::String("Comp1".to_string()),
+        ]));
+        frag1.add_table(table1);
+
+        // Section 2: Fragment extending SecondaryFeature via _FeatureComponentGroupRef table
+        let mut frag2 = IntermediateSection::new(SectionType::Fragment, Some("Frag2".to_string()));
+        frag2.add_symbol(Symbol::new("ComponentGroup", "CGroup2"));
+        frag2.add_reference(Reference::new("Feature", "SecondaryFeature"));
+        let mut table2 = IntermediateTable::new("_FeatureComponentGroupRef");
+        table2.records.push(Record::with_fields(vec![
+            FieldValue::String("SecondaryFeature".to_string()),
+            FieldValue::String("CGroup2".to_string()),
+        ]));
+        frag2.add_table(table2);
+
+        // Section 3: Fragment referencing Feature:MainFeature but with non-matching table records (has_extension = false)
+        let mut frag3 = IntermediateSection::new(SectionType::Fragment, Some("Frag3".to_string()));
+        frag3.add_reference(Reference::new("Feature", "MainFeature"));
+        let mut table3 = IntermediateTable::new("FeatureComponents");
+        table3
+            .records
+            .push(Record::with_fields(vec![FieldValue::String(
+                "UnrelatedFeature".to_string(),
+            )]));
+        frag3.add_table(table3);
+
+        // Section 4: Fragment referencing Feature:MainFeature but with unrelated table (has_extension = false)
+        let mut frag4 = IntermediateSection::new(SectionType::Fragment, Some("Frag4".to_string()));
+        frag4.add_reference(Reference::new("Feature", "MainFeature"));
+        let table4 = IntermediateTable::new("Property");
+        frag4.add_table(table4);
+
+        // Section 5: Fragment defining Dialog:WelcomeDialog
+        let mut frag5 = IntermediateSection::new(SectionType::Fragment, Some("Frag5".to_string()));
+        frag5.add_symbol(Symbol::new("Dialog", "WelcomeDialog"));
+
+        obj.add_section(prod);
+        obj.add_section(frag1);
+        obj.add_section(frag2);
+        obj.add_section(frag3);
+        obj.add_section(frag4);
+        obj.add_section(frag5);
+
+        let mut linker = Linker::new();
+        linker.add_object(obj);
+        let solved = linker.solve_symbol_graph();
+        assert!(solved.is_ok());
+        let sections = solved.unwrap_or_default();
+        assert!(sections.iter().any(|s| s.id.as_deref() == Some("Prod")));
+        assert!(sections.iter().any(|s| s.id.as_deref() == Some("Frag1")));
+        assert!(sections.iter().any(|s| s.id.as_deref() == Some("Frag2")));
+        assert!(sections.iter().any(|s| s.id.as_deref() == Some("Frag5")));
     }
 }

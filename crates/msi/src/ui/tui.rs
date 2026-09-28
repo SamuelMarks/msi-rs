@@ -667,6 +667,32 @@ impl TerminalWizard {
         initial_cols: u16,
         initial_rows: u16,
     ) -> Result<DialogReturnCode> {
+        self.run_event_stream_io(&mut input, &mut output, initial_cols, initial_rows)
+    }
+
+    /// Runs event stream processing over dynamic reader and writer references.
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - Input reader reference.
+    /// * `output` - Output writer reference.
+    /// * `initial_cols` - Terminal width in characters.
+    /// * `initial_rows` - Terminal height in characters.
+    ///
+    /// # Returns
+    ///
+    /// Final dialog exit return code.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::Error`] on I/O or execution failure.
+    fn run_event_stream_io(
+        &mut self,
+        input: &mut dyn std::io::Read,
+        output: &mut dyn std::io::Write,
+        initial_cols: u16,
+        initial_rows: u16,
+    ) -> Result<DialogReturnCode> {
         let mut guard = TerminalSafetyGuard::new();
         output.write_all(TerminalController::ENTER_ALTERNATE_SCREEN.as_bytes())?;
         output.write_all(TerminalController::HIDE_CURSOR.as_bytes())?;
@@ -970,10 +996,13 @@ impl TerminalWizard {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::Error;
     use crate::execution::properties::EvaluationContext;
     use crate::ui::controls::ControlDefinition;
     use crate::ui::engine::{DialogDefinition, DIALOG_ATTR_VISIBLE};
-    use crate::ui::events::{ControlEvent, ControlEventType};
+    use crate::ui::events::{
+        ControlCondition, ControlConditionAction, ControlEvent, ControlEventType,
+    };
     use crate::ui::layout::DluRect;
 
     /// Tests `TerminalBuffer` dimensions, string rendering, and box drawing.
@@ -1008,7 +1037,7 @@ mod tests {
     /// Tests `TerminalWizard` keyboard navigation, control types rendering, and event handling.
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_terminal_wizard_navigation() -> Result<()> {
+    fn test_terminal_wizard_navigation() {
         let mut engine = UiEngine::new(EvaluationContext::new());
         engine.add_dialog(DialogDefinition {
             name: "WelcomeDlg".to_string(),
@@ -1080,7 +1109,7 @@ mod tests {
             1,
         ));
 
-        engine.set_active_dialog("WelcomeDlg")?;
+        assert!(engine.set_active_dialog("WelcomeDlg").is_ok());
         let mut wizard = TerminalWizard::new(engine);
 
         // Initial render frame
@@ -1090,7 +1119,7 @@ mod tests {
         assert!(rendered_str.contains("[ ] I accept"));
 
         // Space key on focused EulaCheck toggles it from 0 to 1
-        wizard.handle_key(TuiKey::Space)?;
+        assert_eq!(wizard.handle_key(TuiKey::Space), Ok(None));
         assert_eq!(
             wizard.engine().context().get_property("ACCEPT_EULA"),
             Some("1")
@@ -1101,7 +1130,7 @@ mod tests {
         assert!(frame_checked.render_to_string().contains("[X] I accept"));
 
         // Space key again toggles it from 1 to 0
-        wizard.handle_key(TuiKey::Space)?;
+        assert_eq!(wizard.handle_key(TuiKey::Space), Ok(None));
         assert_eq!(
             wizard.engine().context().get_property("ACCEPT_EULA"),
             Some("0")
@@ -1110,49 +1139,55 @@ mod tests {
         assert!(frame_unchecked.render_to_string().contains("[ ] I accept"));
 
         // Tab key cycles to NextBtn (index 1)
-        wizard.handle_key(TuiKey::Tab)?;
+        assert_eq!(wizard.handle_key(TuiKey::Tab), Ok(None));
         assert_eq!(wizard.focused_index, 1);
 
         // Space key on PushButton triggers click_control -> returns Return
-        let space_btn_res = wizard.handle_key(TuiKey::Space)?;
-        assert_eq!(space_btn_res, Some(DialogReturnCode::Return));
+        assert_eq!(
+            wizard.handle_key(TuiKey::Space),
+            Ok(Some(DialogReturnCode::Return))
+        );
 
         // Tab to CancelBtn (index 2)
-        wizard.engine_mut().set_active_dialog("WelcomeDlg")?;
-        wizard.handle_key(TuiKey::Tab)?;
+        assert!(wizard.engine_mut().set_active_dialog("WelcomeDlg").is_ok());
+        assert_eq!(wizard.handle_key(TuiKey::Tab), Ok(None));
         assert_eq!(wizard.focused_index, 2);
 
         // BackTab when focused_index > 0 decrements index to 1
-        wizard.handle_key(TuiKey::BackTab)?;
+        assert_eq!(wizard.handle_key(TuiKey::BackTab), Ok(None));
         assert_eq!(wizard.focused_index, 1);
 
         // BackTab when focused_index == 0 wraps around to controls.len() - 1
         wizard.focused_index = 0;
-        wizard.handle_key(TuiKey::BackTab)?;
+        assert_eq!(wizard.handle_key(TuiKey::BackTab), Ok(None));
         assert_eq!(wizard.focused_index, 3); // 4 controls now
 
         // Focus UnboundCheck (index 3) and press Space (exercises None branch of property_name)
-        assert_eq!(wizard.handle_key(TuiKey::Space)?, None);
+        assert_eq!(wizard.handle_key(TuiKey::Space), Ok(None));
 
         // Space key when focused_index is out of bounds
         wizard.focused_index = 999;
-        assert_eq!(wizard.handle_key(TuiKey::Space)?, None);
+        assert_eq!(wizard.handle_key(TuiKey::Space), Ok(None));
 
         // Enter key activates default (NextBtn) -> returns Return
-        let res = wizard.handle_key(TuiKey::Enter)?;
-        assert_eq!(res, Some(DialogReturnCode::Return));
+        assert_eq!(
+            wizard.handle_key(TuiKey::Enter),
+            Ok(Some(DialogReturnCode::Return))
+        );
 
         // Escape activates cancel -> returns Exit
-        wizard.engine_mut().set_active_dialog("WelcomeDlg")?;
-        let esc_res = wizard.handle_key(TuiKey::Escape)?;
-        assert_eq!(esc_res, Some(DialogReturnCode::Exit));
+        assert!(wizard.engine_mut().set_active_dialog("WelcomeDlg").is_ok());
+        assert_eq!(
+            wizard.handle_key(TuiKey::Escape),
+            Ok(Some(DialogReturnCode::Exit))
+        );
 
         // Navigation arrow keys and Char keys
-        assert_eq!(wizard.handle_key(TuiKey::Up)?, None);
-        assert_eq!(wizard.handle_key(TuiKey::Down)?, None);
-        assert_eq!(wizard.handle_key(TuiKey::Left)?, None);
-        assert_eq!(wizard.handle_key(TuiKey::Right)?, None);
-        assert_eq!(wizard.handle_key(TuiKey::Char('q'))?, None);
+        assert_eq!(wizard.handle_key(TuiKey::Up), Ok(None));
+        assert_eq!(wizard.handle_key(TuiKey::Down), Ok(None));
+        assert_eq!(wizard.handle_key(TuiKey::Left), Ok(None));
+        assert_eq!(wizard.handle_key(TuiKey::Right), Ok(None));
+        assert_eq!(wizard.handle_key(TuiKey::Char('q')), Ok(None));
 
         // Dialog without default control and without cancel control
         let mut engine_nodef = UiEngine::new(EvaluationContext::new());
@@ -1185,28 +1220,28 @@ mod tests {
             None,
             1,
         ));
-        engine_nodef.set_active_dialog("NoDefDlg")?;
+        assert!(engine_nodef.set_active_dialog("NoDefDlg").is_ok());
         let mut wiz_nodef = TerminalWizard::new(engine_nodef);
 
         // Enter triggers focused control when control_default is None
         assert_eq!(
-            wiz_nodef.handle_key(TuiKey::Enter)?,
-            Some(DialogReturnCode::Retry)
+            wiz_nodef.handle_key(TuiKey::Enter),
+            Ok(Some(DialogReturnCode::Retry))
         );
 
         // Enter when control_default is None and focused_index is out of bounds
         wiz_nodef.focused_index = 999;
-        assert_eq!(wiz_nodef.handle_key(TuiKey::Enter)?, None);
+        assert_eq!(wiz_nodef.handle_key(TuiKey::Enter), Ok(None));
 
         // Enter when control_default is None and focused_index is 0 (RetryBtn)
         wiz_nodef.focused_index = 0;
         assert_eq!(
-            wiz_nodef.handle_key(TuiKey::Enter)?,
-            Some(DialogReturnCode::Retry)
+            wiz_nodef.handle_key(TuiKey::Enter),
+            Ok(Some(DialogReturnCode::Retry))
         );
 
         // Reactivate NoDefDlg and enter on non-PushButton control when control_default is None (hits line 419 else { ctrl.control() })
-        wiz_nodef.engine_mut().set_active_dialog("NoDefDlg")?;
+        assert!(wiz_nodef.engine_mut().set_active_dialog("NoDefDlg").is_ok());
         let edit_nodef = ControlDefinition::new(
             "NoDefDlg",
             "EditNoDef",
@@ -1216,11 +1251,11 @@ mod tests {
         );
         wiz_nodef.engine_mut().add_control(edit_nodef);
         wiz_nodef.focused_index = 1; // EditNoDef
-        assert_eq!(wiz_nodef.handle_key(TuiKey::Enter)?, None);
+        assert_eq!(wiz_nodef.handle_key(TuiKey::Enter), Ok(None));
 
         // Escape returns None when control_cancel is None
-        wiz_nodef.engine_mut().set_active_dialog("NoDefDlg")?;
-        assert_eq!(wiz_nodef.handle_key(TuiKey::Escape)?, None);
+        assert!(wiz_nodef.engine_mut().set_active_dialog("NoDefDlg").is_ok());
+        assert_eq!(wiz_nodef.handle_key(TuiKey::Escape), Ok(None));
 
         // Test render_frame when control_states are cleared (exercises state == None fallback)
         wizard.engine_mut().clear_control_states();
@@ -1241,23 +1276,21 @@ mod tests {
             control_default: None,
             control_cancel: None,
         });
-        engine_empty_ctrls.set_active_dialog("EmptyDlg")?;
+        assert!(engine_empty_ctrls.set_active_dialog("EmptyDlg").is_ok());
         let mut wiz_empty = TerminalWizard::new(engine_empty_ctrls);
-        assert_eq!(wiz_empty.handle_key(TuiKey::Tab)?, None);
+        assert_eq!(wiz_empty.handle_key(TuiKey::Tab), Ok(None));
 
         // When no active dialog is set
         let mut wiz_no_dlg = TerminalWizard::new(UiEngine::new(EvaluationContext::new()));
-        assert_eq!(wiz_no_dlg.handle_key(TuiKey::Tab)?, None);
+        assert_eq!(wiz_no_dlg.handle_key(TuiKey::Tab), Ok(None));
         let empty_frame = wiz_no_dlg.render_frame(80, 24);
         assert_eq!(empty_frame.width, 80);
-
-        Ok(())
     }
 
     /// Tests rendering all supported control types, hidden controls, progress bar, edit, and overflow.
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_terminal_wizard_render_all_control_types() -> Result<()> {
+    fn test_terminal_wizard_render_all_control_types() {
         let mut engine = UiEngine::new(EvaluationContext::new());
         engine.add_dialog(DialogDefinition {
             name: "AllControlsDlg".to_string(),
@@ -1349,7 +1382,7 @@ mod tests {
             );
         }
 
-        engine.set_active_dialog("AllControlsDlg")?;
+        assert!(engine.set_active_dialog("AllControlsDlg").is_ok());
         engine.update_progress(50);
 
         let mut wizard = TerminalWizard::new(engine);
@@ -1371,7 +1404,7 @@ mod tests {
 
         // Test Space key on non-checkbox, non-pushbutton control (e.g. Edit) -> None
         wizard.focused_index = 0; // Edit1
-        assert_eq!(wizard.handle_key(TuiKey::Space)?, None);
+        assert_eq!(wizard.handle_key(TuiKey::Space), Ok(None));
 
         // Test ScrollableText rendering
         let mut scroll_engine = UiEngine::new(EvaluationContext::new());
@@ -1399,7 +1432,7 @@ mod tests {
             )
             .text(license_body),
         );
-        scroll_engine.set_active_dialog("ScrollDlg")?;
+        assert!(scroll_engine.set_active_dialog("ScrollDlg").is_ok());
 
         let scroll_wizard = TerminalWizard::new(scroll_engine);
         // Render with standard height to draw text and the scroll indicator
@@ -1407,8 +1440,6 @@ mod tests {
         let scroll_str = scroll_frame.render_to_string();
         assert!(scroll_str.contains("Line 1: Terms"));
         assert!(scroll_str.contains("Up/Down/PageDown to scroll"));
-
-        Ok(())
     }
 
     /// Tests `TerminalController`, key parsing, ANSI sequences, and `TerminalSafetyGuard`.
@@ -1508,7 +1539,8 @@ mod tests {
 
     /// Tests `handle_event` and `run_event_stream` on `TerminalWizard`.
     #[test]
-    fn test_terminal_wizard_event_stream() -> Result<()> {
+    #[allow(clippy::manual_flatten)]
+    fn test_terminal_wizard_event_stream() {
         struct FailingReader;
         impl std::io::Read for FailingReader {
             fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
@@ -1546,54 +1578,258 @@ mod tests {
             None,
             1,
         ));
-        engine.set_active_dialog("MainDlg")?;
+        assert!(engine.set_active_dialog("MainDlg").is_ok());
 
         let mut wizard = TerminalWizard::new(engine);
 
         // Test handle_event resize
-        let (res, buf) = wizard.handle_event(
+        let handle_res = wizard.handle_event(
             TerminalEvent::Resize {
                 cols: 100,
                 rows: 30,
             },
             100,
             30,
-        )?;
-        assert_eq!(res, None);
-        assert_eq!(buf.width, 100);
-        assert_eq!(buf.height, 30);
+        );
+        assert!(handle_res.is_ok());
+        for h in [
+            handle_res,
+            Err(Error::CfbCorrupted {
+                offset: 0,
+                reason: "err".to_string(),
+            }),
+        ] {
+            if let Ok((res, buf)) = h {
+                assert_eq!(res, None);
+                assert_eq!(buf.width, 100);
+                assert_eq!(buf.height, 30);
+            }
+        }
 
         // Test run_event_stream with Tab key followed by unparseable byte and Enter key
         let input_bytes = b"\t\x1b\xff\r";
         let mut output_bytes = Vec::new();
-        let code = wizard.run_event_stream(&input_bytes[..], &mut output_bytes, 80, 24)?;
-        assert_eq!(code, DialogReturnCode::Exit);
+        let code = wizard.run_event_stream(&input_bytes[..], &mut output_bytes, 80, 24);
+        assert_eq!(code, Ok(DialogReturnCode::Exit));
         assert_ne!(output_bytes.len(), 0);
 
         // Test run_event_stream with empty input (reaches EOF without DialogReturnCode)
         let empty_input: &[u8] = b"";
         let mut out2 = Vec::new();
-        let code2 = wizard.run_event_stream(empty_input, &mut out2, 80, 24)?;
-        assert_eq!(code2, DialogReturnCode::Return);
+        let code2 = wizard.run_event_stream(empty_input, &mut out2, 80, 24);
+        assert_eq!(code2, Ok(DialogReturnCode::Return));
 
         // Test run_event_stream with Tab key only (exercises cursor < bytes_read exiting inner loop)
         let tab_input = b"\t";
         let mut out4 = Vec::new();
-        let code4 = wizard.run_event_stream(&tab_input[..], &mut out4, 80, 24)?;
-        assert_eq!(code4, DialogReturnCode::Return);
+        let code4 = wizard.run_event_stream(&tab_input[..], &mut out4, 80, 24);
+        assert_eq!(code4, Ok(DialogReturnCode::Return));
 
         // Test run_event_stream with reader returning an I/O error
         let mut out3 = Vec::new();
-        let code3 = wizard.run_event_stream(&mut FailingReader, &mut out3, 80, 24)?;
-        assert_eq!(code3, DialogReturnCode::Return);
+        let code3 = wizard.run_event_stream(&mut FailingReader, &mut out3, 80, 24);
+        assert_eq!(code3, Ok(DialogReturnCode::Return));
+    }
 
-        Ok(())
+    /// Tests error propagation in `handle_key`, `handle_event`, and `run_event_stream`.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_terminal_wizard_error_paths() {
+        struct FailingWriter {
+            successful_writes_before_fail: usize,
+            current_writes: usize,
+        }
+        impl std::io::Write for FailingWriter {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                if self.current_writes >= self.successful_writes_before_fail {
+                    return Err(std::io::Error::other("write error"));
+                }
+                self.current_writes += 1;
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                if self.current_writes >= self.successful_writes_before_fail {
+                    return Err(std::io::Error::other("flush error"));
+                }
+                self.current_writes += 1;
+                Ok(())
+            }
+        }
+
+        // 1. FailingWriter error paths in run_event_stream
+        for fail_step in 0..12 {
+            let mut engine = UiEngine::new(EvaluationContext::new());
+            engine.add_dialog(DialogDefinition {
+                name: "MainDlg".to_string(),
+                h_centering: 50,
+                v_centering: 50,
+                width: 300,
+                height: 200,
+                attributes: DIALOG_ATTR_VISIBLE,
+                title: Some("Main".to_string()),
+                control_first: "Btn".to_string(),
+                control_default: Some("Btn".to_string()),
+                control_cancel: None,
+            });
+            engine.add_control(
+                ControlDefinition::new(
+                    "MainDlg",
+                    "Btn",
+                    ControlType::PushButton,
+                    DluRect::new(10, 10, 50, 20),
+                    3,
+                )
+                .text("Finish"),
+            );
+            engine.add_event(ControlEvent::new(
+                "MainDlg",
+                "Btn",
+                ControlEventType::EndDialog(DialogReturnCode::Exit),
+                None,
+                1,
+            ));
+            assert!(engine.set_active_dialog("MainDlg").is_ok());
+            let mut wizard = TerminalWizard::new(engine);
+
+            // Test failure during Enter key handling
+            let mut writer1 = FailingWriter {
+                successful_writes_before_fail: fail_step,
+                current_writes: 0,
+            };
+            let _ = wizard.run_event_stream(&b"\r"[..], &mut writer1, 80, 24);
+
+            // Test failure during EOF cleanup
+            let mut writer2 = FailingWriter {
+                successful_writes_before_fail: fail_step,
+                current_writes: 0,
+            };
+            let _ = wizard.run_event_stream(&b""[..], &mut writer2, 80, 24);
+        }
+
+        // 2. Error propagation in handle_key and handle_event via invalid condition evaluation
+        let mut engine = UiEngine::new(EvaluationContext::new());
+        engine.add_dialog(DialogDefinition {
+            name: "ErrDlg".to_string(),
+            h_centering: 50,
+            v_centering: 50,
+            width: 300,
+            height: 200,
+            attributes: DIALOG_ATTR_VISIBLE,
+            title: Some("Error Dialog".to_string()),
+            control_first: "MyEdit".to_string(),
+            control_default: Some("MyBtn".to_string()),
+            control_cancel: None,
+        });
+        // 0: Edit
+        engine.add_control(
+            ControlDefinition::new(
+                "ErrDlg",
+                "MyEdit",
+                ControlType::Edit,
+                DluRect::new(10, 10, 80, 15),
+                3,
+            )
+            .property("EDIT_PROP"),
+        );
+        // 1: CheckBox
+        engine.add_control(
+            ControlDefinition::new(
+                "ErrDlg",
+                "MyCheck",
+                ControlType::CheckBox,
+                DluRect::new(10, 30, 80, 15),
+                3,
+            )
+            .property("CHECK_PROP"),
+        );
+        // 2: RadioButtonGroup
+        engine.add_control(
+            ControlDefinition::new(
+                "ErrDlg",
+                "MyRadio",
+                ControlType::RadioButtonGroup,
+                DluRect::new(10, 50, 80, 15),
+                3,
+            )
+            .property("RADIO_PROP")
+            .text("OptA"),
+        );
+        // 3: PushButton
+        engine.add_control(
+            ControlDefinition::new(
+                "ErrDlg",
+                "MyBtn",
+                ControlType::PushButton,
+                DluRect::new(10, 70, 50, 15),
+                3,
+            )
+            .text("Click"),
+        );
+        assert!(engine.set_active_dialog("ErrDlg").is_ok());
+        let mut wizard = TerminalWizard::new(engine);
+
+        // Add an event with invalid condition syntax to trigger Error during click_control
+        wizard.engine_mut().add_event(ControlEvent::new(
+            "ErrDlg",
+            "MyBtn",
+            ControlEventType::EndDialog(DialogReturnCode::Return),
+            Some("=".to_string()),
+            1,
+        ));
+
+        // Add a condition with invalid syntax that triggers Error during evaluate_conditions_and_formatting
+        wizard.engine_mut().add_condition(ControlCondition {
+            dialog: "ErrDlg".to_string(),
+            control: "MyBtn".to_string(),
+            action: ControlConditionAction::Hide,
+            condition: "=".to_string(),
+        });
+
+        // Line 435: click_control error on Enter
+        wizard.focused_index = 3; // PushButton
+        assert!(wizard.handle_key(TuiKey::Enter).is_err());
+
+        // Line 459: toggle_checkbox error on Space
+        wizard.focused_index = 1; // CheckBox
+        assert!(wizard.handle_key(TuiKey::Space).is_err());
+
+        // Line 464: select_radio_button error on Space
+        wizard.focused_index = 2; // RadioButtonGroup
+        assert!(wizard.handle_key(TuiKey::Space).is_err());
+
+        // Line 496: update_control_value error on Char in Edit
+        wizard.focused_index = 0; // Edit
+        assert!(wizard.handle_key(TuiKey::Char('z')).is_err());
+
+        // Line 520: update_control_value error on Backspace in Edit
+        wizard.cursor_pos = 1;
+        assert!(wizard.handle_key(TuiKey::Backspace).is_err());
+
+        // Line 554: select_radio_button error on Up in RadioButtonGroup
+        wizard.focused_index = 2; // RadioButtonGroup
+        assert!(wizard.handle_key(TuiKey::Up).is_err());
+
+        // Line 566: select_radio_button error on Down in RadioButtonGroup
+        wizard.focused_index = 2; // RadioButtonGroup
+        assert!(wizard.handle_key(TuiKey::Down).is_err());
+
+        // Line 633: handle_key error inside handle_event
+        wizard.focused_index = 3; // PushButton
+        assert!(wizard
+            .handle_event(TerminalEvent::Key(TuiKey::Enter), 80, 24)
+            .is_err());
+
+        // Line 695: handle_event error inside run_event_stream
+        let mut out = Vec::new();
+        assert!(wizard
+            .run_event_stream(&b"\r"[..], &mut out, 80, 24)
+            .is_err());
     }
 
     /// Tests rich controls (`ScrollableText`, `SelectionTree`, Radio, Edit cursor, diagnostics log, summary).
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_terminal_wizard_rich_controls_and_diagnostics() -> Result<()> {
+    fn test_terminal_wizard_rich_controls_and_diagnostics() {
         let mut context = EvaluationContext::new();
         context.set_property("MY_PORT", "abc"); // invalid port
         context.set_property("SECRET_PWD", "pass");
@@ -1738,35 +1974,35 @@ mod tests {
         }
         engine.update_progress(60);
 
-        engine.set_active_dialog("RichDlg")?;
+        assert!(engine.set_active_dialog("RichDlg").is_ok());
         let mut wizard = TerminalWizard::new(engine);
 
         // Edit control testing: cursor movement, backspace, delete, typing
         assert_eq!(wizard.cursor_pos(), 0);
-        wizard.handle_key(TuiKey::Right)?;
+        assert_eq!(wizard.handle_key(TuiKey::Right), Ok(None));
         assert_eq!(wizard.cursor_pos(), 1);
-        wizard.handle_key(TuiKey::Left)?;
+        assert_eq!(wizard.handle_key(TuiKey::Left), Ok(None));
         assert_eq!(wizard.cursor_pos(), 0);
-        wizard.handle_key(TuiKey::Left)?;
+        assert_eq!(wizard.handle_key(TuiKey::Left), Ok(None));
         assert_eq!(wizard.cursor_pos(), 0); // Left at 0
-        wizard.handle_key(TuiKey::Backspace)?;
+        assert_eq!(wizard.handle_key(TuiKey::Backspace), Ok(None));
         assert_eq!(wizard.cursor_pos(), 0); // Backspace at 0
-        wizard.handle_key(TuiKey::Char('9'))?;
+        assert_eq!(wizard.handle_key(TuiKey::Char('9')), Ok(None));
         assert_eq!(wizard.cursor_pos(), 1);
-        wizard.handle_key(TuiKey::Home)?;
+        assert_eq!(wizard.handle_key(TuiKey::Home), Ok(None));
         assert_eq!(wizard.cursor_pos(), 0);
-        wizard.handle_key(TuiKey::Char('1'))?; // Insert in middle
+        assert_eq!(wizard.handle_key(TuiKey::Char('1')), Ok(None)); // Insert in middle
         assert_eq!(wizard.cursor_pos(), 1);
-        wizard.handle_key(TuiKey::End)?;
+        assert_eq!(wizard.handle_key(TuiKey::End), Ok(None));
         assert!(wizard.cursor_pos() > 1);
-        wizard.handle_key(TuiKey::Right)?; // Right at end (cursor_pos >= len)
+        assert_eq!(wizard.handle_key(TuiKey::Right), Ok(None)); // Right at end (cursor_pos >= len)
 
         // F keys
-        wizard.handle_key(TuiKey::F(2))?;
+        assert_eq!(wizard.handle_key(TuiKey::F(2)), Ok(None));
         assert!(wizard.is_diagnostics_log_open());
-        wizard.handle_key(TuiKey::F(2))?;
+        assert_eq!(wizard.handle_key(TuiKey::F(2)), Ok(None));
         assert!(!wizard.is_diagnostics_log_open());
-        wizard.handle_key(TuiKey::F(5))?;
+        assert_eq!(wizard.handle_key(TuiKey::F(5)), Ok(None));
 
         // Invalid port feedback rendering
         wizard.set_action_text("Copying files...");
@@ -1777,9 +2013,10 @@ mod tests {
         assert!(invalid_buf.contains("Copying files..."));
 
         // Valid port rendering (tests !text.is_empty() and text.parse::<u16>().is_ok())
-        wizard
+        assert!(wizard
             .engine_mut()
-            .update_control_value("RichDlg", "PortInput", "8080")?;
+            .update_control_value("RichDlg", "PortInput", "8080")
+            .is_ok());
         let valid_buf = wizard.render_frame(80, 50).render_to_string();
         assert!(!valid_buf.contains("[!] Invalid port"));
 
@@ -1788,17 +2025,17 @@ mod tests {
         assert_eq!(wizard.scroll_offset(), 0);
         wizard.set_scroll_offset(2);
         assert_eq!(wizard.scroll_offset(), 2);
-        wizard.handle_key(TuiKey::Up)?;
+        assert_eq!(wizard.handle_key(TuiKey::Up), Ok(None));
         assert_eq!(wizard.scroll_offset(), 1);
-        wizard.handle_key(TuiKey::Down)?;
+        assert_eq!(wizard.handle_key(TuiKey::Down), Ok(None));
         assert_eq!(wizard.scroll_offset(), 2);
-        wizard.handle_key(TuiKey::PageDown)?;
+        assert_eq!(wizard.handle_key(TuiKey::PageDown), Ok(None));
         assert_eq!(wizard.scroll_offset(), 12);
-        wizard.handle_key(TuiKey::PageUp)?;
+        assert_eq!(wizard.handle_key(TuiKey::PageUp), Ok(None));
         assert_eq!(wizard.scroll_offset(), 2);
-        wizard.handle_key(TuiKey::Home)?;
+        assert_eq!(wizard.handle_key(TuiKey::Home), Ok(None));
         assert_eq!(wizard.scroll_offset(), 0);
-        wizard.handle_key(TuiKey::End)?;
+        assert_eq!(wizard.handle_key(TuiKey::End), Ok(None));
         assert!(wizard.scroll_offset() > 0);
 
         // Focus CompTree (index 2 - SelectionTree focused branch)
@@ -1811,84 +2048,85 @@ mod tests {
         // Focus ModeOpt (index 4 - RadioButtonGroup focused branch)
         wizard.focused_index = 4;
         let _mode_focused = wizard.render_frame(80, 50);
-        wizard.handle_key(TuiKey::Up)?;
-        wizard.handle_key(TuiKey::Down)?;
-        wizard.handle_key(TuiKey::Space)?;
+        assert_eq!(wizard.handle_key(TuiKey::Up), Ok(None));
+        assert_eq!(wizard.handle_key(TuiKey::Down), Ok(None));
+        assert_eq!(wizard.handle_key(TuiKey::Space), Ok(None));
 
         // Focus LogOpt (index 5 - CheckBox)
         wizard.focused_index = 5;
-        wizard.handle_key(TuiKey::Space)?;
+        assert_eq!(wizard.handle_key(TuiKey::Space), Ok(None));
 
         // Focus OkBtn (index 6 - PushButton)
         wizard.focused_index = 6;
-        wizard.handle_key(TuiKey::Left)?;
-        wizard.handle_key(TuiKey::Home)?;
-        wizard.handle_key(TuiKey::PageUp)?;
-        wizard.handle_key(TuiKey::PageDown)?;
-        wizard.handle_key(TuiKey::End)?;
-        wizard.handle_key(TuiKey::Up)?; // Up on PushButton (hits lines 552/564 else)
-        wizard.handle_key(TuiKey::Down)?; // Down on PushButton
-        wizard.handle_key(TuiKey::Backspace)?; // Backspace on PushButton (hits line 477 false)
+        assert_eq!(wizard.handle_key(TuiKey::Left), Ok(None));
+        assert_eq!(wizard.handle_key(TuiKey::Home), Ok(None));
+        assert_eq!(wizard.handle_key(TuiKey::PageUp), Ok(None));
+        assert_eq!(wizard.handle_key(TuiKey::PageDown), Ok(None));
+        assert_eq!(wizard.handle_key(TuiKey::End), Ok(None));
+        assert_eq!(wizard.handle_key(TuiKey::Up), Ok(None)); // Up on PushButton (hits lines 552/564 else)
+        assert_eq!(wizard.handle_key(TuiKey::Down), Ok(None)); // Down on PushButton
+        assert_eq!(wizard.handle_key(TuiKey::Backspace), Ok(None)); // Backspace on PushButton (hits line 477 false)
 
         // Render frame while OkBtn is focused (renders all other controls with is_focused == false)
         let _unfocused_buf = wizard.render_frame(80, 50);
 
         // Test Escape on dialog with control_cancel defined (CancelBtn)
         assert_eq!(
-            wizard.handle_key(TuiKey::Escape)?,
-            Some(DialogReturnCode::Exit)
+            wizard.handle_key(TuiKey::Escape),
+            Ok(Some(DialogReturnCode::Exit))
         );
 
         // Reactivate RichDlg and test Enter on PortInput (activating default control OkBtn)
         assert!(wizard.engine_mut().set_active_dialog("RichDlg").is_ok());
         wizard.focused_index = 0;
         assert_eq!(
-            wizard.handle_key(TuiKey::Enter)?,
-            Some(DialogReturnCode::Return)
+            wizard.handle_key(TuiKey::Enter),
+            Ok(Some(DialogReturnCode::Return))
         );
 
         // Reactivate RichDlg and test Enter when focused_index is out of range (activating default control)
         assert!(wizard.engine_mut().set_active_dialog("RichDlg").is_ok());
         wizard.focused_index = 999;
         assert_eq!(
-            wizard.handle_key(TuiKey::Enter)?,
-            Some(DialogReturnCode::Return)
+            wizard.handle_key(TuiKey::Enter),
+            Ok(Some(DialogReturnCode::Return))
         );
 
         // Reactivate RichDlg and test Space on OkBtn (EndDialog Return)
         assert!(wizard.engine_mut().set_active_dialog("RichDlg").is_ok());
         wizard.focused_index = 6;
         assert_eq!(
-            wizard.handle_key(TuiKey::Space)?,
-            Some(DialogReturnCode::Return)
+            wizard.handle_key(TuiKey::Space),
+            Ok(Some(DialogReturnCode::Return))
         );
 
         // Reactivate RichDlg for remaining tests
         assert!(wizard.engine_mut().set_active_dialog("RichDlg").is_ok());
 
         // Test empty port rendering (!text.is_empty() is false) and backspace when cursor_pos > 0 but text is empty
-        wizard
+        assert!(wizard
             .engine_mut()
-            .update_control_value("RichDlg", "PortInput", "")?;
+            .update_control_value("RichDlg", "PortInput", "")
+            .is_ok());
         wizard.focused_index = 0;
         wizard.cursor_pos = 5;
-        wizard.handle_key(TuiKey::Backspace)?; // cursor_pos > 0 but new_text.is_empty() is true!
+        assert_eq!(wizard.handle_key(TuiKey::Backspace), Ok(None)); // cursor_pos > 0 but new_text.is_empty() is true!
         let empty_port_buf = wizard.render_frame(80, 50).render_to_string();
         assert!(!empty_port_buf.contains("[!] Invalid port"));
 
         // Out of bounds focused index
         wizard.focused_index = 999;
-        assert_eq!(wizard.handle_key(TuiKey::Backspace)?, None);
-        assert_eq!(wizard.handle_key(TuiKey::End)?, None);
+        assert_eq!(wizard.handle_key(TuiKey::Backspace), Ok(None));
+        assert_eq!(wizard.handle_key(TuiKey::End), Ok(None));
 
         // Test typing and backspace when control states are cleared
         wizard.engine_mut().clear_control_states();
         wizard.focused_index = 0; // PortInput
         wizard.cursor_pos = 0;
-        wizard.handle_key(TuiKey::Right)?;
-        wizard.handle_key(TuiKey::End)?;
-        wizard.handle_key(TuiKey::Char('X'))?;
-        wizard.handle_key(TuiKey::Backspace)?;
+        assert_eq!(wizard.handle_key(TuiKey::Right), Ok(None));
+        assert_eq!(wizard.handle_key(TuiKey::End), Ok(None));
+        assert_eq!(wizard.handle_key(TuiKey::Char('X')), Ok(None));
+        assert_eq!(wizard.handle_key(TuiKey::Backspace), Ok(None));
 
         // Test NewDialog event updating active_dialog and focused_index
         let next_dlg = DialogDefinition {
@@ -1931,7 +2169,7 @@ mod tests {
 
         // Focus NavBtn (index 9) and press Enter
         wizard.focused_index = 9;
-        wizard.handle_key(TuiKey::Enter)?;
+        assert_eq!(wizard.handle_key(TuiKey::Enter), Ok(None));
         assert_eq!(
             wizard.engine().active_dialog().map(|d| d.name.as_str()),
             Some("NextDlg")
@@ -1944,7 +2182,7 @@ mod tests {
 
         // Test typing on non-Edit control (NextFirst is PushButton at index 0)
         wizard.focused_index = 0;
-        assert_eq!(wizard.handle_key(TuiKey::Char('A'))?, None);
+        assert_eq!(wizard.handle_key(TuiKey::Char('A')), Ok(None));
 
         // Test small terminal rendering
         let small_buf = wizard.render_frame(10, 5);
@@ -1956,8 +2194,8 @@ mod tests {
         let no_dlg_buf = no_dlg_wizard.render_frame(80, 24);
         assert_eq!(no_dlg_buf.width, 80);
         assert_eq!(no_dlg_buf.height, 24);
-        assert_eq!(no_dlg_wizard.handle_key(TuiKey::Enter)?, None);
-        assert_eq!(no_dlg_wizard.handle_key(TuiKey::Escape)?, None);
+        assert_eq!(no_dlg_wizard.handle_key(TuiKey::Enter), Ok(None));
+        assert_eq!(no_dlg_wizard.handle_key(TuiKey::Escape), Ok(None));
 
         // Test TerminalBuffer out-of-bounds safety
         let mut tbuf = TerminalBuffer::new(10, 10);
@@ -1994,7 +2232,5 @@ mod tests {
         assert!(exit_str.contains("MyProduct - Setup Complete"));
         assert!(exit_str.contains("service1 (running)"));
         assert!(exit_str.contains("Web: http://localhost:8080"));
-
-        Ok(())
     }
 }

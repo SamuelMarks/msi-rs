@@ -281,12 +281,20 @@ pub struct WorkerArgs {
 #[derive(Debug, Args, PartialEq, Eq)]
 pub struct HarvestArgs {
     /// Target filesystem path, registry file path, or harvest type (e.g. `dir`, `reg`).
-    #[arg(value_name = "TARGET_OR_TYPE")]
+    #[arg(value_name = "TARGET_OR_TYPE", default_value = "")]
     pub target: String,
 
     /// Target path when harvest type is given as first positional argument (e.g. `msi harvest dir /path`).
     #[arg(value_name = "TARGET_PATH")]
     pub extra_target: Option<String>,
+
+    /// Source directory to harvest directly (alternative to positional argument).
+    #[arg(long = "source-dir", alias = "source")]
+    pub source_dir: Option<String>,
+
+    /// Path to generated `WiX` fragment output (alias for --output / -o).
+    #[arg(long = "wix-fragment", alias = "fragment")]
+    pub wix_fragment: Option<String>,
 
     /// Component group identifier.
     #[arg(
@@ -353,6 +361,10 @@ pub struct HarvestArgs {
     /// Offline cache directory to inject into payload under `cache/`.
     #[arg(long = "include-cache")]
     pub include_cache: Option<String>,
+
+    /// Whether to include .msi files in harvested payload (matches `LibScript` `--include-msi`).
+    #[arg(long = "include-msi")]
+    pub include_msi: bool,
 }
 
 /// Arguments for decompiling an MSI package into `WiX` source XML.
@@ -401,6 +413,14 @@ pub struct PackArgs {
     /// Suppress internal consistency evaluators (ICE) validation.
     #[arg(short = 's', long = "suppress-validation", alias = "sval")]
     pub suppress_validation: bool,
+
+    /// Specific ICE validation rules to suppress (-sice:ICE01).
+    #[arg(long = "suppress-ice", alias = "sice")]
+    pub suppress_ice: Vec<String>,
+
+    /// Specific ICE validation rules to selectively run (-ice:ICE01).
+    #[arg(long = "select-ice", alias = "ice")]
+    pub select_ice: Vec<String>,
 
     /// `WiX` extension identifiers (e.g. `WixUIExtension`, `WixToolset.UI.wixext`).
     #[arg(short = 'e', long = "extension", alias = "ext")]
@@ -1090,17 +1110,25 @@ fn handle_worker(args: &WorkerArgs) -> Result<String, String> {
 
 /// Handles the `harvest` command.
 fn handle_harvest(args: &HarvestArgs) -> Result<String, String> {
+    let raw_target = if args.target.is_empty() {
+        args.source_dir.as_deref().unwrap_or(".")
+    } else {
+        args.target.as_str()
+    };
+
     let (effective_mode, target_path) = args.extra_target.as_ref().map_or_else(
         || {
-            let p = Path::new(&args.target);
+            let p = Path::new(raw_target);
             if p.extension().is_some_and(|e| e.eq_ignore_ascii_case("reg")) {
-                ("reg".to_string(), args.target.as_str())
+                ("reg".to_string(), raw_target)
             } else {
-                (args.mode.to_lowercase(), args.target.as_str())
+                (args.mode.to_lowercase(), raw_target)
             }
         },
-        |second| (args.target.to_lowercase(), second.as_str()),
+        |second| (raw_target.to_lowercase(), second.as_str()),
     );
+
+    let effective_output = args.output.as_ref().or(args.wix_fragment.as_ref());
 
     let mut harvester = msi::wix::Harvester::new();
     harvester.set_default_disk_id(args.default_disk_id);
@@ -1140,13 +1168,18 @@ fn handle_harvest(args: &HarvestArgs) -> Result<String, String> {
         harvester.add_disk_rule("cache/npm/*", 4);
     }
 
+    if args.include_msi {
+        harvester.set_include_msi(true);
+    }
+
     let payload_opts = msi::wix::HarvestPayloadOptions {
         component_group: args.group.clone(),
         directory_ref: args.dir_id.clone(),
-        wix_fragment: args.output.as_ref().map(PathBuf::from),
+        wix_fragment: effective_output.map(PathBuf::from),
         manifest_file: args.manifest_file.as_ref().map(PathBuf::from),
         output_dir: args.output_dir.as_ref().map(PathBuf::from),
         include_cache: args.include_cache.as_ref().map(PathBuf::from),
+        include_msi: args.include_msi,
     };
 
     let xml = if effective_mode == "reg" {
@@ -1155,7 +1188,7 @@ fn handle_harvest(args: &HarvestArgs) -> Result<String, String> {
         let res = harvester
             .harvest_registry(&content, &args.group)
             .map_err(err_to_string)?;
-        if let Some(ref out_file) = args.output {
+        if let Some(out_file) = effective_output {
             std::fs::write(out_file, res.as_bytes())
                 .map_err(|e| format!("Failed to write output to '{out_file}': {e}"))?;
         }
@@ -1167,7 +1200,7 @@ fn handle_harvest(args: &HarvestArgs) -> Result<String, String> {
         result.wix_fragment
     };
 
-    args.output.as_ref().map_or(Ok(xml), |out_file| {
+    effective_output.map_or(Ok(xml), |out_file| {
         Ok(format!("Harvested WiX source written to '{out_file}'"))
     })
 }
@@ -1196,6 +1229,52 @@ fn handle_decompile(args: &DecompileArgs) -> Result<String, String> {
     } else {
         Ok(xml)
     }
+}
+
+/// Automatically discovers and links companion payload `.wxs` fragments in the same directory.
+fn discover_companion_fragments(sources: &[String]) -> Vec<String> {
+    let mut effective_sources = sources.to_vec();
+    if effective_sources.len() == 1 {
+        let primary_path = PathBuf::from(&effective_sources[0]);
+        if let Ok(content) = std::fs::read_to_string(&primary_path) {
+            let search_dir = match primary_path.parent() {
+                Some(p) if !p.as_os_str().is_empty() => p,
+                _ => Path::new("."),
+            };
+            if let Ok(entries) = std::fs::read_dir(search_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    let is_wxs_file = path.is_file()
+                        && path
+                            .extension()
+                            .is_some_and(|e| e.eq_ignore_ascii_case("wxs"))
+                        && path != primary_path;
+                    if !is_wxs_file {
+                        continue;
+                    }
+                    let path_str = path.to_string_lossy().to_string();
+                    if let Ok(sibling_content) = std::fs::read_to_string(&path) {
+                        let is_companion_by_name = primary_path
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .is_some_and(|stem| {
+                                path.file_name()
+                                    .and_then(|n| n.to_str())
+                                    .is_some_and(|name| {
+                                        name.starts_with(stem) && name.contains("payload")
+                                    })
+                            });
+                        let resolves_group = content.contains("<ComponentGroupRef")
+                            && sibling_content.contains("<ComponentGroup");
+                        if is_companion_by_name || resolves_group {
+                            effective_sources.push(path_str);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    effective_sources
 }
 
 /// Handles the `pack` command by compiling and linking `WiX` source manifests into an MSI package.
@@ -1246,8 +1325,10 @@ fn handle_pack(args: &PackArgs) -> Result<String, String> {
         return Err("No source files specified".to_string());
     }
 
+    let effective_sources = discover_companion_fragments(&args.sources);
+
     let mut raw_args = vec!["-o".to_string(), args.output.clone()];
-    for src in &args.sources {
+    for src in &effective_sources {
         raw_args.push(src.clone());
     }
     for def in &args.defines {
@@ -1255,6 +1336,12 @@ fn handle_pack(args: &PackArgs) -> Result<String, String> {
     }
     if args.suppress_validation {
         raw_args.push("-sval".to_string());
+    }
+    for sice in &args.suppress_ice {
+        raw_args.push(format!("-sice:{sice}"));
+    }
+    for ice in &args.select_ice {
+        raw_args.push(format!("-ice:{ice}"));
     }
     for ext in &args.extensions {
         raw_args.push("-ext".to_string());
@@ -1572,14 +1659,17 @@ mod tests {
 
             let handle = std::thread::spawn(move || {
                 for _ in 0..100 {
-                    if let Ok(mut stream) = std::os::unix::net::UnixStream::connect(&connect_clone)
-                    {
-                        use std::io::Write;
-                        let _ = stream.write_all(b"QUIT\n");
-                        let _ = stream.flush();
-                        return;
+                    match std::os::unix::net::UnixStream::connect(&connect_clone) {
+                        Ok(mut stream) => {
+                            use std::io::Write;
+                            let _ = stream.write_all(b"QUIT\n");
+                            let _ = stream.flush();
+                            return;
+                        }
+                        Err(_) => {
+                            std::thread::sleep(std::time::Duration::from_millis(2));
+                        }
                     }
-                    std::thread::sleep(std::time::Duration::from_millis(2));
                 }
             });
 
@@ -2748,6 +2838,8 @@ mod tests {
             command: Commands::Harvest(Box::new(HarvestArgs {
                 target: src_dir.to_string_lossy().to_string(),
                 extra_target: None,
+                source_dir: None,
+                wix_fragment: None,
                 group: "MyHarvestGroup".to_string(),
                 dir_id: "INSTALLFOLDER".to_string(),
                 output: Some(harvest_out.to_string_lossy().to_string()),
@@ -2766,6 +2858,7 @@ mod tests {
                 manifest_file: Some(manifest_out.to_string_lossy().to_string()),
                 output_dir: Some(stage_out.to_string_lossy().to_string()),
                 include_cache: Some(src_dir.to_string_lossy().to_string()),
+                include_msi: false,
             })),
         });
         assert!(harvest_res.is_ok());
@@ -2785,6 +2878,8 @@ mod tests {
             command: Commands::Harvest(Box::new(HarvestArgs {
                 target: "dir".to_string(),
                 extra_target: Some(src_dir.to_string_lossy().to_string()),
+                source_dir: None,
+                wix_fragment: None,
                 group: "StdoutHarvestGroup".to_string(),
                 dir_id: "INSTALLFOLDER".to_string(),
                 output: None,
@@ -2799,9 +2894,71 @@ mod tests {
                 manifest_file: None,
                 output_dir: None,
                 include_cache: None,
+                include_msi: false,
             })),
         });
         assert!(harvest_stdout.is_ok());
+
+        // 2b. Test drop-in harvest_payload.sh flag compatibility (--source-dir and --wix-fragment)
+        let dropin_fragment = temp_dir.join("dropin_payload.wxs");
+        let dropin_res = run(&Cli {
+            command: Commands::Harvest(Box::new(HarvestArgs {
+                target: String::new(),
+                extra_target: None,
+                source_dir: Some(src_dir.to_string_lossy().to_string()),
+                wix_fragment: Some(dropin_fragment.to_string_lossy().to_string()),
+                group: "LibscriptHarvestedComponents".to_string(),
+                dir_id: "LIBSCRIPT_FOLDER".to_string(),
+                output: None,
+                mode: "dir".to_string(),
+                gitignore: None,
+                disk_rules: vec![],
+                default_disk_id: 1,
+                split_size: None,
+                secondary_groups: vec![],
+                exclude_extensions: vec![],
+                exclude_patterns: vec![],
+                manifest_file: None,
+                output_dir: None,
+                include_cache: None,
+                include_msi: false,
+            })),
+        });
+        assert!(dropin_res.is_ok());
+        assert!(dropin_fragment.exists());
+        let dropin_xml = std::fs::read_to_string(&dropin_fragment).unwrap_or_default();
+        assert!(dropin_xml.contains("LibscriptHarvestedComponents"));
+        assert!(dropin_xml.contains("LIBSCRIPT_FOLDER"));
+
+        // 2c. Test --include-msi flag
+        assert!(std::fs::write(src_dir.join("embedded.msi"), b"MSI_DATA").is_ok());
+        let msi_harvest_fragment = temp_dir.join("msi_included_payload.wxs");
+        let msi_included_res = run(&Cli {
+            command: Commands::Harvest(Box::new(HarvestArgs {
+                target: src_dir.to_string_lossy().to_string(),
+                extra_target: None,
+                source_dir: None,
+                wix_fragment: Some(msi_harvest_fragment.to_string_lossy().to_string()),
+                group: "MsiGroup".to_string(),
+                dir_id: "INSTALLFOLDER".to_string(),
+                output: None,
+                mode: "dir".to_string(),
+                gitignore: None,
+                disk_rules: vec![],
+                default_disk_id: 1,
+                split_size: None,
+                secondary_groups: vec![],
+                exclude_extensions: vec![],
+                exclude_patterns: vec![],
+                manifest_file: None,
+                output_dir: None,
+                include_cache: None,
+                include_msi: true,
+            })),
+        });
+        assert!(msi_included_res.is_ok());
+        let msi_xml = std::fs::read_to_string(&msi_harvest_fragment).unwrap_or_default();
+        assert!(msi_xml.contains("embedded.msi"));
 
         // 3. Harvest registry file to stdout and to file
         let reg_file = temp_dir.join("sample.reg");
@@ -2813,6 +2970,8 @@ mod tests {
             command: Commands::Harvest(Box::new(HarvestArgs {
                 target: reg_file.to_string_lossy().to_string(),
                 extra_target: None,
+                source_dir: None,
+                wix_fragment: None,
                 group: "MyRegGroup".to_string(),
                 dir_id: "INSTALLFOLDER".to_string(),
                 output: None,
@@ -2827,6 +2986,7 @@ mod tests {
                 manifest_file: None,
                 output_dir: None,
                 include_cache: None,
+                include_msi: false,
             })),
         });
         assert!(reg_harvest_res.is_ok());
@@ -2836,6 +2996,8 @@ mod tests {
             command: Commands::Harvest(Box::new(HarvestArgs {
                 target: reg_file.to_string_lossy().to_string(),
                 extra_target: None,
+                source_dir: None,
+                wix_fragment: None,
                 group: "MyRegGroup".to_string(),
                 dir_id: "INSTALLFOLDER".to_string(),
                 output: Some(reg_file_out.to_string_lossy().to_string()),
@@ -2850,6 +3012,7 @@ mod tests {
                 manifest_file: None,
                 output_dir: None,
                 include_cache: None,
+                include_msi: false,
             })),
         });
         assert!(reg_harvest_out_res.is_ok());
@@ -2860,6 +3023,8 @@ mod tests {
             command: Commands::Harvest(Box::new(HarvestArgs {
                 target: reg_file.to_string_lossy().to_string(),
                 extra_target: None,
+                source_dir: None,
+                wix_fragment: None,
                 group: "MyRegGroup".to_string(),
                 dir_id: "INSTALLFOLDER".to_string(),
                 output: Some("/nonexistent/invalid_dir/bad_reg.wxs".to_string()),
@@ -2874,6 +3039,7 @@ mod tests {
                 manifest_file: None,
                 output_dir: None,
                 include_cache: None,
+                include_msi: false,
             })),
         });
         assert!(reg_bad_out_res.is_err());
@@ -2883,6 +3049,8 @@ mod tests {
             command: Commands::Harvest(Box::new(HarvestArgs {
                 target: "/nonexistent/path/missing.reg".to_string(),
                 extra_target: None,
+                source_dir: None,
+                wix_fragment: None,
                 group: "G".to_string(),
                 dir_id: "D".to_string(),
                 output: None,
@@ -2897,6 +3065,7 @@ mod tests {
                 manifest_file: None,
                 output_dir: None,
                 include_cache: None,
+                include_msi: false,
             })),
         });
         assert!(bad_harvest.is_err());
@@ -2905,6 +3074,8 @@ mod tests {
             command: Commands::Harvest(Box::new(HarvestArgs {
                 target: src_dir.to_string_lossy().to_string(),
                 extra_target: None,
+                source_dir: None,
+                wix_fragment: None,
                 group: "G".to_string(),
                 dir_id: "D".to_string(),
                 output: Some("/nonexistent/dir/out.wxs".to_string()),
@@ -2919,6 +3090,7 @@ mod tests {
                 manifest_file: None,
                 output_dir: None,
                 include_cache: None,
+                include_msi: false,
             })),
         });
         assert!(bad_harvest_out.is_err());
@@ -2927,6 +3099,8 @@ mod tests {
             command: Commands::Harvest(Box::new(HarvestArgs {
                 target: src_dir.to_string_lossy().to_string(),
                 extra_target: None,
+                source_dir: None,
+                wix_fragment: None,
                 group: "G".to_string(),
                 dir_id: "D".to_string(),
                 output: None,
@@ -2941,6 +3115,7 @@ mod tests {
                 manifest_file: None,
                 output_dir: None,
                 include_cache: None,
+                include_msi: false,
             })),
         });
         assert!(bad_gitignore.is_err());
@@ -2951,6 +3126,8 @@ mod tests {
             command: Commands::Harvest(Box::new(HarvestArgs {
                 target: empty_reg_file.to_string_lossy().to_string(),
                 extra_target: None,
+                source_dir: None,
+                wix_fragment: None,
                 group: "G".to_string(),
                 dir_id: "D".to_string(),
                 output: None,
@@ -2965,6 +3142,7 @@ mod tests {
                 manifest_file: None,
                 output_dir: None,
                 include_cache: None,
+                include_msi: false,
             })),
         });
         assert!(empty_reg_err.is_err());
@@ -3157,6 +3335,8 @@ mod tests {
                 defines: vec!["DEBUG=1".to_string(), "NO_VAL_FLAG".to_string()],
                 arch: "x64".to_string(),
                 suppress_validation: true,
+                suppress_ice: vec!["ICE38".to_string()],
+                select_ice: vec!["ICE01".to_string()],
                 extensions: vec!["WixToolset.UI.wixext".to_string()],
                 bind_paths: vec![temp_dir.to_string_lossy().to_string()],
                 verbose: false,
@@ -3206,6 +3386,8 @@ mod tests {
                 defines: vec![],
                 arch: "x64".to_string(),
                 suppress_validation: true,
+                suppress_ice: vec![],
+                select_ice: vec![],
                 extensions: vec![],
                 bind_paths: vec![],
                 verbose: false,
@@ -3238,6 +3420,8 @@ mod tests {
                 defines: vec![],
                 arch: "x64".to_string(),
                 suppress_validation: true,
+                suppress_ice: vec![],
+                select_ice: vec![],
                 extensions: vec![],
                 bind_paths: vec![],
                 verbose: false,
@@ -3255,6 +3439,8 @@ mod tests {
             defines: vec![],
             arch: "x64".to_string(),
             suppress_validation: false,
+            suppress_ice: vec![],
+            select_ice: vec![],
             extensions: vec![],
             bind_paths: vec![],
             verbose: false,
@@ -3269,6 +3455,8 @@ mod tests {
             defines: vec![],
             arch: "x64".to_string(),
             suppress_validation: false,
+            suppress_ice: vec![],
+            select_ice: vec![],
             extensions: vec![],
             bind_paths: vec![],
             verbose: false,
@@ -3283,6 +3471,8 @@ mod tests {
             defines: vec![],
             arch: "x64".to_string(),
             suppress_validation: false,
+            suppress_ice: vec![],
+            select_ice: vec![],
             extensions: vec![],
             bind_paths: vec![],
             verbose: false,
@@ -3297,6 +3487,8 @@ mod tests {
             defines: vec![],
             arch: "x64".to_string(),
             suppress_validation: false,
+            suppress_ice: vec![],
+            select_ice: vec![],
             extensions: vec![],
             bind_paths: vec![],
             verbose: false,
@@ -3311,6 +3503,8 @@ mod tests {
             defines: vec![],
             arch: "x64".to_string(),
             suppress_validation: false,
+            suppress_ice: vec![],
+            select_ice: vec![],
             extensions: vec![],
             bind_paths: vec![],
             verbose: false,
@@ -3325,6 +3519,8 @@ mod tests {
             defines: vec![],
             arch: String::new(),
             suppress_validation: false,
+            suppress_ice: vec![],
+            select_ice: vec![],
             extensions: vec!["--missing-value".to_string()],
             bind_paths: vec![],
             verbose: false,
@@ -3342,6 +3538,8 @@ mod tests {
             defines: vec![],
             arch: "x64".to_string(),
             suppress_validation: false,
+            suppress_ice: vec![],
+            select_ice: vec![],
             extensions: vec![],
             bind_paths: vec![],
             verbose: false,
@@ -3358,6 +3556,8 @@ mod tests {
             arch: "x64".to_string(),
             bind_paths: vec![],
             suppress_validation: false,
+            suppress_ice: vec![],
+            select_ice: vec![],
             extensions: vec![],
             verbose: false,
         });
@@ -3373,11 +3573,114 @@ mod tests {
             defines: vec![],
             arch: "x64".to_string(),
             suppress_validation: false,
+            suppress_ice: vec![],
+            select_ice: vec![],
             extensions: vec![],
             bind_paths: vec![],
             verbose: false,
         });
         assert!(err_exec.is_err());
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    /// Tests automatic discovery and linking of companion payload fragments in `msi pack`.
+    #[test]
+    fn test_cli_pack_companion_discovery() {
+        let temp_dir =
+            std::env::temp_dir().join(format!("msi_cli_companion_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+
+        let main_wxs = temp_dir.join("app.wxs");
+        let payload_wxs = temp_dir.join("app_payload.wxs");
+        let out_msi = temp_dir.join("app_linked.msi");
+
+        let main_xml = r#"<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="{11111111-2222-3333-4444-555555555555}" Name="CompanionApp" Version="1.0.0" Manufacturer="TestCorp">
+        <Package Description="Companion Test" />
+        <Directory Id="TARGETDIR" Name="SourceDir">
+            <Directory Id="ProgramFilesFolder">
+                <Directory Id="INSTALLFOLDER" Name="CompanionApp" />
+            </Directory>
+        </Directory>
+        <Feature Id="MainFeature" Title="Main" Level="1">
+            <ComponentGroupRef Id="PayloadComponents" />
+        </Feature>
+    </Product>
+</Wix>"#;
+
+        let payload_xml = r#"<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Fragment>
+        <ComponentGroup Id="PayloadComponents" Directory="INSTALLFOLDER">
+            <Component Id="cmp_test_file" Guid="{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}">
+                <File Id="fil_test_file" Source="app.wxs" KeyPath="yes" />
+            </Component>
+        </ComponentGroup>
+    </Fragment>
+</Wix>"#;
+
+        let _ = std::fs::write(&main_wxs, main_xml);
+        let _ = std::fs::write(&payload_wxs, payload_xml);
+
+        // Add non-wxs file, a subdirectory, and an unrelated wxs file to test all branch paths
+        let _ = std::fs::write(temp_dir.join("notes.txt"), "readme");
+        let _ = std::fs::create_dir_all(temp_dir.join("subfolder.wxs"));
+        let _ = std::fs::write(temp_dir.join("unrelated.wxs"), "<Wix><Product/></Wix>");
+
+        // Pack passing ONLY app.wxs - app_payload.wxs must be auto-discovered!
+        let pack_res = handle_pack(&PackArgs {
+            output: out_msi.to_string_lossy().to_string(),
+            sources: vec![main_wxs.to_string_lossy().to_string()],
+            manifest: None,
+            schema: None,
+            defines: vec![],
+            arch: "x64".to_string(),
+            suppress_validation: true,
+            suppress_ice: vec![],
+            select_ice: vec![],
+            extensions: vec![],
+            bind_paths: vec![temp_dir.to_string_lossy().to_string()],
+            verbose: false,
+        });
+
+        assert!(pack_res.is_ok());
+        assert!(out_msi.exists());
+
+        // Test with already contained path
+        let already_contained = discover_companion_fragments(&[
+            main_wxs.to_string_lossy().to_string(),
+            payload_wxs.to_string_lossy().to_string(),
+        ]);
+        assert_eq!(already_contained.len(), 2);
+
+        // Test with relative file in current directory to cover relative path parent branch
+        let cur_dir_file = "test_companion_cur_dir.wxs";
+        let _ = std::fs::write(cur_dir_file, "<Wix><Product/></Wix>");
+        let _ = discover_companion_fragments(&[cur_dir_file.to_string()]);
+        let _ = std::fs::remove_file(cur_dir_file);
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let unreadable_wxs = temp_dir.join("unreadable.wxs");
+            let _ = std::fs::write(&unreadable_wxs, "<Wix/>");
+            let _ =
+                std::fs::set_permissions(&unreadable_wxs, std::fs::Permissions::from_mode(0o000));
+            let _ = discover_companion_fragments(&[main_wxs.to_string_lossy().to_string()]);
+            let _ =
+                std::fs::set_permissions(&unreadable_wxs, std::fs::Permissions::from_mode(0o644));
+
+            // Directory with execute-only permission allows file read but fails read_dir
+            let no_read_dir = temp_dir.join("no_read_dir");
+            let _ = std::fs::create_dir_all(&no_read_dir);
+            let unreadable_parent_file = no_read_dir.join("test.wxs");
+            let _ = std::fs::write(&unreadable_parent_file, "<Wix><Product/></Wix>");
+            let _ = std::fs::set_permissions(&no_read_dir, std::fs::Permissions::from_mode(0o300));
+            let _ = discover_companion_fragments(&[unreadable_parent_file
+                .to_string_lossy()
+                .to_string()]);
+            let _ = std::fs::set_permissions(&no_read_dir, std::fs::Permissions::from_mode(0o755));
+        }
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }

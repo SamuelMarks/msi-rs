@@ -280,6 +280,14 @@ fn test_libscript_build_msi_multicab_and_long_identifiers() -> Result<()> {
     assert_eq!(files[2].get(7), Some(&FieldValue::Short(3)));
     assert_eq!(files[3].get(7), Some(&FieldValue::Short(4)));
 
+    // Verify 4 embedded cabinets are packaged and embedded with '#' prefix
+    let embedded_cabs = pkg.embedded_cabinets();
+    assert_eq!(embedded_cabs.len(), 4);
+    assert!(embedded_cabs.contains_key("#engine.cab"));
+    assert!(embedded_cabs.contains_key("#runtimes.cab"));
+    assert!(embedded_cabs.contains_key("#databases.cab"));
+    assert!(embedded_cabs.contains_key("#codebase.cab"));
+
     let _ = fs::remove_dir_all(&temp_dir);
     Ok(())
 }
@@ -589,5 +597,171 @@ fn test_libscript_unattended_silent_execution_guards() -> Result<()> {
     ctx.set_property("LICENSE_ACCEPTED", "1");
     assert!(!ctx.evaluate_condition(abort_cond)?);
 
+    Ok(())
+}
+
+/// Tests built-in `WixUIExtension` support without external `.wixlib` files, verifying
+/// that `WixVariable` table branding assets (`WixUIBannerBmp`, `WixUIDialogBmp`, `WixUILicenseRtf`)
+/// and built-in `WiX` font presets (`WixUI_Font_Normal`, `WixUI_Font_Title`, `WixUI_Font_Bigger`)
+/// populate the database correctly.
+///
+/// # Errors
+///
+/// Returns [`msi::Error`] on compilation, linking, or verification failure.
+#[test]
+#[allow(clippy::too_many_lines)]
+fn test_wix_ui_extension_branding_and_font_presets() -> Result<()> {
+    let temp_dir = std::env::temp_dir().join(format!("test_wix_ui_{}", std::process::id()));
+    fs::create_dir_all(&temp_dir)?;
+
+    let banner_bmp = temp_dir.join("banner.bmp");
+    let dialog_bmp = temp_dir.join("dialog.bmp");
+    let license_rtf = temp_dir.join("license.rtf");
+
+    fs::write(&banner_bmp, [0x42, 0x4D, 0x36, 0x00, 0x00, 0x00])?;
+    fs::write(&dialog_bmp, [0x42, 0x4D, 0x76, 0x00, 0x00, 0x00])?;
+    fs::write(&license_rtf, r"{\rtf1\ansi Standard EULA Content}")?;
+
+    let dummy_payload = temp_dir.join("app.exe");
+    fs::write(&dummy_payload, b"BINARY_APP")?;
+
+    let wxs_path = temp_dir.join("Product.wxs");
+    let wxs_content = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="{{12345678-1234-1234-1234-123456789012}}" Name="BrandedApp" Language="1033" Version="1.0.0" Manufacturer="BrandedVendor" UpgradeCode="{{87654321-4321-4321-4321-210987654321}}">
+    <Package Description="Branded UI Test Package" />
+    <Media Id="1" Cabinet="engine.cab" EmbedCab="yes" />
+
+    <WixVariable Id="WixUIBannerBmp" Value="{}" />
+    <WixVariable Id="WixUIDialogBmp" Value="{}" />
+    <WixVariable Id="WixUILicenseRtf" Value="{}" />
+
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="INSTALLFOLDER" Name="BrandedApp">
+          <Component Id="CmpApp" Guid="{{33333333-3333-3333-3333-333333333333}}">
+            <File Id="FileApp" Source="{}" KeyPath="yes" />
+          </Component>
+        </Directory>
+      </Directory>
+    </Directory>
+
+    <Feature Id="MainFeature" Title="Main" Level="1">
+      <ComponentRef Id="CmpApp" />
+    </Feature>
+
+    <UIRef Id="WixUI_InstallDir" />
+  </Product>
+</Wix>
+"#,
+        banner_bmp.display(),
+        dialog_bmp.display(),
+        license_rtf.display(),
+        dummy_payload.display()
+    );
+    fs::write(&wxs_path, wxs_content)?;
+
+    let out_msi = temp_dir.join("BrandedApp.msi");
+    let build_opts = msi::wix::toolchain::WixBuildOptions {
+        sources: vec![wxs_path],
+        output: Some(out_msi.clone()),
+        extensions: vec!["WixUIExtension".to_string()],
+        suppress_ice: true,
+        ..msi::wix::toolchain::WixBuildOptions::new()
+    };
+
+    let result_path = build_opts.execute()?;
+    assert!(result_path.exists());
+
+    let pkg = Package::open(&out_msi)?;
+    let db = pkg.database();
+
+    // 1. Verify WixVariable table emission
+    let wix_vars = db.get_records("WixVariable");
+    assert!(
+        !wix_vars.is_empty(),
+        "WixVariable records should be present"
+    );
+    let var_names: Vec<String> = wix_vars
+        .iter()
+        .filter_map(|r| match r.get(0) {
+            Some(FieldValue::String(s)) => Some(s.clone()),
+            _ => None,
+        })
+        .collect();
+    assert!(var_names.contains(&"WixUIBannerBmp".to_string()));
+    assert!(var_names.contains(&"WixUIDialogBmp".to_string()));
+    assert!(var_names.contains(&"WixUILicenseRtf".to_string()));
+
+    // 2. Verify TextStyle table contains built-in font presets
+    let text_styles = db.get_records("TextStyle");
+    assert!(
+        !text_styles.is_empty(),
+        "TextStyle table should be populated"
+    );
+    let font_styles: Vec<String> = text_styles
+        .iter()
+        .filter_map(|r| match r.get(0) {
+            Some(FieldValue::String(s)) => Some(s.clone()),
+            _ => None,
+        })
+        .collect();
+    assert!(font_styles.contains(&"WixUI_Font_Normal".to_string()));
+    assert!(font_styles.contains(&"WixUI_Font_Bigger".to_string()));
+    assert!(font_styles.contains(&"WixUI_Font_Title".to_string()));
+
+    // 3. Verify Binary table has banner and dialog bitmaps
+    let binaries = db.get_records("Binary");
+    let bin_names: Vec<String> = binaries
+        .iter()
+        .filter_map(|r| match r.get(0) {
+            Some(FieldValue::String(s)) => Some(s.clone()),
+            _ => None,
+        })
+        .collect();
+    assert!(bin_names.contains(&"WixUIBannerBmp".to_string()));
+    assert!(bin_names.contains(&"WixUIDialogBmp".to_string()));
+
+    // 4. Verify embedded stream payloads exist in package
+    assert!(pkg.embedded_cabinets().contains_key("WixUIBannerBmp"));
+    assert!(pkg.embedded_cabinets().contains_key("WixUIDialogBmp"));
+
+    // 5. Verify standard UI dialogs from WixUI_InstallDir were injected
+    let dialogs = db.get_records("Dialog");
+    let dlg_names: Vec<String> = dialogs
+        .iter()
+        .filter_map(|r| match r.get(0) {
+            Some(FieldValue::String(s)) => Some(s.clone()),
+            _ => None,
+        })
+        .collect();
+    assert!(dlg_names.contains(&"WelcomeDlg".to_string()));
+    assert!(dlg_names.contains(&"LicenseAgreementDlg".to_string()));
+    assert!(dlg_names.contains(&"InstallDirDlg".to_string()));
+    assert!(dlg_names.contains(&"VerifyReadyDlg".to_string()));
+    assert!(dlg_names.contains(&"ExitDialog".to_string()));
+
+    // 6. Verify license RTF was applied to ScrollableText control
+    let controls = db.get_records("Control");
+    let license_ctrl = controls.iter().find(|r| {
+        r.get(0) == Some(&FieldValue::String("LicenseAgreementDlg".to_string()))
+            && r.get(2) == Some(&FieldValue::String("ScrollableText".to_string()))
+    });
+    assert!(license_ctrl.is_some());
+    if let Some(r) = license_ctrl {
+        if let Some(FieldValue::String(text)) = r.get(9) {
+            assert!(text.contains("Standard EULA Content"));
+        } else {
+            return Err(msi::Error::Validation {
+                element: "Control.Text".to_string(),
+                reason: "missing or non-string license text in ScrollableText control".to_string(),
+            });
+        }
+    }
+
+    let _ = fs::remove_dir_all(&temp_dir);
     Ok(())
 }

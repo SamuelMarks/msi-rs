@@ -106,6 +106,7 @@ pub fn all_standard_schemas() -> Vec<TableSchema> {
         control_event_schema(),
         event_mapping_schema(),
         text_style_schema(),
+        wix_variable_schema(),
         radio_button_schema(),
         check_box_schema(),
         combo_box_schema(),
@@ -153,8 +154,8 @@ mod tests {
     #[test]
     fn test_all_standard_schemas_count() {
         let schemas = all_standard_schemas();
-        // 18 Core + 6 Seq + 19 Config + 6 FileMgmt + 8 COM + 15 UI + 5 POSIX + 1 Chainer + 3 SQL = 81 tables!
-        assert_eq!(schemas.len(), 81);
+        // 18 Core + 6 Seq + 19 Config + 6 FileMgmt + 8 COM + 16 UI + 5 POSIX + 1 Chainer + 3 SQL = 82 tables!
+        assert_eq!(schemas.len(), 82);
 
         let mut catalog = DatabaseCatalog::new();
         assert!(populate_standard_tables(&mut catalog).is_ok());

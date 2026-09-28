@@ -12,7 +12,7 @@ use std::fmt;
 pub const WIXOBJ_MAGIC: [u8; 4] = *b"WOBJ";
 
 /// Version of `.wixobj` binary format.
-pub const WIXOBJ_VERSION: u16 = 1;
+pub const WIXOBJ_VERSION: u16 = 2;
 
 /// Type of an intermediate section in a `.wixobj` file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -73,27 +73,110 @@ impl fmt::Display for SectionType {
     }
 }
 
+/// Source code position span (line and column) where a symbol or reference was declared.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct SourceSpan {
+    /// 1-based source line number (0 if unspecified).
+    pub line: usize,
+    /// 1-based source column number (0 if unspecified).
+    pub column: usize,
+}
+
+impl SourceSpan {
+    /// Creates a new [`SourceSpan`] with line and column numbers.
+    ///
+    /// # Arguments
+    ///
+    /// * `line` - 1-based source line number.
+    /// * `column` - 1-based source column number.
+    ///
+    /// # Returns
+    ///
+    /// A new [`SourceSpan`].
+    ///
+    /// # Panics
+    ///
+    /// This function does not panic.
+    #[must_use]
+    pub const fn new(line: usize, column: usize) -> Self {
+        Self { line, column }
+    }
+
+    /// Returns whether this span contains valid non-zero line and column coordinates.
+    ///
+    /// # Returns
+    ///
+    /// `true` if line > 0 and column > 0, `false` otherwise.
+    ///
+    /// # Panics
+    ///
+    /// This function does not panic.
+    #[must_use]
+    pub const fn is_valid(self) -> bool {
+        self.line > 0 && self.column > 0
+    }
+}
+
 /// Strongly-typed defined symbol in a `WiX` section (e.g. `Component:MyComp`, `Directory:TARGETDIR`).
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone)]
 pub struct Symbol {
     /// Namespace category (e.g. `Component`, `Directory`, `Feature`, `File`).
     pub namespace: String,
     /// Identifier within the namespace.
     pub id: String,
+    /// Source span metadata where symbol was defined, if known.
+    pub span: Option<SourceSpan>,
 }
 
 impl Symbol {
-    /// Creates a new [`Symbol`].
+    /// Creates a new [`Symbol`] without source span metadata.
     ///
     /// # Arguments
     ///
     /// * `namespace` - Namespace name.
     /// * `id` - Symbol identifier.
+    ///
+    /// # Returns
+    ///
+    /// A new [`Symbol`].
+    ///
+    /// # Panics
+    ///
+    /// This function does not panic.
     #[must_use]
     pub fn new(namespace: impl Into<String>, id: impl Into<String>) -> Self {
         Self {
             namespace: namespace.into(),
             id: id.into(),
+            span: None,
+        }
+    }
+
+    /// Creates a new [`Symbol`] with source span metadata.
+    ///
+    /// # Arguments
+    ///
+    /// * `namespace` - Namespace name.
+    /// * `id` - Symbol identifier.
+    /// * `span` - Source span metadata.
+    ///
+    /// # Returns
+    ///
+    /// A new [`Symbol`].
+    ///
+    /// # Panics
+    ///
+    /// This function does not panic.
+    #[must_use]
+    pub fn with_span(
+        namespace: impl Into<String>,
+        id: impl Into<String>,
+        span: SourceSpan,
+    ) -> Self {
+        Self {
+            namespace: namespace.into(),
+            id: id.into(),
+            span: span.is_valid().then_some(span),
         }
     }
 }
@@ -104,27 +187,95 @@ impl fmt::Display for Symbol {
     }
 }
 
+impl PartialEq for Symbol {
+    fn eq(&self, other: &Self) -> bool {
+        self.namespace == other.namespace && self.id == other.id
+    }
+}
+
+impl Eq for Symbol {}
+
+impl std::hash::Hash for Symbol {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.namespace.hash(state);
+        self.id.hash(state);
+    }
+}
+
+impl PartialOrd for Symbol {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Symbol {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.namespace
+            .cmp(&other.namespace)
+            .then_with(|| self.id.cmp(&other.id))
+    }
+}
+
 /// Unresolved dependency reference pointer to a target symbol.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone)]
 pub struct Reference {
     /// Namespace category of target symbol.
     pub namespace: String,
     /// Target identifier.
     pub id: String,
+    /// Source span metadata where reference was declared, if known.
+    pub span: Option<SourceSpan>,
 }
 
 impl Reference {
-    /// Creates a new [`Reference`].
+    /// Creates a new [`Reference`] without source span metadata.
     ///
     /// # Arguments
     ///
     /// * `namespace` - Namespace name.
     /// * `id` - Target identifier.
+    ///
+    /// # Returns
+    ///
+    /// A new [`Reference`].
+    ///
+    /// # Panics
+    ///
+    /// This function does not panic.
     #[must_use]
     pub fn new(namespace: impl Into<String>, id: impl Into<String>) -> Self {
         Self {
             namespace: namespace.into(),
             id: id.into(),
+            span: None,
+        }
+    }
+
+    /// Creates a new [`Reference`] with source span metadata.
+    ///
+    /// # Arguments
+    ///
+    /// * `namespace` - Namespace name.
+    /// * `id` - Target identifier.
+    /// * `span` - Source span metadata.
+    ///
+    /// # Returns
+    ///
+    /// A new [`Reference`].
+    ///
+    /// # Panics
+    ///
+    /// This function does not panic.
+    #[must_use]
+    pub fn with_span(
+        namespace: impl Into<String>,
+        id: impl Into<String>,
+        span: SourceSpan,
+    ) -> Self {
+        Self {
+            namespace: namespace.into(),
+            id: id.into(),
+            span: span.is_valid().then_some(span),
         }
     }
 }
@@ -132,6 +283,35 @@ impl Reference {
 impl fmt::Display for Reference {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}:{}", self.namespace, self.id)
+    }
+}
+
+impl PartialEq for Reference {
+    fn eq(&self, other: &Self) -> bool {
+        self.namespace == other.namespace && self.id == other.id
+    }
+}
+
+impl Eq for Reference {}
+
+impl std::hash::Hash for Reference {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.namespace.hash(state);
+        self.id.hash(state);
+    }
+}
+
+impl PartialOrd for Reference {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Reference {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.namespace
+            .cmp(&other.namespace)
+            .then_with(|| self.id.cmp(&other.id))
     }
 }
 
@@ -202,15 +382,39 @@ impl IntermediateSection {
     }
 
     /// Adds a defined symbol to this section.
+    ///
+    /// # Arguments
+    ///
+    /// * `symbol` - Symbol to add.
+    ///
+    /// # Panics
+    ///
+    /// This function does not panic.
     pub fn add_symbol(&mut self, symbol: Symbol) {
-        if !self.symbols.contains(&symbol) {
+        if let Some(existing) = self.symbols.iter_mut().find(|s| **s == symbol) {
+            if existing.span.is_none() && symbol.span.is_some() {
+                existing.span = symbol.span;
+            }
+        } else {
             self.symbols.push(symbol);
         }
     }
 
     /// Adds a required reference to this section.
+    ///
+    /// # Arguments
+    ///
+    /// * `reference` - Reference to add.
+    ///
+    /// # Panics
+    ///
+    /// This function does not panic.
     pub fn add_reference(&mut self, reference: Reference) {
-        if !self.references.contains(&reference) {
+        if let Some(existing) = self.references.iter_mut().find(|r| **r == reference) {
+            if existing.span.is_none() && reference.span.is_some() {
+                existing.span = reference.span;
+            }
+        } else {
             self.references.push(reference);
         }
     }
@@ -246,13 +450,13 @@ impl WixObject {
     ///
     /// Layout:
     /// - 4 bytes: Magic `"WOBJ"`
-    /// - 2 bytes: Format Version (`1`)
+    /// - 2 bytes: Format Version (`2`)
     /// - 4 bytes: Number of sections
     /// - For each section:
     ///   - 1 byte: `SectionType`
     ///   - String: Section ID
-    ///   - Symbols: count + strings
-    ///   - References: count + strings
+    ///   - Symbols: count + strings + source span (line, column)
+    ///   - References: count + strings + source span (line, column)
     ///   - Tables: count + records
     ///
     /// # Returns
@@ -275,6 +479,11 @@ impl WixObject {
             for sym in &sec.symbols {
                 Self::write_string(&mut out, &sym.namespace);
                 Self::write_string(&mut out, &sym.id);
+                let (line, col) = sym
+                    .span
+                    .map_or((0u32, 0u32), |s| (s.line as u32, s.column as u32));
+                out.extend_from_slice(&line.to_le_bytes());
+                out.extend_from_slice(&col.to_le_bytes());
             }
 
             // References
@@ -282,6 +491,11 @@ impl WixObject {
             for rf in &sec.references {
                 Self::write_string(&mut out, &rf.namespace);
                 Self::write_string(&mut out, &rf.id);
+                let (line, col) = rf
+                    .span
+                    .map_or((0u32, 0u32), |s| (s.line as u32, s.column as u32));
+                out.extend_from_slice(&line.to_le_bytes());
+                out.extend_from_slice(&col.to_le_bytes());
             }
 
             // Tables
@@ -349,7 +563,7 @@ impl WixObject {
         }
 
         let version = u16::from_le_bytes([bytes[4], bytes[5]]);
-        if version != WIXOBJ_VERSION {
+        if version != 1 && version != WIXOBJ_VERSION {
             return Err(Error::InvalidWixObject {
                 reason: format!("unsupported format version: {version}"),
             });
@@ -389,8 +603,30 @@ impl WixObject {
             for _ in 0..sym_count {
                 let (ns, c1) = Self::read_string(bytes, cursor)?;
                 let (sym_id, c2) = Self::read_string(bytes, c1)?;
-                symbols.push(Symbol::new(ns, sym_id));
-                cursor = c2;
+                if version == 1 {
+                    symbols.push(Symbol::new(ns, sym_id));
+                    cursor = c2;
+                } else {
+                    if c2 + 8 > bytes.len() {
+                        return Err(Error::InvalidWixObject {
+                            reason: "truncated symbol span".to_string(),
+                        });
+                    }
+                    let line = u32::from_le_bytes([
+                        bytes[c2],
+                        bytes[c2 + 1],
+                        bytes[c2 + 2],
+                        bytes[c2 + 3],
+                    ]) as usize;
+                    let col = u32::from_le_bytes([
+                        bytes[c2 + 4],
+                        bytes[c2 + 5],
+                        bytes[c2 + 6],
+                        bytes[c2 + 7],
+                    ]) as usize;
+                    symbols.push(Symbol::with_span(ns, sym_id, SourceSpan::new(line, col)));
+                    cursor = c2 + 8;
+                }
             }
 
             // References
@@ -410,8 +646,30 @@ impl WixObject {
             for _ in 0..ref_count {
                 let (ns, c1) = Self::read_string(bytes, cursor)?;
                 let (ref_id, c2) = Self::read_string(bytes, c1)?;
-                references.push(Reference::new(ns, ref_id));
-                cursor = c2;
+                if version == 1 {
+                    references.push(Reference::new(ns, ref_id));
+                    cursor = c2;
+                } else {
+                    if c2 + 8 > bytes.len() {
+                        return Err(Error::InvalidWixObject {
+                            reason: "truncated reference span".to_string(),
+                        });
+                    }
+                    let line = u32::from_le_bytes([
+                        bytes[c2],
+                        bytes[c2 + 1],
+                        bytes[c2 + 2],
+                        bytes[c2 + 3],
+                    ]) as usize;
+                    let col = u32::from_le_bytes([
+                        bytes[c2 + 4],
+                        bytes[c2 + 5],
+                        bytes[c2 + 6],
+                        bytes[c2 + 7],
+                    ]) as usize;
+                    references.push(Reference::with_span(ns, ref_id, SourceSpan::new(line, col)));
+                    cursor = c2 + 8;
+                }
             }
 
             // Tables
@@ -634,23 +892,59 @@ mod tests {
         assert_eq!(sym.namespace, "Component");
         assert_eq!(sym.id, "MyComp");
         assert_eq!(format!("{sym}"), "Component:MyComp");
+        assert_eq!(sym.span, None);
+
+        let span = SourceSpan::new(42, 10);
+        assert!(span.is_valid());
+        assert!(!SourceSpan::new(0, 0).is_valid());
+        let sym_spanned = Symbol::with_span("Component", "MyComp", span);
+        assert_eq!(sym_spanned.span, Some(span));
+        assert_eq!(sym, sym_spanned); // Comparison ignores span
 
         let rf = Reference::new("Directory", "TARGETDIR");
         assert_eq!(rf.namespace, "Directory");
         assert_eq!(rf.id, "TARGETDIR");
         assert_eq!(format!("{rf}"), "Directory:TARGETDIR");
+        assert_eq!(rf.span, None);
+
+        let rf_spanned = Reference::with_span("Directory", "TARGETDIR", span);
+        assert_eq!(rf_spanned.span, Some(span));
+        assert_eq!(rf, rf_spanned); // Comparison ignores span
 
         // Test deduplication branches in add_symbol and add_reference
         let mut section = IntermediateSection::new(SectionType::Product, Some("Prod".to_string()));
         section.add_symbol(sym.clone());
         assert_eq!(section.symbols.len(), 1);
-        section.add_symbol(sym);
+        section.add_symbol(sym.clone());
         assert_eq!(section.symbols.len(), 1);
+        // Add symbol with span to update existing symbol's span
+        section.add_symbol(sym_spanned);
+        assert_eq!(section.symbols[0].span, Some(span));
 
         section.add_reference(rf.clone());
         assert_eq!(section.references.len(), 1);
-        section.add_reference(rf);
+        section.add_reference(rf.clone());
         assert_eq!(section.references.len(), 1);
+        // Add reference with span to update existing reference's span
+        section.add_reference(rf_spanned);
+        assert_eq!(section.references[0].span, Some(span));
+
+        // Test Ord, PartialOrd, and Hash for Symbol and Reference
+        let sym2 = Symbol::new("Component", "AnotherComp");
+        let sym3 = Symbol::new("Directory", "Target");
+        assert!(sym.partial_cmp(&sym2).is_some());
+        assert_eq!(sym.cmp(&sym2), std::cmp::Ordering::Greater);
+        assert_eq!(sym.cmp(&sym3), std::cmp::Ordering::Less);
+
+        let rf2 = Reference::new("Directory", "AnotherDir");
+        let rf3 = Reference::new("Feature", "Main");
+        assert!(rf.partial_cmp(&rf2).is_some());
+        assert_eq!(rf.cmp(&rf2), std::cmp::Ordering::Greater);
+        assert_eq!(rf.cmp(&rf3), std::cmp::Ordering::Less);
+
+        let mut ref_set = std::collections::HashSet::new();
+        ref_set.insert(rf.clone());
+        assert!(ref_set.contains(&rf));
     }
 
     /// Tests comprehensive binary roundtrip serialization and deserialization with all field value variants and section types.
@@ -658,9 +952,17 @@ mod tests {
     fn test_wix_object_binary_roundtrip() {
         let mut obj = WixObject::new();
         let mut sec = IntermediateSection::new(SectionType::Product, Some("Prod1".to_string()));
-        sec.add_symbol(Symbol::new("Product", "Prod1"));
+        sec.add_symbol(Symbol::with_span(
+            "Product",
+            "Prod1",
+            SourceSpan::new(10, 5),
+        ));
         sec.add_symbol(Symbol::new("Directory", "TARGETDIR"));
-        sec.add_reference(Reference::new("Component", "Comp1"));
+        sec.add_reference(Reference::with_span(
+            "Component",
+            "Comp1",
+            SourceSpan::new(20, 8),
+        ));
 
         let mut tbl = IntermediateTable::new("Property");
         let mut rec1 = Record::new();
@@ -701,8 +1003,11 @@ mod tests {
                 assert_eq!(d_sec1.id, Some("Prod1".to_string()));
                 assert_eq!(d_sec1.symbols.len(), 2);
                 assert_eq!(d_sec1.symbols[0], Symbol::new("Product", "Prod1"));
+                assert_eq!(d_sec1.symbols[0].span, Some(SourceSpan::new(10, 5)));
+                assert_eq!(d_sec1.symbols[1].span, None);
                 assert_eq!(d_sec1.references.len(), 1);
                 assert_eq!(d_sec1.references[0], Reference::new("Component", "Comp1"));
+                assert_eq!(d_sec1.references[0].span, Some(SourceSpan::new(20, 8)));
                 assert_eq!(d_sec1.tables.len(), 1);
                 assert_eq!(d_sec1.tables[0].name, "Property");
                 assert_eq!(d_sec1.tables[0].records.len(), 2);
@@ -722,6 +1027,33 @@ mod tests {
                 assert_eq!(d_sec2.symbols.len(), 1);
                 assert_eq!(d_sec2.references.len(), 0);
                 assert_eq!(d_sec2.tables.len(), 0);
+            }
+        }
+
+        // Test legacy version 1 deserialization
+        let mut v1_bytes = Vec::new();
+        v1_bytes.extend_from_slice(&WIXOBJ_MAGIC);
+        v1_bytes.extend_from_slice(&1u16.to_le_bytes()); // Version 1
+        v1_bytes.extend_from_slice(&1u32.to_le_bytes()); // 1 section
+        v1_bytes.push(SectionType::Product.to_u8());
+        v1_bytes.push(0); // None id
+        v1_bytes.extend_from_slice(&1u32.to_le_bytes()); // 1 symbol
+        WixObject::write_string(&mut v1_bytes, "Comp");
+        WixObject::write_string(&mut v1_bytes, "C1");
+        // in v1, no span bytes!
+        v1_bytes.extend_from_slice(&1u32.to_le_bytes()); // 1 reference
+        WixObject::write_string(&mut v1_bytes, "Dir");
+        WixObject::write_string(&mut v1_bytes, "D1");
+        // in v1, no span bytes!
+        v1_bytes.extend_from_slice(&0u32.to_le_bytes()); // 0 tables
+        let v1_obj = WixObject::deserialize(&v1_bytes);
+        assert!(v1_obj.is_ok());
+        for res in [v1_obj, Err(Error::Io("fail".into()))] {
+            if let Ok(deser_v1) = res {
+                assert_eq!(deser_v1.sections[0].symbols[0].id, "C1");
+                assert_eq!(deser_v1.sections[0].symbols[0].span, None);
+                assert_eq!(deser_v1.sections[0].references[0].id, "D1");
+                assert_eq!(deser_v1.sections[0].references[0].span, None);
             }
         }
     }

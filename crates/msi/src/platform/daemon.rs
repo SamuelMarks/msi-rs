@@ -8,6 +8,7 @@
 //! - **`SunOS` / illumos SMF:** Service Management Facility XML manifests and `svccfg` / `svcadm` commands.
 
 use crate::error::{Error, Result};
+use crate::platform::paths::TargetOs;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -39,6 +40,8 @@ pub struct ServiceDefinition {
     pub after: Vec<String>,
     /// Hard dependency services required for execution.
     pub requires: Vec<String>,
+    /// Windows NT service type bitmask (default 0x10 for `SERVICE_WIN32_OWN_PROCESS`).
+    pub service_type: u32,
 }
 
 impl ServiceDefinition {
@@ -68,7 +71,23 @@ impl ServiceDefinition {
             auto_start: true,
             after: vec!["network.target".to_string()],
             requires: Vec::new(),
+            service_type: 0x0000_0010,
         }
+    }
+
+    /// Sets the Windows NT service type bitmask (e.g. `0x1` for `SERVICE_KERNEL_DRIVER`).
+    ///
+    /// # Arguments
+    ///
+    /// * `service_type` - Service type bitmask flags.
+    ///
+    /// # Returns
+    ///
+    /// Self with service type set.
+    #[must_use]
+    pub const fn service_type(mut self, service_type: u32) -> Self {
+        self.service_type = service_type;
+        self
     }
 
     /// Sets the display name.
@@ -663,6 +682,18 @@ impl SupervisorType {
             Self::Systemd
         }
     }
+
+    /// Returns the corresponding [`TargetOs`] for this supervisor type.
+    #[must_use]
+    pub const fn target_os(self) -> TargetOs {
+        match self {
+            Self::Systemd => TargetOs::Linux,
+            Self::Launchd => TargetOs::MacOs,
+            Self::FreeBsdRc => TargetOs::FreeBsd,
+            Self::Smf => TargetOs::SunOs,
+            Self::WindowsScm => TargetOs::Windows,
+        }
+    }
 }
 
 /// Service control action command.
@@ -783,6 +814,7 @@ impl HostSupervisorExecutor {
     ///
     /// # Errors
     ///
+    /// Returns [`Error::UnsupportedPlatformFeature`] if Windows kernel or file system drivers are targeted at non-Windows supervisors.
     /// Returns [`Error::Io`] on filesystem failure.
     pub fn install_service(
         &mut self,
@@ -790,6 +822,20 @@ impl HostSupervisorExecutor {
         supervisor: SupervisorType,
         root_prefix: Option<&Path>,
     ) -> Result<InstalledService> {
+        if (svc.service_type == 0x0000_0001 || svc.service_type == 0x0000_0002)
+            && supervisor != SupervisorType::WindowsScm
+        {
+            return Err(Error::UnsupportedPlatformFeature {
+                feature: if svc.service_type == 0x0000_0001 {
+                    "SERVICE_KERNEL_DRIVER".to_string()
+                } else {
+                    "SERVICE_FILE_SYSTEM_DRIVER".to_string()
+                },
+                target_os: supervisor.target_os(),
+                reason: "Windows NT kernel and file system drivers cannot be installed or supervised by POSIX service managers".to_string(),
+            });
+        }
+
         let (rel_path, content, is_executable) = match supervisor {
             SupervisorType::Systemd => {
                 (svc.systemd_unit_path(), svc.generate_systemd_unit(), false)
@@ -1632,5 +1678,65 @@ mod tests {
                 | SupervisorType::FreeBsdRc
                 | SupervisorType::Smf
         ));
+    }
+
+    /// Tests that Windows NT kernel and file system drivers are explicitly rejected on non-Windows platforms.
+    #[test]
+    fn test_driver_rejection_and_supervisor_target_os() {
+        assert_eq!(SupervisorType::Systemd.target_os(), TargetOs::Linux);
+        assert_eq!(SupervisorType::Launchd.target_os(), TargetOs::MacOs);
+        assert_eq!(SupervisorType::FreeBsdRc.target_os(), TargetOs::FreeBsd);
+        assert_eq!(SupervisorType::Smf.target_os(), TargetOs::SunOs);
+        assert_eq!(SupervisorType::WindowsScm.target_os(), TargetOs::Windows);
+
+        let temp_dir = std::env::temp_dir().join("msi_test_driver_rejection");
+        let _ = fs::create_dir_all(&temp_dir);
+
+        let kernel_svc =
+            ServiceDefinition::new("driver_kernel", "/bin/driver").service_type(0x0000_0001);
+        let fs_svc = ServiceDefinition::new("driver_fs", "/bin/driver").service_type(0x0000_0002);
+        let win32_svc =
+            ServiceDefinition::new("standard_svc", "/bin/standard").service_type(0x0000_0010);
+
+        let mut executor = HostSupervisorExecutor::new().with_dry_run(true);
+
+        // Kernel driver rejection across POSIX supervisors
+        for &sup in &[
+            SupervisorType::Systemd,
+            SupervisorType::Launchd,
+            SupervisorType::FreeBsdRc,
+            SupervisorType::Smf,
+        ] {
+            let res = executor.install_service(&kernel_svc, sup, Some(&temp_dir));
+            assert_eq!(
+                res,
+                Err(Error::UnsupportedPlatformFeature {
+                    feature: "SERVICE_KERNEL_DRIVER".to_string(),
+                    target_os: sup.target_os(),
+                    reason: "Windows NT kernel and file system drivers cannot be installed or supervised by POSIX service managers".to_string(),
+                })
+            );
+
+            let res_fs = executor.install_service(&fs_svc, sup, Some(&temp_dir));
+            assert_eq!(
+                res_fs,
+                Err(Error::UnsupportedPlatformFeature {
+                    feature: "SERVICE_FILE_SYSTEM_DRIVER".to_string(),
+                    target_os: sup.target_os(),
+                    reason: "Windows NT kernel and file system drivers cannot be installed or supervised by POSIX service managers".to_string(),
+                })
+            );
+        }
+
+        // On WindowsScm, kernel and win32 services install successfully
+        let res_win =
+            executor.install_service(&kernel_svc, SupervisorType::WindowsScm, Some(&temp_dir));
+        assert!(res_win.is_ok());
+
+        let res_win32 =
+            executor.install_service(&win32_svc, SupervisorType::Systemd, Some(&temp_dir));
+        assert!(res_win32.is_ok());
+
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 }

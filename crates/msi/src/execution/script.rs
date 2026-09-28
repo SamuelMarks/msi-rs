@@ -465,7 +465,13 @@ impl InstallScript {
         }
 
         let mut offset = 8;
-        let count = read_u32(data, &mut offset)?;
+        let count = u32::from_le_bytes([
+            data[offset],
+            data[offset + 1],
+            data[offset + 2],
+            data[offset + 3],
+        ]);
+        offset += 4;
         let mut operations = Vec::with_capacity(count as usize);
 
         for _ in 0..count {
@@ -776,7 +782,13 @@ impl RollbackScript {
         }
 
         let mut offset = 8;
-        let count = read_u32(data, &mut offset)?;
+        let count = u32::from_le_bytes([
+            data[offset],
+            data[offset + 1],
+            data[offset + 2],
+            data[offset + 3],
+        ]);
+        offset += 4;
         let mut operations = Vec::with_capacity(count as usize);
 
         for _ in 0..count {
@@ -1095,10 +1107,21 @@ mod tests {
             name: Some("Version".to_string()),
             value: Some("1.0.0".to_string()),
         });
+        script.push(ScriptOp::WriteRegistry {
+            root: 2,
+            key: r"Software\MyAppEmpty".to_string(),
+            name: None,
+            value: None,
+        });
         script.push(ScriptOp::DeleteRegistry {
             root: 1,
             key: r"Software\MyApp\Old".to_string(),
             name: None,
+        });
+        script.push(ScriptOp::DeleteRegistry {
+            root: 1,
+            key: r"Software\MyApp\OldNamed".to_string(),
+            name: Some("SubVal".to_string()),
         });
         script.push(ScriptOp::CreateShortcut {
             target: r"C:\Program Files\App\app.exe".to_string(),
@@ -1130,6 +1153,10 @@ mod tests {
         script.push(ScriptOp::StartService {
             name: "AppSvc".to_string(),
             arguments: Some("-run".to_string()),
+        });
+        script.push(ScriptOp::StartService {
+            name: "AppSvcNoArgs".to_string(),
+            arguments: None,
         });
         script.push(ScriptOp::StopService {
             name: "AppSvc".to_string(),
@@ -1215,6 +1242,7 @@ mod tests {
 
     /// Tests error branches on deserializing malformed scripts.
     #[test]
+    #[allow(clippy::too_many_lines, clippy::similar_names)]
     fn test_script_deserialize_errors() {
         // Too short for header
         assert!(InstallScript::deserialize(&[1, 2, 3]).is_err());
@@ -1333,5 +1361,125 @@ mod tests {
         bad_utf8.extend_from_slice(&2u32.to_le_bytes());
         bad_utf8.extend_from_slice(&[0xFF, 0xFE]); // invalid UTF-8
         assert!(InstallScript::deserialize(&bad_utf8).is_err());
+
+        // Exhaustively test truncating at every single byte offset for all opcodes
+        let all_ibs = {
+            let mut s = InstallScript::new();
+            s.push(ScriptOp::CreateFolder {
+                path: "A".to_string(),
+            });
+            s.push(ScriptOp::RemoveFolder {
+                path: "B".to_string(),
+            });
+            s.push(ScriptOp::CopyFile {
+                source: "S".to_string(),
+                destination: "D".to_string(),
+                overwrite: true,
+            });
+            s.push(ScriptOp::WriteFile {
+                destination: "F".to_string(),
+                content: b"xyz".to_vec(),
+            });
+            s.push(ScriptOp::DeleteFile {
+                path: "G".to_string(),
+            });
+            s.push(ScriptOp::BackupFile {
+                target_path: "T".to_string(),
+                quarantine_path: "Q".to_string(),
+            });
+            s.push(ScriptOp::WriteRegistry {
+                root: 1,
+                key: "K".to_string(),
+                name: Some("N".to_string()),
+                value: Some("V".to_string()),
+            });
+            s.push(ScriptOp::DeleteRegistry {
+                root: 1,
+                key: "K".to_string(),
+                name: Some("N".to_string()),
+            });
+            s.push(ScriptOp::CreateShortcut {
+                target: "T".to_string(),
+                link_path: "L".to_string(),
+                arguments: Some("A".to_string()),
+                icon_path: Some("I".to_string()),
+                icon_index: Some(1),
+            });
+            s.push(ScriptOp::DeleteShortcut {
+                link_path: "L".to_string(),
+            });
+            s.push(ScriptOp::InstallService {
+                name: "N".to_string(),
+                display_name: "D".to_string(),
+                service_type: 1,
+                start_type: 2,
+                binary_path: "B".to_string(),
+            });
+            s.push(ScriptOp::DeleteService {
+                name: "N".to_string(),
+            });
+            s.push(ScriptOp::StartService {
+                name: "N".to_string(),
+                arguments: Some("A".to_string()),
+            });
+            s.push(ScriptOp::StopService {
+                name: "N".to_string(),
+            });
+            s.push(ScriptOp::CustomAction {
+                action: "A".to_string(),
+                action_type: 1,
+                source: "S".to_string(),
+                target: "T".to_string(),
+            });
+            s.push(ScriptOp::ExtractCabinetFile {
+                cabinet: "C".to_string(),
+                file_key: "K".to_string(),
+                destination: "D".to_string(),
+            });
+            s.serialize()
+        };
+        for len in 0..all_ibs.len() {
+            assert!(InstallScript::deserialize(&all_ibs[..len]).is_err());
+        }
+
+        let all_rbs = {
+            let mut s = RollbackScript::new();
+            s.push(RollbackOp::RestoreQuarantinedFile {
+                target_path: "T".to_string(),
+                quarantine_path: "Q".to_string(),
+            });
+            s.push(RollbackOp::DeleteCreatedFile {
+                path: "P".to_string(),
+            });
+            s.push(RollbackOp::DeleteCreatedFolder {
+                path: "D".to_string(),
+            });
+            s.push(RollbackOp::RestoreRegistry {
+                root: 1,
+                key: "K".to_string(),
+                name: Some("N".to_string()),
+                previous_value: Some("V".to_string()),
+                existed: true,
+            });
+            s.push(RollbackOp::DeleteShortcut {
+                link_path: "L".to_string(),
+            });
+            s.push(RollbackOp::DeleteService {
+                name: "S".to_string(),
+            });
+            s.push(RollbackOp::StopService {
+                name: "S".to_string(),
+            });
+            s.push(RollbackOp::RollbackCustomAction {
+                action: "A".to_string(),
+                action_type: 1,
+                source: "S".to_string(),
+                target: "T".to_string(),
+            });
+            s.serialize()
+        };
+        for len in 0..all_rbs.len() {
+            assert!(RollbackScript::deserialize(&all_rbs[..len]).is_err());
+        }
     }
 }

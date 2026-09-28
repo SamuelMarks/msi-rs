@@ -16,7 +16,7 @@ use crate::database::tables::types::{
 use crate::error::{Error, Result};
 use crate::wix::schema::WixSchemaVersion;
 use crate::wix::wixobj::{
-    IntermediateSection, IntermediateTable, Reference, SectionType, Symbol, WixObject,
+    IntermediateSection, IntermediateTable, Reference, SectionType, SourceSpan, Symbol, WixObject,
 };
 use crate::wix::xml::XmlNode;
 
@@ -741,11 +741,15 @@ impl Compiler {
 
                     // Compile child elements inside Feature (e.g. ComponentRef, ComponentGroupRef, Condition, MergeRef)
                     for sub in &child.children {
+                        let sub_span = SourceSpan::new(sub.line, sub.column);
                         if sub.tag == "ComponentRef" {
                             if let Some(comp_ref_id) = sub.attribute("Id") {
                                 let comp_name = ComponentName::new(comp_ref_id)?;
-                                section
-                                    .add_reference(Reference::new("Component", comp_name.as_str()));
+                                section.add_reference(Reference::with_span(
+                                    "Component",
+                                    comp_name.as_str(),
+                                    sub_span,
+                                ));
                                 let fc_row = FeatureComponentsRow {
                                     feature: feat_name.clone(),
                                     component: comp_name,
@@ -757,7 +761,11 @@ impl Compiler {
                             }
                         } else if sub.tag == "ComponentGroupRef" {
                             let cg_ref_id = sub.attribute("Id").unwrap_or("");
-                            section.add_reference(Reference::new("ComponentGroup", cg_ref_id));
+                            section.add_reference(Reference::with_span(
+                                "ComponentGroup",
+                                cg_ref_id,
+                                sub_span,
+                            ));
                             tables
                                 .entry("_FeatureComponentGroupRef".to_string())
                                 .or_insert_with(|| {
@@ -784,7 +792,8 @@ impl Compiler {
                                 .push_record(cond_rec);
                         } else if sub.tag == "Merge" || sub.tag == "MergeRef" {
                             if let Some(m_id) = sub.attribute("Id") {
-                                section.add_reference(Reference::new("Module", m_id));
+                                section
+                                    .add_reference(Reference::with_span("Module", m_id, sub_span));
                             }
                         }
                     }
@@ -797,7 +806,8 @@ impl Compiler {
                         message: "missing required 'Id' attribute".to_string(),
                     })?;
                     let dir_id = DirectoryId::new(dir_id_str)?;
-                    section.add_reference(Reference::new("Directory", dir_id.as_str()));
+                    let span = SourceSpan::new(child.line, child.column);
+                    section.add_reference(Reference::with_span("Directory", dir_id.as_str(), span));
                     self.compile_element_tree(child, Some(dir_id.as_str()), section, tables)?;
                 }
                 "ComponentGroup" => {
@@ -805,19 +815,28 @@ impl Compiler {
                         element: "ComponentGroup".to_string(),
                         message: "missing required 'Id' attribute".to_string(),
                     })?;
-                    section.add_symbol(Symbol::new("ComponentGroup", group_id_str));
+                    let span = SourceSpan::new(child.line, child.column);
+                    section.add_symbol(Symbol::with_span("ComponentGroup", group_id_str, span));
                     let comp_dir = child.attribute("Directory").or(parent_id);
                     if let Some(dir) = child.attribute("Directory") {
                         let dir_id = DirectoryId::new(dir)?;
-                        section.add_reference(Reference::new("Directory", dir_id.as_str()));
+                        section.add_reference(Reference::with_span(
+                            "Directory",
+                            dir_id.as_str(),
+                            span,
+                        ));
                     }
 
                     for sub in &child.children {
+                        let sub_span = SourceSpan::new(sub.line, sub.column);
                         if sub.tag == "ComponentRef" {
                             if let Some(comp_ref_id) = sub.attribute("Id") {
                                 let comp_name = ComponentName::new(comp_ref_id)?;
-                                section
-                                    .add_reference(Reference::new("Component", comp_name.as_str()));
+                                section.add_reference(Reference::with_span(
+                                    "Component",
+                                    comp_name.as_str(),
+                                    sub_span,
+                                ));
                                 tables
                                     .entry("_ComponentGroupMember".to_string())
                                     .or_insert_with(|| {
@@ -840,7 +859,11 @@ impl Compiler {
                                 ]));
                         } else if sub.tag == "ComponentGroupRef" {
                             let cg_ref_id = sub.attribute("Id").unwrap_or("");
-                            section.add_reference(Reference::new("ComponentGroup", cg_ref_id));
+                            section.add_reference(Reference::with_span(
+                                "ComponentGroup",
+                                cg_ref_id,
+                                sub_span,
+                            ));
                             tables
                                 .entry("_ComponentGroupNested".to_string())
                                 .or_insert_with(|| IntermediateTable::new("_ComponentGroupNested"))
@@ -858,14 +881,20 @@ impl Compiler {
                         element: "ComponentGroupRef".to_string(),
                         message: "missing required 'Id' attribute".to_string(),
                     })?;
-                    section.add_reference(Reference::new("ComponentGroup", group_ref_id));
+                    let span = SourceSpan::new(child.line, child.column);
+                    section.add_reference(Reference::with_span(
+                        "ComponentGroup",
+                        group_ref_id,
+                        span,
+                    ));
                 }
                 "PackageGroup" => {
                     let group_id_str = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
                         element: "PackageGroup".to_string(),
                         message: "missing required 'Id' attribute".to_string(),
                     })?;
-                    section.add_symbol(Symbol::new("PackageGroup", group_id_str));
+                    let span = SourceSpan::new(child.line, child.column);
+                    section.add_symbol(Symbol::with_span("PackageGroup", group_id_str, span));
                     self.compile_element_tree(child, parent_id, section, tables)?;
                 }
                 "PackageGroupRef" => {
@@ -873,14 +902,16 @@ impl Compiler {
                         element: "PackageGroupRef".to_string(),
                         message: "missing required 'Id' attribute".to_string(),
                     })?;
-                    section.add_reference(Reference::new("PackageGroup", group_ref_id));
+                    let span = SourceSpan::new(child.line, child.column);
+                    section.add_reference(Reference::with_span("PackageGroup", group_ref_id, span));
                 }
                 "FeatureGroup" => {
                     let group_id_str = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
                         element: "FeatureGroup".to_string(),
                         message: "missing required 'Id' attribute".to_string(),
                     })?;
-                    section.add_symbol(Symbol::new("FeatureGroup", group_id_str));
+                    let span = SourceSpan::new(child.line, child.column);
+                    section.add_symbol(Symbol::with_span("FeatureGroup", group_id_str, span));
                     self.compile_element_tree(child, parent_id, section, tables)?;
                 }
                 "FeatureGroupRef" => {
@@ -888,14 +919,56 @@ impl Compiler {
                         element: "FeatureGroupRef".to_string(),
                         message: "missing required 'Id' attribute".to_string(),
                     })?;
-                    section.add_reference(Reference::new("FeatureGroup", group_ref_id));
+                    let span = SourceSpan::new(child.line, child.column);
+                    section.add_reference(Reference::with_span("FeatureGroup", group_ref_id, span));
                 }
                 "FeatureRef" => {
                     let feat_ref_id = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
                         element: "FeatureRef".to_string(),
                         message: "missing required 'Id' attribute".to_string(),
                     })?;
-                    section.add_reference(Reference::new("Feature", feat_ref_id));
+                    let feat_name = FeatureName::new(feat_ref_id)?;
+                    let feat_span = SourceSpan::new(child.line, child.column);
+                    section.add_reference(Reference::with_span("Feature", feat_ref_id, feat_span));
+
+                    for sub in &child.children {
+                        let sub_span = SourceSpan::new(sub.line, sub.column);
+                        if sub.tag == "ComponentRef" {
+                            if let Some(comp_ref_id) = sub.attribute("Id") {
+                                let comp_name = ComponentName::new(comp_ref_id)?;
+                                section.add_reference(Reference::with_span(
+                                    "Component",
+                                    comp_name.as_str(),
+                                    sub_span,
+                                ));
+                                let fc_row = FeatureComponentsRow {
+                                    feature: feat_name.clone(),
+                                    component: comp_name,
+                                };
+                                tables
+                                    .entry("FeatureComponents".to_string())
+                                    .or_insert_with(|| IntermediateTable::new("FeatureComponents"))
+                                    .push_record(fc_row.to_record());
+                            }
+                        } else if sub.tag == "ComponentGroupRef" {
+                            let cg_ref_id = sub.attribute("Id").unwrap_or("");
+                            section.add_reference(Reference::with_span(
+                                "ComponentGroup",
+                                cg_ref_id,
+                                sub_span,
+                            ));
+                            tables
+                                .entry("_FeatureComponentGroupRef".to_string())
+                                .or_insert_with(|| {
+                                    IntermediateTable::new("_FeatureComponentGroupRef")
+                                })
+                                .push_record(Record::with_fields(vec![
+                                    FieldValue::String(feat_ref_id.to_string()),
+                                    FieldValue::String(cg_ref_id.to_string()),
+                                ]));
+                        }
+                    }
+
                     self.compile_element_tree(child, Some(feat_ref_id), section, tables)?;
                 }
                 "Package" => {
@@ -1089,10 +1162,18 @@ impl Compiler {
                     }
                     let formatted_name = format!("{prefix}{raw_name}");
 
+                    let part = child.attribute("Part").unwrap_or("all");
+                    let mut val_str = value.to_string();
+                    if part.eq_ignore_ascii_case("last") && !val_str.contains("[~]") {
+                        val_str = format!("[~];{val_str}");
+                    } else if part.eq_ignore_ascii_case("first") && !val_str.contains("[~]") {
+                        val_str = format!("{val_str};[~]");
+                    }
+
                     let row = EnvironmentRow {
                         environment: env_id.to_string(),
                         name: formatted_name,
-                        value: value.to_string(),
+                        value: val_str,
                         component: comp_name,
                     };
                     tables
@@ -1480,9 +1561,33 @@ impl Compiler {
         let sc_desc = child.attribute("Description").map(ToString::to_string);
         let sc_args = child.attribute("Arguments").map(ToString::to_string);
         let sc_icon = child.attribute("Icon").map(ToString::to_string);
+        let sc_icon_index = child
+            .attribute("IconIndex")
+            .and_then(|v| v.parse::<i16>().ok());
+        let sc_show = match child
+            .attribute("Show")
+            .map(str::to_ascii_lowercase)
+            .as_deref()
+        {
+            Some("minimized") => Some(7i16),
+            Some("maximized") => Some(3i16),
+            Some("normal") => Some(1i16),
+            _ => None,
+        };
+        let sc_wkdir = child
+            .attribute("WorkingDirectory")
+            .or_else(|| child.attribute("WkDir"))
+            .map(ToString::to_string);
 
         section.add_symbol(Symbol::new("Shortcut", sc_id));
         section.add_reference(Reference::new("Component", comp_name));
+        section.add_reference(Reference::new("Directory", sc_dir));
+        if let Some(ref wd) = sc_wkdir {
+            section.add_reference(Reference::new("Directory", wd));
+        }
+        if let Some(ref ic) = sc_icon {
+            section.add_reference(Reference::new("Icon", ic));
+        }
 
         let rec = Record::with_fields(vec![
             FieldValue::String(sc_id.to_string()),
@@ -1494,9 +1599,9 @@ impl Compiler {
             sc_desc.map_or(FieldValue::Null, FieldValue::String),
             FieldValue::Null,
             sc_icon.map_or(FieldValue::Null, FieldValue::String),
-            FieldValue::Null,
-            FieldValue::Null,
-            FieldValue::Null,
+            sc_icon_index.map_or(FieldValue::Null, FieldValue::Short),
+            sc_show.map_or(FieldValue::Null, FieldValue::Short),
+            sc_wkdir.map_or(FieldValue::Null, FieldValue::String),
         ]);
         tables
             .entry("Shortcut".to_string())
@@ -3432,7 +3537,7 @@ impl Compiler {
         let mut nested_file_searches = Vec::new();
         for sub in &child.children {
             if sub.tag == "FileSearch" {
-                type_num = 0;
+                type_num &= 0x0010;
                 let file_sig = sub.attribute("Id").unwrap_or(sig);
                 let file_name = sub.attribute("Name").unwrap_or("target.exe");
                 let min_ver = sub.attribute("MinVersion").map(ToString::to_string);
@@ -6284,5 +6389,343 @@ mod tests {
         let root = parser.parse(xml).unwrap_or_default();
         let obj = compiler.compile(&root).unwrap_or_default();
         assert_eq!(obj.sections.len(), 1);
+    }
+
+    /// Tests compiling `<Shortcut>`, `<Environment>` (with Part="last" and Part="first"),
+    /// nested `<RegistrySearch>` and `<FileSearch>`, and `<Condition Message="...">`.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_compiler_shortcuts_environment_searches_and_launch_conditions() {
+        let compiler = Compiler::new();
+        let parser = XmlParser::new();
+        let xml = r#"
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="{11111111-2222-3333-4444-555555555555}" Name="SearchApp" Version="1.0.0" Manufacturer="Vendor">
+        <Package Description="Search and Shortcut Test" />
+
+        <Condition Message="Windows 10 or later is required.">VersionNT &gt;= 603</Condition>
+
+        <Property Id="PYTHON_EXE">
+            <RegistrySearch Id="SearchPython" Root="HKLM" Key="Software\Python\PythonCore\3.11\InstallPath" Type="file" Win64="yes">
+                <FileSearch Id="SearchPythonExe" Name="python.exe" MinVersion="3.11.0.0" />
+            </RegistrySearch>
+        </Property>
+
+        <Directory Id="TARGETDIR" Name="SourceDir">
+            <Directory Id="ProgramFilesFolder" Name="PFiles">
+                <Directory Id="INSTALLFOLDER" Name="AppFolder">
+                    <Component Id="CompApp" Guid="{22222222-3333-4444-5555-666666666666}">
+                        <File Id="FileCli" Source="app.exe" KeyPath="yes" />
+                        <Shortcut
+                            Id="DesktopShortcut"
+                            Directory="DesktopFolder"
+                            Name="Open edX"
+                            Target="[#FileCli]"
+                            Arguments="--console"
+                            Description="Open edX CLI Management Console"
+                            Icon="AppIcon.ico"
+                            IconIndex="0"
+                            Show="normal"
+                            WorkingDirectory="INSTALLFOLDER"
+                        />
+                        <Shortcut
+                            Id="DesktopShortcutMin"
+                            Directory="DesktopFolder"
+                            Name="Open edX Min"
+                            Target="[#FileCli]"
+                            Show="minimized"
+                        />
+                        <Shortcut
+                            Id="DesktopShortcutMax"
+                            Directory="DesktopFolder"
+                            Name="Open edX Max"
+                            Target="[#FileCli]"
+                            Show="maximized"
+                        />
+                        <Environment
+                            Id="EnvPath"
+                            Name="PATH"
+                            Value="[INSTALLFOLDER]bin"
+                            Part="last"
+                            System="yes"
+                            Action="set"
+                        />
+                        <Environment
+                            Id="EnvRoot"
+                            Name="LIBSCRIPT_ROOT_DIR"
+                            Value="[INSTALLFOLDER]"
+                            Part="all"
+                            System="yes"
+                            Action="create"
+                        />
+                        <Environment
+                            Id="EnvPrepend"
+                            Name="CUSTOM_PATH"
+                            Value="[INSTALLFOLDER]lib"
+                            Part="first"
+                            System="no"
+                            Action="set"
+                        />
+                        <Environment
+                            Id="EnvLastWithTilde"
+                            Name="EXISTING_LAST"
+                            Value="[~];custom"
+                            Part="last"
+                            System="no"
+                            Action="set"
+                        />
+                        <Environment
+                            Id="EnvFirstWithTilde"
+                            Name="EXISTING_FIRST"
+                            Value="custom;[~]"
+                            Part="first"
+                            System="no"
+                            Action="set"
+                        />
+                    </Component>
+                </Directory>
+            </Directory>
+        </Directory>
+    </Product>
+</Wix>
+"#;
+        let root = parser.parse(xml).unwrap_or_default();
+        let obj = compiler.compile(&root).unwrap_or_default();
+        let sec = &obj.sections[0];
+
+        // 1. Verify LaunchCondition table
+        let lc_tbl = get_table(sec, "LaunchCondition");
+        assert_eq!(lc_tbl.records.len(), 1);
+        assert_eq!(
+            lc_tbl.records[0].get(0),
+            Some(&FieldValue::String("VersionNT >= 603".to_string()))
+        );
+        assert_eq!(
+            lc_tbl.records[0].get(1),
+            Some(&FieldValue::String(
+                "Windows 10 or later is required.".to_string()
+            ))
+        );
+
+        // 2. Verify Shortcut table
+        let sc_tbl = get_table(sec, "Shortcut");
+        assert_eq!(sc_tbl.records.len(), 3);
+        let sc_rec = &sc_tbl.records[0];
+        assert_eq!(
+            sc_rec.get(0),
+            Some(&FieldValue::String("DesktopShortcut".to_string()))
+        );
+        assert_eq!(
+            sc_rec.get(1),
+            Some(&FieldValue::String("DesktopFolder".to_string()))
+        );
+        assert_eq!(
+            sc_rec.get(2),
+            Some(&FieldValue::String("Open edX".to_string()))
+        );
+        assert_eq!(
+            sc_rec.get(3),
+            Some(&FieldValue::String("CompApp".to_string()))
+        );
+        assert_eq!(
+            sc_rec.get(4),
+            Some(&FieldValue::String("[#FileCli]".to_string()))
+        );
+        assert_eq!(
+            sc_rec.get(5),
+            Some(&FieldValue::String("--console".to_string()))
+        );
+        assert_eq!(
+            sc_rec.get(6),
+            Some(&FieldValue::String(
+                "Open edX CLI Management Console".to_string()
+            ))
+        );
+        assert_eq!(
+            sc_rec.get(8),
+            Some(&FieldValue::String("AppIcon.ico".to_string()))
+        );
+        assert_eq!(sc_rec.get(9), Some(&FieldValue::Short(0))); // IconIndex
+        assert_eq!(sc_rec.get(10), Some(&FieldValue::Short(1))); // Show = normal (1)
+        assert_eq!(
+            sc_rec.get(11),
+            Some(&FieldValue::String("INSTALLFOLDER".to_string()))
+        );
+
+        // Minimized (Show = 7)
+        let sc_min = &sc_tbl.records[1];
+        assert_eq!(
+            sc_min.get(0),
+            Some(&FieldValue::String("DesktopShortcutMin".to_string()))
+        );
+        assert_eq!(sc_min.get(10), Some(&FieldValue::Short(7)));
+
+        // Maximized (Show = 3)
+        let sc_max = &sc_tbl.records[2];
+        assert_eq!(
+            sc_max.get(0),
+            Some(&FieldValue::String("DesktopShortcutMax".to_string()))
+        );
+        assert_eq!(sc_max.get(10), Some(&FieldValue::Short(3)));
+
+        // 3. Verify Environment table
+        let env_tbl = get_table(sec, "Environment");
+        assert_eq!(env_tbl.records.len(), 5);
+        // EnvPath: System="yes" (*), Action="set" (=) -> "*=PATH", Part="last" -> "[~];[INSTALLFOLDER]bin"
+        assert_eq!(
+            env_tbl.records[0].get(0),
+            Some(&FieldValue::String("EnvPath".to_string()))
+        );
+        assert_eq!(
+            env_tbl.records[0].get(1),
+            Some(&FieldValue::String("*=PATH".to_string()))
+        );
+        assert_eq!(
+            env_tbl.records[0].get(2),
+            Some(&FieldValue::String("[~];[INSTALLFOLDER]bin".to_string()))
+        );
+        // EnvRoot: System="yes" (*), Action="create" (+) -> "*+LIBSCRIPT_ROOT_DIR", Part="all" -> "[INSTALLFOLDER]"
+        assert_eq!(
+            env_tbl.records[1].get(0),
+            Some(&FieldValue::String("EnvRoot".to_string()))
+        );
+        assert_eq!(
+            env_tbl.records[1].get(1),
+            Some(&FieldValue::String("*+LIBSCRIPT_ROOT_DIR".to_string()))
+        );
+        assert_eq!(
+            env_tbl.records[1].get(2),
+            Some(&FieldValue::String("[INSTALLFOLDER]".to_string()))
+        );
+        // EnvPrepend: System="no" (), Action="set" (=) -> "=CUSTOM_PATH", Part="first" -> "[INSTALLFOLDER]lib;[~]"
+        assert_eq!(
+            env_tbl.records[2].get(0),
+            Some(&FieldValue::String("EnvPrepend".to_string()))
+        );
+        assert_eq!(
+            env_tbl.records[2].get(1),
+            Some(&FieldValue::String("=CUSTOM_PATH".to_string()))
+        );
+        assert_eq!(
+            env_tbl.records[2].get(2),
+            Some(&FieldValue::String("[INSTALLFOLDER]lib;[~]".to_string()))
+        );
+        // EnvLastWithTilde: Part="last" with existing "[~]" -> preserves value "[~];custom"
+        assert_eq!(
+            env_tbl.records[3].get(0),
+            Some(&FieldValue::String("EnvLastWithTilde".to_string()))
+        );
+        assert_eq!(
+            env_tbl.records[3].get(2),
+            Some(&FieldValue::String("[~];custom".to_string()))
+        );
+        // EnvFirstWithTilde: Part="first" with existing "[~]" -> preserves value "custom;[~]"
+        assert_eq!(
+            env_tbl.records[4].get(0),
+            Some(&FieldValue::String("EnvFirstWithTilde".to_string()))
+        );
+        assert_eq!(
+            env_tbl.records[4].get(2),
+            Some(&FieldValue::String("custom;[~]".to_string()))
+        );
+
+        // 4. Verify RegLocator & AppSearch & Signature
+        let app_tbl = get_table(sec, "AppSearch");
+        assert_eq!(app_tbl.records.len(), 1);
+        assert_eq!(
+            app_tbl.records[0].get(0),
+            Some(&FieldValue::String("PYTHON_EXE".to_string()))
+        );
+        assert_eq!(
+            app_tbl.records[0].get(1),
+            Some(&FieldValue::String("SearchPython".to_string()))
+        );
+
+        let reg_tbl = get_table(sec, "RegLocator");
+        assert_eq!(reg_tbl.records.len(), 1);
+        assert_eq!(
+            reg_tbl.records[0].get(0),
+            Some(&FieldValue::String("SearchPython".to_string()))
+        );
+        // Type 0 (directory search locating FileSearch) | 0x0010 (Win64) = 16
+        assert_eq!(reg_tbl.records[0].get(4), Some(&FieldValue::Short(16)));
+
+        let sig_tbl = get_table(sec, "Signature");
+        assert_eq!(sig_tbl.records.len(), 1);
+        assert_eq!(
+            sig_tbl.records[0].get(0),
+            Some(&FieldValue::String("SearchPythonExe".to_string()))
+        );
+        assert_eq!(
+            sig_tbl.records[0].get(1),
+            Some(&FieldValue::String("python.exe".to_string()))
+        );
+        assert_eq!(
+            sig_tbl.records[0].get(2),
+            Some(&FieldValue::String("3.11.0.0".to_string()))
+        );
+    }
+
+    /// Tests `FeatureRef` compilation across all child variations and error branches.
+    #[test]
+    fn test_compiler_feature_ref_all_branches() {
+        let parser = XmlParser::new();
+        let compiler = Compiler::new();
+
+        let valid_wxs = r#"
+        <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+            <Product Id="{11111111-1111-1111-1111-111111111111}">
+                <FeatureRef Id="MainFeature">
+                    <ComponentRef Id="Comp1" />
+                    <ComponentRef />
+                    <ComponentGroupRef Id="CG1" />
+                    <MergeRef Id="Mod1" />
+                    <Feature Id="SubFeature" />
+                </FeatureRef>
+            </Product>
+        </Wix>
+        "#;
+        for (xml, is_valid) in [
+            (valid_wxs, true),
+            (r#"<Wix xmlns="invalid_ns"/>"#, false),
+            ("invalid <xml", false),
+        ] {
+            if let Ok(doc) = parser.parse(xml) {
+                let res = compiler.compile(&doc);
+                assert_eq!(res.is_ok(), is_valid);
+                if let Ok(obj) = res {
+                    let sec = &obj.sections[0];
+                    assert!(sec
+                        .references
+                        .contains(&Reference::new("Feature", "MainFeature")));
+                    assert!(sec
+                        .references
+                        .contains(&Reference::new("Component", "Comp1")));
+                    assert!(sec
+                        .references
+                        .contains(&Reference::new("ComponentGroup", "CG1")));
+                    let fc_tbl = get_table(sec, "FeatureComponents");
+                    assert_eq!(fc_tbl.records.len(), 1);
+                    let cg_tbl = get_table(sec, "_FeatureComponentGroupRef");
+                    assert_eq!(cg_tbl.records.len(), 1);
+                }
+            }
+        }
+
+        // Error: invalid FeatureRef Id
+        let bad_feat_ref_id = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><FeatureRef Id="" /></Product></Wix>"#;
+        for xml in [bad_feat_ref_id, "invalid <xml"] {
+            if let Ok(doc_bad) = parser.parse(xml) {
+                assert!(compiler.compile(&doc_bad).is_err());
+            }
+        }
+
+        // Error: invalid ComponentRef Id within FeatureRef
+        let bad_comp_ref = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><FeatureRef Id="MainFeature"><ComponentRef Id="" /></FeatureRef></Product></Wix>"#;
+        for xml in [bad_comp_ref, "invalid <xml"] {
+            if let Ok(doc_bad) = parser.parse(xml) {
+                assert!(compiler.compile(&doc_bad).is_err());
+            }
+        }
     }
 }

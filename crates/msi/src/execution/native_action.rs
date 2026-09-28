@@ -1530,7 +1530,7 @@ mod tests {
 
     /// Tests SQL provisioner config extraction, statement generation, and execution in mock and error modes.
     #[test]
-    fn test_sql_provisioner_configuration_and_mock_execution() -> Result<()> {
+    fn test_sql_provisioner_configuration_and_mock_execution() {
         use crate::execution::properties::EvaluationContext;
 
         // 1. Context parsing
@@ -1581,9 +1581,9 @@ mod tests {
 
         // 5. Mock mode execution
         let client = SqlProvisionerClient::new(cfg);
-        let res = client.execute(SqlProvisionerAction::Install)?;
-        assert!(res.success);
-        assert_eq!(res.executed_statements.len(), 4);
+        let res = client.execute(SqlProvisionerAction::Install);
+        assert_eq!(res.as_ref().map(|r| r.success), Ok(true));
+        assert_eq!(res.as_ref().map(|r| r.executed_statements.len()), Ok(4));
 
         // 6. Network error branches (non-mock mode with unreachable server)
         let mut cfg_real = cfg_purge.clone();
@@ -1607,11 +1607,12 @@ mod tests {
         let mut cfg_no_stmts = cfg_real;
         cfg_no_stmts.purge_data = false;
         let empty_client = SqlProvisionerClient::new(cfg_no_stmts);
-        let empty_res = empty_client.execute(SqlProvisionerAction::Uninstall)?;
-        assert!(empty_res.success);
-        assert!(empty_res.executed_statements.is_empty());
-
-        Ok(())
+        let empty_res = empty_client.execute(SqlProvisionerAction::Uninstall);
+        assert_eq!(empty_res.as_ref().map(|r| r.success), Ok(true));
+        assert_eq!(
+            empty_res.as_ref().map(|r| r.executed_statements.is_empty()),
+            Ok(true)
+        );
     }
 
     /// Tests fallback properties and statement generation variations.
@@ -1692,158 +1693,187 @@ mod tests {
         QueryFailed,
     }
 
+    /// Helper to bind a test listener on the given address string.
+    fn make_test_listener(addr: &str) -> (Option<std::net::TcpListener>, u16) {
+        std::net::TcpListener::bind(addr).map_or_else(
+            |_| (None, 0),
+            |l| {
+                let p = l.local_addr().map_or(0, |a| a.port());
+                (Some(l), p)
+            },
+        )
+    }
+
     /// Spawns an in-process mock MySQL server listening on a local loopback port.
     ///
     /// # Arguments
     ///
+    /// * `listener` - Optional bound TCP listener for accepting mock MySQL connections.
+    /// * `port` - The local port corresponding to the listener.
     /// * `behavior` - The desired test behavior.
     ///
     /// # Returns
     ///
-    /// Tuple of bound port and thread join handle.
+    /// Tuple of port and thread join handle for the mock server worker thread.
     #[allow(clippy::too_many_lines, clippy::cast_possible_truncation)]
     fn spawn_mock_mysql_server(
+        listener: Option<std::net::TcpListener>,
+        port: u16,
         behavior: MockServerBehavior,
-    ) -> Result<(u16, std::thread::JoinHandle<()>)> {
+    ) -> (u16, std::thread::JoinHandle<()>) {
         use std::io::{Read, Write};
-        let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
-        let port = listener.local_addr()?.port();
 
         let handle = std::thread::spawn(move || {
-            let _ = (|| -> std::io::Result<()> {
-                let (mut socket, _) = listener.accept()?;
+            let Some(listener) = listener else {
+                return;
+            };
 
-                match behavior {
-                    MockServerBehavior::FailHandshakeHeader => {
-                        let _ = socket.shutdown(std::net::Shutdown::Both);
-                        return Ok(());
-                    }
-                    MockServerBehavior::FailHandshakePayload => {
-                        socket.write_all(&[20, 0, 0, 0])?;
-                        let _ = socket.shutdown(std::net::Shutdown::Both);
-                        return Ok(());
-                    }
-                    _ => {}
+            let Ok((mut socket, _)) = listener.accept() else {
+                return;
+            };
+
+            match behavior {
+                MockServerBehavior::FailHandshakeHeader => {
+                    let _ = socket.shutdown(std::net::Shutdown::Both);
+                    return;
                 }
+                MockServerBehavior::FailHandshakePayload => {
+                    let _ = socket.write_all(&[20, 0, 0, 0]);
+                    let _ = socket.shutdown(std::net::Shutdown::Both);
+                    return;
+                }
+                _ => {}
+            }
 
-                // Normal handshake packet (seq 0)
-                let handshake_payload = [0u8; 10];
-                let hs_len = u32::try_from(handshake_payload.len()).unwrap_or(0);
-                let hs_header = [
-                    (hs_len & 0xFF) as u8,
-                    ((hs_len >> 8) & 0xFF) as u8,
-                    ((hs_len >> 16) & 0xFF) as u8,
-                    0,
-                ];
-                socket.write_all(&hs_header)?;
-                socket.write_all(&handshake_payload)?;
+            // Normal handshake packet (seq 0)
+            let handshake_payload = [0u8; 10];
+            let hs_len = u32::try_from(handshake_payload.len()).unwrap_or(0);
+            let hs_header = [
+                (hs_len & 0xFF) as u8,
+                ((hs_len >> 8) & 0xFF) as u8,
+                ((hs_len >> 16) & 0xFF) as u8,
+                0,
+            ];
+            let _ = socket.write_all(&hs_header);
+            let _ = socket.write_all(&handshake_payload);
 
-                // Read client's handshake response
-                let mut client_resp_header = [0u8; 4];
-                socket.read_exact(&mut client_resp_header)?;
-                let resp_len = (u32::from(client_resp_header[0])
-                    | (u32::from(client_resp_header[1]) << 8)
-                    | (u32::from(client_resp_header[2]) << 16))
-                    as usize;
-                let mut client_resp_payload = vec![0u8; resp_len];
-                socket.read_exact(&mut client_resp_payload)?;
+            // Read client's handshake response
+            let mut client_resp_header = [0u8; 4];
+            let _ = socket.read_exact(&mut client_resp_header);
+            let resp_len = (u32::from(client_resp_header[0])
+                | (u32::from(client_resp_header[1]) << 8)
+                | (u32::from(client_resp_header[2]) << 16)) as usize;
+            let mut client_resp_payload = vec![0u8; resp_len];
+            let _ = socket.read_exact(&mut client_resp_payload);
+
+            match behavior {
+                MockServerBehavior::FailAuthHeader => {
+                    let _ = socket.shutdown(std::net::Shutdown::Both);
+                    return;
+                }
+                MockServerBehavior::FailAuthPayload => {
+                    let _ = socket.write_all(&[10, 0, 0, 2]);
+                    let _ = socket.shutdown(std::net::Shutdown::Both);
+                    return;
+                }
+                MockServerBehavior::AuthFailed => {
+                    let err_payload = [0xFF, 0x15, 0x04];
+                    let p_len = u32::try_from(err_payload.len()).unwrap_or(0);
+                    let hdr = [
+                        (p_len & 0xFF) as u8,
+                        ((p_len >> 8) & 0xFF) as u8,
+                        ((p_len >> 16) & 0xFF) as u8,
+                        2,
+                    ];
+                    let _ = socket.write_all(&hdr);
+                    let _ = socket.write_all(&err_payload);
+                    return;
+                }
+                _ => {}
+            }
+
+            // Auth success (OK packet, payload starts with 0x00)
+            let auth_ok = [0x00, 0x00];
+            let a_len = u32::try_from(auth_ok.len()).unwrap_or(0);
+            let a_hdr = [
+                (a_len & 0xFF) as u8,
+                ((a_len >> 8) & 0xFF) as u8,
+                ((a_len >> 16) & 0xFF) as u8,
+                2,
+            ];
+            let _ = socket.write_all(&a_hdr);
+            let _ = socket.write_all(&auth_ok);
+
+            if behavior == MockServerBehavior::FailQueryHeader {
+                let _ = socket.shutdown(std::net::Shutdown::Both);
+                return;
+            }
+
+            // Loop queries
+            let mut q_hdr = [0u8; 4];
+            while matches!(socket.read_exact(&mut q_hdr), Ok(())) {
+                let q_len = (u32::from(q_hdr[0])
+                    | (u32::from(q_hdr[1]) << 8)
+                    | (u32::from(q_hdr[2]) << 16)) as usize;
+                let mut q_payload = vec![0u8; q_len];
+                let _ = socket.read_exact(&mut q_payload);
 
                 match behavior {
-                    MockServerBehavior::FailAuthHeader => {
+                    MockServerBehavior::FailQueryPayload => {
+                        let _ = socket.write_all(&[10, 0, 0, q_hdr[3] + 1]);
                         let _ = socket.shutdown(std::net::Shutdown::Both);
-                        return Ok(());
+                        return;
                     }
-                    MockServerBehavior::FailAuthPayload => {
-                        socket.write_all(&[10, 0, 0, 2])?;
-                        let _ = socket.shutdown(std::net::Shutdown::Both);
-                        return Ok(());
-                    }
-                    MockServerBehavior::AuthFailed => {
-                        let err_payload = [0xFF, 0x15, 0x04];
+                    MockServerBehavior::QueryFailed => {
+                        let err_payload = [0xFF, 0x01, 0x02];
                         let p_len = u32::try_from(err_payload.len()).unwrap_or(0);
                         let hdr = [
                             (p_len & 0xFF) as u8,
                             ((p_len >> 8) & 0xFF) as u8,
                             ((p_len >> 16) & 0xFF) as u8,
-                            2,
+                            q_hdr[3] + 1,
                         ];
-                        socket.write_all(&hdr)?;
-                        socket.write_all(&err_payload)?;
-                        return Ok(());
+                        let _ = socket.write_all(&hdr);
+                        let _ = socket.write_all(&err_payload);
+                        return;
                     }
-                    _ => {}
-                }
-
-                // Auth success (OK packet, payload starts with 0x00)
-                let auth_ok = [0x00, 0x00];
-                let a_len = u32::try_from(auth_ok.len()).unwrap_or(0);
-                let a_hdr = [
-                    (a_len & 0xFF) as u8,
-                    ((a_len >> 8) & 0xFF) as u8,
-                    ((a_len >> 16) & 0xFF) as u8,
-                    2,
-                ];
-                socket.write_all(&a_hdr)?;
-                socket.write_all(&auth_ok)?;
-
-                if behavior == MockServerBehavior::FailQueryHeader {
-                    let _ = socket.shutdown(std::net::Shutdown::Both);
-                    return Ok(());
-                }
-
-                // Loop queries
-                let mut q_hdr = [0u8; 4];
-                while matches!(socket.read_exact(&mut q_hdr), Ok(())) {
-                    let q_len = (u32::from(q_hdr[0])
-                        | (u32::from(q_hdr[1]) << 8)
-                        | (u32::from(q_hdr[2]) << 16)) as usize;
-                    let mut q_payload = vec![0u8; q_len];
-                    socket.read_exact(&mut q_payload)?;
-
-                    match behavior {
-                        MockServerBehavior::FailQueryPayload => {
-                            socket.write_all(&[10, 0, 0, q_hdr[3] + 1])?;
-                            let _ = socket.shutdown(std::net::Shutdown::Both);
-                            return Ok(());
-                        }
-                        MockServerBehavior::QueryFailed => {
-                            let err_payload = [0xFF, 0x01, 0x02];
-                            let p_len = u32::try_from(err_payload.len()).unwrap_or(0);
-                            let hdr = [
-                                (p_len & 0xFF) as u8,
-                                ((p_len >> 8) & 0xFF) as u8,
-                                ((p_len >> 16) & 0xFF) as u8,
-                                q_hdr[3] + 1,
-                            ];
-                            socket.write_all(&hdr)?;
-                            socket.write_all(&err_payload)?;
-                            return Ok(());
-                        }
-                        _ => {
-                            let ok_payload = [0x00, 0x00];
-                            let p_len = u32::try_from(ok_payload.len()).unwrap_or(0);
-                            let hdr = [
-                                (p_len & 0xFF) as u8,
-                                ((p_len >> 8) & 0xFF) as u8,
-                                ((p_len >> 16) & 0xFF) as u8,
-                                q_hdr[3] + 1,
-                            ];
-                            socket.write_all(&hdr)?;
-                            socket.write_all(&ok_payload)?;
-                        }
+                    _ => {
+                        let ok_payload = [0x00, 0x00];
+                        let p_len = u32::try_from(ok_payload.len()).unwrap_or(0);
+                        let hdr = [
+                            (p_len & 0xFF) as u8,
+                            ((p_len >> 8) & 0xFF) as u8,
+                            ((p_len >> 16) & 0xFF) as u8,
+                            q_hdr[3] + 1,
+                        ];
+                        let _ = socket.write_all(&hdr);
+                        let _ = socket.write_all(&ok_payload);
                     }
                 }
-                Ok(())
-            })();
+            }
         });
 
-        Ok((port, handle))
+        (port, handle)
     }
 
     /// Tests successful in-process MySQL wire execution against a live mock server.
     #[test]
-    fn test_sql_provisioner_wire_protocol_success() -> Result<()> {
-        let (port, handle) = spawn_mock_mysql_server(MockServerBehavior::Success)?;
+    fn test_sql_provisioner_wire_protocol_success() {
+        // Exercise None / invalid listener branch
+        let (bad_l, bad_port) = make_test_listener("invalid.address");
+        let (_, bad_handle) = spawn_mock_mysql_server(bad_l, bad_port, MockServerBehavior::Success);
+        let _ = bad_handle.join();
+
+        // Exercise accept error branch
+        let (nonblock_l, nonblock_port) = make_test_listener("127.0.0.1:0");
+        let _ = nonblock_l.as_ref().map(|l| l.set_nonblocking(true));
+        let (_, nonblock_handle) =
+            spawn_mock_mysql_server(nonblock_l, nonblock_port, MockServerBehavior::Success);
+        let _ = nonblock_handle.join();
+
+        // Success branch
+        let (l, port) = make_test_listener("127.0.0.1:0");
+        let (port, handle) = spawn_mock_mysql_server(l, port, MockServerBehavior::Success);
         let cfg = SqlProvisionerConfig {
             port,
             mock_mode: false,
@@ -1853,17 +1883,16 @@ mod tests {
         };
 
         let client = SqlProvisionerClient::new(cfg);
-        let res = client.execute(SqlProvisionerAction::Install)?;
-        assert!(res.success);
-        assert_eq!(res.executed_statements.len(), 1);
+        let res = client.execute(SqlProvisionerAction::Install);
+        assert_eq!(res.as_ref().map(|r| r.success), Ok(true));
+        assert_eq!(res.as_ref().map(|r| r.executed_statements.len()), Ok(1));
 
         let _ = handle.join();
-        Ok(())
     }
 
     /// Tests error paths during MySQL wire execution against a mock server.
     #[test]
-    fn test_sql_provisioner_wire_protocol_errors() -> Result<()> {
+    fn test_sql_provisioner_wire_protocol_errors() {
         let error_modes = [
             MockServerBehavior::FailHandshakeHeader,
             MockServerBehavior::FailHandshakePayload,
@@ -1876,7 +1905,8 @@ mod tests {
         ];
 
         for mode in error_modes {
-            let (port, handle) = spawn_mock_mysql_server(mode)?;
+            let (l, port) = make_test_listener("127.0.0.1:0");
+            let (port, handle) = spawn_mock_mysql_server(l, port, mode);
             let cfg = SqlProvisionerConfig {
                 port,
                 mock_mode: false,
@@ -1892,8 +1922,6 @@ mod tests {
 
             let _ = handle.join();
         }
-
-        Ok(())
     }
 
     /// Mock stream that allows precise injection of read/write failures at specific operation counts.
@@ -1949,7 +1977,7 @@ mod tests {
 
     /// Tests failure paths for every write call during MySQL wire session execution.
     #[test]
-    fn test_sql_provisioner_wire_write_errors() -> Result<()> {
+    fn test_sql_provisioner_wire_write_errors() {
         use std::io::Write;
 
         let cfg = SqlProvisionerConfig::default();
@@ -1971,7 +1999,7 @@ mod tests {
         let err1 = client.execute_wire_session(&mut s1, &statements);
         assert!(err1.is_err());
         assert!(matches!(err1, Err(Error::SqlProvisioning(..))));
-        s1.flush()?;
+        assert!(s1.flush().is_ok());
 
         // 2. Fail on 2nd write: handshake response payload
         let mut s2 = MockFailStream::with_bytes(&server_stream_bytes);
@@ -1993,13 +2021,11 @@ mod tests {
         let err4 = client.execute_wire_session(&mut s4, &statements);
         assert!(err4.is_err());
         assert!(matches!(err4, Err(Error::SqlProvisioning(..))));
-
-        Ok(())
     }
 
     /// Tests processing of empty auth and query response payloads (0-byte payloads).
     #[test]
-    fn test_sql_provisioner_empty_auth_and_query_packets() -> Result<()> {
+    fn test_sql_provisioner_empty_auth_and_query_packets() {
         let cfg = SqlProvisionerConfig::default();
         let client = SqlProvisionerClient::new(cfg);
         let statements = vec!["SELECT 1;".to_string()];
@@ -2014,7 +2040,6 @@ mod tests {
         server_stream_bytes.extend_from_slice(&[0, 0, 0, 3]);
 
         let mut s = MockFailStream::with_bytes(&server_stream_bytes);
-        client.execute_wire_session(&mut s, &statements)?;
-        Ok(())
+        assert!(client.execute_wire_session(&mut s, &statements).is_ok());
     }
 }

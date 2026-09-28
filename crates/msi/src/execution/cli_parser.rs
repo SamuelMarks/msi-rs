@@ -7,7 +7,92 @@
 //! - Public property overrides: `PROPERTY=Value`.
 
 use crate::error::{Error, Result};
+use crate::execution::costing::DiskCostEngine;
+use crate::execution::properties::EvaluationContext;
+use crate::execution::transaction::{Transaction, WorkerContext};
+use crate::package::Package;
 use std::collections::HashMap;
+use std::path::Path;
+
+/// Standard Windows Installer exit code representation and constants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum MsiExitCode {
+    /// Action completed successfully (`0`).
+    Success,
+    /// User terminated the installation (`1602`).
+    UserExit,
+    /// Fatal error occurred during installation (`1603`).
+    InstallFailure,
+    /// This action is only valid for products that are currently installed (`1605`).
+    UnknownProduct,
+    /// A restart is required to complete the installation (`3010`).
+    SuccessRebootRequired,
+    /// Other unmapped Windows Installer exit code.
+    Other(u32),
+}
+
+/// Standard MSI return code for successful installation (`0`).
+pub const ERROR_SUCCESS: u32 = 0;
+/// Standard MSI return code when user cancels the operation (`1602`).
+pub const ERROR_INSTALL_USEREXIT: u32 = 1602;
+/// Standard MSI return code for fatal failure during installation (`1603`).
+pub const ERROR_INSTALL_FAILURE: u32 = 1603;
+/// Standard MSI return code when product is not currently installed (`1605`).
+pub const ERROR_UNKNOWN_PRODUCT: u32 = 1605;
+/// Standard MSI return code when operation succeeded but system reboot is required (`3010`).
+pub const ERROR_SUCCESS_REBOOT_REQUIRED: u32 = 3010;
+
+impl MsiExitCode {
+    /// Converts this [`MsiExitCode`] into its raw numeric Windows Installer return code value (`u32`).
+    ///
+    /// # Returns
+    ///
+    /// The numeric exit code (e.g. `0`, `1602`, `1603`, `1605`, `3010`).
+    #[must_use]
+    pub const fn to_u32(self) -> u32 {
+        match self {
+            Self::Success => ERROR_SUCCESS,
+            Self::UserExit => ERROR_INSTALL_USEREXIT,
+            Self::InstallFailure => ERROR_INSTALL_FAILURE,
+            Self::UnknownProduct => ERROR_UNKNOWN_PRODUCT,
+            Self::SuccessRebootRequired => ERROR_SUCCESS_REBOOT_REQUIRED,
+            Self::Other(code) => code,
+        }
+    }
+
+    /// Converts a raw numeric Windows Installer return code (`u32`) into an [`MsiExitCode`].
+    ///
+    /// # Arguments
+    ///
+    /// * `code` - Raw exit code value.
+    ///
+    /// # Returns
+    ///
+    /// Corresponding [`MsiExitCode`] variant.
+    #[must_use]
+    pub const fn from_u32(code: u32) -> Self {
+        match code {
+            ERROR_SUCCESS => Self::Success,
+            ERROR_INSTALL_USEREXIT => Self::UserExit,
+            ERROR_INSTALL_FAILURE => Self::InstallFailure,
+            ERROR_UNKNOWN_PRODUCT => Self::UnknownProduct,
+            ERROR_SUCCESS_REBOOT_REQUIRED => Self::SuccessRebootRequired,
+            other => Self::Other(other),
+        }
+    }
+}
+
+impl From<MsiExitCode> for u32 {
+    fn from(code: MsiExitCode) -> Self {
+        code.to_u32()
+    }
+}
+
+impl From<u32> for MsiExitCode {
+    fn from(code: u32) -> Self {
+        Self::from_u32(code)
+    }
+}
 
 /// Repair mode flags corresponding to `/f[p|o|e|d|c|a|u|m|s|v]`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -72,6 +157,47 @@ impl RepairFlags {
             }
         }
         Ok(res)
+    }
+}
+
+impl std::fmt::Display for RepairFlags {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut s = String::new();
+        if self.reinstall_missing {
+            s.push('p');
+        }
+        if self.reinstall_older {
+            s.push('o');
+        }
+        if self.reinstall_equal_or_older {
+            s.push('e');
+        }
+        if self.reinstall_different {
+            s.push('d');
+        }
+        if self.reinstall_checksum {
+            s.push('c');
+        }
+        if self.reinstall_all {
+            s.push('a');
+        }
+        if self.rewrite_user_registry {
+            s.push('u');
+        }
+        if self.rewrite_machine_registry {
+            s.push('m');
+        }
+        if self.overwrite_shortcuts {
+            s.push('s');
+        }
+        if self.recache_source {
+            s.push('v');
+        }
+        if s.is_empty() {
+            write!(f, "pecmsu")
+        } else {
+            write!(f, "{s}")
+        }
     }
 }
 
@@ -255,6 +381,8 @@ pub struct MsiExecOptions {
     pub logging: Option<LoggingOptions>,
     /// Public property overrides (`PROPERTY=Value`).
     pub properties: HashMap<String, String>,
+    /// Whether interactive terminal user interface (TUI) is requested.
+    pub tui: bool,
 }
 
 impl MsiExecOptions {
@@ -294,6 +422,7 @@ impl MsiExecOptions {
         let mut ui_level = UiLevel::Full;
         let mut logging: Option<LoggingOptions> = None;
         let mut properties: HashMap<String, String> = HashMap::new();
+        let mut tui = false;
 
         let mut i = 0;
         while i < arg_list.len() {
@@ -364,6 +493,12 @@ impl MsiExecOptions {
                     // /p <patch>
                     let path = Self::extract_param(opt, "p", arg_list, &mut i)?;
                     action = Some(ActionMode::ApplyPatch { patch_path: path });
+                } else if opt_lower == "tui"
+                    || opt_lower == "-tui"
+                    || opt_lower == "console"
+                    || opt_lower == "-console"
+                {
+                    tui = true;
                 } else if opt_lower.starts_with("qn") {
                     ui_level = UiLevel::None;
                 } else if opt_lower.starts_with("qb!") {
@@ -416,6 +551,7 @@ impl MsiExecOptions {
             ui_level,
             logging,
             properties,
+            tui,
         })
     }
 
@@ -440,47 +576,179 @@ impl MsiExecOptions {
             Ok(rest.to_string())
         }
     }
+
+    /// Executes the parsed `msiexec` configuration against the target package or product.
+    ///
+    /// # Returns
+    ///
+    /// Process exit code indicating completion status.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on fatal filesystem, database, or transaction execution failure.
+    pub fn execute(&self) -> Result<MsiExitCode> {
+        let package_path = match &self.action {
+            ActionMode::Install { package_path }
+            | ActionMode::Uninstall { package_path }
+            | ActionMode::Administrative { package_path }
+            | ActionMode::Repair { package_path, .. }
+            | ActionMode::Advertise { package_path, .. } => package_path.clone(),
+            ActionMode::ApplyPatch { patch_path } => {
+                if let Some(target) = self
+                    .properties
+                    .get("PACKAGE")
+                    .or_else(|| self.properties.get("TARGETPACKAGE"))
+                {
+                    target.clone()
+                } else {
+                    return Err(Error::InvalidArgument {
+                        argument: patch_path.clone(),
+                        reason: "patch application requires target package path via PACKAGE=path"
+                            .to_string(),
+                    });
+                }
+            }
+        };
+
+        if package_path.trim().is_empty() {
+            return Err(Error::InvalidArgument {
+                argument: "package".to_string(),
+                reason: "package path cannot be empty".to_string(),
+            });
+        }
+
+        let path = Path::new(&package_path);
+        if !path.exists() {
+            if package_path.starts_with('{') {
+                return Ok(MsiExitCode::UnknownProduct);
+            }
+            return Err(Error::Io(format!(
+                "Package file not found: '{package_path}'"
+            )));
+        }
+
+        let pkg = Package::open(path)?;
+        let mut context = EvaluationContext::new();
+
+        for rec in pkg.database().get_records("Property") {
+            if let Ok(prop) = crate::database::tables::core::PropertyRow::from_record(rec) {
+                context.set_property(prop.property.as_str(), &prop.value);
+            }
+        }
+
+        for (k, v) in &self.properties {
+            context.set_property(k, v);
+        }
+
+        context.set_property("UILevel", format!("{:?}", self.ui_level));
+
+        match &self.action {
+            ActionMode::Install { .. } => {
+                context.set_property("ACTION", "INSTALL");
+            }
+            ActionMode::Uninstall { .. } => {
+                context.set_property("ACTION", "UNINSTALL");
+                context.set_property("REMOVE", "ALL");
+            }
+            ActionMode::Administrative { .. } => {
+                context.set_property("ACTION", "ADMIN");
+            }
+            ActionMode::Repair { flags, .. } => {
+                context.set_property("ACTION", "REPAIR");
+                context.set_property("REINSTALL", "ALL");
+                context.set_property("REINSTALLMODE", flags.to_string());
+            }
+            ActionMode::Advertise { scope, .. } => {
+                context.set_property("ACTION", "ADVERTISE");
+                let scope_val = match scope {
+                    AdvertiseScope::User => "u",
+                    AdvertiseScope::Machine => "m",
+                };
+                context.set_property("ADVERTISE", scope_val);
+            }
+            ActionMode::ApplyPatch { patch_path } => {
+                context.set_property("ACTION", "PATCH");
+                context.set_property("PATCH", patch_path);
+            }
+        }
+
+        let is_headless =
+            std::env::var("DISPLAY").is_err() && std::env::var("WAYLAND_DISPLAY").is_err();
+        let use_tui = self.tui || (is_headless && self.ui_level != UiLevel::None);
+        if use_tui {
+            let mut engine = crate::ui::UiEngine::new(context.clone());
+            let _ = engine.load_from_database(pkg.database());
+            if engine.active_dialog().is_some() {
+                let mut wizard = crate::ui::TerminalWizard::new(engine);
+                wizard.set_action_text(format!("Installing {}...", pkg.metadata().product_name()));
+                let mut guard = crate::ui::TerminalSafetyGuard::new();
+                let _frame = wizard.render_frame(80, 24);
+                guard.disarm();
+            }
+        }
+
+        let cost_engine = DiskCostEngine::new();
+        let tx = Transaction::from_package(&pkg, context, cost_engine);
+        let prep_tx = tx.prepare()?;
+        let mut worker = WorkerContext::new();
+        let exec_tx = prep_tx.execute(&mut worker)?;
+        let _ = exec_tx.commit(&mut worker);
+
+        Ok(MsiExitCode::Success)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::database::{FieldValue, Record};
 
+    /// Tests parsing `/i` install action mode, UI level, and public property parameters.
     #[test]
-    fn test_parse_install() -> Result<()> {
+    fn test_parse_install() {
         let opts =
-            MsiExecOptions::parse(["/i", "setup.msi", "TRANSFORMS=custom.mst", "ADDLOCAL=ALL"])?;
+            MsiExecOptions::parse(["/i", "setup.msi", "TRANSFORMS=custom.mst", "ADDLOCAL=ALL"]);
         assert_eq!(
-            opts.action,
-            ActionMode::Install {
-                package_path: "setup.msi".to_string(),
-            }
+            opts,
+            Ok(MsiExecOptions {
+                action: ActionMode::Install {
+                    package_path: "setup.msi".to_string(),
+                },
+                ui_level: UiLevel::Full,
+                logging: None,
+                properties: [
+                    ("TRANSFORMS".to_string(), "custom.mst".to_string()),
+                    ("ADDLOCAL".to_string(), "ALL".to_string()),
+                ]
+                .into_iter()
+                .collect(),
+                tui: false,
+            })
         );
-        assert_eq!(opts.ui_level, UiLevel::Full);
-        assert_eq!(
-            opts.properties.get("TRANSFORMS"),
-            Some(&"custom.mst".to_string())
-        );
-        assert_eq!(opts.properties.get("ADDLOCAL"), Some(&"ALL".to_string()));
-        Ok(())
     }
 
+    /// Tests parsing `/x` uninstall action mode and `/qn` silent UI level.
     #[test]
-    fn test_parse_uninstall_and_quiet() -> Result<()> {
-        let opts = MsiExecOptions::parse(["/x", "package.msi", "/qn"])?;
+    fn test_parse_uninstall_and_quiet() {
+        let opts = MsiExecOptions::parse(["/x", "package.msi", "/qn"]);
         assert_eq!(
-            opts.action,
-            ActionMode::Uninstall {
-                package_path: "package.msi".to_string(),
-            }
+            opts,
+            Ok(MsiExecOptions {
+                action: ActionMode::Uninstall {
+                    package_path: "package.msi".to_string(),
+                },
+                ui_level: UiLevel::None,
+                logging: None,
+                properties: HashMap::new(),
+                tui: false,
+            })
         );
-        assert_eq!(opts.ui_level, UiLevel::None);
-        Ok(())
     }
 
+    /// Tests parsing `/f` repair action with granular repair flags and UI cancellation flag.
     #[test]
-    fn test_parse_repair_flags() -> Result<()> {
-        let opts = MsiExecOptions::parse(["/fomus", "app.msi", "/qb!"])?;
+    fn test_parse_repair_flags() {
+        let opts = MsiExecOptions::parse(["/fomus", "app.msi", "/qb!"]);
         let expected_flags = RepairFlags {
             reinstall_older: true,
             rewrite_user_registry: true,
@@ -489,48 +757,71 @@ mod tests {
             ..RepairFlags::default()
         };
         assert_eq!(
-            opts.action,
-            ActionMode::Repair {
-                flags: expected_flags,
-                package_path: "app.msi".to_string(),
-            }
+            opts,
+            Ok(MsiExecOptions {
+                action: ActionMode::Repair {
+                    flags: expected_flags,
+                    package_path: "app.msi".to_string(),
+                },
+                ui_level: UiLevel::Basic { no_cancel: true },
+                logging: None,
+                properties: HashMap::new(),
+                tui: false,
+            })
         );
-        assert_eq!(opts.ui_level, UiLevel::Basic { no_cancel: true });
-        Ok(())
     }
 
+    /// Tests parsing `/a` administrative installation and `/j` advertisement modes.
     #[test]
-    fn test_parse_admin_and_advertise() -> Result<()> {
-        let admin_opts = MsiExecOptions::parse(["/a", "admin.msi"])?;
+    fn test_parse_admin_and_advertise() {
+        let admin_opts = MsiExecOptions::parse(["/a", "admin.msi"]);
         assert_eq!(
-            admin_opts.action,
-            ActionMode::Administrative {
-                package_path: "admin.msi".to_string(),
-            }
+            admin_opts,
+            Ok(MsiExecOptions {
+                action: ActionMode::Administrative {
+                    package_path: "admin.msi".to_string(),
+                },
+                ui_level: UiLevel::Full,
+                logging: None,
+                properties: HashMap::new(),
+                tui: false,
+            })
         );
 
-        let adv_opts = MsiExecOptions::parse(["/ju", "user.msi"])?;
+        let adv_opts = MsiExecOptions::parse(["/ju", "user.msi"]);
         assert_eq!(
-            adv_opts.action,
-            ActionMode::Advertise {
-                scope: AdvertiseScope::User,
-                package_path: "user.msi".to_string(),
-            }
+            adv_opts,
+            Ok(MsiExecOptions {
+                action: ActionMode::Advertise {
+                    scope: AdvertiseScope::User,
+                    package_path: "user.msi".to_string(),
+                },
+                ui_level: UiLevel::Full,
+                logging: None,
+                properties: HashMap::new(),
+                tui: false,
+            })
         );
 
-        let patch_opts = MsiExecOptions::parse(["/p", "update.msp"])?;
+        let patch_opts = MsiExecOptions::parse(["/p", "update.msp"]);
         assert_eq!(
-            patch_opts.action,
-            ActionMode::ApplyPatch {
-                patch_path: "update.msp".to_string(),
-            }
+            patch_opts,
+            Ok(MsiExecOptions {
+                action: ActionMode::ApplyPatch {
+                    patch_path: "update.msp".to_string(),
+                },
+                ui_level: UiLevel::Full,
+                logging: None,
+                properties: HashMap::new(),
+                tui: false,
+            })
         );
-        Ok(())
     }
 
+    /// Tests parsing `/l` logging options, individual flags, and wildcards.
     #[test]
-    fn test_parse_logging() -> Result<()> {
-        let opts = MsiExecOptions::parse(["/i", "pkg.msi", "/lv*+!", "install.log"])?;
+    fn test_parse_logging() {
+        let opts = MsiExecOptions::parse(["/i", "pkg.msi", "/lv*+!", "install.log"]);
         let expected_log = LoggingOptions {
             log_file: "install.log".to_string(),
             status: true,
@@ -548,172 +839,304 @@ mod tests {
             append: true,
             flush_immediately: true,
         };
-        assert_eq!(opts.logging, Some(expected_log));
+        assert_eq!(
+            opts,
+            Ok(MsiExecOptions {
+                action: ActionMode::Install {
+                    package_path: "pkg.msi".to_string(),
+                },
+                ui_level: UiLevel::Full,
+                logging: Some(expected_log),
+                properties: HashMap::new(),
+                tui: false,
+            })
+        );
 
         // Test all individual logging flags
-        let all_log = LoggingOptions::parse("iwearucmopvx", "all.log")?;
-        assert!(all_log.status);
-        assert!(all_log.warnings);
-        assert!(all_log.errors);
-        assert!(all_log.action_starts);
-        assert!(all_log.action_records);
-        assert!(all_log.user_requests);
-        assert!(all_log.ui_parameters);
-        assert!(all_log.out_of_memory);
-        assert!(all_log.out_of_disk);
-        assert!(all_log.terminal_props);
-        assert!(all_log.verbose);
-        assert!(all_log.extra_debugging);
+        let all_log = LoggingOptions::parse("iwearucmopvx", "all.log");
+        assert_eq!(
+            all_log,
+            Ok(LoggingOptions {
+                log_file: "all.log".to_string(),
+                status: true,
+                warnings: true,
+                errors: true,
+                action_starts: true,
+                action_records: true,
+                user_requests: true,
+                ui_parameters: true,
+                out_of_memory: true,
+                out_of_disk: true,
+                terminal_props: true,
+                verbose: true,
+                extra_debugging: true,
+                append: false,
+                flush_immediately: false,
+            })
+        );
 
         // Uppercase /L flag
-        let opts_upper_l = MsiExecOptions::parse(["/I", "pkg.msi", "/L*", "out.log"])?;
-        assert!(opts_upper_l.logging.is_some());
-
-        Ok(())
+        let opts_upper_l = MsiExecOptions::parse(["/I", "pkg.msi", "/L*", "out.log"]);
+        assert!(matches!(
+            opts_upper_l,
+            Ok(MsiExecOptions {
+                logging: Some(_),
+                ..
+            })
+        ));
     }
 
+    /// Tests parsing attached parameters such as `-ipackage.msi`.
     #[test]
-    fn test_parse_attached_params() -> Result<()> {
-        let parsed_i = MsiExecOptions::parse(["-ipackage.msi", "/qr"])?;
+    fn test_parse_attached_params() {
+        let parsed_i = MsiExecOptions::parse(["-ipackage.msi", "/qr"]);
         assert_eq!(
-            parsed_i.action,
-            ActionMode::Install {
-                package_path: "package.msi".to_string(),
-            }
+            parsed_i,
+            Ok(MsiExecOptions {
+                action: ActionMode::Install {
+                    package_path: "package.msi".to_string(),
+                },
+                ui_level: UiLevel::Reduced,
+                logging: None,
+                properties: HashMap::new(),
+                tui: false,
+            })
         );
-        assert_eq!(parsed_i.ui_level, UiLevel::Reduced);
 
-        let parsed_x = MsiExecOptions::parse(["-xpackage.msi", "/qb"])?;
+        let parsed_x = MsiExecOptions::parse(["-xpackage.msi", "/qb"]);
         assert_eq!(
-            parsed_x.action,
-            ActionMode::Uninstall {
-                package_path: "package.msi".to_string(),
-            }
+            parsed_x,
+            Ok(MsiExecOptions {
+                action: ActionMode::Uninstall {
+                    package_path: "package.msi".to_string(),
+                },
+                ui_level: UiLevel::Basic { no_cancel: false },
+                logging: None,
+                properties: HashMap::new(),
+                tui: false,
+            })
         );
-        assert_eq!(parsed_x.ui_level, UiLevel::Basic { no_cancel: false });
 
-        let parsed_a = MsiExecOptions::parse(["-apackage.msi", "/qf"])?;
+        let parsed_a = MsiExecOptions::parse(["-apackage.msi", "/qf"]);
         assert_eq!(
-            parsed_a.action,
-            ActionMode::Administrative {
-                package_path: "package.msi".to_string(),
-            }
+            parsed_a,
+            Ok(MsiExecOptions {
+                action: ActionMode::Administrative {
+                    package_path: "package.msi".to_string(),
+                },
+                ui_level: UiLevel::Full,
+                logging: None,
+                properties: HashMap::new(),
+                tui: false,
+            })
         );
-        assert_eq!(parsed_a.ui_level, UiLevel::Full);
 
-        let parsed_p = MsiExecOptions::parse(["-ppatch.msp", "/q"])?;
+        let parsed_p = MsiExecOptions::parse(["-ppatch.msp", "/q"]);
         assert_eq!(
-            parsed_p.action,
-            ActionMode::ApplyPatch {
-                patch_path: "patch.msp".to_string(),
-            }
+            parsed_p,
+            Ok(MsiExecOptions {
+                action: ActionMode::ApplyPatch {
+                    patch_path: "patch.msp".to_string(),
+                },
+                ui_level: UiLevel::Full,
+                logging: None,
+                properties: HashMap::new(),
+                tui: false,
+            })
         );
-        assert_eq!(parsed_p.ui_level, UiLevel::Full);
-
-        Ok(())
     }
 
+    /// Tests uppercase action and UI flags and repair combinations.
     #[test]
-    fn test_parse_uppercase_and_repair() -> Result<()> {
+    #[allow(clippy::too_many_lines)]
+    fn test_parse_uppercase_and_repair() {
         // Uppercase UI flags
         assert_eq!(
-            MsiExecOptions::parse(["/I", "package.msi", "/QR"])?.ui_level,
-            UiLevel::Reduced
+            MsiExecOptions::parse(["/I", "package.msi", "/QR"]),
+            Ok(MsiExecOptions {
+                action: ActionMode::Install {
+                    package_path: "package.msi".to_string(),
+                },
+                ui_level: UiLevel::Reduced,
+                logging: None,
+                properties: HashMap::new(),
+                tui: false,
+            })
         );
         assert_eq!(
-            MsiExecOptions::parse(["/I", "package.msi", "/QN"])?.ui_level,
-            UiLevel::None
+            MsiExecOptions::parse(["/I", "package.msi", "/QN"]),
+            Ok(MsiExecOptions {
+                action: ActionMode::Install {
+                    package_path: "package.msi".to_string(),
+                },
+                ui_level: UiLevel::None,
+                logging: None,
+                properties: HashMap::new(),
+                tui: false,
+            })
         );
         assert_eq!(
-            MsiExecOptions::parse(["/I", "package.msi", "/QB!"])?.ui_level,
-            UiLevel::Basic { no_cancel: true }
+            MsiExecOptions::parse(["/I", "package.msi", "/QB!"]),
+            Ok(MsiExecOptions {
+                action: ActionMode::Install {
+                    package_path: "package.msi".to_string(),
+                },
+                ui_level: UiLevel::Basic { no_cancel: true },
+                logging: None,
+                properties: HashMap::new(),
+                tui: false,
+            })
         );
         assert_eq!(
-            MsiExecOptions::parse(["/I", "package.msi", "/QB"])?.ui_level,
-            UiLevel::Basic { no_cancel: false }
+            MsiExecOptions::parse(["/I", "package.msi", "/QB"]),
+            Ok(MsiExecOptions {
+                action: ActionMode::Install {
+                    package_path: "package.msi".to_string(),
+                },
+                ui_level: UiLevel::Basic { no_cancel: false },
+                logging: None,
+                properties: HashMap::new(),
+                tui: false,
+            })
         );
         assert_eq!(
-            MsiExecOptions::parse(["/I", "package.msi", "/QF"])?.ui_level,
-            UiLevel::Full
+            MsiExecOptions::parse(["/I", "package.msi", "/QF"]),
+            Ok(MsiExecOptions {
+                action: ActionMode::Install {
+                    package_path: "package.msi".to_string(),
+                },
+                ui_level: UiLevel::Full,
+                logging: None,
+                properties: HashMap::new(),
+                tui: false,
+            })
         );
         assert_eq!(
-            MsiExecOptions::parse(["/I", "package.msi", "/Q"])?.ui_level,
-            UiLevel::Full
+            MsiExecOptions::parse(["/I", "package.msi", "/Q"]),
+            Ok(MsiExecOptions {
+                action: ActionMode::Install {
+                    package_path: "package.msi".to_string(),
+                },
+                ui_level: UiLevel::Full,
+                logging: None,
+                properties: HashMap::new(),
+                tui: false,
+            })
         );
 
         // Uppercase action switches
         assert!(matches!(
-            MsiExecOptions::parse(["/X", "package.msi"])?.action,
-            ActionMode::Uninstall { .. }
+            MsiExecOptions::parse(["/X", "package.msi"]),
+            Ok(MsiExecOptions {
+                action: ActionMode::Uninstall { .. },
+                ..
+            })
         ));
         assert!(matches!(
-            MsiExecOptions::parse(["/A", "package.msi"])?.action,
-            ActionMode::Administrative { .. }
+            MsiExecOptions::parse(["/A", "package.msi"]),
+            Ok(MsiExecOptions {
+                action: ActionMode::Administrative { .. },
+                ..
+            })
         ));
         assert!(matches!(
-            MsiExecOptions::parse(["/P", "patch.msp"])?.action,
-            ActionMode::ApplyPatch { .. }
+            MsiExecOptions::parse(["/P", "patch.msp"]),
+            Ok(MsiExecOptions {
+                action: ActionMode::ApplyPatch { .. },
+                ..
+            })
         ));
 
         // Advertise scopes
         assert_eq!(
-            MsiExecOptions::parse(["/JU", "adv.msi"])?.action,
-            ActionMode::Advertise {
-                scope: AdvertiseScope::User,
-                package_path: "adv.msi".to_string(),
-            }
+            MsiExecOptions::parse(["/JU", "adv.msi"]),
+            Ok(MsiExecOptions {
+                action: ActionMode::Advertise {
+                    scope: AdvertiseScope::User,
+                    package_path: "adv.msi".to_string(),
+                },
+                ui_level: UiLevel::Full,
+                logging: None,
+                properties: HashMap::new(),
+                tui: false,
+            })
         );
         assert_eq!(
-            MsiExecOptions::parse(["/j", "adv.msi"])?.action,
-            ActionMode::Advertise {
-                scope: AdvertiseScope::Machine,
-                package_path: "adv.msi".to_string(),
-            }
+            MsiExecOptions::parse(["/j", "adv.msi"]),
+            Ok(MsiExecOptions {
+                action: ActionMode::Advertise {
+                    scope: AdvertiseScope::Machine,
+                    package_path: "adv.msi".to_string(),
+                },
+                ui_level: UiLevel::Full,
+                logging: None,
+                properties: HashMap::new(),
+                tui: false,
+            })
         );
         assert_eq!(
-            MsiExecOptions::parse(["/jm", "adv.msi"])?.action,
-            ActionMode::Advertise {
-                scope: AdvertiseScope::Machine,
-                package_path: "adv.msi".to_string(),
-            }
+            MsiExecOptions::parse(["/jm", "adv.msi"]),
+            Ok(MsiExecOptions {
+                action: ActionMode::Advertise {
+                    scope: AdvertiseScope::Machine,
+                    package_path: "adv.msi".to_string(),
+                },
+                ui_level: UiLevel::Full,
+                logging: None,
+                properties: HashMap::new(),
+                tui: false,
+            })
         );
 
         // All repair flags
-        let all_flags = RepairFlags::parse("poedcaumsv")?;
-        assert!(all_flags.reinstall_missing);
-        assert!(all_flags.reinstall_older);
-        assert!(all_flags.reinstall_equal_or_older);
-        assert!(all_flags.reinstall_different);
-        assert!(all_flags.reinstall_checksum);
-        assert!(all_flags.reinstall_all);
-        assert!(all_flags.rewrite_user_registry);
-        assert!(all_flags.rewrite_machine_registry);
-        assert!(all_flags.overwrite_shortcuts);
-        assert!(all_flags.recache_source);
+        let all_flags = RepairFlags::parse("poedcaumsv");
+        assert_eq!(
+            all_flags,
+            Ok(RepairFlags {
+                reinstall_missing: true,
+                reinstall_older: true,
+                reinstall_equal_or_older: true,
+                reinstall_different: true,
+                reinstall_checksum: true,
+                reinstall_all: true,
+                rewrite_user_registry: true,
+                rewrite_machine_registry: true,
+                overwrite_shortcuts: true,
+                recache_source: true,
+            })
+        );
 
         // Default repair option with no flags attached
-        let parsed_repair = MsiExecOptions::parse(["/f", "app.msi"])?;
+        let parsed_repair = MsiExecOptions::parse(["/f", "app.msi"]);
         let expected_default_flags = RepairFlags {
             reinstall_older: true,
             ..RepairFlags::default()
         };
         assert_eq!(
-            parsed_repair.action,
-            ActionMode::Repair {
-                flags: expected_default_flags,
-                package_path: "app.msi".to_string(),
-            }
+            parsed_repair,
+            Ok(MsiExecOptions {
+                action: ActionMode::Repair {
+                    flags: expected_default_flags,
+                    package_path: "app.msi".to_string(),
+                },
+                ui_level: UiLevel::Full,
+                logging: None,
+                properties: HashMap::new(),
+                tui: false,
+            })
         );
 
         // Uppercase /F
         assert!(matches!(
-            MsiExecOptions::parse(["/FOMUS", "app.msi"])?.action,
-            ActionMode::Repair { .. }
+            MsiExecOptions::parse(["/FOMUS", "app.msi"]),
+            Ok(MsiExecOptions {
+                action: ActionMode::Repair { .. },
+                ..
+            })
         ));
-
-        Ok(())
     }
 
+    /// Tests invalid command-line inputs and parsing error conditions.
     #[test]
     fn test_parse_errors() {
         assert!(MsiExecOptions::parse::<[&str; 0], &str>([]).is_err());
@@ -734,5 +1157,581 @@ mod tests {
         assert!(MsiExecOptions::parse(["/l?", "log.txt"]).is_err());
         assert!(MsiExecOptions::parse(["invalid_arg_without_equals"]).is_err());
         assert!(MsiExecOptions::parse(["PROPERTY=Val"]).is_err()); // no action
+    }
+
+    /// Tests conversion to and from Windows Installer exit codes.
+    #[test]
+    fn test_msi_exit_code() {
+        assert_eq!(MsiExitCode::Success.to_u32(), ERROR_SUCCESS);
+        assert_eq!(MsiExitCode::UserExit.to_u32(), ERROR_INSTALL_USEREXIT);
+        assert_eq!(MsiExitCode::InstallFailure.to_u32(), ERROR_INSTALL_FAILURE);
+        assert_eq!(MsiExitCode::UnknownProduct.to_u32(), ERROR_UNKNOWN_PRODUCT);
+        assert_eq!(
+            MsiExitCode::SuccessRebootRequired.to_u32(),
+            ERROR_SUCCESS_REBOOT_REQUIRED
+        );
+        assert_eq!(MsiExitCode::Other(9999).to_u32(), 9999);
+
+        assert_eq!(MsiExitCode::from_u32(0), MsiExitCode::Success);
+        assert_eq!(MsiExitCode::from_u32(1602), MsiExitCode::UserExit);
+        assert_eq!(MsiExitCode::from_u32(1603), MsiExitCode::InstallFailure);
+        assert_eq!(MsiExitCode::from_u32(1605), MsiExitCode::UnknownProduct);
+        assert_eq!(
+            MsiExitCode::from_u32(3010),
+            MsiExitCode::SuccessRebootRequired
+        );
+        assert_eq!(MsiExitCode::from_u32(1234), MsiExitCode::Other(1234));
+
+        let code_u32: u32 = MsiExitCode::InstallFailure.into();
+        assert_eq!(code_u32, 1603);
+        let from_code: MsiExitCode = 1602.into();
+        assert_eq!(from_code, MsiExitCode::UserExit);
+    }
+
+    /// Tests parsing terminal user interface flags (`/tui`, `--tui`, `/console`, `--console`).
+    #[test]
+    fn test_tui_flag_parsing() {
+        assert_eq!(
+            MsiExecOptions::parse(["/i", "setup.msi", "/tui"]),
+            Ok(MsiExecOptions {
+                action: ActionMode::Install {
+                    package_path: "setup.msi".to_string(),
+                },
+                ui_level: UiLevel::Full,
+                logging: None,
+                properties: HashMap::new(),
+                tui: true,
+            })
+        );
+
+        assert_eq!(
+            MsiExecOptions::parse(["/i", "setup.msi", "--tui"]),
+            Ok(MsiExecOptions {
+                action: ActionMode::Install {
+                    package_path: "setup.msi".to_string(),
+                },
+                ui_level: UiLevel::Full,
+                logging: None,
+                properties: HashMap::new(),
+                tui: true,
+            })
+        );
+
+        assert_eq!(
+            MsiExecOptions::parse(["/i", "setup.msi", "/console"]),
+            Ok(MsiExecOptions {
+                action: ActionMode::Install {
+                    package_path: "setup.msi".to_string(),
+                },
+                ui_level: UiLevel::Full,
+                logging: None,
+                properties: HashMap::new(),
+                tui: true,
+            })
+        );
+
+        assert_eq!(
+            MsiExecOptions::parse(["/i", "setup.msi", "--console"]),
+            Ok(MsiExecOptions {
+                action: ActionMode::Install {
+                    package_path: "setup.msi".to_string(),
+                },
+                ui_level: UiLevel::Full,
+                logging: None,
+                properties: HashMap::new(),
+                tui: true,
+            })
+        );
+
+        assert_eq!(
+            MsiExecOptions::parse(["/i", "setup.msi", "/qn"]),
+            Ok(MsiExecOptions {
+                action: ActionMode::Install {
+                    package_path: "setup.msi".to_string(),
+                },
+                ui_level: UiLevel::None,
+                logging: None,
+                properties: HashMap::new(),
+                tui: false,
+            })
+        );
+    }
+
+    /// Tests string formatting and display representation of [`RepairFlags`].
+    #[test]
+    fn test_repair_flags_display() {
+        let all_flags = RepairFlags::parse("poedcaumsv");
+        assert_eq!(
+            all_flags.as_ref().map(ToString::to_string),
+            Ok("poedcaumsv".to_string())
+        );
+
+        let default_flags = RepairFlags::default();
+        assert_eq!(default_flags.to_string(), "pecmsu");
+
+        let custom_flags = RepairFlags {
+            reinstall_missing: true,
+            reinstall_older: true,
+            ..RepairFlags::default()
+        };
+        assert_eq!(custom_flags.to_string(), "po");
+    }
+
+    /// Tests error scenarios encountered during options execution.
+    #[test]
+    fn test_execute_error_cases() {
+        // Empty package
+        let empty_pkg = MsiExecOptions {
+            action: ActionMode::Install {
+                package_path: "   ".to_string(),
+            },
+            ui_level: UiLevel::None,
+            logging: None,
+            properties: HashMap::new(),
+            tui: false,
+        };
+        assert!(empty_pkg.execute().is_err());
+
+        // Nonexistent package
+        let non_existent = MsiExecOptions {
+            action: ActionMode::Install {
+                package_path: "/nonexistent/path/to/app.msi".to_string(),
+            },
+            ui_level: UiLevel::None,
+            logging: None,
+            properties: HashMap::new(),
+            tui: false,
+        };
+        assert!(non_existent.execute().is_err());
+
+        // Uninstall with unknown product code
+        let unknown_guid = MsiExecOptions {
+            action: ActionMode::Uninstall {
+                package_path: "{12345678-1234-1234-1234-123456789012}".to_string(),
+            },
+            ui_level: UiLevel::None,
+            logging: None,
+            properties: HashMap::new(),
+            tui: false,
+        };
+        assert_eq!(
+            unknown_guid.execute().ok(),
+            Some(MsiExitCode::UnknownProduct)
+        );
+
+        // Patch without package
+        let patch_no_pkg = MsiExecOptions {
+            action: ActionMode::ApplyPatch {
+                patch_path: "update.msp".to_string(),
+            },
+            ui_level: UiLevel::None,
+            logging: None,
+            properties: HashMap::new(),
+            tui: false,
+        };
+        assert!(patch_no_pkg.execute().is_err());
+    }
+
+    /// Tests successful execution across all action modes, logging, and TUI dialog rendering.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_execute_success() {
+        let temp_dir = std::env::temp_dir().join(format!("msi_exec_test_{}", std::process::id()));
+        assert!(std::fs::create_dir_all(&temp_dir).is_ok());
+        let msi_path = temp_dir.join("test_app.msi");
+
+        let pkg = Package::builder()
+            .product_name("TestExecApp")
+            .version(crate::package::ProductVersion::new(1, 0, 0))
+            .manufacturer("TestManufacturer")
+            .product_code("{12345678-1234-1234-1234-123456789012}")
+            .build()
+            .unwrap_or_default();
+        assert!(pkg.save(&msi_path).is_ok());
+
+        let msi_path_str = msi_path.to_string_lossy().to_string();
+
+        // 1. Install mode
+        let opts = MsiExecOptions {
+            action: ActionMode::Install {
+                package_path: msi_path_str.clone(),
+            },
+            ui_level: UiLevel::None,
+            logging: None,
+            properties: std::iter::once(("CUSTOM_PROP".to_string(), "123".to_string())).collect(),
+            tui: false,
+        };
+        assert_eq!(
+            MsiExecOptions::parse(["/i", &msi_path_str, "/qn", "CUSTOM_PROP=123"]),
+            Ok(opts.clone())
+        );
+        assert_eq!(opts.execute(), Ok(MsiExitCode::Success));
+
+        // 2. Uninstall mode
+        let uninst_opts = MsiExecOptions {
+            action: ActionMode::Uninstall {
+                package_path: msi_path_str.clone(),
+            },
+            ui_level: UiLevel::None,
+            logging: None,
+            properties: HashMap::new(),
+            tui: false,
+        };
+        assert_eq!(
+            MsiExecOptions::parse(["/x", &msi_path_str, "/qn"]),
+            Ok(uninst_opts.clone())
+        );
+        assert_eq!(uninst_opts.execute(), Ok(MsiExitCode::Success));
+
+        // 3. Admin mode
+        let admin_opts = MsiExecOptions {
+            action: ActionMode::Administrative {
+                package_path: msi_path_str.clone(),
+            },
+            ui_level: UiLevel::None,
+            logging: None,
+            properties: HashMap::new(),
+            tui: false,
+        };
+        assert_eq!(
+            MsiExecOptions::parse(["/a", &msi_path_str, "/qn"]),
+            Ok(admin_opts.clone())
+        );
+        assert_eq!(admin_opts.execute(), Ok(MsiExitCode::Success));
+
+        // 4. Repair mode
+        let repair_opts = MsiExecOptions {
+            action: ActionMode::Repair {
+                flags: RepairFlags {
+                    reinstall_older: true,
+                    ..RepairFlags::default()
+                },
+                package_path: msi_path_str.clone(),
+            },
+            ui_level: UiLevel::None,
+            logging: None,
+            properties: HashMap::new(),
+            tui: false,
+        };
+        assert_eq!(
+            MsiExecOptions::parse(["/f", &msi_path_str, "/qn"]),
+            Ok(repair_opts.clone())
+        );
+        assert_eq!(repair_opts.execute(), Ok(MsiExitCode::Success));
+
+        // 5. Advertise User
+        let user_adv_opts = MsiExecOptions {
+            action: ActionMode::Advertise {
+                scope: AdvertiseScope::User,
+                package_path: msi_path_str.clone(),
+            },
+            ui_level: UiLevel::None,
+            logging: None,
+            properties: HashMap::new(),
+            tui: false,
+        };
+        assert_eq!(
+            MsiExecOptions::parse(["/ju", &msi_path_str, "/qn"]),
+            Ok(user_adv_opts.clone())
+        );
+        assert_eq!(user_adv_opts.execute(), Ok(MsiExitCode::Success));
+
+        // 6. Advertise Machine
+        let machine_adv_opts = MsiExecOptions {
+            action: ActionMode::Advertise {
+                scope: AdvertiseScope::Machine,
+                package_path: msi_path_str.clone(),
+            },
+            ui_level: UiLevel::None,
+            logging: None,
+            properties: HashMap::new(),
+            tui: false,
+        };
+        assert_eq!(
+            MsiExecOptions::parse(["/jm", &msi_path_str, "/qn"]),
+            Ok(machine_adv_opts.clone())
+        );
+        assert_eq!(machine_adv_opts.execute(), Ok(MsiExitCode::Success));
+
+        // 7. Apply Patch with PACKAGE=...
+        let patch_opts = MsiExecOptions {
+            action: ActionMode::ApplyPatch {
+                patch_path: "dummy.msp".to_string(),
+            },
+            ui_level: UiLevel::None,
+            logging: None,
+            properties: std::iter::once(("PACKAGE".to_string(), msi_path_str.clone())).collect(),
+            tui: false,
+        };
+        assert_eq!(
+            MsiExecOptions::parse(["/p", "dummy.msp", &format!("PACKAGE={msi_path_str}"), "/qn"]),
+            Ok(patch_opts.clone())
+        );
+        assert_eq!(patch_opts.execute(), Ok(MsiExitCode::Success));
+
+        // 8. Apply Patch with TARGETPACKAGE=...
+        let target_patch_opts = MsiExecOptions {
+            action: ActionMode::ApplyPatch {
+                patch_path: "dummy.msp".to_string(),
+            },
+            ui_level: UiLevel::None,
+            logging: None,
+            properties: std::iter::once(("TARGETPACKAGE".to_string(), msi_path_str.clone()))
+                .collect(),
+            tui: false,
+        };
+        assert_eq!(
+            MsiExecOptions::parse([
+                "/p",
+                "dummy.msp",
+                &format!("TARGETPACKAGE={msi_path_str}"),
+                "/qn"
+            ]),
+            Ok(target_patch_opts.clone())
+        );
+        assert_eq!(target_patch_opts.execute(), Ok(MsiExitCode::Success));
+
+        // 9. Property table with non-matching record (empty property identifier)
+        let mut pkg_with_extra = Package::builder()
+            .product_name("ExtraPropApp")
+            .version(crate::package::ProductVersion::new(1, 0, 0))
+            .manufacturer("TestManufacturer")
+            .product_code("{22345678-1234-1234-1234-123456789012}")
+            .build()
+            .unwrap_or_default();
+        pkg_with_extra.database_mut().add_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String(String::new()),
+                FieldValue::String("EmptyPropValue".to_string()),
+            ]),
+        );
+        let extra_msi_path = temp_dir.join("extra_prop.msi");
+        assert!(pkg_with_extra.save(&extra_msi_path).is_ok());
+        let extra_opts = MsiExecOptions {
+            action: ActionMode::Install {
+                package_path: extra_msi_path.to_string_lossy().to_string(),
+            },
+            ui_level: UiLevel::None,
+            logging: None,
+            properties: HashMap::new(),
+            tui: false,
+        };
+        assert_eq!(extra_opts.execute(), Ok(MsiExitCode::Success));
+
+        // 10. TUI execution with package that has no UI dialogs
+        let tui_no_dlg_opts = MsiExecOptions {
+            action: ActionMode::Install {
+                package_path: msi_path_str.clone(),
+            },
+            ui_level: UiLevel::Full,
+            logging: None,
+            properties: HashMap::new(),
+            tui: true,
+        };
+        assert_eq!(tui_no_dlg_opts.execute(), Ok(MsiExitCode::Success));
+
+        // 11. TUI execution branch with package containing UI dialog
+        let wxs_src = r#"
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="{11111111-2222-3333-4444-555555555555}" Name="UIApp" Version="1.0.0" Manufacturer="Test">
+        <Package Description="Test" />
+        <Directory Id="TARGETDIR" Name="SourceDir" />
+        <UI>
+            <Dialog Id="WelcomeDlg" Width="370" Height="270" Title="Welcome">
+                <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="Next" />
+            </Dialog>
+            <InstallUISequence>
+                <Show Dialog="WelcomeDlg" Before="ExecuteAction" />
+            </InstallUISequence>
+        </UI>
+    </Product>
+</Wix>
+"#;
+        let ui_wxs_path = temp_dir.join("ui_app.wxs");
+        let ui_msi_path = temp_dir.join("ui_app.msi");
+        assert!(std::fs::write(&ui_wxs_path, wxs_src).is_ok());
+
+        let build_opts = crate::wix::toolchain::WixBuildOptions {
+            output: Some(ui_msi_path.clone()),
+            sources: vec![ui_wxs_path],
+            suppress_ice: true,
+            ..Default::default()
+        };
+        assert!(build_opts.execute().is_ok());
+
+        let ui_msi_str = ui_msi_path.to_string_lossy().to_string();
+        let tui_opts = MsiExecOptions {
+            action: ActionMode::Install {
+                package_path: ui_msi_str,
+            },
+            ui_level: UiLevel::Full,
+            logging: None,
+            properties: HashMap::new(),
+            tui: true,
+        };
+        assert_eq!(tui_opts.execute(), Ok(MsiExitCode::Success));
+
+        // 12. DISPLAY and WAYLAND_DISPLAY environment variables
+        std::env::set_var("DISPLAY", ":0");
+        let opts_display = MsiExecOptions {
+            action: ActionMode::Install {
+                package_path: msi_path_str.clone(),
+            },
+            ui_level: UiLevel::Full,
+            logging: None,
+            properties: HashMap::new(),
+            tui: false,
+        };
+        assert_eq!(opts_display.execute(), Ok(MsiExitCode::Success));
+        std::env::remove_var("DISPLAY");
+
+        std::env::set_var("WAYLAND_DISPLAY", "wayland-0");
+        let opts_wayland = MsiExecOptions {
+            action: ActionMode::Install {
+                package_path: msi_path_str,
+            },
+            ui_level: UiLevel::Full,
+            logging: None,
+            properties: HashMap::new(),
+            tui: false,
+        };
+        assert_eq!(opts_wayland.execute(), Ok(MsiExitCode::Success));
+        std::env::remove_var("WAYLAND_DISPLAY");
+
+        // 13. Corrupted / invalid package file
+        let corrupt_msi_path = temp_dir.join("corrupted.msi");
+        assert!(std::fs::write(&corrupt_msi_path, b"not a valid package").is_ok());
+        let corrupt_opts = MsiExecOptions {
+            action: ActionMode::Install {
+                package_path: corrupt_msi_path.to_string_lossy().to_string(),
+            },
+            ui_level: UiLevel::None,
+            logging: None,
+            properties: HashMap::new(),
+            tui: false,
+        };
+        assert!(corrupt_opts.execute().is_err());
+
+        // 14. Error during Transaction::prepare (invalid condition)
+        let mut pkg_bad_cond = Package::builder()
+            .product_name("BadCondApp")
+            .version(crate::package::ProductVersion::new(1, 0, 0))
+            .manufacturer("TestManufacturer")
+            .product_code("{32345678-1234-1234-1234-123456789012}")
+            .build()
+            .unwrap_or_default();
+        pkg_bad_cond.database_mut().add_record(
+            "InstallExecuteSequence",
+            Record::with_fields(vec![
+                FieldValue::String("BadAction".to_string()),
+                FieldValue::String("== INVALID_SYNTAX".to_string()),
+                FieldValue::Short(1),
+            ]),
+        );
+        let bad_cond_path = temp_dir.join("bad_cond.msi");
+        assert!(pkg_bad_cond.save(&bad_cond_path).is_ok());
+        let bad_cond_opts = MsiExecOptions {
+            action: ActionMode::Install {
+                package_path: bad_cond_path.to_string_lossy().to_string(),
+            },
+            ui_level: UiLevel::None,
+            logging: None,
+            properties: HashMap::new(),
+            tui: false,
+        };
+        assert!(bad_cond_opts.execute().is_err());
+
+        // 15. Error during Transaction::execute (Type 19 abort action)
+        let mut pkg_fail_ca = Package::builder()
+            .product_name("FailCaApp")
+            .version(crate::package::ProductVersion::new(1, 0, 0))
+            .manufacturer("TestManufacturer")
+            .product_code("{42345678-1234-1234-1234-123456789012}")
+            .build()
+            .unwrap_or_default();
+        pkg_fail_ca.database_mut().add_record(
+            "CustomAction",
+            Record::with_fields(vec![
+                FieldValue::String("FailAction".to_string()),
+                FieldValue::Short(19),
+                FieldValue::String("Installation Aborted By Action".to_string()),
+                FieldValue::String(String::new()),
+                FieldValue::Null,
+            ]),
+        );
+        pkg_fail_ca.database_mut().add_record(
+            "InstallExecuteSequence",
+            Record::with_fields(vec![
+                FieldValue::String("FailAction".to_string()),
+                FieldValue::String("1".to_string()),
+                FieldValue::Short(1),
+            ]),
+        );
+        let fail_ca_path = temp_dir.join("fail_ca.msi");
+        assert!(pkg_fail_ca.save(&fail_ca_path).is_ok());
+        let fail_ca_opts = MsiExecOptions {
+            action: ActionMode::Install {
+                package_path: fail_ca_path.to_string_lossy().to_string(),
+            },
+            ui_level: UiLevel::None,
+            logging: None,
+            properties: HashMap::new(),
+            tui: false,
+        };
+        assert!(fail_ca_opts.execute().is_err());
+
+        // 16. Error during Transaction::execute (Type 50 + Deferred custom action executable failure)
+        #[cfg(windows)]
+        let fail_cmd = "cmd.exe /c exit 1";
+        #[cfg(not(windows))]
+        let fail_cmd = "/usr/bin/false";
+
+        let mut pkg_fail_exec = Package::builder()
+            .product_name("FailExecApp")
+            .version(crate::package::ProductVersion::new(1, 0, 0))
+            .manufacturer("TestManufacturer")
+            .product_code("{52345678-1234-1234-1234-123456789012}")
+            .build()
+            .unwrap_or_default();
+        pkg_fail_exec.database_mut().add_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("FAIL_CMD".to_string()),
+                FieldValue::String(fail_cmd.to_string()),
+            ]),
+        );
+        pkg_fail_exec.database_mut().add_record(
+            "CustomAction",
+            Record::with_fields(vec![
+                FieldValue::String("FailExeAction".to_string()),
+                FieldValue::Short(0x0032 | 0x0400),
+                FieldValue::String("FAIL_CMD".to_string()),
+                FieldValue::String(String::new()),
+                FieldValue::Null,
+            ]),
+        );
+        pkg_fail_exec.database_mut().add_record(
+            "InstallExecuteSequence",
+            Record::with_fields(vec![
+                FieldValue::String("FailExeAction".to_string()),
+                FieldValue::String("1".to_string()),
+                FieldValue::Short(1),
+            ]),
+        );
+        let fail_exec_path = temp_dir.join("fail_exec.msi");
+        assert!(pkg_fail_exec.save(&fail_exec_path).is_ok());
+        let fail_exec_opts = MsiExecOptions {
+            action: ActionMode::Install {
+                package_path: fail_exec_path.to_string_lossy().to_string(),
+            },
+            ui_level: UiLevel::None,
+            logging: None,
+            properties: HashMap::new(),
+            tui: false,
+        };
+        assert!(fail_exec_opts.execute().is_err());
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }

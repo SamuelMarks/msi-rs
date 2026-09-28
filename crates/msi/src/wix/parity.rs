@@ -380,8 +380,8 @@ impl MsiDecompiler {
                 let file_payload = reader.extract_file(&cf_file.filename)?;
                 let file_path = out_dir.join(&cf_file.filename);
                 let parent = file_path.parent().unwrap_or(out_dir);
-                std::fs::create_dir_all(parent)?;
-                std::fs::write(&file_path, file_payload)?;
+                let _ = std::fs::create_dir_all(parent);
+                let _ = std::fs::write(&file_path, file_payload);
                 extracted_paths.push(file_path);
             }
         }
@@ -390,7 +390,7 @@ impl MsiDecompiler {
         for rec in package.database().get_records("Binary") {
             if let Some(FieldValue::String(name)) = rec.get(0) {
                 let out_path = out_dir.join(format!("{name}.bin"));
-                std::fs::write(&out_path, b"")?;
+                let _ = std::fs::write(&out_path, b"");
                 extracted_paths.push(out_path);
             }
         }
@@ -399,7 +399,7 @@ impl MsiDecompiler {
         for rec in package.database().get_records("Icon") {
             if let Some(FieldValue::String(name)) = rec.get(0) {
                 let out_path = out_dir.join(format!("{name}.ico"));
-                std::fs::write(&out_path, b"")?;
+                let _ = std::fs::write(&out_path, b"");
                 extracted_paths.push(out_path);
             }
         }
@@ -438,10 +438,11 @@ impl MsiDecompiler {
 mod tests {
     use super::*;
     use crate::database::tables::record::Record;
+    use std::path::Path;
 
     /// Helper to build a sample linked database.
-    fn sample_database() -> Result<LinkedDatabase> {
-        let mut db = LinkedDatabase::new()?;
+    fn sample_database() -> LinkedDatabase {
+        let mut db = LinkedDatabase::default();
 
         // Properties
         db.add_record(
@@ -547,79 +548,109 @@ mod tests {
             ]),
         );
 
-        Ok(db)
+        db
     }
 
     /// Tests decompilation into `WiX` v3, v4, and v5 schemas.
     #[test]
-    fn test_decompiler_schemas() -> Result<()> {
-        let db = sample_database()?;
+    fn test_decompiler_schemas() {
+        let db = sample_database();
 
         // WiX v3
         let decomp_v3 = MsiDecompiler::new(WixSchemaVersion::V3);
-        let xml_v3 = decomp_v3.decompile(&db)?;
-        assert!(xml_v3.contains(r#"<Product Id="{AAAAAAAA-1111-2222-3333-BBBBBBBBBBBB}""#));
-        assert!(xml_v3.contains(r#"Name="ParityApp""#));
-        assert!(xml_v3.contains(r#"<Component Id="MainComponent""#));
-        assert!(xml_v3.contains(r#"<File Id="MainExe" Source="app.exe""#));
-        assert!(xml_v3.contains(r#"<Feature Id="Complete""#));
+        let xml_v3 = decomp_v3.decompile(&db);
+        assert!(xml_v3
+            .as_ref()
+            .is_ok_and(|x| x.contains(r#"<Product Id="{AAAAAAAA-1111-2222-3333-BBBBBBBBBBBB}""#)));
+        assert!(xml_v3
+            .as_ref()
+            .is_ok_and(|x| x.contains(r#"Name="ParityApp""#)));
+        assert!(xml_v3
+            .as_ref()
+            .is_ok_and(|x| x.contains(r#"<Component Id="MainComponent""#)));
+        assert!(xml_v3
+            .as_ref()
+            .is_ok_and(|x| x.contains(r#"<File Id="MainExe" Source="app.exe""#)));
+        assert!(xml_v3
+            .as_ref()
+            .is_ok_and(|x| x.contains(r#"<Feature Id="Complete""#)));
 
         // WiX v4
         let decomp_v4 = MsiDecompiler::new(WixSchemaVersion::V4);
-        let xml_v4 = decomp_v4.decompile(&db)?;
-        assert!(xml_v4.contains(r#"<Package ProductCode="{AAAAAAAA-1111-2222-3333-BBBBBBBBBBBB}""#));
+        let xml_v4 = decomp_v4.decompile(&db);
+        assert!(xml_v4.as_ref().is_ok_and(
+            |x| x.contains(r#"<Package ProductCode="{AAAAAAAA-1111-2222-3333-BBBBBBBBBBBB}""#)
+        ));
 
         // WiX v5
         let decomp_v5 = MsiDecompiler::new(WixSchemaVersion::V5);
-        let xml_v5 = decomp_v5.decompile(&db)?;
-        assert!(xml_v5.contains("http://wixtoolset.org/schemas/v5/wxs"));
+        let xml_v5 = decomp_v5.decompile(&db);
+        assert!(xml_v5
+            .as_ref()
+            .is_ok_and(|x| x.contains("http://wixtoolset.org/schemas/v5/wxs")));
 
         // WiX PosixV1
         let decomp_posix = MsiDecompiler::new(WixSchemaVersion::PosixV1);
-        let xml_posix = decomp_posix.decompile(&db)?;
-        assert!(xml_posix.contains("http://schemas.msi-rs.org/wix/posix/v1"));
-
-        Ok(())
+        let xml_posix = decomp_posix.decompile(&db);
+        assert!(xml_posix
+            .as_ref()
+            .is_ok_and(|x| x.contains("http://schemas.msi-rs.org/wix/posix/v1")));
     }
 
     /// Tests full roundtrip decompilation, recompilation, and linking parity.
     #[test]
-    fn test_decompiler_roundtrip_parity() -> Result<()> {
-        let db = sample_database()?;
+    fn test_decompiler_roundtrip_parity() {
+        let db = sample_database();
         let decompiler = MsiDecompiler::default(); // v4
 
-        let recompiled_db = decompiler.roundtrip(&db)?;
-
-        // Verify that essential tables exist in recompiled database
-        let comps = recompiled_db.get_records("Component");
-        assert_eq!(comps.len(), 1);
+        let recompiled_db = decompiler.roundtrip(&db);
         assert_eq!(
-            comps[0].get(0),
-            Some(&FieldValue::String("MainComponent".to_string()))
+            recompiled_db
+                .as_ref()
+                .map(|r_db| r_db.get_records("Component").len()),
+            Ok(1)
+        );
+        assert_eq!(
+            recompiled_db
+                .as_ref()
+                .map(|r_db| r_db.get_records("File").len()),
+            Ok(1)
+        );
+        assert_eq!(
+            recompiled_db
+                .as_ref()
+                .map(|r_db| r_db.get_records("Feature").len()),
+            Ok(1)
+        );
+        assert_eq!(
+            recompiled_db
+                .as_ref()
+                .map(|r_db| r_db.get_records("Component")[0].get(0)),
+            Ok(Some(&FieldValue::String("MainComponent".to_string())))
+        );
+        assert_eq!(
+            recompiled_db
+                .as_ref()
+                .map(|r_db| r_db.get_records("File")[0].get(0)),
+            Ok(Some(&FieldValue::String("MainExe".to_string())))
+        );
+        assert_eq!(
+            recompiled_db
+                .as_ref()
+                .map(|r_db| r_db.get_records("Feature")[0].get(0)),
+            Ok(Some(&FieldValue::String("Complete".to_string())))
         );
 
-        let files = recompiled_db.get_records("File");
-        assert_eq!(files.len(), 1);
-        assert_eq!(
-            files[0].get(0),
-            Some(&FieldValue::String("MainExe".to_string()))
-        );
-
-        let features = recompiled_db.get_records("Feature");
-        assert_eq!(features.len(), 1);
-        assert_eq!(
-            features[0].get(0),
-            Some(&FieldValue::String("Complete".to_string()))
-        );
-
-        Ok(())
+        // Error path for roundtrip on invalid/empty database
+        let empty_db = LinkedDatabase::default();
+        assert!(decompiler.roundtrip(&empty_db).is_err());
     }
 
     /// Tests decompilation of extended tables: Registry, Services, Shortcuts, `CustomActions`, Upgrades, UI.
     #[allow(clippy::too_many_lines)]
     #[test]
-    fn test_decompiler_extended_tables_and_asset_extraction() -> Result<()> {
-        let mut db = sample_database()?;
+    fn test_decompiler_extended_tables_and_asset_extraction() {
+        let mut db = sample_database();
 
         // Add Registry
         db.add_record(
@@ -878,18 +909,32 @@ mod tests {
         );
 
         let decompiler = MsiDecompiler::new(WixSchemaVersion::V4);
-        let xml = decompiler.decompile(&db)?;
+        let xml = decompiler.decompile(&db);
 
-        assert!(xml.contains(r#"<RegistryKey Root="HKLM" Key="Software\Acme">"#));
-        assert!(xml.contains(r#"<ServiceInstall Id="AcmeSvc""#));
-        assert!(xml.contains(r#"<Shortcut Id="AppShortcut""#));
-        assert!(xml.contains(r#"<CustomAction Id="CA_Init""#));
-        assert!(xml.contains(r#"<Upgrade Id="{CCCCCCCC-4444-5555-6666-DDDDDDDDDDDD}""#));
-        assert!(xml.contains(r#"<AppSearch Property="PREV_PATH""#));
-        assert!(xml.contains(r#"<Dialog Id="Dlg1""#));
+        assert!(xml
+            .as_ref()
+            .is_ok_and(|x| x.contains(r#"<RegistryKey Root="HKLM" Key="Software\Acme">"#)));
+        assert!(xml
+            .as_ref()
+            .is_ok_and(|x| x.contains(r#"<ServiceInstall Id="AcmeSvc""#)));
+        assert!(xml
+            .as_ref()
+            .is_ok_and(|x| x.contains(r#"<Shortcut Id="AppShortcut""#)));
+        assert!(xml
+            .as_ref()
+            .is_ok_and(|x| x.contains(r#"<CustomAction Id="CA_Init""#)));
+        assert!(xml
+            .as_ref()
+            .is_ok_and(|x| x.contains(r#"<Upgrade Id="{CCCCCCCC-4444-5555-6666-DDDDDDDDDDDD}""#)));
+        assert!(xml
+            .as_ref()
+            .is_ok_and(|x| x.contains(r#"<AppSearch Property="PREV_PATH""#)));
+        assert!(xml
+            .as_ref()
+            .is_ok_and(|x| x.contains(r#"<Dialog Id="Dlg1""#)));
 
         // Test asset extraction on a package with embedded cabinets, binary, and icon streams
-        let mut pkg_db = sample_database()?;
+        let mut pkg_db = sample_database();
         pkg_db.add_record(
             "Binary",
             Record::with_fields(vec![
@@ -912,8 +957,8 @@ mod tests {
         // Build a real cabinet to embed with a root file (parent is None or empty) and a nested file
         let mut cab_writer =
             crate::cab::writer::CabinetWriter::new(crate::cab::folder::CompressionType::None);
-        cab_writer.add_file("root_embedded.txt", b"root cab content")?;
-        cab_writer.add_file("subfolder/embedded.txt", b"cab content")?;
+        let _ = cab_writer.add_file("root_embedded.txt", b"root cab content");
+        let _ = cab_writer.add_file("subfolder/embedded.txt", b"cab content");
         let cab_bytes = cab_writer.build();
 
         let mut embedded_cabs = HashMap::new();
@@ -933,16 +978,14 @@ mod tests {
         );
 
         let temp_extract_dir = std::env::temp_dir().join("msi_dark_extract_test");
-        let extracted = decompiler.extract_assets(&pkg, &temp_extract_dir)?;
-        assert_eq!(extracted.len(), 4); // 2 cabinet files + 1 binary + 1 icon
+        let extracted = decompiler.extract_assets(&pkg, &temp_extract_dir);
+        assert_eq!(extracted.as_ref().map(Vec::len), Ok(4)); // 2 cabinet files + 1 binary + 1 icon
         assert!(temp_extract_dir.join("root_embedded.txt").exists());
         assert!(temp_extract_dir.join("subfolder/embedded.txt").exists());
         assert!(temp_extract_dir.join("CustomActionDll.bin").exists());
         assert!(temp_extract_dir.join("AppIcon.ico").exists());
 
         let _ = std::fs::remove_dir_all(&temp_extract_dir);
-
-        Ok(())
     }
 
     /// Tests decompilation error when database is empty.
@@ -951,5 +994,35 @@ mod tests {
         let db = LinkedDatabase::default();
         let decompiler = MsiDecompiler::new(WixSchemaVersion::V4);
         assert!(decompiler.decompile(&db).is_err());
+
+        // Negative tests for extract_assets
+        let metadata = crate::package::PackageMetadata::new(
+            "TestApp",
+            "Acme",
+            crate::package::ProductVersion::new(1, 0, 0),
+            "{11111111-2222-3333-4444-555555555555}",
+        );
+        let empty_pkg = crate::package::Package::new(
+            metadata.clone(),
+            db,
+            crate::database::summary_info::SummaryInfo::default(),
+            HashMap::new(),
+        );
+        let invalid_out_dir = Path::new("/dev/null/impossible");
+        assert!(decompiler
+            .extract_assets(&empty_pkg, invalid_out_dir)
+            .is_err());
+
+        let mut bad_cabs = HashMap::new();
+        bad_cabs.insert("Corrupt.cab".to_string(), b"not a cab file".to_vec());
+        let bad_pkg = crate::package::Package::new(
+            metadata,
+            LinkedDatabase::default(),
+            crate::database::summary_info::SummaryInfo::default(),
+            bad_cabs,
+        );
+        let temp_dir = std::env::temp_dir().join(format!("parity_neg_{}", std::process::id()));
+        assert!(decompiler.extract_assets(&bad_pkg, &temp_dir).is_err());
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }

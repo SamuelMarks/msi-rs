@@ -101,6 +101,8 @@ pub struct HarvestPayloadOptions {
     pub output_dir: Option<std::path::PathBuf>,
     /// Optional offline cache directory to inject under `cache/`.
     pub include_cache: Option<std::path::PathBuf>,
+    /// Whether to include `.msi` packages in harvested payload (default: false).
+    pub include_msi: bool,
 }
 
 impl Default for HarvestPayloadOptions {
@@ -124,6 +126,7 @@ impl HarvestPayloadOptions {
             manifest_file: None,
             output_dir: None,
             include_cache: None,
+            include_msi: false,
         }
     }
 }
@@ -142,7 +145,7 @@ pub struct HarvestPayloadResult {
 }
 
 /// `WiX` Asset and Metadata Harvester generating `.wxs` source fragments from disk assets and registries.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Harvester {
     /// File extensions to exclude from harvesting.
     excluded_extensions: Vec<String>,
@@ -158,25 +161,107 @@ pub struct Harvester {
     secondary_groups: Vec<(String, String)>,
     /// Whether files captured by secondary component groups should be excluded from primary component group.
     secondary_exclusive: bool,
+    /// Whether `.msi` files should be included in harvesting (default: false).
+    include_msi: bool,
+    /// Root namespace GUID for deterministic RFC 4122 v5 component GUIDs.
+    root_namespace_guid: [u8; 16],
+}
+
+impl Default for Harvester {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Harvester {
-    /// Creates a new [`Harvester`] instance.
+    /// Creates a new [`Harvester`] instance with standard default exclusion filters.
     ///
     /// # Returns
     ///
     /// A new [`Harvester`].
     #[must_use]
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
-            excluded_extensions: Vec::new(),
-            excluded_patterns: Vec::new(),
+            excluded_extensions: vec![
+                "pyc".to_string(),
+                "pyo".to_string(),
+                "pyd".to_string(),
+                "swp".to_string(),
+                "tmp".to_string(),
+                "bak".to_string(),
+            ],
+            excluded_patterns: vec![
+                ".git".to_string(),
+                ".git/*".to_string(),
+                "**/.git/**".to_string(),
+                "tests_tmp".to_string(),
+                "tests_tmp/*".to_string(),
+                "**/tests_tmp/**".to_string(),
+                "__pycache__".to_string(),
+                "__pycache__/*".to_string(),
+                "**/__pycache__/**".to_string(),
+                ".DS_Store".to_string(),
+                "Thumbs.db".to_string(),
+            ],
             disk_rules: Vec::new(),
             default_disk_id: 1,
             split_size: None,
             secondary_groups: Vec::new(),
             secondary_exclusive: true,
+            include_msi: false,
+            root_namespace_guid: crate::database::tables::types::LIBSCRIPT_ROOT_NAMESPACE_GUID,
         }
+    }
+
+    /// Sets whether `.msi` files are included during harvesting (default: false).
+    ///
+    /// # Arguments
+    ///
+    /// * `include` - If true, `.msi` files are harvested; otherwise excluded.
+    pub const fn set_include_msi(&mut self, include: bool) {
+        self.include_msi = include;
+    }
+
+    /// Sets the root namespace GUID for RFC 4122 v5 component GUID generation.
+    ///
+    /// # Arguments
+    ///
+    /// * `guid` - 16-byte root namespace UUID.
+    pub const fn set_root_namespace_guid(&mut self, guid: [u8; 16]) {
+        self.root_namespace_guid = guid;
+    }
+
+    /// Sets the root namespace GUID from a formatted string (with or without braces).
+    ///
+    /// # Arguments
+    ///
+    /// * `guid_str` - Formatted GUID string (e.g. `6ba7b810-9dad-11d1-80b4-00c04fd430c8`).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::Error::Validation`] if parsing fails.
+    pub fn set_root_namespace_guid_str(&mut self, guid_str: &str) -> Result<()> {
+        let clean = guid_str
+            .trim_matches('{')
+            .trim_matches('}')
+            .replace('-', "");
+        if clean.len() != 32 {
+            return Err(crate::error::Error::Validation {
+                element: "Harvester".to_string(),
+                reason: format!("invalid GUID length: {}", clean.len()),
+            });
+        }
+        let mut bytes = [0u8; 16];
+        for i in 0..16 {
+            bytes[i] = u8::from_str_radix(&clean[i * 2..i * 2 + 2], 16).map_err(|e| {
+                crate::error::Error::Validation {
+                    element: "Harvester".to_string(),
+                    reason: format!("invalid hex character in GUID: {e}"),
+                }
+            })?;
+        }
+        self.root_namespace_guid = bytes;
+        Ok(())
     }
 
     /// Sets the default Media `DiskId` for non-matching files (default: 1).
@@ -368,7 +453,7 @@ impl Harvester {
         &self,
         root_path: &Path,
         current_path: &Path,
-        parent_dir_id: &str,
+        _parent_dir_id: &str,
         counter: &mut usize,
         tracker: &mut SplitTracker,
         xml: &mut String,
@@ -409,6 +494,9 @@ impl Harvester {
                     .unwrap_or_default()
                     .to_string_lossy()
                     .to_lowercase();
+                if ext == "msi" && !self.include_msi {
+                    continue;
+                }
                 if !self.excluded_extensions.contains(&ext) {
                     files.push(entry);
                 }
@@ -432,7 +520,7 @@ impl Harvester {
             let file_id = crate::database::tables::types::sanitize_identifier_length(format!(
                 "fil_{sanitized_path}"
             ));
-            let guid = ComponentGuid::generate(parent_dir_id, &comp_id);
+            let guid = ComponentGuid::generate_rfc4122_v5(&self.root_namespace_guid, &norm_rel);
             let short_name = make_8_3_name(&file_name);
 
             let mut disk_id = self.default_disk_id;
@@ -587,6 +675,9 @@ impl Harvester {
                     .unwrap_or_default()
                     .to_string_lossy()
                     .to_lowercase();
+                if ext == "msi" && !self.include_msi {
+                    continue;
+                }
                 if !self.excluded_extensions.contains(&ext) {
                     paths.push(norm_rel);
                 }
@@ -666,9 +757,22 @@ impl Harvester {
         root_path: &Path,
         options: &HarvestPayloadOptions,
     ) -> Result<HarvestPayloadResult> {
+        let mut h = self.clone();
+        if options.include_msi {
+            h.set_include_msi(true);
+        }
+        if options.include_cache.is_none()
+            && h.disk_rules.iter().all(|(p, _)| !p.contains("cache"))
+            && h.secondary_groups.iter().all(|(_, p)| !p.contains("cache"))
+        {
+            h.add_exclude_pattern("cache");
+            h.add_exclude_pattern("cache/*");
+            h.add_exclude_pattern("**/cache/**");
+        }
+
         // 1. Generate WiX fragment XML
         let xml =
-            self.harvest_directory(root_path, &options.component_group, &options.directory_ref)?;
+            h.harvest_directory(root_path, &options.component_group, &options.directory_ref)?;
 
         // 2. Write fragment if requested
         if let Some(ref frag_path) = options.wix_fragment {
@@ -677,12 +781,12 @@ impl Harvester {
         }
 
         // 3. Generate and write manifest if requested
-        let mut manifest = self.generate_manifest(root_path).unwrap_or_default();
+        let mut manifest = h.generate_manifest(root_path).unwrap_or_default();
 
         // 4. Ingest cache if requested
         if let Some(ref cache_dir) = options.include_cache {
             if cache_dir.is_dir() {
-                let cache_paths = self.generate_manifest(cache_dir)?;
+                let cache_paths = h.generate_manifest(cache_dir)?;
                 for cp in cache_paths {
                     manifest.push(format!("cache/{cp}"));
                 }
@@ -700,11 +804,11 @@ impl Harvester {
 
         // 5. Copy payload if output_dir requested
         if let Some(ref out_dir) = options.output_dir {
-            self.copy_payload(root_path, out_dir)?;
+            h.copy_payload(root_path, out_dir)?;
             if let Some(ref cache_dir) = options.include_cache {
                 if cache_dir.is_dir() {
                     let cache_out = out_dir.join("cache");
-                    self.copy_payload(cache_dir, &cache_out)?;
+                    h.copy_payload(cache_dir, &cache_out)?;
                 }
             }
         }
@@ -1331,6 +1435,7 @@ LineWithoutEquals
             manifest_file: Some(manifest_file.clone()),
             output_dir: Some(out_dir.clone()),
             include_cache: Some(cache_dir),
+            include_msi: false,
         };
 
         let res = harvester.harvest_payload(&src_dir, &options);
@@ -1356,6 +1461,9 @@ LineWithoutEquals
     /// Tests `HarvestPayloadOptions` and `HarvestPayloadResult` derive implementations.
     #[test]
     fn test_harvest_options_and_result_derives() {
+        let mut harvester = Harvester::new();
+        harvester.set_root_namespace_guid([1u8; 16]);
+
         let def_opts = HarvestPayloadOptions::default();
         assert_eq!(def_opts, HarvestPayloadOptions::new());
         assert_eq!(def_opts, def_opts.clone());
@@ -1415,6 +1523,7 @@ LineWithoutEquals
         assert!(fs::write(src_dir.join("file1.txt"), b"12345678901234567890").is_ok());
         assert!(fs::write(src_dir.join("file2.bak"), b"2").is_ok());
         assert!(fs::write(src_dir.join("ignored.tmp"), b"3").is_ok());
+        assert!(fs::write(src_dir.join("skip.msi"), b"msi data").is_ok());
 
         let mut harvester = Harvester::new();
         harvester.exclude_extension("bak");
@@ -1422,6 +1531,35 @@ LineWithoutEquals
 
         let paths = harvester.generate_manifest(&src_dir).unwrap_or_default();
         assert_eq!(paths, vec!["file1.txt"]);
+
+        let mut harvester_inc_msi = harvester.clone();
+        harvester_inc_msi.set_include_msi(true);
+        let paths_with_msi = harvester_inc_msi
+            .generate_manifest(&src_dir)
+            .unwrap_or_default();
+        assert_eq!(paths_with_msi, vec!["file1.txt", "skip.msi"]);
+
+        // Test disk rules and secondary groups cache closures in harvest_payload
+        let mut h_cache_rules = Harvester::new();
+        h_cache_rules.add_disk_rule("other_dir/*", 1);
+        h_cache_rules.add_secondary_group("Group1", "other_dir/**");
+        let opts = HarvestPayloadOptions {
+            include_msi: true,
+            ..HarvestPayloadOptions::new()
+        };
+        let res1 = h_cache_rules.harvest_payload(&src_dir, &opts);
+        assert!(res1.is_ok());
+
+        let mut h_cache_rules2 = Harvester::new();
+        h_cache_rules2.add_disk_rule("has_cache_rule/*", 1);
+        let res2 = h_cache_rules2.harvest_payload(&src_dir, &opts);
+        assert!(res2.is_ok());
+
+        let mut h_cache_rules3 = Harvester::new();
+        h_cache_rules3.add_disk_rule("other_dir/*", 1);
+        h_cache_rules3.add_secondary_group("GroupCache", "cache_secondary/**");
+        let res3 = h_cache_rules3.harvest_payload(&src_dir, &opts);
+        assert!(res3.is_ok());
 
         // Test non-directory in generate_manifest (Line 544: !current_path.is_dir())
         let non_dir_paths = harvester
@@ -1701,6 +1839,139 @@ LineWithoutEquals
             );
             let _ = fs::remove_dir_all(&cache_dir);
         }
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    /// Tests `LibScript` parity: RFC 4122 v5 GUID generation, default artifact exclusions, `include_msi` toggle, and deep path ID hashing.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_harvest_libscript_parity_and_guid_v5() {
+        use crate::database::tables::types::LIBSCRIPT_ROOT_NAMESPACE_GUID;
+
+        // 1. Validate RFC 4122 v5 GUID generation
+        let guid1 = ComponentGuid::generate_rfc4122_v5(
+            &LIBSCRIPT_ROOT_NAMESPACE_GUID,
+            "libscript/bin/app.sh",
+        );
+        let guid2 = ComponentGuid::generate_rfc4122_v5(
+            &LIBSCRIPT_ROOT_NAMESPACE_GUID,
+            "libscript/bin/app.sh",
+        );
+        let guid3 = ComponentGuid::generate_rfc4122_v5(
+            &LIBSCRIPT_ROOT_NAMESPACE_GUID,
+            "libscript/bin/other.sh",
+        );
+
+        assert_eq!(
+            guid1, guid2,
+            "RFC 4122 v5 GUID generation must be deterministic"
+        );
+        assert_ne!(
+            guid1, guid3,
+            "Different resource names must produce different GUIDs"
+        );
+        assert_eq!(guid1.as_str().len(), 38);
+        assert!(guid1.as_str().starts_with('{'));
+        assert!(guid1.as_str().ends_with('}'));
+        // Character at index 15 must be '5' (version 5: {XXXXXXXX-XXXX-5XXX-...)
+        assert_eq!(&guid1.as_str()[15..16], "5");
+        // Character at index 20 must be RFC variant (8, 9, A, or B)
+        let var_ch = &guid1.as_str()[20..21];
+        assert!(["8", "9", "A", "B"].contains(&var_ch));
+
+        // 2. Test Harvester root namespace GUID configuration
+        let mut harvester = Harvester::new();
+        assert!(harvester
+            .set_root_namespace_guid_str("{6ba7b810-9dad-11d1-80b4-00c04fd430c8}")
+            .is_ok());
+        assert!(harvester
+            .set_root_namespace_guid_str("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+            .is_ok());
+        assert!(harvester.set_root_namespace_guid_str("too-short").is_err());
+        assert!(harvester
+            .set_root_namespace_guid_str("zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz")
+            .is_err());
+
+        // 3. Test default exclusion filtering for artifacts (.git, tests_tmp, __pycache__, .DS_Store, Thumbs.db, .pyc, .tmp, .msi)
+        let temp_dir =
+            std::env::temp_dir().join(format!("msi_harvest_parity_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&temp_dir);
+        assert!(fs::create_dir_all(temp_dir.join(".git")).is_ok());
+        assert!(fs::create_dir_all(temp_dir.join("tests_tmp")).is_ok());
+        assert!(fs::create_dir_all(temp_dir.join("sub/__pycache__")).is_ok());
+        assert!(fs::create_dir_all(temp_dir.join("sub/very/deep/nested/path/structure/that/exceeds/the/seventy/two/character/wix/identifier/limit")).is_ok());
+
+        assert!(fs::write(temp_dir.join(".git/HEAD"), b"ref: refs/heads/master").is_ok());
+        assert!(fs::write(temp_dir.join("tests_tmp/test.log"), b"temporary log").is_ok());
+        assert!(fs::write(
+            temp_dir.join("sub/__pycache__/module.cpython-311.pyc"),
+            b"bytecode"
+        )
+        .is_ok());
+        assert!(fs::write(temp_dir.join(".DS_Store"), b"macOS metadata").is_ok());
+        assert!(fs::write(temp_dir.join("Thumbs.db"), b"Windows thumbdb").is_ok());
+        assert!(fs::write(temp_dir.join("scratch.tmp"), b"temp data").is_ok());
+        assert!(fs::write(temp_dir.join("backup.bak"), b"backup data").is_ok());
+        assert!(fs::write(temp_dir.join("payload.msi"), b"nested installer").is_ok());
+        assert!(fs::write(temp_dir.join("app.sh"), b"echo production").is_ok());
+
+        let deep_file = temp_dir.join("sub/very/deep/nested/path/structure/that/exceeds/the/seventy/two/character/wix/identifier/limit/deep_asset.bin");
+        assert!(fs::write(&deep_file, b"deep binary").is_ok());
+
+        // Harvesting with default settings
+        let xml_default = harvester
+            .harvest_directory(&temp_dir, "ParityComponents", "INSTALLFOLDER")
+            .unwrap_or_default();
+
+        // Verify inclusions
+        assert!(xml_default.contains("app.sh"));
+        assert!(xml_default.contains("deep_asset.bin"));
+        assert!(xml_default.contains("<DirectoryRef Id=\"INSTALLFOLDER\">"));
+        assert!(xml_default.contains("<ComponentGroup Id=\"ParityComponents\">"));
+
+        // Verify default exclusions
+        assert!(!xml_default.contains(".git"));
+        assert!(!xml_default.contains("tests_tmp"));
+        assert!(!xml_default.contains("__pycache__"));
+        assert!(!xml_default.contains(".DS_Store"));
+        assert!(!xml_default.contains("Thumbs.db"));
+        assert!(!xml_default.contains("scratch.tmp"));
+        assert!(!xml_default.contains("backup.bak"));
+        assert!(
+            !xml_default.contains("payload.msi"),
+            ".msi must be excluded by default"
+        );
+
+        // Verify deep identifier does not exceed 72 characters
+        for line in xml_default.lines() {
+            if line.contains("<Component Id=\"") {
+                let id_start = line.find("<Component Id=\"").unwrap_or(0) + 15;
+                let id_end = line[id_start..].find('"').unwrap_or(0) + id_start;
+                let comp_id = &line[id_start..id_end];
+                assert!(
+                    comp_id.len() <= 72,
+                    "Component ID exceeds 72 chars: {comp_id}"
+                );
+            }
+            if line.contains("<File Id=\"") {
+                let id_start = line.find("<File Id=\"").unwrap_or(0) + 10;
+                let id_end = line[id_start..].find('"').unwrap_or(0) + id_start;
+                let file_id = &line[id_start..id_end];
+                assert!(file_id.len() <= 72, "File ID exceeds 72 chars: {file_id}");
+            }
+        }
+
+        // 4. Test include_msi toggle
+        let mut harvester_msi = harvester.clone();
+        harvester_msi.set_include_msi(true);
+        let xml_with_msi = harvester_msi
+            .harvest_directory(&temp_dir, "MsiComponents", "INSTALLFOLDER")
+            .unwrap_or_default();
+        assert!(
+            xml_with_msi.contains("payload.msi"),
+            "payload.msi must be included when include_msi is true"
+        );
 
         let _ = fs::remove_dir_all(&temp_dir);
     }

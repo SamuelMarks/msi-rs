@@ -338,18 +338,12 @@ mod tests {
         let temp_file = std::env::temp_dir().join("test_lib.wixlib");
         for save_res in [
             lib.save(&temp_file),
-            Err(Error::Validation {
-                element: "WixLibrary".to_string(),
-                reason: "simulated".to_string(),
-            }),
+            lib.save(Path::new("/nonexistent_directory/test_lib.wixlib")),
         ] {
             if save_res.is_ok() {
                 for load_res in [
                     WixLibrary::open(&temp_file),
-                    Err(Error::Validation {
-                        element: "WixLibrary".to_string(),
-                        reason: "simulated".to_string(),
-                    }),
+                    WixLibrary::open(Path::new("/nonexistent_directory/test_lib.wixlib")),
                 ] {
                     if let Ok(loaded) = load_res {
                         assert_eq!(loaded.objects.len(), 2);

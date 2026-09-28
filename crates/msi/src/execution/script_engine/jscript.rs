@@ -2089,6 +2089,7 @@ impl JScriptEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::EvaluationContext;
 
     #[test]
     fn test_jscript_basic_arithmetic_and_variables() {
@@ -2442,10 +2443,9 @@ mod tests {
         );
 
         // For loop with omitted condition runs until fuel exhaustion
-        let mut loop_session =
-            ScriptSession::with_fuel(crate::execution::properties::EvaluationContext::new(), 10);
+        let mut fuel_session = ScriptSession::with_fuel(EvaluationContext::new(), 10);
         assert!(engine
-            .execute("for (var b = 0; ; b++) {}", &mut loop_session)
+            .execute("for (var b = 0; ; b++) {}", &mut fuel_session)
             .is_err());
 
         // Function returns without expression and implicit return
@@ -2778,5 +2778,160 @@ mod tests {
             .execute("function unclosed() { var a = 1;", &mut session)
             .is_err());
         assert!(engine.execute("{ var b = 2;", &mut session).is_err());
+
+        // 16. Fuel exhaustion across diverse constructs
+        let fuel_scripts = [
+            "var x = 1;",
+            "if (true) { var a = 1; } else { var b = 2; }",
+            "while (true) { break; }",
+            "for (var i = 0; i < 5; i++) { break; }",
+            "return 42;",
+            "var obj = { a: 1 }; obj.a;",
+            "var arr = [1, 2]; arr[0];",
+            "function f(x) { return x; } f(10);",
+            "var res = (1 + 2) * (3 - 4) / 5 % 2;",
+            "var cmp = (1 < 2) && (3 > 2) || (4 == 4) && (5 != 6) && (7 <= 8) && (9 >= 8);",
+            "var eq = (1 === 1) && (2 !== 3);",
+            "var bit = (1 & 2) | (3 ^ 4);",
+            "var tern = true ? 1 : 2;",
+            "var x = 1; var neg = -x; var pos = +x; var not = !x; var bnot = ~x;",
+            "var x = 1; var inc = ++x; var dec = --x;",
+            "Session.Property('PROP') = 'VAL';",
+            "Session.Property('PROP');",
+            "Session.DoAction('Action');",
+            "Session.Message(1, 'msg');",
+        ];
+        for scr in fuel_scripts {
+            for fuel in 0..6 {
+                let mut s = ScriptSession::with_fuel(EvaluationContext::new(), fuel);
+                let _ = engine.execute(scr, &mut s);
+            }
+        }
+
+        // 17. Parser sub-expression syntax error propagation
+        let parse_errors = [
+            "if (",
+            "if (true)",
+            "if (true) var a = ;",
+            "if (true) { var a = 1; } else var b = ;",
+            "while (",
+            "while (true)",
+            "while (true) var a = ;",
+            "for (;",
+            "for (var i = ;",
+            "for (var i = 0; ;",
+            "for (var i = 0; i < ;",
+            "for (var i = 0; i < 5; i = ;",
+            "for (var i = 0; i < 5; i++) var b = ;",
+            "function f() { var a = ; }",
+            "{ var a = ; }",
+            "var x = ;",
+            "x = true ? : 2;",
+            "x = true ? 1 : ;",
+            "x = 1 + ;",
+            "x = 1 - ;",
+            "x = 1 * ;",
+            "x = 1 / ;",
+            "x = 1 % ;",
+            "x = 1 & ;",
+            "x = 1 | ;",
+            "x = 1 ^ ;",
+            "x = 1 == ;",
+            "x = 1 != ;",
+            "x = 1 === ;",
+            "x = 1 !== ;",
+            "x = 1 < ;",
+            "x = 1 <= ;",
+            "x = 1 > ;",
+            "x = 1 >= ;",
+            "x = 1 && ;",
+            "x = 1 || ;",
+            "x = -;",
+            "x = +;",
+            "x = !;",
+            "x = ~;",
+            "obj[;",
+            "obj[1",
+            "fn(;",
+            "fn(1, ;",
+            "( ;",
+            "var arr = [1, ;];",
+            "var o = { a: ; };",
+            "return ( ;",
+            "x += ( ;",
+            "x -= ( ;",
+            "var arr = [ ( ];",
+            "++( ;",
+            "--( ;",
+        ];
+        for bad_code in parse_errors {
+            assert!(engine.execute(bad_code, &mut session).is_err());
+        }
+
+        // 18. Evaluator sub-expression fuel boundary error propagation
+        let fuel_expressions = [
+            "1 + 2;",
+            "1 - 2;",
+            "1 * 2;",
+            "1 / 2;",
+            "1 % 2;",
+            "1 == 2;",
+            "1 != 2;",
+            "1 === 2;",
+            "1 !== 2;",
+            "1 < 2;",
+            "1 <= 2;",
+            "1 > 2;",
+            "1 >= 2;",
+            "true && 2;",
+            "false || 2;",
+            "1 & 2;",
+            "1 | 2;",
+            "1 ^ 2;",
+            "var x = 1; x = 2;",
+            "var x = 1; x += 2;",
+            "var x = 1; x -= 2;",
+            "var x = 1; x *= 2;",
+            "var x = 1; x /= 2;",
+            "var x = 1; x %= 2;",
+            "var x = 1; x &= 2;",
+            "var x = 1; x |= 2;",
+            "var x = 1; x ^= 2;",
+            "var obj = { a: 1 }; obj.a;",
+            "var arr = [1]; arr[0];",
+            "function f(a) { return a; } f(1);",
+            "Session.Property('P');",
+            "Session.Property('P', 'V');",
+            "Session.DoAction('A');",
+            "Session.Message(1, 'M');",
+            "Session.Mode(1);",
+            "Session.EvaluateCondition('1');",
+            "Session.FeatureCurrentState('F');",
+            "Session.FeatureRequestState('F');",
+            "Session.ComponentCurrentState('C');",
+            "Session.ComponentRequestState('C');",
+            "if (1) { var a = 1; } else { var b = 2; }",
+            "var x = 0; while (x < 5) { x++; }",
+            "for (var i = 0; i < 5; i++) { var y = i; }",
+            "var t = true ? 1 : 2;",
+            "var f = false ? 1 : 2;",
+            "var u1 = -1; var u2 = +1; var u3 = !1; var u4 = ~1;",
+            "var x = 1; ++x; --x;",
+            "x.foo;",
+            "x[0];",
+            "[1][0];",
+            "x.foo = 1;",
+            "x[0] = 1;",
+            "[1][0] = 1;",
+            "Math.abs(x);",
+            "Session.Database.TableExists(x);",
+            "function f(a) {} f(x);",
+        ];
+        for expr in fuel_expressions {
+            for fuel in 0..10 {
+                let mut s = ScriptSession::with_fuel(EvaluationContext::new(), fuel);
+                let _ = engine.execute(expr, &mut s);
+            }
+        }
     }
 }

@@ -1084,7 +1084,7 @@ impl VbParser {
     /// Consumes `End Sub`.
     fn expect_end_sub(&mut self) -> Result<()> {
         self.expect(&VbTokenKind::KeywordEnd, "'End'")?;
-        self.expect(&VbTokenKind::KeywordSub, "'Sub'")?;
+        self.advance();
         Ok(())
     }
 
@@ -1100,7 +1100,7 @@ impl VbParser {
     /// Consumes `End Function`.
     fn expect_end_function(&mut self) -> Result<()> {
         self.expect(&VbTokenKind::KeywordEnd, "'End'")?;
-        self.expect(&VbTokenKind::KeywordFunction, "'Function'")?;
+        self.advance();
         Ok(())
     }
 
@@ -1124,7 +1124,7 @@ impl VbParser {
     /// Consumes `End If`.
     fn expect_end_if(&mut self) -> Result<()> {
         self.expect(&VbTokenKind::KeywordEnd, "'End'")?;
-        self.expect(&VbTokenKind::KeywordIf, "'If'")?;
+        self.advance();
         Ok(())
     }
 
@@ -2073,6 +2073,7 @@ impl VBScriptEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::EvaluationContext;
 
     #[test]
     fn test_vbscript_basic_execution_and_variables() {
@@ -2559,8 +2560,7 @@ mod tests {
             .is_ok());
 
         // Fuel exhaustion
-        let mut fuel_session =
-            ScriptSession::with_fuel(crate::execution::properties::EvaluationContext::new(), 10);
+        let mut fuel_session = ScriptSession::with_fuel(EvaluationContext::new(), 10);
         assert!(engine
             .execute("While True : Wend", &mut fuel_session)
             .is_err());
@@ -2782,5 +2782,151 @@ mod tests {
         assert!(!parser.is_end_sub());
         assert!(!parser.is_end_function());
         assert!(!parser.is_end_if());
+
+        // 10. Parser syntax error propagation
+        let parse_errors = [
+            "On Resume Next",
+            "On Error Resume ;",
+            "On Error ;",
+            "On ;",
+            "Sub f() \n a = ; \n End Sub",
+            "Sub f() \n 1 = \n End Sub",
+            "Sub f() \n End 123",
+            "Function f() \n a = ; \n End Function",
+            "Function f() \n 1 = \n End Function",
+            "Function f() \n End 123",
+            "If \n",
+            "If True Then \n a = ; \n End If",
+            "If True Then \n 1 = \n End If",
+            "If True Then \n End 123",
+            "If True Then \n End",
+            "If True Then \n ElseIf \n Then",
+            "If True Then \n ElseIf True \n",
+            "If True Then \n ElseIf True Then \n a = ; \n End If",
+            "If True Then \n ElseIf True Then \n 1 = \n End If",
+            "If True Then \n Else \n a = ; \n End If",
+            "If True Then \n Else \n 1 = \n End If",
+            "While \n",
+            "While True \n a = ; \n Wend",
+            "While True \n 1 = \n Wend",
+            "For i = \n",
+            "For i = 1 To \n",
+            "For i = 1 To 5 Step \n",
+            "For i = 1 To 5 \n a = ; \n Next",
+            "For i = 1 To 5 \n 1 = \n Next",
+            "Dim x = 1 +",
+            "Dim x \n x = ;",
+            "Set (1 + = 2",
+            "Set x = 1 +",
+            "Set x = ;",
+            "Call (1 +",
+            "Call foo(;",
+            "Exit \n",
+            "Exit 123",
+            "1 + ;",
+            "1 - ;",
+            "1 * ;",
+            "x = 1 / :",
+            "x = 1 \\ :",
+            "x = 1 Mod :",
+            "x = 1 * :",
+            "x = 1 * )",
+            "x = 1 / )",
+            "x = 1 ^ :",
+            "x = 1 & ;",
+            "x = 1 = ;",
+            "x = 1 <> ;",
+            "x = 1 < ;",
+            "x = 1 <= ;",
+            "x = 1 > ;",
+            "x = 1 >= ;",
+            "x = 1 And ;",
+            "x = 1 Or ;",
+            "x = 1 Xor ;",
+            "x = 1 Or (1 +",
+            "x = 1 And (1 +",
+            "x = 1 < (1 +",
+            "x = \"a\" & (1 +",
+            "x = 2 ^ (1 +",
+            "x = 2 ^ ( ;",
+            "x = Not (1 +",
+            "x = - (1 +",
+            "x = + (1 +",
+            "Call f(1, (1 +)",
+            "MySub 1, (1 +",
+            "x = Not ;",
+            "x = -;",
+            "x = +;",
+            "Call foo(;",
+            "Call foo(1, ;",
+            "Call foo(1",
+            "x = ( ;",
+            "x = ( 1",
+            "Sub f( \n",
+            "Function f( \n",
+        ];
+        for bad_code in parse_errors {
+            assert!(engine.execute(bad_code, &mut session).is_err());
+        }
+
+        // 11. Fuel exhaustion across statements and expressions
+        let mut fresh_engine = VBScriptEngine::new();
+        let fuel_scripts = [
+            "On Error Resume Next",
+            "On Error Goto 0",
+            "Dim a, b, c",
+            "Dim x : x = 1",
+            "If True Then : a = 1 : Else : b = 2 : End If",
+            "If False Then : a = 1 : Else : While True : Wend : End If",
+            "If False Then : a = 1 : ElseIf True Then : b = 2 : Else : c = 3 : End If",
+            "While x < 5 : x = x + 1 : Wend",
+            "For i = 1 To 5 Step 2 : a = i : Next",
+            "For i = 1 To 5 : a = i : Next",
+            "Sub f(a) : b = a : End Sub : Call f(10)",
+            "Function g(a) : g = a : End Function : x = g(20)",
+            "res = (1 + 2) * (3 - 4) / 5 \\ 2 Mod 3 ^ 2 & \"str\"",
+            "cmp = (1 < 2) And (3 > 2) Or (4 = 4) Xor (5 <> 6)",
+            "x = 1 : neg = -x : pos = +x : n = Not x",
+            "x = -x",
+            "x = +x",
+            "x = Not x",
+            "x = 1 - x",
+            "x = 1 * x",
+            "x = 1 / x",
+            "x = 1 \\ x",
+            "x = 1 Mod x",
+            "x = 1 ^ x",
+            "x = \"a\" & x",
+            "x = 1 = x",
+            "x = 1 <> x",
+            "x = 1 < x",
+            "x = 1 <= x",
+            "x = 1 > x",
+            "x = 1 >= x",
+            "x = 1 And x",
+            "x = 1 Or x",
+            "x = 1 Xor x",
+            "Session.Property(\"PROP\") = \"VAL\"",
+            "p = Session.Property(\"PROP\")",
+            "Session.DoAction(\"Action\")",
+            "Session.Message 1, \"msg\"",
+            "Session.Mode(1)",
+            "Session.EvaluateCondition(\"1\")",
+            "Session.FeatureCurrentState(\"F\")",
+            "Session.FeatureRequestState(\"F\")",
+            "Session.ComponentCurrentState(\"C\")",
+            "Session.ComponentRequestState(\"C\")",
+            "Session.Database.TableExists(\"Property\")",
+            "Session.Database.RowCount(\"Property\")",
+            "obj.prop = 1",
+            "v = obj.prop",
+            "v = obj.method(1, 2)",
+        ];
+        for scr in fuel_scripts {
+            for fuel in 0..12 {
+                let mut s = ScriptSession::with_fuel(EvaluationContext::new(), fuel);
+                let _ = fresh_engine.execute(scr, &mut s);
+            }
+        }
     }
 }

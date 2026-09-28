@@ -276,6 +276,19 @@ pub fn text_style_schema() -> TableSchema {
         .with_column(ColumnDef::new("StyleBits", DataType::Short).nullable())
 }
 
+/// Creates official schema for `WixVariable` table.
+///
+/// # Returns
+///
+/// [`TableSchema`] for `WixVariable`.
+#[must_use]
+pub fn wix_variable_schema() -> TableSchema {
+    TableSchema::new("WixVariable")
+        .with_column(ColumnDef::new("WixVariable", DataType::String { max_len: 72 }).primary_key())
+        .with_column(ColumnDef::new("Value", DataType::String { max_len: 0 }).nullable())
+        .with_column(ColumnDef::new("Overridable", DataType::Short).nullable())
+}
+
 /// Creates official schema for `RadioButton` table.
 ///
 /// # Returns
@@ -519,6 +532,7 @@ mod tests {
         assert_eq!(control_event_schema().name, "ControlEvent");
         assert_eq!(event_mapping_schema().name, "EventMapping");
         assert_eq!(text_style_schema().name, "TextStyle");
+        assert_eq!(wix_variable_schema().name, "WixVariable");
         assert_eq!(radio_button_schema().name, "RadioButton");
         assert_eq!(check_box_schema().name, "CheckBox");
         assert_eq!(combo_box_schema().name, "ComboBox");

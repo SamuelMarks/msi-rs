@@ -965,7 +965,31 @@ impl ManifestMsiSynthesizer {
         let count = BUILD_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let temp_dir =
             std::env::temp_dir().join(format!("msi_syn_{}_{}", std::process::id(), count));
-        let _ = std::fs::create_dir_all(&temp_dir);
+        self.build_msi_in_dir(out_path, &temp_dir, &xml_str)
+    }
+
+    /// Synthesizes and builds the `.msi` package in the specified directory.
+    ///
+    /// # Arguments
+    ///
+    /// * `out_path` - Target destination `.msi` file path.
+    /// * `temp_dir` - Directory for temporary compilation files.
+    /// * `xml_str` - Synthesized `WiX` XML content.
+    ///
+    /// # Returns
+    ///
+    /// `PathBuf` to generated `.msi` package.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on compilation, linking, or filesystem error.
+    pub fn build_msi_in_dir(
+        &self,
+        out_path: &Path,
+        temp_dir: &Path,
+        xml_str: &str,
+    ) -> Result<PathBuf> {
+        let _ = std::fs::create_dir_all(temp_dir);
 
         let main_wxs = temp_dir.join("SynthesizedProduct.wxs");
         std::fs::write(&main_wxs, xml_str.as_bytes())?;
@@ -984,7 +1008,7 @@ impl ManifestMsiSynthesizer {
         };
 
         let res = build_opts.execute();
-        let _ = std::fs::remove_dir_all(&temp_dir);
+        let _ = std::fs::remove_dir_all(temp_dir);
         res
     }
 }
@@ -1561,5 +1585,22 @@ mod tests {
 
         // Invalid manifest in build_msi (Line 964)
         assert!(synth_bad_manifest.build_msi(Path::new("out.msi")).is_err());
+    }
+
+    /// Tests `build_msi_in_dir` I/O write error when creating the intermediate product `WiX` source file fails.
+    #[test]
+    fn test_manifest_msi_synthesizer_build_msi_write_error() {
+        let pkg_json = r#"{
+            "name": "writeerr",
+            "title": "Write Err",
+            "version": "1.0.0",
+            "manufacturer": "Acme",
+            "upgrade_code": "{99999999-9999-9999-9999-999999999999}",
+            "target_folder": "WriteErr"
+        }"#;
+        let synth = ManifestMsiSynthesizer::new(pkg_json);
+        let invalid_dir = Path::new("/dev/null/invalid_msi_dir");
+        let res = synth.build_msi_in_dir(Path::new("out.msi"), invalid_dir, "<xml/>");
+        assert!(res.is_err());
     }
 }

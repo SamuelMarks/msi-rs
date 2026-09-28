@@ -144,6 +144,21 @@ impl CandleOptions {
                     }
                     opts.arch = Some(args[idx].clone());
                     idx += 1;
+                } else if flag.eq_ignore_ascii_case("d") || flag.eq_ignore_ascii_case("define") {
+                    idx += 1;
+                    if idx >= args.len() || is_flag(&args[idx]) {
+                        return Err(Error::WixCompiler {
+                            element: "candle".to_string(),
+                            message: "missing argument value for '-d'".to_string(),
+                        });
+                    }
+                    let def_str = &args[idx];
+                    if let Some((k, v)) = def_str.split_once('=') {
+                        opts.defines.push((k.to_string(), v.to_string()));
+                    } else {
+                        opts.defines.push((def_str.clone(), "1".to_string()));
+                    }
+                    idx += 1;
                 } else if let Some(def) = flag.strip_prefix(['d', 'D']) {
                     if let Some((k, v)) = def.split_once('=') {
                         opts.defines.push((k.to_string(), v.to_string()));
@@ -153,7 +168,7 @@ impl CandleOptions {
                     idx += 1;
                 } else if lower == "ext" {
                     idx += 1;
-                    if idx >= args.len() {
+                    if idx >= args.len() || is_flag(&args[idx]) {
                         return Err(Error::WixCompiler {
                             element: "candle".to_string(),
                             message: "missing argument value for '-ext'".to_string(),
@@ -580,6 +595,20 @@ impl LightOptions {
                     };
                     opts.drop_unrealized_directories.push(dr_str.to_string());
                     idx += 1;
+                } else if flag.eq_ignore_ascii_case("d") || flag.eq_ignore_ascii_case("define") {
+                    idx += 1;
+                    if idx >= args.len() || is_flag(&args[idx]) {
+                        return Err(Error::WixLinker {
+                            message: "missing argument value for '-d'".to_string(),
+                        });
+                    }
+                    let def_str = &args[idx];
+                    if let Some((k, v)) = def_str.split_once('=') {
+                        opts.defines.push((k.to_string(), v.to_string()));
+                    } else {
+                        opts.defines.push((def_str.clone(), "1".to_string()));
+                    }
+                    idx += 1;
                 } else if let Some(def_str) = flag.strip_prefix(['d', 'D']) {
                     if let Some((k, v)) = def_str.split_once('=') {
                         opts.defines.push((k.to_string(), v.to_string()));
@@ -603,7 +632,7 @@ impl LightOptions {
                     idx += 1;
                 } else if lower == "ext" {
                     idx += 1;
-                    if idx >= args.len() {
+                    if idx >= args.len() || is_flag(&args[idx]) {
                         return Err(Error::WixLinker {
                             message: "missing argument value for '-ext'".to_string(),
                         });
@@ -808,6 +837,10 @@ pub struct WixBuildOptions {
     pub include_dirs: Vec<PathBuf>,
     /// Suppress ICE validation.
     pub suppress_ice: bool,
+    /// Specific ICE validation rules to selectively run (`-ice:<ICE>`).
+    pub selected_ice: Vec<String>,
+    /// Specific ICE validation rules to suppress (`-sice:<ICE>`).
+    pub suppressed_ice: Vec<String>,
     /// Source files (`.wxs`, `.wxl`, etc.).
     pub sources: Vec<PathBuf>,
 }
@@ -836,7 +869,7 @@ impl WixBuildOptions {
     /// # Errors
     ///
     /// Returns [`Error::WixCompiler`] on missing flags or required arguments.
-    #[allow(clippy::branches_sharing_code)]
+    #[allow(clippy::branches_sharing_code, clippy::too_many_lines)]
     pub fn parse(args: &[String]) -> Result<Self> {
         let mut opts = Self::new();
         let mut idx = usize::from(!args.is_empty() && args[0].eq_ignore_ascii_case("build"));
@@ -858,7 +891,7 @@ impl WixBuildOptions {
                     idx += 1;
                 } else if lower == "ext" {
                     idx += 1;
-                    if idx >= args.len() {
+                    if idx >= args.len() || is_flag(&args[idx]) {
                         return Err(Error::WixCompiler {
                             element: "wix".to_string(),
                             message: "missing argument value for '-ext'".to_string(),
@@ -906,6 +939,21 @@ impl WixBuildOptions {
                     }
                     opts.output = Some(PathBuf::from(&args[idx]));
                     idx += 1;
+                } else if flag.eq_ignore_ascii_case("d") || flag.eq_ignore_ascii_case("define") {
+                    idx += 1;
+                    if idx >= args.len() {
+                        return Err(Error::WixCompiler {
+                            element: "wix".to_string(),
+                            message: "missing argument value for '-d'".to_string(),
+                        });
+                    }
+                    let def_str = &args[idx];
+                    if let Some((k, v)) = def_str.split_once('=') {
+                        opts.defines.push((k.to_string(), v.to_string()));
+                    } else {
+                        opts.defines.push((def_str.clone(), "1".to_string()));
+                    }
+                    idx += 1;
                 } else if let Some(def) = flag.strip_prefix(['d', 'D']) {
                     if let Some((k, v)) = def.split_once('=') {
                         opts.defines.push((k.to_string(), v.to_string()));
@@ -915,6 +963,12 @@ impl WixBuildOptions {
                     idx += 1;
                 } else if lower == "sval" || lower == "suppress-validation" {
                     opts.suppress_ice = true;
+                    idx += 1;
+                } else if let Some(ice) = flag.strip_prefix("ice:") {
+                    opts.selected_ice.push(ice.to_string());
+                    idx += 1;
+                } else if let Some(sice) = flag.strip_prefix("sice:") {
+                    opts.suppressed_ice.push(sice.to_string());
                     idx += 1;
                 } else {
                     idx += 1;
@@ -1011,6 +1065,12 @@ impl WixBuildOptions {
         if self.suppress_ice {
             linker.set_suppress_ice(true);
         }
+        for rule in &self.suppressed_ice {
+            linker.suppress_ice(rule);
+        }
+        for rule in &self.selected_ice {
+            linker.select_ice(rule);
+        }
         if let Some(ref c) = self.culture {
             linker.set_cultures(vec![c.clone()]);
         }
@@ -1083,6 +1143,10 @@ mod tests {
             "x64".to_string(),
             "-dAppDef=1".to_string(),
             "-dSimpleDef".to_string(),
+            "-d".to_string(),
+            "SepDef=1".to_string(),
+            "-d".to_string(),
+            "SepFlag".to_string(),
             "-ext".to_string(),
             "WixUIExtension".to_string(),
             format!("-I{}", temp_dir.display()),
@@ -1094,7 +1158,7 @@ mod tests {
         let opts = CandleOptions::parse(&args).unwrap_or_default();
         assert!(opts.nologo);
         assert_eq!(opts.arch.as_deref(), Some("x64"));
-        assert_eq!(opts.defines.len(), 2);
+        assert_eq!(opts.defines.len(), 4);
         assert_eq!(opts.extensions, vec!["WixUIExtension"]);
         assert_eq!(opts.output, Some(out_file.clone()));
         assert_eq!(opts.sources, vec![src_file]);
@@ -1118,6 +1182,8 @@ mod tests {
         assert!(CandleOptions::parse(&["-I".to_string()]).is_err());
         assert!(CandleOptions::parse(&["-out".to_string()]).is_err());
         assert!(CandleOptions::parse(&["-cc".to_string()]).is_err());
+        assert!(CandleOptions::parse(&["-d".to_string()]).is_err());
+        assert!(CandleOptions::parse(&["-d".to_string(), "-arch".to_string()]).is_err());
         assert!(CandleOptions::parse(&["@nonexistent_rsp.txt".to_string()]).is_err());
     }
 
@@ -1302,6 +1368,10 @@ x64
             "-nologo".to_string(),
             "-sval".to_string(),
             "-wx".to_string(),
+            "-d".to_string(),
+            "SepDef=1".to_string(),
+            "-d".to_string(),
+            "SepFlag".to_string(),
             "-ext".to_string(),
             "WixUIExtension".to_string(),
             "-cultures:en-us;de-de".to_string(),
@@ -1347,6 +1417,8 @@ x64
         assert!(LightOptions::parse(&["-b".to_string()]).is_err());
         assert!(LightOptions::parse(&["-bd".to_string()]).is_err());
         assert!(LightOptions::parse(&["-out".to_string()]).is_err());
+        assert!(LightOptions::parse(&["-d".to_string()]).is_err());
+        assert!(LightOptions::parse(&["-d".to_string(), "-out".to_string()]).is_err());
     }
 
     /// Tests `WixBuildOptions` parsing and end-to-end execution.
@@ -1464,9 +1536,40 @@ x64
         assert_eq!(auto_out, src_file.with_extension("msi"));
         let _ = fs::remove_file(&auto_out);
 
+        // Test build with separate -d flag, -sice: and -ice: flags
+        let build_flags_args = vec![
+            "build".to_string(),
+            "-d".to_string(),
+            "SeparateKey=SeparateVal".to_string(),
+            "-define".to_string(),
+            "FlagOnlyKey".to_string(),
+            "-sice:ICE38".to_string(),
+            "-ice:ICE01".to_string(),
+            "--suppress-validation".to_string(),
+            "-o".to_string(),
+            msi_file.to_string_lossy().to_string(),
+            src_file.to_string_lossy().to_string(),
+            loc_file.to_string_lossy().to_string(),
+        ];
+        let flags_opts = WixBuildOptions::parse(&build_flags_args).unwrap_or_default();
+        assert_eq!(flags_opts.defines.len(), 2);
+        assert_eq!(
+            flags_opts.defines[0],
+            ("SeparateKey".to_string(), "SeparateVal".to_string())
+        );
+        assert_eq!(
+            flags_opts.defines[1],
+            ("FlagOnlyKey".to_string(), "1".to_string())
+        );
+        assert_eq!(flags_opts.suppressed_ice, vec!["ICE38"]);
+        assert_eq!(flags_opts.selected_ice, vec!["ICE01"]);
+        let flags_out = flags_opts.execute().unwrap_or_default();
+        assert_eq!(flags_out, msi_file);
+
         // Parse error tests
         assert!(WixBuildOptions::parse(&[]).is_err());
         assert!(WixBuildOptions::parse(&["-arch".to_string()]).is_err());
+        assert!(WixBuildOptions::parse(&["-d".to_string()]).is_err());
         assert!(WixBuildOptions::parse(&["-ext".to_string()]).is_err());
         assert!(WixBuildOptions::parse(&["-culture".to_string()]).is_err());
         assert!(WixBuildOptions::parse(&["-b".to_string()]).is_err());

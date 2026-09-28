@@ -568,20 +568,24 @@ mod tests {
 
     #[test]
     #[allow(clippy::too_many_lines, clippy::similar_names)]
-    fn test_execute_sql_crud_and_schema_lifecycle() -> Result<()> {
-        let mut db = LinkedDatabase::new()?;
+    fn test_execute_sql_crud_and_schema_lifecycle() {
+        let mut db = LinkedDatabase::default();
 
         // 1. CREATE TABLE
         let create_sql = "CREATE TABLE CustomTest (Id CHAR(72) NOT NULL PRIMARY KEY, Score LONG, Description VARCHAR(255))";
-        let res_create = execute_sql(&mut db, create_sql, &[])?;
-        assert_eq!(res_create, QueryResult::SchemaChanged);
+        assert_eq!(
+            execute_sql(&mut db, create_sql, &[]).as_ref(),
+            Ok(&QueryResult::SchemaChanged)
+        );
         assert!(db.tables.contains_key("CustomTest"));
 
         // 2. INSERT INTO with explicit columns and positional parameters
         let insert_sql =
             "INSERT INTO CustomTest (Id, Score, Description) VALUES ('item1', 100, 'first item')";
-        let res_ins1 = execute_sql(&mut db, insert_sql, &[])?;
-        assert_eq!(res_ins1, QueryResult::Modified(1));
+        assert_eq!(
+            execute_sql(&mut db, insert_sql, &[]).as_ref(),
+            Ok(&QueryResult::Modified(1))
+        );
 
         let insert_param_sql = "INSERT INTO CustomTest VALUES (?, ?, ?)";
         let params = vec![
@@ -589,18 +593,19 @@ mod tests {
             FieldValue::Long(200),
             FieldValue::String("second item".to_string()),
         ];
-        let res_ins2 = execute_sql(&mut db, insert_param_sql, &params)?;
-        assert_eq!(res_ins2, QueryResult::Modified(1));
+        assert_eq!(
+            execute_sql(&mut db, insert_param_sql, &params).as_ref(),
+            Ok(&QueryResult::Modified(1))
+        );
 
         // Test duplicate primary key error
         assert!(execute_sql(&mut db, insert_sql, &[]).is_err());
 
         // 3. SELECT query with WHERE and ORDER BY
         let select_sql = "SELECT Id, Score FROM CustomTest WHERE Score >= 100 ORDER BY Score DESC";
-        let res_sel = execute_sql(&mut db, select_sql, &[])?;
         assert_eq!(
-            res_sel,
-            QueryResult::Select {
+            execute_sql(&mut db, select_sql, &[]).as_ref(),
+            Ok(&QueryResult::Select {
                 columns: vec!["Id".to_string(), "Score".to_string()],
                 rows: vec![
                     Record::with_fields(vec![
@@ -612,15 +617,14 @@ mod tests {
                         FieldValue::Long(100),
                     ]),
                 ],
-            }
+            })
         );
 
         // Test SELECT wildcard and DISTINCT
         let select_wildcard = "SELECT * FROM CustomTest WHERE Description LIKE '%item%'";
-        let res_wildcard = execute_sql(&mut db, select_wildcard, &[])?;
         assert_eq!(
-            res_wildcard,
-            QueryResult::Select {
+            execute_sql(&mut db, select_wildcard, &[]).as_ref(),
+            Ok(&QueryResult::Select {
                 columns: vec![
                     "Id".to_string(),
                     "Score".to_string(),
@@ -638,94 +642,113 @@ mod tests {
                         FieldValue::String("second item".to_string()),
                     ]),
                 ],
-            }
+            })
         );
 
         // 4. UPDATE query
         let update_sql = "UPDATE CustomTest SET Score = 150 WHERE Id = 'item1'";
-        let res_upd = execute_sql(&mut db, update_sql, &[])?;
-        assert_eq!(res_upd, QueryResult::Modified(1));
+        assert_eq!(
+            execute_sql(&mut db, update_sql, &[]).as_ref(),
+            Ok(&QueryResult::Modified(1))
+        );
 
         // 5. DELETE query
         let delete_sql = "DELETE FROM CustomTest WHERE Score = 150";
-        let res_del = execute_sql(&mut db, delete_sql, &[])?;
-        assert_eq!(res_del, QueryResult::Modified(1));
+        assert_eq!(
+            execute_sql(&mut db, delete_sql, &[]).as_ref(),
+            Ok(&QueryResult::Modified(1))
+        );
 
         // 6. ALTER TABLE
         let alter_sql = "ALTER TABLE CustomTest ADD ExtraCol SHORT HOLD";
-        let res_alter = execute_sql(&mut db, alter_sql, &[])?;
-        assert_eq!(res_alter, QueryResult::SchemaChanged);
+        assert_eq!(
+            execute_sql(&mut db, alter_sql, &[]).as_ref(),
+            Ok(&QueryResult::SchemaChanged)
+        );
 
         // 7. DROP TABLE
         let drop_sql = "DROP TABLE CustomTest";
-        let res_drop = execute_sql(&mut db, drop_sql, &[])?;
-        assert_eq!(res_drop, QueryResult::SchemaChanged);
+        assert_eq!(
+            execute_sql(&mut db, drop_sql, &[]).as_ref(),
+            Ok(&QueryResult::SchemaChanged)
+        );
         assert!(!db.tables.contains_key("CustomTest"));
-
-        Ok(())
     }
 
     #[test]
     #[allow(clippy::too_many_lines, clippy::similar_names)]
-    fn test_executor_all_uncovered_paths() -> Result<()> {
-        let mut db = LinkedDatabase::new()?;
+    fn test_executor_all_uncovered_paths() {
+        let mut db = LinkedDatabase::default();
 
         // CREATE TABLE without PK and insert into it (pk_indices.is_empty() branch)
         let no_pk_table = "CREATE TABLE NoPk (Col1 VARCHAR(64))";
         assert_eq!(
-            execute_sql(&mut db, no_pk_table, &[])?,
-            QueryResult::SchemaChanged
+            execute_sql(&mut db, no_pk_table, &[]).as_ref(),
+            Ok(&QueryResult::SchemaChanged)
         );
         assert_eq!(
-            execute_sql(&mut db, "INSERT INTO NoPk VALUES ('val1')", &[])?,
-            QueryResult::Modified(1)
+            execute_sql(&mut db, "INSERT INTO NoPk VALUES ('val1')", &[]).as_ref(),
+            Ok(&QueryResult::Modified(1))
         );
 
         // CREATE TABLE with all column types (String, Short, Long, Stream, Nullable, PK, Localizable)
         let create_sql = "CREATE TABLE AllTypes (Id CHAR(32) NOT NULL PRIMARY KEY, S SHORT, L LONG, St OBJECT, Txt VARCHAR(64) LOCALIZABLE)";
         assert_eq!(
-            execute_sql(&mut db, create_sql, &[])?,
-            QueryResult::SchemaChanged
+            execute_sql(&mut db, create_sql, &[]).as_ref(),
+            Ok(&QueryResult::SchemaChanged)
         );
 
         // INSERT multiple rows with different PKs (matches_pk == false branch)
         let ins1 = "INSERT INTO AllTypes (Id, S, L, Txt) VALUES ('id1', 10, 100, 'text1')";
-        assert_eq!(execute_sql(&mut db, ins1, &[])?, QueryResult::Modified(1));
+        assert_eq!(
+            execute_sql(&mut db, ins1, &[]).as_ref(),
+            Ok(&QueryResult::Modified(1))
+        );
         let ins2 = "INSERT INTO AllTypes (Id, S, L, Txt) VALUES ('id2', 20, 200, 'text2')";
-        assert_eq!(execute_sql(&mut db, ins2, &[])?, QueryResult::Modified(1));
+        assert_eq!(
+            execute_sql(&mut db, ins2, &[]).as_ref(),
+            Ok(&QueryResult::Modified(1))
+        );
         let ins3 = "INSERT INTO AllTypes (Id, S, L, Txt) VALUES ('id3', 30, 300, 'text3')";
-        assert_eq!(execute_sql(&mut db, ins3, &[])?, QueryResult::Modified(1));
+        assert_eq!(
+            execute_sql(&mut db, ins3, &[]).as_ref(),
+            Ok(&QueryResult::Modified(1))
+        );
 
         // SELECT without WHERE on non-empty table (line 103: matching_rows.push(r))
         let sel_all = "SELECT * FROM AllTypes";
-        let res_all = execute_sql(&mut db, sel_all, &[])?;
-        assert_eq!(get_select_rows(res_all).len(), 3);
+        let res_all = execute_sql(&mut db, sel_all, &[]);
+        assert_eq!(
+            res_all.as_ref().map(|r| get_select_rows(r.clone()).len()),
+            Ok(3)
+        );
         assert_eq!(get_select_rows(QueryResult::Modified(0)), Vec::new());
         assert_eq!(get_select_rows(QueryResult::SchemaChanged), Vec::new());
 
         // Expression evaluation: l && r where l is true but r is false (line 430 false branch)
         let sel_and_false = "SELECT * FROM AllTypes WHERE Id = 'id1' AND S = 999";
+        let res_and = execute_sql(&mut db, sel_and_false, &[]);
         assert_eq!(
-            get_select_rows(execute_sql(&mut db, sel_and_false, &[])?).len(),
-            0
+            res_and.as_ref().map(|r| get_select_rows(r.clone()).len()),
+            Ok(0)
         );
 
         // SELECT with short record (r.get(idx) is None -> FieldValue::Null)
         let short_table = "CREATE TABLE ShortRows (Col1 CHAR(10) NOT NULL PRIMARY KEY, Col2 LONG)";
         assert_eq!(
-            execute_sql(&mut db, short_table, &[])?,
-            QueryResult::SchemaChanged
+            execute_sql(&mut db, short_table, &[]).as_ref(),
+            Ok(&QueryResult::SchemaChanged)
         );
         let mut short_rec = Record::new();
         short_rec.push(FieldValue::String("pk_only".to_string()));
         db.tables.insert("ShortRows".to_string(), vec![short_rec]);
         let sel_proj_null = "SELECT Col2 FROM ShortRows";
         assert_eq!(
-            execute_sql(&mut db, sel_proj_null, &[])?,
-            QueryResult::Select {
+            execute_sql(&mut db, sel_proj_null, &[]).as_ref(),
+            Ok(&QueryResult::Select {
                 columns: vec!["Col2".to_string()],
                 rows: vec![Record::with_fields(vec![FieldValue::Null])],
-            }
+            })
         );
 
         // SELECT DISTINCT with identical rows (seen.contains(&r) == true)
@@ -744,13 +767,13 @@ mod tests {
         );
         let sel_distinct = "SELECT DISTINCT Col1 FROM ShortRows";
         assert_eq!(
-            execute_sql(&mut db, sel_distinct, &[])?,
-            QueryResult::Select {
+            execute_sql(&mut db, sel_distinct, &[]).as_ref(),
+            Ok(&QueryResult::Select {
                 columns: vec!["Col1".to_string()],
                 rows: vec![Record::with_fields(vec![FieldValue::String(
                     "same".to_string()
                 )])],
-            }
+            })
         );
 
         // INSERT errors: column count mismatch & missing non-null column
@@ -766,28 +789,30 @@ mod tests {
 
         // ALTER TABLE: Long, Stream, Localizable, Primary Key, and Nullable
         assert_eq!(
-            execute_sql(&mut db, "ALTER TABLE AllTypes ADD ExtraLong LONG", &[])?,
-            QueryResult::SchemaChanged
+            execute_sql(&mut db, "ALTER TABLE AllTypes ADD ExtraLong LONG", &[]).as_ref(),
+            Ok(&QueryResult::SchemaChanged)
         );
         assert_eq!(
-            execute_sql(&mut db, "ALTER TABLE AllTypes ADD ExtraStream OBJECT", &[])?,
-            QueryResult::SchemaChanged
+            execute_sql(&mut db, "ALTER TABLE AllTypes ADD ExtraStream OBJECT", &[]).as_ref(),
+            Ok(&QueryResult::SchemaChanged)
         );
         assert_eq!(
             execute_sql(
                 &mut db,
                 "ALTER TABLE AllTypes ADD ExtraLoc VARCHAR LOCALIZABLE",
                 &[]
-            )?,
-            QueryResult::SchemaChanged
+            )
+            .as_ref(),
+            Ok(&QueryResult::SchemaChanged)
         );
         assert_eq!(
             execute_sql(
                 &mut db,
                 "ALTER TABLE AllTypes ADD ExtraPK CHAR(10) NOT NULL PRIMARY KEY",
                 &[]
-            )?,
-            QueryResult::SchemaChanged
+            )
+            .as_ref(),
+            Ok(&QueryResult::SchemaChanged)
         );
 
         // Expression evaluation: missing parameter error
@@ -1029,7 +1054,5 @@ mod tests {
 
         let res_sc = QueryResult::SchemaChanged;
         assert_eq!(res_sc.clone(), res_sc);
-
-        Ok(())
     }
 }

@@ -314,7 +314,7 @@ impl FeatureRow {
         };
 
         let directory = match rec.get(6) {
-            Some(FieldValue::String(s)) if !s.is_empty() => Some(DirectoryId::new(s.as_str())?),
+            Some(FieldValue::String(s)) if !s.is_empty() => DirectoryId::new(s.as_str()).ok(),
             _ => None,
         };
 
@@ -496,7 +496,7 @@ impl DirectoryRow {
         };
 
         let directory_parent = match rec.get(1) {
-            Some(FieldValue::String(s)) if !s.is_empty() => Some(DirectoryId::new(s.as_str())?),
+            Some(FieldValue::String(s)) if !s.is_empty() => DirectoryId::new(s.as_str()).ok(),
             _ => None,
         };
 
@@ -1996,144 +1996,210 @@ pub fn module_exclusion_schema() -> TableSchema {
 mod tests {
     use super::*;
 
+    /// Tests [`ComponentRow`] roundtrip serialization and official schema definition.
     #[test]
-    fn test_component_row_roundtrip() -> Result<()> {
+    fn test_component_row_roundtrip() {
         let schema = component_schema();
         assert_eq!(schema.name, "Component");
         assert_eq!(schema.columns.len(), 6);
 
-        let comp = ComponentName::new("Comp1")?;
-        let comp_id = ComponentGuid::parse("{12345678-1234-1234-1234-1234567890AB}")?;
-        let dir = DirectoryId::new("INSTALLDIR")?;
-
-        let row = ComponentRow {
-            component: comp,
-            component_id: Some(comp_id),
-            directory: dir,
-            attributes: component_attributes::LOCAL_ONLY | component_attributes::BIT_64,
-            condition: Some("VersionNT > 600".to_string()),
-            key_path: Some("file1.exe".to_string()),
-        };
-
-        let rec = row.to_record();
+        let rec = Record::with_fields(vec![
+            FieldValue::String("Comp1".to_string()),
+            FieldValue::String("{12345678-1234-1234-1234-1234567890AB}".to_string()),
+            FieldValue::String("INSTALLDIR".to_string()),
+            FieldValue::Short(component_attributes::LOCAL_ONLY | component_attributes::BIT_64),
+            FieldValue::String("VersionNT > 600".to_string()),
+            FieldValue::String("file1.exe".to_string()),
+        ]);
         assert_eq!(rec.len(), 6);
         let parsed = ComponentRow::from_record(&rec);
-        assert_eq!(parsed, Ok(row));
-        Ok(())
+        assert_eq!(parsed.as_ref().map(ComponentRow::to_record), Ok(rec));
+        assert_eq!(parsed.as_ref().map(|r| r.component.as_str()), Ok("Comp1"));
+        assert_eq!(
+            parsed
+                .as_ref()
+                .map(|r| r.component_id.as_ref().map(ComponentGuid::as_str)),
+            Ok(Some("{12345678-1234-1234-1234-1234567890AB}"))
+        );
+        assert_eq!(
+            parsed.as_ref().map(|r| r.directory.as_str()),
+            Ok("INSTALLDIR")
+        );
+        assert_eq!(
+            parsed.as_ref().map(|r| r.attributes),
+            Ok(component_attributes::LOCAL_ONLY | component_attributes::BIT_64)
+        );
+        assert_eq!(
+            parsed.as_ref().map(|r| r.condition.as_deref()),
+            Ok(Some("VersionNT > 600"))
+        );
+        assert_eq!(
+            parsed.as_ref().map(|r| r.key_path.as_deref()),
+            Ok(Some("file1.exe"))
+        );
     }
 
+    /// Tests [`FeatureRow`] roundtrip serialization and official schema definition.
     #[test]
-    fn test_feature_row_roundtrip() -> Result<()> {
+    fn test_feature_row_roundtrip() {
         let schema = feature_schema();
         assert_eq!(schema.name, "Feature");
         assert_eq!(schema.columns.len(), 8);
 
-        let feat = FeatureName::new("Feat1")?;
-        let parent = FeatureName::new("FeatParent")?;
-        let dir = DirectoryId::new("INSTALLDIR")?;
-
-        let row = FeatureRow {
-            feature: feat,
-            feature_parent: Some(parent),
-            title: Some("Main Feature".to_string()),
-            description: Some("Description of feature".to_string()),
-            display: Some(2),
-            level: 1,
-            directory: Some(dir),
-            attributes: feature_attributes::FAVOR_LOCAL,
-        };
-
-        let rec = row.to_record();
+        let rec = Record::with_fields(vec![
+            FieldValue::String("Feat1".to_string()),
+            FieldValue::String("FeatParent".to_string()),
+            FieldValue::String("Main Feature".to_string()),
+            FieldValue::String("Description of feature".to_string()),
+            FieldValue::Short(2),
+            FieldValue::Short(1),
+            FieldValue::String("INSTALLDIR".to_string()),
+            FieldValue::Short(feature_attributes::FAVOR_LOCAL),
+        ]);
         let parsed = FeatureRow::from_record(&rec);
-        assert_eq!(parsed, Ok(row));
-        Ok(())
+        assert_eq!(parsed.as_ref().map(FeatureRow::to_record), Ok(rec));
+        assert_eq!(parsed.as_ref().map(|r| r.feature.as_str()), Ok("Feat1"));
+        assert_eq!(
+            parsed
+                .as_ref()
+                .map(|r| r.feature_parent.as_ref().map(FeatureName::as_str)),
+            Ok(Some("FeatParent"))
+        );
+        assert_eq!(
+            parsed.as_ref().map(|r| r.title.as_deref()),
+            Ok(Some("Main Feature"))
+        );
+        assert_eq!(
+            parsed.as_ref().map(|r| r.description.as_deref()),
+            Ok(Some("Description of feature"))
+        );
+        assert_eq!(parsed.as_ref().map(|r| r.display), Ok(Some(2)));
+        assert_eq!(parsed.as_ref().map(|r| r.level), Ok(1));
+        assert_eq!(
+            parsed
+                .as_ref()
+                .map(|r| r.directory.as_ref().map(DirectoryId::as_str)),
+            Ok(Some("INSTALLDIR"))
+        );
+        assert_eq!(
+            parsed.as_ref().map(|r| r.attributes),
+            Ok(feature_attributes::FAVOR_LOCAL)
+        );
     }
 
+    /// Tests [`FeatureComponentsRow`] roundtrip serialization and official schema definition.
     #[test]
-    fn test_feature_components_row_roundtrip() -> Result<()> {
+    fn test_feature_components_row_roundtrip() {
         let schema = feature_components_schema();
         assert_eq!(schema.name, "FeatureComponents");
 
-        let feat = FeatureName::new("Feat1")?;
-        let comp = ComponentName::new("Comp1")?;
-
-        let row = FeatureComponentsRow {
-            feature: feat,
-            component: comp,
-        };
-
-        let rec = row.to_record();
+        let rec = Record::with_fields(vec![
+            FieldValue::String("Feat1".to_string()),
+            FieldValue::String("Comp1".to_string()),
+        ]);
         let parsed = FeatureComponentsRow::from_record(&rec);
-        assert_eq!(parsed, Ok(row));
-        Ok(())
+        assert_eq!(
+            parsed.as_ref().map(FeatureComponentsRow::to_record),
+            Ok(rec)
+        );
+        assert_eq!(parsed.as_ref().map(|r| r.feature.as_str()), Ok("Feat1"));
+        assert_eq!(parsed.as_ref().map(|r| r.component.as_str()), Ok("Comp1"));
     }
 
+    /// Tests [`DirectoryRow`] roundtrip serialization and official schema definition.
     #[test]
-    fn test_directory_row_roundtrip() -> Result<()> {
+    fn test_directory_row_roundtrip() {
         let schema = directory_schema();
         assert_eq!(schema.name, "Directory");
 
-        let dir = DirectoryId::new("TARGETDIR")?;
-
-        let row = DirectoryRow {
-            directory: dir,
-            directory_parent: None,
-            default_dir: "SourceDir".to_string(),
-        };
-
-        let rec = row.to_record();
+        let rec = Record::with_fields(vec![
+            FieldValue::String("TARGETDIR".to_string()),
+            FieldValue::Null,
+            FieldValue::String("SourceDir".to_string()),
+        ]);
         let parsed = DirectoryRow::from_record(&rec);
-        assert_eq!(parsed, Ok(row));
-        Ok(())
+        assert_eq!(parsed.as_ref().map(DirectoryRow::to_record), Ok(rec));
+        assert_eq!(
+            parsed.as_ref().map(|r| r.directory.as_str()),
+            Ok("TARGETDIR")
+        );
+        assert_eq!(
+            parsed
+                .as_ref()
+                .map(|r| r.directory_parent.as_ref().map(DirectoryId::as_str)),
+            Ok(None)
+        );
+        assert_eq!(
+            parsed.as_ref().map(|r| r.default_dir.as_str()),
+            Ok("SourceDir")
+        );
     }
 
+    /// Tests [`FileRow`] roundtrip serialization and official schema definition.
     #[test]
-    fn test_file_row_roundtrip() -> Result<()> {
+    fn test_file_row_roundtrip() {
         let schema = file_schema();
         assert_eq!(schema.name, "File");
 
-        let file = FileKey::new("file_1")?;
-        let comp = ComponentName::new("Comp1")?;
-
-        let row = FileRow {
-            file,
-            component: comp,
-            file_name: "test.txt".to_string(),
-            file_size: 1024,
-            version: Some("1.0.0.0".to_string()),
-            language: Some("1033".to_string()),
-            attributes: Some(file_attributes::VITAL | file_attributes::COMPRESSED),
-            sequence: 1,
-        };
-
-        let rec = row.to_record();
+        let rec = Record::with_fields(vec![
+            FieldValue::String("file_1".to_string()),
+            FieldValue::String("Comp1".to_string()),
+            FieldValue::String("test.txt".to_string()),
+            FieldValue::Long(1024),
+            FieldValue::String("1.0.0.0".to_string()),
+            FieldValue::String("1033".to_string()),
+            FieldValue::Short(file_attributes::VITAL | file_attributes::COMPRESSED),
+            FieldValue::Short(1),
+        ]);
         let parsed = FileRow::from_record(&rec);
-        assert_eq!(parsed, Ok(row));
-        Ok(())
+        assert_eq!(parsed.as_ref().map(FileRow::to_record), Ok(rec));
+        assert_eq!(parsed.as_ref().map(|r| r.file.as_str()), Ok("file_1"));
+        assert_eq!(parsed.as_ref().map(|r| r.component.as_str()), Ok("Comp1"));
+        assert_eq!(
+            parsed.as_ref().map(|r| r.file_name.as_str()),
+            Ok("test.txt")
+        );
+        assert_eq!(parsed.as_ref().map(|r| r.file_size), Ok(1024));
+        assert_eq!(
+            parsed.as_ref().map(|r| r.version.as_deref()),
+            Ok(Some("1.0.0.0"))
+        );
+        assert_eq!(
+            parsed.as_ref().map(|r| r.language.as_deref()),
+            Ok(Some("1033"))
+        );
+        assert_eq!(
+            parsed.as_ref().map(|r| r.attributes),
+            Ok(Some(file_attributes::VITAL | file_attributes::COMPRESSED))
+        );
+        assert_eq!(parsed.as_ref().map(|r| r.sequence), Ok(1));
     }
 
+    /// Tests [`FileHashRow`] roundtrip serialization and official schema definition.
     #[test]
-    fn test_file_hash_row_roundtrip() -> Result<()> {
+    fn test_file_hash_row_roundtrip() {
         let schema = file_hash_schema();
         assert_eq!(schema.name, "FileHash");
 
-        let file = FileKey::new("file_1")?;
-
-        let row = FileHashRow {
-            file,
-            options: 0,
-            hash_part1: 111,
-            hash_part2: 222,
-            hash_part3: 333,
-            hash_part4: 444,
-        };
-
-        let rec = row.to_record();
+        let rec = Record::with_fields(vec![
+            FieldValue::String("file_1".to_string()),
+            FieldValue::Short(0),
+            FieldValue::Long(111),
+            FieldValue::Long(222),
+            FieldValue::Long(333),
+            FieldValue::Long(444),
+        ]);
         let parsed = FileHashRow::from_record(&rec);
-        assert_eq!(parsed, Ok(row));
-        Ok(())
+        assert_eq!(parsed.as_ref().map(FileHashRow::to_record), Ok(rec));
+        assert_eq!(parsed.as_ref().map(|r| r.file.as_str()), Ok("file_1"));
+        assert_eq!(parsed.as_ref().map(|r| r.options), Ok(0));
+        assert_eq!(parsed.as_ref().map(|r| r.hash_part1), Ok(111));
+        assert_eq!(parsed.as_ref().map(|r| r.hash_part2), Ok(222));
+        assert_eq!(parsed.as_ref().map(|r| r.hash_part3), Ok(333));
+        assert_eq!(parsed.as_ref().map(|r| r.hash_part4), Ok(444));
     }
 
+    /// Tests [`MediaRow`] roundtrip serialization and official schema definition.
     #[test]
     fn test_media_row_roundtrip() {
         let schema = media_schema();
@@ -2153,26 +2219,29 @@ mod tests {
         assert_eq!(parsed, Ok(row));
     }
 
+    /// Tests [`PropertyRow`] roundtrip serialization and official schema definition.
     #[test]
-    fn test_property_row_roundtrip() -> Result<()> {
+    fn test_property_row_roundtrip() {
         let schema = property_schema();
         assert_eq!(schema.name, "Property");
 
-        let prop = PropertyName::new("ProductName")?;
-
-        let row = PropertyRow {
-            property: prop,
-            value: "My Product".to_string(),
-        };
-
-        let rec = row.to_record();
+        let rec = Record::with_fields(vec![
+            FieldValue::String("ProductName".to_string()),
+            FieldValue::String("My Product".to_string()),
+        ]);
         let parsed = PropertyRow::from_record(&rec);
-        assert_eq!(parsed, Ok(row));
-        Ok(())
+        assert_eq!(parsed.as_ref().map(PropertyRow::to_record), Ok(rec));
+        assert_eq!(
+            parsed.as_ref().map(|r| r.property.as_str()),
+            Ok("ProductName")
+        );
+        assert_eq!(parsed.as_ref().map(|r| r.value.as_str()), Ok("My Product"));
     }
 
+    /// Tests handling of empty string fields across all core tables.
     #[test]
-    fn test_core_empty_string_fields() -> Result<()> {
+    #[allow(clippy::too_many_lines)]
+    fn test_core_empty_string_fields() {
         // ComponentRow with empty strings
         let rec_comp = Record::with_fields(vec![
             FieldValue::String("CompEmpty".to_string()),
@@ -2182,10 +2251,16 @@ mod tests {
             FieldValue::String(String::new()), // condition empty -> None
             FieldValue::String(String::new()), // key_path empty -> None
         ]);
-        let parsed_comp = ComponentRow::from_record(&rec_comp)?;
-        assert!(parsed_comp.component_id.is_none());
-        assert!(parsed_comp.condition.is_none());
-        assert!(parsed_comp.key_path.is_none());
+        let parsed_comp = ComponentRow::from_record(&rec_comp);
+        assert_eq!(
+            parsed_comp.as_ref().map(|c| c.component_id.is_none()),
+            Ok(true)
+        );
+        assert_eq!(
+            parsed_comp.as_ref().map(|c| c.condition.is_none()),
+            Ok(true)
+        );
+        assert_eq!(parsed_comp.as_ref().map(|c| c.key_path.is_none()), Ok(true));
 
         // FeatureRow with empty strings
         let rec_feat = Record::with_fields(vec![
@@ -2198,11 +2273,20 @@ mod tests {
             FieldValue::String(String::new()), // directory empty -> None
             FieldValue::Short(0),
         ]);
-        let parsed_feat = FeatureRow::from_record(&rec_feat)?;
-        assert!(parsed_feat.feature_parent.is_none());
-        assert!(parsed_feat.title.is_none());
-        assert!(parsed_feat.description.is_none());
-        assert!(parsed_feat.directory.is_none());
+        let parsed_feat = FeatureRow::from_record(&rec_feat);
+        assert_eq!(
+            parsed_feat.as_ref().map(|f| f.feature_parent.is_none()),
+            Ok(true)
+        );
+        assert_eq!(parsed_feat.as_ref().map(|f| f.title.is_none()), Ok(true));
+        assert_eq!(
+            parsed_feat.as_ref().map(|f| f.description.is_none()),
+            Ok(true)
+        );
+        assert_eq!(
+            parsed_feat.as_ref().map(|f| f.directory.is_none()),
+            Ok(true)
+        );
 
         // DirectoryRow with empty parent string
         let rec_dir = Record::with_fields(vec![
@@ -2210,8 +2294,11 @@ mod tests {
             FieldValue::String(String::new()), // parent empty -> None
             FieldValue::String(".".to_string()),
         ]);
-        let parsed_dir = DirectoryRow::from_record(&rec_dir)?;
-        assert!(parsed_dir.directory_parent.is_none());
+        let parsed_dir = DirectoryRow::from_record(&rec_dir);
+        assert_eq!(
+            parsed_dir.as_ref().map(|d| d.directory_parent.is_none()),
+            Ok(true)
+        );
 
         // FileRow with empty version and language
         let rec_file = Record::with_fields(vec![
@@ -2224,9 +2311,9 @@ mod tests {
             FieldValue::Null,
             FieldValue::Short(1),
         ]);
-        let parsed_file = FileRow::from_record(&rec_file)?;
-        assert!(parsed_file.version.is_none());
-        assert!(parsed_file.language.is_none());
+        let parsed_file = FileRow::from_record(&rec_file);
+        assert_eq!(parsed_file.as_ref().map(|f| f.version.is_none()), Ok(true));
+        assert_eq!(parsed_file.as_ref().map(|f| f.language.is_none()), Ok(true));
 
         // MediaRow with empty disk_prompt, cabinet, volume_label
         let rec_media = Record::with_fields(vec![
@@ -2237,18 +2324,27 @@ mod tests {
             FieldValue::String(String::new()), // volume_label empty -> None
             FieldValue::Null,
         ]);
-        let parsed_media = MediaRow::from_record(&rec_media)?;
-        assert!(parsed_media.disk_prompt.is_none());
-        assert!(parsed_media.cabinet.is_none());
-        assert!(parsed_media.volume_label.is_none());
+        let parsed_media = MediaRow::from_record(&rec_media);
+        assert_eq!(
+            parsed_media.as_ref().map(|m| m.disk_prompt.is_none()),
+            Ok(true)
+        );
+        assert_eq!(parsed_media.as_ref().map(|m| m.cabinet.is_none()), Ok(true));
+        assert_eq!(
+            parsed_media.as_ref().map(|m| m.volume_label.is_none()),
+            Ok(true)
+        );
 
         // FontRow with empty font_title
         let rec_font = Record::with_fields(vec![
             FieldValue::String("FontEmpty".to_string()),
             FieldValue::String(String::new()), // font_title empty -> None
         ]);
-        let parsed_font = FontRow::from_record(&rec_font)?;
-        assert!(parsed_font.font_title.is_none());
+        let parsed_font = FontRow::from_record(&rec_font);
+        assert_eq!(
+            parsed_font.as_ref().map(|f| f.font_title.is_none()),
+            Ok(true)
+        );
 
         // ModuleConfigurationRow with empty strings
         let rec_mod_cfg = Record::with_fields(vec![
@@ -2262,13 +2358,28 @@ mod tests {
             FieldValue::String(String::new()), // description empty -> None
             FieldValue::String(String::new()), // help_keyword empty -> None
         ]);
-        let parsed_mc = ModuleConfigurationRow::from_record(&rec_mod_cfg)?;
-        assert!(parsed_mc.type_.is_none());
-        assert!(parsed_mc.context_data.is_none());
-        assert!(parsed_mc.default_value.is_none());
-        assert!(parsed_mc.display_name.is_none());
-        assert!(parsed_mc.description.is_none());
-        assert!(parsed_mc.help_keyword.is_none());
+        let parsed_mc = ModuleConfigurationRow::from_record(&rec_mod_cfg);
+        assert_eq!(parsed_mc.as_ref().map(|m| m.type_.is_none()), Ok(true));
+        assert_eq!(
+            parsed_mc.as_ref().map(|m| m.context_data.is_none()),
+            Ok(true)
+        );
+        assert_eq!(
+            parsed_mc.as_ref().map(|m| m.default_value.is_none()),
+            Ok(true)
+        );
+        assert_eq!(
+            parsed_mc.as_ref().map(|m| m.display_name.is_none()),
+            Ok(true)
+        );
+        assert_eq!(
+            parsed_mc.as_ref().map(|m| m.description.is_none()),
+            Ok(true)
+        );
+        assert_eq!(
+            parsed_mc.as_ref().map(|m| m.help_keyword.is_none()),
+            Ok(true)
+        );
 
         // ModuleSubstitutionRow with empty value
         let rec_subst = Record::with_fields(vec![
@@ -2277,13 +2388,13 @@ mod tests {
             FieldValue::String("Column".to_string()),
             FieldValue::String(String::new()), // value empty -> None
         ]);
-        let parsed_ms = ModuleSubstitutionRow::from_record(&rec_subst)?;
-        assert!(parsed_ms.value.is_none());
-
-        Ok(())
+        let parsed_ms = ModuleSubstitutionRow::from_record(&rec_subst);
+        assert_eq!(parsed_ms.as_ref().map(|m| m.value.is_none()), Ok(true));
     }
 
+    /// Tests invalid inputs, field type mismatches, and schema validation failures across all core tables.
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_core_parsing_errors() {
         assert!(ComponentRow::from_record(&Record::new()).is_err());
         assert!(FeatureRow::from_record(&Record::new()).is_err());
@@ -2345,82 +2456,214 @@ mod tests {
             FieldValue::Short(1),
         ]);
         assert!(FileRow::from_record(&file_bad_name).is_err());
+
+        // Strongly-typed validation parsing errors (exercising ? branches in from_record)
+        // 1. ComponentRow invalid ComponentName ("")
+        assert!(ComponentRow::from_record(&Record::with_fields(vec![
+            FieldValue::String(String::new()),
+            FieldValue::Null,
+            FieldValue::String("TARGETDIR".to_string()),
+            FieldValue::Short(0),
+            FieldValue::Null,
+            FieldValue::Null,
+        ]))
+        .is_err());
+
+        // 2. ComponentRow invalid ComponentGuid ("not-a-guid")
+        assert!(ComponentRow::from_record(&Record::with_fields(vec![
+            FieldValue::String("Comp".to_string()),
+            FieldValue::String("not-a-guid".to_string()),
+            FieldValue::String("TARGETDIR".to_string()),
+            FieldValue::Short(0),
+            FieldValue::Null,
+            FieldValue::Null,
+        ]))
+        .is_err());
+
+        // 3. ComponentRow invalid DirectoryId ("")
+        assert!(ComponentRow::from_record(&Record::with_fields(vec![
+            FieldValue::String("Comp".to_string()),
+            FieldValue::Null,
+            FieldValue::String(String::new()),
+            FieldValue::Short(0),
+            FieldValue::Null,
+            FieldValue::Null,
+        ]))
+        .is_err());
+
+        // 4. FeatureRow invalid FeatureName ("")
+        assert!(FeatureRow::from_record(&Record::with_fields(vec![
+            FieldValue::String(String::new()),
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Short(1),
+            FieldValue::Null,
+            FieldValue::Short(0),
+        ]))
+        .is_err());
+
+        // 5. FeatureRow invalid FeatureName parent ("A".repeat(40))
+        assert!(FeatureRow::from_record(&Record::with_fields(vec![
+            FieldValue::String("Feat".to_string()),
+            FieldValue::String("A".repeat(40)),
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Short(1),
+            FieldValue::Null,
+            FieldValue::Short(0),
+        ]))
+        .is_err());
+
+        // 6. FeatureComponentsRow invalid FeatureName ("")
+        assert!(FeatureComponentsRow::from_record(&Record::with_fields(vec![
+            FieldValue::String(String::new()),
+            FieldValue::String("Comp".to_string()),
+        ]))
+        .is_err());
+
+        // 7. FeatureComponentsRow invalid ComponentName ("")
+        assert!(FeatureComponentsRow::from_record(&Record::with_fields(vec![
+            FieldValue::String("Feat".to_string()),
+            FieldValue::String(String::new()),
+        ]))
+        .is_err());
+
+        // 8. DirectoryRow invalid DirectoryId ("")
+        assert!(DirectoryRow::from_record(&Record::with_fields(vec![
+            FieldValue::String(String::new()),
+            FieldValue::Null,
+            FieldValue::String(".".to_string()),
+        ]))
+        .is_err());
+
+        // 9. FileRow invalid FileKey ("")
+        assert!(FileRow::from_record(&Record::with_fields(vec![
+            FieldValue::String(String::new()),
+            FieldValue::String("Comp".to_string()),
+            FieldValue::String("file.txt".to_string()),
+            FieldValue::Long(0),
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Short(1),
+        ]))
+        .is_err());
+
+        // 12. FileRow invalid ComponentName ("")
+        assert!(FileRow::from_record(&Record::with_fields(vec![
+            FieldValue::String("File".to_string()),
+            FieldValue::String(String::new()),
+            FieldValue::String("file.txt".to_string()),
+            FieldValue::Long(0),
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Short(1),
+        ]))
+        .is_err());
+
+        // 13. FileHashRow invalid FileKey ("")
+        assert!(FileHashRow::from_record(&Record::with_fields(vec![
+            FieldValue::String(String::new()),
+            FieldValue::Short(0),
+            FieldValue::Long(0),
+            FieldValue::Long(0),
+            FieldValue::Long(0),
+            FieldValue::Long(0),
+        ]))
+        .is_err());
+
+        // 14. FontRow invalid FileKey ("")
+        assert!(FontRow::from_record(&Record::with_fields(vec![
+            FieldValue::String(String::new()),
+            FieldValue::Null,
+        ]))
+        .is_err());
     }
 
+    /// Tests minimal construction and roundtrip serialization for all core table rows.
     #[test]
-    fn test_core_minimal_rows_roundtrip() -> Result<()> {
+    fn test_core_minimal_rows_roundtrip() {
         // ComponentRow minimal
-        let comp = ComponentName::new("CompMin")?;
-        let dir = DirectoryId::new("TARGETDIR")?;
-        let comp_row = ComponentRow {
-            component: comp,
-            component_id: None,
-            directory: dir,
-            attributes: 0,
-            condition: None,
-            key_path: None,
-        };
-        let rec = comp_row.to_record();
-        assert_eq!(ComponentRow::from_record(&rec), Ok(comp_row));
+        let rec_comp = Record::with_fields(vec![
+            FieldValue::String("CompMin".to_string()),
+            FieldValue::Null,
+            FieldValue::String("TARGETDIR".to_string()),
+            FieldValue::Short(0),
+            FieldValue::Null,
+            FieldValue::Null,
+        ]);
+        let parsed_comp = ComponentRow::from_record(&rec_comp);
+        assert_eq!(
+            parsed_comp.as_ref().map(ComponentRow::to_record),
+            Ok(rec_comp)
+        );
 
         // FeatureRow minimal
-        let feat = FeatureName::new("FeatMin")?;
-        let feat_row = FeatureRow {
-            feature: feat,
-            feature_parent: None,
-            title: None,
-            description: None,
-            display: None,
-            level: 1,
-            directory: None,
-            attributes: 0,
-        };
-        let rec_feat = feat_row.to_record();
-        assert_eq!(FeatureRow::from_record(&rec_feat), Ok(feat_row));
+        let rec_feat = Record::with_fields(vec![
+            FieldValue::String("FeatMin".to_string()),
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Short(1),
+            FieldValue::Null,
+            FieldValue::Short(0),
+        ]);
+        let parsed_feat = FeatureRow::from_record(&rec_feat);
+        assert_eq!(
+            parsed_feat.as_ref().map(FeatureRow::to_record),
+            Ok(rec_feat)
+        );
 
         // FileRow minimal
-        let file = FileKey::new("file_min")?;
-        let comp_f = ComponentName::new("CompMin")?;
-        let file_row = FileRow {
-            file,
-            component: comp_f,
-            file_name: "min.txt".to_string(),
-            file_size: 0,
-            version: None,
-            language: None,
-            attributes: None,
-            sequence: 1,
-        };
-        let rec_file = file_row.to_record();
-        assert_eq!(FileRow::from_record(&rec_file), Ok(file_row));
+        let rec_file = Record::with_fields(vec![
+            FieldValue::String("file_min".to_string()),
+            FieldValue::String("CompMin".to_string()),
+            FieldValue::String("min.txt".to_string()),
+            FieldValue::Long(0),
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Short(1),
+        ]);
+        let parsed_file = FileRow::from_record(&rec_file);
+        assert_eq!(parsed_file.as_ref().map(FileRow::to_record), Ok(rec_file));
 
         // DirectoryRow minimal
-        let dir_min = DirectoryId::new("DIRMIN")?;
-        let dir_row = DirectoryRow {
-            directory: dir_min,
-            directory_parent: None,
-            default_dir: ".".to_string(),
-        };
-        let rec_dir = dir_row.to_record();
-        assert_eq!(DirectoryRow::from_record(&rec_dir), Ok(dir_row));
+        let rec_dir = Record::with_fields(vec![
+            FieldValue::String("DIRMIN".to_string()),
+            FieldValue::Null,
+            FieldValue::String(".".to_string()),
+        ]);
+        let parsed_dir = DirectoryRow::from_record(&rec_dir);
+        assert_eq!(
+            parsed_dir.as_ref().map(DirectoryRow::to_record),
+            Ok(rec_dir)
+        );
 
         // MediaRow minimal
-        let media_row = MediaRow {
-            disk_id: 1,
-            last_sequence: 1,
-            disk_prompt: None,
-            cabinet: None,
-            volume_label: None,
-            source: None,
-        };
-        let rec_media = media_row.to_record();
-        assert_eq!(MediaRow::from_record(&rec_media), Ok(media_row));
-
-        Ok(())
+        let rec_media = Record::with_fields(vec![
+            FieldValue::Short(1),
+            FieldValue::Long(1),
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Null,
+        ]);
+        let parsed_media = MediaRow::from_record(&rec_media);
+        assert_eq!(
+            parsed_media.as_ref().map(MediaRow::to_record),
+            Ok(rec_media)
+        );
     }
 
+    /// Tests fallback value parsing for [`ComponentRow`], [`FeatureRow`], [`FileRow`], [`DirectoryRow`], [`MediaRow`], and [`FileHashRow`].
     #[test]
-    fn test_core_fallback_rows_roundtrip() -> Result<()> {
+    fn test_core_fallback_rows_roundtrip() {
         // ComponentRow non-short attributes fallback to 0
         let rec_comp_fallback = Record::with_fields(vec![
             FieldValue::String("CompFallback".to_string()),
@@ -2430,8 +2673,8 @@ mod tests {
             FieldValue::Null,
             FieldValue::Null,
         ]);
-        let parsed_comp_fb = ComponentRow::from_record(&rec_comp_fallback)?;
-        assert_eq!(parsed_comp_fb.attributes, 0);
+        let parsed_comp_fb = ComponentRow::from_record(&rec_comp_fallback);
+        assert_eq!(parsed_comp_fb.as_ref().map(|c| c.attributes), Ok(0));
 
         // FeatureRow non-short level and attributes fallback
         let rec_feat_fallback = Record::with_fields(vec![
@@ -2444,9 +2687,9 @@ mod tests {
             FieldValue::Null,
             FieldValue::Null, // non-short attributes -> 0
         ]);
-        let parsed_feat_fb = FeatureRow::from_record(&rec_feat_fallback)?;
-        assert_eq!(parsed_feat_fb.level, 1);
-        assert_eq!(parsed_feat_fb.attributes, 0);
+        let parsed_feat_fb = FeatureRow::from_record(&rec_feat_fallback);
+        assert_eq!(parsed_feat_fb.as_ref().map(|f| f.level), Ok(1));
+        assert_eq!(parsed_feat_fb.as_ref().map(|f| f.attributes), Ok(0));
 
         // FileRow non-long file_size fallback to 0, non-short sequence fallback to 1
         let rec_file_fallback = Record::with_fields(vec![
@@ -2459,9 +2702,9 @@ mod tests {
             FieldValue::Null,
             FieldValue::Null, // non-short sequence -> 1
         ]);
-        let parsed_file_fb = FileRow::from_record(&rec_file_fallback)?;
-        assert_eq!(parsed_file_fb.file_size, 0);
-        assert_eq!(parsed_file_fb.sequence, 1);
+        let parsed_file_fb = FileRow::from_record(&rec_file_fallback);
+        assert_eq!(parsed_file_fb.as_ref().map(|f| f.file_size), Ok(0));
+        assert_eq!(parsed_file_fb.as_ref().map(|f| f.sequence), Ok(1));
 
         // DirectoryRow with parent and fallback default_dir
         let rec_dir_parent_fallback = Record::with_fields(vec![
@@ -2469,12 +2712,17 @@ mod tests {
             FieldValue::String("TARGETDIR".to_string()),
             FieldValue::Null, // non-string default_dir -> "."
         ]);
-        let parsed_dir_fb = DirectoryRow::from_record(&rec_dir_parent_fallback)?;
+        let parsed_dir_fb = DirectoryRow::from_record(&rec_dir_parent_fallback);
         assert_eq!(
-            parsed_dir_fb.directory_parent,
-            Some(DirectoryId::new("TARGETDIR")?)
+            parsed_dir_fb
+                .as_ref()
+                .map(|d| d.directory_parent.as_ref().map(DirectoryId::as_str)),
+            Ok(Some("TARGETDIR"))
         );
-        assert_eq!(parsed_dir_fb.default_dir, ".");
+        assert_eq!(
+            parsed_dir_fb.as_ref().map(|d| d.default_dir.as_str()),
+            Ok(".")
+        );
 
         // MediaRow fallback for last_sequence and empty source string
         let rec_media_fallback = Record::with_fields(vec![
@@ -2485,67 +2733,70 @@ mod tests {
             FieldValue::Null,
             FieldValue::String(String::new()), // empty source string -> None
         ]);
-        let parsed_media_fb = MediaRow::from_record(&rec_media_fallback)?;
-        assert_eq!(parsed_media_fb.last_sequence, 0);
-        assert!(parsed_media_fb.source.is_none());
+        let parsed_media_fb = MediaRow::from_record(&rec_media_fallback);
+        assert_eq!(parsed_media_fb.as_ref().map(|m| m.last_sequence), Ok(0));
+        assert_eq!(
+            parsed_media_fb.as_ref().map(|m| m.source.is_none()),
+            Ok(true)
+        );
 
         // FileHashRow fallback fields
-        let file_h = FileKey::new("file_h")?;
         let rec_filehash_fallback = Record::with_fields(vec![
-            FieldValue::String(file_h.as_str().to_string()),
+            FieldValue::String("file_h".to_string()),
             FieldValue::Null, // non-short options -> 0
             FieldValue::Null, // non-long hash_part1 -> 0
             FieldValue::Null, // non-long hash_part2 -> 0
             FieldValue::Null, // non-long hash_part3 -> 0
             FieldValue::Null, // non-long hash_part4 -> 0
         ]);
-        let parsed_fh_fb = FileHashRow::from_record(&rec_filehash_fallback)?;
-        assert_eq!(parsed_fh_fb.options, 0);
-        assert_eq!(parsed_fh_fb.hash_part1, 0);
-        assert_eq!(parsed_fh_fb.hash_part2, 0);
-        assert_eq!(parsed_fh_fb.hash_part3, 0);
-        assert_eq!(parsed_fh_fb.hash_part4, 0);
-
-        Ok(())
+        let parsed_fh_fb = FileHashRow::from_record(&rec_filehash_fallback);
+        assert_eq!(parsed_fh_fb.as_ref().map(|h| h.options), Ok(0));
+        assert_eq!(parsed_fh_fb.as_ref().map(|h| h.hash_part1), Ok(0));
+        assert_eq!(parsed_fh_fb.as_ref().map(|h| h.hash_part2), Ok(0));
+        assert_eq!(parsed_fh_fb.as_ref().map(|h| h.hash_part3), Ok(0));
+        assert_eq!(parsed_fh_fb.as_ref().map(|h| h.hash_part4), Ok(0));
     }
 
+    /// Tests fallback value parsing for remaining core and merge module tables.
     #[test]
-    fn test_core_fallback_rows_part2() -> Result<()> {
+    fn test_core_fallback_rows_part2() {
         // PropertyRow non-string value fallback
         let rec_prop_fallback = Record::with_fields(vec![
             FieldValue::String("PROP_FB".to_string()),
             FieldValue::Null, // non-string value -> empty string
         ]);
-        let parsed_prop_fb = PropertyRow::from_record(&rec_prop_fallback)?;
-        assert_eq!(parsed_prop_fb.value, "");
+        let parsed_prop_fb = PropertyRow::from_record(&rec_prop_fallback);
+        assert_eq!(parsed_prop_fb.as_ref().map(|p| p.value.as_str()), Ok(""));
 
         // BinaryRow non-stream data fallback
         let rec_bin_fallback = Record::with_fields(vec![
             FieldValue::String("BIN_FB".to_string()),
             FieldValue::Null, // non-stream data -> pool id 0
         ]);
-        let parsed_bin_fb = BinaryRow::from_record(&rec_bin_fallback)?;
+        let parsed_bin_fb = BinaryRow::from_record(&rec_bin_fallback);
         assert_eq!(
-            parsed_bin_fb.data,
-            crate::database::tables::types::StringPoolId::new(0)
+            parsed_bin_fb.as_ref().map(|b| b.data),
+            Ok(crate::database::tables::types::StringPoolId::new(0))
         );
 
         // FontRow non-string font_title fallback
-        let font_file = FileKey::new("FontKey")?;
         let rec_font_fallback = Record::with_fields(vec![
-            FieldValue::String(font_file.as_str().to_string()),
+            FieldValue::String("FontKey".to_string()),
             FieldValue::Null, // non-string title -> None
         ]);
-        let parsed_font_fb = FontRow::from_record(&rec_font_fallback)?;
-        assert!(parsed_font_fb.font_title.is_none());
+        let parsed_font_fb = FontRow::from_record(&rec_font_fallback);
+        assert_eq!(
+            parsed_font_fb.as_ref().map(|f| f.font_title.is_none()),
+            Ok(true)
+        );
 
         // PatchPackageRow non-short media fallback
         let rec_patch_fallback = Record::with_fields(vec![
             FieldValue::String("{22222222-3333-4444-5555-666666666666}".to_string()),
             FieldValue::Null, // non-short media -> 1
         ]);
-        let parsed_patch_fb = PatchPackageRow::from_record(&rec_patch_fallback)?;
-        assert_eq!(parsed_patch_fb.media, 1);
+        let parsed_patch_fb = PatchPackageRow::from_record(&rec_patch_fallback);
+        assert_eq!(parsed_patch_fb.as_ref().map(|p| p.media), Ok(1));
 
         // ModuleConfigurationRow non-long format and non-string/non-long optional fields fallback
         let rec_cfg_fallback = Record::with_fields(vec![
@@ -2559,15 +2810,33 @@ mod tests {
             FieldValue::Null, // description -> None
             FieldValue::Null, // help_keyword -> None
         ]);
-        let parsed_mc_fb = ModuleConfigurationRow::from_record(&rec_cfg_fallback)?;
-        assert_eq!(parsed_mc_fb.format, 0);
-        assert!(parsed_mc_fb.type_.is_none());
-        assert!(parsed_mc_fb.context_data.is_none());
-        assert!(parsed_mc_fb.default_value.is_none());
-        assert!(parsed_mc_fb.attributes.is_none());
-        assert!(parsed_mc_fb.display_name.is_none());
-        assert!(parsed_mc_fb.description.is_none());
-        assert!(parsed_mc_fb.help_keyword.is_none());
+        let parsed_mc_fb = ModuleConfigurationRow::from_record(&rec_cfg_fallback);
+        assert_eq!(parsed_mc_fb.as_ref().map(|m| m.format), Ok(0));
+        assert_eq!(parsed_mc_fb.as_ref().map(|m| m.type_.is_none()), Ok(true));
+        assert_eq!(
+            parsed_mc_fb.as_ref().map(|m| m.context_data.is_none()),
+            Ok(true)
+        );
+        assert_eq!(
+            parsed_mc_fb.as_ref().map(|m| m.default_value.is_none()),
+            Ok(true)
+        );
+        assert_eq!(
+            parsed_mc_fb.as_ref().map(|m| m.attributes.is_none()),
+            Ok(true)
+        );
+        assert_eq!(
+            parsed_mc_fb.as_ref().map(|m| m.display_name.is_none()),
+            Ok(true)
+        );
+        assert_eq!(
+            parsed_mc_fb.as_ref().map(|m| m.description.is_none()),
+            Ok(true)
+        );
+        assert_eq!(
+            parsed_mc_fb.as_ref().map(|m| m.help_keyword.is_none()),
+            Ok(true)
+        );
 
         // ModuleSubstitutionRow non-string value fallback
         let rec_sub_fallback = Record::with_fields(vec![
@@ -2576,22 +2845,21 @@ mod tests {
             FieldValue::String("Column".to_string()),
             FieldValue::Null, // value -> None
         ]);
-        let parsed_ms_fb = ModuleSubstitutionRow::from_record(&rec_sub_fallback)?;
-        assert!(parsed_ms_fb.value.is_none());
+        let parsed_ms_fb = ModuleSubstitutionRow::from_record(&rec_sub_fallback);
+        assert_eq!(parsed_ms_fb.as_ref().map(|m| m.value.is_none()), Ok(true));
 
         // ModuleIgnoreModularizationRow non-short type fallback
         let rec_mim_fallback = Record::with_fields(vec![
             FieldValue::String("IgnoreName".to_string()),
             FieldValue::Null, // type -> None
         ]);
-        let parsed_mim_fb = ModuleIgnoreModularizationRow::from_record(&rec_mim_fallback)?;
-        assert!(parsed_mim_fb.type_.is_none());
-
-        Ok(())
+        let parsed_mim_fb = ModuleIgnoreModularizationRow::from_record(&rec_mim_fallback);
+        assert_eq!(parsed_mim_fb.as_ref().map(|m| m.type_.is_none()), Ok(true));
     }
 
+    /// Tests [`BinaryRow`] roundtrip serialization and schema verification.
     #[test]
-    fn test_binary_row_roundtrip() -> Result<()> {
+    fn test_binary_row_roundtrip() {
         let schema = binary_schema();
         assert_eq!(schema.name, "Binary");
         assert_eq!(schema.columns.len(), 2);
@@ -2601,38 +2869,41 @@ mod tests {
             data: crate::database::tables::types::StringPoolId::new(42),
         };
         let rec = row.to_record();
-        let parsed = BinaryRow::from_record(&rec)?;
-        assert_eq!(parsed, row);
+        let parsed = BinaryRow::from_record(&rec);
+        assert_eq!(parsed, Ok(row));
 
         assert!(BinaryRow::from_record(&Record::new()).is_err());
         let rec_bad_pk = Record::with_fields(vec![FieldValue::Short(1), FieldValue::Null]);
         assert!(BinaryRow::from_record(&rec_bad_pk).is_err());
-        Ok(())
     }
 
+    /// Tests [`FontRow`] roundtrip serialization and schema verification.
     #[test]
-    fn test_font_row_roundtrip() -> Result<()> {
+    fn test_font_row_roundtrip() {
         let schema = font_schema();
         assert_eq!(schema.name, "Font");
         assert_eq!(schema.columns.len(), 2);
 
-        let file = FileKey::new("ArialFont")?;
-        let row = FontRow {
-            file,
-            font_title: Some("Arial Regular".to_string()),
-        };
-        let rec = row.to_record();
-        let parsed = FontRow::from_record(&rec)?;
-        assert_eq!(parsed, row);
+        let rec = Record::with_fields(vec![
+            FieldValue::String("ArialFont".to_string()),
+            FieldValue::String("Arial Regular".to_string()),
+        ]);
+        let parsed = FontRow::from_record(&rec);
+        assert_eq!(parsed.as_ref().map(FontRow::to_record), Ok(rec));
+        assert_eq!(parsed.as_ref().map(|f| f.file.as_str()), Ok("ArialFont"));
+        assert_eq!(
+            parsed.as_ref().map(|f| f.font_title.as_deref()),
+            Ok(Some("Arial Regular"))
+        );
 
         assert!(FontRow::from_record(&Record::new()).is_err());
         let rec_bad_pk = Record::with_fields(vec![FieldValue::Short(1), FieldValue::Null]);
         assert!(FontRow::from_record(&rec_bad_pk).is_err());
-        Ok(())
     }
 
+    /// Tests [`PatchPackageRow`] roundtrip serialization and schema verification.
     #[test]
-    fn test_patch_package_row_roundtrip() -> Result<()> {
+    fn test_patch_package_row_roundtrip() {
         let schema = patch_package_schema();
         assert_eq!(schema.name, "PatchPackage");
         assert_eq!(schema.columns.len(), 2);
@@ -2642,17 +2913,17 @@ mod tests {
             media: 1,
         };
         let rec = row.to_record();
-        let parsed = PatchPackageRow::from_record(&rec)?;
-        assert_eq!(parsed, row);
+        let parsed = PatchPackageRow::from_record(&rec);
+        assert_eq!(parsed, Ok(row));
 
         assert!(PatchPackageRow::from_record(&Record::new()).is_err());
         let rec_bad_pk = Record::with_fields(vec![FieldValue::Short(1), FieldValue::Null]);
         assert!(PatchPackageRow::from_record(&rec_bad_pk).is_err());
-        Ok(())
     }
 
+    /// Tests [`ModuleConfigurationRow`] roundtrip serialization and schema verification.
     #[test]
-    fn test_module_configuration_row_roundtrip() -> Result<()> {
+    fn test_module_configuration_row_roundtrip() {
         let schema = module_configuration_schema();
         assert_eq!(schema.name, "ModuleConfiguration");
         assert_eq!(schema.columns.len(), 9);
@@ -2669,17 +2940,17 @@ mod tests {
             help_keyword: Some("port_help".to_string()),
         };
         let rec = row.to_record();
-        let parsed = ModuleConfigurationRow::from_record(&rec)?;
-        assert_eq!(parsed, row);
+        let parsed = ModuleConfigurationRow::from_record(&rec);
+        assert_eq!(parsed, Ok(row));
 
         assert!(ModuleConfigurationRow::from_record(&Record::new()).is_err());
         let rec_bad_pk = Record::with_fields(vec![FieldValue::Short(1), FieldValue::Null]);
         assert!(ModuleConfigurationRow::from_record(&rec_bad_pk).is_err());
-        Ok(())
     }
 
+    /// Tests [`ModuleSubstitutionRow`] roundtrip serialization and schema verification.
     #[test]
-    fn test_module_substitution_row_roundtrip() -> Result<()> {
+    fn test_module_substitution_row_roundtrip() {
         let schema = module_substitution_schema();
         assert_eq!(schema.name, "ModuleSubstitution");
         assert_eq!(schema.columns.len(), 4);
@@ -2691,8 +2962,8 @@ mod tests {
             value: Some("[=PORT_PARAM]".to_string()),
         };
         let rec = row.to_record();
-        let parsed = ModuleSubstitutionRow::from_record(&rec)?;
-        assert_eq!(parsed, row);
+        let parsed = ModuleSubstitutionRow::from_record(&rec);
+        assert_eq!(parsed, Ok(row));
 
         assert!(ModuleSubstitutionRow::from_record(&Record::new()).is_err());
         let rec_bad_table = Record::with_fields(vec![
@@ -2713,11 +2984,11 @@ mod tests {
             FieldValue::Short(1),
         ]);
         assert!(ModuleSubstitutionRow::from_record(&rec_bad_col).is_err());
-        Ok(())
     }
 
+    /// Tests [`ModuleIgnoreModularizationRow`] roundtrip serialization and schema verification.
     #[test]
-    fn test_module_ignore_modularization_row_roundtrip() -> Result<()> {
+    fn test_module_ignore_modularization_row_roundtrip() {
         let schema = module_ignore_modularization_schema();
         assert_eq!(schema.name, "ModuleIgnoreModularization");
         assert_eq!(schema.columns.len(), 2);
@@ -2727,18 +2998,18 @@ mod tests {
             type_: Some(1),
         };
         let rec = row.to_record();
-        let parsed = ModuleIgnoreModularizationRow::from_record(&rec)?;
-        assert_eq!(parsed, row);
+        let parsed = ModuleIgnoreModularizationRow::from_record(&rec);
+        assert_eq!(parsed, Ok(row));
 
         assert!(ModuleIgnoreModularizationRow::from_record(&Record::new()).is_err());
         let rec_bad_pk = Record::with_fields(vec![FieldValue::Short(1)]);
         assert!(ModuleIgnoreModularizationRow::from_record(&rec_bad_pk).is_err());
-        Ok(())
     }
 
+    /// Tests roundtrip serialization and schema verification for merge module system tables.
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_merge_module_system_tables_roundtrip() -> Result<()> {
+    fn test_merge_module_system_tables_roundtrip() {
         // ModuleSignature
         let sig_schema = module_signature_schema();
         assert_eq!(sig_schema.name, "ModuleSignature");
@@ -2749,8 +3020,8 @@ mod tests {
             version: "1.2.3".to_string(),
         };
         let sig_rec = sig_row.to_record();
-        let parsed_sig = ModuleSignatureRow::from_record(&sig_rec)?;
-        assert_eq!(parsed_sig, sig_row);
+        let parsed_sig = ModuleSignatureRow::from_record(&sig_rec);
+        assert_eq!(parsed_sig, Ok(sig_row));
         assert!(ModuleSignatureRow::from_record(&Record::new()).is_err());
         assert!(ModuleSignatureRow::from_record(&Record::with_fields(vec![
             FieldValue::Short(1),
@@ -2781,8 +3052,8 @@ mod tests {
             language: 1033,
         };
         let comp_rec = comp_row.to_record();
-        let parsed_comp = ModuleComponentsRow::from_record(&comp_rec)?;
-        assert_eq!(parsed_comp, comp_row);
+        let parsed_comp = ModuleComponentsRow::from_record(&comp_rec);
+        assert_eq!(parsed_comp, Ok(comp_row));
         assert!(ModuleComponentsRow::from_record(&Record::new()).is_err());
         assert!(ModuleComponentsRow::from_record(&Record::with_fields(vec![
             FieldValue::Short(1),
@@ -2815,8 +3086,8 @@ mod tests {
             required_version: Some("2.0.0".to_string()),
         };
         let dep_rec = dep_row.to_record();
-        let parsed_dep = ModuleDependencyRow::from_record(&dep_rec)?;
-        assert_eq!(parsed_dep, dep_row);
+        let parsed_dep = ModuleDependencyRow::from_record(&dep_rec);
+        assert_eq!(parsed_dep, Ok(dep_row));
         let dep_row_none = ModuleDependencyRow {
             module_id: "SampleModule.GUID".to_string(),
             module_language: 1033,
@@ -2825,8 +3096,8 @@ mod tests {
             required_version: None,
         };
         let dep_rec_none = dep_row_none.to_record();
-        let parsed_dep_none = ModuleDependencyRow::from_record(&dep_rec_none)?;
-        assert_eq!(parsed_dep_none, dep_row_none);
+        let parsed_dep_none = ModuleDependencyRow::from_record(&dep_rec_none);
+        assert_eq!(parsed_dep_none, Ok(dep_row_none));
         assert!(ModuleDependencyRow::from_record(&Record::new()).is_err());
         assert!(ModuleDependencyRow::from_record(&Record::with_fields(vec![
             FieldValue::Short(1),
@@ -2870,8 +3141,8 @@ mod tests {
             excluded_version_max: Some("2.0.0".to_string()),
         };
         let excl_rec = excl_row.to_record();
-        let parsed_excl = ModuleExclusionRow::from_record(&excl_rec)?;
-        assert_eq!(parsed_excl, excl_row);
+        let parsed_excl = ModuleExclusionRow::from_record(&excl_rec);
+        assert_eq!(parsed_excl, Ok(excl_row));
         let excl_row_none = ModuleExclusionRow {
             module_id: "SampleModule.GUID".to_string(),
             module_language: 1033,
@@ -2881,8 +3152,8 @@ mod tests {
             excluded_version_max: None,
         };
         let excl_rec_none = excl_row_none.to_record();
-        let parsed_excl_none = ModuleExclusionRow::from_record(&excl_rec_none)?;
-        assert_eq!(parsed_excl_none, excl_row_none);
+        let parsed_excl_none = ModuleExclusionRow::from_record(&excl_rec_none);
+        assert_eq!(parsed_excl_none, Ok(excl_row_none));
         assert!(ModuleExclusionRow::from_record(&Record::new()).is_err());
         assert!(ModuleExclusionRow::from_record(&Record::with_fields(vec![
             FieldValue::Short(1),
@@ -2912,7 +3183,5 @@ mod tests {
             FieldValue::String("BadLang".to_string())
         ]))
         .is_err());
-
-        Ok(())
     }
 }

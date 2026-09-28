@@ -20,7 +20,8 @@ pub use bare_metal::{
     OfflineActionPolicyMode, OfflineChrootSandbox, OfflineExecutionPolicy,
 };
 pub use cli_parser::{
-    ActionMode, AdvertiseScope, LoggingOptions, MsiExecOptions, RepairFlags, UiLevel,
+    ActionMode, AdvertiseScope, LoggingOptions, MsiExecOptions, MsiExitCode, RepairFlags, UiLevel,
+    ERROR_INSTALL_USEREXIT, ERROR_UNKNOWN_PRODUCT,
 };
 pub use costing::{DiskCostEngine, VolumeCost, DEFAULT_CLUSTER_SIZE};
 pub use custom_action::{

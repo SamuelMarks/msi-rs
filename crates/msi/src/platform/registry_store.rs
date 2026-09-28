@@ -1956,7 +1956,7 @@ INSERT OR REPLACE INTO values VALUES (10, 'Fallback', 'REG_CUSTOM_TYPE', 'raw_te
 
     /// Tests component client `ProductCode` tracking per `ComponentId` GUID on `RegistryStore`.
     #[test]
-    fn test_registry_store_component_client_tracking() -> Result<()> {
+    fn test_registry_store_component_client_tracking() {
         let mut store = RegistryStore::new();
         let comp_guid = "{5B2783B0-9A1F-4348-9F93-87CE43C21001}";
         let prod_openedx = "{E0F45901-83B4-4B21-9B5A-01D38FE81001}";
@@ -1964,50 +1964,50 @@ INSERT OR REPLACE INTO values VALUES (10, 'Fallback', 'REG_CUSTOM_TYPE', 'raw_te
         let key_path = r"C:\Program Files\LibScript\bin\mysqld.exe";
 
         // Initial state
-        assert_eq!(store.get_component_client_count(comp_guid)?, 0);
-        assert!(!store.is_component_shared(comp_guid)?);
+        assert_eq!(store.get_component_client_count(comp_guid), Ok(0));
+        assert_eq!(store.is_component_shared(comp_guid), Ok(false));
         assert_eq!(
-            store.get_component_clients(comp_guid)?,
-            Vec::<String>::new()
+            store.get_component_clients(comp_guid),
+            Ok(Vec::<String>::new())
         );
 
         // Register first client (Open edX)
-        let count1 = store.register_component_client(comp_guid, prod_openedx, Some(key_path))?;
-        assert_eq!(count1, 1);
-        assert_eq!(store.get_component_client_count(comp_guid)?, 1);
-        assert!(!store.is_component_shared(comp_guid)?);
-        assert_eq!(store.get_shared_dll_ref(key_path)?, 1);
+        let count1 = store.register_component_client(comp_guid, prod_openedx, Some(key_path));
+        assert_eq!(count1, Ok(1));
+        assert_eq!(store.get_component_client_count(comp_guid), Ok(1));
+        assert_eq!(store.is_component_shared(comp_guid), Ok(false));
+        assert_eq!(store.get_shared_dll_ref(key_path), Ok(1));
 
         // Register second client (WordPress)
-        let count2 = store.register_component_client(comp_guid, prod_wordpress, Some(key_path))?;
-        assert_eq!(count2, 2);
-        assert_eq!(store.get_component_client_count(comp_guid)?, 2);
-        assert!(store.is_component_shared(comp_guid)?);
-        assert_eq!(store.get_shared_dll_ref(key_path)?, 2);
+        let count2 = store.register_component_client(comp_guid, prod_wordpress, Some(key_path));
+        assert_eq!(count2, Ok(2));
+        assert_eq!(store.get_component_client_count(comp_guid), Ok(2));
+        assert_eq!(store.is_component_shared(comp_guid), Ok(true));
+        assert_eq!(store.get_shared_dll_ref(key_path), Ok(2));
 
-        let clients = store.get_component_clients(comp_guid)?;
-        assert_eq!(clients.len(), 2);
+        let clients = store.get_component_clients(comp_guid);
+        assert_eq!(clients.as_ref().map(Vec::len), Ok(2));
 
         // Unregister first client (Open edX)
         let count_after_unreg1 =
-            store.unregister_component_client(comp_guid, prod_openedx, Some(key_path))?;
-        assert_eq!(count_after_unreg1, 1);
-        assert_eq!(store.get_component_client_count(comp_guid)?, 1);
-        assert!(!store.is_component_shared(comp_guid)?);
-        assert_eq!(store.get_shared_dll_ref(key_path)?, 1);
+            store.unregister_component_client(comp_guid, prod_openedx, Some(key_path));
+        assert_eq!(count_after_unreg1, Ok(1));
+        assert_eq!(store.get_component_client_count(comp_guid), Ok(1));
+        assert_eq!(store.is_component_shared(comp_guid), Ok(false));
+        assert_eq!(store.get_shared_dll_ref(key_path), Ok(1));
 
         // Unregister second client (WordPress)
         let count_after_unreg2 =
-            store.unregister_component_client(comp_guid, prod_wordpress, Some(key_path))?;
-        assert_eq!(count_after_unreg2, 0);
-        assert_eq!(store.get_component_client_count(comp_guid)?, 0);
-        assert_eq!(store.get_shared_dll_ref(key_path)?, 0);
+            store.unregister_component_client(comp_guid, prod_wordpress, Some(key_path));
+        assert_eq!(count_after_unreg2, Ok(0));
+        assert_eq!(store.get_component_client_count(comp_guid), Ok(0));
+        assert_eq!(store.get_shared_dll_ref(key_path), Ok(0));
 
         // Client registration with None key_path and empty key_path
-        let count_none = store.register_component_client(comp_guid, prod_openedx, None)?;
-        assert_eq!(count_none, 1);
-        let count_ws = store.register_component_client(comp_guid, prod_wordpress, Some("   "))?;
-        assert_eq!(count_ws, 2);
+        let count_none = store.register_component_client(comp_guid, prod_openedx, None);
+        assert_eq!(count_none, Ok(1));
+        let count_ws = store.register_component_client(comp_guid, prod_wordpress, Some("   "));
+        assert_eq!(count_ws, Ok(2));
 
         // Values with CurrentUser root and None name to cover get_component_clients filter branches
         let comp_key = format!(
@@ -2027,14 +2027,14 @@ INSERT OR REPLACE INTO values VALUES (10, 'Fallback', 'REG_CUSTOM_TYPE', 'raw_te
             None,
             RegistryValue::Sz("default".to_string()),
         );
-        let client_list = store.get_component_clients(comp_guid)?;
-        assert_eq!(client_list.len(), 2);
+        let client_list = store.get_component_clients(comp_guid);
+        assert_eq!(client_list.as_ref().map(Vec::len), Ok(2));
 
         // Unregister with None and empty key_path
-        let unreg_ws = store.unregister_component_client(comp_guid, prod_wordpress, Some("   "))?;
-        assert_eq!(unreg_ws, 1);
-        let unreg_none = store.unregister_component_client(comp_guid, prod_openedx, None)?;
-        assert_eq!(unreg_none, 0);
+        let unreg_ws = store.unregister_component_client(comp_guid, prod_wordpress, Some("   "));
+        assert_eq!(unreg_ws, Ok(1));
+        let unreg_none = store.unregister_component_client(comp_guid, prod_openedx, None);
+        assert_eq!(unreg_none, Ok(0));
 
         // Error branches on invalid key path
         assert!(store
@@ -2060,8 +2060,6 @@ INSERT OR REPLACE INTO values VALUES (10, 'Fallback', 'REG_CUSTOM_TYPE', 'raw_te
         assert!(store.get_component_clients("").is_err());
         assert!(store.get_component_client_count("").is_err());
         assert!(store.is_component_shared("").is_err());
-
-        Ok(())
     }
 
     /// Tests `Win32RegistryApi` command generation and in-store operations, and `SqliteRegistryDriver::new_wal`.

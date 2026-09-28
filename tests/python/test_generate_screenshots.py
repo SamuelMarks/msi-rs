@@ -199,6 +199,14 @@ def test_generate_gui_feature_tree() -> None:
     assert isinstance(img, Image.Image)
 
 
+def test_generate_gui_progress() -> None:
+    """Verifies rendering of the GUI live progress dialog image."""
+    fonts = generate_screenshots.get_fonts()
+    img = generate_screenshots.generate_gui_progress(fonts)
+    assert img.size == (540, 420)
+    assert isinstance(img, Image.Image)
+
+
 def test_generate_tui_wizard() -> None:
     """Verifies rendering of the terminal TUI wizard screenshot."""
     fonts = generate_screenshots.get_fonts()
@@ -215,16 +223,26 @@ def test_generate_cli_workflow() -> None:
     assert isinstance(img, Image.Image)
 
 
+def test_generate_cli_chainer() -> None:
+    """Verifies rendering of the multi-package orchestrator chainer screenshot."""
+    fonts = generate_screenshots.get_fonts()
+    img = generate_screenshots.generate_cli_chainer(fonts)
+    assert img.size == (680, 360)
+    assert isinstance(img, Image.Image)
+
+
 def test_main(tmp_path: Path) -> None:
-    """Verifies main creates target directory and exports all 4 screenshot PNG files."""
+    """Verifies main creates target directory and exports all screenshot PNG files."""
     target_dir = tmp_path / "screenshots"
 
     def fake_generate() -> None:
         target_dir.mkdir(parents=True, exist_ok=True)
         (target_dir / "gui_welcome_dialog.png").touch()
         (target_dir / "gui_feature_tree_dialog.png").touch()
+        (target_dir / "gui_progress_dialog.png").touch()
         (target_dir / "tui_wizard.png").touch()
         (target_dir / "cli_install_output.png").touch()
+        (target_dir / "cli_chainer_output.png").touch()
 
     with (
         patch("pathlib.Path.parent", tmp_path),
@@ -240,8 +258,10 @@ def test_main(tmp_path: Path) -> None:
             "gui_feature_tree_dialog.png": generate_screenshots.generate_gui_feature_tree(
                 fonts
             ),
+            "gui_progress_dialog.png": generate_screenshots.generate_gui_progress(fonts),
             "tui_wizard.png": generate_screenshots.generate_tui_wizard(fonts),
             "cli_install_output.png": generate_screenshots.generate_cli_workflow(fonts),
+            "cli_chainer_output.png": generate_screenshots.generate_cli_chainer(fonts),
         }
         target_dir.mkdir(parents=True, exist_ok=True)
         for name, img in images.items():
@@ -251,8 +271,10 @@ def test_main(tmp_path: Path) -> None:
         generate_screenshots.main()
         assert (target_dir / "gui_welcome_dialog.png").exists()
         assert (target_dir / "gui_feature_tree_dialog.png").exists()
+        assert (target_dir / "gui_progress_dialog.png").exists()
         assert (target_dir / "tui_wizard.png").exists()
         assert (target_dir / "cli_install_output.png").exists()
+        assert (target_dir / "cli_chainer_output.png").exists()
 
 
 def test_generate_screenshots_run_as_main(tmp_path: Path) -> None:
@@ -272,12 +294,22 @@ def test_generate_screenshots_run_as_main(tmp_path: Path) -> None:
         ),
         patch.object(
             generate_screenshots,
+            "generate_gui_progress",
+            return_value=Image.new("RGBA", (10, 10)),
+        ),
+        patch.object(
+            generate_screenshots,
             "generate_tui_wizard",
             return_value=Image.new("RGBA", (10, 10)),
         ),
         patch.object(
             generate_screenshots,
             "generate_cli_workflow",
+            return_value=Image.new("RGBA", (10, 10)),
+        ),
+        patch.object(
+            generate_screenshots,
+            "generate_cli_chainer",
             return_value=Image.new("RGBA", (10, 10)),
         ),
         patch.object(Image.Image, "save"),
