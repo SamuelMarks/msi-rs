@@ -3392,66 +3392,90 @@ mod tests {
         assert!(fresh_executor.execute(&bad_vbs, &mut ctx).is_err());
 
         // 4. Stderr logging and script path checks
-        let stderr_action = unwrap_result(CustomActionDefinition::parse(
-            "StderrAct",
-            0x0032,
-            "SH_EXE",
-            "dummy \"echo custom_error_msg 1>&2\"",
-        ));
-        ctx.set_property("SH_EXE", "/bin/sh -c");
-        let res = fresh_executor.execute(&stderr_action, &mut ctx);
-        assert_eq!(res, Ok(ERROR_SUCCESS));
-        assert!(fresh_executor
-            .execution_logs()
-            .iter()
-            .any(|l| l.contains("STDERR: custom_error_msg")));
-
-        // Script checks: absolute non-existent script
-        ctx.set_property("SH_EXE", "/bin/sh");
-        let nonexistent_abs = unwrap_result(CustomActionDefinition::parse(
-            "AbsScript",
-            0x0032,
-            "SH_EXE",
-            "dummy /nonexistent_dir_12345/nonexistent_script.sh",
-        ));
-        assert_eq!(
-            fresh_executor.execute(&nonexistent_abs, &mut ctx),
-            Ok(ERROR_SUCCESS)
-        );
-
-        // Script checks: relative non-existent script with no working_dir
-        let nonexistent_rel = unwrap_result(CustomActionDefinition::parse(
-            "RelScript",
-            0x0032,
-            "SH_EXE",
-            "dummy nonexistent_script_12345.sh",
-        ));
-        assert_eq!(
-            fresh_executor.execute(&nonexistent_rel, &mut ctx),
-            Ok(ERROR_SUCCESS)
-        );
-
-        // Script checks: existing script file
-        let exist_dir = std::env::temp_dir().join("msi_test_exist_sh_dir");
-        std::fs::create_dir_all(&exist_dir).ok();
-        let exist_sh = exist_dir.join("exist.sh");
-        std::fs::write(&exist_sh, b"#!/bin/sh\nexit 0\n").ok();
-        #[cfg(unix)]
+        #[cfg(not(target_os = "windows"))]
         {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&exist_sh, std::fs::Permissions::from_mode(0o755)).ok();
+            let stderr_action = unwrap_result(CustomActionDefinition::parse(
+                "StderrAct",
+                0x0032,
+                "SH_EXE",
+                "dummy \"echo custom_error_msg 1>&2\"",
+            ));
+            ctx.set_property("SH_EXE", "/bin/sh -c");
+            let res = fresh_executor.execute(&stderr_action, &mut ctx);
+            assert_eq!(res, Ok(ERROR_SUCCESS));
+            assert!(fresh_executor
+                .execution_logs()
+                .iter()
+                .any(|l| l.contains("STDERR: custom_error_msg")));
+
+            // Script checks: absolute non-existent script
+            ctx.set_property("SH_EXE", "/bin/sh");
+            let nonexistent_abs = unwrap_result(CustomActionDefinition::parse(
+                "AbsScript",
+                0x0032,
+                "SH_EXE",
+                "dummy /nonexistent_dir_12345/nonexistent_script.sh",
+            ));
+            assert_eq!(
+                fresh_executor.execute(&nonexistent_abs, &mut ctx),
+                Ok(ERROR_SUCCESS)
+            );
+
+            // Script checks: relative non-existent script with no working_dir
+            let nonexistent_rel = unwrap_result(CustomActionDefinition::parse(
+                "RelScript",
+                0x0032,
+                "SH_EXE",
+                "dummy nonexistent_script_12345.sh",
+            ));
+            assert_eq!(
+                fresh_executor.execute(&nonexistent_rel, &mut ctx),
+                Ok(ERROR_SUCCESS)
+            );
+
+            // Script checks: existing script file
+            let exist_dir = std::env::temp_dir().join("msi_test_exist_sh_dir");
+            let _ = std::fs::create_dir_all(&exist_dir);
+            let exist_sh = exist_dir.join("exist.sh");
+            let _ = std::fs::write(&exist_sh, b"#!/bin/sh\nexit 0\n");
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(&exist_sh, std::fs::Permissions::from_mode(0o755));
+            }
+            let exist_act = unwrap_result(CustomActionDefinition::parse(
+                "ExistScript",
+                0x0032,
+                "SH_EXE",
+                &format!("dummy {}", exist_sh.to_string_lossy()),
+            ));
+            assert_eq!(
+                fresh_executor.execute(&exist_act, &mut ctx),
+                Ok(ERROR_SUCCESS)
+            );
+            let _ = std::fs::remove_dir_all(&exist_dir);
         }
-        let exist_act = unwrap_result(CustomActionDefinition::parse(
-            "ExistScript",
-            0x0032,
-            "SH_EXE",
-            &format!("dummy {}", exist_sh.to_string_lossy()),
-        ));
-        assert_eq!(
-            fresh_executor.execute(&exist_act, &mut ctx),
-            Ok(ERROR_SUCCESS)
-        );
-        let _ = std::fs::remove_dir_all(&exist_dir);
+
+        #[cfg(target_os = "windows")]
+        {
+            let stderr_action = unwrap_result(CustomActionDefinition::parse(
+                "StderrAct",
+                0x0032,
+                "CMD_EXE",
+                "dummy /c \"echo custom_error_msg 1>&2\"",
+            ));
+            let comspec = match std::env::var("COMSPEC") {
+                Ok(val) => val,
+                Err(_) => "cmd.exe".to_string(),
+            };
+            ctx.set_property("CMD_EXE", &comspec);
+            let res = fresh_executor.execute(&stderr_action, &mut ctx);
+            assert_eq!(res, Ok(ERROR_SUCCESS));
+            assert!(fresh_executor
+                .execution_logs()
+                .iter()
+                .any(|l| l.contains("STDERR: custom_error_msg")));
+        }
 
         // 5. Async executable failure
         let temp_dir = std::env::temp_dir().join("msi_test_bad_spawn");

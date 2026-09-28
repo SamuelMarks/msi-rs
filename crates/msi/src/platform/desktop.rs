@@ -753,8 +753,10 @@ mod tests {
         assert!(std::fs::read_to_string(&installed_xdg).is_ok_and(|c| c.contains("Name=Test App")));
 
         // Negative path for XDG install
-        let invalid_path = Path::new("/dev/null/impossible/path");
-        assert!(xdg.install_to_directory(invalid_path).is_err());
+        let blocker_file = temp_dir.join("blocker_file");
+        let _ = std::fs::write(&blocker_file, b"blocker");
+        let invalid_path = blocker_file.join("impossible/path");
+        assert!(xdg.install_to_directory(&invalid_path).is_err());
 
         // Error path for std::fs::write when target file path is an existing directory
         let bad_dir = temp_dir.join("bad_dir");
@@ -790,7 +792,7 @@ mod tests {
         assert!(std::fs::read(&lnk_path).is_ok_and(|b| b == bytes));
 
         // Negative path for lnk save
-        assert!(lnk.save_to_disk(invalid_path).is_err());
+        assert!(lnk.save_to_disk(&invalid_path).is_err());
 
         // Minimal Win32ShellLink without optional flags and empty target path
         let empty_lnk = Win32ShellLink::new("");

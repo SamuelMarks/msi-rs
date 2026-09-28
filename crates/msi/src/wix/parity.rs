@@ -438,7 +438,6 @@ impl MsiDecompiler {
 mod tests {
     use super::*;
     use crate::database::tables::record::Record;
-    use std::path::Path;
 
     /// Helper to build a sample linked database.
     fn sample_database() -> LinkedDatabase {
@@ -1008,10 +1007,16 @@ mod tests {
             crate::database::summary_info::SummaryInfo::default(),
             HashMap::new(),
         );
-        let invalid_out_dir = Path::new("/dev/null/impossible");
+        let temp_dir_base =
+            std::env::temp_dir().join(format!("parity_base_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&temp_dir_base);
+        let blocker = temp_dir_base.join("blocker_file");
+        let _ = std::fs::write(&blocker, b"blocker");
+        let invalid_out_dir = blocker.join("impossible");
         assert!(decompiler
-            .extract_assets(&empty_pkg, invalid_out_dir)
+            .extract_assets(&empty_pkg, &invalid_out_dir)
             .is_err());
+        let _ = std::fs::remove_dir_all(&temp_dir_base);
 
         let mut bad_cabs = HashMap::new();
         bad_cabs.insert("Corrupt.cab".to_string(), b"not a cab file".to_vec());

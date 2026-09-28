@@ -6696,13 +6696,17 @@ mod tests {
         let mut embedded_cabs = HashMap::new();
         embedded_cabs.insert("ChildCab.msi".to_string(), vec![1, 2, 3]);
         let master_pkg = Package::from_database(master_db, embedded_cabs);
-        let forbidden_spool = Path::new("/dev/null/forbidden_spool");
+        let temp_blocker_spool =
+            std::env::temp_dir().join(format!("spool_blocker_{}", std::process::id()));
+        let _ = std::fs::write(&temp_blocker_spool, b"blocker");
+        let forbidden_spool = temp_blocker_spool.join("forbidden_spool");
         assert!(mgr
-            .extract_child_package(&master_pkg, "ChildPkg.msi", forbidden_spool)
+            .extract_child_package(&master_pkg, "ChildPkg.msi", &forbidden_spool)
             .is_err());
         assert!(mgr
-            .extract_all_child_packages(&master_pkg, forbidden_spool)
+            .extract_all_child_packages(&master_pkg, &forbidden_spool)
             .is_err());
+        let _ = std::fs::remove_file(&temp_blocker_spool);
 
         // Child package extraction write error when destination is a directory (line 1636)
         let temp_spool_valid =
@@ -6922,11 +6926,15 @@ mod tests {
         );
         let chainer_ext_pkg = Package::from_database(chainer_ext_db, HashMap::new());
         let mut mgr_ext = unwrap_result(MultiPackageTransactionManager::begin_transaction("ExtTx"));
+        let temp_blocker_chainer =
+            std::env::temp_dir().join(format!("chainer_blocker_{}", std::process::id()));
+        let _ = std::fs::write(&temp_blocker_chainer, b"blocker");
+        let forbidden_chainer = temp_blocker_chainer.join("forbidden");
         assert!(mgr_ext
             .orchestrate_master_package(
                 &chainer_ext_pkg,
                 &EvaluationContext::new(),
-                Path::new("/dev/null/forbidden"),
+                &forbidden_chainer,
                 &[]
             )
             .is_err());
@@ -6943,8 +6951,9 @@ mod tests {
         let bin_only_pkg = Package::from_database(bin_only_db, HashMap::new());
         let mut mgr_bin = unwrap_result(MultiPackageTransactionManager::begin_transaction("BinTx"));
         assert!(mgr_bin
-            .extract_all_child_packages(&bin_only_pkg, Path::new("/dev/null/forbidden"))
+            .extract_all_child_packages(&bin_only_pkg, &forbidden_chainer)
             .is_err());
+        let _ = std::fs::remove_file(&temp_blocker_chainer);
 
         // Child package failures: condition syntax (line 1841), prepare (line 1852), execute (line 1859), commit (line 1860)
         let mut mgr_child =

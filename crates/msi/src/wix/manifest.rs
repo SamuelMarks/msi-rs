@@ -1599,8 +1599,11 @@ mod tests {
             "target_folder": "WriteErr"
         }"#;
         let synth = ManifestMsiSynthesizer::new(pkg_json);
-        let invalid_dir = Path::new("/dev/null/invalid_msi_dir");
-        let res = synth.build_msi_in_dir(Path::new("out.msi"), invalid_dir, "<xml/>");
+        let temp_blocker = std::env::temp_dir().join(format!("syn_blocker_{}", std::process::id()));
+        let _ = std::fs::write(&temp_blocker, b"blocker");
+        let invalid_dir = temp_blocker.join("invalid_msi_dir");
+        let res = synth.build_msi_in_dir(Path::new("out.msi"), &invalid_dir, "<xml/>");
         assert!(res.is_err());
+        let _ = std::fs::remove_file(&temp_blocker);
     }
 }
