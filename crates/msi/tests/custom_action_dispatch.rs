@@ -121,7 +121,9 @@ fn test_type_34_and_50_executable_cli_actions() -> Result<()> {
     let mut db = LinkedDatabase::new()?;
 
     // Create a mock script in test_dir
+    #[cfg(not(target_os = "windows"))]
     let script_file = test_dir.join("cli_tool.sh");
+    #[cfg(not(target_os = "windows"))]
     fs::write(&script_file, b"#!/bin/sh\nexit 0\n")?;
 
     #[cfg(unix)]
@@ -132,10 +134,20 @@ fn test_type_34_and_50_executable_cli_actions() -> Result<()> {
         fs::set_permissions(&script_file, perms)?;
     }
 
+    #[cfg(target_os = "windows")]
+    let script_file = test_dir.join("cli_tool.cmd");
+    #[cfg(target_os = "windows")]
+    fs::write(&script_file, b"@echo off\r\nexit 0\r\n")?;
+
     // CustomAction table: Type 34 (DirectoryExe) deferred
     let type34_flags =
         i16::try_from(MSIDB_CUSTOM_ACTION_TYPE_DIRECTORY_EXE | MSIDB_CUSTOM_ACTION_TYPE_IN_SCRIPT)
             .unwrap_or(0x0422);
+
+    #[cfg(not(target_os = "windows"))]
+    let cli_target = "cli_tool.sh --port [PROP_PORT]";
+    #[cfg(target_os = "windows")]
+    let cli_target = "cli_tool.cmd --port [PROP_PORT]";
 
     db.add_record(
         "CustomAction",
@@ -143,7 +155,7 @@ fn test_type_34_and_50_executable_cli_actions() -> Result<()> {
             FieldValue::String("CA_RunCli".to_string()),
             FieldValue::Short(type34_flags),
             FieldValue::String("INSTALLFOLDER".to_string()),
-            FieldValue::String("cli_tool.sh --port [PROP_PORT]".to_string()),
+            FieldValue::String(cli_target.to_string()),
         ]),
     );
 

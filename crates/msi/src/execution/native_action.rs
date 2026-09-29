@@ -630,6 +630,62 @@ impl SubprocessRunner {
         }
     }
 
+    /// Constructs a [`Command`] configured for the target platform, executable type, and environment.
+    ///
+    /// On Windows, batch files (`.cmd` and `.bat`) are routed through `%COMSPEC%` or `cmd.exe /c`
+    /// to ensure valid Win32 process execution semantics.
+    ///
+    /// # Arguments
+    ///
+    /// * `executable` - Path to executable or script file.
+    /// * `args` - Command-line arguments.
+    /// * `working_dir` - Optional working directory.
+    /// * `env_vars` - Environment variables to inject into child process.
+    ///
+    /// # Returns
+    ///
+    /// Configured [`Command`] builder instance.
+    fn build_command(
+        executable: &Path,
+        args: &[String],
+        working_dir: Option<&Path>,
+        env_vars: &HashMap<String, String>,
+    ) -> Command {
+        #[cfg(target_os = "windows")]
+        let is_batch = executable
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("cmd") || ext.eq_ignore_ascii_case("bat"));
+
+        #[cfg(target_os = "windows")]
+        let mut cmd = if is_batch {
+            let comspec = std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string());
+            let mut c = Command::new(comspec);
+            c.arg("/c");
+            c.arg(executable);
+            c.args(args);
+            c
+        } else {
+            let mut c = Command::new(executable);
+            c.args(args);
+            c
+        };
+
+        #[cfg(not(target_os = "windows"))]
+        let mut cmd = Command::new(executable);
+        #[cfg(not(target_os = "windows"))]
+        cmd.args(args);
+
+        if let Some(wd) = working_dir {
+            cmd.current_dir(wd);
+        }
+
+        for (k, v) in env_vars {
+            cmd.env(k, v);
+        }
+
+        cmd
+    }
+
     /// Executes an executable file synchronously with environment variables, timeout, and output capture.
     ///
     /// # Arguments
@@ -653,19 +709,10 @@ impl SubprocessRunner {
         working_dir: Option<&Path>,
         env_vars: &HashMap<String, String>,
     ) -> Result<SubprocessResult> {
-        let mut cmd = Command::new(executable);
-        cmd.args(args);
+        let mut cmd = Self::build_command(executable, args, working_dir, env_vars);
         cmd.stdin(Stdio::null());
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
-
-        if let Some(wd) = working_dir {
-            cmd.current_dir(wd);
-        }
-
-        for (k, v) in env_vars {
-            cmd.env(k, v);
-        }
 
         let mut child = cmd.spawn().map_err(|e| Error::ExecutionFailed {
             action: executable.to_string_lossy().to_string(),
@@ -749,19 +796,10 @@ impl SubprocessRunner {
         working_dir: Option<&Path>,
         env_vars: &HashMap<String, String>,
     ) -> Result<Child> {
-        let mut cmd = Command::new(executable);
-        cmd.args(args);
+        let mut cmd = Self::build_command(executable, args, working_dir, env_vars);
         cmd.stdin(Stdio::null());
         cmd.stdout(Stdio::null());
         cmd.stderr(Stdio::null());
-
-        if let Some(wd) = working_dir {
-            cmd.current_dir(wd);
-        }
-
-        for (k, v) in env_vars {
-            cmd.env(k, v);
-        }
 
         cmd.spawn().map_err(|e| Error::ExecutionFailed {
             action: executable.to_string_lossy().to_string(),
@@ -1525,6 +1563,20 @@ mod tests {
                 &envs,
             );
             assert_eq!(res.as_ref().map(|o| o.exit_code), Ok(ERROR_SUCCESS));
+
+            let temp_batch_dir =
+                std::env::temp_dir().join(format!("msi_batch_test_{}", std::process::id()));
+            let _ = fs::create_dir_all(&temp_batch_dir);
+            let test_cmd = temp_batch_dir.join("test_script.cmd");
+            let _ = fs::write(&test_cmd, b"@echo off\r\necho %MSI_TEST_VAR%\r\n");
+
+            let batch_res = runner.run(&test_cmd, &[], Some(&temp_batch_dir), &envs);
+            assert_eq!(batch_res.as_ref().map(|o| o.exit_code), Ok(ERROR_SUCCESS));
+
+            let mut async_batch = runner.spawn_async(&test_cmd, &[], Some(&temp_batch_dir), &envs);
+            assert_eq!(async_batch.as_mut().map(|c| c.wait().is_ok()), Ok(true));
+
+            let _ = fs::remove_dir_all(&temp_batch_dir);
         }
     }
 
