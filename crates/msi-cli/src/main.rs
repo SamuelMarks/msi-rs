@@ -3400,6 +3400,12 @@ mod tests {
         assert!(pack_res.is_ok());
         assert!(out_msi2.exists());
 
+        let pkg2 = Package::open(&out_msi2).unwrap_or_default();
+        assert_eq!(pkg2.summary_info().template.as_deref(), Some("x64;1033"));
+        let raw2 = std::fs::read(&out_msi2).unwrap_or_default();
+        let cfb2 = msi::cfb::CfbReader::new(&raw2).unwrap_or_default();
+        assert_eq!(cfb2.root_clsid(), msi::cfb::StorageClsid::MsiPackage);
+
         // 2b. Direct synthesis using --manifest and --schema
         let manifest_file = temp_dir.join("packaging.json");
         assert!(std::fs::write(

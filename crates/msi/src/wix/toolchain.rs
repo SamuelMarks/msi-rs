@@ -5,6 +5,8 @@
 //! - [`LightOptions`]: Replicates `WiX` v3 `light.exe` linker/binder command-line interface.
 //! - [`WixBuildOptions`]: Replicates `WiX` .NET Tools v4/v5 `wix build` command-line interface.
 
+use crate::database::tables::core::PropertyRow;
+use crate::database::tables::types::PropertyName;
 use crate::error::{Error, Result};
 use crate::package::Package;
 use crate::wix::linker::Linker;
@@ -12,7 +14,7 @@ use crate::wix::localization::WixLocalization;
 use crate::wix::preprocessor::PreprocessorContext;
 use crate::wix::ui_library::{inject_ui_library, WixUiDialogSet};
 use crate::wix::wixlib::WixLibrary;
-use crate::wix::wixobj::WixObject;
+use crate::wix::wixobj::{SectionType, WixObject};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -306,7 +308,22 @@ impl CandleOptions {
                 continue;
             }
 
-            let obj = crate::wix::compile_wix(&content, &mut ctx)?;
+            let mut obj = crate::wix::compile_wix(&content, &mut ctx)?;
+            if let Some(ref arch_str) = self.arch {
+                let p = PropertyRow {
+                    property: PropertyName::from_static("ProductPlatform"),
+                    value: arch_str.clone(),
+                };
+                for sec in &mut obj.sections {
+                    if sec.section_type == SectionType::Product {
+                        for tbl in &mut sec.tables {
+                            if tbl.name == "Property" {
+                                tbl.push_record(p.to_record());
+                            }
+                        }
+                    }
+                }
+            }
             let bytes = obj.serialize();
 
             let out_file = match &self.output {
@@ -381,6 +398,8 @@ pub struct LightOptions {
     pub suppressed_ice: Vec<String>,
     /// Specific warning IDs to suppress (`-sw<id>`).
     pub suppressed_warnings: Vec<String>,
+    /// Target platform architecture override (`-arch`).
+    pub arch: Option<String>,
     /// Suppress all linker warnings (`-swall`).
     pub suppress_all_warnings: bool,
     /// Treat warnings as fatal errors (`-wx`).
@@ -504,6 +523,15 @@ impl LightOptions {
                     idx += 1;
                 } else if lower == "notidy" {
                     opts.no_tidy = true;
+                    idx += 1;
+                } else if lower == "arch" {
+                    idx += 1;
+                    if idx >= args.len() {
+                        return Err(Error::WixLinker {
+                            message: "missing architecture argument for '-arch'".to_string(),
+                        });
+                    }
+                    opts.arch = Some(args[idx].clone());
                     idx += 1;
                 } else if lower == "pdb" {
                     opts.generate_pdb = true;
@@ -793,6 +821,14 @@ impl LightOptions {
         }
         if needs_ui && db.get_records("Dialog").is_empty() {
             let _ = inject_ui_library(&mut db, WixUiDialogSet::InstallDir, None, None, None);
+        }
+
+        if let Some(ref arch_str) = self.arch {
+            let row = PropertyRow {
+                property: PropertyName::from_static("ProductPlatform"),
+                value: arch_str.clone(),
+            };
+            db.add_record("Property", row.to_record());
         }
 
         // 6. Build and save Package
@@ -1100,6 +1136,14 @@ impl WixBuildOptions {
             let _ = inject_ui_library(&mut db, WixUiDialogSet::InstallDir, None, None, None);
         }
 
+        if let Some(ref arch_str) = self.arch {
+            let row = PropertyRow {
+                property: PropertyName::from_static("ProductPlatform"),
+                value: arch_str.clone(),
+            };
+            db.add_record("Property", row.to_record());
+        }
+
         let cabs = linker.take_embedded_cabinets();
         let package = Package::from_database(db, cabs);
 
@@ -1133,6 +1177,9 @@ mod tests {
         <Package Description="Test" />
         <Directory Id="TARGETDIR" Name="SourceDir" />
     </Product>
+    <Fragment>
+        <ComponentGroup Id="FragGroup" />
+    </Fragment>
 </Wix>
 "#;
         assert!(fs::write(&src_file, wxs_content).is_ok());
@@ -1381,6 +1428,8 @@ x64
             "-ice:ICE01".to_string(),
             "-sice:ICE38".to_string(),
             "-sw101".to_string(),
+            "-arch".to_string(),
+            "x64".to_string(),
             "-out".to_string(),
             msi_file.to_string_lossy().to_string(),
             obj_file.to_string_lossy().to_string(),
@@ -1397,11 +1446,19 @@ x64
         assert_eq!(opts.selected_ice, vec!["ICE01"]);
         assert_eq!(opts.suppressed_ice, vec!["ICE38"]);
         assert_eq!(opts.suppressed_warnings, vec!["101"]);
+        assert_eq!(opts.arch, Some("x64".to_string()));
         assert_eq!(opts.output, Some(msi_file.clone()));
 
         let produced = opts.execute().unwrap_or_default();
         assert_eq!(produced, msi_file);
         assert!(msi_file.exists());
+
+        let pkg = Package::open(&produced).unwrap_or_default();
+        assert_eq!(pkg.summary_info().template, Some("x64;1033".to_string()));
+
+        let raw_bytes = fs::read(&produced).unwrap_or_default();
+        let reader = crate::cfb::CfbReader::new(&raw_bytes).unwrap_or_default();
+        assert_eq!(reader.root_clsid(), crate::cfb::StorageClsid::MsiPackage);
 
         // Test missing input objects error
         assert!(LightOptions::parse(&["-nologo".to_string()]).is_err());
@@ -1412,6 +1469,7 @@ x64
     /// Tests `LightOptions` argument parse error conditions.
     #[test]
     fn test_light_options_parse_errors() {
+        assert!(LightOptions::parse(&["-arch".to_string()]).is_err());
         assert!(LightOptions::parse(&["-ext".to_string()]).is_err());
         assert!(LightOptions::parse(&["-loc".to_string()]).is_err());
         assert!(LightOptions::parse(&["-b".to_string()]).is_err());

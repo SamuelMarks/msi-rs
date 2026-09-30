@@ -589,6 +589,29 @@ pub enum Error {
     #[display("Service configuration error: {_0}")]
     #[error(ignore)]
     ServiceConfiguration(String),
+
+    /// The specified architecture string is invalid or unrecognized.
+    #[display("Invalid architecture '{name}'")]
+    InvalidArchitecture {
+        /// Name of the unrecognized architecture.
+        name: String,
+    },
+
+    /// The `SummaryInformation` template string is invalid.
+    #[display("Invalid SummaryInformation template string '{template}': {reason}")]
+    InvalidSummaryTemplate {
+        /// The invalid template string.
+        template: String,
+        /// Detail regarding the failure.
+        reason: String,
+    },
+
+    /// The specified storage CLSID string is invalid.
+    #[display("Invalid storage CLSID '{clsid}'")]
+    InvalidStorageClsid {
+        /// The invalid CLSID string.
+        clsid: String,
+    },
 }
 
 impl From<std::io::Error> for Error {
@@ -1217,6 +1240,44 @@ mod tests {
         assert_eq!(
             err_svc,
             Error::ServiceConfiguration("invalid failure action".to_string())
+        );
+
+        let err_arch = Error::InvalidArchitecture {
+            name: "mips".to_string(),
+        };
+        assert_eq!(format!("{err_arch}"), "Invalid architecture 'mips'");
+        assert_eq!(
+            err_arch,
+            Error::InvalidArchitecture {
+                name: "mips".to_string()
+            }
+        );
+
+        let err_tmpl = Error::InvalidSummaryTemplate {
+            template: "invalid;template".to_string(),
+            reason: "malformed language id".to_string(),
+        };
+        assert_eq!(
+            format!("{err_tmpl}"),
+            "Invalid SummaryInformation template string 'invalid;template': malformed language id"
+        );
+        assert_eq!(
+            err_tmpl,
+            Error::InvalidSummaryTemplate {
+                template: "invalid;template".to_string(),
+                reason: "malformed language id".to_string(),
+            }
+        );
+
+        let err_clsid = Error::InvalidStorageClsid {
+            clsid: "bad-guid".to_string(),
+        };
+        assert_eq!(format!("{err_clsid}"), "Invalid storage CLSID 'bad-guid'");
+        assert_eq!(
+            err_clsid,
+            Error::InvalidStorageClsid {
+                clsid: "bad-guid".to_string()
+            }
         );
     }
 

@@ -8,13 +8,13 @@
 //! - Embedded Cabinet archive streams (e.g. `#cab1.cab`).
 
 use crate::cfb::{
-    decode_msi_stream_name, encode_msi_stream_name, CfbReader, CfbVersion, CfbWriter,
+    decode_msi_stream_name, encode_msi_stream_name, CfbReader, CfbVersion, CfbWriter, StorageClsid,
     SUMMARY_INFORMATION_STREAM,
 };
 use crate::database::catalogs::{TableSchema, COLUMN_CATALOG_NAME, TABLE_CATALOG_NAME};
 use crate::database::column::{ColumnDef, DataType};
 use crate::database::string_pool::{StringPool, CODEPAGE_UTF8};
-use crate::database::summary_info::SummaryInfo;
+use crate::database::summary_info::{Architecture, SummaryInfo};
 use crate::database::tables::core::{
     ComponentRow, DirectoryRow, FeatureRow, FileRow, MediaRow, PropertyRow,
 };
@@ -336,12 +336,29 @@ impl Package {
             product_code.clone(),
         );
 
+        let product_platform = find_prop("ProductPlatform")
+            .or_else(|| find_prop("Platform"))
+            .unwrap_or_else(|| "x86".to_string());
+        let arch = Architecture::parse(&product_platform).unwrap_or(Architecture::X86);
+        let product_language = find_prop("ProductLanguage")
+            .or_else(|| find_prop("Languages"))
+            .or_else(|| find_prop("Language"))
+            .unwrap_or_else(|| "1033".to_string());
+        let template_str = find_prop("SummaryTemplate")
+            .unwrap_or_else(|| format!("{};{}", arch.template_name(), product_language));
+
+        let comments = find_prop("ProductComments");
+        let keywords = find_prop("ProductKeywords");
+
         let summary_info = SummaryInfo {
             codepage: Some(CODEPAGE_UTF8),
             title: Some("Installation Database".to_string()),
             subject: Some(product_name),
             author: Some(manufacturer),
             rev_number: Some(product_code),
+            template: Some(template_str),
+            comments,
+            keywords,
             page_count: Some(500),
             word_count: Some(i32::from(!embedded_cabinets.is_empty())),
             ..SummaryInfo::default()
@@ -728,7 +745,8 @@ impl Package {
 
         let (pool_bytes, data_bytes) = pool.serialize();
 
-        let mut cfb_writer = CfbWriter::new(CfbVersion::V3);
+        let mut cfb_writer =
+            CfbWriter::new(CfbVersion::V3).with_root_clsid(StorageClsid::MsiPackage);
 
         let pool_stream_name = encode_msi_stream_name("_StringPool", false).unwrap_or_default();
         let _ = cfb_writer.add_stream(&pool_stream_name, &pool_bytes);
@@ -799,6 +817,10 @@ pub struct PackageBuilder {
     files: Vec<FileRow>,
     /// Media entries.
     media: Vec<MediaRow>,
+    /// Target CPU architecture.
+    platform: Option<Architecture>,
+    /// Summary information template string.
+    template: Option<String>,
     /// Arbitrary records mapped by table name.
     custom_records: HashMap<String, Vec<Record>>,
     /// Embedded cabinet archive payloads.
@@ -806,6 +828,36 @@ pub struct PackageBuilder {
 }
 
 impl PackageBuilder {
+    /// Sets the target platform architecture.
+    ///
+    /// # Arguments
+    ///
+    /// * `arch` - The target [`Architecture`].
+    ///
+    /// # Returns
+    ///
+    /// The updated builder instance.
+    #[must_use]
+    pub const fn platform(mut self, arch: Architecture) -> Self {
+        self.platform = Some(arch);
+        self
+    }
+
+    /// Sets the raw template summary string.
+    ///
+    /// # Arguments
+    ///
+    /// * `template` - Template string (e.g. `x64;1033`).
+    ///
+    /// # Returns
+    ///
+    /// The updated builder instance.
+    #[must_use]
+    pub fn template(mut self, template: impl Into<String>) -> Self {
+        self.template = Some(template.into());
+        self
+    }
+
     /// Sets the friendly product name.
     ///
     /// # Arguments
@@ -1077,11 +1129,11 @@ impl PackageBuilder {
             properties.push((k, v));
         }
 
-        for (k, v) in properties {
-            let prop = PropertyName::new(k)?;
+        for (k, v) in &properties {
+            let prop = PropertyName::new(k.clone())?;
             let row = PropertyRow {
                 property: prop,
-                value: v,
+                value: v.clone(),
             };
             database.add_record("Property", row.to_record());
         }
@@ -1107,12 +1159,38 @@ impl PackageBuilder {
             }
         }
 
+        let product_platform = self
+            .platform
+            .map(|a| a.as_str().to_string())
+            .or_else(|| {
+                properties
+                    .iter()
+                    .find(|(k, _)| k == "ProductPlatform" || k == "Platform")
+                    .map(|(_, v)| v.clone())
+            })
+            .unwrap_or_else(|| "x86".to_string());
+        let arch = Architecture::parse(&product_platform).unwrap_or(Architecture::X86);
+        let product_language = properties
+            .iter()
+            .find(|(k, _)| k == "ProductLanguage" || k == "Languages" || k == "Language")
+            .map_or_else(|| "1033".to_string(), |(_, v)| v.clone());
+        let template_str = self
+            .template
+            .or_else(|| {
+                properties
+                    .iter()
+                    .find(|(k, _)| k == "SummaryTemplate")
+                    .map(|(_, v)| v.clone())
+            })
+            .unwrap_or_else(|| format!("{};{}", arch.template_name(), product_language));
+
         let summary_info = SummaryInfo {
             codepage: Some(CODEPAGE_UTF8),
             title: Some("Installation Database".to_string()),
             subject: Some(product_name),
             author: Some(manufacturer),
             rev_number: Some(product_code),
+            template: Some(template_str),
             page_count: Some(500),
             word_count: Some(2),
             app_name: Some("msi-rs".to_string()),
@@ -1997,6 +2075,59 @@ mod tests {
         assert_eq!(pkg2.metadata().manufacturer(), "WiX Author");
         assert_eq!(pkg2.metadata().version(), ProductVersion::new(1, 0, 0));
         assert_eq!(pkg2.summary_info().word_count, Some(0));
+
+        // 3. With ProductPlatform and Languages
+        let mut db3 = LinkedDatabase::default();
+        db3.add_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("ProductPlatform".to_string()),
+                FieldValue::String("x64".to_string()),
+            ]),
+        );
+        db3.add_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("Languages".to_string()),
+                FieldValue::String("1033,1036".to_string()),
+            ]),
+        );
+        let pkg3 = Package::from_database(db3, HashMap::new());
+        assert_eq!(
+            pkg3.summary_info().template.as_deref(),
+            Some("x64;1033,1036")
+        );
+
+        // 4. With Platform and Language
+        let mut db4 = LinkedDatabase::default();
+        db4.add_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("Platform".to_string()),
+                FieldValue::String("arm64".to_string()),
+            ]),
+        );
+        db4.add_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("Language".to_string()),
+                FieldValue::String("1040".to_string()),
+            ]),
+        );
+        let pkg4 = Package::from_database(db4, HashMap::new());
+        assert_eq!(pkg4.summary_info().template.as_deref(), Some("Arm64;1040"));
+
+        // 5. With explicit SummaryTemplate
+        let mut db5 = LinkedDatabase::default();
+        db5.add_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("SummaryTemplate".to_string()),
+                FieldValue::String("Intel;1033".to_string()),
+            ]),
+        );
+        let pkg5 = Package::from_database(db5, HashMap::new());
+        assert_eq!(pkg5.summary_info().template.as_deref(), Some("Intel;1033"));
     }
 
     /// Tests package serialization when `_Tables` and `_Columns` tables are explicitly present but empty.
@@ -2076,5 +2207,113 @@ mod tests {
         let cfb_bytes = writer.build();
         let pkg = Package::from_bytes(&cfb_bytes);
         assert!(pkg.is_ok());
+    }
+
+    /// Tests [`PackageBuilder`] platform and template configuration, as well as Root Storage CLSID emission.
+    #[test]
+    fn test_package_builder_platform_and_root_clsid() {
+        let v = ProductVersion::new(1, 0, 0);
+
+        // 1. Explicit platform Architecture::X64
+        let pkg_x64 = Package::builder()
+            .product_name("X64 App")
+            .manufacturer("Acme")
+            .version(v)
+            .product_code("{00000000-0000-0000-0000-000000000001}")
+            .platform(Architecture::X64)
+            .build()
+            .unwrap_or_default();
+        assert_eq!(pkg_x64.summary_info().template.as_deref(), Some("x64;1033"));
+
+        // Verify Root Storage CLSID in serialized bytes
+        let bytes = pkg_x64.to_bytes().unwrap_or_default();
+        let reader = CfbReader::new(&bytes).unwrap_or_default();
+        assert_eq!(reader.root_clsid(), StorageClsid::MsiPackage);
+        assert!(reader.root_clsid().is_msi_package());
+
+        // 2. Explicit template override
+        let pkg_custom = Package::builder()
+            .product_name("Custom App")
+            .manufacturer("Acme")
+            .version(v)
+            .product_code("{00000000-0000-0000-0000-000000000002}")
+            .template("Arm64;1033,1036")
+            .build()
+            .unwrap_or_default();
+        assert_eq!(
+            pkg_custom.summary_info().template.as_deref(),
+            Some("Arm64;1033,1036")
+        );
+
+        // 3. Platform from properties
+        let pkg_prop_plat = Package::builder()
+            .product_name("Prop Plat App")
+            .manufacturer("Acme")
+            .version(v)
+            .product_code("{00000000-0000-0000-0000-000000000003}")
+            .add_property("Platform", "x64")
+            .build()
+            .unwrap_or_default();
+        assert_eq!(
+            pkg_prop_plat.summary_info().template.as_deref(),
+            Some("x64;1033")
+        );
+
+        // 4. SummaryTemplate from properties
+        let pkg_prop_tmpl = Package::builder()
+            .product_name("Prop Tmpl App")
+            .manufacturer("Acme")
+            .version(v)
+            .product_code("{00000000-0000-0000-0000-000000000004}")
+            .add_property("SummaryTemplate", "x64;1033,1036")
+            .build()
+            .unwrap_or_default();
+        assert_eq!(
+            pkg_prop_tmpl.summary_info().template.as_deref(),
+            Some("x64;1033,1036")
+        );
+
+        // 5. ProductLanguage from properties
+        let pkg_prop_lang = Package::builder()
+            .product_name("Prop Lang App")
+            .manufacturer("Acme")
+            .version(v)
+            .product_code("{00000000-0000-0000-0000-000000000005}")
+            .add_property("ProductLanguage", "1036")
+            .build()
+            .unwrap_or_default();
+        assert_eq!(
+            pkg_prop_lang.summary_info().template.as_deref(),
+            Some("Intel;1036")
+        );
+
+        // 6. ProductPlatform from properties
+        let pkg_prop_prod_plat = Package::builder()
+            .product_name("Prop Prod Plat App")
+            .manufacturer("Acme")
+            .version(v)
+            .product_code("{00000000-0000-0000-0000-000000000006}")
+            .add_property("ProductPlatform", "ia64")
+            .add_property("Languages", "1033")
+            .build()
+            .unwrap_or_default();
+        assert_eq!(
+            pkg_prop_prod_plat.summary_info().template.as_deref(),
+            Some("Intel64;1033")
+        );
+
+        // 7. Language from properties
+        let pkg_prop_single_lang = Package::builder()
+            .product_name("Prop Single Lang App")
+            .manufacturer("Acme")
+            .version(v)
+            .product_code("{00000000-0000-0000-0000-000000000007}")
+            .add_property("Language", "1041")
+            .build()
+            .unwrap_or_default();
+        assert_eq!(
+            pkg_prop_single_lang.summary_info().template.as_deref(),
+            Some("Intel;1041")
+        );
     }
 }

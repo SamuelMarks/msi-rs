@@ -1,7 +1,7 @@
 //! Compound File Binary Format Reader ([MS-CFB] 2.3 - 2.6).
 
 use crate::cfb::directory::{
-    compare_cfb_names, DirectoryEntry, ObjectType, StreamId, DIRECTORY_ENTRY_SIZE,
+    compare_cfb_names, DirectoryEntry, ObjectType, StorageClsid, StreamId, DIRECTORY_ENTRY_SIZE,
 };
 use crate::cfb::header::{CfbHeader, CfbVersion};
 use crate::cfb::sector::{MiniSectorId, SectorId};
@@ -293,6 +293,20 @@ impl CfbReader {
     #[must_use]
     pub fn entries(&self) -> &[DirectoryEntry] {
         &self.directory_entries
+    }
+
+    /// Returns the root storage class identifier (CLSID).
+    ///
+    /// # Returns
+    ///
+    /// The root [`StorageClsid`].
+    #[must_use]
+    pub fn root_clsid(&self) -> StorageClsid {
+        self.directory_entries
+            .first()
+            .map_or(StorageClsid::Empty, |e| {
+                StorageClsid::from_bytes(*e.clsid())
+            })
     }
 
     /// Recursively searches a storage's Red-Black tree for a child with the specified name.

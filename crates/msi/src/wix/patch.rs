@@ -9,6 +9,7 @@
 
 use crate::cab::folder::CompressionType;
 use crate::cab::writer::CabinetWriter;
+use crate::cfb::directory::StorageClsid;
 use crate::cfb::header::CfbVersion;
 use crate::cfb::writer::CfbWriter;
 use crate::database::summary_info::SummaryInfo;
@@ -983,7 +984,7 @@ impl PatchPackageBuilder {
     ///
     /// Returns [`Error`] on container generation or cabinet packing failures.
     pub fn build(self) -> Result<Vec<u8>> {
-        let mut cfb_writer = CfbWriter::new(CfbVersion::V3);
+        let mut cfb_writer = CfbWriter::new(CfbVersion::V3).with_root_clsid(StorageClsid::MsiPatch);
 
         // 1. Assemble SummaryInformation stream
         let template = if self.target_product_codes.is_empty() {

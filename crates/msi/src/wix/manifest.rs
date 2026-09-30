@@ -692,11 +692,33 @@ pub fn parse_vars_schema(component_name: &str, json_text: &str) -> Result<Vec<Sc
 ///
 /// Well-formed `WiX` XML string ready for compilation.
 #[must_use]
-#[allow(clippy::too_many_lines)]
 pub fn synthesize_wix_xml(
     manifest: &PackagingManifest,
     properties: &[SchemaProperty],
     payload_fragment_path: Option<&Path>,
+) -> String {
+    synthesize_wix_xml_with_arch(manifest, properties, payload_fragment_path, "x64")
+}
+
+/// Synthesizes a complete `WiX` XML product source string with a specified target architecture.
+///
+/// # Arguments
+///
+/// * `manifest` - Manifest metadata from `packaging.json`.
+/// * `properties` - Schema properties parsed from `vars.schema.json`.
+/// * `payload_fragment_path` - Path to harvested payload fragment or payload files.
+/// * `arch` - Target architecture string (e.g. `x64`, `x86`, `arm64`).
+///
+/// # Returns
+///
+/// Well-formed `WiX` XML string ready for compilation.
+#[must_use]
+#[allow(clippy::too_many_lines)]
+pub fn synthesize_wix_xml_with_arch(
+    manifest: &PackagingManifest,
+    properties: &[SchemaProperty],
+    payload_fragment_path: Option<&Path>,
+    arch: &str,
 ) -> String {
     let mut xml = String::new();
     xml.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
@@ -712,8 +734,8 @@ pub fn synthesize_wix_xml(
     let _ = writeln!(xml, "  <Product Id=\"*\" Name=\"{0}\" Language=\"1033\" Version=\"{1}\" Manufacturer=\"{2}\" UpgradeCode=\"{3}\">",
         manifest.title, manifest.version, manifest.manufacturer, upg_guid
     );
-    let _ = writeln!(xml, "    <Package Description=\"{0} Setup\" Manufacturer=\"{1}\" Compressed=\"yes\" InstallScope=\"perMachine\" />",
-        manifest.title, manifest.manufacturer
+    let _ = writeln!(xml, "    <Package Description=\"{0} Setup\" Manufacturer=\"{1}\" Compressed=\"yes\" InstallScope=\"perMachine\" Platform=\"{2}\" />",
+        manifest.title, manifest.manufacturer, arch
     );
     xml.push_str("    <Media Id=\"1\" Cabinet=\"#app.cab\" EmbedCab=\"yes\" />\n");
     xml.push_str("    <MajorUpgrade DowngradeErrorMessage=\"A newer version is already installed.\" Schedule=\"afterInstallInitialize\" />\n\n");
@@ -939,10 +961,11 @@ impl ManifestMsiSynthesizer {
         } else {
             Vec::new()
         };
-        Ok(synthesize_wix_xml(
+        Ok(synthesize_wix_xml_with_arch(
             &manifest,
             &properties,
             self.payload_wxs.as_deref(),
+            &self.arch,
         ))
     }
 
@@ -1466,6 +1489,7 @@ mod tests {
 
     /// Tests full end-to-end synthesis and MSI compilation from packaging and schema JSON.
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_manifest_msi_synthesizer_e2e() {
         let temp_dir = std::env::temp_dir().join(format!("msi_syn_test_{}", std::process::id()));
         let _ = std::fs::create_dir_all(&temp_dir);
@@ -1534,6 +1558,12 @@ mod tests {
         assert_eq!(
             xml_res
                 .as_ref()
+                .map(|xml| xml.contains(r#"Platform="x64""#)),
+            Ok(true)
+        );
+        assert_eq!(
+            xml_res
+                .as_ref()
                 .map(|xml| xml.contains("MsiHiddenProperties")),
             Ok(true)
         );
@@ -1546,6 +1576,12 @@ mod tests {
         assert_eq!(
             pkg_res.as_ref().map(|pkg| pkg.metadata().product_name()),
             Ok("Redis Cache Server")
+        );
+        assert_eq!(
+            pkg_res
+                .as_ref()
+                .map(|pkg| pkg.summary_info().template.as_deref()),
+            Ok(Some("x64;1033"))
         );
 
         let pkg_verified = pkg_res.as_ref().map(|pkg| {

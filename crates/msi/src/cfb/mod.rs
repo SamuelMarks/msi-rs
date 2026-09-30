@@ -11,8 +11,9 @@ pub mod stream_name;
 pub mod writer;
 
 pub use directory::{
-    compare_cfb_names, ColorFlag, DirectoryEntry, ObjectType, StreamId, DIRECTORY_ENTRY_SIZE,
-    MAX_DIRECTORY_NAME_LEN,
+    compare_cfb_names, ColorFlag, DirectoryEntry, ObjectType, StorageClsid, StreamId,
+    DIRECTORY_ENTRY_SIZE, EMPTY_STORAGE_CLSID, MAX_DIRECTORY_NAME_LEN, MSI_PACKAGE_STORAGE_CLSID,
+    MSI_PATCH_STORAGE_CLSID, MSI_TRANSFORM_STORAGE_CLSID,
 };
 pub use header::{
     CfbHeader, CfbVersion, CFB_BYTE_ORDER_LE, CFB_HEADER_DIFAT_ENTRIES, CFB_HEADER_SIZE,

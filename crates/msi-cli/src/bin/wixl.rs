@@ -334,12 +334,17 @@ mod tests {
 
         let args = vec![
             "-v".to_string(),
+            "-a".to_string(),
+            "x64".to_string(),
             "-o".to_string(),
             out_file.to_string_lossy().to_string(),
             src_file.to_string_lossy().to_string(),
         ];
         assert_eq!(run(&args), 0);
         assert_eq!(run_app(&args), ExitCode::SUCCESS);
+
+        let pkg = msi::Package::open(&out_file).unwrap_or_default();
+        assert_eq!(pkg.summary_info().template.as_deref(), Some("x64;1033"));
 
         // Run non-verbose to cover !opts.verbose branch
         let non_verbose_args = vec![

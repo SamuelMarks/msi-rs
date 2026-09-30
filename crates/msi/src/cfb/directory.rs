@@ -11,6 +11,224 @@ pub const MAX_DIRECTORY_NAME_LEN: usize = 32;
 /// Exact byte length of a serialized directory entry ([MS-CFB] 2.6).
 pub const DIRECTORY_ENTRY_SIZE: usize = 128;
 
+/// Windows Installer Package Root Storage CLSID (`000c1084-0000-0000-c000-000000000046`).
+pub const MSI_PACKAGE_STORAGE_CLSID: [u8; 16] = [
+    0x84, 0x10, 0x0c, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46,
+];
+
+/// Windows Installer Transform Storage CLSID (`000c1082-0000-0000-c000-000000000046`).
+pub const MSI_TRANSFORM_STORAGE_CLSID: [u8; 16] = [
+    0x82, 0x10, 0x0c, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46,
+];
+
+/// Windows Installer Patch Storage CLSID (`000c1086-0000-0000-c000-000000000046`).
+pub const MSI_PATCH_STORAGE_CLSID: [u8; 16] = [
+    0x86, 0x10, 0x0c, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46,
+];
+
+/// Empty / zeroed Storage CLSID (`00000000-0000-0000-0000-000000000000`).
+pub const EMPTY_STORAGE_CLSID: [u8; 16] = [0u8; 16];
+
+/// Little-endian `u128` scalar representation of [`EMPTY_STORAGE_CLSID`].
+const EMPTY_STORAGE_U128: u128 = u128::from_le_bytes(EMPTY_STORAGE_CLSID);
+
+/// Little-endian `u128` scalar representation of [`MSI_PACKAGE_STORAGE_CLSID`].
+const MSI_PACKAGE_STORAGE_U128: u128 = u128::from_le_bytes(MSI_PACKAGE_STORAGE_CLSID);
+
+/// Little-endian `u128` scalar representation of [`MSI_TRANSFORM_STORAGE_CLSID`].
+const MSI_TRANSFORM_STORAGE_U128: u128 = u128::from_le_bytes(MSI_TRANSFORM_STORAGE_CLSID);
+
+/// Little-endian `u128` scalar representation of [`MSI_PATCH_STORAGE_CLSID`].
+const MSI_PATCH_STORAGE_U128: u128 = u128::from_le_bytes(MSI_PATCH_STORAGE_CLSID);
+
+/// Strongly-typed Windows Installer and Compound File Binary storage class identifiers (CLSID).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum StorageClsid {
+    /// Zero/empty CLSID (`{00000000-0000-0000-0000-000000000000}`).
+    #[default]
+    Empty,
+    /// Windows Installer Package Root Storage CLSID (`{000C1084-0000-0000-C000-000000000046}`).
+    MsiPackage,
+    /// Windows Installer Transform Storage CLSID (`{000C1082-0000-0000-C000-000000000046}`).
+    MsiTransform,
+    /// Windows Installer Patch Storage CLSID (`{000C1086-0000-0000-C000-000000000046}`).
+    MsiPatch,
+    /// Custom 16-byte CLSID.
+    Custom([u8; 16]),
+}
+
+impl StorageClsid {
+    /// Returns the raw 16-byte array representation of this CLSID in little-endian format.
+    ///
+    /// # Returns
+    ///
+    /// 16-byte array.
+    #[must_use]
+    pub const fn as_bytes(&self) -> [u8; 16] {
+        match *self {
+            Self::Empty => EMPTY_STORAGE_CLSID,
+            Self::MsiPackage => MSI_PACKAGE_STORAGE_CLSID,
+            Self::MsiTransform => MSI_TRANSFORM_STORAGE_CLSID,
+            Self::MsiPatch => MSI_PATCH_STORAGE_CLSID,
+            Self::Custom(bytes) => bytes,
+        }
+    }
+
+    /// Creates a [`StorageClsid`] from a 16-byte raw array.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes` - 16-byte raw array.
+    ///
+    /// # Returns
+    ///
+    /// A matching [`StorageClsid`] variant.
+    #[must_use]
+    pub const fn from_bytes(bytes: [u8; 16]) -> Self {
+        let val = u128::from_le_bytes(bytes);
+        if val == EMPTY_STORAGE_U128 {
+            Self::Empty
+        } else if val == MSI_PACKAGE_STORAGE_U128 {
+            Self::MsiPackage
+        } else if val == MSI_TRANSFORM_STORAGE_U128 {
+            Self::MsiTransform
+        } else if val == MSI_PATCH_STORAGE_U128 {
+            Self::MsiPatch
+        } else {
+            Self::Custom(bytes)
+        }
+    }
+
+    /// Determines whether this CLSID is zeroed/empty.
+    ///
+    /// # Returns
+    ///
+    /// `true` if this is [`StorageClsid::Empty`]; `false` otherwise.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        matches!(self, Self::Empty)
+    }
+
+    /// Determines whether this CLSID is a Windows Installer package CLSID.
+    ///
+    /// # Returns
+    ///
+    /// `true` if this is [`StorageClsid::MsiPackage`]; `false` otherwise.
+    #[must_use]
+    pub const fn is_msi_package(&self) -> bool {
+        matches!(self, Self::MsiPackage)
+    }
+
+    /// Determines whether this CLSID is a Windows Installer transform CLSID.
+    ///
+    /// # Returns
+    ///
+    /// `true` if this is [`StorageClsid::MsiTransform`]; `false` otherwise.
+    #[must_use]
+    pub const fn is_msi_transform(&self) -> bool {
+        matches!(self, Self::MsiTransform)
+    }
+
+    /// Determines whether this CLSID is a Windows Installer patch CLSID.
+    ///
+    /// # Returns
+    ///
+    /// `true` if this is [`StorageClsid::MsiPatch`]; `false` otherwise.
+    #[must_use]
+    pub const fn is_msi_patch(&self) -> bool {
+        matches!(self, Self::MsiPatch)
+    }
+
+    /// Parses a GUID string into a [`StorageClsid`].
+    ///
+    /// # Arguments
+    ///
+    /// * `s` - GUID string formatted like `{000C1084-0000-0000-C000-000000000046}` or without braces.
+    ///
+    /// # Returns
+    ///
+    /// A parsed [`StorageClsid`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidStorageClsid`] if the input string is not a valid GUID representation.
+    pub fn parse(s: &str) -> Result<Self> {
+        let trimmed = s.trim();
+        let unbraced = trimmed
+            .strip_prefix('{')
+            .and_then(|t| t.strip_suffix('}'))
+            .unwrap_or(trimmed);
+
+        let parts: Vec<&str> = unbraced.split('-').collect();
+        if parts.len() != 5 {
+            return Err(Error::InvalidStorageClsid {
+                clsid: s.to_string(),
+            });
+        }
+
+        if parts[0].len() != 8
+            || parts[1].len() != 4
+            || parts[2].len() != 4
+            || parts[3].len() != 4
+            || parts[4].len() != 12
+        {
+            return Err(Error::InvalidStorageClsid {
+                clsid: s.to_string(),
+            });
+        }
+
+        let d1 = u32::from_str_radix(parts[0], 16).map_err(|_| Error::InvalidStorageClsid {
+            clsid: s.to_string(),
+        })?;
+        let d2 = u16::from_str_radix(parts[1], 16).map_err(|_| Error::InvalidStorageClsid {
+            clsid: s.to_string(),
+        })?;
+        let d3 = u16::from_str_radix(parts[2], 16).map_err(|_| Error::InvalidStorageClsid {
+            clsid: s.to_string(),
+        })?;
+        let d4_p1 = u16::from_str_radix(parts[3], 16).map_err(|_| Error::InvalidStorageClsid {
+            clsid: s.to_string(),
+        })?;
+        let d4_p2 = u64::from_str_radix(parts[4], 16).map_err(|_| Error::InvalidStorageClsid {
+            clsid: s.to_string(),
+        })?;
+
+        let mut bytes = [0u8; 16];
+        bytes[0..4].copy_from_slice(&d1.to_le_bytes());
+        bytes[4..6].copy_from_slice(&d2.to_le_bytes());
+        bytes[6..8].copy_from_slice(&d3.to_le_bytes());
+        bytes[8..10].copy_from_slice(&d4_p1.to_be_bytes());
+        let p2_bytes = d4_p2.to_be_bytes();
+        bytes[10..16].copy_from_slice(&p2_bytes[2..8]);
+
+        Ok(Self::from_bytes(bytes))
+    }
+}
+
+impl fmt::Display for StorageClsid {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let b = self.as_bytes();
+        let d1 = u32::from_le_bytes([b[0], b[1], b[2], b[3]]);
+        let d2 = u16::from_le_bytes([b[4], b[5]]);
+        let d3 = u16::from_le_bytes([b[6], b[7]]);
+        let d4_1 = u16::from_be_bytes([b[8], b[9]]);
+        let d4_2 = u64::from_be_bytes([0, 0, b[10], b[11], b[12], b[13], b[14], b[15]]);
+        write!(f, "{{{d1:08X}-{d2:04X}-{d3:04X}-{d4_1:04X}-{d4_2:012X}}}")
+    }
+}
+
+impl From<[u8; 16]> for StorageClsid {
+    fn from(bytes: [u8; 16]) -> Self {
+        Self::from_bytes(bytes)
+    }
+}
+
+impl From<StorageClsid> for [u8; 16] {
+    fn from(clsid: StorageClsid) -> Self {
+        clsid.as_bytes()
+    }
+}
+
 /// Strongly-typed Directory Entry / Stream identifier ([MS-CFB] 2.6).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StreamId(pub u32);
@@ -383,6 +601,25 @@ impl DirectoryEntry {
     /// * `clsid` - 16-byte CLSID.
     pub const fn set_clsid(&mut self, clsid: [u8; 16]) {
         self.clsid = clsid;
+    }
+
+    /// Returns the strongly-typed [`StorageClsid`].
+    ///
+    /// # Returns
+    ///
+    /// The parsed [`StorageClsid`].
+    #[must_use]
+    pub const fn storage_clsid(&self) -> StorageClsid {
+        StorageClsid::from_bytes(self.clsid)
+    }
+
+    /// Sets the strongly-typed [`StorageClsid`].
+    ///
+    /// # Arguments
+    ///
+    /// * `clsid` - The [`StorageClsid`] to set.
+    pub const fn set_storage_clsid(&mut self, clsid: StorageClsid) {
+        self.clsid = clsid.as_bytes();
     }
 
     /// Returns the state bits flags.
@@ -776,6 +1013,15 @@ mod tests {
             Err(Error::InvalidDirectoryEntry { .. })
         ));
 
+        // Odd name byte length
+        let mut odd_bytes = [0u8; 128];
+        odd_bytes[64] = 3;
+        odd_bytes[66] = 1;
+        assert!(matches!(
+            DirectoryEntry::parse(&odd_bytes, 0),
+            Err(Error::InvalidDirectoryEntry { .. })
+        ));
+
         // Invalid UTF-16 surrogate
         let mut bad_utf16 = [0u8; 128];
         bad_utf16[64] = 4; // 1 char + null terminator = 4 bytes
@@ -814,5 +1060,99 @@ mod tests {
         assert_eq!(compare_cfb_names("abc", "ABC"), Ordering::Equal);
         assert_eq!(compare_cfb_names("abc", "abd"), Ordering::Less);
         assert_eq!(compare_cfb_names("abd", "abc"), Ordering::Greater);
+    }
+
+    /// Tests [`StorageClsid`] operations, parsing, formatting, and [`DirectoryEntry`] integration.
+    #[test]
+    fn test_storage_clsid() {
+        assert_eq!(StorageClsid::default(), StorageClsid::Empty);
+        assert!(StorageClsid::Empty.is_empty());
+        assert!(!StorageClsid::Empty.is_msi_package());
+        assert!(!StorageClsid::Empty.is_msi_transform());
+        assert!(!StorageClsid::Empty.is_msi_patch());
+        assert_eq!(StorageClsid::Empty.as_bytes(), EMPTY_STORAGE_CLSID);
+
+        let pkg = StorageClsid::MsiPackage;
+        assert!(!pkg.is_empty());
+        assert!(pkg.is_msi_package());
+        assert!(!pkg.is_msi_transform());
+        assert!(!pkg.is_msi_patch());
+        assert_eq!(pkg.as_bytes(), MSI_PACKAGE_STORAGE_CLSID);
+        assert_eq!(format!("{pkg}"), "{000C1084-0000-0000-C000-000000000046}");
+
+        let trans = StorageClsid::MsiTransform;
+        assert!(trans.is_msi_transform());
+        assert_eq!(trans.as_bytes(), MSI_TRANSFORM_STORAGE_CLSID);
+        assert_eq!(format!("{trans}"), "{000C1082-0000-0000-C000-000000000046}");
+
+        let patch = StorageClsid::MsiPatch;
+        assert!(patch.is_msi_patch());
+        assert_eq!(patch.as_bytes(), MSI_PATCH_STORAGE_CLSID);
+        assert_eq!(format!("{patch}"), "{000C1086-0000-0000-C000-000000000046}");
+
+        let custom_bytes = [1u8; 16];
+        let custom = StorageClsid::Custom(custom_bytes);
+        assert_eq!(custom.as_bytes(), custom_bytes);
+        assert_eq!(StorageClsid::from_bytes(custom_bytes), custom);
+        assert!(!custom.is_empty());
+        assert!(!custom.is_msi_package());
+
+        assert_eq!(
+            StorageClsid::from_bytes(EMPTY_STORAGE_CLSID),
+            StorageClsid::Empty
+        );
+        assert_eq!(
+            StorageClsid::from_bytes(MSI_PACKAGE_STORAGE_CLSID),
+            StorageClsid::MsiPackage
+        );
+        assert_eq!(
+            StorageClsid::from_bytes(MSI_TRANSFORM_STORAGE_CLSID),
+            StorageClsid::MsiTransform
+        );
+        assert_eq!(
+            StorageClsid::from_bytes(MSI_PATCH_STORAGE_CLSID),
+            StorageClsid::MsiPatch
+        );
+
+        // Parse tests
+        assert_eq!(
+            StorageClsid::parse("{000C1084-0000-0000-C000-000000000046}"),
+            Ok(StorageClsid::MsiPackage)
+        );
+        assert_eq!(
+            StorageClsid::parse("000c1084-0000-0000-c000-000000000046"),
+            Ok(StorageClsid::MsiPackage)
+        );
+        assert_eq!(
+            StorageClsid::parse("{00000000-0000-0000-0000-000000000000}"),
+            Ok(StorageClsid::Empty)
+        );
+
+        // Parse errors
+        assert!(StorageClsid::parse("not-a-guid").is_err());
+        assert!(StorageClsid::parse("1-2-3-4").is_err());
+        assert!(StorageClsid::parse("00000000-0000-0000-0000-00000000000Z").is_err());
+        assert!(StorageClsid::parse("0000000Z-0000-0000-0000-000000000000").is_err());
+        assert!(StorageClsid::parse("00000000-000Z-0000-0000-000000000000").is_err());
+        assert!(StorageClsid::parse("00000000-0000-000Z-0000-000000000000").is_err());
+        assert!(StorageClsid::parse("00000000-0000-0000-000Z-000000000000").is_err());
+        assert!(StorageClsid::parse("0000000-0000-0000-0000-000000000000").is_err());
+        assert!(StorageClsid::parse("00000000-000-0000-0000-000000000000").is_err());
+        assert!(StorageClsid::parse("00000000-0000-000-0000-000000000000").is_err());
+        assert!(StorageClsid::parse("00000000-0000-0000-000-000000000000").is_err());
+        assert!(StorageClsid::parse("00000000-0000-0000-0000-00000000000").is_err());
+
+        // From conversions
+        let from_bytes: StorageClsid = MSI_PACKAGE_STORAGE_CLSID.into();
+        assert_eq!(from_bytes, StorageClsid::MsiPackage);
+        let to_bytes: [u8; 16] = StorageClsid::MsiPackage.into();
+        assert_eq!(to_bytes, MSI_PACKAGE_STORAGE_CLSID);
+
+        // DirectoryEntry integration
+        let mut entry = DirectoryEntry::new("Root Entry", ObjectType::Root);
+        assert_eq!(entry.storage_clsid(), StorageClsid::Empty);
+        entry.set_storage_clsid(StorageClsid::MsiPackage);
+        assert_eq!(entry.storage_clsid(), StorageClsid::MsiPackage);
+        assert_eq!(entry.clsid(), &MSI_PACKAGE_STORAGE_CLSID);
     }
 }

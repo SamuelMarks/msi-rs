@@ -179,16 +179,26 @@ graph TB
    - Signature: Exact byte sequence `0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1`.
    - Byte Order Marker: `0xFFFE` (Little-Endian).
    - Major Versions: Supports Version 3 (512-byte sector, 64-byte mini sector) and Version 4 (4096-byte sector).
-   - CLSID: Verified to be all zeroes.
-2. **Directory Tree Red-Black Balancing**:
+   - Header CLSID: Verified to be all zeroes per MS-CFB specification.
+2. **Root Storage CLSID (`0x50`..`0x60` in Directory Entry 0)**:
+   - While CFB Header CLSID must be zeroed, the Root Entry (`DirectoryEntry 0`) contains the OLE storage class identifier that Windows Installer strictly validates prior to UI initialization:
+     - MSI Package: `{000c1084-0000-0000-c000-000000000046}` (`[0x84, 0x10, 0x0c, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46]`).
+     - MSI Transform: `{000c1082-0000-0000-c000-000000000046}`.
+     - MSI Patch: `{000c1086-0000-0000-c000-000000000046}`.
+   - Failure to stamp the MSI Package CLSID causes native Windows `msiexec.exe` to abort with error 1620 (`ERROR_INSTALL_PACKAGE_INVALID`).
+3. **Directory Tree Red-Black Balancing**:
    - Each directory entry occupies exactly 128 bytes.
    - Child entries (`dirid`) are arranged in an ordered binary tree sorted using standard CFB string comparison: comparing UTF-16 character codes case-insensitively for ASCII uppercase/lowercase conversions.
    - Node color flags (`ColorFlag::Red = 0`, `ColorFlag::Black = 1`) maintain tree balance.
-3. **MSI Stream Name Compression / Mangling**:
+4. **MSI Stream Name Compression / Mangling**:
    - Table streams in MSI databases are encoded to fit within the 31-character limit of CFB directory names.
    - Prefix character `!` (ASCII `0x21`) or `0x4840` is prepended for table streams.
    - Compression combines pairs of 6-bit characters into 12-bit code points selected from a 64-character alphabet subset (`0-9`, `A-Z`, `a-z`, `_`, `.`).
    - Special streams (`\005SummaryInformation`, `\005DigitalSignature`) retain standard OLE Property Set prefixes.
+5. **SummaryInformation Stream Architecture & Template Property**:
+   - The `\005SummaryInformation` stream is an OLE Property Set with format identifier `FMTID_SummaryInformation` (`{F29F85E0-4FF9-1068-AB91-08002B27B3D9}`).
+   - Property `PID_TEMPLATE` (0x0007) defines `[Platform];[Language]` (e.g. `x64;1033`, `Intel;1033`, `Arm64;1033`).
+   - Windows Installer enforces architecture compatibility against the host OS before invoking `InstallUISequence`. Omission of this property or specifying 32-bit `Intel` when installing 64-bit components results in error 1620.
 
 ---
 

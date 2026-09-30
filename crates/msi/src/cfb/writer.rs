@@ -1,7 +1,8 @@
 //! Compound File Binary Format Writer and Compactor ([MS-CFB] 2.3 - 2.6).
 
 use crate::cfb::directory::{
-    compare_cfb_names, ColorFlag, DirectoryEntry, ObjectType, StreamId, DIRECTORY_ENTRY_SIZE,
+    compare_cfb_names, ColorFlag, DirectoryEntry, ObjectType, StorageClsid, StreamId,
+    DIRECTORY_ENTRY_SIZE,
 };
 use crate::cfb::header::{
     CfbHeader, CfbVersion, CFB_HEADER_DIFAT_ENTRIES, CFB_MINI_SECTOR_SHIFT_STANDARD,
@@ -27,6 +28,8 @@ pub struct CfbWriter {
     version: CfbVersion,
     /// List of streams to include in the package.
     streams: Vec<StagedStream>,
+    /// Root storage class identifier (CLSID).
+    root_clsid: StorageClsid,
 }
 
 impl CfbWriter {
@@ -44,7 +47,42 @@ impl CfbWriter {
         Self {
             version,
             streams: Vec::new(),
+            root_clsid: StorageClsid::Empty,
         }
+    }
+
+    /// Sets the root storage CLSID via builder pattern.
+    ///
+    /// # Arguments
+    ///
+    /// * `clsid` - The [`StorageClsid`] to set on Directory Entry 0 ("Root Entry").
+    ///
+    /// # Returns
+    ///
+    /// The updated [`CfbWriter`].
+    #[must_use]
+    pub const fn with_root_clsid(mut self, clsid: StorageClsid) -> Self {
+        self.root_clsid = clsid;
+        self
+    }
+
+    /// Sets the root storage CLSID.
+    ///
+    /// # Arguments
+    ///
+    /// * `clsid` - The [`StorageClsid`] to set on Directory Entry 0 ("Root Entry").
+    pub const fn set_root_clsid(&mut self, clsid: StorageClsid) {
+        self.root_clsid = clsid;
+    }
+
+    /// Returns the configured root storage CLSID.
+    ///
+    /// # Returns
+    ///
+    /// The configured [`StorageClsid`].
+    #[must_use]
+    pub const fn root_clsid(&self) -> StorageClsid {
+        self.root_clsid
     }
 
     /// Adds a stream to the CFB container.
@@ -264,7 +302,8 @@ impl CfbWriter {
 
         let mut directory_entries = Vec::new();
         // Entry 0 is Root Entry
-        let root_entry = DirectoryEntry::new("Root Entry", ObjectType::Root);
+        let mut root_entry = DirectoryEntry::new("Root Entry", ObjectType::Root);
+        root_entry.set_storage_clsid(self.root_clsid);
         directory_entries.push(root_entry);
 
         // Staged regular stream buffers
@@ -913,5 +952,23 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// Tests setting and verifying the Root Storage CLSID in [`CfbWriter`] and reading back via [`CfbReader`].
+    #[test]
+    fn test_cfb_writer_root_clsid() {
+        let mut writer = CfbWriter::new(CfbVersion::V3).with_root_clsid(StorageClsid::MsiPackage);
+        assert_eq!(writer.root_clsid(), StorageClsid::MsiPackage);
+
+        writer.set_root_clsid(StorageClsid::MsiTransform);
+        assert_eq!(writer.root_clsid(), StorageClsid::MsiTransform);
+
+        writer.set_root_clsid(StorageClsid::MsiPackage);
+        assert!(writer.add_stream("TestStream", b"content").is_ok());
+
+        let bytes = writer.build();
+        let reader = CfbReader::new(&bytes).unwrap_or_default();
+        assert_eq!(reader.root_clsid(), StorageClsid::MsiPackage);
+        assert!(reader.root_clsid().is_msi_package());
     }
 }

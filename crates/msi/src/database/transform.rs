@@ -4,6 +4,7 @@
 //! generating transform operations (added/dropped tables, row insertions, deletions, updates)
 //! and serializing/applying `.mst` transform containers.
 
+use crate::cfb::directory::StorageClsid;
 use crate::cfb::header::CfbVersion;
 use crate::cfb::reader::CfbReader;
 use crate::cfb::writer::CfbWriter;
@@ -244,7 +245,7 @@ impl DatabaseTransform {
     ///
     /// Returns [`crate::error::Error`] on serialization failure.
     pub fn to_bytes(&self) -> Result<Vec<u8>> {
-        let mut writer = CfbWriter::new(CfbVersion::V3);
+        let mut writer = CfbWriter::new(CfbVersion::V3).with_root_clsid(StorageClsid::MsiTransform);
 
         // Write summary info stream
         let summary_bytes = self.summary_info.to_bytes();

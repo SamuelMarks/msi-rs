@@ -1,6 +1,8 @@
 //! OLE Property Set Summary Information Stream implementation ([MS-OLEPS]).
 
 use crate::error::{Error, Result};
+use std::fmt;
+use std::str::FromStr;
 
 /// OLE Property Set byte order marker (0xFFFE).
 pub const OLEPS_BYTE_ORDER: u16 = 0xFFFE;
@@ -73,6 +75,222 @@ pub const VT_LPSTR: u32 = 30;
 /// OLE Property Set Variant type for 64-bit Windows `FILETIME` (`VT_FILETIME`).
 pub const VT_FILETIME: u32 = 64;
 
+/// Target platform architecture for Windows Installer packages.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum Architecture {
+    /// 32-bit x86 architecture (Intel / x86).
+    #[default]
+    X86,
+    /// 64-bit x86-64 / AMD64 architecture (x64).
+    X64,
+    /// 64-bit ARM architecture (Arm64).
+    Arm64,
+    /// 64-bit Intel Itanium architecture (Intel64 / Ia64).
+    Ia64,
+}
+
+impl Architecture {
+    /// Returns the canonical WiX/MSI template name string for this architecture (e.g. `Intel`, `x64`, `Arm64`, `Intel64`).
+    ///
+    /// # Returns
+    ///
+    /// The template architecture name string.
+    #[must_use]
+    pub const fn template_name(&self) -> &'static str {
+        match *self {
+            Self::X86 => "Intel",
+            Self::X64 => "x64",
+            Self::Arm64 => "Arm64",
+            Self::Ia64 => "Intel64",
+        }
+    }
+
+    /// Returns the lowercase CLI flag / identifier for this architecture (e.g. `x86`, `x64`, `arm64`, `ia64`).
+    ///
+    /// # Returns
+    ///
+    /// The lowercase architecture name.
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        match *self {
+            Self::X86 => "x86",
+            Self::X64 => "x64",
+            Self::Arm64 => "arm64",
+            Self::Ia64 => "ia64",
+        }
+    }
+
+    /// Determines whether this architecture is 64-bit.
+    ///
+    /// # Returns
+    ///
+    /// `true` for `x64`, `arm64`, or `ia64`; `false` for `x86`.
+    #[must_use]
+    pub const fn is_64_bit(&self) -> bool {
+        matches!(self, Self::X64 | Self::Arm64 | Self::Ia64)
+    }
+
+    /// Parses an architecture string into an [`Architecture`] enum.
+    ///
+    /// # Arguments
+    ///
+    /// * `s` - Architecture string (e.g. `x64`, `x86`, `amd64`, `intel`, `arm64`).
+    ///
+    /// # Returns
+    ///
+    /// A parsed [`Architecture`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidArchitecture`] if the string is unrecognized.
+    pub fn parse(s: &str) -> Result<Self> {
+        let lower = s.trim().to_ascii_lowercase();
+        match lower.as_str() {
+            "x86" | "intel" | "i386" | "i686" | "ia32" => Ok(Self::X86),
+            "x64" | "x86_64" | "amd64" => Ok(Self::X64),
+            "arm64" | "aarch64" => Ok(Self::Arm64),
+            "ia64" | "intel64" | "itanium" => Ok(Self::Ia64),
+            _ => Err(Error::InvalidArchitecture {
+                name: s.to_string(),
+            }),
+        }
+    }
+}
+
+impl fmt::Display for Architecture {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl FromStr for Architecture {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        Self::parse(s)
+    }
+}
+
+/// Strongly-typed `SummaryInformation` Template property (`PID_TEMPLATE`) specifying CPU platform and language LCIDs ([MS-MSI]).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct SummaryTemplate {
+    /// Target CPU architecture.
+    pub architecture: Architecture,
+    /// Numeric language LCIDs (e.g. 1033 for English US).
+    pub languages: Vec<u16>,
+}
+
+impl SummaryTemplate {
+    /// Creates a new [`SummaryTemplate`] with the specified architecture and language IDs.
+    ///
+    /// # Arguments
+    ///
+    /// * `architecture` - The [`Architecture`].
+    /// * `languages` - Vector of numeric language IDs.
+    ///
+    /// # Returns
+    ///
+    /// A new [`SummaryTemplate`].
+    #[must_use]
+    pub const fn new(architecture: Architecture, languages: Vec<u16>) -> Self {
+        Self {
+            architecture,
+            languages,
+        }
+    }
+
+    /// Parses a raw Windows Installer template string into a [`SummaryTemplate`].
+    ///
+    /// Standard MSI syntax is `[Platform];[Language1],[Language2],...` (e.g. `x64;1033` or `Intel;1033`).
+    ///
+    /// # Arguments
+    ///
+    /// * `s` - Template property string.
+    ///
+    /// # Returns
+    ///
+    /// A parsed [`SummaryTemplate`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidSummaryTemplate`] if the platform or language IDs cannot be parsed.
+    pub fn parse(s: &str) -> Result<Self> {
+        let trimmed = s.trim();
+        if trimmed.is_empty() {
+            return Err(Error::InvalidSummaryTemplate {
+                template: s.to_string(),
+                reason: "template string cannot be empty".to_string(),
+            });
+        }
+
+        let (platform_str, lang_str) = match trimmed.split_once(';') {
+            Some((p, l)) => (p.trim(), l.trim()),
+            None => ("", trimmed),
+        };
+
+        let architecture = if platform_str.is_empty() {
+            Architecture::X86
+        } else {
+            Architecture::parse(platform_str).map_err(|e| Error::InvalidSummaryTemplate {
+                template: s.to_string(),
+                reason: format!("{e}"),
+            })?
+        };
+
+        let mut languages = Vec::new();
+        if !lang_str.is_empty() {
+            for part in lang_str.split(',') {
+                let trimmed_part = part.trim();
+                if trimmed_part.is_empty() {
+                    continue;
+                }
+                let lcid =
+                    trimmed_part
+                        .parse::<u16>()
+                        .map_err(|_| Error::InvalidSummaryTemplate {
+                            template: s.to_string(),
+                            reason: format!("invalid numeric language ID '{trimmed_part}'"),
+                        })?;
+                languages.push(lcid);
+            }
+        }
+
+        if languages.is_empty() {
+            languages.push(1033);
+        }
+
+        Ok(Self {
+            architecture,
+            languages,
+        })
+    }
+
+    /// Formats this template into the standard Windows Installer template string (e.g. `x64;1033`).
+    ///
+    /// # Returns
+    ///
+    /// Formatted template string.
+    #[must_use]
+    pub fn to_template_string(&self) -> String {
+        let langs_str = if self.languages.is_empty() {
+            "1033".to_string()
+        } else {
+            self.languages
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
+        };
+        format!("{};{}", self.architecture.template_name(), langs_str)
+    }
+}
+
+impl fmt::Display for SummaryTemplate {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_template_string())
+    }
+}
+
 /// Strongly-typed representation of an MSI package's Summary Information stream.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SummaryInfo {
@@ -121,6 +339,27 @@ impl SummaryInfo {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Returns the parsed [`SummaryTemplate`] if the `template` property is present and valid.
+    ///
+    /// # Returns
+    ///
+    /// An [`Option<SummaryTemplate>`].
+    #[must_use]
+    pub fn template_summary(&self) -> Option<SummaryTemplate> {
+        self.template
+            .as_deref()
+            .and_then(|t| SummaryTemplate::parse(t).ok())
+    }
+
+    /// Sets the `template` property from a [`SummaryTemplate`].
+    ///
+    /// # Arguments
+    ///
+    /// * `template` - The [`SummaryTemplate`] to set.
+    pub fn set_template_summary(&mut self, template: &SummaryTemplate) {
+        self.template = Some(template.to_template_string());
     }
 
     /// Serializes this [`SummaryInfo`] into standard OLE Property Set binary stream format.
@@ -592,5 +831,116 @@ mod tests {
             stream.extend_from_slice(&section);
             assert!(SummaryInfo::parse(&stream).is_ok());
         }
+    }
+
+    /// Tests [`Architecture`] parsing, canonical template names, display, and bitness.
+    #[test]
+    fn test_architecture() {
+        assert_eq!(Architecture::default(), Architecture::X86);
+        assert!(!Architecture::X86.is_64_bit());
+        assert!(Architecture::X64.is_64_bit());
+        assert!(Architecture::Arm64.is_64_bit());
+        assert!(Architecture::Ia64.is_64_bit());
+
+        assert_eq!(Architecture::X86.template_name(), "Intel");
+        assert_eq!(Architecture::X64.template_name(), "x64");
+        assert_eq!(Architecture::Arm64.template_name(), "Arm64");
+        assert_eq!(Architecture::Ia64.template_name(), "Intel64");
+
+        assert_eq!(Architecture::X86.as_str(), "x86");
+        assert_eq!(Architecture::X64.as_str(), "x64");
+        assert_eq!(Architecture::Arm64.as_str(), "arm64");
+        assert_eq!(Architecture::Ia64.as_str(), "ia64");
+        assert_eq!(format!("{}", Architecture::X64), "x64");
+
+        // Parse aliases
+        for alias in ["x86", "intel", "i386", "i686", "ia32", "  X86  "] {
+            assert_eq!(Architecture::parse(alias), Ok(Architecture::X86));
+            assert_eq!(alias.trim().parse::<Architecture>(), Ok(Architecture::X86));
+        }
+        for alias in ["x64", "x86_64", "amd64", "X64"] {
+            assert_eq!(Architecture::parse(alias), Ok(Architecture::X64));
+        }
+        for alias in ["arm64", "aarch64", "ARM64"] {
+            assert_eq!(Architecture::parse(alias), Ok(Architecture::Arm64));
+        }
+        for alias in ["ia64", "intel64", "itanium", "IA64"] {
+            assert_eq!(Architecture::parse(alias), Ok(Architecture::Ia64));
+        }
+
+        // Invalid architecture
+        assert!(Architecture::parse("unknown_arch").is_err());
+        assert!(Architecture::parse("mips").is_err());
+    }
+
+    /// Tests [`SummaryTemplate`] parsing, formatting, and [`SummaryInfo`] integration.
+    #[test]
+    fn test_summary_template() {
+        let t1 = SummaryTemplate::new(Architecture::X64, vec![1033]);
+        assert_eq!(t1.to_template_string(), "x64;1033");
+        assert_eq!(format!("{t1}"), "x64;1033");
+
+        let t2 = SummaryTemplate::parse("x64;1033");
+        assert_eq!(t2, Ok(SummaryTemplate::new(Architecture::X64, vec![1033])));
+
+        let t_intel = SummaryTemplate::parse("Intel;1033");
+        assert_eq!(
+            t_intel,
+            Ok(SummaryTemplate::new(Architecture::X86, vec![1033]))
+        );
+
+        let t_empty_arch = SummaryTemplate::parse(";1033");
+        assert_eq!(
+            t_empty_arch,
+            Ok(SummaryTemplate::new(Architecture::X86, vec![1033]))
+        );
+
+        let t_multi = SummaryTemplate::parse("x64;1033,1036");
+        assert_eq!(
+            t_multi,
+            Ok(SummaryTemplate::new(Architecture::X64, vec![1033, 1036]))
+        );
+        assert_eq!(
+            t_multi.map(|t| t.to_template_string()),
+            Ok("x64;1033,1036".to_string())
+        );
+
+        let t_multi_empty_part = SummaryTemplate::parse("x64;1033,,1036");
+        assert_eq!(
+            t_multi_empty_part,
+            Ok(SummaryTemplate::new(Architecture::X64, vec![1033, 1036]))
+        );
+
+        let t_only_num = SummaryTemplate::parse("1033");
+        assert_eq!(
+            t_only_num,
+            Ok(SummaryTemplate::new(Architecture::X86, vec![1033]))
+        );
+
+        let t_no_lang = SummaryTemplate::parse("x64;");
+        assert_eq!(
+            t_no_lang,
+            Ok(SummaryTemplate::new(Architecture::X64, vec![1033]))
+        );
+
+        let t_empty_langs = SummaryTemplate::new(Architecture::Arm64, vec![]);
+        assert_eq!(t_empty_langs.to_template_string(), "Arm64;1033");
+
+        // Error branches
+        assert!(SummaryTemplate::parse("").is_err());
+        assert!(SummaryTemplate::parse("   ").is_err());
+        assert!(SummaryTemplate::parse("invalidarch;1033").is_err());
+        assert!(SummaryTemplate::parse("x64;notanumber").is_err());
+
+        // SummaryInfo integration
+        let mut info = SummaryInfo::default();
+        assert_eq!(info.template_summary(), None);
+
+        info.set_template_summary(&t1);
+        assert_eq!(info.template, Some("x64;1033".to_string()));
+        assert_eq!(info.template_summary(), Some(t1));
+
+        info.template = Some("invalid_template".to_string());
+        assert_eq!(info.template_summary(), None);
     }
 }
