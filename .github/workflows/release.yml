@@ -49,13 +49,9 @@ jobs:
             use-cross: true
             archive-ext: tar.gz
 
-          # macOS (Apple Silicon & Intel)
+          # macOS (Apple Silicon)
           - os: macos-latest
             target: aarch64-apple-darwin
-            use-cross: false
-            archive-ext: tar.gz
-          - os: macos-13
-            target: x86_64-apple-darwin
             use-cross: false
             archive-ext: tar.gz
 
@@ -252,8 +248,6 @@ jobs:
             target: aarch64
           - os: macos-latest
             target: aarch64
-          - os: macos-13
-            target: x86_64
           - os: windows-latest
             target: x64
     steps:
