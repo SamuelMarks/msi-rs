@@ -1078,13 +1078,11 @@ impl CustomActionExecutor {
                         && !final_args[0].starts_with('-')
                     {
                         let script = Path::new(&final_args[0]);
-                        let exists = if script.is_absolute() {
-                            script.exists()
-                        } else if let Some(ref wd) = working_dir {
-                            wd.join(script).exists()
-                        } else {
-                            script.exists() || is_executable_in_path(script)
-                        };
+                        let script_buf = working_dir
+                            .as_deref()
+                            .filter(|_| !script.is_absolute())
+                            .map_or_else(|| script.to_path_buf(), |wd| wd.join(script));
+                        let exists = script_buf.exists() || is_executable_in_path(&script_buf);
                         if !exists {
                             return Ok(ERROR_SUCCESS);
                         }
@@ -3495,6 +3493,64 @@ mod tests {
             ctx.set_property("BAD_EXE", non_exec_file.to_string_lossy());
             assert!(fresh_executor.execute(&bad_async, &mut ctx).is_err());
         }
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    /// Tests executing a shell script custom action with a relative script path and explicit working directory.
+    #[test]
+    fn test_custom_action_sh_relative_script_with_working_dir() {
+        let temp_dir = std::env::temp_dir().join("msi_test_sh_relative");
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let rel_script = "my_script.sh";
+        let script_full = temp_dir.join(rel_script);
+        let _ = std::fs::write(&script_full, b"echo relative_success");
+
+        let mut ctx = EvaluationContext::new();
+        ctx.set_property("WORKING_DIR", temp_dir.to_string_lossy());
+        ctx.set_property("SCRIPT_NAME", rel_script);
+
+        // Type 34: EXE path in Directory table / property + target command line
+        let ca_def = unwrap_result(CustomActionDefinition::parse(
+            "TestShRel",
+            0x0022,
+            "WORKING_DIR",
+            "/bin/sh [SCRIPT_NAME]",
+        ));
+        let executor = CustomActionExecutor::new();
+        let res = executor.execute(&ca_def, &mut ctx);
+        assert_eq!(res, Ok(ERROR_SUCCESS));
+
+        // Also test when the relative script does not exist in working_dir (covers !exists early return)
+        let ca_def_nonexistent = unwrap_result(CustomActionDefinition::parse(
+            "TestShRelMissing",
+            0x0022,
+            "WORKING_DIR",
+            "/bin/sh nonexistent_script.sh",
+        ));
+        let res_missing = executor.execute(&ca_def_nonexistent, &mut ctx);
+        assert_eq!(res_missing, Ok(ERROR_SUCCESS));
+
+        // Type 50: PropertyExe without working directory (covers working_dir is None fallback branch)
+        ctx.set_property("RUN_SH", "/bin/sh");
+        let ca_def_no_wd = unwrap_result(CustomActionDefinition::parse(
+            "TestShNoWd",
+            0x0032,
+            "RUN_SH",
+            "nonexistent_relative_script.sh",
+        ));
+        let res_no_wd = executor.execute(&ca_def_no_wd, &mut ctx);
+        assert_eq!(res_no_wd, Ok(ERROR_SUCCESS));
+
+        // Type 50 with executable found in PATH when working_dir is None
+        let ca_def_in_path = unwrap_result(CustomActionDefinition::parse(
+            "TestShInPath",
+            0x0032,
+            "RUN_SH",
+            "sh",
+        ));
+        let res_in_path = executor.execute(&ca_def_in_path, &mut ctx);
+        assert_eq!(res_in_path, Ok(ERROR_SUCCESS));
+
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }

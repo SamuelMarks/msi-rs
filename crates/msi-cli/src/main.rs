@@ -1477,8 +1477,12 @@ fn run_with_os_args(args_vec: Vec<std::ffi::OsString>) -> ExitCode {
             }
         },
         Err(err) => {
-            eprintln!("{err}");
-            ExitCode::FAILURE
+            let _ = err.print();
+            if err.exit_code() == 0 {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            }
         }
     }
 }
@@ -1622,19 +1626,43 @@ mod tests {
         let _ = std::fs::create_dir_all(&temp_dir);
         let sock_file = temp_dir.join("worker.sock");
 
+        #[cfg(unix)]
+        let valid_socket = sock_file.to_string_lossy().to_string();
+        #[cfg(not(unix))]
+        let valid_socket = format!(r"\\.\pipe\msi_worker_test_{}", std::process::id());
+
         let cli = Cli {
             command: Commands::Worker(WorkerArgs {
-                socket: sock_file.to_string_lossy().to_string(),
+                socket: valid_socket,
             }),
         };
         let result = run(&cli);
         assert!(result.is_ok());
 
-        // Test worker with existing socket file to cover remove_file branch
-        let _ = std::fs::write(&sock_file, b"existing");
-        assert!(run(&cli).is_ok());
+        // Test worker with existing socket file to cover remove_file branch on Unix
+        #[cfg(unix)]
+        {
+            let _ = std::fs::write(&sock_file, b"existing");
+            let cli_unix = Cli {
+                command: Commands::Worker(WorkerArgs {
+                    socket: sock_file.to_string_lossy().to_string(),
+                }),
+            };
+            assert!(run(&cli_unix).is_ok());
+        }
 
-        // Test worker with invalid socket path (bind failure)
+        // Test worker with non-pipe socket path on Windows
+        #[cfg(not(unix))]
+        {
+            let non_pipe_cli = Cli {
+                command: Commands::Worker(WorkerArgs {
+                    socket: sock_file.to_string_lossy().to_string(),
+                }),
+            };
+            assert!(run(&non_pipe_cli).is_err());
+        }
+
+        // Test worker with invalid socket path (bind failure on Unix, prefix failure on Windows)
         let bad_cli = Cli {
             command: Commands::Worker(WorkerArgs {
                 socket: "/dev/null/impossible_dir/socket.sock".to_string(),
@@ -1642,7 +1670,7 @@ mod tests {
         };
         assert!(run(&bad_cli).is_err());
 
-        // Test worker with root path ("/") where path.parent() is None
+        // Test worker with root path ("/") where path.parent() is None on Unix, or invalid prefix on Windows
         let root_cli = Cli {
             command: Commands::Worker(WorkerArgs {
                 socket: "/".to_string(),
@@ -1689,7 +1717,12 @@ mod tests {
         };
         assert!(run(&cli_empty).is_err());
 
-        // Test WorkerSocketAddress directly
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    /// Tests [`WorkerSocketAddress`] parsing, formatted display, and equality traits.
+    #[test]
+    fn test_worker_socket_address() {
         assert!(WorkerSocketAddress::parse("  ").is_err());
         let addr = WorkerSocketAddress::parse("/tmp/test_parse.sock");
         assert_eq!(
@@ -1698,8 +1731,11 @@ mod tests {
         );
         assert!(format!("{addr:?}").contains("WorkerSocketAddress"));
         assert_eq!(addr, addr.clone());
+    }
 
-        // Test repair_flags_to_string
+    /// Tests [`repair_flags_to_string`] serialization across all flag configurations.
+    #[test]
+    fn test_repair_flags_serialization() {
         let all_flags = RepairFlags {
             reinstall_missing: true,
             reinstall_older: true,
@@ -1714,8 +1750,6 @@ mod tests {
         };
         assert_eq!(repair_flags_to_string(&all_flags), "poedcaumsv");
         assert_eq!(repair_flags_to_string(&RepairFlags::default()), "pecmsu");
-
-        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 
     /// Tests running `create` with an invalid version string.
@@ -2439,6 +2473,11 @@ mod tests {
         let parse_error_args = ["msi", "--unrecognized-flag"];
         assert_eq!(run_with_args(to_os(&parse_error_args)), ExitCode::FAILURE);
 
+        let help_args = ["msi", "--help"];
+        assert_eq!(run_with_args(to_os(&help_args)), ExitCode::SUCCESS);
+        let version_args = ["msi", "--version"];
+        assert_eq!(run_with_args(to_os(&version_args)), ExitCode::SUCCESS);
+
         // Subcommands via CLI
         assert_eq!(
             run_with_args(to_os(&["msi", "install", &app_str, "--ui", "quiet"])),
@@ -3023,6 +3062,11 @@ mod tests {
         assert!(reg_harvest_out_res.is_ok());
         assert!(reg_file_out.exists());
 
+        // File blocker ensuring nested path writes fail reliably across all platforms
+        let blocker_file = temp_dir.join("blocker_file_harvest");
+        assert!(std::fs::write(&blocker_file, b"blocker").is_ok());
+        let bad_out_path = blocker_file.join("impossible_sub").join("bad_reg.wxs");
+
         // Registry harvest writing to unwritable destination
         let reg_bad_out_res = run(&Cli {
             command: Commands::Harvest(Box::new(HarvestArgs {
@@ -3032,7 +3076,7 @@ mod tests {
                 wix_fragment: None,
                 group: "MyRegGroup".to_string(),
                 dir_id: "INSTALLFOLDER".to_string(),
-                output: Some("/nonexistent/invalid_dir/bad_reg.wxs".to_string()),
+                output: Some(bad_out_path.to_string_lossy().to_string()),
                 mode: "reg".to_string(),
                 gitignore: None,
                 disk_rules: vec![],
@@ -3075,6 +3119,8 @@ mod tests {
         });
         assert!(bad_harvest.is_err());
 
+        let bad_dir_harvest_path = blocker_file.join("impossible_sub").join("out.wxs");
+
         let bad_harvest_out = run(&Cli {
             command: Commands::Harvest(Box::new(HarvestArgs {
                 target: src_dir.to_string_lossy().to_string(),
@@ -3083,7 +3129,7 @@ mod tests {
                 wix_fragment: None,
                 group: "G".to_string(),
                 dir_id: "D".to_string(),
-                output: Some("/nonexistent/dir/out.wxs".to_string()),
+                output: Some(bad_dir_harvest_path.to_string_lossy().to_string()),
                 mode: "dir".to_string(),
                 gitignore: None,
                 disk_rules: vec![],
@@ -3213,10 +3259,14 @@ mod tests {
         assert!(decompile_assets_res.is_ok());
 
         // 3. Errors
+        let decompile_blocker = temp_dir.join("blocker_file_decompile");
+        assert!(std::fs::write(&decompile_blocker, b"blocker").is_ok());
+        let bad_decompile_path = decompile_blocker.join("impossible_sub").join("out.wxs");
+
         let bad_decompile_out = run(&Cli {
             command: Commands::Decompile(DecompileArgs {
                 package: pkg_path.to_string_lossy().to_string(),
-                output: Some("/nonexistent/dir/out.wxs".to_string()),
+                output: Some(bad_decompile_path.to_string_lossy().to_string()),
                 extract_assets: None,
             }),
         });

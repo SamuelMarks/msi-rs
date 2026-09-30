@@ -677,10 +677,9 @@ impl Package {
 
         let mut synthesized_tables: HashMap<String, Vec<Record>> = self.database.tables.clone();
 
-        if !synthesized_tables.contains_key(TABLE_CATALOG_NAME)
-            || synthesized_tables
-                .get(TABLE_CATALOG_NAME)
-                .is_some_and(Vec::is_empty)
+        if synthesized_tables
+            .get(TABLE_CATALOG_NAME)
+            .is_none_or(Vec::is_empty)
         {
             let mut table_records = Vec::new();
             for tbl in &all_table_names {
@@ -689,10 +688,9 @@ impl Package {
             synthesized_tables.insert(TABLE_CATALOG_NAME.to_string(), table_records);
         }
 
-        if !synthesized_tables.contains_key(COLUMN_CATALOG_NAME)
-            || synthesized_tables
-                .get(COLUMN_CATALOG_NAME)
-                .is_some_and(Vec::is_empty)
+        if synthesized_tables
+            .get(COLUMN_CATALOG_NAME)
+            .is_none_or(Vec::is_empty)
         {
             let mut col_records = Vec::new();
             for tbl in &all_table_names {
@@ -1643,9 +1641,7 @@ mod tests {
             .collect();
         let mut offset = 1024;
         while offset + 128 <= corrupted.len() {
-            if offset + utf16.len() <= corrupted.len()
-                && corrupted[offset..offset + utf16.len()] == utf16[..]
-            {
+            if &corrupted[offset..offset + utf16.len()] == utf16.as_slice() {
                 corrupted[offset + 116..offset + 120].copy_from_slice(&999_999u32.to_le_bytes());
                 corrupted[offset + 120..offset + 128].copy_from_slice(&64u64.to_le_bytes());
                 return Some(corrupted);
@@ -2001,5 +1997,84 @@ mod tests {
         assert_eq!(pkg2.metadata().manufacturer(), "WiX Author");
         assert_eq!(pkg2.metadata().version(), ProductVersion::new(1, 0, 0));
         assert_eq!(pkg2.summary_info().word_count, Some(0));
+    }
+
+    /// Tests package serialization when `_Tables` and `_Columns` tables are explicitly present but empty.
+    #[test]
+    fn test_package_serialization_with_empty_catalog_tables() {
+        let mut pkg = Package::from_database(LinkedDatabase::default(), HashMap::new());
+        pkg.database
+            .tables
+            .insert("_Tables".to_string(), Vec::new());
+        pkg.database
+            .tables
+            .insert("_Columns".to_string(), Vec::new());
+        let _ = pkg.to_bytes();
+
+        let mut pkg_non_empty = Package::from_database(LinkedDatabase::default(), HashMap::new());
+        pkg_non_empty.database.tables.insert(
+            "_Tables".to_string(),
+            vec![Record::with_fields(vec![FieldValue::String(
+                "T".to_string(),
+            )])],
+        );
+        pkg_non_empty.database.tables.insert(
+            "_Columns".to_string(),
+            vec![Record::with_fields(vec![
+                FieldValue::String("T".to_string()),
+                FieldValue::Short(1),
+                FieldValue::String("C".to_string()),
+                FieldValue::Short(0),
+            ])],
+        );
+        let _ = pkg_non_empty.to_bytes();
+    }
+
+    /// Tests package builder validation failure on whitespace-only fields.
+    #[test]
+    fn test_package_builder_whitespace_validation() {
+        let v = ProductVersion::new(1, 0, 0);
+        // Whitespace product name
+        assert!(Package::builder()
+            .product_name("   ")
+            .manufacturer("Vendor")
+            .version(v)
+            .product_code("{11111111-2222-3333-4444-555555555555}")
+            .build()
+            .is_err());
+
+        // Whitespace manufacturer
+        assert!(Package::builder()
+            .product_name("App")
+            .manufacturer("   ")
+            .version(v)
+            .product_code("{11111111-2222-3333-4444-555555555555}")
+            .build()
+            .is_err());
+
+        // Whitespace product code
+        assert!(Package::builder()
+            .product_name("App")
+            .manufacturer("Vendor")
+            .version(v)
+            .product_code("   ")
+            .build()
+            .is_err());
+    }
+
+    /// Tests package deserialization with corrupted summary information stream to exercise fallback to default.
+    #[test]
+    fn test_package_from_bytes_with_corrupted_summary_info() {
+        let mut writer = CfbWriter::new(CfbVersion::V3);
+        let pool = StringPool::new(CODEPAGE_UTF8);
+        let (pool_bytes, data_bytes) = pool.serialize();
+        let enc_pool = encode_msi_stream_name("_StringPool", false).unwrap_or_default();
+        let enc_data = encode_msi_stream_name("_StringData", false).unwrap_or_default();
+        let _ = writer.add_stream(&enc_pool, &pool_bytes);
+        let _ = writer.add_stream(&enc_data, &data_bytes);
+        let _ = writer.add_stream(SUMMARY_INFORMATION_STREAM, b"NOT_A_VALID_SUMMARY_INFO");
+        let cfb_bytes = writer.build();
+        let pkg = Package::from_bytes(&cfb_bytes);
+        assert!(pkg.is_ok());
     }
 }

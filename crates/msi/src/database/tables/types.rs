@@ -57,9 +57,17 @@ fn validate_guid(s: &str, field_name: &'static str) -> Result<()> {
 }
 
 /// Computes 160-bit SHA-1 digest for arbitrary byte buffer (FIPS PUB 180-1 / RFC 3174).
+///
+/// # Arguments
+///
+/// * `data` - Raw bytes to compute digest for.
+///
+/// # Returns
+///
+/// A 20-byte SHA-1 digest array.
 #[must_use]
 #[allow(clippy::many_single_char_names)]
-fn compute_sha1(data: &[u8]) -> [u8; 20] {
+pub(crate) fn compute_sha1(data: &[u8]) -> [u8; 20] {
     let mut h0: u32 = 0x6745_2301;
     let mut h1: u32 = 0xEFCD_AB89;
     let mut h2: u32 = 0x98BA_DCFE;
@@ -585,6 +593,25 @@ pub fn sanitize_identifier_length(s: String) -> String {
         boundary -= 1;
     }
     format!("{}_{hex_hash}", &s[..boundary])
+}
+
+/// Deterministically generates a unique alphanumeric identifier with a prefix and 16-hex hash.
+///
+/// # Arguments
+///
+/// * `prefix` - The identifier prefix (e.g. `"reg"` or `"sc"`).
+/// * `data` - Seed string content.
+///
+/// # Returns
+///
+/// An alphanumeric identifier string of at most 72 characters.
+#[must_use]
+pub(crate) fn generate_deterministic_id(prefix: &str, data: &str) -> String {
+    let hash = compute_sha1(data.as_bytes());
+    format!(
+        "{prefix}_{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}",
+        hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7]
+    )
 }
 
 /// Strongly-typed File key identifier (primary key in `File` table).

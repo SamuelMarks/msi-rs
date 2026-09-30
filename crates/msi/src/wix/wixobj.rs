@@ -1140,4 +1140,20 @@ mod tests {
         bad_field_type.push(250); // unknown field type
         assert!(WixObject::deserialize(&bad_field_type).is_err());
     }
+
+    /// Tests duplicate symbol addition with existing span populated to cover branch where `existing.span.is_none()` is false.
+    #[test]
+    fn test_add_symbol_with_existing_span() {
+        let mut sec = IntermediateSection::new(SectionType::Product, None);
+        let mut sym1 = Symbol::new("NS", "ID");
+        sym1.span = Some(SourceSpan::new(1, 2));
+        sec.add_symbol(sym1);
+
+        let mut sym2 = Symbol::new("NS", "ID");
+        sym2.span = Some(SourceSpan::new(5, 6));
+        sec.add_symbol(sym2);
+
+        assert_eq!(sec.symbols.len(), 1);
+        assert_eq!(sec.symbols[0].span, Some(SourceSpan::new(1, 2)));
+    }
 }

@@ -39,6 +39,9 @@ pub const LZX_MIN_MATCH: usize = 2;
 /// Maximum match length supported in LZX ($2 + 7 + 248 = 257$).
 pub const LZX_MAX_MATCH: usize = 257;
 
+/// Number of buckets in the hash-chain match finder.
+pub const LZX_HASH_SIZE: usize = 8192;
+
 /// Returns the number of position slots corresponding to the given window size in bits.
 ///
 /// # Arguments
@@ -436,39 +439,58 @@ pub fn compute_huffman_lengths(freqs: &[u32], max_bits: u8) -> Vec<u8> {
         return lengths;
     }
 
-    // Min-heap storing (weight, node_index)
-    let mut heap = BinaryHeap::new();
-    let mut tree_nodes: Vec<(Option<usize>, Option<usize>)> = Vec::new();
+    let mut current_weights: Vec<u64> = active_symbols.iter().map(|&(_, f)| u64::from(f)).collect();
 
-    for (sym, weight) in &active_symbols {
-        let node_id = tree_nodes.len();
-        tree_nodes.push((None, None));
-        heap.push(Reverse((u64::from(*weight), node_id, Some(*sym))));
-    }
+    loop {
+        let mut heap = BinaryHeap::new();
+        let mut tree_nodes: Vec<(Option<usize>, Option<usize>)> = Vec::new();
 
-    while let (Some(Reverse((w1, n1, _))), Some(Reverse((w2, n2, _)))) = (heap.pop(), heap.pop()) {
-        let parent_id = tree_nodes.len();
-        tree_nodes.push((Some(n1), Some(n2)));
-        heap.push(Reverse((w1.saturating_add(w2), parent_id, None)));
-    }
-
-    let root = tree_nodes.len().saturating_sub(1);
-    let mut depths = vec![0u8; tree_nodes.len()];
-    let mut stack = vec![(root, 0u8)];
-
-    while let Some((node_idx, d)) = stack.pop() {
-        depths[node_idx] = d;
-        let (left, right) = tree_nodes[node_idx];
-        if let Some(l) = left {
-            stack.push((l, (d + 1).min(max_bits)));
+        for (idx, &w) in current_weights.iter().enumerate() {
+            let node_id = tree_nodes.len();
+            tree_nodes.push((None, None));
+            heap.push(Reverse((w, node_id, Some(idx))));
         }
-        if let Some(r) = right {
-            stack.push((r, (d + 1).min(max_bits)));
-        }
-    }
 
-    for (idx, &(sym, _)) in active_symbols.iter().enumerate() {
-        lengths[sym] = depths[idx].clamp(1, max_bits);
+        while let (Some(Reverse((w1, n1, _))), Some(Reverse((w2, n2, _)))) =
+            (heap.pop(), heap.pop())
+        {
+            let parent_id = tree_nodes.len();
+            tree_nodes.push((Some(n1), Some(n2)));
+            heap.push(Reverse((w1.saturating_add(w2), parent_id, None)));
+        }
+
+        let root = tree_nodes.len().saturating_sub(1);
+        let mut depths = vec![0u8; tree_nodes.len()];
+        let mut stack = vec![(root, 0u8)];
+
+        while let Some((node_idx, d)) = stack.pop() {
+            depths[node_idx] = d;
+            let (left, right) = tree_nodes[node_idx];
+            if let Some(l) = left {
+                stack.push((l, d.saturating_add(1)));
+            }
+            if let Some(r) = right {
+                stack.push((r, d.saturating_add(1)));
+            }
+        }
+
+        let max_depth = active_symbols
+            .iter()
+            .enumerate()
+            .map(|(idx, _)| depths[idx])
+            .max()
+            .unwrap_or(0);
+
+        if max_depth <= max_bits {
+            for (idx, &(sym, _)) in active_symbols.iter().enumerate() {
+                lengths[sym] = depths[idx].max(1);
+            }
+            break;
+        }
+
+        for w in &mut current_weights {
+            *w = (*w).div_ceil(2);
+        }
     }
 
     lengths
@@ -639,12 +661,15 @@ impl LzxState {
         let mut transformed = input.to_vec();
         e8_translate(&mut transformed, self.total_uncompressed_bytes, false);
 
-        // LZ Match parsing
+        // LZ Match parsing with hash chains
         let mut tokens: Vec<LzToken> = Vec::new();
         let mut pos = 0;
         let mut tok_r0 = self.r0;
         let mut tok_r1 = self.r1;
         let mut tok_r2 = self.r2;
+
+        let mut head = vec![usize::MAX; LZX_HASH_SIZE];
+        let mut chain_prev = vec![usize::MAX; transformed.len()];
 
         while pos < transformed.len() {
             let mut best_len = 0;
@@ -678,22 +703,35 @@ impl LzxState {
                 }
             }
 
-            // Also search backward in current block
-            if best_len < 32 && pos >= 3 {
-                let max_search = pos.min(1024);
-                for back in 1..=max_search {
+            // Hash-based match finding across entire block
+            if pos + 2 < transformed.len() {
+                let h = (((transformed[pos] as usize) << 5)
+                    ^ ((transformed[pos + 1] as usize) << 2)
+                    ^ (transformed[pos + 2] as usize))
+                    & (LZX_HASH_SIZE - 1);
+                let mut cand = head[h];
+                head[h] = pos;
+                chain_prev[pos] = cand;
+
+                let mut steps = 0;
+                while cand != usize::MAX && steps < 64 {
+                    let off = pos - cand;
                     let mut match_len = 0;
                     while pos + match_len < transformed.len()
                         && match_len < LZX_MAX_MATCH
-                        && transformed[pos + match_len]
-                            == transformed[pos - back + (match_len % back)]
+                        && transformed[pos + match_len] == transformed[cand + match_len]
                     {
                         match_len += 1;
                     }
-                    if match_len >= 3 && match_len > best_len {
+                    if match_len >= LZX_MIN_MATCH && match_len > best_len {
                         best_len = match_len;
-                        best_offset = back;
+                        best_offset = off;
+                        if match_len >= 128 {
+                            break;
+                        }
                     }
+                    cand = chain_prev[cand];
+                    steps += 1;
                 }
             }
 
@@ -702,7 +740,20 @@ impl LzxState {
                     offset: best_offset,
                     length: best_len,
                 });
+                let old_pos = pos;
                 pos += best_len;
+
+                // Update hash table for skipped bytes
+                for i in (old_pos + 1)..pos {
+                    if i + 2 < transformed.len() {
+                        let h = (((transformed[i] as usize) << 5)
+                            ^ ((transformed[i + 1] as usize) << 2)
+                            ^ (transformed[i + 2] as usize))
+                            & (LZX_HASH_SIZE - 1);
+                        chain_prev[i] = head[h];
+                        head[h] = i;
+                    }
+                }
 
                 if best_offset as u32 == tok_r1 {
                     std::mem::swap(&mut tok_r1, &mut tok_r0);
@@ -1916,6 +1967,121 @@ mod tests {
         let mut trunc_state = LzxState::new(15)?;
         let truncated = &bytes[..bytes.len().saturating_sub(2)];
         assert!(trunc_state.decompress_block(truncated, 7).is_err());
+
+        Ok(())
+    }
+
+    /// Tests `compute_huffman_lengths` with deep tree exceeding `max_bits` to exercise dynamic range compression.
+    #[test]
+    fn test_compute_huffman_lengths_deep_tree_compression() {
+        // 20 symbols with Fibonacci weights: unconstrained Huffman tree has depth 19 > 7
+        let mut freqs = [0u32; LZX_PRE_TREE_NUM_SYMBOLS];
+        let mut a = 1u32;
+        let mut b = 2u32;
+        for f in &mut freqs {
+            *f = a;
+            let next = a.saturating_add(b);
+            a = b;
+            b = next;
+        }
+        let lengths = compute_huffman_lengths(&freqs, 7);
+        for &l in &lengths {
+            assert!(l <= 7);
+        }
+    }
+
+    /// Tests decompressing truncated LZX Type 3 (Uncompressed) blocks to exercise bitstream exhaustion error branches.
+    #[test]
+    fn test_decompress_uncompressed_block_truncated_headers() -> Result<()> {
+        let mut state = LzxState::new(15)?;
+        // Type 3 block header is 0b011 (3 bits)
+        // 1. Truncated before length (only 1 byte)
+        assert!(state.decompress_block(&[0x03], 100).is_err());
+
+        // 2. Truncated before r0 (only length low + high, 3 bytes)
+        assert!(state.decompress_block(&[0x03, 0x00, 0x00], 100).is_err());
+
+        // 3. Header with mismatched length
+        let mut writer = LzxBitWriter::new();
+        writer.write_bits(0b011, 3);
+        writer.write_bits(50, 16);
+        writer.write_bits(0, 8);
+        assert!(state.decompress_block(&writer.into_bytes(), 100).is_err());
+
+        // 4. Header with truncated r0/r1/r2/data
+        for take_len in 4..16 {
+            let mut w = LzxBitWriter::new();
+            w.write_bits(0b011, 3);
+            w.write_bits(10, 16);
+            w.write_bits(0, 8);
+            w.write_bits(1, 16);
+            w.write_bits(0, 16);
+            let bytes = w.into_bytes();
+            if take_len <= bytes.len() {
+                assert!(state.decompress_block(&bytes[..take_len], 10).is_err());
+            }
+        }
+        Ok(())
+    }
+
+    /// Tests `decode_tree_lengths` with truncated input streams during RLE symbol decoding.
+    #[test]
+    fn test_decode_tree_lengths_truncated_rle() -> Result<()> {
+        let mut pre_lengths = [0u8; LZX_PRE_TREE_NUM_SYMBOLS];
+        pre_lengths[17] = 1;
+        let pre_tree = HuffmanTree::from_lengths(&pre_lengths)?;
+
+        let mut lengths = [0u8; 10];
+        let mut w17 = LzxBitWriter::new();
+        w17.write_bits(0, 1);
+        let b17 = w17.into_bytes();
+        let mut r17 = LzxBitReader::new(&b17[..1]);
+        assert!(decode_tree_lengths(&mut r17, &pre_tree, &mut lengths, &[]).is_err());
+
+        Ok(())
+    }
+
+    /// Tests remaining LZX branches: window bits bounds, block size limits, E8 translation edges, and repeat offset swaps.
+    #[test]
+    fn test_lzx_remaining_uncovered_branches() -> Result<()> {
+        // 1. Invalid window bits
+        assert!(LzxState::new(14).is_err());
+        assert!(LzxState::new(22).is_err());
+
+        // 2. Block size exceeding 32KB
+        let mut state = LzxState::new(15)?;
+        let oversize = vec![0u8; 32_769];
+        assert!(state.compress_uncompressed_block(&oversize).is_err());
+        assert!(state.compress_verbatim_block(&oversize).is_err());
+
+        // 3. E8 translation short slice (< 10 bytes)
+        let mut short_e8 = vec![0xE8; 5];
+        e8_translate(&mut short_e8, 0, false);
+        assert_eq!(short_e8, vec![0xE8; 5]);
+
+        // 4. Long match >= 128 bytes (exercises break in hash chain step)
+        let mut long_rep = Vec::new();
+        long_rep.extend_from_slice(b"HEADER_PREFIX_PATTERN_");
+        long_rep.extend(vec![b'Z'; 200]);
+        long_rep.extend(vec![b'Z'; 200]);
+        let comp_long = state.compress_verbatim_block(&long_rep)?;
+        let mut decomp_state = LzxState::new(15)?;
+        let decomp_long = decomp_state.decompress_block(&comp_long, long_rep.len())?;
+        assert_eq!(decomp_long, long_rep);
+
+        // 5. Repeat offsets: trigger slot 1 (R1) and slot 2 (R2) updates
+        let mut rep_seq = Vec::new();
+        rep_seq.extend_from_slice(b"AAAAABBBBBCCCCCDDDDDAAAAABBBBBCCCCCDDDDD");
+        let comp_rep = state.compress_verbatim_block(&rep_seq)?;
+        let decomp_rep = decomp_state.decompress_block(&comp_rep, rep_seq.len())?;
+        assert_eq!(decomp_rep, rep_seq);
+
+        // 6. HuffmanTree from_lengths with invalid length > 16
+        assert!(HuffmanTree::from_lengths(&[17]).is_err());
+
+        // 7. Position slots < 4
+        assert_eq!(slot_extra_bits(0), 0);
+        assert_eq!(slot_base_offset(0), 0);
 
         Ok(())
     }

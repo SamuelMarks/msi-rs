@@ -11,7 +11,8 @@ use crate::database::tables::file_mgmt::{CreateFolderRow, RemoveFileRow};
 use crate::database::tables::record::{FieldValue, Record};
 use crate::database::tables::sequence::SequenceRow;
 use crate::database::tables::types::{
-    ComponentGuid, ComponentName, DirectoryId, FeatureName, FileKey, PropertyName,
+    generate_deterministic_id, ComponentGuid, ComponentName, DirectoryId, FeatureName, FileKey,
+    PropertyName,
 };
 use crate::error::{Error, Result};
 use crate::wix::schema::WixSchemaVersion;
@@ -1303,7 +1304,9 @@ impl Compiler {
                     self.compile_element_tree(child, parent_id, section, tables)?;
                 }
                 "RegistryValue" => {
-                    Self::compile_registry_value(child, parent_id, None, None, section, tables);
+                    if node.tag != "RegistryKey" {
+                        Self::compile_registry_value(child, parent_id, None, None, section, tables);
+                    }
                 }
                 "Shortcut" => {
                     Self::compile_shortcut(child, parent_id, section, tables);
@@ -1519,7 +1522,6 @@ impl Compiler {
             || ComponentName::from_static("DefaultComp"),
             ComponentName::from_validated,
         );
-        let reg_id = child.attribute("Id").unwrap_or("Registry1");
         let root_str = child.attribute("Root").or(inherited_root).unwrap_or("HKLM");
         let root = parse_registry_root(root_str);
         let key = child
@@ -1529,11 +1531,26 @@ impl Compiler {
         let name = child.attribute("Name").map(ToString::to_string);
         let value = child.attribute("Value").map(ToString::to_string);
 
-        section.add_symbol(Symbol::new("Registry", reg_id));
+        let reg_id = child.attribute("Id").map_or_else(
+            || {
+                let seed = format!(
+                    "{}_{}_{}_{}_{}",
+                    comp_name,
+                    root_str,
+                    key,
+                    name.as_deref().unwrap_or(""),
+                    value.as_deref().unwrap_or("")
+                );
+                generate_deterministic_id("reg", &seed)
+            },
+            ToString::to_string,
+        );
+
+        section.add_symbol(Symbol::new("Registry", &reg_id));
         section.add_reference(Reference::new("Component", comp_name));
 
         let row = RegistryRow {
-            registry: reg_id.to_string(),
+            registry: reg_id,
             root,
             key: key.to_string(),
             name,
@@ -1553,11 +1570,24 @@ impl Compiler {
         section: &mut IntermediateSection,
         tables: &mut std::collections::HashMap<String, IntermediateTable>,
     ) {
-        let sc_id = child.attribute("Id").unwrap_or("Shortcut1");
-        let sc_name = child.attribute("Name").unwrap_or(sc_id);
+        let comp_name = parent_id.unwrap_or("DefaultComp");
+        let sc_name_attr = child.attribute("Name");
         let sc_target = child.attribute("Target").unwrap_or("");
         let sc_dir = child.attribute("Directory").unwrap_or("ProgramMenuFolder");
-        let comp_name = parent_id.unwrap_or("DefaultComp");
+        let sc_id = child.attribute("Id").map_or_else(
+            || {
+                let seed = format!(
+                    "{}_{}_{}_{}",
+                    comp_name,
+                    sc_dir,
+                    sc_name_attr.unwrap_or(""),
+                    sc_target
+                );
+                generate_deterministic_id("sc", &seed)
+            },
+            ToString::to_string,
+        );
+        let sc_name = sc_name_attr.unwrap_or(&sc_id);
         let sc_desc = child.attribute("Description").map(ToString::to_string);
         let sc_args = child.attribute("Arguments").map(ToString::to_string);
         let sc_icon = child.attribute("Icon").map(ToString::to_string);
@@ -1579,7 +1609,7 @@ impl Compiler {
             .or_else(|| child.attribute("WkDir"))
             .map(ToString::to_string);
 
-        section.add_symbol(Symbol::new("Shortcut", sc_id));
+        section.add_symbol(Symbol::new("Shortcut", &sc_id));
         section.add_reference(Reference::new("Component", comp_name));
         section.add_reference(Reference::new("Directory", sc_dir));
         if let Some(ref wd) = sc_wkdir {
@@ -1589,10 +1619,11 @@ impl Compiler {
             section.add_reference(Reference::new("Icon", ic));
         }
 
+        let sc_name_str = sc_name.to_string();
         let rec = Record::with_fields(vec![
-            FieldValue::String(sc_id.to_string()),
+            FieldValue::String(sc_id),
             FieldValue::String(sc_dir.to_string()),
-            FieldValue::String(sc_name.to_string()),
+            FieldValue::String(sc_name_str),
             FieldValue::String(comp_name.to_string()),
             FieldValue::String(sc_target.to_string()),
             sc_args.map_or(FieldValue::Null, FieldValue::String),
@@ -1695,9 +1726,8 @@ impl Compiler {
         section: &mut IntermediateSection,
         tables: &mut std::collections::HashMap<String, IntermediateTable>,
     ) {
-        let ctrl_id = child.attribute("Id").unwrap_or("ServiceControl1");
-        let ctrl_name = child.attribute("Name").unwrap_or(ctrl_id);
         let comp_name = parent_id.unwrap_or("DefaultComp");
+        let ctrl_name_attr = child.attribute("Name");
         let mut event: i16 = 0;
 
         if let Some(s) = child.attribute("Start") {
@@ -1725,6 +1755,15 @@ impl Compiler {
             }
         }
 
+        let ctrl_id = child.attribute("Id").map_or_else(
+            || {
+                let seed = format!("{comp_name}_{}_{event}", ctrl_name_attr.unwrap_or(""));
+                generate_deterministic_id("svc_ctrl", &seed)
+            },
+            ToString::to_string,
+        );
+        let ctrl_name = ctrl_name_attr.unwrap_or(&ctrl_id);
+
         let arguments = child.attribute("Arguments").map(ToString::to_string);
         let wait = match child
             .attribute("Wait")
@@ -1736,12 +1775,13 @@ impl Compiler {
             _ => None,
         };
 
-        section.add_symbol(Symbol::new("ServiceControl", ctrl_id));
+        let ctrl_name_str = ctrl_name.to_string();
+        section.add_symbol(Symbol::new("ServiceControl", &ctrl_id));
         section.add_reference(Reference::new("Component", comp_name));
 
         let rec = Record::with_fields(vec![
-            FieldValue::String(ctrl_id.to_string()),
-            FieldValue::String(ctrl_name.to_string()),
+            FieldValue::String(ctrl_id),
+            FieldValue::String(ctrl_name_str),
             FieldValue::Short(event),
             arguments.map_or(FieldValue::Null, FieldValue::String),
             wait.map_or(FieldValue::Null, FieldValue::Short),
@@ -3514,11 +3554,23 @@ impl Compiler {
         section: &mut IntermediateSection,
         tables: &mut std::collections::HashMap<String, IntermediateTable>,
     ) {
-        let sig = child.attribute("Id").unwrap_or("RegSearch1");
         let root_str = child.attribute("Root").unwrap_or("HKLM");
         let root = parse_registry_root(root_str);
         let key = child.attribute("Key").unwrap_or("");
         let name = child.attribute("Name").map(ToString::to_string);
+        let sig = child.attribute("Id").map_or_else(
+            || {
+                let seed = format!(
+                    "{}_{}_{}_{}",
+                    parent_id.unwrap_or(""),
+                    root_str,
+                    key,
+                    name.as_deref().unwrap_or("")
+                );
+                generate_deterministic_id("reg_search", &seed)
+            },
+            ToString::to_string,
+        );
         let type_str = child.attribute("Type").unwrap_or("raw");
         let mut type_num: i16 = match type_str {
             "directory" => 0,
@@ -3538,19 +3590,25 @@ impl Compiler {
         for sub in &child.children {
             if sub.tag == "FileSearch" {
                 type_num &= 0x0010;
-                let file_sig = sub.attribute("Id").unwrap_or(sig);
                 let file_name = sub.attribute("Name").unwrap_or("target.exe");
+                let file_sig = sub.attribute("Id").map_or_else(
+                    || {
+                        let seed = format!("{sig}_{file_name}");
+                        generate_deterministic_id("file_search", &seed)
+                    },
+                    ToString::to_string,
+                );
                 let min_ver = sub.attribute("MinVersion").map(ToString::to_string);
                 let max_ver = sub.attribute("MaxVersion").map(ToString::to_string);
                 nested_file_searches.push((file_sig, file_name, min_ver, max_ver));
             }
         }
 
-        section.add_symbol(Symbol::new("Signature", sig));
+        section.add_symbol(Symbol::new("Signature", &sig));
         if let Some(parent_prop) = parent_id {
             let app_search_rec = Record::with_fields(vec![
                 FieldValue::String(parent_prop.to_string()),
-                FieldValue::String(sig.to_string()),
+                FieldValue::String(sig.clone()),
             ]);
             tables
                 .entry("AppSearch".to_string())
@@ -3559,7 +3617,7 @@ impl Compiler {
         }
 
         let rec = Record::with_fields(vec![
-            FieldValue::String(sig.to_string()),
+            FieldValue::String(sig),
             FieldValue::Short(root),
             FieldValue::String(key.to_string()),
             name.map_or(FieldValue::Null, FieldValue::String),
@@ -3571,9 +3629,9 @@ impl Compiler {
             .push_record(rec);
 
         for (file_sig, file_name, min_ver, max_ver) in nested_file_searches {
-            section.add_symbol(Symbol::new("Signature", file_sig));
+            section.add_symbol(Symbol::new("Signature", &file_sig));
             let sig_rec = Record::with_fields(vec![
-                FieldValue::String(file_sig.to_string()),
+                FieldValue::String(file_sig),
                 FieldValue::String(file_name.to_string()),
                 min_ver.map_or(FieldValue::Null, FieldValue::String),
                 max_ver.map_or(FieldValue::Null, FieldValue::String),
@@ -3597,15 +3655,21 @@ impl Compiler {
         section: &mut IntermediateSection,
         tables: &mut std::collections::HashMap<String, IntermediateTable>,
     ) {
-        let sig = child.attribute("Id").unwrap_or("DirSearch1");
         let path = child.attribute("Path").map(ToString::to_string);
         let depth: Option<i16> = child.attribute("Depth").and_then(|d| d.parse().ok());
         let parent = child.attribute("Parent").or(parent_id);
+        let sig = child.attribute("Id").map_or_else(
+            || {
+                let seed = format!("{}_{}", parent.unwrap_or(""), path.as_deref().unwrap_or(""));
+                generate_deterministic_id("dir_search", &seed)
+            },
+            ToString::to_string,
+        );
 
-        section.add_symbol(Symbol::new("Signature", sig));
+        section.add_symbol(Symbol::new("Signature", &sig));
 
         let rec = Record::with_fields(vec![
-            FieldValue::String(sig.to_string()),
+            FieldValue::String(sig),
             parent.map_or(FieldValue::Null, |p| FieldValue::String(p.to_string())),
             path.map_or(FieldValue::Null, FieldValue::String),
             depth.map_or(FieldValue::Null, FieldValue::Short),
@@ -3623,15 +3687,21 @@ impl Compiler {
         section: &mut IntermediateSection,
         tables: &mut std::collections::HashMap<String, IntermediateTable>,
     ) {
-        let sig = child.attribute("Id").unwrap_or("FileSearch1");
         let name = child.attribute("Name").unwrap_or("target.exe");
+        let sig = child.attribute("Id").map_or_else(
+            || {
+                let seed = format!("{}_{}", parent_id.unwrap_or(""), name);
+                generate_deterministic_id("file_search", &seed)
+            },
+            ToString::to_string,
+        );
         let min_ver = child.attribute("MinVersion").map(ToString::to_string);
         let max_ver = child.attribute("MaxVersion").map(ToString::to_string);
 
-        section.add_symbol(Symbol::new("Signature", sig));
+        section.add_symbol(Symbol::new("Signature", &sig));
 
         let rec = Record::with_fields(vec![
-            FieldValue::String(sig.to_string()),
+            FieldValue::String(sig.clone()),
             FieldValue::String(name.to_string()),
             min_ver.map_or(FieldValue::Null, FieldValue::String),
             max_ver.map_or(FieldValue::Null, FieldValue::String),
@@ -3649,7 +3719,7 @@ impl Compiler {
         if let Some(prop) = parent_id {
             let app_rec = Record::with_fields(vec![
                 FieldValue::String(prop.to_string()),
-                FieldValue::String(sig.to_string()),
+                FieldValue::String(sig),
             ]);
             tables
                 .entry("AppSearch".to_string())
@@ -3665,20 +3735,32 @@ impl Compiler {
         section: &mut IntermediateSection,
         tables: &mut std::collections::HashMap<String, IntermediateTable>,
     ) {
-        let sig = child.attribute("Id").unwrap_or("IniSearch1");
         let file = child
             .attribute("Name")
             .or_else(|| child.attribute("FileName"))
             .unwrap_or("app.ini");
         let section_name = child.attribute("Section").unwrap_or("Config");
         let key = child.attribute("Key").unwrap_or("Key");
+        let sig = child.attribute("Id").map_or_else(
+            || {
+                let seed = format!(
+                    "{}_{}_{}_{}",
+                    parent_id.unwrap_or(""),
+                    file,
+                    section_name,
+                    key
+                );
+                generate_deterministic_id("ini_search", &seed)
+            },
+            ToString::to_string,
+        );
         let field: Option<i16> = child.attribute("Field").and_then(|f| f.parse().ok());
         let type_num: Option<i16> = child.attribute("Type").and_then(|t| t.parse().ok());
 
-        section.add_symbol(Symbol::new("Signature", sig));
+        section.add_symbol(Symbol::new("Signature", &sig));
 
         let rec = Record::with_fields(vec![
-            FieldValue::String(sig.to_string()),
+            FieldValue::String(sig.clone()),
             FieldValue::String(file.to_string()),
             FieldValue::String(section_name.to_string()),
             FieldValue::String(key.to_string()),
@@ -3693,7 +3775,7 @@ impl Compiler {
         if let Some(prop) = parent_id {
             let app_rec = Record::with_fields(vec![
                 FieldValue::String(prop.to_string()),
-                FieldValue::String(sig.to_string()),
+                FieldValue::String(sig),
             ]);
             tables
                 .entry("AppSearch".to_string())
@@ -3709,16 +3791,22 @@ impl Compiler {
         section: &mut IntermediateSection,
         tables: &mut std::collections::HashMap<String, IntermediateTable>,
     ) {
-        let sig = child.attribute("Id").unwrap_or("CompSearch1");
         let guid = child
             .attribute("Guid")
             .unwrap_or("{00000000-0000-0000-0000-000000000000}");
+        let sig = child.attribute("Id").map_or_else(
+            || {
+                let seed = format!("{}_{}", parent_id.unwrap_or(""), guid);
+                generate_deterministic_id("comp_search", &seed)
+            },
+            ToString::to_string,
+        );
         let type_num: Option<i16> = child.attribute("Type").and_then(|t| t.parse().ok());
 
-        section.add_symbol(Symbol::new("Signature", sig));
+        section.add_symbol(Symbol::new("Signature", &sig));
 
         let rec = Record::with_fields(vec![
-            FieldValue::String(sig.to_string()),
+            FieldValue::String(sig.clone()),
             FieldValue::String(guid.to_string()),
             type_num.map_or(FieldValue::Null, FieldValue::Short),
         ]);
@@ -3730,7 +3818,7 @@ impl Compiler {
         if let Some(prop) = parent_id {
             let app_rec = Record::with_fields(vec![
                 FieldValue::String(prop.to_string()),
-                FieldValue::String(sig.to_string()),
+                FieldValue::String(sig),
             ]);
             tables
                 .entry("AppSearch".to_string())
@@ -6727,5 +6815,105 @@ mod tests {
                 assert!(compiler.compile(&doc_bad).is_err());
             }
         }
+    }
+
+    /// Tests deterministic identifier generation for `<RegistryValue>`, `<Shortcut>`,
+    /// `<ServiceControl>`, and search elements when `Id` is omitted, verifying collision-free linking.
+    #[test]
+    fn test_compiler_deterministic_identifiers_and_collision_free() {
+        let parser = XmlParser::new();
+        let compiler = Compiler::new();
+
+        let xml = r#"
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="{11111111-2222-3333-4444-555555555555}" Name="MultiRegApp" Version="1.0.0" Manufacturer="Vendor">
+        <Package Description="Multi Registry Test" />
+        <Directory Id="TARGETDIR" Name="SourceDir">
+            <Directory Id="ProgramFilesFolder" Name="PFiles">
+                <Component Id="CompMulti" Guid="{22222222-3333-4444-5555-666666666666}">
+                    <RegistryKey Root="HKLM" Key="Software\LibScript\MySQL">
+                        <RegistryValue Name="Installed" Type="integer" Value="1" KeyPath="yes" />
+                        <RegistryValue Name="Variant" Type="string" Value="online" />
+                        <RegistryValue Name="Version" Type="string" Value="8.0.39" />
+                        <RegistryValue Name="InstallDir" Type="string" Value="C:\Program Files\MySQL" />
+                        <RegistryValue Name="Port" Type="string" Value="3306" />
+                    </RegistryKey>
+                    <Shortcut Name="App" Target="[TARGETDIR]app.exe" />
+                    <ServiceControl Name="MySQLService" Start="install" Stop="both" Remove="uninstall" />
+                </Component>
+            </Directory>
+        </Directory>
+        <Feature Id="Main" Level="1">
+            <ComponentRef Id="CompMulti" />
+        </Feature>
+        <Property Id="FOUND_EXE">
+            <RegistrySearch Root="HKLM" Key="Software\App" Name="Path">
+                <FileSearch Name="app.exe" />
+            </RegistrySearch>
+        </Property>
+        <Property Id="FOUND_FILE_DIRECT">
+            <FileSearch Name="app_direct.exe" />
+        </Property>
+        <Property Id="FOUND_DIR">
+            <DirectorySearch Path="C:\App" />
+        </Property>
+        <Property Id="FOUND_INI">
+            <IniFileSearch Name="app.ini" Section="Config" Key="Port" />
+        </Property>
+        <Property Id="FOUND_COMP">
+            <ComponentSearch Guid="{22222222-3333-4444-5555-666666666666}" />
+        </Property>
+    </Product>
+</Wix>
+"#;
+        let doc = parser.parse(xml).unwrap_or_default();
+        let obj = compiler.compile(&doc).unwrap_or_default();
+        let sec = &obj.sections[0];
+        let reg_table = get_table(sec, "Registry");
+        assert_eq!(reg_table.records.len(), 5);
+        let mut ids = std::collections::HashSet::new();
+        for rec in &reg_table.records {
+            let id = format!("{}", rec.fields()[0]);
+            assert!(id.starts_with("'reg_"));
+            ids.insert(id);
+        }
+        assert_eq!(
+            ids.len(),
+            5,
+            "All 5 RegistryValue records must have unique IDs"
+        );
+
+        let sc_table = get_table(sec, "Shortcut");
+        assert_eq!(sc_table.records.len(), 1);
+        let sc_id = format!("{}", sc_table.records[0].fields()[0]);
+        assert!(sc_id.starts_with("'sc_"));
+
+        let svc_ctrl_table = get_table(sec, "ServiceControl");
+        assert_eq!(svc_ctrl_table.records.len(), 1);
+        let ctrl_id = format!("{}", svc_ctrl_table.records[0].fields()[0]);
+        assert!(ctrl_id.starts_with("'svc_ctrl_"));
+
+        let reg_loc_table = get_table(sec, "RegLocator");
+        assert_eq!(reg_loc_table.records.len(), 1);
+        let reg_sig = format!("{}", reg_loc_table.records[0].fields()[0]);
+        assert!(reg_sig.starts_with("'reg_search_"));
+
+        let dr_loc_table = get_table(sec, "DrLocator");
+        assert_eq!(dr_loc_table.records.len(), 1);
+        let dr_sig = format!("{}", dr_loc_table.records[0].fields()[0]);
+        assert!(dr_sig.starts_with("'dir_search_"));
+
+        let ini_loc_table = get_table(sec, "IniLocator");
+        assert_eq!(ini_loc_table.records.len(), 1);
+        let ini_sig = format!("{}", ini_loc_table.records[0].fields()[0]);
+        assert!(ini_sig.starts_with("'ini_search_"));
+
+        let comp_loc_table = get_table(sec, "CompLocator");
+        assert_eq!(comp_loc_table.records.len(), 1);
+        let comp_sig = format!("{}", comp_loc_table.records[0].fields()[0]);
+        assert!(comp_sig.starts_with("'comp_search_"));
+
+        let sig_table = get_table(sec, "Signature");
+        assert_eq!(sig_table.records.len(), 2);
     }
 }

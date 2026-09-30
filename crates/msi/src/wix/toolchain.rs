@@ -2109,4 +2109,119 @@ x64
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
+
+    /// Tests toolchain CLI permutations to cover remaining flag and execution branches.
+    #[test]
+    fn test_toolchain_remaining_uncovered_branches() {
+        // 1. ensure_parent_dir_exists with empty parent (e.g. single filename)
+        ensure_parent_dir_exists(std::path::Path::new("single_file.msi"));
+
+        // 2. CandleOptions with -quiet, multiple sources, and custom output directory
+        let candle_args = vec![
+            "-quiet".to_string(),
+            "-o".to_string(),
+            "out_dir/".to_string(),
+            "src1.wxs".to_string(),
+            "src2.wxs".to_string(),
+        ];
+        let c_opts = CandleOptions::parse(&candle_args);
+        assert!(c_opts.is_ok());
+        let opts = c_opts.unwrap_or_default();
+        assert!(opts.quiet);
+        assert_eq!(opts.sources.len(), 2);
+
+        // 2b. CandleOptions error branches: -d followed by flag, -define, -I with flag, and -ext with flag
+        assert!(CandleOptions::parse(&["-d".to_string(), "-ext".to_string()]).is_err());
+        assert!(CandleOptions::parse(&["-I".to_string(), "-ext".to_string()]).is_err());
+        assert!(CandleOptions::parse(&["-ext".to_string(), "-o".to_string()]).is_err());
+        let c_def = CandleOptions::parse(&[
+            "-define".to_string(),
+            "FOO=BAR".to_string(),
+            "app.wxs".to_string(),
+        ]);
+        assert!(c_def.is_ok());
+        let c_inc = CandleOptions::parse(&[
+            "-I".to_string(),
+            "/include/dir".to_string(),
+            "app.wxs".to_string(),
+        ]);
+        assert!(c_inc.is_ok());
+
+        // 3. WixBuildOptions::parse with empty args, or -ext followed by flag
+        assert!(WixBuildOptions::parse(&[]).is_err());
+        assert!(WixBuildOptions::parse(&[
+            "build".to_string(),
+            "-ext".to_string(),
+            "-o".to_string(),
+        ])
+        .is_err());
+
+        // 4. WixBuildOptions::parse without "build" subcommand
+        let no_build_wix = WixBuildOptions::parse(&[
+            "-o".to_string(),
+            "app.msi".to_string(),
+            "app.wxs".to_string(),
+        ]);
+        assert!(no_build_wix.is_ok());
+
+        // 5. LightOptions with -o (alias for -out), -cultures "" (empty), and WixToolset.UI.wixext
+        let light_args = vec![
+            "-o".to_string(),
+            "app.msi".to_string(),
+            "-cultures".to_string(),
+            String::new(),
+            "-ext".to_string(),
+            "WixToolset.UI.wixext".to_string(),
+            "app.wixobj".to_string(),
+        ];
+        let l_opts = LightOptions::parse(&light_args);
+        assert!(l_opts.is_ok());
+        let l_opt_res = l_opts.unwrap_or_default();
+        assert_eq!(l_opt_res.output, Some(PathBuf::from("app.msi")));
+        assert!(l_opt_res
+            .extensions
+            .contains(&"WixToolset.UI.wixext".to_string()));
+
+        // 5b. LightOptions error branches: -d followed by flag, -define, -I with flag, and -ext with flag
+        assert!(LightOptions::parse(&["-d".to_string(), "-ext".to_string()]).is_err());
+        assert!(LightOptions::parse(&["-I".to_string(), "-ext".to_string()]).is_err());
+        assert!(LightOptions::parse(&["-ext".to_string(), "-o".to_string()]).is_err());
+        let l_def = LightOptions::parse(&[
+            "-define".to_string(),
+            "FOO=BAR".to_string(),
+            "app.wixobj".to_string(),
+        ]);
+        assert!(l_def.is_ok());
+        let l_inc = LightOptions::parse(&[
+            "-I".to_string(),
+            "/include/dir".to_string(),
+            "app.wixobj".to_string(),
+        ]);
+        assert!(l_inc.is_ok());
+
+        // 6. Execution without suppress_ice (runs ICE validation path in execute)
+        let temp_dir = std::env::temp_dir().join("msi_test_toolchain_ice");
+        let _ = fs::create_dir_all(&temp_dir);
+        let src_file = temp_dir.join("app.wxs");
+        let msi_file = temp_dir.join("app.msi");
+        let wxs_content = r#"
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="{44444444-4444-4444-4444-444444444444}" Name="ToolchainApp" Version="1.0.0" Manufacturer="Vendor">
+        <Package Description="Toolchain Description" />
+        <Directory Id="TARGETDIR" Name="SourceDir" />
+    </Product>
+</Wix>
+"#;
+        let _ = fs::write(&src_file, wxs_content);
+        let wix_opts = WixBuildOptions {
+            sources: vec![src_file],
+            output: Some(msi_file),
+            suppress_ice: false,
+            extensions: vec!["WixToolset.UI.wixext".to_string()],
+            ..WixBuildOptions::new()
+        };
+        let _ = wix_opts.execute();
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
 }
