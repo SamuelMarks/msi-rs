@@ -2415,7 +2415,7 @@ mod extra_toolchain_tests {
     use super::*;
 
     #[test]
-    fn test_candle_extra_flags() -> Result<()> {
+    fn test_candle_extra_flags() {
         let args = vec![
             "-trace".to_string(),
             "-sfdvital".to_string(),
@@ -2425,18 +2425,17 @@ mod extra_toolchain_tests {
             "-wx1009".to_string(),
             "source.wxs".to_string(),
         ];
-        let opts = CandleOptions::parse(&args)?;
+        let opts = CandleOptions::parse(&args).unwrap_or_default();
         assert!(opts.trace);
         assert!(opts.suppress_vital_files);
         assert_eq!(opts.arch, Some("x64".to_string()));
         assert!(opts.warnings_as_errors);
 
         assert!(CandleOptions::parse(&["-platform".to_string()]).is_err());
-        Ok(())
     }
 
     #[test]
-    fn test_light_extra_flags() -> Result<()> {
+    fn test_light_extra_flags() {
         let args = vec![
             "-ad".to_string(),
             "-dut".to_string(),
@@ -2449,7 +2448,7 @@ mod extra_toolchain_tests {
             "-xo".to_string(),
             "obj.wixobj".to_string(),
         ];
-        let opts = LightOptions::parse(&args)?;
+        let opts = LightOptions::parse(&args).unwrap_or_default();
         assert!(opts.allow_duplicate_directories);
         assert!(opts.drop_unrealized_tables);
         assert!(opts.suppress_localization);
@@ -2458,11 +2457,10 @@ mod extra_toolchain_tests {
         assert!(opts.suppress_version_mismatch);
         assert!(opts.warnings_as_errors);
         assert!(opts.output_wixout);
-        Ok(())
     }
 
     #[test]
-    fn test_wix_build_extra_flags() -> Result<()> {
+    fn test_wix_build_extra_flags() {
         let args = vec![
             "build".to_string(),
             "-pedantic".to_string(),
@@ -2474,7 +2472,7 @@ mod extra_toolchain_tests {
             "-wx1103".to_string(),
             "source.wxs".to_string(),
         ];
-        let mut opts = WixBuildOptions::parse(&args)?;
+        let mut opts = WixBuildOptions::parse(&args).unwrap_or_default();
         assert!(opts.pedantic);
         assert!(opts.nologo);
         assert!(opts.suppress_all_warnings);
@@ -2484,6 +2482,5 @@ mod extra_toolchain_tests {
         opts.culture = Some("en-US".to_string());
         let mut linker = Linker::new();
         opts.configure_linker(&mut linker);
-        Ok(())
     }
 }

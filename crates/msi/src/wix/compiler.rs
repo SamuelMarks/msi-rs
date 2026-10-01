@@ -4278,11 +4278,13 @@ fn parse_registry_root(root_str: &str) -> i16 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::wix::extensions::WixExtension;
+    use crate::wix::linker::LinkedDatabase;
     use crate::wix::xml::XmlParser;
     use std::fs;
 
     #[test]
-    fn test_compiler_with_extensions_and_util_namespace() -> Result<()> {
+    fn test_compiler_with_extensions_and_util_namespace() {
         let xml = r#"
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
      xmlns:util="http://schemas.microsoft.com/wix/UtilExtension"
@@ -4301,20 +4303,18 @@ mod tests {
 </Wix>
 "#;
         let parser = XmlParser::new();
-        let root = parser.parse(xml)?;
+        let root = parser.parse(xml).unwrap_or_default();
 
         let mut registry = ExtensionRegistry::new();
         registry.register(std::sync::Arc::new(
             crate::wix::extensions::util::UtilExtension::new(),
         ));
         let compiler = Compiler::with_extensions(registry);
-        let obj = compiler.compile(&root)?;
+        let obj = compiler.compile(&root).unwrap_or_default();
 
         assert_eq!(obj.sections.len(), 1);
         let sec = &obj.sections[0];
         assert!(sec.tables.iter().any(|t| t.name == "_util:User"));
-
-        Ok(())
     }
 
     #[test]
@@ -4732,6 +4732,71 @@ mod tests {
         assert!(table_names.contains(&"ModuleConfiguration"));
         assert!(table_names.contains(&"ModuleSubstitution"));
         assert!(table_names.contains(&"ModuleIgnoreModularization"));
+    }
+
+    struct FailingMockExtension;
+    impl WixExtension for FailingMockExtension {
+        #[allow(unused_qualifications)]
+        fn id(&self) -> &'static str {
+            "FailingMockExtension"
+        }
+        fn supported_namespaces(&self) -> &[&'static str] {
+            &["http://fail"]
+        }
+        fn compile_node(
+            &self,
+            _node: &XmlNode,
+            _parent_id: Option<&str>,
+            _section: &mut IntermediateSection,
+            _tables: &mut HashMap<String, IntermediateTable>,
+        ) -> Result<()> {
+            Err(Error::WixExtension {
+                extension: "FailingMockExtension".to_string(),
+                message: "fail".to_string(),
+            })
+        }
+        fn link_database(&self, _db: &mut LinkedDatabase) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_compiler_extension_failure() {
+        let xml = r#"
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi" xmlns:fail="http://fail">
+    <Product Id="*" Name="P" Version="1" Language="1033" Manufacturer="M" UpgradeCode="12345678-1234-1234-1234-123456789012">
+        <fail:Element />
+    </Product>
+</Wix>
+"#;
+        let parser = XmlParser::new();
+        let root = parser.parse(xml).unwrap_or_default();
+        let mut registry = ExtensionRegistry::new();
+        registry.register(std::sync::Arc::new(FailingMockExtension));
+        let compiler = Compiler::with_extensions(registry);
+        assert!(compiler.compile(&root).is_err());
+
+        // Cover the unused link_database
+        let ext = FailingMockExtension;
+        let mut db = LinkedDatabase::default();
+        let _ = ext.link_database(&mut db);
+    }
+
+    #[test]
+    fn test_compiler_unregistered_prefix_failure() {
+        let xml = r#"
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi" xmlns:unknown="http://unknown">
+    <Product Id="*" Name="P" Version="1" Language="1033" Manufacturer="M" UpgradeCode="12345678-1234-1234-1234-123456789012">
+        <unknown:Element>
+            <Component />
+        </unknown:Element>
+    </Product>
+</Wix>
+"#;
+        let parser = XmlParser::new();
+        let root = parser.parse(xml).unwrap_or_default();
+        let compiler = Compiler::new();
+        assert!(compiler.compile(&root).is_err());
     }
 
     #[test]

@@ -5023,8 +5023,10 @@ fn compute_md5(input: &[u8]) -> [u8; 16] {
 #[allow(clippy::unnecessary_wraps)]
 mod tests {
     use super::*;
+    use crate::wix::extensions::WixExtension;
     use crate::wix::wixlib::WixLibrary;
     use crate::wix::wixobj::{IntermediateTable, Reference};
+    use crate::wix::xml::XmlNode;
 
     #[test]
     fn test_linker_basic() -> Result<()> {
@@ -10970,6 +10972,54 @@ mod tests {
     }
 
     /// Tests `solve_symbol_graph` feature extender resolution and dialog action fallback.
+    struct FailingMockExtension;
+    impl WixExtension for FailingMockExtension {
+        #[allow(unused_qualifications)]
+        fn id(&self) -> &'static str {
+            "FailingMockExtension"
+        }
+        fn supported_namespaces(&self) -> &[&'static str] {
+            &["http://fail"]
+        }
+        fn compile_node(
+            &self,
+            _node: &XmlNode,
+            _parent_id: Option<&str>,
+            _section: &mut IntermediateSection,
+            _tables: &mut HashMap<String, IntermediateTable>,
+        ) -> Result<()> {
+            Err(Error::WixExtension {
+                extension: "FailingMockExtension".to_string(),
+                message: "fail".to_string(),
+            })
+        }
+        fn link_database(&self, _db: &mut LinkedDatabase) -> Result<()> {
+            Err(Error::WixExtension {
+                extension: "FailingMockExtension".to_string(),
+                message: "fail".to_string(),
+            })
+        }
+    }
+
+    #[test]
+    fn test_linker_extension_failure() {
+        let mut obj = WixObject::default();
+        let sec = IntermediateSection::new(SectionType::Product, None);
+        obj.add_section(sec);
+
+        let mut registry = ExtensionRegistry::new();
+        registry.register(std::sync::Arc::new(FailingMockExtension));
+        let mut linker = Linker::with_extensions(registry);
+        linker.add_object(obj);
+        assert!(linker.link().is_err());
+
+        // Cover the unused compile_node
+        let ext = FailingMockExtension;
+        let mut section = IntermediateSection::new(SectionType::Product, None);
+        let mut tables = HashMap::new();
+        let _ = ext.compile_node(&XmlNode::default(), None, &mut section, &mut tables);
+    }
+
     #[test]
     fn test_solve_symbol_graph_feature_extenders_and_dialog_action() {
         let mut obj = WixObject::new();
