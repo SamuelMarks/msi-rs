@@ -17,6 +17,38 @@ if str(scripts_dir) not in sys.path:
 import generate_screenshots  # type: ignore[import-not-found,import-untyped]
 
 
+def test_fit_text_to_width_short() -> None:
+    """Verifies that text fitting within max_width is returned unchanged."""
+    f = ImageFont.load_default()
+    assert generate_screenshots.fit_text_to_width("Short", f, 100) == "Short"
+
+
+def test_fit_text_to_width_truncated() -> None:
+    """Verifies that text exceeding max_width is truncated with ellipsis and fits within bounds."""
+    f = ImageFont.load_default()
+    result = generate_screenshots.fit_text_to_width(
+        "A very long sentence that will definitely exceed max width", f, 50
+    )
+    assert result.endswith("...")
+    bbox = f.getbbox(result)
+    assert bbox[2] - bbox[0] <= 50
+
+
+def test_fit_text_to_width_target_too_small() -> None:
+    """Verifies that if target width cannot fit ellipsis, an empty string is returned."""
+    f = ImageFont.load_default()
+    assert generate_screenshots.fit_text_to_width("Some Text", f, 2) == ""
+
+
+def test_fit_text_to_width_custom_ellipsis() -> None:
+    """Verifies that custom ellipsis string is respected and appended."""
+    f = ImageFont.load_default()
+    result = generate_screenshots.fit_text_to_width(
+        "Long Text Example", f, 40, ellipsis="…"
+    )
+    assert result.endswith("…")
+
+
 def test_wrap_text_to_width_empty() -> None:
     """Verifies that wrapping empty text returns an empty list."""
     f = ImageFont.load_default()

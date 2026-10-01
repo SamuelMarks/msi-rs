@@ -1254,6 +1254,12 @@ fn discover_companion_fragments(sources: &[String]) -> Vec<String> {
                     }
                     let path_str = path.to_string_lossy().to_string();
                     if let Ok(sibling_content) = std::fs::read_to_string(&path) {
+                        let is_pure_fragment = sibling_content.contains("<Fragment")
+                            && !sibling_content.contains("<Product")
+                            && !sibling_content.contains("<Module");
+                        if !is_pure_fragment {
+                            continue;
+                        }
                         let is_companion_by_name = primary_path
                             .file_stem()
                             .and_then(|s| s.to_str())
@@ -3683,12 +3689,20 @@ mod tests {
         let _ = std::fs::write(&main_wxs, main_xml);
         let _ = std::fs::write(&payload_wxs, payload_xml);
 
-        // Add non-wxs file, a subdirectory, and an unrelated wxs file to test all branch paths
+        // Add non-wxs file, a subdirectory, and unrelated wxs files (Product & Module) to test all branch paths
         let _ = std::fs::write(temp_dir.join("notes.txt"), "readme");
         let _ = std::fs::create_dir_all(temp_dir.join("subfolder.wxs"));
         let _ = std::fs::write(temp_dir.join("unrelated.wxs"), "<Wix><Product/></Wix>");
+        let _ = std::fs::write(
+            temp_dir.join("sibling_product.wxs"),
+            "<Wix><Product Id=\"*\" Name=\"Sibling\"><ComponentGroup Id=\"PayloadComponents\"/></Product></Wix>",
+        );
+        let _ = std::fs::write(
+            temp_dir.join("sibling_module.wxs"),
+            "<Wix><Module Id=\"*\" Version=\"1.0\"><ComponentGroup Id=\"PayloadComponents\"/></Module></Wix>",
+        );
 
-        // Pack passing ONLY app.wxs - app_payload.wxs must be auto-discovered!
+        // Pack passing ONLY app.wxs - app_payload.wxs must be auto-discovered, ignoring sibling Product/Module!
         let pack_res = handle_pack(&PackArgs {
             output: out_msi.to_string_lossy().to_string(),
             sources: vec![main_wxs.to_string_lossy().to_string()],

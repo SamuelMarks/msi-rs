@@ -577,7 +577,12 @@ impl MsiExecOptions {
         }
     }
 
-    /// Executes the parsed `msiexec` configuration against the target package or product.
+    /// Executes the parsed `msiexec` configuration with optional I/O stream overrides for interactive TUI.
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - Optional custom input stream for terminal events.
+    /// * `output` - Optional custom output stream for terminal rendering.
     ///
     /// # Returns
     ///
@@ -586,7 +591,12 @@ impl MsiExecOptions {
     /// # Errors
     ///
     /// Returns [`Error`] on fatal filesystem, database, or transaction execution failure.
-    pub fn execute(&self) -> Result<MsiExitCode> {
+    #[allow(clippy::too_many_lines)]
+    pub fn execute_with_streams<R: std::io::Read, W: std::io::Write>(
+        &self,
+        mut input: Option<R>,
+        mut output: Option<W>,
+    ) -> Result<MsiExitCode> {
         let package_path = match &self.action {
             ActionMode::Install { package_path }
             | ActionMode::Uninstall { package_path }
@@ -681,21 +691,144 @@ impl MsiExecOptions {
             if engine.active_dialog().is_some() {
                 let mut wizard = crate::ui::TerminalWizard::new(engine);
                 wizard.set_action_text(format!("Installing {}...", pkg.metadata().product_name()));
-                let mut guard = crate::ui::TerminalSafetyGuard::new();
-                let _frame = wizard.render_frame(80, 24);
-                guard.disarm();
+                if let (Some(ref mut inp), Some(ref mut out)) = (input.as_mut(), output.as_mut()) {
+                    match wizard.run_event_stream(inp, out, 80, 24) {
+                        Ok(crate::ui::DialogReturnCode::Exit) => {
+                            return Ok(MsiExitCode::UserExit);
+                        }
+                        Ok(_) => {
+                            context = wizard.engine().context().clone();
+                        }
+                        Err(err) => return Err(err),
+                    }
+                } else {
+                    let mut guard = crate::ui::TerminalSafetyGuard::new();
+                    let _frame = wizard.render_frame(80, 24);
+                    guard.disarm();
+                }
             }
         }
 
         let cost_engine = DiskCostEngine::new();
-        let tx = Transaction::from_package(&pkg, context, cost_engine);
-        let prep_tx = tx.prepare()?;
-        let mut worker = WorkerContext::new();
-        let exec_tx = prep_tx.execute(&mut worker)?;
-        let _ = exec_tx.commit(&mut worker);
+        let tx = Transaction::from_package(&pkg, context.clone(), cost_engine);
+        let prep_res = tx.prepare();
+        let prep_tx = match prep_res {
+            Ok(p) => p,
+            Err(err) => {
+                if let Some(ref log_opts) = self.logging {
+                    let dummy_worker = WorkerContext::new();
+                    let _ = write_execution_log(log_opts, &context, &dummy_worker, Some(&err));
+                }
+                return match &err {
+                    Error::CustomActionFailed { .. } => Ok(MsiExitCode::InstallFailure),
+                    _ => Err(err),
+                };
+            }
+        };
 
-        Ok(MsiExitCode::Success)
+        let mut worker = WorkerContext::new();
+        let exec_res = prep_tx.execute(&mut worker);
+
+        if let Some(ref log_opts) = self.logging {
+            let _ = write_execution_log(
+                log_opts,
+                worker.evaluation_context(),
+                &worker,
+                exec_res.as_ref().err(),
+            );
+        }
+
+        exec_res.map_or(Ok(MsiExitCode::InstallFailure), |exec_tx| {
+            let _ = exec_tx.commit(&mut worker);
+            Ok(MsiExitCode::Success)
+        })
     }
+
+    /// Executes the parsed `msiexec` configuration against the target package or product.
+    ///
+    /// # Returns
+    ///
+    /// Process exit code indicating completion status.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on fatal filesystem, database, or transaction execution failure.
+    pub fn execute(&self) -> Result<MsiExitCode> {
+        self.execute_with_streams::<std::io::Empty, std::io::Sink>(None, None)
+    }
+}
+
+/// Writes execution details, actions, and properties to the requested log file.
+///
+/// # Arguments
+///
+/// * `opts` - Logging options controlling verbosity and targets.
+/// * `context` - Active evaluation context.
+/// * `worker` - Worker context containing executed actions.
+/// * `err` - Optional error encountered during execution.
+///
+/// # Returns
+///
+/// `Ok(())` on success, or [`std::io::Error`] on failure.
+fn write_execution_log(
+    opts: &LoggingOptions,
+    context: &EvaluationContext,
+    worker: &WorkerContext,
+    err: Option<&Error>,
+) -> std::io::Result<()> {
+    use std::fs::OpenOptions;
+    use std::io::Write;
+
+    let mut file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .append(opts.append)
+        .truncate(!opts.append)
+        .open(&opts.log_file)?;
+
+    let _ = writeln!(file, "=== Verbose logging started ===");
+
+    if opts.verbose {
+        let _ = writeln!(file, "MSI (c): Initial Property Values:");
+        for (k, v) in context.properties() {
+            let masked = context.mask_log_string(&format!("{k}={v}"));
+            let _ = writeln!(file, "    {masked}");
+        }
+    }
+
+    if opts.action_starts || opts.action_records || opts.status || opts.verbose {
+        for action in worker.executed_actions() {
+            let _ = writeln!(file, "MSI (s): Action: {action}");
+            if opts.flush_immediately {
+                let _ = file.flush();
+            }
+        }
+
+        for log in worker.custom_action_executor().execution_logs() {
+            let _ = writeln!(file, "MSI (s): {log}");
+            if opts.flush_immediately {
+                let _ = file.flush();
+            }
+        }
+    }
+
+    if let Some(e) = err {
+        if opts.errors || opts.verbose {
+            let _ = writeln!(file, "MSI (s): Execution Error: {e}");
+        }
+    }
+
+    if opts.terminal_props || opts.verbose {
+        let _ = writeln!(file, "=== Property values at termination ===");
+        for (k, v) in context.properties() {
+            let masked = context.mask_log_string(&format!("{k} = {v}"));
+            let _ = writeln!(file, "    Property(S): {masked}");
+        }
+    }
+
+    let _ = writeln!(file, "=== Logging stopped ===");
+    let _ = file.flush();
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1334,7 +1467,7 @@ mod tests {
 
     /// Tests successful execution across all action modes, logging, and TUI dialog rendering.
     #[test]
-    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::too_many_lines, clippy::items_after_statements)]
     fn test_execute_success() {
         let temp_dir = std::env::temp_dir().join(format!("msi_exec_test_{}", std::process::id()));
         assert!(std::fs::create_dir_all(&temp_dir).is_ok());
@@ -1539,7 +1672,12 @@ mod tests {
         <Directory Id="TARGETDIR" Name="SourceDir" />
         <UI>
             <Dialog Id="WelcomeDlg" Width="370" Height="270" Title="Welcome">
-                <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="Next" />
+                <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="Next">
+                    <Publish Event="EndDialog" Value="Return">1</Publish>
+                </Control>
+                <Control Id="Cancel" Type="PushButton" X="300" Y="243" Width="56" Height="17" Cancel="yes" Text="Cancel">
+                    <Publish Event="EndDialog" Value="Exit">1</Publish>
+                </Control>
             </Dialog>
             <InstallUISequence>
                 <Show Dialog="WelcomeDlg" Before="ExecuteAction" />
@@ -1571,6 +1709,153 @@ mod tests {
             tui: true,
         };
         assert_eq!(tui_opts.execute(), Ok(MsiExitCode::Success));
+
+        // Interactive stream with Escape -> UserExit (1602)
+        let cancel_res =
+            tui_opts.execute_with_streams(Some(std::io::Cursor::new(b"\x1b")), Some(Vec::new()));
+        assert_eq!(cancel_res, Ok(MsiExitCode::UserExit));
+
+        // Interactive stream with Enter -> Success (0)
+        let enter_res =
+            tui_opts.execute_with_streams(Some(std::io::Cursor::new(b"\r")), Some(Vec::new()));
+        assert_eq!(enter_res, Ok(MsiExitCode::Success));
+
+        // Stream write error
+        struct FailingWriter;
+        impl std::io::Write for FailingWriter {
+            fn write(&mut self, _buf: &[u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::other("mock stream write error"))
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let stream_err =
+            tui_opts.execute_with_streams(Some(std::io::Cursor::new(b"\r")), Some(FailingWriter));
+        assert!(stream_err.is_err());
+        assert!(std::io::Write::flush(&mut FailingWriter).is_ok());
+
+        // Test logging during execute()
+        let log_file = temp_dir.join("exec_test.log");
+        let full_logging = LoggingOptions {
+            log_file: log_file.to_string_lossy().to_string(),
+            status: true,
+            warnings: true,
+            errors: true,
+            action_starts: true,
+            action_records: true,
+            user_requests: true,
+            ui_parameters: true,
+            out_of_memory: true,
+            out_of_disk: true,
+            terminal_props: true,
+            verbose: true,
+            extra_debugging: true,
+            append: false,
+            flush_immediately: true,
+        };
+        let log_opts = MsiExecOptions {
+            action: ActionMode::Install {
+                package_path: msi_path_str.clone(),
+            },
+            ui_level: UiLevel::None,
+            logging: Some(full_logging.clone()),
+            properties: HashMap::new(),
+            tui: false,
+        };
+        assert_eq!(log_opts.execute(), Ok(MsiExitCode::Success));
+        assert!(log_file.exists());
+        let log_text = std::fs::read_to_string(&log_file).unwrap_or_default();
+        assert!(log_text.contains("=== Verbose logging started ==="));
+        assert!(log_text.contains("=== Logging stopped ==="));
+
+        // Test logging in append mode with error, properties, and actions
+        let mut append_logging = full_logging.clone();
+        append_logging.append = true;
+        let test_err = Error::ExecutionFailed {
+            action: "TestAction".to_string(),
+            return_code: 1603,
+            message: "Simulated test error".to_string(),
+        };
+        let mut test_ctx = EvaluationContext::new();
+        test_ctx.set_property("PROP_FOO", "BAR");
+        let mut worker_with_actions = WorkerContext::new();
+        worker_with_actions.register_component_client(
+            "comp_sample",
+            "{11111111-1111-1111-1111-111111111111}",
+            None,
+        );
+        let _ = worker_with_actions.commit();
+        worker_with_actions
+            .custom_action_executor()
+            .log("Custom action detail log line");
+        assert!(write_execution_log(
+            &append_logging,
+            &test_ctx,
+            &worker_with_actions,
+            Some(&test_err),
+        )
+        .is_ok());
+
+        // Test logging without flush_immediately
+        let mut unbuffered_logging = append_logging.clone();
+        unbuffered_logging.flush_immediately = false;
+        assert!(
+            write_execution_log(&unbuffered_logging, &test_ctx, &worker_with_actions, None,)
+                .is_ok()
+        );
+
+        // Test logging with all flags disabled and an error present
+        let minimal_logging = LoggingOptions {
+            log_file: append_logging.log_file,
+            status: false,
+            warnings: false,
+            errors: false,
+            action_starts: false,
+            action_records: false,
+            user_requests: false,
+            ui_parameters: false,
+            out_of_memory: false,
+            out_of_disk: false,
+            terminal_props: false,
+            verbose: false,
+            extra_debugging: false,
+            append: true,
+            flush_immediately: false,
+        };
+        assert!(write_execution_log(
+            &minimal_logging,
+            &test_ctx,
+            &worker_with_actions,
+            Some(&test_err),
+        )
+        .is_ok());
+
+        // Test logging with invalid path
+        let bad_logging = LoggingOptions {
+            log_file: "/nonexistent_dir_xyz123/impossible/test.log".to_string(),
+            status: true,
+            warnings: true,
+            errors: true,
+            action_starts: true,
+            action_records: true,
+            user_requests: true,
+            ui_parameters: true,
+            out_of_memory: true,
+            out_of_disk: true,
+            terminal_props: true,
+            verbose: true,
+            extra_debugging: false,
+            append: false,
+            flush_immediately: false,
+        };
+        assert!(write_execution_log(
+            &bad_logging,
+            &EvaluationContext::new(),
+            &WorkerContext::new(),
+            None,
+        )
+        .is_err());
 
         // 12. DISPLAY and WAYLAND_DISPLAY environment variables
         std::env::set_var("DISPLAY", ":0");
@@ -1679,7 +1964,12 @@ mod tests {
             properties: HashMap::new(),
             tui: false,
         };
-        assert!(fail_ca_opts.execute().is_err());
+        assert_eq!(fail_ca_opts.execute(), Ok(MsiExitCode::InstallFailure));
+
+        // Test logging during prepare failure
+        let mut fail_ca_log_opts = fail_ca_opts;
+        fail_ca_log_opts.logging = Some(full_logging.clone());
+        assert_eq!(fail_ca_log_opts.execute(), Ok(MsiExitCode::InstallFailure));
 
         // 16. Error during Transaction::execute (Type 50 + Deferred custom action executable failure)
         #[cfg(windows)]
@@ -1730,7 +2020,15 @@ mod tests {
             properties: HashMap::new(),
             tui: false,
         };
-        assert!(fail_exec_opts.execute().is_err());
+        assert_eq!(fail_exec_opts.execute(), Ok(MsiExitCode::InstallFailure));
+
+        // Test logging during execute failure
+        let mut fail_exec_log_opts = fail_exec_opts;
+        fail_exec_log_opts.logging = Some(full_logging);
+        assert_eq!(
+            fail_exec_log_opts.execute(),
+            Ok(MsiExitCode::InstallFailure)
+        );
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }

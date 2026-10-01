@@ -2083,6 +2083,32 @@ mod tests {
         assert_eq!(slot_extra_bits(0), 0);
         assert_eq!(slot_base_offset(0), 0);
 
+        // 8. Truncation sweeps over verbatim and uncompressed blocks
+        for len in 0..comp_long.len() {
+            let mut s = LzxState::new(15)?;
+            let _ = s.decompress_block(&comp_long[..len], long_rep.len());
+        }
+
+        for len in 0..comp_rep.len() {
+            let mut s = LzxState::new(15)?;
+            let _ = s.decompress_block(&comp_rep[..len], rep_seq.len());
+        }
+
+        let uncomp_sample = b"UNCOMPRESSED_PAYLOAD_FOR_TRUNCATION_TEST_12345";
+        let comp_uncomp = state.compress_uncompressed_block(uncomp_sample)?;
+        for len in 0..comp_uncomp.len() {
+            let mut s = LzxState::new(15)?;
+            let _ = s.decompress_block(&comp_uncomp[..len], uncomp_sample.len());
+        }
+
+        // 9. Pre-tree decode_tree_lengths EOF branches for symbol 18 and symbol 19
+        let mut pre_lengths = [0u8; LZX_PRE_TREE_NUM_SYMBOLS];
+        pre_lengths[18] = 1;
+        let pre_tree18 = HuffmanTree::from_lengths(&pre_lengths)?;
+        let mut r18 = LzxBitReader::new(&[0x00]);
+        let mut target_lengths = [0u8; 30];
+        assert!(decode_tree_lengths(&mut r18, &pre_tree18, &mut target_lengths, &[]).is_err());
+
         Ok(())
     }
 }

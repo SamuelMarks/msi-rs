@@ -2167,6 +2167,32 @@ impl Compiler {
             .unwrap_or(270);
         let title = child.attribute("Title").map(ToString::to_string);
 
+        let mut first_ctrl = None;
+        let mut default_ctrl = None;
+        let mut cancel_ctrl = None;
+
+        for c in &child.children {
+            if c.tag == "Control" {
+                if let Some(cid) = c.attribute("Id") {
+                    if first_ctrl.is_none() {
+                        first_ctrl = Some(cid.to_string());
+                    }
+                    if c.attribute("Default")
+                        .is_some_and(|v| v.eq_ignore_ascii_case("yes"))
+                    {
+                        default_ctrl = Some(cid.to_string());
+                    }
+                    if c.attribute("Cancel")
+                        .is_some_and(|v| v.eq_ignore_ascii_case("yes"))
+                    {
+                        cancel_ctrl = Some(cid.to_string());
+                    }
+                }
+            }
+        }
+
+        let first = first_ctrl.unwrap_or_else(|| "FirstControl".to_string());
+
         section.add_symbol(Symbol::new("Dialog", dlg_id));
 
         let rec = Record::with_fields(vec![
@@ -2177,9 +2203,9 @@ impl Compiler {
             FieldValue::Short(height),
             FieldValue::Long(3),
             title.map_or(FieldValue::Null, FieldValue::String),
-            FieldValue::String("FirstControl".to_string()),
-            FieldValue::Null,
-            FieldValue::Null,
+            FieldValue::String(first),
+            default_ctrl.map_or(FieldValue::Null, FieldValue::String),
+            cancel_ctrl.map_or(FieldValue::Null, FieldValue::String),
         ]);
         tables
             .entry("Dialog".to_string())
@@ -3879,12 +3905,14 @@ impl Compiler {
             let seq: Option<i16> = sub.attribute("Sequence").and_then(|s| s.parse().ok());
             section.add_reference(Reference::new("Action", action_name));
 
+            let cond_field = cond.clone().map_or(FieldValue::Null, FieldValue::String);
             if let Some(after) = sub.attribute("After") {
                 let rel_rec = Record::with_fields(vec![
                     FieldValue::String(table_name.clone()),
                     FieldValue::String(action_name.to_string()),
                     FieldValue::String(after.to_string()),
                     FieldValue::String("After".to_string()),
+                    cond_field,
                 ]);
                 tables
                     .entry("_WixSequenceRelative".to_string())
@@ -3896,6 +3924,7 @@ impl Compiler {
                     FieldValue::String(action_name.to_string()),
                     FieldValue::String(before.to_string()),
                     FieldValue::String("Before".to_string()),
+                    cond_field,
                 ]);
                 tables
                     .entry("_WixSequenceRelative".to_string())
@@ -3907,6 +3936,7 @@ impl Compiler {
                     FieldValue::String(action_name.to_string()),
                     FieldValue::String(on_exit.to_string()),
                     FieldValue::String("OnExit".to_string()),
+                    cond_field,
                 ]);
                 tables
                     .entry("_WixSequenceRelative".to_string())
@@ -6915,5 +6945,56 @@ mod tests {
 
         let sig_table = get_table(sec, "Signature");
         assert_eq!(sig_table.records.len(), 2);
+    }
+
+    /// Tests `Dialog` element compilation and automatic detection of first, default, and cancel controls.
+    #[test]
+    fn test_compile_dialog_controls_first_default_cancel() {
+        let xml = r#"<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="*" Name="T" Version="1.0" Manufacturer="M" UpgradeCode="{11111111-1111-1111-1111-111111111111}">
+        <Package Description="D" />
+        <UI>
+            <Dialog Id="CustomDlg" Width="370" Height="270" Title="Title">
+                <Control Id="NextBtn" Type="PushButton" X="0" Y="0" Width="50" Height="20" Default="yes" />
+                <Control Id="CancelBtn" Type="PushButton" X="60" Y="0" Width="50" Height="20" Cancel="yes" />
+            </Dialog>
+        </UI>
+    </Product>
+</Wix>"#;
+        let parser = XmlParser::new();
+        let root = parser.parse(xml).unwrap_or_default();
+        let compiler = Compiler::new();
+        let obj = compiler.compile(&root).unwrap_or_default();
+        let sec = &obj.sections[0];
+        let dlg_tbl = get_table(sec, "Dialog");
+        assert_eq!(dlg_tbl.records.len(), 1);
+        let rec = &dlg_tbl.records[0];
+        assert_eq!(rec.get(7), Some(&FieldValue::String("NextBtn".to_string())));
+        assert_eq!(rec.get(8), Some(&FieldValue::String("NextBtn".to_string())));
+        assert_eq!(
+            rec.get(9),
+            Some(&FieldValue::String("CancelBtn".to_string()))
+        );
+
+        // Test dialog with a child Control lacking an Id attribute and a non-Control child
+        let mut dlg_node = XmlNode {
+            tag: "Dialog".to_string(),
+            ..Default::default()
+        };
+        dlg_node
+            .attributes
+            .insert("Id".to_string(), "DlgNoCtrlId".to_string());
+        dlg_node.children.push(XmlNode {
+            tag: "Control".to_string(),
+            ..Default::default()
+        });
+        dlg_node.children.push(XmlNode {
+            tag: "NonControl".to_string(),
+            ..Default::default()
+        });
+        let mut dialog_sec =
+            IntermediateSection::new(SectionType::Product, Some("Prod".to_string()));
+        let mut tables = std::collections::HashMap::new();
+        assert!(Compiler::compile_dialog(&dlg_node, &mut dialog_sec, &mut tables).is_ok());
     }
 }

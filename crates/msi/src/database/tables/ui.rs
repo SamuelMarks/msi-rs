@@ -304,7 +304,7 @@ pub fn radio_button_schema() -> TableSchema {
         .with_column(ColumnDef::new("Y", DataType::Short))
         .with_column(ColumnDef::new("Width", DataType::Short))
         .with_column(ColumnDef::new("Height", DataType::Short))
-        .with_column(ColumnDef::new("Text", DataType::String { max_len: 64 }).localizable())
+        .with_column(ColumnDef::new("Text", DataType::String { max_len: 0 }).localizable())
         .with_column(
             ColumnDef::new("Help", DataType::String { max_len: 50 })
                 .nullable()

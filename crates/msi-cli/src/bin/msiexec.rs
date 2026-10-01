@@ -133,4 +133,30 @@ mod tests {
         let exit_code = main();
         assert_eq!(exit_code, ExitCode::from((0x0643_u32 & 0xFF) as u8));
     }
+
+    /// Verifies CLI parser enum and repair flags conversions in msiexec shim.
+    #[test]
+    fn test_msiexec_cli_parser_conversions() {
+        use msi::execution::cli_parser::{MsiExitCode, RepairFlags};
+        assert_eq!(MsiExitCode::from_u32(0), MsiExitCode::Success);
+        assert_eq!(MsiExitCode::from_u32(1602), MsiExitCode::UserExit);
+        assert_eq!(MsiExitCode::from_u32(1603), MsiExitCode::InstallFailure);
+        assert_eq!(MsiExitCode::from_u32(1605), MsiExitCode::UnknownProduct);
+        assert_eq!(
+            MsiExitCode::from_u32(3010),
+            MsiExitCode::SuccessRebootRequired
+        );
+        assert_eq!(MsiExitCode::from_u32(9999), MsiExitCode::Other(9999));
+
+        let code_from: MsiExitCode = 1603_u32.into();
+        assert_eq!(code_from, MsiExitCode::InstallFailure);
+        let num_from: u32 = MsiExitCode::InstallFailure.into();
+        assert_eq!(num_from, 1603);
+
+        let rf = RepairFlags::parse("poedcaumsv").unwrap_or_default();
+        let rf_display = format!("{rf}");
+        assert_eq!(rf_display, "poedcaumsv");
+
+        assert!(RepairFlags::parse("invalid_xyz").is_err());
+    }
 }

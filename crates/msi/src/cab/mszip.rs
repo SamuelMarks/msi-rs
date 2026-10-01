@@ -713,5 +713,57 @@ mod tests {
         reader.align_to_byte();
         assert_eq!(reader.read_u16_le(), Ok(0x5634));
         assert!(reader.read_bytes(10).is_err());
+
+        // 8. Truncation sweeps to exercise all EOF error branches
+        let fixed_bytes = [
+            67, 75, 11, 201, 72, 85, 40, 44, 205, 76, 206, 86, 72, 42, 202, 47, 207, 83, 72, 203,
+            175, 80, 200, 42, 205, 45, 40, 86, 200, 47, 75, 45, 82, 40, 1, 74, 231, 36, 86, 85, 42,
+            164, 228, 167, 43, 42, 132, 140, 42, 30, 124, 138, 1,
+        ];
+        for len in 2..fixed_bytes.len() {
+            assert!(MszipEngine.decompress(&fixed_bytes[..len], 450).is_err());
+        }
+
+        let dynamic_sample = [
+            67, 75, 237, 153, 233, 86, 83, 81, 12, 70, 159, 173, 173, 51, 85, 64, 165, 117, 166,
+            10, 168, 180, 206, 84, 1, 149, 22, 199, 231, 54, 103, 72, 118, 238, 185, 125, 2, 87,
+            246, 143, 147, 239, 1, 246, 205, 250, 154, 14, 134, 195, 209, 104, 116, 69, 184, 154,
+        ];
+        for len in 2..dynamic_sample.len() {
+            assert!(MszipEngine
+                .decompress(&dynamic_sample[..len], 10500)
+                .is_err());
+        }
+
+        // 9. Specific Huffman and bitstream edge cases
+        let mut r_u16 = DeflateBitReader::new(&[0x12]);
+        assert!(r_u16.read_u16_le().is_err());
+
+        let data_b8 = [0xFF];
+        let mut r_b8 = DeflateBitReader::new(&data_b8);
+        assert!(r_b8.read_bits(1).is_ok());
+        assert!(MszipEngine::read_fixed_lit_len(&mut r_b8).is_err());
+
+        let mut r_b9 = DeflateBitReader::new(&[0x07]);
+        assert!(MszipEngine::read_fixed_lit_len(&mut r_b9).is_err());
+
+        let mut r_empty = DeflateBitReader::new(&[]);
+        assert!(MszipEngine::decode_length(&mut r_empty, 265).is_err());
+        assert!(MszipEngine::decode_distance(&mut r_empty, 4).is_err());
+
+        let mut out_empty = Vec::new();
+        assert!(MszipEngine::decompress_dynamic_huffman(&mut r_empty, &mut out_empty).is_err());
+
+        let fixed_bad_dist = [0x40, 0x00];
+        let mut r_bad_dist = DeflateBitReader::new(&fixed_bad_dist);
+        let mut out_bad_dist = Vec::new();
+        assert!(MszipEngine::decompress_fixed_huffman(&mut r_bad_dist, &mut out_bad_dist).is_err());
+
+        let fixed_eof_len = [0x48];
+        let mut r_eof_len = DeflateBitReader::new(&fixed_eof_len);
+        let mut out_eof_len = Vec::new();
+        assert!(MszipEngine::decompress_fixed_huffman(&mut r_eof_len, &mut out_eof_len).is_err());
+
+        assert!(MszipEngine.decompress(&[0x43, 0x4B, 0x01], 10).is_err());
     }
 }

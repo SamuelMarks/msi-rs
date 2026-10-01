@@ -819,4 +819,54 @@ mod tests {
         assert!(reader.find_entry("TestStream").is_ok());
         Ok(())
     }
+
+    /// Tests directory entry parse error and cycle error branches.
+    #[test]
+    #[allow(clippy::cast_possible_truncation)]
+    fn test_cfb_reader_error_branches() -> Result<()> {
+        // 1. Invalid directory entry name length (> 64 bytes)
+        let mut invalid_dir_cfb = build_minimal_cfb();
+        invalid_dir_cfb[1024 + 128 + 64..1024 + 128 + 66].copy_from_slice(&100u16.to_le_bytes());
+        assert!(matches!(
+            CfbReader::new(&invalid_dir_cfb),
+            Err(Error::InvalidDirectoryEntry { .. })
+        ));
+
+        // 2. Mini-stream and MiniFAT sector chain cycles
+        let mut writer = crate::cfb::writer::CfbWriter::new(CfbVersion::V3);
+        assert!(writer.add_stream("Mini1", b"Mini-stream content 1").is_ok());
+        let bin = writer.build();
+        let parsed_header = CfbHeader::parse(&bin)?;
+        let fat_sec = parsed_header.difat_table()[0];
+        let fat_off = fat_sec.file_offset(parsed_header.sector_shift())? as usize;
+
+        // Root entry mini-stream FAT cycle
+        let mut root_cycle_cfb = bin.clone();
+        let dir_sec = parsed_header.first_dir_sector();
+        let dir_off = dir_sec.file_offset(parsed_header.sector_shift())? as usize;
+        let root_start = u32::from_le_bytes([
+            root_cycle_cfb[dir_off + 116],
+            root_cycle_cfb[dir_off + 117],
+            root_cycle_cfb[dir_off + 118],
+            root_cycle_cfb[dir_off + 119],
+        ]) as usize;
+        root_cycle_cfb[fat_off + root_start * 4..fat_off + root_start * 4 + 4]
+            .copy_from_slice(&(root_start as u32).to_le_bytes());
+        assert!(matches!(
+            CfbReader::new(&root_cycle_cfb),
+            Err(Error::SectorChainCycle { .. })
+        ));
+
+        // MiniFAT sector chain FAT cycle
+        let mut minifat_cycle_cfb = bin;
+        let minifat_sec = parsed_header.first_minifat_sector().as_u32() as usize;
+        minifat_cycle_cfb[fat_off + minifat_sec * 4..fat_off + minifat_sec * 4 + 4]
+            .copy_from_slice(&(minifat_sec as u32).to_le_bytes());
+        assert!(matches!(
+            CfbReader::new(&minifat_cycle_cfb),
+            Err(Error::SectorChainCycle { .. })
+        ));
+
+        Ok(())
+    }
 }

@@ -70,6 +70,25 @@ def get_fonts():
         }
 
 
+def fit_text_to_width(
+    text: str, font: ImageFont.ImageFont, max_width: int, ellipsis: str = "..."
+) -> str:
+    """Ensures text fits within max_width, truncating with ellipsis if necessary."""
+    bbox = font.getbbox(text)
+    if bbox[2] - bbox[0] <= max_width:
+        return text
+    ell_w = font.getbbox(ellipsis)[2] - font.getbbox(ellipsis)[0]
+    target_w = max_width - ell_w
+    if target_w <= 0:
+        return ""
+    curr = ""
+    for ch in text:
+        if font.getbbox(curr + ch)[2] - font.getbbox(curr + ch)[0] > target_w:
+            break
+        curr += ch
+    return curr + ellipsis
+
+
 def draw_window_titlebar(
     draw: ImageDraw.ImageDraw,
     w: int,
@@ -96,10 +115,13 @@ def draw_window_titlebar(
     for x, y, fill_c, stroke_c in lights:
         draw.ellipse([x, y, x + 12, y + 12], fill=fill_c, outline=stroke_c, width=1)
 
-    # Window title centered
-    bbox = fonts["small_bold"].getbbox(title)
+    # Window title centered within safe horizontal margins (clear of traffic lights)
+    traffic_margin = 72
+    max_title_w = max(0, w - (traffic_margin * 2))
+    fitted_title = fit_text_to_width(title, fonts["small_bold"], max_title_w)
+    bbox = fonts["small_bold"].getbbox(fitted_title)
     tw = bbox[2] - bbox[0]
-    draw.text(((w - tw) // 2, 8), title, fill=title_color, font=fonts["small_bold"])
+    draw.text(((w - tw) // 2, 8), fitted_title, fill=title_color, font=fonts["small_bold"])
 
 
 def draw_button(
@@ -147,12 +169,13 @@ def draw_button(
         )
         text_color = (40, 45, 55, 255)
 
-    bbox = font.getbbox(text)
+    fitted_text = fit_text_to_width(text, font, max(0, bw - 8))
+    bbox = font.getbbox(fitted_text)
     tw = bbox[2] - bbox[0]
     th = bbox[3] - bbox[1]
-    tx = bx + (bw - tw) // 2
-    ty = by + (bh - th) // 2 - 1
-    draw.text((tx, ty), text, fill=text_color, font=font)
+    tx = bx + max(0, (bw - tw) // 2)
+    ty = by + max(0, (bh - th) // 2 - 1)
+    draw.text((tx, ty), fitted_text, fill=text_color, font=font)
 
 
 def wrap_text_to_width(
@@ -303,9 +326,14 @@ def generate_gui_welcome(fonts: dict) -> Image.Image:
         fill=(20, 25, 35, 255),
         font=fonts["heading"],
     )
+    welcome_sub = fit_text_to_width(
+        "Please review license terms and package details before continuing.",
+        fonts["small"],
+        content_w,
+    )
     draw.text(
         (cx, 60),
-        "Please review the license terms and package details before continuing.",
+        welcome_sub,
         fill=(80, 85, 95, 255),
         font=fonts["small"],
     )
@@ -508,8 +536,11 @@ def generate_gui_feature_tree(fonts: dict) -> Image.Image:
         ("►  [ ]  Debugging Symbols & Tools", 0, False),
     ]
 
+    max_tree_item_w = tree_w - 20
     for idx, (label, depth, is_selected) in enumerate(tree_items):
         iy = tree_y + 6 + idx * 25
+        tree_font = fonts["body_bold"] if is_selected else fonts["body"]
+        fitted_label = fit_text_to_width(label, tree_font, max_tree_item_w)
         if is_selected:
             draw.rounded_rectangle(
                 [tree_x + 3, iy - 2, tree_x + tree_w - 3, iy + 21],
@@ -520,13 +551,13 @@ def generate_gui_feature_tree(fonts: dict) -> Image.Image:
             )
             draw.text(
                 (tree_x + 10, iy + 2),
-                label,
+                fitted_label,
                 fill=(0, 82, 180, 255),
-                font=fonts["body_bold"],
+                font=tree_font,
             )
         else:
             text_color = (40, 45, 55, 255) if "[■]" in label else (130, 135, 145, 255)
-            draw.text((tree_x + 10, iy + 2), label, fill=text_color, font=fonts["body"])
+            draw.text((tree_x + 10, iy + 2), fitted_label, fill=text_color, font=tree_font)
 
     # Feature Description Card (Right Top: x=318, y=105, w=202, h=135)
     desc_x, desc_y, desc_w, desc_h = 318, 105, 202, 135
@@ -556,9 +587,11 @@ def generate_gui_feature_tree(fonts: dict) -> Image.Image:
         "Location: /opt/contoso/app",
         "Installed locally on hard drive.",
     ]
+    max_desc_w = desc_w - 24
     dy = desc_y + 32
     for line in desc_lines:
-        draw.text((desc_x + 12, dy), line, fill=(70, 75, 85, 255), font=fonts["small"])
+        fitted_line = fit_text_to_width(line, fonts["small"], max_desc_w)
+        draw.text((desc_x + 12, dy), fitted_line, fill=(70, 75, 85, 255), font=fonts["small"])
         dy += 15
 
     # Disk Space Card (Right Bottom: x=318, y=250, w=202, h=70)
@@ -832,30 +865,33 @@ def generate_gui_progress(fonts: dict) -> Image.Image:
         outline=(50, 55, 68, 255),
         width=1,
     )
-    draw.text(
-        (diag_x + 10, diag_y + 8),
-        "[WORKER IPC] In-process SqlProvisionerClient: Schema 'openedx' created",
-        fill=(140, 220, 160, 255),
-        font=fonts["mono_small"],
-    )
-    draw.text(
-        (diag_x + 10, diag_y + 26),
-        "[WORKER IPC] Socket probe 127.0.0.1:3306 -> Port bound and listening",
-        fill=(122, 162, 247, 255),
-        font=fonts["mono_small"],
-    )
-    draw.text(
-        (diag_x + 10, diag_y + 44),
-        "[TRANSACTION] Unwind journal active: rollback quarantine ready",
-        fill=(224, 175, 104, 255),
-        font=fonts["mono_small"],
-    )
-    draw.text(
-        (diag_x + 10, diag_y + 62),
-        "[SUPERVISOR] Native daemon registered: /Library/LaunchDaemons/...",
-        fill=(170, 175, 190, 255),
-        font=fonts["mono_small"],
-    )
+    max_diag_text_w = diag_w - 20
+    diag_lines = [
+        (
+            "[WORKER IPC] SqlProvisionerClient: Schema 'openedx' created",
+            (140, 220, 160, 255),
+        ),
+        (
+            "[WORKER IPC] Probe 127.0.0.1:3306 -> Port bound and listening",
+            (122, 162, 247, 255),
+        ),
+        (
+            "[TRANSACTION] Unwind journal active: rollback quarantine ready",
+            (224, 175, 104, 255),
+        ),
+        (
+            "[SUPERVISOR] Registered daemon: /Library/LaunchDaemons/...",
+            (170, 175, 190, 255),
+        ),
+    ]
+    for d_idx, (d_text, d_color) in enumerate(diag_lines):
+        fitted_text = fit_text_to_width(d_text, fonts["mono_small"], max_diag_text_w)
+        draw.text(
+            (diag_x + 10, diag_y + 8 + d_idx * 18),
+            fitted_text,
+            fill=d_color,
+            font=fonts["mono_small"],
+        )
 
     # Bottom button bar
     draw.line([0, h - 50, w - 1, h - 50], fill=(215, 218, 224, 255), width=1)

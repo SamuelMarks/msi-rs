@@ -27,6 +27,9 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::path::{Path, PathBuf};
 
+/// Sequence constraint tuple representing `(Action, Anchor, Position, Condition)`.
+type SequenceConstraint = (String, String, String, Option<String>);
+
 /// Standard directory mapping definition.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StandardDirectory {
@@ -552,11 +555,14 @@ impl LinkedDatabase {
                 return Ok(());
             }
 
+            let is_seq_table = table.ends_with("Sequence");
+
             // Check for existing record matching on primary key
             for existing in records.iter_mut() {
                 let matches_pk = pk_indices
                     .iter()
-                    .all(|&idx| existing.get(idx) == record.get(idx));
+                    .all(|&idx| existing.get(idx) == record.get(idx))
+                    && (!is_seq_table || existing.get(1) == record.get(1));
                 if matches_pk {
                     if table == "Property" {
                         // Product / later fragments override Property value
@@ -2076,8 +2082,7 @@ impl Linker {
             return Ok(());
         }
 
-        let mut constraints_by_table: HashMap<String, Vec<(String, String, String)>> =
-            HashMap::new();
+        let mut constraints_by_table: HashMap<String, Vec<SequenceConstraint>> = HashMap::new();
         for r in &rel_records {
             if let (
                 Some(FieldValue::String(tbl)),
@@ -2086,10 +2091,15 @@ impl Linker {
                 Some(FieldValue::String(pos)),
             ) = (r.get(0), r.get(1), r.get(2), r.get(3))
             {
+                let maybe_cond = match r.get(4) {
+                    Some(FieldValue::String(c)) => Some(c.clone()),
+                    _ => None,
+                };
                 constraints_by_table.entry(tbl.clone()).or_default().push((
                     action.clone(),
                     anchor.clone(),
                     pos.clone(),
+                    maybe_cond,
                 ));
             }
         }
@@ -2097,7 +2107,7 @@ impl Linker {
         for (table_name, constraints) in constraints_by_table {
             let existing_records = db.tables.entry(table_name.clone()).or_default();
 
-            for (action, anchor, pos) in &constraints {
+            for (action, anchor, pos, maybe_cond) in &constraints {
                 if pos == "OnExit" {
                     let on_exit_seq: i16 = match anchor.as_str() {
                         "cancel" => -2,
@@ -2106,7 +2116,10 @@ impl Linker {
                         _ => -1,
                     };
                     for rec in existing_records.iter_mut() {
-                        if rec.get(0) == Some(&FieldValue::String(action.clone())) {
+                        let matches_cond = maybe_cond
+                            .as_ref()
+                            .is_none_or(|c| rec.get(1) == Some(&FieldValue::String(c.clone())));
+                        if rec.get(0) == Some(&FieldValue::String(action.clone())) && matches_cond {
                             rec.set(2, FieldValue::Short(on_exit_seq));
                         }
                     }
@@ -2138,7 +2151,7 @@ impl Linker {
 
             let mut in_degree: HashMap<String, usize> = HashMap::new();
             let mut graph: HashMap<String, Vec<String>> = HashMap::new();
-            for (action, anchor, pos) in &constraints {
+            for (action, anchor, pos, _) in &constraints {
                 if pos == "After" {
                     graph
                         .entry(anchor.clone())
@@ -2185,7 +2198,7 @@ impl Linker {
                 });
             }
 
-            for (action, anchor, pos) in &constraints {
+            for (action, anchor, pos, maybe_cond) in &constraints {
                 if pos == "After" {
                     let base_seq = action_seqs.get(anchor).copied().unwrap_or(1000);
                     let mut assigned = base_seq + 25;
@@ -2194,7 +2207,10 @@ impl Linker {
                     }
                     action_seqs.insert(action.clone(), assigned);
                     for rec in existing_records.iter_mut() {
-                        if rec.get(0) == Some(&FieldValue::String(action.clone())) {
+                        let matches_cond = maybe_cond
+                            .as_ref()
+                            .is_none_or(|c| rec.get(1) == Some(&FieldValue::String(c.clone())));
+                        if rec.get(0) == Some(&FieldValue::String(action.clone())) && matches_cond {
                             rec.set(2, FieldValue::Short(assigned));
                         }
                     }
@@ -2206,7 +2222,10 @@ impl Linker {
                     }
                     action_seqs.insert(action.clone(), assigned);
                     for rec in existing_records.iter_mut() {
-                        if rec.get(0) == Some(&FieldValue::String(action.clone())) {
+                        let matches_cond = maybe_cond
+                            .as_ref()
+                            .is_none_or(|c| rec.get(1) == Some(&FieldValue::String(c.clone())));
+                        if rec.get(0) == Some(&FieldValue::String(action.clone())) && matches_cond {
                             rec.set(2, FieldValue::Short(assigned));
                         }
                     }
@@ -10968,5 +10987,50 @@ mod tests {
         assert!(sections.iter().any(|s| s.id.as_deref() == Some("Frag1")));
         assert!(sections.iter().any(|s| s.id.as_deref() == Some("Frag2")));
         assert!(sections.iter().any(|s| s.id.as_deref() == Some("Frag5")));
+    }
+
+    /// Tests collision resolution for sequence tables with disjoint conditions.
+    #[test]
+    fn test_linker_disjoint_conditions_sequence_collision() {
+        let mut db = LinkedDatabase::default();
+        let ius_schema = crate::database::tables::sequence::install_ui_sequence_schema();
+        let _ = db.catalog.add_table(ius_schema);
+
+        let r_simple = Record::with_fields(vec![
+            FieldValue::String("Dlg_VerifyReady".to_string()),
+            FieldValue::String("SETUP_MODE=\"Simple\"".to_string()),
+            FieldValue::Short(1000),
+        ]);
+        let r_advanced = Record::with_fields(vec![
+            FieldValue::String("Dlg_VerifyReady".to_string()),
+            FieldValue::String("SETUP_MODE=\"Advanced\"".to_string()),
+            FieldValue::Short(1050),
+        ]);
+        let r_simple_dup = r_simple.clone();
+        let r_simple_conflict = Record::with_fields(vec![
+            FieldValue::String("Dlg_VerifyReady".to_string()),
+            FieldValue::String("SETUP_MODE=\"Simple\"".to_string()),
+            FieldValue::Short(9999),
+        ]);
+
+        // 1. Adding disjoint condition succeeds
+        assert!(db
+            .add_or_merge_record("InstallUISequence", r_simple)
+            .is_ok());
+        assert!(db
+            .add_or_merge_record("InstallUISequence", r_advanced)
+            .is_ok());
+        assert_eq!(db.get_records("InstallUISequence").len(), 2);
+
+        // 2. Exactly identical record dedupes
+        assert!(db
+            .add_or_merge_record("InstallUISequence", r_simple_dup)
+            .is_ok());
+        assert_eq!(db.get_records("InstallUISequence").len(), 2);
+
+        // 3. Same condition with different sequence causes primary key collision
+        assert!(db
+            .add_or_merge_record("InstallUISequence", r_simple_conflict)
+            .is_err());
     }
 }
