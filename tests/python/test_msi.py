@@ -6,13 +6,16 @@ import sys
 import tempfile
 from pathlib import Path
 
-# Prioritize local repository source over installed site-packages
-repo_root = Path(__file__).resolve().parent.parent.parent
-local_py_path = str(repo_root / "crates" / "msi-python" / "python")
-if local_py_path not in sys.path:
-    sys.path.insert(0, local_py_path)
-
-import msi  # type: ignore[import-not-found]
+# Prefer installed msi package (e.g. wheel built & installed in CI);
+# if not installed, fall back to local repository source.
+try:
+    import msi  # type: ignore[import-not-found]
+except ImportError:
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    local_py_path = str(repo_root / "crates" / "msi-python" / "python")
+    if local_py_path not in sys.path:
+        sys.path.insert(0, local_py_path)
+    import msi  # type: ignore[import-not-found]
 
 
 def test_product_version_parsing_and_comparisons() -> None:
