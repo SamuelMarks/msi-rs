@@ -87,8 +87,12 @@ pub struct CandleOptions {
     pub suppress_all_warnings: bool,
     /// Verbose diagnostic logging (`-v`, `-verbose`).
     pub verbose: bool,
-    /// Treat all warnings as fatal errors (`-wx`).
+    /// Treat all warnings as fatal errors (`-wx`, `-wxall`).
     pub warnings_as_errors: bool,
+    /// Show source trace for errors, warnings, and verbose messages (`-trace`).
+    pub trace: bool,
+    /// Suppress marking files as Vital by default (`-sfdvital`).
+    pub suppress_vital_files: bool,
     /// Compiled cache directory for include file precompilation (`-cc`).
     pub cache_dir: Option<PathBuf>,
     /// Input `.wxs` source files to compile.
@@ -205,6 +209,16 @@ impl CandleOptions {
                 } else if lower == "pedantic" {
                     opts.pedantic = true;
                     idx += 1;
+                } else if lower == "platform" {
+                    idx += 1;
+                    if idx >= args.len() {
+                        return Err(Error::WixCompiler {
+                            element: "candle".to_string(),
+                            message: "missing argument value for '-platform'".to_string(),
+                        });
+                    }
+                    opts.arch = Some(args[idx].clone());
+                    idx += 1;
                 } else if let Some(p_str) = flag.strip_prefix(['p', 'P']) {
                     if p_str.is_empty() {
                         opts.preprocess_only = Some(PathBuf::new());
@@ -230,8 +244,14 @@ impl CandleOptions {
                 } else if lower == "v" || lower == "verbose" {
                     opts.verbose = true;
                     idx += 1;
-                } else if lower == "wx" {
+                } else if lower.starts_with("wx") {
                     opts.warnings_as_errors = true;
+                    idx += 1;
+                } else if lower == "trace" {
+                    opts.trace = true;
+                    idx += 1;
+                } else if lower == "sfdvital" {
+                    opts.suppress_vital_files = true;
                     idx += 1;
                 } else if lower == "cc" {
                     idx += 1;
@@ -446,6 +466,18 @@ pub struct LightOptions {
     pub suppress_ui: bool,
     /// Timestamp database summary info table (`-ts`).
     pub timestamp_summary_info: bool,
+    /// Allow duplicate directory identities from other libraries (`-ad`).
+    pub allow_duplicate_directories: bool,
+    /// Drop unrealized tables from the output image (`-dut`).
+    pub drop_unrealized_tables: bool,
+    /// Suppress localization (`-sloc`).
+    pub suppress_localization: bool,
+    /// Suppress tagging sectionId attribute on rows (`-sts`).
+    pub suppress_tag_section_id: bool,
+    /// Suppress intermediate file version mismatch checking (`-sv`).
+    pub suppress_version_mismatch: bool,
+    /// Output wixout format instead of MSI format (`-xo`).
+    pub output_wixout: bool,
     /// Verbose diagnostic logging (`-v`, `-verbose`).
     pub verbose: bool,
     /// Reusable cabinet caching directory (`-cc`).
@@ -574,6 +606,30 @@ impl LightOptions {
                     idx += 1;
                 } else if lower == "sui" {
                     opts.suppress_ui = true;
+                    idx += 1;
+                } else if lower == "ad" {
+                    opts.allow_duplicate_directories = true;
+                    idx += 1;
+                } else if lower == "dut" {
+                    opts.drop_unrealized_tables = true;
+                    idx += 1;
+                } else if lower == "sloc" {
+                    opts.suppress_localization = true;
+                    idx += 1;
+                } else if lower == "sma" {
+                    opts.suppress_assemblies = true;
+                    idx += 1;
+                } else if lower == "sts" {
+                    opts.suppress_tag_section_id = true;
+                    idx += 1;
+                } else if lower == "sv" {
+                    opts.suppress_version_mismatch = true;
+                    idx += 1;
+                } else if lower.starts_with("wx") {
+                    opts.warnings_as_errors = true;
+                    idx += 1;
+                } else if lower == "xo" {
+                    opts.output_wixout = true;
                     idx += 1;
                 } else if lower == "swall" {
                     opts.suppress_all_warnings = true;
@@ -791,6 +847,12 @@ impl LightOptions {
         if self.warnings_as_errors {
             linker.set_warnings_as_errors(true);
         }
+        if self.suppress_all_warnings {
+            linker.set_suppress_all_warnings(true);
+        }
+        if self.pedantic {
+            linker.set_pedantic(true);
+        }
         if !self.cultures.is_empty() {
             linker.set_cultures(self.cultures.clone());
         }
@@ -856,6 +918,7 @@ pub enum WixSubcommand {
 
 /// Command-line options for `wix build`.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct WixBuildOptions {
     /// Target architecture (`x86`, `x64`, `arm64`).
     pub arch: Option<String>,
@@ -877,6 +940,16 @@ pub struct WixBuildOptions {
     pub selected_ice: Vec<String>,
     /// Specific ICE validation rules to suppress (`-sice:<ICE>`).
     pub suppressed_ice: Vec<String>,
+    /// Suppress all warnings (`-swall`).
+    pub suppress_all_warnings: bool,
+    /// Specific warning IDs to suppress (`-sw<id>`).
+    pub suppressed_warnings: Vec<String>,
+    /// Treat all warnings as fatal errors (`-wx`).
+    pub warnings_as_errors: bool,
+    /// Enforce pedantic schema validation and warnings (`-pedantic`).
+    pub pedantic: bool,
+    /// Suppress copyright banner output (`-nologo`).
+    pub nologo: bool,
     /// Source files (`.wxs`, `.wxl`, etc.).
     pub sources: Vec<PathBuf>,
 }
@@ -1000,6 +1073,26 @@ impl WixBuildOptions {
                 } else if lower == "sval" || lower == "suppress-validation" {
                     opts.suppress_ice = true;
                     idx += 1;
+                } else if lower == "pedantic" {
+                    opts.pedantic = true;
+                    idx += 1;
+                } else if lower == "nologo" {
+                    opts.nologo = true;
+                    idx += 1;
+                } else if lower == "swall" {
+                    opts.suppress_all_warnings = true;
+                    idx += 1;
+                } else if lower == "wx" {
+                    opts.warnings_as_errors = true;
+                    idx += 1;
+                } else if let Some(sw_id) = lower.strip_prefix("sw") {
+                    opts.suppressed_warnings.push(sw_id.to_string());
+                    idx += 1;
+                } else if let Some(wx_id) = lower.strip_prefix("wx") {
+                    if !wx_id.is_empty() && wx_id != "all" {
+                        opts.warnings_as_errors = true;
+                    }
+                    idx += 1;
                 } else if let Some(ice) = flag.strip_prefix("ice:") {
                     opts.selected_ice.push(ice.to_string());
                     idx += 1;
@@ -1025,16 +1118,13 @@ impl WixBuildOptions {
         Ok(opts)
     }
 
-    /// Compiles and links sources directly into an `.msi` package.
+    /// Partitions input source paths into (`wxs`, `wxl`, `wixobj`, `wixlib`) lists.
     ///
     /// # Returns
     ///
-    /// Path to the generated `.msi` package.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error`] on compilation, linking, or I/O failure.
-    pub fn execute(&self) -> Result<PathBuf> {
+    /// A 4-tuple containing lists of WXS source paths, localization files, intermediate
+    /// object files, and library files.
+    fn partition_sources(&self) -> (Vec<PathBuf>, Vec<PathBuf>, Vec<PathBuf>, Vec<PathBuf>) {
         let mut wxs_sources = Vec::new();
         let mut loc_files = Vec::new();
         let mut obj_files = Vec::new();
@@ -1057,6 +1147,56 @@ impl WixBuildOptions {
                 wxs_sources.push(s.clone());
             }
         }
+
+        (wxs_sources, loc_files, obj_files, lib_files)
+    }
+
+    /// Configures linker options based on this build options instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `linker` - The linker to configure.
+    fn configure_linker(&self, linker: &mut Linker) {
+        for dir in &self.base_dirs {
+            linker.add_base_dir(dir);
+        }
+        if self.suppress_ice {
+            linker.set_suppress_ice(true);
+        }
+        for rule in &self.suppressed_ice {
+            linker.suppress_ice(rule);
+        }
+        for rule in &self.selected_ice {
+            linker.select_ice(rule);
+        }
+        for sw in &self.suppressed_warnings {
+            linker.suppress_warning(sw);
+        }
+        if self.warnings_as_errors {
+            linker.set_warnings_as_errors(true);
+        }
+        if self.suppress_all_warnings {
+            linker.set_suppress_all_warnings(true);
+        }
+        if self.pedantic {
+            linker.set_pedantic(true);
+        }
+        if let Some(ref c) = self.culture {
+            linker.set_cultures(vec![c.clone()]);
+        }
+    }
+
+    /// Compiles and links sources directly into an `.msi` package.
+    ///
+    /// # Returns
+    ///
+    /// Path to the generated `.msi` package.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on compilation, linking, or I/O failure.
+    pub fn execute(&self) -> Result<PathBuf> {
+        let (wxs_sources, loc_files, obj_files, lib_files) = self.partition_sources();
 
         let mut linker = Linker::new();
 
@@ -1095,21 +1235,7 @@ impl WixBuildOptions {
         }
 
         // 4. Configure Linker
-        for dir in &self.base_dirs {
-            linker.add_base_dir(dir);
-        }
-        if self.suppress_ice {
-            linker.set_suppress_ice(true);
-        }
-        for rule in &self.suppressed_ice {
-            linker.suppress_ice(rule);
-        }
-        for rule in &self.selected_ice {
-            linker.select_ice(rule);
-        }
-        if let Some(ref c) = self.culture {
-            linker.set_cultures(vec![c.clone()]);
-        }
+        self.configure_linker(&mut linker);
 
         // Ingest localization
         let mut loc_catalog = crate::wix::localization::LocalizationCatalog::new();
@@ -2281,5 +2407,83 @@ x64
         let _ = wix_opts.execute();
 
         let _ = fs::remove_dir_all(&temp_dir);
+    }
+}
+
+#[cfg(test)]
+mod extra_toolchain_tests {
+    use super::*;
+
+    #[test]
+    fn test_candle_extra_flags() -> Result<()> {
+        let args = vec![
+            "-trace".to_string(),
+            "-sfdvital".to_string(),
+            "-platform".to_string(),
+            "x64".to_string(),
+            "-wxall".to_string(),
+            "-wx1009".to_string(),
+            "source.wxs".to_string(),
+        ];
+        let opts = CandleOptions::parse(&args)?;
+        assert!(opts.trace);
+        assert!(opts.suppress_vital_files);
+        assert_eq!(opts.arch, Some("x64".to_string()));
+        assert!(opts.warnings_as_errors);
+
+        assert!(CandleOptions::parse(&["-platform".to_string()]).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn test_light_extra_flags() -> Result<()> {
+        let args = vec![
+            "-ad".to_string(),
+            "-dut".to_string(),
+            "-sloc".to_string(),
+            "-sma".to_string(),
+            "-sts".to_string(),
+            "-sv".to_string(),
+            "-wxall".to_string(),
+            "-wx1009".to_string(),
+            "-xo".to_string(),
+            "obj.wixobj".to_string(),
+        ];
+        let opts = LightOptions::parse(&args)?;
+        assert!(opts.allow_duplicate_directories);
+        assert!(opts.drop_unrealized_tables);
+        assert!(opts.suppress_localization);
+        assert!(opts.suppress_assemblies);
+        assert!(opts.suppress_tag_section_id);
+        assert!(opts.suppress_version_mismatch);
+        assert!(opts.warnings_as_errors);
+        assert!(opts.output_wixout);
+        Ok(())
+    }
+
+    #[test]
+    fn test_wix_build_extra_flags() -> Result<()> {
+        let args = vec![
+            "build".to_string(),
+            "-pedantic".to_string(),
+            "-nologo".to_string(),
+            "-swall".to_string(),
+            "-wx".to_string(),
+            "-sw1009".to_string(),
+            "-wxall".to_string(),
+            "-wx1103".to_string(),
+            "source.wxs".to_string(),
+        ];
+        let mut opts = WixBuildOptions::parse(&args)?;
+        assert!(opts.pedantic);
+        assert!(opts.nologo);
+        assert!(opts.suppress_all_warnings);
+        assert!(opts.warnings_as_errors);
+        assert_eq!(opts.suppressed_warnings, vec!["1009".to_string()]);
+
+        opts.culture = Some("en-US".to_string());
+        let mut linker = Linker::new();
+        opts.configure_linker(&mut linker);
+        Ok(())
     }
 }

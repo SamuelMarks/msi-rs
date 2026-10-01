@@ -331,6 +331,15 @@ pub enum Error {
         message: String,
     },
 
+    /// A `WiX` extension or plugin error occurred.
+    #[display("WiX extension error in '{extension}': {message}")]
+    WixExtension {
+        /// Name of the `WiX` extension (e.g. `WixUtilExtension`).
+        extension: String,
+        /// Diagnostic message.
+        message: String,
+    },
+
     /// An Internal Consistency Evaluator (ICE) validation failed.
     #[display("ICE validation failure [{ice}]: {message}")]
     IceValidation {
@@ -952,6 +961,15 @@ mod tests {
         assert_eq!(
             format!("{err_link}"),
             "WiX linker error: unresolved symbol Component:Comp1"
+        );
+
+        let err_ext = Error::WixExtension {
+            extension: "WixUtilExtension".to_string(),
+            message: "failed to register backend custom actions".to_string(),
+        };
+        assert_eq!(
+            format!("{err_ext}"),
+            "WiX extension error in 'WixUtilExtension': failed to register backend custom actions"
         );
 
         let err_ice = Error::IceValidation {

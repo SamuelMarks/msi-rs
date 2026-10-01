@@ -1692,8 +1692,13 @@ mod tests {
             let connect_clone = connect_str.clone();
 
             let handle = std::thread::spawn(move || {
-                for _ in 0..100 {
-                    match std::os::unix::net::UnixStream::connect(&connect_clone) {
+                for attempt in 0..100 {
+                    let target = if attempt == 0 {
+                        "/tmp/non_existent_probe_socket.sock"
+                    } else {
+                        &connect_clone
+                    };
+                    match std::os::unix::net::UnixStream::connect(target) {
                         Ok(mut stream) => {
                             use std::io::Write;
                             let _ = stream.write_all(b"QUIT\n");

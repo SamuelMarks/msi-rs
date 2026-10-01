@@ -1752,8 +1752,11 @@ impl Default for CubValidator {
     }
 }
 
+use crate::wix::extensions::ExtensionRegistry;
+
 /// `WiX` Linker (`light`) graph solver and binder.
 #[derive(Debug, Default)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct Linker {
     /// Input intermediate object files.
     objects: Vec<WixObject>,
@@ -1771,6 +1774,10 @@ pub struct Linker {
     suppressed_warnings: HashSet<String>,
     /// Treat warnings as fatal errors (`-wx`).
     warnings_as_errors: bool,
+    /// Treat all warnings as suppressed (`-swall`).
+    suppress_all_warnings: bool,
+    /// Enable pedantic validation (`-pedantic`).
+    pedantic: bool,
     /// Ordered culture priority list (e.g. `["en-us", "de-de"]`).
     cultures: Vec<String>,
     /// Localization catalog for evaluating `!(loc.Id)`.
@@ -1779,6 +1786,8 @@ pub struct Linker {
     cab_per_component: bool,
     /// Embedded cabinet archives generated during binding.
     embedded_cabinets: HashMap<String, Vec<u8>>,
+    /// Extension registry.
+    extension_registry: ExtensionRegistry,
 }
 
 /// Checks whether an unresolved symbol reference is a standard built-in symbol, action,
@@ -1815,7 +1824,28 @@ impl Linker {
     /// A new [`Linker`].
     #[must_use]
     pub fn new() -> Self {
-        Self::default()
+        let mut registry = ExtensionRegistry::new();
+        registry.register(std::sync::Arc::new(
+            crate::wix::extensions::util::UtilExtension::new(),
+        ));
+
+        Self {
+            extension_registry: registry,
+            ..Default::default()
+        }
+    }
+
+    /// Creates a new [`Linker`] with the provided extension registry.
+    ///
+    /// # Arguments
+    ///
+    /// * `registry` - The extension registry.
+    #[must_use]
+    pub fn with_extensions(registry: ExtensionRegistry) -> Self {
+        Self {
+            extension_registry: registry,
+            ..Default::default()
+        }
     }
 
     /// Adds an intermediate [`WixObject`] to the linker input queue.
@@ -1902,6 +1932,24 @@ impl Linker {
         self.warnings_as_errors = wx;
     }
 
+    /// Sets whether to suppress all warnings.
+    ///
+    /// # Arguments
+    ///
+    /// * `suppress` - Suppress all warnings.
+    pub const fn set_suppress_all_warnings(&mut self, suppress: bool) {
+        self.suppress_all_warnings = suppress;
+    }
+
+    /// Sets whether to enable pedantic validation.
+    ///
+    /// # Arguments
+    ///
+    /// * `pedantic` - Enable pedantic validation.
+    pub const fn set_pedantic(&mut self, pedantic: bool) {
+        self.pedantic = pedantic;
+    }
+
     /// Sets the ordered culture priority list for localization string resolution.
     ///
     /// # Arguments
@@ -1971,6 +2019,11 @@ impl Linker {
                     db.add_or_merge_record(&tbl.name, rec.clone())?;
                 }
             }
+        }
+
+        // 2a. Invoke registered extensions to link backend custom actions/tables
+        for ext in self.extension_registry.clone().iter() {
+            ext.link_database(&mut db)?;
         }
 
         // 2b. Resolve multi-level nested ComponentGroupRef hierarchy
@@ -2725,7 +2778,11 @@ impl Linker {
                 });
             }
 
-            if self.warnings_as_errors && !self.suppressed_warnings.contains(&rep.ice) {
+            if self.suppress_all_warnings || self.suppressed_warnings.contains(&rep.ice) {
+                continue;
+            }
+
+            if self.warnings_as_errors {
                 return Err(Error::IceValidation {
                     ice: rep.ice,
                     message: format!("warning treated as error: {}", rep.message),
@@ -5004,6 +5061,8 @@ mod tests {
         obj.add_section(sec);
 
         let mut active_linker = Linker::new();
+        let ext_linker = Linker::with_extensions(ExtensionRegistry::new());
+        assert!(format!("{ext_linker:?}").contains("Linker"));
         active_linker.add_object(obj);
 
         let linked = active_linker.link().unwrap_or_default();

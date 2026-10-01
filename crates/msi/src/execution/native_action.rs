@@ -387,7 +387,9 @@ impl NativeLibraryLoader {
 
             if let Some(h) = self.dl_handle.take() {
                 // SAFETY: Closing previously open dynamic library handle.
-                unsafe { libc::dlclose(h) };
+                unsafe {
+                    libc::dlclose(h);
+                }
             }
 
             // SAFETY: c_path is a valid null-terminated C string pointing to existing library file.
@@ -570,7 +572,9 @@ impl Drop for NativeLibraryLoader {
         #[cfg(unix)]
         if let Some(h) = self.dl_handle.take() {
             // SAFETY: Closing valid non-null dynamic library handle on drop.
-            unsafe { libc::dlclose(h) };
+            unsafe {
+                libc::dlclose(h);
+            }
         }
         if let Some(ref dir) = self.sandbox_dir {
             let _ = fs::remove_dir_all(dir);
@@ -1945,6 +1949,10 @@ mod tests {
     /// Tests error paths during MySQL wire execution against a mock server.
     #[test]
     fn test_sql_provisioner_wire_protocol_errors() {
+        let (bad_l, bad_port) = make_test_listener("invalid_addr:99999");
+        assert!(bad_l.is_none());
+        assert_eq!(bad_port, 0);
+
         let error_modes = [
             MockServerBehavior::FailHandshakeHeader,
             MockServerBehavior::FailHandshakePayload,

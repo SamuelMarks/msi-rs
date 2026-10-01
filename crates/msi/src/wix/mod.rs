@@ -8,6 +8,7 @@
 
 pub mod bundle;
 pub mod compiler;
+pub mod extensions;
 pub mod harvest;
 pub mod ice;
 pub mod linker;
@@ -25,6 +26,7 @@ pub mod xml;
 
 pub use bundle::{BootstrapperApplication, BurnBundle, ChainPackage, ChainPackageType};
 pub use compiler::Compiler;
+pub use extensions::{ExtensionRegistry, WixExtension};
 pub use harvest::{HarvestPayloadOptions, HarvestPayloadResult, Harvester};
 pub use linker::{
     modularize_identifier, CubValidator, IceDiagnostic, IceDiagnosticType, IceRegistry, IceReport,

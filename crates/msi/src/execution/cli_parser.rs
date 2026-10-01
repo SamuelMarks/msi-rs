@@ -592,10 +592,10 @@ impl MsiExecOptions {
     ///
     /// Returns [`Error`] on fatal filesystem, database, or transaction execution failure.
     #[allow(clippy::too_many_lines)]
-    pub fn execute_with_streams<R: std::io::Read, W: std::io::Write>(
+    pub fn execute_with_streams(
         &self,
-        mut input: Option<R>,
-        mut output: Option<W>,
+        mut input: Option<&mut dyn std::io::Read>,
+        mut output: Option<&mut dyn std::io::Write>,
     ) -> Result<MsiExitCode> {
         let package_path = match &self.action {
             ActionMode::Install { package_path }
@@ -604,18 +604,20 @@ impl MsiExecOptions {
             | ActionMode::Repair { package_path, .. }
             | ActionMode::Advertise { package_path, .. } => package_path.clone(),
             ActionMode::ApplyPatch { patch_path } => {
-                if let Some(target) = self
+                match self
                     .properties
                     .get("PACKAGE")
                     .or_else(|| self.properties.get("TARGETPACKAGE"))
                 {
-                    target.clone()
-                } else {
-                    return Err(Error::InvalidArgument {
-                        argument: patch_path.clone(),
-                        reason: "patch application requires target package path via PACKAGE=path"
-                            .to_string(),
-                    });
+                    Some(target) => target.clone(),
+                    None => {
+                        return Err(Error::InvalidArgument {
+                            argument: patch_path.clone(),
+                            reason:
+                                "patch application requires target package path via PACKAGE=path"
+                                    .to_string(),
+                        });
+                    }
                 }
             }
         };
@@ -754,7 +756,7 @@ impl MsiExecOptions {
     ///
     /// Returns [`Error`] on fatal filesystem, database, or transaction execution failure.
     pub fn execute(&self) -> Result<MsiExitCode> {
-        self.execute_with_streams::<std::io::Empty, std::io::Sink>(None, None)
+        self.execute_with_streams(None, None)
     }
 }
 
@@ -1711,13 +1713,19 @@ mod tests {
         assert_eq!(tui_opts.execute(), Ok(MsiExitCode::Success));
 
         // Interactive stream with Escape -> UserExit (1602)
-        let cancel_res =
-            tui_opts.execute_with_streams(Some(std::io::Cursor::new(b"\x1b")), Some(Vec::new()));
+        let cancel_res = {
+            let mut input = std::io::Cursor::new(b"\x1b");
+            let mut output = Vec::new();
+            tui_opts.execute_with_streams(Some(&mut input), Some(&mut output))
+        };
         assert_eq!(cancel_res, Ok(MsiExitCode::UserExit));
 
         // Interactive stream with Enter -> Success (0)
-        let enter_res =
-            tui_opts.execute_with_streams(Some(std::io::Cursor::new(b"\r")), Some(Vec::new()));
+        let enter_res = {
+            let mut input = std::io::Cursor::new(b"\r");
+            let mut output = Vec::new();
+            tui_opts.execute_with_streams(Some(&mut input), Some(&mut output))
+        };
         assert_eq!(enter_res, Ok(MsiExitCode::Success));
 
         // Stream write error
@@ -1730,8 +1738,11 @@ mod tests {
                 Ok(())
             }
         }
-        let stream_err =
-            tui_opts.execute_with_streams(Some(std::io::Cursor::new(b"\r")), Some(FailingWriter));
+        let stream_err = {
+            let mut input = std::io::Cursor::new(b"\r");
+            let mut failing_writer = FailingWriter;
+            tui_opts.execute_with_streams(Some(&mut input), Some(&mut failing_writer))
+        };
         assert!(stream_err.is_err());
         assert!(std::io::Write::flush(&mut FailingWriter).is_ok());
 
@@ -1789,6 +1800,7 @@ mod tests {
         worker_with_actions
             .custom_action_executor()
             .log("Custom action detail log line");
+
         assert!(write_execution_log(
             &append_logging,
             &test_ctx,

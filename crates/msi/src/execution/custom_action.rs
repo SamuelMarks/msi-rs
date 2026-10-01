@@ -1385,7 +1385,9 @@ unsafe fn write_utf16_buffer(src: &str, buf: *mut u16, pcch_buf: *mut u32) -> u3
     // SAFETY: pcch_buf is verified non-null and valid.
     let capacity = unsafe { *pcch_buf };
     // SAFETY: pcch_buf is verified non-null and valid for write.
-    unsafe { *pcch_buf = needed };
+    unsafe {
+        *pcch_buf = needed;
+    }
 
     if buf.is_null() {
         // Querying required length
@@ -3477,13 +3479,14 @@ mod tests {
 
         // 5. Async executable failure
         let temp_dir = std::env::temp_dir().join("msi_test_bad_spawn");
-        std::fs::create_dir_all(&temp_dir).ok();
+        let _ = std::fs::create_dir_all(&temp_dir);
         let non_exec_file = temp_dir.join("non_exec.bin");
-        std::fs::write(&non_exec_file, b"not executable").ok();
+        let _ = std::fs::write(&non_exec_file, b"not executable");
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&non_exec_file, std::fs::Permissions::from_mode(0o644)).ok();
+            let _ =
+                std::fs::set_permissions(&non_exec_file, std::fs::Permissions::from_mode(0o644));
             let bad_async = unwrap_result(CustomActionDefinition::parse(
                 "BadAsync",
                 0x0032 | MSIDB_CUSTOM_ACTION_TYPE_ASYNC,

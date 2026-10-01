@@ -70,9 +70,18 @@ pub fn convert_text_to_rtf(input: &str) -> String {
     out
 }
 
+use crate::wix::extensions::ExtensionRegistry;
+use std::cell::RefCell;
+use std::collections::HashMap;
+
 /// `WiX` compiler translating XML documents into [`WixObject`].
 #[derive(Debug, Default)]
-pub struct Compiler;
+pub struct Compiler {
+    /// Registry of loaded extensions.
+    extension_registry: ExtensionRegistry,
+    /// Namespace prefixes declared on the root element.
+    prefixes: RefCell<HashMap<String, String>>,
+}
 
 impl Compiler {
     /// Creates a new [`Compiler`].
@@ -81,8 +90,29 @@ impl Compiler {
     ///
     /// A new compiler.
     #[must_use]
-    pub const fn new() -> Self {
-        Self
+    pub fn new() -> Self {
+        let mut registry = ExtensionRegistry::new();
+        registry.register(std::sync::Arc::new(
+            crate::wix::extensions::util::UtilExtension::new(),
+        ));
+
+        Self {
+            extension_registry: registry,
+            prefixes: RefCell::new(HashMap::new()),
+        }
+    }
+
+    /// Creates a new [`Compiler`] with the given extension registry.
+    ///
+    /// # Arguments
+    ///
+    /// * `registry` - The extension registry to use.
+    #[must_use]
+    pub fn with_extensions(registry: ExtensionRegistry) -> Self {
+        Self {
+            extension_registry: registry,
+            prefixes: RefCell::new(HashMap::new()),
+        }
     }
 
     /// Compiles a root XML document into a [`WixObject`].
@@ -101,9 +131,16 @@ impl Compiler {
     pub fn compile(&self, root: &XmlNode) -> Result<WixObject> {
         let mut obj = WixObject::new();
 
+        self.prefixes.borrow_mut().clear();
+
         // Check namespace if present
-        if let Some(ns) = root.attribute("xmlns") {
-            let _ = WixSchemaVersion::from_uri(ns)?;
+        for (k, v) in &root.attributes {
+            if k == "xmlns" {
+                let _ = WixSchemaVersion::from_uri(v)?;
+            } else if let Some(prefix) = k.strip_prefix("xmlns:") {
+                let mut map = self.prefixes.borrow_mut();
+                map.insert(prefix.to_string(), v.clone());
+            }
         }
 
         // Process top-level sections
@@ -151,8 +188,7 @@ impl Compiler {
         }
 
         // Tables map
-        let mut tables_map: std::collections::HashMap<String, IntermediateTable> =
-            std::collections::HashMap::new();
+        let mut tables_map: HashMap<String, IntermediateTable> = HashMap::new();
 
         // Extract Product attributes as Property rows
         if sec_type == SectionType::Product {
@@ -377,7 +413,7 @@ impl Compiler {
         node: &XmlNode,
         parent_id: Option<&str>,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) -> Result<()> {
         for child in &node.children {
             match child.tag.as_str() {
@@ -1046,6 +1082,22 @@ impl Compiler {
                         };
                         prop_table.push_record(p.to_record());
                     }
+                    if let Some(scope) = child.attribute("InstallScope") {
+                        if scope.eq_ignore_ascii_case("perMachine") {
+                            let p = PropertyRow {
+                                property: PropertyName::from_static("ALLUSERS"),
+                                value: "1".to_string(),
+                            };
+                            prop_table.push_record(p.to_record());
+                        }
+                    }
+                    if let Some(privileges) = child.attribute("InstallPrivileges") {
+                        let p = PropertyRow {
+                            property: PropertyName::from_static("InstallPrivileges"),
+                            value: privileges.to_string(),
+                        };
+                        prop_table.push_record(p.to_record());
+                    }
 
                     self.compile_element_tree(child, parent_id, section, tables)?;
                 }
@@ -1497,10 +1549,22 @@ impl Compiler {
                     }
                 }
                 _ => {
-                    if child.tag.contains(':') {
-                        Self::compile_extension_element(child, parent_id, section, tables);
+                    if let Some((prefix, _)) = child.tag.split_once(':') {
+                        let mut handled = false;
+                        if let Some(ns) = self.prefixes.borrow().get(prefix) {
+                            if let Some(ext) = self.extension_registry.get_by_namespace(ns) {
+                                ext.compile_node(child, parent_id, section, tables)?;
+                                handled = true;
+                            }
+                        }
+
+                        if !handled {
+                            Self::compile_extension_element(child, parent_id, section, tables);
+                            self.compile_element_tree(child, parent_id, section, tables)?;
+                        }
+                    } else {
+                        self.compile_element_tree(child, parent_id, section, tables)?;
                     }
-                    self.compile_element_tree(child, parent_id, section, tables)?;
                 }
             }
         }
@@ -1515,7 +1579,7 @@ impl Compiler {
         inherited_root: Option<&str>,
         inherited_key: Option<&str>,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let comp_name = parent_id.unwrap_or("DefaultComp");
         let comp_obj = parent_id.map_or_else(
@@ -1568,7 +1632,7 @@ impl Compiler {
         child: &XmlNode,
         parent_id: Option<&str>,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let comp_name = parent_id.unwrap_or("DefaultComp");
         let sc_name_attr = child.attribute("Name");
@@ -1645,7 +1709,7 @@ impl Compiler {
         child: &XmlNode,
         parent_id: Option<&str>,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let svc_id = child
             .attribute("Id")
@@ -1724,7 +1788,7 @@ impl Compiler {
         child: &XmlNode,
         parent_id: Option<&str>,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let comp_name = parent_id.unwrap_or("DefaultComp");
         let ctrl_name_attr = child.attribute("Name");
@@ -1797,7 +1861,7 @@ impl Compiler {
     fn compile_embedded_chainer(
         child: &XmlNode,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) -> Result<()> {
         let id = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
             element: "EmbeddedChainer".to_string(),
@@ -1865,7 +1929,7 @@ impl Compiler {
         child: &XmlNode,
         parent_id: Option<&str>,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) -> Result<()> {
         let db_id = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
             element: "SqlDatabase".to_string(),
@@ -1921,7 +1985,7 @@ impl Compiler {
         child: &XmlNode,
         parent_id: Option<&str>,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) -> Result<()> {
         let str_id = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
             element: "SqlString".to_string(),
@@ -1995,7 +2059,7 @@ impl Compiler {
         child: &XmlNode,
         parent_id: Option<&str>,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) -> Result<()> {
         let script_id = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
             element: "SqlScript".to_string(),
@@ -2059,7 +2123,7 @@ impl Compiler {
     fn compile_custom_action(
         child: &XmlNode,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) -> Result<()> {
         let ca_id = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
             element: "CustomAction".to_string(),
@@ -2151,7 +2215,7 @@ impl Compiler {
     fn compile_dialog(
         child: &XmlNode,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) -> Result<()> {
         let dlg_id = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
             element: "Dialog".to_string(),
@@ -2220,7 +2284,7 @@ impl Compiler {
         child: &XmlNode,
         parent_id: Option<&str>,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) -> Result<()> {
         let ctrl_id = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
             element: "Control".to_string(),
@@ -2511,7 +2575,7 @@ impl Compiler {
     fn compile_text_style(
         child: &XmlNode,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let style_id = child.attribute("Id").unwrap_or("DefaultStyle");
         let face = child.attribute("FaceName").unwrap_or("Tahoma");
@@ -2539,7 +2603,7 @@ impl Compiler {
     fn compile_upgrade(
         child: &XmlNode,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let upg_id = child
             .attribute("Id")
@@ -2569,10 +2633,7 @@ impl Compiler {
     }
 
     /// Compiles a `<MajorUpgrade>` syntactic macro.
-    fn compile_major_upgrade(
-        child: &XmlNode,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
-    ) {
+    fn compile_major_upgrade(child: &XmlNode, tables: &mut HashMap<String, IntermediateTable>) {
         let downgrade_err = child.attribute("DowngradeErrorMessage");
         let schedule = child
             .attribute("Schedule")
@@ -2659,7 +2720,7 @@ impl Compiler {
         child: &XmlNode,
         parent_id: Option<&str>,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         match child.tag.as_str() {
             "posix:File" | "PosixFile" => {
@@ -2685,7 +2746,7 @@ impl Compiler {
     fn compile_posix_file(
         child: &XmlNode,
         parent_id: Option<&str>,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let file_key = child.attribute("File").or(parent_id).unwrap_or("AppFile");
         let mode: i32 = child
@@ -2712,7 +2773,7 @@ impl Compiler {
         child: &XmlNode,
         parent_id: Option<&str>,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let sym_id = child.attribute("Id").unwrap_or("Symlink1");
         let target = child.attribute("Target").unwrap_or("");
@@ -2740,7 +2801,7 @@ impl Compiler {
     fn compile_posix_daemon(
         child: &XmlNode,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let svc = child.attribute("Service").unwrap_or("Service1");
         let sup_str = child.attribute("SupervisorType").unwrap_or("Systemd");
@@ -2776,7 +2837,7 @@ impl Compiler {
     fn compile_posix_acl(
         child: &XmlNode,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let acl_id = child.attribute("Id").unwrap_or("Acl1");
         let file = child.attribute("File").unwrap_or("File1");
@@ -2807,7 +2868,7 @@ impl Compiler {
     fn compile_posix_desktop(
         child: &XmlNode,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let sc = child.attribute("Shortcut").unwrap_or("Shortcut1");
         let cat = child.attribute("Categories").map(ToString::to_string);
@@ -2836,7 +2897,7 @@ impl Compiler {
     /// Compiles a `<Configuration>` element in a Merge Module.
     fn compile_module_configuration(
         child: &XmlNode,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let name = child.attribute("Name").unwrap_or("Param1");
         let format: i32 = child
@@ -2863,7 +2924,7 @@ impl Compiler {
     /// Compiles a `<Substitution>` element in a Merge Module.
     fn compile_module_substitution(
         child: &XmlNode,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let table = child.attribute("Table").unwrap_or("Property");
         let row_key = child.attribute("Row").unwrap_or("");
@@ -2884,7 +2945,7 @@ impl Compiler {
     /// Compiles an `<IgnoreModularization>` element in a Merge Module.
     fn compile_module_ignore_modularization(
         child: &XmlNode,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let name = child.attribute("Name").unwrap_or("");
         let type_val = child.attribute("Type").and_then(|t| t.parse().ok());
@@ -2899,10 +2960,7 @@ impl Compiler {
     }
 
     /// Compiles a `<Dependency>` or `<ModuleDependency>` element in a Merge Module.
-    fn compile_module_dependency(
-        child: &XmlNode,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
-    ) {
+    fn compile_module_dependency(child: &XmlNode, tables: &mut HashMap<String, IntermediateTable>) {
         let req_id = child
             .attribute("RequiredId")
             .or_else(|| child.attribute("Id"))
@@ -2936,10 +2994,7 @@ impl Compiler {
     }
 
     /// Compiles an `<Exclusion>` or `<ModuleExclusion>` element in a Merge Module.
-    fn compile_module_exclusion(
-        child: &XmlNode,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
-    ) {
+    fn compile_module_exclusion(child: &XmlNode, tables: &mut HashMap<String, IntermediateTable>) {
         let excl_id = child
             .attribute("ExcludedId")
             .or_else(|| child.attribute("Id"))
@@ -2982,7 +3037,7 @@ impl Compiler {
         child: &XmlNode,
         parent_id: Option<&str>,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let id = child.attribute("Id").unwrap_or("CopyFile1");
         let comp = parent_id.unwrap_or("DefaultComp");
@@ -3041,7 +3096,7 @@ impl Compiler {
         child: &XmlNode,
         parent_id: Option<&str>,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let id = child.attribute("Id").unwrap_or("MoveFile1");
         let comp = parent_id.unwrap_or("DefaultComp");
@@ -3073,7 +3128,7 @@ impl Compiler {
         child: &XmlNode,
         parent_id: Option<&str>,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let id = child.attribute("Id").unwrap_or("RemoveFile1");
         let comp = parent_id.unwrap_or("DefaultComp");
@@ -3114,7 +3169,7 @@ impl Compiler {
         child: &XmlNode,
         parent_id: Option<&str>,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) -> Result<()> {
         let id = child.attribute("Id").unwrap_or("Symlink1");
         let target = child
@@ -3150,10 +3205,7 @@ impl Compiler {
     }
 
     /// Compiles a `<MediaTemplate>` element into a synthesized `Media` table entry.
-    fn compile_media_template(
-        child: &XmlNode,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
-    ) {
+    fn compile_media_template(child: &XmlNode, tables: &mut HashMap<String, IntermediateTable>) {
         let cab_template = child.attribute("CabinetTemplate").unwrap_or("cab1.cab");
         let cab_name = cab_template.replace("{0}", "1");
         let disk_prompt = child.attribute("DiskPrompt").map(ToString::to_string);
@@ -3176,7 +3228,7 @@ impl Compiler {
         child: &XmlNode,
         parent_id: Option<&str>,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let id = child.attribute("Id").unwrap_or("RemoveReg1");
         let root_str = child.attribute("Root").unwrap_or("HKLM");
@@ -3206,7 +3258,7 @@ impl Compiler {
         child: &XmlNode,
         parent_id: Option<&str>,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let id = child.attribute("Id").unwrap_or("Ini1");
         let file_name = child.attribute("Name").unwrap_or("config.ini");
@@ -3248,7 +3300,7 @@ impl Compiler {
         child: &XmlNode,
         parent_id: Option<&str>,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let id = child.attribute("Id").unwrap_or("RemoveIni1");
         let file_name = child.attribute("Name").unwrap_or("config.ini");
@@ -3281,7 +3333,7 @@ impl Compiler {
     fn compile_icon(
         child: &XmlNode,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let id = child.attribute("Id").unwrap_or("AppIcon");
         section.add_symbol(Symbol::new("Icon", id));
@@ -3300,7 +3352,7 @@ impl Compiler {
         child: &XmlNode,
         parent_id: Option<&str>,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let id = child.attribute("Id").unwrap_or("App.Document");
         let desc = child.attribute("Description").map(ToString::to_string);
@@ -3329,7 +3381,7 @@ impl Compiler {
         child: &XmlNode,
         parent_id: Option<&str>,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let ext = child.attribute("Id").unwrap_or("txt");
         let comp = parent_id.unwrap_or("DefaultComp");
@@ -3379,7 +3431,7 @@ impl Compiler {
     fn compile_mime(
         child: &XmlNode,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let content_type = child
             .attribute("ContentType")
@@ -3410,7 +3462,7 @@ impl Compiler {
         child: &XmlNode,
         parent_id: Option<&str>,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let clsid = child
             .attribute("Id")
@@ -3449,7 +3501,7 @@ impl Compiler {
         child: &XmlNode,
         parent_id: Option<&str>,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let lib_id = child
             .attribute("Id")
@@ -3485,7 +3537,7 @@ impl Compiler {
     fn compile_app_id(
         child: &XmlNode,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let app_id = child
             .attribute("Id")
@@ -3514,7 +3566,7 @@ impl Compiler {
     fn compile_set_property(
         child: &XmlNode,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) -> Result<()> {
         let prop = child
             .attribute("Id")
@@ -3558,7 +3610,7 @@ impl Compiler {
     fn compile_app_search(
         child: &XmlNode,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let prop = child.attribute("Property").unwrap_or("PROP");
         let sig = child.attribute("Id").unwrap_or(prop);
@@ -3578,7 +3630,7 @@ impl Compiler {
         child: &XmlNode,
         parent_id: Option<&str>,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let root_str = child.attribute("Root").unwrap_or("HKLM");
         let root = parse_registry_root(root_str);
@@ -3679,7 +3731,7 @@ impl Compiler {
         child: &XmlNode,
         parent_id: Option<&str>,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let path = child.attribute("Path").map(ToString::to_string);
         let depth: Option<i16> = child.attribute("Depth").and_then(|d| d.parse().ok());
@@ -3711,7 +3763,7 @@ impl Compiler {
         child: &XmlNode,
         parent_id: Option<&str>,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let name = child.attribute("Name").unwrap_or("target.exe");
         let sig = child.attribute("Id").map_or_else(
@@ -3759,7 +3811,7 @@ impl Compiler {
         child: &XmlNode,
         parent_id: Option<&str>,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let file = child
             .attribute("Name")
@@ -3815,7 +3867,7 @@ impl Compiler {
         child: &XmlNode,
         parent_id: Option<&str>,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let guid = child
             .attribute("Guid")
@@ -3855,10 +3907,7 @@ impl Compiler {
 
     /// Compiles a `<Launch>` or top-level `<Condition>` element into `LaunchCondition` table.
     #[allow(clippy::option_if_let_else)]
-    fn compile_launch_condition(
-        child: &XmlNode,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
-    ) {
+    fn compile_launch_condition(child: &XmlNode, tables: &mut HashMap<String, IntermediateTable>) {
         let message = child
             .attribute("Message")
             .unwrap_or("System requirements not met.");
@@ -3883,7 +3932,7 @@ impl Compiler {
     fn compile_sequence_table(
         child: &XmlNode,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) -> Result<()> {
         let table_name = &child.tag;
         for sub in &child.children {
@@ -3957,7 +4006,7 @@ impl Compiler {
     fn compile_patch_element(
         child: &XmlNode,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let id = child.attribute("Id").unwrap_or("Patch1");
         section.add_symbol(Symbol::new("Patch", id));
@@ -3975,7 +4024,7 @@ impl Compiler {
     fn compile_ui_ref(
         child: &XmlNode,
         section: &mut IntermediateSection,
-        _tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        _tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let id = child.attribute("Id").unwrap_or("WixUI_InstallDir");
         section.add_reference(Reference::new("UI", id));
@@ -3985,7 +4034,7 @@ impl Compiler {
     fn compile_control_event(
         child: &XmlNode,
         parent_id: Option<&str>,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let dialog = child.attribute("Dialog").unwrap_or("Dialog1");
         let control = parent_id
@@ -4029,7 +4078,7 @@ impl Compiler {
     fn compile_control_condition(
         child: &XmlNode,
         parent_id: Option<&str>,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let dialog = child.attribute("Dialog").unwrap_or("Dialog1");
         let control = parent_id
@@ -4063,7 +4112,7 @@ impl Compiler {
     fn compile_subscribe(
         child: &XmlNode,
         parent_id: Option<&str>,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let dialog = child.attribute("Dialog").unwrap_or("Dialog1");
         let control = parent_id
@@ -4088,7 +4137,7 @@ impl Compiler {
     fn compile_binary(
         child: &XmlNode,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let id = child.attribute("Id").unwrap_or("Binary1");
         section.add_symbol(Symbol::new("Binary", id));
@@ -4116,7 +4165,7 @@ impl Compiler {
     fn compile_billboard(
         child: &XmlNode,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let id = child.attribute("Id").unwrap_or("BB1");
         let feat = child.attribute("Feature").unwrap_or("Main");
@@ -4138,10 +4187,7 @@ impl Compiler {
     }
 
     /// Compiles a `<ProgressText>` element into `ActionText` table.
-    fn compile_progress_text(
-        child: &XmlNode,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
-    ) {
+    fn compile_progress_text(child: &XmlNode, tables: &mut HashMap<String, IntermediateTable>) {
         let action = child.attribute("Action").unwrap_or("InstallFiles");
         let template = child.attribute("Template").map(ToString::to_string);
         let desc = if child.text.is_empty() {
@@ -4161,10 +4207,7 @@ impl Compiler {
     }
 
     /// Compiles an `<Error>` element into `Error` table.
-    fn compile_error(
-        child: &XmlNode,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
-    ) {
+    fn compile_error(child: &XmlNode, tables: &mut HashMap<String, IntermediateTable>) {
         let id: i16 = child
             .attribute("Id")
             .and_then(|i| i.parse().ok())
@@ -4194,7 +4237,7 @@ impl Compiler {
         child: &XmlNode,
         parent_id: Option<&str>,
         section: &mut IntermediateSection,
-        tables: &mut std::collections::HashMap<String, IntermediateTable>,
+        tables: &mut HashMap<String, IntermediateTable>,
     ) {
         let id = child.attribute("Id").unwrap_or("ExtensionItem");
         section.add_symbol(Symbol::new("Extension", id));
@@ -4239,11 +4282,47 @@ mod tests {
     use std::fs;
 
     #[test]
+    fn test_compiler_with_extensions_and_util_namespace() -> Result<()> {
+        let xml = r#"
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension"
+     xmlns:unreg="http://schemas.microsoft.com/wix/UnregisteredExtension"
+     OtherAttr="ignored">
+    <Product Id="{12345678-1234-1234-1234-1234567890AB}" Name="MyApp" Version="2.0.0" Manufacturer="Acme">
+        <Package Description="Installer" />
+        <Directory Id="TARGETDIR" Name="SourceDir">
+            <Component Id="MainComp" Guid="{11111111-1111-1111-1111-111111111111}">
+                <util:User Id="usr1" Name="admin" Domain="WORKGROUP" />
+                <unreg:UnknownCustomTag Id="c1" />
+                <unknownprefix:Tag Id="c2" />
+            </Component>
+        </Directory>
+    </Product>
+</Wix>
+"#;
+        let parser = XmlParser::new();
+        let root = parser.parse(xml)?;
+
+        let mut registry = ExtensionRegistry::new();
+        registry.register(std::sync::Arc::new(
+            crate::wix::extensions::util::UtilExtension::new(),
+        ));
+        let compiler = Compiler::with_extensions(registry);
+        let obj = compiler.compile(&root)?;
+
+        assert_eq!(obj.sections.len(), 1);
+        let sec = &obj.sections[0];
+        assert!(sec.tables.iter().any(|t| t.name == "_util:User"));
+
+        Ok(())
+    }
+
+    #[test]
     fn test_compiler_basic() {
         let xml = r#"
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
     <Product Id="{12345678-1234-1234-1234-1234567890AB}" Name="MyApp" Version="2.0.0" Manufacturer="Acme">
-        <Package Description="Installer" />
+        <Package Description="Installer" InstallScope="perMachine" InstallPrivileges="limited" />
         <Media Id="1" Cabinet="Data1.cab" />
         <Directory Id="TARGETDIR" Name="SourceDir">
             <Directory Id="ProgramFilesFolder" Name="PFiles">
@@ -4303,6 +4382,49 @@ mod tests {
         assert!(sec.tables.iter().any(|t| t.name == "FeatureComponents"));
         assert!(sec.tables.iter().any(|t| t.name == "Property"));
         assert!(sec.tables.iter().any(|t| t.name == "Media"));
+
+        // Verify property translation
+        let prop_table = sec.tables.iter().find(|t| t.name == "Property");
+        assert!(prop_table.is_some());
+        let allusers_val = prop_table.and_then(|pt| {
+            pt.records
+                .iter()
+                .find(|r| r.get(0) == Some(&FieldValue::String("ALLUSERS".to_string())))
+                .and_then(|r| r.get(1))
+        });
+        assert_eq!(allusers_val, Some(&FieldValue::String("1".to_string())));
+
+        let privs_val = prop_table.and_then(|pt| {
+            pt.records
+                .iter()
+                .find(|r| r.get(0) == Some(&FieldValue::String("InstallPrivileges".to_string())))
+                .and_then(|r| r.get(1))
+        });
+        assert_eq!(privs_val, Some(&FieldValue::String("limited".to_string())));
+
+        // Verify non-perMachine scope (e.g., perUser) does not emit ALLUSERS=1
+        let user_xml = r#"
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="{12345678-1234-1234-1234-1234567890AC}" Name="UserApp" Version="1.0.0" Manufacturer="Acme">
+        <Package Description="UserInstaller" InstallScope="perUser" />
+        <Directory Id="TARGETDIR" Name="SourceDir" />
+    </Product>
+</Wix>"#;
+        let user_parser = XmlParser::new();
+        let user_node = user_parser.parse(user_xml).unwrap_or_default();
+        let user_compiler = Compiler::new();
+        let user_obj = user_compiler.compile(&user_node).unwrap_or_default();
+        let user_sec = &user_obj.sections[0];
+        let has_allusers = user_sec
+            .tables
+            .iter()
+            .find(|t| t.name == "Property")
+            .is_some_and(|up| {
+                up.records
+                    .iter()
+                    .any(|r| r.get(0) == Some(&FieldValue::String("ALLUSERS".to_string())))
+            });
+        assert!(!has_allusers);
     }
 
     #[test]
@@ -5155,7 +5277,7 @@ mod tests {
         let compiler = Compiler::new();
 
         let xml = r#"
-<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi" xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi" xmlns:mockext="http://schemas.example.com/mockext">
     <Product Id="{11111111-1111-1111-1111-111111111111}" Name="App" Version="1.0.0" Manufacturer="Acme">
         <Symbol Id="SymIdOnly" />
         <Symbol Path="SymPathOnly" />
@@ -5202,9 +5324,9 @@ mod tests {
         <ProgressText Action="CustomAction1" Template="[1]" />
         <Error Id="2001" />
         <Error Id="2002">Custom error message</Error>
-        <util:TopLevel Target="Everywhere" />
-        <util:ValueElem Value="Val1" />
-        <util:Empty />
+        <mockext:TopLevel Target="Everywhere" />
+        <mockext:ValueElem Value="Val1" />
+        <mockext:Empty />
         <Upgrade Id="{11111111-2222-3333-4444-555555555555}">
             <UnknownInUpgrade />
         </Upgrade>
@@ -5249,7 +5371,7 @@ mod tests {
         // Verify direct call to compile_posix_element with unknown tag
         let dummy_node = parser.parse("<posix:UnknownTag />").unwrap_or_default();
         let mut dummy_sec = IntermediateSection::new(SectionType::Product, None);
-        let mut dummy_tbls = std::collections::HashMap::new();
+        let mut dummy_tbls = HashMap::new();
         Compiler::compile_posix_element(&dummy_node, None, &mut dummy_sec, &mut dummy_tbls);
 
         // Verify parse_registry_root helpers
@@ -6994,7 +7116,7 @@ mod tests {
         });
         let mut dialog_sec =
             IntermediateSection::new(SectionType::Product, Some("Prod".to_string()));
-        let mut tables = std::collections::HashMap::new();
+        let mut tables = HashMap::new();
         assert!(Compiler::compile_dialog(&dlg_node, &mut dialog_sec, &mut tables).is_ok());
     }
 }

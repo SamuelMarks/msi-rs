@@ -36,7 +36,7 @@ except ImportError:  # pragma: no cover
         ]
         loaded = False
         for c in candidates:
-            for ext in (".so", ".dylib", ".pyd"):
+            for ext in (".so", ".dylib", ".pyd", ".dll"):
                 candidate_path = c / f"lib_msi{ext}"
                 alt_path = c / f"_msi{ext}"
                 for p in (candidate_path, alt_path):

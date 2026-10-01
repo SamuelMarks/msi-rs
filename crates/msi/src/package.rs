@@ -350,6 +350,13 @@ impl Package {
         let comments = find_prop("ProductComments");
         let keywords = find_prop("ProductKeywords");
 
+        let mut word_count = if embedded_cabinets.is_empty() { 0 } else { 2 };
+        if let Some(privileges) = find_prop("InstallPrivileges") {
+            if privileges.eq_ignore_ascii_case("limited") {
+                word_count |= 8;
+            }
+        }
+
         let summary_info = SummaryInfo {
             codepage: Some(CODEPAGE_UTF8),
             title: Some("Installation Database".to_string()),
@@ -360,7 +367,7 @@ impl Package {
             comments,
             keywords,
             page_count: Some(500),
-            word_count: Some(i32::from(!embedded_cabinets.is_empty())),
+            word_count: Some(word_count),
             ..SummaryInfo::default()
         };
 
@@ -2066,7 +2073,7 @@ mod tests {
             pkg1.metadata().product_code(),
             "{12345678-1234-1234-1234-123456789012}"
         );
-        assert_eq!(pkg1.summary_info().word_count, Some(1));
+        assert_eq!(pkg1.summary_info().word_count, Some(2));
 
         // 2. With empty database (tests fallback branches)
         let db_empty = LinkedDatabase::default();
@@ -2128,6 +2135,34 @@ mod tests {
         );
         let pkg5 = Package::from_database(db5, HashMap::new());
         assert_eq!(pkg5.summary_info().template.as_deref(), Some("Intel;1033"));
+    }
+
+    /// Tests [`Package::from_database`] with `InstallPrivileges` settings.
+    #[test]
+    fn test_package_from_database_install_privileges() {
+        // With InstallPrivileges="limited" (word_count |= 8)
+        let mut db6 = LinkedDatabase::default();
+        db6.add_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("InstallPrivileges".to_string()),
+                FieldValue::String("limited".to_string()),
+            ]),
+        );
+        let pkg6 = Package::from_database(db6, HashMap::new());
+        assert_eq!(pkg6.summary_info().word_count, Some(8));
+
+        // With InstallPrivileges="elevated" (not limited, word_count not |= 8)
+        let mut db7 = LinkedDatabase::default();
+        db7.add_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("InstallPrivileges".to_string()),
+                FieldValue::String("elevated".to_string()),
+            ]),
+        );
+        let pkg7 = Package::from_database(db7, HashMap::new());
+        assert_eq!(pkg7.summary_info().word_count, Some(0));
     }
 
     /// Tests package serialization when `_Tables` and `_Columns` tables are explicitly present but empty.

@@ -245,7 +245,9 @@ mod tests {
             inner: msi::package::PackageBuilder::default(),
         }));
         // SAFETY: builder is a valid heap allocation from Box::into_raw.
-        unsafe { msi_package_builder_destroy(builder) };
+        unsafe {
+            msi_package_builder_destroy(builder);
+        }
 
         let meta = msi::package::PackageMetadata::new(
             "Test",
@@ -262,39 +264,53 @@ mod tests {
             ),
         }));
         // SAFETY: pkg is a valid heap allocation from Box::into_raw.
-        unsafe { msi_package_destroy(pkg) };
+        unsafe {
+            msi_package_destroy(pkg);
+        }
 
         let db = Box::into_raw(Box::new(MsiDatabaseHandle {
             inner: msi::wix::linker::LinkedDatabase::default(),
         }));
         // SAFETY: db is a valid heap allocation from Box::into_raw.
-        unsafe { msi_database_destroy(db) };
+        unsafe {
+            msi_database_destroy(db);
+        }
 
         let rec = Box::into_raw(Box::new(MsiRecordHandle {
             inner: msi::database::tables::record::Record::new(),
         }));
         // SAFETY: rec is a valid heap allocation from Box::into_raw.
-        unsafe { msi_record_destroy(rec) };
+        unsafe {
+            msi_record_destroy(rec);
+        }
 
         let si = Box::into_raw(Box::new(MsiSummaryInfoHandle {
             inner: msi::database::summary_info::SummaryInfo::default(),
         }));
         // SAFETY: si is a valid heap allocation from Box::into_raw.
-        unsafe { msi_summary_info_destroy(si) };
+        unsafe {
+            msi_summary_info_destroy(si);
+        }
 
         let c_str = CString::new("test string").unwrap_or_default().into_raw();
         // SAFETY: c_str is a valid pointer from CString::into_raw.
-        unsafe { msi_string_free(c_str) };
+        unsafe {
+            msi_string_free(c_str);
+        }
 
         let data = vec![1u8, 2, 3, 4, 5];
         let len = data.len();
         let buf_ptr = Box::into_raw(data.into_boxed_slice()).cast::<u8>();
         // SAFETY: buf_ptr is a valid slice pointer allocated with Box::into_raw of length len.
-        unsafe { msi_buffer_free(buf_ptr, len) };
+        unsafe {
+            msi_buffer_free(buf_ptr, len);
+        }
 
         let mut dummy = 42u8;
         // SAFETY: Non-null pointer with len 0 should be a safe no-op and not free anything.
-        unsafe { msi_buffer_free(&raw mut dummy, 0) };
+        unsafe {
+            msi_buffer_free(&raw mut dummy, 0);
+        }
     }
 
     #[test]
