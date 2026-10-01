@@ -19,7 +19,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 # Attempt importing native extension module _msi. If running from repository
 # before installation, attempt loading from target/debug or target/release.
 try:
-    from msi import _msi
+    from . import _msi
 except ImportError:  # pragma: no cover
     try:
         import _msi
