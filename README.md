@@ -11,14 +11,14 @@ A complete, memory-safe, cross-platform implementation of the Windows Installer 
 
 ---
 
-## Direct Replacement for WiX Toolset & `msiexec`
+## Direct Replacement for WiX Toolset, CMake CPack & `msiexec`
 
 Traditionally, authoring, compiling, inspecting, and executing Windows Installer databases required Windows machines, the .NET Framework, official WiX toolchains, or heavy compatibility layers like Wine. `msi-rs` replaces this entire ecosystem with lightweight, dependency-free native binaries:
 
-### 1. Replacing WiX Toolset & msitools (14 Standalone Binaries)
-`msi-rs` replaces the entire WiX compilation, linking, harvesting, and decompilation toolchain without requiring .NET, Java, or Windows SDKs:
-- **WiX Toolset Suite:**
-  - **`candle`**: Full native parsing and compilation of WiX XML source files (`.wxs`, `.wxi`) across WiX v3, v4, and v5 schemas directly into typed intermediate `.wixobj` representations.
+### 1. Replacing WiX Toolset, CMake CPack & msitools (16 Standalone Binaries)
+`msi-rs` replaces the entire WiX compilation, linking, harvesting, and decompilation toolchain without requiring .NET, Java, or Windows SDKs, and serves as an exact drop-in toolchain for CMake's `CPackWIX` generator:
+- **WiX Toolset Suite (9 Binaries):**
+  - **`candle`**: Full native parsing and compilation of WiX XML source files (`.wxs`, `.wxi`) across WiX v3, v4, and v5 schemas directly into typed intermediate `.wixobj` representations. Supports response files (`@response.txt`), `-sw<N>`, `-wx`, and CPack discovery banners.
   - **`light`**: High-performance symbol dependency graph solver, automatic sequence table ordering (`CostInitialize` through `InstallFinalize`), media layout splitting, cabinet packing (MSZIP, LZX, Quantum), and database generation directly into valid Compound File Binary Format (`.msi`) containers.
   - **`dark`**: Roundtrip decompiler extracting relational database tables, string pools, and embedded cabinets back into clean WiX XML declarations.
   - **`heat`**: Directory, file, and payload harvesting engine generating component and directory WiX XML fragments automatically.
@@ -27,13 +27,16 @@ Traditionally, authoring, compiling, inspecting, and executing Windows Installer
   - **`smoke`**: Independent validation engine running native Internal Consistency Evaluators (`ICE01`, `ICE02`, `ICE03`, `ICE18`, `ICE33`, `ICE80`, `ICE99`, etc.).
   - **`torch`**: Database transformation tool diffing two MSI databases to synthesize `.mst` transforms.
   - **`wix`**: WiX v4/v5 multi-command frontend coordinating end-to-end builds, extensions, and packaging tasks.
-- **msitools Utilities:**
+- **msitools Utilities (6 Binaries):**
   - **`msibuild`**: Create and modify MSI databases directly from the command line.
   - **`msidiff`**: Compare two MSI databases with relational table diffing.
   - **`msidump`**: Export relational tables into IDT text format or stream dumps.
   - **`msiextract`**: Decompress and extract all files and embedded cabinets from MSI packages without executing an installation sequence.
   - **`msiinfo`**: Inspect and edit OLE summary information streams and table catalogs.
-- **Cross-Platform Compilation**: Build Windows Installer packages natively in Linux or macOS CI/CD workflows without spinning up Windows runners or Docker containers.
+  - **`wixl`**: Cross-compiler executable shim replicating GNOME `wixl` (msitools) compiling and linking `.wxs` source directly into `.msi` packages.
+- **Windows Installer Runtime Shim (1 Binary):**
+  - **`msiexec`**: Dedicated command-line execution shim replicating Microsoft `msiexec.exe` parameter handling, return codes, and transaction dispatch across POSIX and Windows.
+- **Cross-Platform Compilation & CPack Parity**: Build Windows Installer packages natively in Linux or macOS CI/CD workflows without spinning up Windows runners or Docker containers, with direct compatibility for CMake CPack (`CPackWIX`).
 
 ### 2. Replacing the Windows Installer Runtime (`msiexec.exe`)
 `msi-rs` replaces `msiexec.exe` with `msi-cli`, a drop-in command-line tool and execution engine that runs natively across Unix and POSIX operating systems:
@@ -134,13 +137,14 @@ The repository is organized as a Cargo workspace with five specialized crates:
 msi-rs/
 ├── crates/
 │   ├── msi/         # Core library: CFB, CAB, Database, WiX, Execution Engine, Platform translation, UI
-│   ├── msi-cli/     # msiexec-compatible CLI tool and 14 standalone WiX/msitools binaries (candle, light, wix, etc.)
+│   ├── msi-cli/     # msiexec-compatible CLI tool and 16 standalone WiX/msitools/msiexec binaries
 │   ├── msi-gui/     # Desktop native GUI wizard application (eframe / egui / wgpu / softbuffer)
 │   ├── msi-ffi/     # C-compatible ABI shared and static libraries (include/msi.h)
 │   └── msi-python/  # Python 3 native PyO3 extension module (import msi)
 ├── docs/
 │   └── python_guide.md # Comprehensive Python packaging guide and API reference
 ├── ARCHITECTURE.md  # In-depth architectural design, schemas, and specifications
+├── USAGE.md         # Comprehensive usage manual, CLI recipes, library guides, and CI/CD examples
 ├── Cargo.toml       # Workspace manifest
 └── pyproject.toml   # Python package build configuration (maturin)
 ```
@@ -211,11 +215,28 @@ See the complete Python guide and API documentation in [`docs/python_guide.md`](
   - Multi-source `.wxs` input support (`msi pack -o App.msi --multi-fragment Product.wxs Payload.wxs`).
   - Cross-fragment symbol resolution (`<ComponentGroupRef Id="..." />`).
   - Preprocessor defines (`-d VAR=VAL` / `-dVAR=VAL`) and suppression flags (`-sval`, `-sice:<rule>`).
-  - Built-in `WixUIExtension` support with standard dialog presets (`WixUI_Mondo`, `WixUI_InstallDir`, `WixUI_FeatureTree`, `WixUI_Minimal`), fonts (`WixUI_Font_Normal`, `WixUI_Font_Title`), and branding variables (`WixUIBannerBmp`, `WixUIDialogBmp`, `WixUILicenseRtf`).
   - Authoring of platform daemons and services (`<ServiceInstall>` & `<ServiceControl>`) with automatic standard action injection (`StopServices`, `DeleteServices`, `InstallServices`, `StartServices`).
   - Authoring of desktop and Start Menu shortcuts, system environment variables, registry searches (`<RegistrySearch>`, `<FileSearch>`), and launch conditions (`<Condition Message="...">`).
   - Multi-cabinet deterministic media partitioning for offline air-gapped installers (`engine.cab`, `runtimes.cab`, `databases.cab`, `codebase.cab`) with non-overlapping sequence boundaries and compression levels (`high` with LZX vs `medium` with MSZIP).
   - Native Payload Harvester (`msi harvest`) drop-in replacement for shell harvesting scripts: strictly respects `.gitignore`, generates deterministic RFC 4122 v5 UUIDs, and auto-hashes identifiers exceeding 72 characters (`CMP_<hash>`, `FIL_<hash>`).
+- **Dynamic WiX Extension Ecosystem (10 Built-In Extensions):**
+  - Modular extension registry (`ExtensionRegistry::with_builtin_extensions()`) executing custom XML element compilers and linker mutations natively:
+    - **`WixUIExtension`**: Standard dialog presets (`WixUI_Mondo`, `WixUI_InstallDir`, `WixUI_FeatureTree`, `WixUI_Minimal`), fonts, and branding variables (`WixUIBannerBmp`, `WixUIDialogBmp`, `WixUILicenseRtf`).
+    - **`WixUtilExtension`**: User and local group creation (`<util:User>`, `<util:Group>`), XML file mutations (`<util:XmlFile>`, `<util:XmlConfig>`), SMB file shares (`<util:FileShare>`), and performance counters.
+    - **`WixFirewallExtension`**: Windows Defender Firewall exception rules (`<firewall:FirewallException>`) with transactional rollback.
+    - **`WixBalExtension`**: Burn Application Logic schemas and UI state machines (`<bal:WixStandardBootstrapperApplication>`).
+    - **`WixNetFxExtension`**: Native Image Generator optimization (`<netfx:NativeImage>`).
+    - **`WixHttpExtension`**: HTTP Server API URL reservations (`<http:UrlReservation>`) and SSL certificate bindings.
+    - **`WixIIsExtension`**: Internet Information Services web sites, application pools, and virtual directories (`<iis:WebSite>`, `<iis:WebAppPool>`, `<iis:WebVirtualDir>`).
+    - **`WixSqlExtension`**: SQL Server database instance creation and SQL script execution (`<sql:SqlDatabase>`, `<sql:SqlScript>`).
+    - **`WixComPlusExtension`**: COM+ application, component, and role configuration (`<complus:ComPlusApplication>`).
+    - **`WixDependencyExtension`**: Inter-package ref-counting and dependency resolution (`<dep:Provides>`, `<dep:Requires>`).
+- **CMake / CPack WIX Drop-In Replacement:**
+  - Complete CLI banner, option, and execution parity for CMake's `CPackWIX` generator (`candle`, `light`, and `wix`).
+  - Response file support (`@response.txt`) for expansive file and directory lists generated by CMake.
+  - Automatic handling of CMake properties: `CPACK_WIX_UPGRADE_GUID`, `CPACK_WIX_PRODUCT_GUID`, `CPACK_WIX_PRODUCT_ICON`, `CPACK_WIX_UI_BANNER`, `CPACK_WIX_UI_DIALOG`, `CPACK_RESOURCE_FILE_LICENSE`.
+  - CPack XML patch file support (`CPACK_WIX_PATCH_FILE`) with fragment targeting (`#PRODUCT`, `#PRODUCTFEATURE`), attribute merging, and element deletion.
+  - Component-based multi-cabinet splitting (`CPACK_WIX_CAB_PER_COMPONENT`) and multi-culture localization (`CPACK_WIX_CULTURES` with `-cultures:<list>` and `-loc`).
 - **Complete Internal Consistency Evaluators (100% ICE Suite / 105 Rules):**
   - Full modular validation engine (`crates/msi/src/wix/ice/`) implementing all 105 official Windows Installer rules across 7 categories:
     - **Structural & Metadata**: `ICE16`, `ICE29`, `ICE35`, `ICE37`, `ICE39`, `ICE40`, `ICE41`, `ICE45`, `ICE46`, `ICE48`, `ICE51`, `ICE53`, `ICE58`, `ICE70`, `ICE71`, `ICE73`, `ICE74`, `ICE82`, `ICE84`, `ICE87`, `ICE92`, `ICE93`, `ICE95`.
@@ -227,7 +248,7 @@ See the complete Python guide and API documentation in [`docs/python_guide.md`](
     - **Advanced Subsystems**: `ICE25`, `ICE62`, `ICE66`, `ICE76`, `ICE81`, `ICE83`, `ICE94`, `ICE97`, `ICE98`, `ICE105`.
   - Registered in `IceRegistry::with_standard_rules()` and exposed through `smoke.exe`, `light.exe`, and `msibuild.exe`.
 
-### 4. Cross-Platform Platform Translation (`msi-platform`)
+### 4. Cross-Platform Platform Translation & Offline Sysroot Provisioning (`msi-platform`)
 - **Transparent Directory Translation:**
   - Standard Windows directories translated automatically across Windows, Linux FHS/XDG, macOS Darwin/Library, FreeBSD `hier(7)`, and SunOS/illumos:
     - `ProgramFiles64Folder`: `/opt/<Vendor>` (Linux, SunOS) / `/usr/local/<Vendor>` (FreeBSD) / `/Applications` (macOS).
@@ -242,6 +263,13 @@ See the complete Python guide and API documentation in [`docs/python_guide.md`](
   - FreeBSD `rc.d`: Auto-generates `rc.subr` scripts in `/usr/local/etc/rc.d/<service>`, managed via `sysrc` and `service`.
   - SunOS/illumos `SMF`: Auto-generates XML manifests in `/var/svc/manifest/site/`, managed via `svccfg` and `svcadm`.
   - Windows: Native Windows Service Control Manager (`sc.exe` / SCM API).
+- **Offline Sysroots & Bare-Metal OS Provisioning:**
+  - Pre-boot sysroot targeting with configurable execution sandboxing policies (`PermissiveChroot`, `SkipWithSuccess`, `StrictReject`).
+  - Synthetic in-process mocking of live subsystem APIs unavailable during offline pre-boot installation (`SCM`, `RPC`, `NetApi`).
+  - UEFI bootloader staging (`/EFI/BOOT/BOOTX64.EFI`), offline Windows Boot Configuration Data (BCD) hive synthesis (`{bootmgr}`, `{default}`), and Linux bootloader generator support (`systemd-boot`, `GRUB2`, `Limine`).
+  - Non-volatile EFI NVRAM variable manipulation (`efivarfs`) programming `BootXXXX` and `BootOrder` entries.
+  - Disk block device scanning, GPT partition table layout synthesis, and native filesystem formatters (FAT32, ext4, NTFS).
+  - Offline Windows registry hive editing (`SYSTEM`, `SOFTWARE`, `BCD`) directly from disk images without requiring running Windows kernels.
 - **Strict Incompatibility Rejection:**
   - Rejects Windows-only kernel mechanisms (`SERVICE_KERNEL_DRIVER`, file system filter drivers, COM+ DCOM catalog registration `ICE97`) with typed `Error::UnsupportedPlatformFeature { feature, target_os, reason }` ensuring zero silent failures or corruption.
 - **Desktop Integration:** Freedesktop `.desktop` application launchers and macOS `.app` bundle synthesis with icon conversion.
@@ -286,7 +314,7 @@ See the complete Python guide and API documentation in [`docs/python_guide.md`](
 # Build all workspace crates and binaries
 cargo build --release
 
-# Run the complete test suite (780+ unit, integration, doc, and binding tests)
+# Run the complete test suite (1,030+ unit, integration, doc, and binding tests)
 cargo test --workspace
 
 # Verify strict quality and lints
@@ -297,7 +325,7 @@ cargo clippy --all-targets -- -D warnings -D clippy::pedantic
 
 ## Usage Examples
 
-### Command-Line Interface (`msi-cli`)
+### Command-Line Interface (`msi-cli`) & `msiexec`
 
 ```bash
 # Install a package silently with verbose logging (subcommand syntax)
@@ -306,10 +334,13 @@ msi-cli install ./ExampleApp.msi --ui quiet --log ./install.log
 # Install with basic progress UI and property overrides
 msi-cli install ./ExampleApp.msi --ui basic INSTALLDIR="/opt/custom" APP_ENV="production"
 
-# Direct msiexec flag parity (drop-in replacement)
+# Direct msiexec flag parity via msi-cli (drop-in replacement)
 msi-cli /i ./ExampleApp.msi /qn /lvx ./install.log
 msi-cli /x ./ExampleApp.msi /qb
 msi-cli /fa ./ExampleApp.msi
+
+# Or use the standalone msiexec binary directly
+msiexec /i ./ExampleApp.msi /qn /lvx ./install.log
 
 # Inspect package summary information and catalogs
 msi-cli info ./ExampleApp.msi
@@ -334,7 +365,7 @@ msi-cli install ./ExampleApp.msi --tui
 msi-cli install ./ExampleApp.msi
 ```
 
-### WiX Toolset & Utilities
+### WiX Toolset, CPack & Utilities
 
 ```bash
 # Compile WiX source into an intermediate object
@@ -342,6 +373,9 @@ candle Product.wxs -o Product.wixobj
 
 # Link object into an MSI database with validation
 light Product.wixobj -o Product.msi
+
+# Compile and link in one step with GNOME wixl shim (msitools)
+wixl -a x64 -o Product.msi Product.wxs
 
 # Harvest an entire directory hierarchy into WiX source
 heat dir ./payload -out Payload.wxs -cg PayloadGroup

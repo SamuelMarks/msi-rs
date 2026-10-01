@@ -164,8 +164,9 @@ impl StringPool {
         // _StringPool layout:
         // Header: 2 bytes codepage
         // Entry: 2 bytes length (LE) + 2 bytes ref_count (LE)
-        let mut pool_bytes = Vec::with_capacity(2 + self.entries.len() * 4);
+        let mut pool_bytes = Vec::with_capacity(4 + self.entries.len() * 4);
         pool_bytes.extend_from_slice(&self.codepage.to_le_bytes());
+        pool_bytes.extend_from_slice(&0u16.to_le_bytes());
 
         let mut data_bytes = Vec::new();
 
@@ -198,14 +199,14 @@ impl StringPool {
     /// Returns [`Error::InvalidStringPool`] if header or string data is malformed.
     #[allow(clippy::cast_possible_truncation)]
     pub fn deserialize(pool_bytes: &[u8], data_bytes: &[u8]) -> Result<Self> {
-        if pool_bytes.len() < 2 {
+        if pool_bytes.len() < 4 {
             return Err(Error::InvalidStringPool {
                 reason: "string pool header truncated".to_string(),
             });
         }
 
         let codepage = u16::from_le_bytes([pool_bytes[0], pool_bytes[1]]);
-        let entries_data = &pool_bytes[2..];
+        let entries_data = &pool_bytes[4..];
 
         if entries_data.len() % 4 != 0 {
             return Err(Error::InvalidStringPool {
@@ -311,7 +312,7 @@ mod tests {
         pool.add_string("First"); // Ref count 2
 
         let (pool_bytes, data_bytes) = pool.serialize();
-        assert_eq!(pool_bytes.len(), 2 + 2 * 4); // 2 bytes header + 2 entries * 4 bytes
+        assert_eq!(pool_bytes.len(), 4 + 2 * 4); // 4 bytes header + 2 entries * 4 bytes
 
         let parsed_res = StringPool::deserialize(&pool_bytes, &data_bytes);
         assert_eq!(
@@ -328,15 +329,15 @@ mod tests {
     /// Tests string pool deserialization error handling.
     #[test]
     fn test_string_pool_errors() {
-        // Truncated header (< 2 bytes)
-        assert!(StringPool::deserialize(&[0], &[]).is_err());
+        // Truncated header (< 4 bytes)
+        assert!(StringPool::deserialize(&[0, 0, 0], &[]).is_err());
 
         // Pool entries not a multiple of 4
-        assert!(StringPool::deserialize(&[0, 0, 1, 2, 3], &[]).is_err());
+        assert!(StringPool::deserialize(&[0, 0, 0, 0, 1, 2, 3], &[]).is_err());
 
         // String data overflow
         let pool_bytes = [
-            0x00, 0x00, // Codepage 0
+            0x00, 0x00, 0x00, 0x00, // Codepage 0 + Flags
             0x0A, 0x00, 0x01, 0x00, // Length = 10, RefCount = 1
         ];
         let data_bytes = [0x41, 0x42]; // Only 2 bytes provided

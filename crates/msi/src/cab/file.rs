@@ -314,18 +314,15 @@ impl CfFile {
         let raw_attribs = u16::from_le_bytes([bytes[14], bytes[15]]);
         let attributes = FileAttributes::from_bits(raw_attribs);
 
-        let mut cursor = 16;
-        while cursor < bytes.len() && bytes[cursor] != 0 {
-            cursor += 1;
-        }
-        if cursor >= bytes.len() {
+        let Some(pos) = bytes[16..].iter().position(|&b| b == 0) else {
             return Err(Error::InvalidCabData {
                 reason: "unterminated filename in file structure".to_string(),
             });
-        }
+        };
 
-        let filename = String::from_utf8_lossy(&bytes[16..cursor]).to_string();
-        cursor += 1; // consume null byte
+        let end = 16 + pos;
+        let filename = String::from_utf8_lossy(&bytes[16..end]).to_string();
+        let cursor = end + 1; // consume null byte
 
         Ok((
             Self {

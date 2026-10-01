@@ -37,11 +37,9 @@ use std::path::PathBuf;
 /// Returns [`Error::WixExtension`] if the extension is an unsupported .NET assembly or unknown.
 pub fn validate_extension(ext_arg: &str) -> Result<&'static str> {
     let trimmed = ext_arg.trim();
-    let path = std::path::Path::new(trimmed);
-    if path
-        .extension()
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("dll") || ext.eq_ignore_ascii_case("exe"))
-    {
+    let lower = trimmed.to_ascii_lowercase();
+    #[allow(clippy::case_sensitive_file_extension_comparisons)]
+    if lower.ends_with(".dll") || lower.ends_with(".exe") {
         return Err(Error::WixExtension {
             extension: trimmed.to_string(),
             message: format!(
@@ -50,7 +48,6 @@ pub fn validate_extension(ext_arg: &str) -> Result<&'static str> {
         });
     }
 
-    let lower = trimmed.to_ascii_lowercase();
     let mut norm = lower.as_str();
     if let Some(rest) = norm.strip_prefix("wixtoolset.") {
         norm = rest;
@@ -114,6 +111,49 @@ impl WixToolchainDiscovery {
     ///
     /// Returns [`Error::WixLinker`] if `candle` or `light` cannot be discovered.
     pub fn discover(hint_dir: Option<&std::path::Path>) -> Result<Self> {
+        let cpack_root = std::env::var_os("CPACK_WIX_ROOT").map(PathBuf::from);
+        let wix_env = std::env::var_os("WIX").map(PathBuf::from);
+        let path_var = std::env::var_os("PATH").unwrap_or_default();
+        let path_dirs: Vec<PathBuf> = std::env::split_paths(&path_var).collect();
+
+        Self::discover_with_search_dirs(
+            hint_dir,
+            cpack_root.as_deref(),
+            wix_env.as_deref(),
+            &path_dirs,
+        )
+    }
+
+    /// Discovers `WiX` toolchain executables with explicit candidate directories.
+    ///
+    /// Searches candidate directories in priority order:
+    /// 1. `hint_dir/bin` and `hint_dir` (if provided)
+    /// 2. `cpack_wix_root/bin` and `cpack_wix_root` (if provided)
+    /// 3. `wix_root/bin` and `wix_root` (if provided)
+    /// 4. `path_dirs`
+    ///
+    /// Probes filenames with and without `.exe` extension on both Windows and POSIX.
+    ///
+    /// # Arguments
+    ///
+    /// * `hint_dir` - Optional root directory hint.
+    /// * `cpack_wix_root` - Optional `CPACK_WIX_ROOT` directory.
+    /// * `wix_root` - Optional `WIX` installation root directory.
+    /// * `path_dirs` - Slice of directories from `PATH`.
+    ///
+    /// # Returns
+    ///
+    /// Discovered [`WixToolchainDiscovery`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::WixLinker`] if `candle` or `light` cannot be discovered.
+    pub fn discover_with_search_dirs(
+        hint_dir: Option<&std::path::Path>,
+        cpack_wix_root: Option<&std::path::Path>,
+        wix_root: Option<&std::path::Path>,
+        path_dirs: &[PathBuf],
+    ) -> Result<Self> {
         let mut candidates = Vec::new();
 
         if let Some(hint) = hint_dir {
@@ -121,30 +161,24 @@ impl WixToolchainDiscovery {
             candidates.push(hint.to_path_buf());
         }
 
-        if let Some(cpack_wix) = std::env::var_os("CPACK_WIX_ROOT") {
-            let p = PathBuf::from(cpack_wix);
-            candidates.push(p.join("bin"));
-            candidates.push(p);
+        if let Some(cpack_wix) = cpack_wix_root {
+            candidates.push(cpack_wix.join("bin"));
+            candidates.push(cpack_wix.to_path_buf());
         }
 
-        if let Some(wix_env) = std::env::var_os("WIX") {
-            let p = PathBuf::from(wix_env);
-            candidates.push(p.join("bin"));
-            candidates.push(p);
+        if let Some(wix_env) = wix_root {
+            candidates.push(wix_env.join("bin"));
+            candidates.push(wix_env.to_path_buf());
         }
 
-        let path_var = std::env::var_os("PATH").unwrap_or_default();
-        candidates.extend(std::env::split_paths(&path_var));
+        candidates.extend(path_dirs.iter().cloned());
 
         let probe_binary = |name: &str| -> Option<PathBuf> {
             for dir in &candidates {
-                let p1 = dir.join(name);
-                if p1.is_file() {
-                    return Some(p1);
-                }
-                let p2 = dir.join(format!("{name}.exe"));
-                if p2.is_file() {
-                    return Some(p2);
+                for candidate in [dir.join(name), dir.join(format!("{name}.exe"))] {
+                    if candidate.is_file() {
+                        return Some(candidate);
+                    }
                 }
             }
             None
@@ -2786,12 +2820,18 @@ mod extra_toolchain_tests {
     /// Tests toolchain discovery logic for `candle`, `light`, and `wix` shims.
     #[test]
     fn test_wix_toolchain_discovery() {
-        let temp_dir = std::env::temp_dir().join("msi_test_discovery");
+        let temp_dir =
+            std::env::temp_dir().join(format!("msi_test_discovery_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&temp_dir);
         let bin_dir = temp_dir.join("bin");
         let _ = fs::create_dir_all(&bin_dir);
 
         // Discovery fails when executables missing
-        assert!(WixToolchainDiscovery::discover(Some(&temp_dir)).is_err());
+        assert!(
+            WixToolchainDiscovery::discover_with_search_dirs(Some(&temp_dir), None, None, &[])
+                .is_err()
+        );
+        assert!(WixToolchainDiscovery::discover_with_search_dirs(None, None, None, &[]).is_err());
 
         // Create candle and light shims
         let candle_path = bin_dir.join("candle");
@@ -2801,30 +2841,54 @@ mod extra_toolchain_tests {
         assert!(fs::write(&light_path, b"shim").is_ok());
         assert!(fs::write(&wix_path, b"shim").is_ok());
 
-        let disc = WixToolchainDiscovery::discover(Some(&temp_dir));
+        let disc =
+            WixToolchainDiscovery::discover_with_search_dirs(Some(&temp_dir), None, None, &[]);
         assert!(disc.is_ok());
         let res = disc.unwrap_or_default();
         assert_eq!(res.candle, candle_path);
         assert_eq!(res.light, light_path);
         assert_eq!(res.wix, Some(wix_path));
 
-        // Test CPACK_WIX_ROOT and WIX env vars
-        std::env::set_var("CPACK_WIX_ROOT", &temp_dir);
-        let cpack_disc = WixToolchainDiscovery::discover(None);
-        assert!(cpack_disc.is_ok());
-        std::env::remove_var("CPACK_WIX_ROOT");
+        // Test ambient discover() call with hint_dir containing binaries
+        let ambient_disc = WixToolchainDiscovery::discover(Some(&temp_dir));
+        assert!(ambient_disc.is_ok());
+        let ambient_res = ambient_disc.unwrap_or_default();
+        assert_eq!(ambient_res.candle, candle_path);
+        assert_eq!(ambient_res.light, light_path);
 
-        std::env::set_var("WIX", &temp_dir);
-        let wix_disc = WixToolchainDiscovery::discover(None);
+        // Exercise ambient discover(None) path
+        let _ = WixToolchainDiscovery::discover(None);
+
+        // Test CPACK_WIX_ROOT and WIX candidate dirs in isolation
+        let cpack_disc =
+            WixToolchainDiscovery::discover_with_search_dirs(None, Some(&temp_dir), None, &[]);
+        assert!(cpack_disc.is_ok());
+
+        let wix_disc =
+            WixToolchainDiscovery::discover_with_search_dirs(None, None, Some(&temp_dir), &[]);
         assert!(wix_disc.is_ok());
-        std::env::remove_var("WIX");
+
+        // Test PATH candidate dirs in isolation
+        let path_disc = WixToolchainDiscovery::discover_with_search_dirs(
+            None,
+            None,
+            None,
+            std::slice::from_ref(&bin_dir),
+        );
+        assert!(path_disc.is_ok());
 
         // Test candle found but light missing
         let candle_only_dir = temp_dir.join("candle_only");
         let candle_only_bin = candle_only_dir.join("bin");
         let _ = fs::create_dir_all(&candle_only_bin);
         let _ = fs::write(candle_only_bin.join("candle"), b"shim");
-        assert!(WixToolchainDiscovery::discover(Some(&candle_only_dir)).is_err());
+        assert!(WixToolchainDiscovery::discover_with_search_dirs(
+            Some(&candle_only_dir),
+            None,
+            None,
+            &[]
+        )
+        .is_err());
 
         // Test Windows .exe detection
         let win_dir = temp_dir.join("win_bin");
@@ -2834,11 +2898,13 @@ mod extra_toolchain_tests {
         assert!(fs::write(&candle_exe, b"shim").is_ok());
         assert!(fs::write(&light_exe, b"shim").is_ok());
 
-        let windows_disc = WixToolchainDiscovery::discover(Some(&win_dir));
+        let windows_disc =
+            WixToolchainDiscovery::discover_with_search_dirs(Some(&win_dir), None, None, &[]);
         assert!(windows_disc.is_ok());
         let win_res = windows_disc.unwrap_or_default();
         assert_eq!(win_res.candle, candle_exe);
         assert_eq!(win_res.light, light_exe);
+        assert_eq!(win_res.wix, None);
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
@@ -2986,10 +3052,11 @@ mod extra_toolchain_tests {
     /// Tests response file parsing with nested quotes, escaped backslashes, escaped quotes, and trailing tokens.
     #[test]
     fn test_response_file_tokens_quoting_and_escapes() {
-        let content = "token1 \"quote 'nested'\" 'quote \"nested\"' \\\n  spaced\t\ttoken  \\\"escaped_quote\\\"  \\'single\\'  \\\\escaped_bs\\\\  \\zordinary  trailing_space \n\"\"\n''";
+        let content = "token1 \"quote 'nested'\" 'quote \"nested\"' \"quoted\ttab\ttoken\" \\\n  spaced\t\ttoken  \\\"escaped_quote\\\"  \\'single\\'  \\\\escaped_bs\\\\  \\zordinary  trailing_space \n\"\"\n''";
         let tokens = parse_response_file_tokens(content);
         assert!(tokens.contains(&"quote 'nested'".to_string()));
         assert!(tokens.contains(&"quote \"nested\"".to_string()));
+        assert!(tokens.contains(&"quoted\ttab\ttoken".to_string()));
         assert!(tokens.contains(&"spaced".to_string()));
         assert!(tokens.contains(&"token".to_string()));
         assert!(tokens.contains(&"\"escaped_quote\"".to_string()));

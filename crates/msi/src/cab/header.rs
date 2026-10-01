@@ -150,16 +150,13 @@ impl CfHeader {
     /// Parses a null-terminated string from `bytes` starting at `cursor`.
     fn parse_cstring(bytes: &[u8], cursor: &mut usize) -> Result<String> {
         let start = *cursor;
-        while *cursor < bytes.len() && bytes[*cursor] != 0 {
-            *cursor += 1;
-        }
-        if *cursor >= bytes.len() {
+        let Some(pos) = bytes[start..].iter().position(|&b| b == 0) else {
             return Err(Error::InvalidCabData {
                 reason: "unterminated string in cabinet header".to_string(),
             });
-        }
-        let s = String::from_utf8_lossy(&bytes[start..*cursor]).to_string();
-        *cursor += 1; // consume null byte
+        };
+        let s = String::from_utf8_lossy(&bytes[start..start + pos]).to_string();
+        *cursor = start + pos + 1; // consume null byte
         Ok(s)
     }
 

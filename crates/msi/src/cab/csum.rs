@@ -17,25 +17,23 @@
 #[must_use]
 pub fn csum_compute(bytes: &[u8], seed: u32) -> u32 {
     let mut csum = seed;
-    let chunks_len = bytes.len() & !3; // Full 4-byte chunks
+    let chunks = bytes.chunks_exact(4);
+    let remainder = chunks.remainder();
 
-    let mut i = 0;
-    while i < chunks_len {
-        let word = u32::from_le_bytes([bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]]);
+    for chunk in chunks {
+        let word = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
         csum ^= word;
-        i += 4;
     }
 
-    let remaining = bytes.len() & 3;
     let mut tail = 0u32;
-    if remaining == 3 {
-        tail |= u32::from(bytes[i + 2]) << 16;
+    if remainder.len() == 3 {
+        tail |= u32::from(remainder[2]) << 16;
     }
-    if remaining >= 2 {
-        tail |= u32::from(bytes[i + 1]) << 8;
+    if remainder.len() >= 2 {
+        tail |= u32::from(remainder[1]) << 8;
     }
-    if remaining >= 1 {
-        tail |= u32::from(bytes[i]);
+    if !remainder.is_empty() {
+        tail |= u32::from(remainder[0]);
     }
 
     csum ^ tail

@@ -211,7 +211,11 @@ fn test_cpack_wix_end_to_end_pipeline() -> Result<()> {
 /// Tests `WiX` toolchain executable discovery under simulated `CPack` bin directory layout.
 #[test]
 fn test_cpack_wix_discovery_and_version_flags() -> Result<()> {
-    let temp_dir = std::env::temp_dir().join("msi_test_cpack_discovery_suite");
+    let temp_dir = std::env::temp_dir().join(format!(
+        "msi_test_cpack_discovery_suite_{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
     let bin_dir = temp_dir.join("bin");
     fs::create_dir_all(&bin_dir)?;
 

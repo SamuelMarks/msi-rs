@@ -21,7 +21,7 @@ pub const MSI_NAME_SINGLE_CHAR_BASE: u16 = 0x4800;
 pub const MSI_TABLE_STREAM_PREFIX: u16 = 0x4840;
 
 /// The 64-character alphabet used for MSI stream name compression.
-const ALPHABET: &[u8; 64] = b"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_.";
+const ALPHABET: &[u8; 64] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz._";
 
 /// Converts an ASCII character in the 64-character subset into its 6-bit index (`0..=63`).
 ///
@@ -39,10 +39,10 @@ const ALPHABET: &[u8; 64] = b"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN
 pub fn char_to_index(ch: char) -> Result<u16> {
     match ch {
         '0'..='9' => Ok(ch as u16 - '0' as u16),
-        'a'..='z' => Ok(ch as u16 - 'a' as u16 + 10),
-        'A'..='Z' => Ok(ch as u16 - 'A' as u16 + 36),
-        '_' => Ok(62),
-        '.' => Ok(63),
+        'A'..='Z' => Ok(ch as u16 - 'A' as u16 + 10),
+        'a'..='z' => Ok(ch as u16 - 'a' as u16 + 36),
+        '.' => Ok(62),
+        '_' => Ok(63),
         _ => Err(Error::InvalidStreamName {
             name: ch.to_string(),
             reason: format!("character '{ch}' is not in the MSI 64-character subset"),
@@ -252,6 +252,16 @@ mod tests {
         assert!(encode_msi_stream_name("!bad", false).is_err());
         assert!(encode_msi_stream_name("bad!name", false).is_err());
         assert!(encode_msi_stream_name("first!bad", false).is_err());
+
+        // Standard Rob Mensching / MSI SDK examples
+        assert_eq!(
+            encode_msi_stream_name("Property", false),
+            Ok("\u{4559}\u{44F2}\u{4568}\u{4737}".to_string())
+        );
+        assert_eq!(
+            encode_msi_stream_name("_StringPool", false),
+            Ok("\u{3F3F}\u{4577}\u{446C}\u{3E6A}\u{44B2}\u{482F}".to_string())
+        );
     }
 
     /// Tests special MSI streams like Summary Information and Digital Signature.

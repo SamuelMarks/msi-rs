@@ -539,14 +539,14 @@ impl Package {
             }
 
             let (decoded_name, is_table) = decode_msi_stream_name(entry_name).unwrap_or_default();
-            if is_table {
-                table_streams.push((decoded_name, entry_name.to_string()));
-            } else if decoded_name == "_StringPool" {
+            if decoded_name == "_StringPool" {
                 let st_data = reader.read_stream(entry_name)?;
                 pool_bytes = Some(st_data);
             } else if decoded_name == "_StringData" {
                 let st_data = reader.read_stream(entry_name)?;
                 data_bytes = Some(st_data);
+            } else if is_table {
+                table_streams.push((decoded_name, entry_name.to_string()));
             } else {
                 let st_data = reader.read_stream(entry_name)?;
                 embedded_cabinets.insert(entry_name.to_string(), st_data);
@@ -771,10 +771,10 @@ impl Package {
         let mut cfb_writer =
             CfbWriter::new(CfbVersion::V3).with_root_clsid(StorageClsid::MsiPackage);
 
-        let pool_stream_name = encode_msi_stream_name("_StringPool", false).unwrap_or_default();
+        let pool_stream_name = encode_msi_stream_name("_StringPool", true).unwrap_or_default();
         let _ = cfb_writer.add_stream(&pool_stream_name, &pool_bytes);
 
-        let data_stream_name = encode_msi_stream_name("_StringData", false).unwrap_or_default();
+        let data_stream_name = encode_msi_stream_name("_StringData", true).unwrap_or_default();
         let _ = cfb_writer.add_stream(&data_stream_name, &data_bytes);
 
         for (tbl_name, tbl_bytes) in serialized_tables {
@@ -1681,8 +1681,8 @@ mod tests {
 
         // Corrupted _StringPool deserialization failure
         let mut bad_pool_writer = CfbWriter::new(CfbVersion::V3);
-        let pool_name = encode_msi_stream_name("_StringPool", false).unwrap_or_default();
-        let data_name = encode_msi_stream_name("_StringData", false).unwrap_or_default();
+        let pool_name = encode_msi_stream_name("_StringPool", true).unwrap_or_default();
+        let data_name = encode_msi_stream_name("_StringData", true).unwrap_or_default();
         assert!(bad_pool_writer.add_stream(&pool_name, b"short").is_ok());
         assert!(bad_pool_writer.add_stream(&data_name, b"data").is_ok());
         let bad_pool_cfb = bad_pool_writer.build();
@@ -1701,8 +1701,8 @@ mod tests {
         assert!(valid_bytes_res.is_ok());
         let valid_bytes = valid_bytes_res.unwrap_or_default();
 
-        let pool_stream = encode_msi_stream_name("_StringPool", false).unwrap_or_default();
-        let data_stream = encode_msi_stream_name("_StringData", false).unwrap_or_default();
+        let pool_stream = encode_msi_stream_name("_StringPool", true).unwrap_or_default();
+        let data_stream = encode_msi_stream_name("_StringData", true).unwrap_or_default();
         let cols_stream = encode_msi_stream_name(COLUMN_CATALOG_NAME, true).unwrap_or_default();
         let prop_stream = encode_msi_stream_name("Property", true).unwrap_or_default();
 
@@ -1909,8 +1909,8 @@ mod tests {
         // Build CFB container
         let mut writer = CfbWriter::new(CfbVersion::V3);
         let (pool_bytes, data_bytes) = pool.serialize();
-        let pool_name = encode_msi_stream_name("_StringPool", false).unwrap_or_default();
-        let data_name = encode_msi_stream_name("_StringData", false).unwrap_or_default();
+        let pool_name = encode_msi_stream_name("_StringPool", true).unwrap_or_default();
+        let data_name = encode_msi_stream_name("_StringData", true).unwrap_or_default();
         assert!(writer.add_stream(&pool_name, &pool_bytes).is_ok());
         assert!(writer.add_stream(&data_name, &data_bytes).is_ok());
         let col_stream_name = encode_msi_stream_name(COLUMN_CATALOG_NAME, true).unwrap_or_default();
@@ -2250,8 +2250,8 @@ mod tests {
         let mut writer = CfbWriter::new(CfbVersion::V3);
         let pool = StringPool::new(CODEPAGE_UTF8);
         let (pool_bytes, data_bytes) = pool.serialize();
-        let enc_pool = encode_msi_stream_name("_StringPool", false).unwrap_or_default();
-        let enc_data = encode_msi_stream_name("_StringData", false).unwrap_or_default();
+        let enc_pool = encode_msi_stream_name("_StringPool", true).unwrap_or_default();
+        let enc_data = encode_msi_stream_name("_StringData", true).unwrap_or_default();
         let _ = writer.add_stream(&enc_pool, &pool_bytes);
         let _ = writer.add_stream(&enc_data, &data_bytes);
         let _ = writer.add_stream(SUMMARY_INFORMATION_STREAM, b"NOT_A_VALID_SUMMARY_INFO");
