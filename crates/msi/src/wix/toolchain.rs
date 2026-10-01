@@ -19,6 +19,151 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
+/// Validates and standardizes a `WiX` extension name passed via `-ext`.
+///
+/// Returns `Ok(canonical_name)` for supported native extensions, or returns
+/// [`Error::WixExtension`] when given an unsupported external .NET `.dll` or unknown extension.
+///
+/// # Arguments
+///
+/// * `ext_arg` - The extension identifier or path.
+///
+/// # Returns
+///
+/// Standard canonical extension identifier.
+///
+/// # Errors
+///
+/// Returns [`Error::WixExtension`] if the extension is an unsupported .NET assembly or unknown.
+pub fn validate_extension(ext_arg: &str) -> Result<&'static str> {
+    let trimmed = ext_arg.trim();
+    let path = std::path::Path::new(trimmed);
+    if path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("dll") || ext.eq_ignore_ascii_case("exe"))
+    {
+        return Err(Error::WixExtension {
+            extension: trimmed.to_string(),
+            message: format!(
+                "unsupported external .NET extension assembly '{trimmed}': msi-rs provides native built-in extensions (WixUIExtension, WixUtilExtension, WixFirewallExtension, WixNetFxExtension, WixBalExtension, WixHttpExtension, WixIIsExtension, WixSqlExtension, WixComPlusExtension, WixDependencyExtension)"
+            ),
+        });
+    }
+
+    let lower = trimmed.to_ascii_lowercase();
+    let mut norm = lower.as_str();
+    if let Some(rest) = norm.strip_prefix("wixtoolset.") {
+        norm = rest;
+    }
+    if let Some(rest) = norm.strip_prefix("wix") {
+        norm = rest;
+    }
+    if let Some(rest) = norm.strip_suffix(".wixext") {
+        norm = rest;
+    }
+    if let Some(rest) = norm.strip_suffix("extension") {
+        norm = rest;
+    }
+
+    match norm {
+        "ui" => Ok("WixUIExtension"),
+        "util" => Ok("WixUtilExtension"),
+        "firewall" => Ok("WixFirewallExtension"),
+        "bal" => Ok("WixBalExtension"),
+        "netfx" => Ok("WixNetFxExtension"),
+        "http" => Ok("WixHttpExtension"),
+        "iis" => Ok("WixIIsExtension"),
+        "sql" => Ok("WixSqlExtension"),
+        "complus" => Ok("WixComPlusExtension"),
+        "dependency" => Ok("WixDependencyExtension"),
+        _ => Ok("CustomExtension"),
+    }
+}
+
+/// Represents discovered paths to the `WiX` toolchain executables.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct WixToolchainDiscovery {
+    /// Path to the `candle` executable.
+    pub candle: PathBuf,
+    /// Path to the `light` executable.
+    pub light: PathBuf,
+    /// Path to the optional `wix` executable.
+    pub wix: Option<PathBuf>,
+}
+
+impl WixToolchainDiscovery {
+    /// Discovers `WiX` toolchain executables (`candle`, `light`, and optionally `wix`).
+    ///
+    /// Searches candidate directories in priority order:
+    /// 1. `hint_dir/bin` and `hint_dir`
+    /// 2. `CPACK_WIX_ROOT/bin` and `CPACK_WIX_ROOT`
+    /// 3. `WIX/bin` and `WIX`
+    /// 4. System `PATH`
+    ///
+    /// Probes filenames with and without `.exe` extension on both Windows and POSIX.
+    ///
+    /// # Arguments
+    ///
+    /// * `hint_dir` - Optional root directory hint.
+    ///
+    /// # Returns
+    ///
+    /// Discovered [`WixToolchainDiscovery`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::WixLinker`] if `candle` or `light` cannot be discovered.
+    pub fn discover(hint_dir: Option<&std::path::Path>) -> Result<Self> {
+        let mut candidates = Vec::new();
+
+        if let Some(hint) = hint_dir {
+            candidates.push(hint.join("bin"));
+            candidates.push(hint.to_path_buf());
+        }
+
+        if let Some(cpack_wix) = std::env::var_os("CPACK_WIX_ROOT") {
+            let p = PathBuf::from(cpack_wix);
+            candidates.push(p.join("bin"));
+            candidates.push(p);
+        }
+
+        if let Some(wix_env) = std::env::var_os("WIX") {
+            let p = PathBuf::from(wix_env);
+            candidates.push(p.join("bin"));
+            candidates.push(p);
+        }
+
+        let path_var = std::env::var_os("PATH").unwrap_or_default();
+        candidates.extend(std::env::split_paths(&path_var));
+
+        let probe_binary = |name: &str| -> Option<PathBuf> {
+            for dir in &candidates {
+                let p1 = dir.join(name);
+                if p1.is_file() {
+                    return Some(p1);
+                }
+                let p2 = dir.join(format!("{name}.exe"));
+                if p2.is_file() {
+                    return Some(p2);
+                }
+            }
+            None
+        };
+
+        let candle = probe_binary("candle").ok_or_else(|| Error::WixLinker {
+            message: "could not discover 'candle' executable in search paths".to_string(),
+        })?;
+
+        let light = probe_binary("light").ok_or_else(|| Error::WixLinker {
+            message: "could not discover 'light' executable in search paths".to_string(),
+        })?;
+
+        let wix = probe_binary("wix");
+
+        Ok(Self { candle, light, wix })
+    }
+}
+
 /// Helper function to strip leading flag prefix (`--`, `-`, or `/`).
 ///
 /// Returns the flag without prefix if it represents a command flag,
@@ -238,14 +383,33 @@ impl CandleOptions {
                 } else if lower == "swall" {
                     opts.suppress_all_warnings = true;
                     idx += 1;
+                } else if lower == "sw" {
+                    idx += 1;
+                    if idx < args.len() && !is_flag(&args[idx]) {
+                        let clean = args[idx].trim_start_matches(':');
+                        if !clean.is_empty() {
+                            opts.suppressed_warnings.push(clean.to_string());
+                        }
+                        idx += 1;
+                    }
                 } else if let Some(sw_id) = lower.strip_prefix("sw") {
-                    opts.suppressed_warnings.push(sw_id.to_string());
+                    let clean = sw_id.trim_start_matches(':');
+                    if !clean.is_empty() {
+                        opts.suppressed_warnings.push(clean.to_string());
+                    }
                     idx += 1;
                 } else if lower == "v" || lower == "verbose" {
                     opts.verbose = true;
                     idx += 1;
-                } else if lower.starts_with("wx") {
+                } else if lower == "wx" || lower == "wxall" {
                     opts.warnings_as_errors = true;
+                    idx += 1;
+                } else if let Some(wx_id) = lower.strip_prefix("wx") {
+                    opts.warnings_as_errors = true;
+                    let clean = wx_id.trim_start_matches(':');
+                    if !clean.is_empty() {
+                        opts.suppressed_warnings.retain(|w| w != clean);
+                    }
                     idx += 1;
                 } else if lower == "trace" {
                     opts.trace = true;
@@ -294,6 +458,10 @@ impl CandleOptions {
     /// Returns [`Error`] on preprocessing, parsing, or I/O failure.
     #[allow(clippy::option_if_let_else)]
     pub fn execute(&self) -> Result<Vec<PathBuf>> {
+        for ext in &self.extensions {
+            let _ = validate_extension(ext)?;
+        }
+
         let mut outputs = Vec::new();
 
         for src_path in &self.sources {
@@ -372,24 +540,80 @@ impl CandleOptions {
     }
 }
 
-/// Helper expanding `@response_file` arguments recursively.
-fn expand_response_files(args: &[String]) -> Result<Vec<String>> {
+/// Helper tokenizing response file content respecting quotes and comments.
+fn parse_response_file_tokens(content: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with(';') {
+            continue;
+        }
+        let mut cur = String::new();
+        let mut in_quote = None;
+        let mut chars = trimmed.chars().peekable();
+        while let Some(ch) = chars.next() {
+            match ch {
+                '"' | '\'' => {
+                    if in_quote == Some(ch) {
+                        in_quote = None;
+                    } else if in_quote.is_none() {
+                        in_quote = Some(ch);
+                    } else {
+                        cur.push(ch);
+                    }
+                }
+                ' ' | '\t' if in_quote.is_none() => {
+                    if !cur.is_empty() {
+                        tokens.push(cur);
+                        cur = String::new();
+                    }
+                }
+                '\\' => {
+                    if let Some(&next) = chars.peek() {
+                        if next == '"' || next == '\'' || next == '\\' {
+                            cur.push(next);
+                            chars.next();
+                            continue;
+                        }
+                    }
+                    cur.push('\\');
+                }
+                _ => cur.push(ch),
+            }
+        }
+        if !cur.is_empty() {
+            tokens.push(cur);
+        }
+    }
+    tokens
+}
+
+/// Helper expanding `@response_file` arguments recursively with a depth limit.
+fn expand_response_files_recursive(args: &[String], depth: usize) -> Result<Vec<String>> {
+    if depth > 16 {
+        return Err(Error::WixCompiler {
+            element: "response_file".to_string(),
+            message: "maximum response file recursion depth exceeded".to_string(),
+        });
+    }
     let mut expanded = Vec::new();
     for arg in args {
         if let Some(rsp_path_str) = arg.strip_prefix('@') {
             let rsp_path = PathBuf::from(rsp_path_str);
             let content = fs::read_to_string(&rsp_path)?;
-            for line in content.lines() {
-                let trimmed = line.trim();
-                if !trimmed.is_empty() && !trimmed.starts_with('#') {
-                    expanded.push(trimmed.to_string());
-                }
-            }
+            let parsed_tokens = parse_response_file_tokens(&content);
+            let nested = expand_response_files_recursive(&parsed_tokens, depth + 1)?;
+            expanded.extend(nested);
         } else {
             expanded.push(arg.clone());
         }
     }
     Ok(expanded)
+}
+
+/// Helper expanding `@response_file` arguments.
+pub(crate) fn expand_response_files(args: &[String]) -> Result<Vec<String>> {
+    expand_response_files_recursive(args, 0)
 }
 
 /// Command-line options for the `light` linker/binder.
@@ -538,9 +762,6 @@ impl LightOptions {
                 } else if lower == "sval" {
                     opts.suppress_ice = true;
                     idx += 1;
-                } else if lower == "wx" {
-                    opts.warnings_as_errors = true;
-                    idx += 1;
                 } else if lower == "ai" {
                     opts.allow_identical_rows = true;
                     idx += 1;
@@ -625,14 +846,36 @@ impl LightOptions {
                 } else if lower == "sv" {
                     opts.suppress_version_mismatch = true;
                     idx += 1;
-                } else if lower.starts_with("wx") {
+                } else if lower == "wx" || lower == "wxall" {
                     opts.warnings_as_errors = true;
+                    idx += 1;
+                } else if let Some(wx_id) = lower.strip_prefix("wx") {
+                    opts.warnings_as_errors = true;
+                    let clean = wx_id.trim_start_matches(':');
+                    if !clean.is_empty() {
+                        opts.suppressed_warnings.retain(|w| w != clean);
+                    }
                     idx += 1;
                 } else if lower == "xo" {
                     opts.output_wixout = true;
                     idx += 1;
                 } else if lower == "swall" {
                     opts.suppress_all_warnings = true;
+                    idx += 1;
+                } else if lower == "sw" {
+                    idx += 1;
+                    if idx < args.len() && !is_flag(&args[idx]) {
+                        let clean = args[idx].trim_start_matches(':');
+                        if !clean.is_empty() {
+                            opts.suppressed_warnings.push(clean.to_string());
+                        }
+                        idx += 1;
+                    }
+                } else if let Some(sw) = lower.strip_prefix("sw") {
+                    let clean = sw.trim_start_matches(':');
+                    if !clean.is_empty() {
+                        opts.suppressed_warnings.push(clean.to_string());
+                    }
                     idx += 1;
                 } else if lower == "ts" {
                     opts.timestamp_summary_info = true;
@@ -725,9 +968,10 @@ impl LightOptions {
                     idx += 1;
                 } else if lower.starts_with("cultures:") {
                     let orig_cult = &flag[9..];
-                    for c in orig_cult.split(';') {
-                        if !c.is_empty() {
-                            opts.cultures.push(c.to_string());
+                    for c in orig_cult.split([';', ',']) {
+                        let trimmed = c.trim();
+                        if !trimmed.is_empty() {
+                            opts.cultures.push(trimmed.to_string());
                         }
                     }
                     idx += 1;
@@ -780,9 +1024,6 @@ impl LightOptions {
                 } else if let Some(sice) = flag.strip_prefix("sice:") {
                     opts.suppressed_ice.push(sice.to_string());
                     idx += 1;
-                } else if let Some(sw) = lower.strip_prefix("sw") {
-                    opts.suppressed_warnings.push(sw.to_string());
-                    idx += 1;
                 } else {
                     idx += 1;
                 }
@@ -811,6 +1052,10 @@ impl LightOptions {
     ///
     /// Returns [`Error`] on linking, binding, or I/O failure.
     pub fn execute(&self) -> Result<PathBuf> {
+        for ext in &self.extensions {
+            let _ = validate_extension(ext)?;
+        }
+
         let mut linker = Linker::new();
 
         // 1. Ingest intermediate input files (.wixobj, .wixlib)
@@ -867,6 +1112,7 @@ impl LightOptions {
             let doc = WixLocalization::parse(&content)?;
             loc_catalog.add_document(doc);
         }
+        let primary_cp = loc_catalog.get_primary_codepage(&self.cultures);
         linker.set_localization_catalog(loc_catalog);
 
         // 4. Perform linking and binding
@@ -895,7 +1141,10 @@ impl LightOptions {
 
         // 6. Build and save Package
         let cabs = linker.take_embedded_cabinets();
-        let package = Package::from_database(db, cabs);
+        let mut package = Package::from_database(db, cabs);
+        if let Some(cp) = primary_cp {
+            package.summary_info_mut().codepage = Some(cp);
+        }
 
         let out_path = self
             .output
@@ -905,6 +1154,17 @@ impl LightOptions {
         ensure_parent_dir_exists(&out_path);
 
         package.save(&out_path)?;
+
+        let ext_cabs = linker.take_external_cabinets();
+        for (cab_name, cab_bytes) in ext_cabs {
+            let cab_path = match out_path.parent() {
+                Some(p) if !p.as_os_str().is_empty() => p.join(&cab_name),
+                _ => PathBuf::from(&cab_name),
+            };
+            ensure_parent_dir_exists(&cab_path);
+            fs::write(cab_path, cab_bytes)?;
+        }
+
         Ok(out_path)
     }
 }
@@ -979,7 +1239,8 @@ impl WixBuildOptions {
     ///
     /// Returns [`Error::WixCompiler`] on missing flags or required arguments.
     #[allow(clippy::branches_sharing_code, clippy::too_many_lines)]
-    pub fn parse(args: &[String]) -> Result<Self> {
+    pub fn parse(raw_args: &[String]) -> Result<Self> {
+        let args = expand_response_files(raw_args)?;
         let mut opts = Self::new();
         let mut idx = usize::from(!args.is_empty() && args[0].eq_ignore_ascii_case("build"));
 
@@ -1089,7 +1350,7 @@ impl WixBuildOptions {
                     opts.suppressed_warnings.push(sw_id.to_string());
                     idx += 1;
                 } else if let Some(wx_id) = lower.strip_prefix("wx") {
-                    if !wx_id.is_empty() && wx_id != "all" {
+                    if wx_id != "all" {
                         opts.warnings_as_errors = true;
                     }
                     idx += 1;
@@ -1196,6 +1457,10 @@ impl WixBuildOptions {
     ///
     /// Returns [`Error`] on compilation, linking, or I/O failure.
     pub fn execute(&self) -> Result<PathBuf> {
+        for ext in &self.extensions {
+            let _ = validate_extension(ext)?;
+        }
+
         let (wxs_sources, loc_files, obj_files, lib_files) = self.partition_sources();
 
         let mut linker = Linker::new();
@@ -1244,6 +1509,10 @@ impl WixBuildOptions {
             let doc = WixLocalization::parse(&content)?;
             loc_catalog.add_document(doc);
         }
+        let primary_cp = self
+            .culture
+            .as_ref()
+            .and_then(|c| loc_catalog.get_primary_codepage(std::slice::from_ref(c)));
         linker.set_localization_catalog(loc_catalog);
 
         // 5. Link and bind
@@ -1271,7 +1540,10 @@ impl WixBuildOptions {
         }
 
         let cabs = linker.take_embedded_cabinets();
-        let package = Package::from_database(db, cabs);
+        let mut package = Package::from_database(db, cabs);
+        if let Some(cp) = primary_cp {
+            package.summary_info_mut().codepage = Some(cp);
+        }
 
         let out_path = self
             .output
@@ -1281,6 +1553,17 @@ impl WixBuildOptions {
         ensure_parent_dir_exists(&out_path);
 
         package.save(&out_path)?;
+
+        let ext_cabs = linker.take_external_cabinets();
+        for (cab_name, cab_bytes) in ext_cabs {
+            let cab_path = match out_path.parent() {
+                Some(p) if !p.as_os_str().is_empty() => p.join(&cab_name),
+                _ => PathBuf::from(&cab_name),
+            };
+            ensure_parent_dir_exists(&cab_path);
+            fs::write(cab_path, cab_bytes)?;
+        }
+
         Ok(out_path)
     }
 }
@@ -2482,5 +2765,493 @@ mod extra_toolchain_tests {
         opts.culture = Some("en-US".to_string());
         let mut linker = Linker::new();
         opts.configure_linker(&mut linker);
+    }
+
+    #[test]
+    fn test_wix_build_response_file() {
+        let temp_dir = std::env::temp_dir().join("msi_test_wix_rsp");
+        let _ = fs::create_dir_all(&temp_dir);
+        let rsp_file = temp_dir.join("build.rsp");
+        fs::write(&rsp_file, "-arch x64\n-nologo\n# comment\n").unwrap_or_default();
+
+        let raw_args = vec![format!("@{}", rsp_file.display()), "input.wxs".to_string()];
+        let opts = WixBuildOptions::parse(&raw_args).unwrap_or_default();
+        assert_eq!(opts.arch, Some("x64".to_string()));
+        assert!(opts.nologo);
+        assert_eq!(opts.sources, vec![PathBuf::from("input.wxs")]);
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    /// Tests toolchain discovery logic for `candle`, `light`, and `wix` shims.
+    #[test]
+    fn test_wix_toolchain_discovery() {
+        let temp_dir = std::env::temp_dir().join("msi_test_discovery");
+        let bin_dir = temp_dir.join("bin");
+        let _ = fs::create_dir_all(&bin_dir);
+
+        // Discovery fails when executables missing
+        assert!(WixToolchainDiscovery::discover(Some(&temp_dir)).is_err());
+
+        // Create candle and light shims
+        let candle_path = bin_dir.join("candle");
+        let light_path = bin_dir.join("light");
+        let wix_path = bin_dir.join("wix");
+        assert!(fs::write(&candle_path, b"shim").is_ok());
+        assert!(fs::write(&light_path, b"shim").is_ok());
+        assert!(fs::write(&wix_path, b"shim").is_ok());
+
+        let disc = WixToolchainDiscovery::discover(Some(&temp_dir));
+        assert!(disc.is_ok());
+        let res = disc.unwrap_or_default();
+        assert_eq!(res.candle, candle_path);
+        assert_eq!(res.light, light_path);
+        assert_eq!(res.wix, Some(wix_path));
+
+        // Test CPACK_WIX_ROOT and WIX env vars
+        std::env::set_var("CPACK_WIX_ROOT", &temp_dir);
+        let cpack_disc = WixToolchainDiscovery::discover(None);
+        assert!(cpack_disc.is_ok());
+        std::env::remove_var("CPACK_WIX_ROOT");
+
+        std::env::set_var("WIX", &temp_dir);
+        let wix_disc = WixToolchainDiscovery::discover(None);
+        assert!(wix_disc.is_ok());
+        std::env::remove_var("WIX");
+
+        // Test candle found but light missing
+        let candle_only_dir = temp_dir.join("candle_only");
+        let candle_only_bin = candle_only_dir.join("bin");
+        let _ = fs::create_dir_all(&candle_only_bin);
+        let _ = fs::write(candle_only_bin.join("candle"), b"shim");
+        assert!(WixToolchainDiscovery::discover(Some(&candle_only_dir)).is_err());
+
+        // Test Windows .exe detection
+        let win_dir = temp_dir.join("win_bin");
+        let _ = fs::create_dir_all(&win_dir);
+        let candle_exe = win_dir.join("candle.exe");
+        let light_exe = win_dir.join("light.exe");
+        assert!(fs::write(&candle_exe, b"shim").is_ok());
+        assert!(fs::write(&light_exe, b"shim").is_ok());
+
+        let windows_disc = WixToolchainDiscovery::discover(Some(&win_dir));
+        assert!(windows_disc.is_ok());
+        let win_res = windows_disc.unwrap_or_default();
+        assert_eq!(win_res.candle, candle_exe);
+        assert_eq!(win_res.light, light_exe);
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    /// Tests extension validation against native extensions and unsupported external assemblies.
+    #[test]
+    fn test_wix_extension_validation() {
+        // Native built-ins
+        assert_eq!(validate_extension("WixUIExtension"), Ok("WixUIExtension"));
+        assert_eq!(validate_extension("wixui"), Ok("WixUIExtension"));
+        assert_eq!(
+            validate_extension("WixUtilExtension"),
+            Ok("WixUtilExtension")
+        );
+        assert_eq!(
+            validate_extension("WixFirewallExtension"),
+            Ok("WixFirewallExtension")
+        );
+        assert_eq!(validate_extension("WixBalExtension"), Ok("WixBalExtension"));
+        assert_eq!(
+            validate_extension("WixNetFxExtension"),
+            Ok("WixNetFxExtension")
+        );
+        assert_eq!(
+            validate_extension("WixHttpExtension"),
+            Ok("WixHttpExtension")
+        );
+        assert_eq!(validate_extension("WixIIsExtension"), Ok("WixIIsExtension"));
+        assert_eq!(validate_extension("WixSqlExtension"), Ok("WixSqlExtension"));
+        assert_eq!(
+            validate_extension("WixComPlusExtension"),
+            Ok("WixComPlusExtension")
+        );
+        assert_eq!(
+            validate_extension("WixDependencyExtension"),
+            Ok("WixDependencyExtension")
+        );
+        assert_eq!(
+            validate_extension("wixtoolset.ui.wixext"),
+            Ok("WixUIExtension")
+        );
+
+        // Unsupported .NET assembly DLL or EXE
+        let dll_err = validate_extension("C:\\Tools\\CustomExtension.dll");
+        assert!(matches!(dll_err, Err(Error::WixExtension { .. })));
+        let exe_err = validate_extension("C:\\Tools\\CustomExtension.exe");
+        assert!(matches!(exe_err, Err(Error::WixExtension { .. })));
+
+        // Unrecognized extension defaults to CustomExtension
+        assert_eq!(
+            validate_extension("UnknownBogusExtension"),
+            Ok("CustomExtension")
+        );
+    }
+
+    /// Tests response file parsing edge cases: quotes, spaces, escaped characters, and recursion depth limit.
+    #[test]
+    fn test_response_file_advanced_tokens_and_recursion() {
+        let temp_dir = std::env::temp_dir().join("msi_test_rsp_adv");
+        let _ = fs::create_dir_all(&temp_dir);
+
+        let sub_rsp = temp_dir.join("sub.rsp");
+        let sub_content =
+            "-arch x64\n# Comment line\n; Another comment\n\"-dDef=quoted value with spaces\"\n";
+        assert!(fs::write(&sub_rsp, sub_content).is_ok());
+
+        let main_rsp = temp_dir.join("main.rsp");
+        let main_content = format!(
+            "-nologo\n@{}\n'-o'\n'C:\\Program Files\\Out.msi'\n",
+            sub_rsp.display()
+        );
+        assert!(fs::write(&main_rsp, main_content).is_ok());
+
+        let raw_args = vec![format!("@{}", main_rsp.display())];
+        let expanded = expand_response_files(&raw_args);
+        assert!(expanded.is_ok());
+        let tokens = expanded.unwrap_or_default();
+        assert!(tokens.contains(&"-nologo".to_string()));
+        assert!(tokens.contains(&"-arch".to_string()));
+        assert!(tokens.contains(&"x64".to_string()));
+        assert!(tokens.contains(&"-dDef=quoted value with spaces".to_string()));
+        assert!(tokens.contains(&"-o".to_string()));
+        assert!(tokens.contains(&"C:\\Program Files\\Out.msi".to_string()));
+
+        // Test recursion loop exceeding depth limit
+        let loop_a = temp_dir.join("loop_a.rsp");
+        let loop_b = temp_dir.join("loop_b.rsp");
+        assert!(fs::write(&loop_a, format!("@{}\n", loop_b.display())).is_ok());
+        assert!(fs::write(&loop_b, format!("@{}\n", loop_a.display())).is_ok());
+
+        let loop_args = vec![format!("@{}", loop_a.display())];
+        assert!(expand_response_files(&loop_args).is_err());
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    /// Tests CLI flag parity across Candle and Light for -sw, -wx, -pedantic, and cultures syntax.
+    #[test]
+    fn test_cli_flags_parity_edge_cases() {
+        // 1. Candle -sw<N>, -sw:<N>, -sw <N>, -wx, -wxall, -wx:<N>, -pedantic
+        let c_args = vec![
+            "-sw1072".to_string(),
+            "-sw:1075".to_string(),
+            "-sw".to_string(),
+            "1080".to_string(),
+            "-wx".to_string(),
+            "-wx:1090".to_string(),
+            "-pedantic".to_string(),
+            "source.wxs".to_string(),
+        ];
+        let c_opts = CandleOptions::parse(&c_args).unwrap_or_default();
+        assert!(c_opts.pedantic);
+        assert!(c_opts.warnings_as_errors);
+        assert!(c_opts.suppressed_warnings.contains(&"1072".to_string()));
+        assert!(c_opts.suppressed_warnings.contains(&"1075".to_string()));
+        assert!(c_opts.suppressed_warnings.contains(&"1080".to_string()));
+
+        // 2. Light -sw<N>, -sw:<N>, -sw <N>, -wx, -wxall, -wx:<N>, -pedantic, -cultures:comma,semicolon
+        let l_args = vec![
+            "-sw2001".to_string(),
+            "-sw:2002".to_string(),
+            "-sw".to_string(),
+            "2003".to_string(),
+            "-wx".to_string(),
+            "-pedantic".to_string(),
+            "-cultures:en-US,de-DE;fr-FR".to_string(),
+            "input.wixobj".to_string(),
+        ];
+        let l_opts = LightOptions::parse(&l_args).unwrap_or_default();
+        assert!(l_opts.pedantic);
+        assert!(l_opts.warnings_as_errors);
+        assert!(l_opts.suppressed_warnings.contains(&"2001".to_string()));
+        assert!(l_opts.suppressed_warnings.contains(&"2002".to_string()));
+        assert!(l_opts.suppressed_warnings.contains(&"2003".to_string()));
+        assert_eq!(
+            l_opts.cultures,
+            vec![
+                "en-US".to_string(),
+                "de-DE".to_string(),
+                "fr-FR".to_string()
+            ]
+        );
+    }
+
+    /// Tests response file parsing with nested quotes, escaped backslashes, escaped quotes, and trailing tokens.
+    #[test]
+    fn test_response_file_tokens_quoting_and_escapes() {
+        let content = "token1 \"quote 'nested'\" 'quote \"nested\"' \\\n  spaced\t\ttoken  \\\"escaped_quote\\\"  \\'single\\'  \\\\escaped_bs\\\\  \\zordinary  trailing_space \n\"\"\n''";
+        let tokens = parse_response_file_tokens(content);
+        assert!(tokens.contains(&"quote 'nested'".to_string()));
+        assert!(tokens.contains(&"quote \"nested\"".to_string()));
+        assert!(tokens.contains(&"spaced".to_string()));
+        assert!(tokens.contains(&"token".to_string()));
+        assert!(tokens.contains(&"\"escaped_quote\"".to_string()));
+        assert!(tokens.contains(&"'single'".to_string()));
+        assert!(tokens.contains(&"\\escaped_bs\\".to_string()));
+        assert!(tokens.contains(&"\\zordinary".to_string()));
+        assert!(tokens.contains(&"trailing_space".to_string()));
+    }
+
+    /// Tests Candle, Light, and `WixBuild` options edge parsing flags.
+    #[test]
+    fn test_toolchain_flags_parsing() {
+        // Candle -sw:101, then -wx:101 (invoking retain closure), -wxall, -wx:, -sw:, -sw with empty string, -sw followed by flag
+        let c_args = vec![
+            "-sw:101".to_string(),
+            "-wx:101".to_string(),
+            "-wxall".to_string(),
+            "-wx:".to_string(),
+            "-sw:".to_string(),
+            "-sw".to_string(),
+            String::new(),
+            "-sw".to_string(),
+            "-v".to_string(),
+            "input.wxs".to_string(),
+        ];
+        let c_opts = CandleOptions::parse(&c_args).unwrap_or_default();
+        assert!(c_opts.warnings_as_errors);
+        assert!(c_opts.verbose);
+        let c_trailing_sw =
+            CandleOptions::parse(&["input.wxs".to_string(), "-sw".to_string()]).unwrap_or_default();
+        assert!(c_trailing_sw.suppressed_warnings.is_empty());
+
+        // Light -sw:101, then -wx:101 (invoking retain closure), -wx, -wxall, -wx:, -xo, -sw:102, -sw: (empty), -sw (empty), -sw followed by flag
+        let l_args = vec![
+            "-sw:101".to_string(),
+            "-wx:101".to_string(),
+            "-wx".to_string(),
+            "-wxall".to_string(),
+            "-wx:".to_string(),
+            "-xo".to_string(),
+            "-sw:102".to_string(),
+            "-sw:".to_string(),
+            "-sw".to_string(),
+            String::new(),
+            "-sw".to_string(),
+            "-v".to_string(),
+            "input.wixobj".to_string(),
+        ];
+        let l_opts = LightOptions::parse(&l_args).unwrap_or_default();
+        assert!(l_opts.warnings_as_errors);
+        assert!(l_opts.output_wixout);
+        assert!(l_opts.verbose);
+        assert!(!l_opts.suppressed_warnings.contains(&"101".to_string()));
+        assert!(l_opts.suppressed_warnings.contains(&"102".to_string()));
+        let l_trailing_sw = LightOptions::parse(&["input.wixobj".to_string(), "-sw".to_string()])
+            .unwrap_or_default();
+        assert!(l_trailing_sw.suppressed_warnings.is_empty());
+
+        // WixBuildOptions parse errors: missing value for -ext, -culture, -b
+        assert!(WixBuildOptions::parse(&["build".to_string(), "-ext".to_string()]).is_err());
+        assert!(WixBuildOptions::parse(&["build".to_string(), "-culture".to_string()]).is_err());
+        assert!(WixBuildOptions::parse(&["build".to_string(), "-b".to_string()]).is_err());
+
+        // WixBuildOptions valid options including -ext, -culture, -b, -wx, -wx101, -wxall
+        let wb_valid_args = vec![
+            "build".to_string(),
+            "-ext".to_string(),
+            "WixUIExtension".to_string(),
+            "-culture".to_string(),
+            "en-US".to_string(),
+            "-b".to_string(),
+            ".".to_string(),
+            "-wx".to_string(),
+            "-wxall".to_string(),
+            "-wx101".to_string(),
+            "app.wxs".to_string(),
+        ];
+        let wb_opts = WixBuildOptions::parse(&wb_valid_args).unwrap_or_default();
+        assert!(wb_opts.warnings_as_errors);
+        assert_eq!(wb_opts.extensions, vec!["WixUIExtension".to_string()]);
+        assert_eq!(wb_opts.culture, Some("en-US".to_string()));
+        assert_eq!(wb_opts.base_dirs, vec![PathBuf::from(".")]);
+    }
+
+    /// Tests external cabinet writing during Light and `WixBuild` execution.
+    #[test]
+    fn test_toolchain_external_cabinet_execution() {
+        let temp_dir = std::env::temp_dir().join("msi_toolchain_extcab_test");
+        let _ = fs::create_dir_all(&temp_dir);
+        let src_file = temp_dir.join("test.txt");
+        let _ = fs::write(&src_file, b"sample external payload");
+
+        let wxs_path = temp_dir.join("extcab.wxs");
+        let wxs_content = format!(
+            r#"<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="*" Name="TestExtCab" Version="1.0.0" Manufacturer="TestMfg" UpgradeCode="{{44444444-4444-4444-4444-444444444444}}">
+        <Package Description="Test" />
+        <Media Id="1" Cabinet="extpayload.cab" EmbedCab="no" />
+        <Directory Id="TARGETDIR" Name="SourceDir">
+            <Directory Id="ProgramFilesFolder" Name="PFiles">
+                <Component Id="Comp1" Guid="{{55555555-5555-5555-5555-555555555555}}">
+                    <File Id="File1" Source="{}" KeyPath="yes" />
+                </Component>
+            </Directory>
+        </Directory>
+        <Feature Id="Main" Level="1">
+            <ComponentRef Id="Comp1" />
+        </Feature>
+    </Product>
+</Wix>"#,
+            src_file.display()
+        );
+        let _ = fs::write(&wxs_path, wxs_content);
+
+        // 1. Compile with Candle
+        let wixobj_path = temp_dir.join("extcab.wixobj");
+        let candle_opts = CandleOptions {
+            sources: vec![wxs_path.clone()],
+            output: Some(wixobj_path.clone()),
+            ..Default::default()
+        };
+        assert!(candle_opts.execute().is_ok());
+
+        // 2. Link with Light to produce external cabinet in directory
+        let msi_path = temp_dir.join("extcab.msi");
+        let light_opts = LightOptions {
+            inputs: vec![wixobj_path.clone()],
+            output: Some(msi_path),
+            suppress_ice: true,
+            ..Default::default()
+        };
+        assert!(light_opts.execute().is_ok());
+        let ext_cab_path = temp_dir.join("extpayload.cab");
+        assert!(ext_cab_path.is_file());
+
+        // Also test relative path with empty parent in Light
+        let rel_msi = PathBuf::from("rel_extcab_test_tmp.msi");
+        let light_rel_opts = LightOptions {
+            inputs: vec![wixobj_path],
+            output: Some(rel_msi.clone()),
+            suppress_ice: true,
+            ..Default::default()
+        };
+        assert!(light_rel_opts.execute().is_ok());
+        let _ = fs::remove_file(&rel_msi);
+        let _ = fs::remove_file("extpayload.cab");
+
+        // 3. Build end-to-end with WixBuildOptions::execute to exercise external cabinet write in WixBuild
+        let _ = fs::remove_file(&ext_cab_path);
+        let msi_build_path = temp_dir.join("extcab_build.msi");
+        let wb_exec_opts = WixBuildOptions {
+            sources: vec![wxs_path.clone()],
+            output: Some(msi_build_path),
+            suppress_ice: true,
+            ..Default::default()
+        };
+        assert!(wb_exec_opts.execute().is_ok());
+        assert!(ext_cab_path.is_file());
+
+        // Also test relative path with empty parent in WixBuild
+        let rel_wb_msi = PathBuf::from("rel_extcab_wb_tmp.msi");
+        let wb_rel_opts = WixBuildOptions {
+            sources: vec![wxs_path],
+            output: Some(rel_wb_msi.clone()),
+            suppress_ice: true,
+            ..Default::default()
+        };
+        assert!(wb_rel_opts.execute().is_ok());
+        let _ = fs::remove_file(&rel_wb_msi);
+        let _ = fs::remove_file("extpayload.cab");
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    /// Tests localization codepage propagation and toolchain execution error paths.
+    #[test]
+    fn test_toolchain_localization_and_error_paths() {
+        let temp_dir = std::env::temp_dir().join("msi_toolchain_loc_err_test");
+        let _ = fs::create_dir_all(&temp_dir);
+        let src_file = temp_dir.join("test.txt");
+        let _ = fs::write(&src_file, b"sample external payload");
+
+        let wxs_path = temp_dir.join("extcab.wxs");
+        let wxs_content = format!(
+            r#"<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="*" Name="TestExtCab" Version="1.0.0" Manufacturer="TestMfg" UpgradeCode="{{44444444-4444-4444-4444-444444444444}}">
+        <Package Description="Test" />
+        <Media Id="1" Cabinet="extpayload.cab" EmbedCab="no" />
+        <Directory Id="TARGETDIR" Name="SourceDir">
+            <Directory Id="ProgramFilesFolder" Name="PFiles">
+                <Component Id="Comp1" Guid="{{55555555-5555-5555-5555-555555555555}}">
+                    <File Id="File1" Source="{}" KeyPath="yes" />
+                </Component>
+            </Directory>
+        </Directory>
+        <Feature Id="Main" Level="1">
+            <ComponentRef Id="Comp1" />
+        </Feature>
+    </Product>
+</Wix>"#,
+            src_file.display()
+        );
+        let _ = fs::write(&wxs_path, wxs_content);
+
+        let wixobj_path = temp_dir.join("extcab.wixobj");
+        let candle_opts = CandleOptions {
+            sources: vec![wxs_path.clone()],
+            output: Some(wixobj_path.clone()),
+            ..Default::default()
+        };
+        assert!(candle_opts.execute().is_ok());
+
+        // Test invalid extension error in WixBuildOptions::execute
+        let wb_bad_ext = WixBuildOptions {
+            extensions: vec!["UnsupportedExternal.dll".to_string()],
+            sources: vec![wxs_path.clone()],
+            ..Default::default()
+        };
+        assert!(wb_bad_ext.execute().is_err());
+
+        // Test primary_cp codepage setting and non-UI extension in Light and WixBuild
+        let wxl_path = temp_dir.join("strings.wxl");
+        let _ = fs::write(
+            &wxl_path,
+            r#"<WixLocalization xmlns="http://schemas.microsoft.com/wix/2006/localization" Culture="en-US" Codepage="1252">
+    <String Id="TestStr">Hello</String>
+</WixLocalization>"#,
+        );
+        let msi_loc_path = temp_dir.join("extcab_loc.msi");
+        let light_loc_opts = LightOptions {
+            inputs: vec![wixobj_path],
+            loc_files: vec![wxl_path.clone()],
+            output: Some(msi_loc_path),
+            cultures: vec!["en-US".to_string()],
+            suppress_ice: true,
+            ..Default::default()
+        };
+        assert!(light_loc_opts.execute().is_ok());
+
+        let msi_wb_loc_path = temp_dir.join("extcab_wb_loc.msi");
+        let wb_loc_opts = WixBuildOptions {
+            sources: vec![wxs_path.clone(), wxl_path],
+            output: Some(msi_wb_loc_path),
+            culture: Some("en-US".to_string()),
+            extensions: vec!["WixUtilExtension".to_string()],
+            suppress_ice: true,
+            ..Default::default()
+        };
+        assert!(wb_loc_opts.execute().is_ok());
+
+        // Test fs::write cab_path error by making cab_path a directory
+        let unwriteable_cab_dir = temp_dir.join("unwriteable_dir");
+        let _ = fs::create_dir_all(&unwriteable_cab_dir);
+        let _ = fs::create_dir_all(unwriteable_cab_dir.join("extpayload.cab"));
+        let wb_write_err = WixBuildOptions {
+            sources: vec![wxs_path],
+            output: Some(unwriteable_cab_dir.join("out.msi")),
+            suppress_ice: true,
+            ..Default::default()
+        };
+        assert!(wb_write_err.execute().is_err());
+
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 }

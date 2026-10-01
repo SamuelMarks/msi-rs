@@ -89,6 +89,28 @@ impl CPackWiXPatch {
         Self::from_xml_node(&root)
     }
 
+    /// Merges multiple `CPack` patch XML strings (e.g. from semicolon-separated `CMake` patch files).
+    ///
+    /// # Arguments
+    ///
+    /// * `xml_contents` - Slice of XML strings.
+    ///
+    /// # Returns
+    ///
+    /// Combined [`CPackWiXPatch`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::XmlParse`] or [`Error::WixCompiler`] on syntax or validation errors.
+    pub fn parse_multiple(xml_contents: &[&str]) -> Result<Self> {
+        let mut combined = Self::new();
+        for content in xml_contents {
+            let patch = Self::parse(content)?;
+            combined.fragments.extend(patch.fragments);
+        }
+        Ok(combined)
+    }
+
     /// Builds a [`CPackWiXPatch`] from an [`XmlNode`].
     ///
     /// # Arguments
@@ -164,7 +186,39 @@ impl CPackWiXPatch {
             for (k, v) in &frag.attributes {
                 node.attributes.insert(k.clone(), v.clone());
             }
-            node.children.extend(frag.children.clone());
+            for patch_child in &frag.children {
+                let is_delete = patch_child.tag == "Delete"
+                    || patch_child.attribute("Action").is_some_and(|a| {
+                        a.eq_ignore_ascii_case("delete") || a.eq_ignore_ascii_case("remove")
+                    })
+                    || patch_child
+                        .attribute("Delete")
+                        .is_some_and(|d| d.eq_ignore_ascii_case("yes"));
+
+                if is_delete {
+                    if let Some(target_del_id) = patch_child.attribute("Id") {
+                        node.children
+                            .retain(|c| c.attribute("Id") != Some(target_del_id));
+                    } else {
+                        node.children.retain(|c| c.tag != patch_child.tag);
+                    }
+                } else {
+                    node.children.push(patch_child.clone());
+                }
+            }
+            return true;
+        }
+
+        // Check if any direct child is targeted for deletion by this fragment
+        if let Some(del_idx) = node.children.iter().position(|c| {
+            c.attribute("Id") == Some(&frag.id)
+                && frag.attributes.iter().any(|(k, v)| {
+                    (k == "Action"
+                        && (v.eq_ignore_ascii_case("delete") || v.eq_ignore_ascii_case("remove")))
+                        || (k == "Delete" && v.eq_ignore_ascii_case("yes"))
+                })
+        }) {
+            node.children.remove(del_idx);
             return true;
         }
 
@@ -1272,6 +1326,97 @@ mod tests {
         );
     }
 
+    /// Tests patch element deletion syntax: removing children by Id, removing children by tag, and removing target nodes.
+    #[test]
+    fn test_patch_deletion_syntax() {
+        let patch_xml = r#"
+<CPackWiXPatch>
+    <CPackWiXFragment Id="TargetComp">
+        <Delete Id="FileToDelete" />
+        <RegistryKey Action="delete" />
+        <Shortcut Delete="yes" />
+        <File Id="NewFile" />
+    </CPackWiXFragment>
+    <CPackWiXFragment Id="EntireCompToDelete" Action="delete" />
+    <CPackWiXFragment Id="EntireCompToRemove" Delete="yes" />
+</CPackWiXPatch>
+"#;
+        let patch = CPackWiXPatch::parse(patch_xml).unwrap_or_default();
+
+        let mut root = XmlNode {
+            tag: "Wix".to_string(),
+            children: vec![
+                XmlNode {
+                    tag: "Component".to_string(),
+                    attributes: std::iter::once(("Id".to_string(), "TargetComp".to_string()))
+                        .collect(),
+                    children: vec![
+                        XmlNode {
+                            tag: "File".to_string(),
+                            attributes: std::iter::once((
+                                "Id".to_string(),
+                                "FileToDelete".to_string(),
+                            ))
+                            .collect(),
+                            ..XmlNode::default()
+                        },
+                        XmlNode {
+                            tag: "File".to_string(),
+                            attributes: std::iter::once((
+                                "Id".to_string(),
+                                "FileToKeep".to_string(),
+                            ))
+                            .collect(),
+                            ..XmlNode::default()
+                        },
+                        XmlNode {
+                            tag: "RegistryKey".to_string(),
+                            ..XmlNode::default()
+                        },
+                        XmlNode {
+                            tag: "Shortcut".to_string(),
+                            ..XmlNode::default()
+                        },
+                    ],
+                    ..XmlNode::default()
+                },
+                XmlNode {
+                    tag: "Component".to_string(),
+                    attributes: std::iter::once((
+                        "Id".to_string(),
+                        "EntireCompToDelete".to_string(),
+                    ))
+                    .collect(),
+                    ..XmlNode::default()
+                },
+                XmlNode {
+                    tag: "Component".to_string(),
+                    attributes: std::iter::once((
+                        "Id".to_string(),
+                        "EntireCompToRemove".to_string(),
+                    ))
+                    .collect(),
+                    ..XmlNode::default()
+                },
+            ],
+            ..XmlNode::default()
+        };
+
+        let applied = patch.apply_to_ast(&mut root);
+        assert_eq!(applied, 3);
+
+        // EntireCompToDelete and EntireCompToRemove should have been removed from root
+        assert_eq!(root.children.len(), 1);
+        let comp = &root.children[0];
+        assert_eq!(comp.attribute("Id"), Some("TargetComp"));
+
+        // In TargetComp, FileToDelete, RegistryKey, and Shortcut should have been removed,
+        // FileToKeep should remain, and NewFile should have been added
+        assert_eq!(comp.children.len(), 2);
+        assert_eq!(comp.children[0].attribute("Id"), Some("FileToKeep"));
+        assert_eq!(comp.children[1].attribute("Id"), Some("NewFile"));
+    }
+
     /// Tests parsing `PatchCreation` XML documents and building `.msp` containers using `PatchPackageBuilder`.
     #[test]
     #[allow(clippy::too_many_lines)]
@@ -1761,5 +1906,72 @@ mod tests {
         assert!(valid_builder
             .build_to_file("/nonexistent_dir_9999/patch.msp")
             .is_err());
+    }
+
+    /// Tests parsing multiple patch XML documents into a single `CPackWiXPatch`.
+    #[test]
+    fn test_cpack_patch_parse_multiple() {
+        let p1 = r##"<CPackWiXPatch><CPackWiXFragment Id="#PRODUCT"><Property Id="P1" Value="V1" /></CPackWiXFragment></CPackWiXPatch>"##;
+        let p2 = r##"<CPackWiXPatch><CPackWiXFragment Id="#PRODUCTFEATURE"><Property Id="P2" Value="V2" /></CPackWiXFragment></CPackWiXPatch>"##;
+
+        let combined = CPackWiXPatch::parse_multiple(&[p1, p2]).unwrap_or_default();
+        assert_eq!(combined.fragments.len(), 2);
+        assert_eq!(combined.fragments[0].id, "#PRODUCT");
+        assert_eq!(combined.fragments[1].id, "#PRODUCTFEATURE");
+
+        let bad = "<invalid";
+        assert!(CPackWiXPatch::parse_multiple(&[p1, bad]).is_err());
+    }
+
+    /// Tests all remaining branch paths across `CPackWiXPatch` and `PatchPackageBuilder`.
+    #[test]
+    fn test_patch_remaining_branches() {
+        // 1. CPackWiXPatch::from_xml_node with wrong root tag (Line 128)
+        let parser = XmlParser::new();
+        let wrong_root = parser.parse("<WrongRoot />").unwrap_or_default();
+        assert!(CPackWiXPatch::from_xml_node(&wrong_root).is_err());
+
+        // 2. CPackWiXPatch with non-fragment child, and fragment with non-Id attribute (Lines 138, 146)
+        let mixed_xml = r#"<CPackWiXPatch>
+            <IgnoredChild />
+            <CPackWiXFragment Id="F1" CustomAttr="val">
+                <File Id="DelFile" Action="remove" />
+                <Directory Delete="yes" />
+            </CPackWiXFragment>
+            <CPackWiXFragment Id="DelComp" Action="remove" />
+            <CPackWiXFragment Id="DelComp2" Delete="yes" />
+            <CPackWiXFragment Id="DelComp3" Delete="no" />
+            <CPackWiXFragment Id="DelComp4" Action="other" />
+            <CPackWiXFragment Id="UnmatchedId" />
+        </CPackWiXPatch>"#;
+        let mixed_node = parser.parse(mixed_xml).unwrap_or_default();
+        let patch = CPackWiXPatch::from_xml_node(&mixed_node).unwrap_or_default();
+        assert_eq!(patch.fragments.len(), 6);
+
+        // 3. apply_to_ast with deletion by Action="remove", Delete="yes", and unmatched fragment (Lines 170, 193, 199, 213, 217)
+        let mut target_ast = parser
+            .parse(
+                r#"<Wix>
+            <Product Id="F1">
+                <File Id="DelFile" />
+                <Directory />
+            </Product>
+            <Component Id="DelComp" />
+            <Component Id="DelComp2" />
+            <Component Id="DelComp3" />
+            <Component Id="DelComp4" />
+        </Wix>"#,
+            )
+            .unwrap_or_default();
+        let applied_count = patch.apply_to_ast(&mut target_ast);
+        assert_eq!(applied_count, 5);
+
+        // 4. PatchPackageBuilder with target_product_codes, non-empty transforms, empty transform name, and delta files (Lines 1044, 1050, 1085, 1094)
+        let mut builder = PatchPackageBuilder::new("PATCH_FULL")
+            .add_target_product_code("{11111111-2222-3333-4444-555555555555}")
+            .add_transform("PROD_1", "", vec![0x10, 0x20]);
+        let _ = builder.add_file_delta("FileKey", b"baseline", b"updated");
+        let bytes = builder.build().unwrap_or_default();
+        assert!(!bytes.is_empty());
     }
 }

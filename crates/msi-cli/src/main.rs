@@ -3706,6 +3706,14 @@ mod tests {
             temp_dir.join("sibling_module.wxs"),
             "<Wix><Module Id=\"*\" Version=\"1.0\"><ComponentGroup Id=\"PayloadComponents\"/></Module></Wix>",
         );
+        let _ = std::fs::write(
+            temp_dir.join("sibling_hybrid_product.wxs"),
+            "<Wix><Product Id=\"*\" Name=\"Hybrid\"><Fragment><ComponentGroup Id=\"PayloadComponents\"/></Fragment></Product></Wix>",
+        );
+        let _ = std::fs::write(
+            temp_dir.join("sibling_hybrid_module.wxs"),
+            "<Wix><Module Id=\"*\" Version=\"1.0\"><Fragment><ComponentGroup Id=\"PayloadComponents\"/></Fragment></Module></Wix>",
+        );
 
         // Pack passing ONLY app.wxs - app_payload.wxs must be auto-discovered, ignoring sibling Product/Module!
         let pack_res = handle_pack(&PackArgs {

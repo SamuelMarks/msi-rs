@@ -91,13 +91,8 @@ impl Compiler {
     /// A new compiler.
     #[must_use]
     pub fn new() -> Self {
-        let mut registry = ExtensionRegistry::new();
-        registry.register(std::sync::Arc::new(
-            crate::wix::extensions::util::UtilExtension::new(),
-        ));
-
         Self {
-            extension_registry: registry,
+            extension_registry: ExtensionRegistry::with_builtin_extensions(),
             prefixes: RefCell::new(HashMap::new()),
         }
     }
@@ -221,9 +216,18 @@ impl Compiler {
                 .attribute("ProductCode")
                 .or_else(|| node.attribute("Id"))
             {
+                let effective_code = if code == "*" || code == "?" {
+                    let name_seed = node.attribute("Name").unwrap_or("Product");
+                    let mfg_seed = node.attribute("Manufacturer").unwrap_or("Manufacturer");
+                    let ver_seed = node.attribute("Version").unwrap_or("1.0.0");
+                    let seed = format!("{name_seed}_{mfg_seed}_{ver_seed}");
+                    ComponentGuid::generate_deterministic("ProductCode", &seed).to_string()
+                } else {
+                    code.to_string()
+                };
                 let p = PropertyRow {
                     property: PropertyName::from_static("ProductCode"),
-                    value: code.to_string(),
+                    value: effective_code,
                 };
                 prop_table.push_record(p.to_record());
             }
@@ -703,6 +707,13 @@ impl Compiler {
                                 .entry("Font".to_string())
                                 .or_insert_with(|| IntermediateTable::new("Font"))
                                 .push_record(font_row.to_record());
+                        } else if sub.tag == "Shortcut" {
+                            let target = format!("[#{file_id_str}]");
+                            let mut sc_node = sub.clone();
+                            if sc_node.attribute("Target").is_none() {
+                                sc_node.attributes.insert("Target".to_string(), target);
+                            }
+                            Self::compile_shortcut(&sc_node, parent_id, section, tables);
                         }
                     }
                 }
@@ -1089,6 +1100,12 @@ impl Compiler {
                                 value: "1".to_string(),
                             };
                             prop_table.push_record(p.to_record());
+                        } else if scope.eq_ignore_ascii_case("perUser") {
+                            let p_user = PropertyRow {
+                                property: PropertyName::from_static("MSIINSTALLPERUSER"),
+                                value: "1".to_string(),
+                            };
+                            prop_table.push_record(p_user.to_record());
                         }
                     }
                     if let Some(privileges) = child.attribute("InstallPrivileges") {
@@ -1278,6 +1295,16 @@ impl Compiler {
                                 FieldValue::Short(disk_id),
                                 FieldValue::String(comp_lvl.to_string()),
                             ]));
+                    }
+
+                    if child
+                        .attribute("EmbedCab")
+                        .is_some_and(|v| v.eq_ignore_ascii_case("no"))
+                    {
+                        tables
+                            .entry("WixExternalMedia".to_string())
+                            .or_insert_with(|| IntermediateTable::new("WixExternalMedia"))
+                            .push_record(Record::with_fields(vec![FieldValue::Short(disk_id)]));
                     }
                 }
                 "WixVariable" => {
@@ -2615,12 +2642,45 @@ impl Compiler {
                 let min = sub.attribute("Minimum").map(ToString::to_string);
                 let max = sub.attribute("Maximum").map(ToString::to_string);
                 let prop = sub.attribute("Property").unwrap_or("NEWPRODUCTFOUND");
+
+                let mut attrs: i32 = 0;
+                let inc_min = sub
+                    .attribute("IncludeMinimum")
+                    .is_none_or(|v| v.eq_ignore_ascii_case("yes"));
+                if inc_min {
+                    attrs |= 0x0000_0100;
+                }
+                if sub
+                    .attribute("IncludeMaximum")
+                    .is_some_and(|v| v.eq_ignore_ascii_case("yes"))
+                {
+                    attrs |= 0x0000_0200;
+                }
+                if sub
+                    .attribute("OnlyDetect")
+                    .is_some_and(|v| v.eq_ignore_ascii_case("yes"))
+                {
+                    attrs |= 0x0000_0002;
+                }
+                if sub
+                    .attribute("MigrateFeatures")
+                    .is_some_and(|v| v.eq_ignore_ascii_case("yes"))
+                {
+                    attrs |= 0x0000_0001;
+                }
+                if sub
+                    .attribute("IgnoreRemoveFailure")
+                    .is_some_and(|v| v.eq_ignore_ascii_case("yes"))
+                {
+                    attrs |= 0x0000_0004;
+                }
+
                 let rec = Record::with_fields(vec![
                     FieldValue::String(upg_id.to_string()),
                     min.map_or(FieldValue::Null, FieldValue::String),
                     max.map_or(FieldValue::Null, FieldValue::String),
                     FieldValue::Null,
-                    FieldValue::Long(256),
+                    FieldValue::Long(attrs),
                     FieldValue::Null,
                     FieldValue::String(prop.to_string()),
                 ]);
@@ -7183,5 +7243,84 @@ mod tests {
             IntermediateSection::new(SectionType::Product, Some("Prod".to_string()));
         let mut tables = HashMap::new();
         assert!(Compiler::compile_dialog(&dlg_node, &mut dialog_sec, &mut tables).is_ok());
+    }
+
+    /// Tests `Product` with `Id="?"`, `InstallScope="perUser"`, nested file shortcut without explicit target, and full `UpgradeVersion` attribute flags.
+    #[test]
+    fn test_compiler_remaining_uncovered_paths() {
+        let xml = r#"<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="?" Name="TestPerUser" Version="2.0.0" Manufacturer="TestMfg" UpgradeCode="{22222222-2222-2222-2222-222222222222}">
+        <Package Description="Test" InstallScope="perUser" />
+        <Upgrade Id="{22222222-2222-2222-2222-222222222222}">
+            <UpgradeVersion Minimum="1.0.0" Maximum="2.0.0"
+                IncludeMinimum="no"
+                IncludeMaximum="yes"
+                OnlyDetect="yes"
+                MigrateFeatures="yes"
+                IgnoreRemoveFailure="yes"
+                Property="PREVIOUSVERSIONSINSTALLED" />
+        </Upgrade>
+        <Directory Id="TARGETDIR" Name="SourceDir">
+            <Directory Id="ProgramFilesFolder" Name="PFiles">
+                <Component Id="Comp1" Guid="{33333333-3333-3333-3333-333333333333}">
+                    <File Id="File1" Source="main.exe">
+                        <Shortcut Id="ScNoTarget" Directory="ProgramFilesFolder" Name="ShortcutNoTarget" />
+                        <Shortcut Id="ScWithTarget" Directory="ProgramFilesFolder" Name="ShortcutWithTarget" Target="[#File1]" />
+                    </File>
+                </Component>
+            </Directory>
+        </Directory>
+    </Product>
+</Wix>"#;
+        let parser = XmlParser::new();
+        let root = parser.parse(xml).unwrap_or_default();
+        let compiler = Compiler::new();
+        let obj = compiler.compile(&root).unwrap_or_default();
+        let sec = &obj.sections[0];
+
+        // Also test Package with other InstallScope to exercise the fallthrough branch of InstallScope
+        let xml_other_scope = r#"<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="*" Name="OtherScope" Version="1.0.0" Manufacturer="TestMfg">
+        <Package Description="Test" InstallScope="customScope" />
+    </Product>
+</Wix>"#;
+        let root_other = parser.parse(xml_other_scope).unwrap_or_default();
+        assert!(compiler.compile(&root_other).is_ok());
+
+        // Verify MSIINSTALLPERUSER property
+        let prop_tbl = get_table(sec, "Property");
+        let has_per_user = prop_tbl.records.iter().any(|r| {
+            r.get(0) == Some(&FieldValue::String("MSIINSTALLPERUSER".to_string()))
+                && r.get(1) == Some(&FieldValue::String("1".to_string()))
+        });
+        assert!(has_per_user);
+
+        // Verify ProductCode generated deterministically from "?"
+        let has_prod_code = prop_tbl
+            .records
+            .iter()
+            .any(|r| r.get(0) == Some(&FieldValue::String("ProductCode".to_string())));
+        assert!(has_prod_code);
+
+        // Verify Shortcuts
+        let sc_tbl = get_table(sec, "Shortcut");
+        assert_eq!(sc_tbl.records.len(), 2);
+        let sc_rec = &sc_tbl.records[0];
+        assert_eq!(
+            sc_rec.get(4),
+            Some(&FieldValue::String("[#File1]".to_string()))
+        );
+
+        // Verify Upgrade table attributes:
+        // IncludeMinimum="no" -> 0x100 not set
+        // IncludeMaximum="yes" -> 0x200
+        // OnlyDetect="yes" -> 0x002
+        // MigrateFeatures="yes" -> 0x001
+        // IgnoreRemoveFailure="yes" -> 0x004
+        // Expected attrs = 0x200 | 0x002 | 0x001 | 0x004 = 0x207 = 519
+        let upg_tbl = get_table(sec, "Upgrade");
+        assert_eq!(upg_tbl.records.len(), 1);
+        let upg_rec = &upg_tbl.records[0];
+        assert_eq!(upg_rec.get(4), Some(&FieldValue::Long(519)));
     }
 }

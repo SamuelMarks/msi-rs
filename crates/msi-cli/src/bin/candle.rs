@@ -25,6 +25,23 @@ use std::process::ExitCode;
 /// `2` on preprocessor errors, `3` on compiler/schema errors.
 #[must_use]
 pub fn run(args: &[String]) -> i32 {
+    if args
+        .iter()
+        .any(|a| a == "-version" || a == "--version" || a == "-v")
+    {
+        println!("Windows Installer XML Toolset Compiler version 3.14.0.1703");
+        return 0;
+    }
+    if args
+        .iter()
+        .any(|a| a == "-?" || a == "/?" || a == "-help" || a == "--help" || a == "-h")
+    {
+        println!("Windows Installer XML Toolset Compiler version 3.14.0.1703");
+        println!(
+            "Usage: candle.exe [-nologo] [-arch <x86|x64|arm64>] [-out <path>] <source.wxs...>"
+        );
+        return 0;
+    }
     let opts = match CandleOptions::parse(args) {
         Ok(o) => o,
         Err(err) => {
@@ -155,5 +172,17 @@ mod tests {
         assert_eq!(code, ExitCode::FAILURE);
 
         let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_candle_version_and_help() {
+        assert_eq!(run(&["-version".to_string()]), 0);
+        assert_eq!(run(&["--version".to_string()]), 0);
+        assert_eq!(run(&["-v".to_string()]), 0);
+        assert_eq!(run(&["-?".to_string()]), 0);
+        assert_eq!(run(&["/?".to_string()]), 0);
+        assert_eq!(run(&["-help".to_string()]), 0);
+        assert_eq!(run(&["--help".to_string()]), 0);
+        assert_eq!(run(&["-h".to_string()]), 0);
     }
 }

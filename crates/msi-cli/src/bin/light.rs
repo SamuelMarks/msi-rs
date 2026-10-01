@@ -25,6 +25,21 @@ use std::process::ExitCode;
 /// Exit code: `0` on linking success, non-zero on error.
 #[must_use]
 pub fn run(args: &[String]) -> i32 {
+    if args
+        .iter()
+        .any(|a| a == "-version" || a == "--version" || a == "-v")
+    {
+        println!("Windows Installer XML Toolset Linker version 3.14.0.1703");
+        return 0;
+    }
+    if args
+        .iter()
+        .any(|a| a == "-?" || a == "/?" || a == "-help" || a == "--help" || a == "-h")
+    {
+        println!("Windows Installer XML Toolset Linker version 3.14.0.1703");
+        println!("Usage: light.exe [-nologo] [-out <path.msi>] <input.wixobj...>");
+        return 0;
+    }
     let opts = match LightOptions::parse(args) {
         Ok(o) => o,
         Err(err) => {
@@ -140,5 +155,17 @@ mod tests {
         assert_eq!(code, ExitCode::FAILURE);
 
         let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_light_version_and_help() {
+        assert_eq!(run(&["-version".to_string()]), 0);
+        assert_eq!(run(&["--version".to_string()]), 0);
+        assert_eq!(run(&["-v".to_string()]), 0);
+        assert_eq!(run(&["-?".to_string()]), 0);
+        assert_eq!(run(&["/?".to_string()]), 0);
+        assert_eq!(run(&["-help".to_string()]), 0);
+        assert_eq!(run(&["--help".to_string()]), 0);
+        assert_eq!(run(&["-h".to_string()]), 0);
     }
 }

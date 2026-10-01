@@ -1843,6 +1843,31 @@ mod tests {
         )
         .is_ok());
 
+        // Test logging with action_records only
+        let mut records_logging = minimal_logging.clone();
+        records_logging.action_records = true;
+        assert!(
+            write_execution_log(&records_logging, &test_ctx, &worker_with_actions, None,).is_ok()
+        );
+
+        // Test logging with status only
+        let mut status_logging = minimal_logging.clone();
+        status_logging.status = true;
+        assert!(
+            write_execution_log(&status_logging, &test_ctx, &worker_with_actions, None,).is_ok()
+        );
+
+        // Test logging with verbose only and an error present
+        let mut verbose_logging = minimal_logging;
+        verbose_logging.verbose = true;
+        assert!(write_execution_log(
+            &verbose_logging,
+            &test_ctx,
+            &worker_with_actions,
+            Some(&test_err),
+        )
+        .is_ok());
+
         // Test logging with invalid path
         let bad_logging = LoggingOptions {
             log_file: "/nonexistent_dir_xyz123/impossible/test.log".to_string(),

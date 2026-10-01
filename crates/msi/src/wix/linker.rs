@@ -1786,6 +1786,8 @@ pub struct Linker {
     cab_per_component: bool,
     /// Embedded cabinet archives generated during binding.
     embedded_cabinets: HashMap<String, Vec<u8>>,
+    /// External cabinet archives generated during binding (non-embedded).
+    external_cabinets: HashMap<String, Vec<u8>>,
     /// Extension registry.
     extension_registry: ExtensionRegistry,
 }
@@ -1816,6 +1818,34 @@ fn is_special_reference(rf: &Reference, defined_symbols: &HashMap<Symbol, Vec<us
     }
 }
 
+/// Parses a `WiX` compression level string into a [`crate::cab::folder::CompressionType`].
+///
+/// Supports `none`, `mszip`, `high`, `lzx`, `lzx15`..=`lzx21`, and `quantum`.
+///
+/// # Arguments
+///
+/// * `lvl` - Compression level string.
+///
+/// # Returns
+///
+/// Configured [`crate::cab::folder::CompressionType`].
+fn parse_media_compression_level(lvl: &str) -> crate::cab::folder::CompressionType {
+    let lower = lvl.trim().to_ascii_lowercase();
+    if lower == "none" {
+        crate::cab::folder::CompressionType::None
+    } else if lower == "high" {
+        crate::cab::folder::CompressionType::Lzx { window_bits: 21 }
+    } else if let Some(lzx_part) = lower.strip_prefix("lzx") {
+        let clean = lzx_part.trim_start_matches([':', '-', '_']);
+        let bits = clean.parse::<u8>().unwrap_or(21).clamp(15, 21);
+        crate::cab::folder::CompressionType::Lzx { window_bits: bits }
+    } else if lower == "quantum" {
+        crate::cab::folder::CompressionType::Quantum
+    } else {
+        crate::cab::folder::CompressionType::Mszip
+    }
+}
+
 impl Linker {
     /// Creates a new empty [`Linker`].
     ///
@@ -1824,13 +1854,8 @@ impl Linker {
     /// A new [`Linker`].
     #[must_use]
     pub fn new() -> Self {
-        let mut registry = ExtensionRegistry::new();
-        registry.register(std::sync::Arc::new(
-            crate::wix::extensions::util::UtilExtension::new(),
-        ));
-
         Self {
-            extension_registry: registry,
+            extension_registry: ExtensionRegistry::with_builtin_extensions(),
             ..Default::default()
         }
     }
@@ -1995,6 +2020,26 @@ impl Linker {
     #[must_use]
     pub fn take_embedded_cabinets(&mut self) -> HashMap<String, Vec<u8>> {
         std::mem::take(&mut self.embedded_cabinets)
+    }
+
+    /// Returns a reference to the external cabinet archives generated during linking.
+    ///
+    /// # Returns
+    ///
+    /// Map of external cabinet filenames to byte vectors.
+    #[must_use]
+    pub const fn external_cabinets(&self) -> &HashMap<String, Vec<u8>> {
+        &self.external_cabinets
+    }
+
+    /// Consumes and returns the external cabinet archives generated during linking.
+    ///
+    /// # Returns
+    ///
+    /// Map of external cabinet filenames to byte vectors.
+    #[must_use]
+    pub fn take_external_cabinets(&mut self) -> HashMap<String, Vec<u8>> {
+        std::mem::take(&mut self.external_cabinets)
     }
 
     /// Links all input objects, resolves symbols and references, builds directory hierarchies,
@@ -2533,27 +2578,41 @@ impl Linker {
             if let (Some(FieldValue::Short(did)), Some(FieldValue::String(lvl))) =
                 (r.get(0), r.get(1))
             {
-                let ct = match lvl.to_ascii_lowercase().as_str() {
-                    "high" => crate::cab::folder::CompressionType::Lzx { window_bits: 21 },
-                    "none" => crate::cab::folder::CompressionType::None,
-                    _ => crate::cab::folder::CompressionType::Mszip,
-                };
+                let ct = parse_media_compression_level(lvl);
                 disk_compression.insert(*did, ct);
             }
         }
 
+        let external_media_disks: HashSet<i16> = db
+            .get_records("WixExternalMedia")
+            .iter()
+            .filter_map(|r| match r.get(0) {
+                Some(FieldValue::Short(did)) => Some(*did),
+                _ => None,
+            })
+            .collect();
+
         let mut disk_to_cab: HashMap<i16, String> = HashMap::new();
         for r in db.get_records("Media") {
             if let Some(FieldValue::Short(did)) = r.get(0) {
+                let is_ext = external_media_disks.contains(did);
                 let cab_name = match r.get(3) {
-                    Some(FieldValue::String(c)) => {
-                        if c.starts_with('#') {
+                    Some(FieldValue::String(c)) if !c.is_empty() => {
+                        if is_ext {
+                            c.trim_start_matches('#').to_string()
+                        } else if c.starts_with('#') {
                             c.clone()
                         } else {
                             format!("#{c}")
                         }
                     }
-                    _ => format!("#cab{did}.cab"),
+                    _ => {
+                        if is_ext {
+                            format!("cab{did}.cab")
+                        } else {
+                            format!("#cab{did}.cab")
+                        }
+                    }
                 };
                 disk_to_cab.insert(*did, cab_name);
             }
@@ -2726,10 +2785,14 @@ impl Linker {
             font_tbl.extend(font_records);
         }
 
-        // Build cabinets and populate embedded_cabinets
+        // Build cabinets and populate embedded_cabinets and external_cabinets
         for (cab_name, writer) in cab_writers {
             let cab_bytes = writer.build();
-            self.embedded_cabinets.insert(cab_name, cab_bytes);
+            if cab_name.starts_with('#') {
+                self.embedded_cabinets.insert(cab_name, cab_bytes);
+            } else {
+                self.external_cabinets.insert(cab_name, cab_bytes);
+            }
         }
 
         Ok(())
@@ -9247,6 +9310,7 @@ mod tests {
                 FieldValue::String("ActionCancel".to_string()),
                 FieldValue::String("cancel".to_string()),
                 FieldValue::String("OnExit".to_string()),
+                FieldValue::String("COND_MATCH_CANCEL".to_string()),
             ]),
         );
         db.add_record(
@@ -9272,7 +9336,15 @@ mod tests {
             "InstallUISequence",
             Record::with_fields(vec![
                 FieldValue::String("ActionCancel".to_string()),
-                FieldValue::Null,
+                FieldValue::String("COND_MISMATCH_CANCEL".to_string()),
+                FieldValue::Short(0),
+            ]),
+        );
+        db.add_record(
+            "InstallUISequence",
+            Record::with_fields(vec![
+                FieldValue::String("ActionCancel".to_string()),
+                FieldValue::String("COND_MATCH_CANCEL".to_string()),
                 FieldValue::Short(0),
             ]),
         );
@@ -9311,6 +9383,7 @@ mod tests {
                 FieldValue::String("ActionA".to_string()),
                 FieldValue::String("ActionB".to_string()),
                 FieldValue::String("After".to_string()),
+                FieldValue::String("COND_MATCH_A".to_string()),
             ]),
         );
         db.add_record(
@@ -9364,7 +9437,15 @@ mod tests {
             "InstallUISequence",
             Record::with_fields(vec![
                 FieldValue::String("ActionA".to_string()),
-                FieldValue::Null,
+                FieldValue::String("COND_MISMATCH_A".to_string()),
+                FieldValue::Short(1),
+            ]),
+        );
+        db.add_record(
+            "InstallUISequence",
+            Record::with_fields(vec![
+                FieldValue::String("ActionA".to_string()),
+                FieldValue::String("COND_MATCH_A".to_string()),
                 FieldValue::Short(1),
             ]),
         );
@@ -9387,6 +9468,7 @@ mod tests {
                 FieldValue::String("ActionD".to_string()),
                 FieldValue::String("ActionE".to_string()),
                 FieldValue::String("Before".to_string()),
+                FieldValue::String("COND_MATCH_D".to_string()),
             ]),
         );
         db.add_record(
@@ -9418,7 +9500,15 @@ mod tests {
             "InstallUISequence",
             Record::with_fields(vec![
                 FieldValue::String("ActionD".to_string()),
-                FieldValue::Null,
+                FieldValue::String("COND_MISMATCH_D".to_string()),
+                FieldValue::Short(1),
+            ]),
+        );
+        db.add_record(
+            "InstallUISequence",
+            Record::with_fields(vec![
+                FieldValue::String("ActionD".to_string()),
+                FieldValue::String("COND_MATCH_D".to_string()),
                 FieldValue::Short(1),
             ]),
         );
@@ -9491,25 +9581,39 @@ mod tests {
         assert!(Linker::solve_relative_sequences(&mut cycle_db).is_err());
 
         let ui_seq = db.get_records("InstallUISequence");
-        let find_seq = |act: &str| -> Option<i16> {
+        let find_seq = |act: &str, cond: Option<&str>| -> Option<i16> {
             for r in ui_seq {
                 if let (Some(FieldValue::String(a)), Some(FieldValue::Short(s))) =
                     (r.get(0), r.get(2))
                 {
-                    if a == act {
+                    let cond_match = match (cond, r.get(1)) {
+                        (Some(c), Some(FieldValue::String(rc))) => c == rc,
+                        (None, _) => true,
+                        _ => false,
+                    };
+                    if a == act && cond_match {
                         return Some(*s);
                     }
                 }
             }
             None
         };
-        assert_eq!(find_seq("ActionCancel"), Some(-2));
-        assert_eq!(find_seq("ActionError"), Some(-3));
-        assert_eq!(find_seq("ActionSuspend"), Some(-4));
-        assert_eq!(find_seq("ActionSuccess"), Some(-1));
-        assert_eq!(find_seq("ActionA"), Some(1026)); // collided with 1025, incremented to 1026
-        assert_eq!(find_seq("ActionD"), Some(974)); // collided with 975, decremented to 974
-        assert_eq!(find_seq("NonExistentAction"), None);
+        assert_eq!(
+            find_seq("ActionCancel", Some("COND_MATCH_CANCEL")),
+            Some(-2)
+        );
+        assert_eq!(
+            find_seq("ActionCancel", Some("COND_MISMATCH_CANCEL")),
+            Some(0)
+        );
+        assert_eq!(find_seq("ActionError", None), Some(-3));
+        assert_eq!(find_seq("ActionSuspend", None), Some(-4));
+        assert_eq!(find_seq("ActionSuccess", None), Some(-1));
+        assert_eq!(find_seq("ActionA", Some("COND_MATCH_A")), Some(1026)); // collided with 1025, incremented to 1026
+        assert_eq!(find_seq("ActionA", Some("COND_MISMATCH_A")), Some(1));
+        assert_eq!(find_seq("ActionD", Some("COND_MATCH_D")), Some(974)); // collided with 975, decremented to 974
+        assert_eq!(find_seq("ActionD", Some("COND_MISMATCH_D")), Some(1));
+        assert_eq!(find_seq("NonExistentAction", None), None);
 
         // 2. Coverage for WixUIBannerBmp, WixUIDialogBmp, WixUILicenseRtf (.txt and unresolved),
         // and resolve_source_path branches.
@@ -9897,8 +10001,12 @@ mod tests {
         let _ = std::fs::write(&dummy_src_b, b"dummy payload data b");
         let dummy_src_c = temp_dir.join("dummy_c.bin");
         let _ = std::fs::write(&dummy_src_c, b"dummy payload data c");
+        let dummy_src_d = temp_dir.join("dummy_d.bin");
+        let _ = std::fs::write(&dummy_src_d, b"dummy payload data d");
+        let dummy_src_e = temp_dir.join("dummy_e.bin");
+        let _ = std::fs::write(&dummy_src_e, b"dummy payload data e");
 
-        // WixMediaCompression records: one with "none", "high", "medium", and invalid non-Short did
+        // WixMediaCompression records: one with "none", "high", "medium", "lzx:18", "quantum", and invalid non-Short did
         bind_db.add_record(
             "WixMediaCompression",
             Record::with_fields(vec![
@@ -9916,6 +10024,20 @@ mod tests {
         bind_db.add_record(
             "WixMediaCompression",
             Record::with_fields(vec![
+                FieldValue::Short(4),
+                FieldValue::String("lzx:18".to_string()),
+            ]),
+        );
+        bind_db.add_record(
+            "WixMediaCompression",
+            Record::with_fields(vec![
+                FieldValue::Short(5),
+                FieldValue::String("quantum".to_string()),
+            ]),
+        );
+        bind_db.add_record(
+            "WixMediaCompression",
+            Record::with_fields(vec![
                 FieldValue::Short(99),
                 FieldValue::String("medium".to_string()),
             ]),
@@ -9926,6 +10048,20 @@ mod tests {
                 FieldValue::String("not_short".to_string()),
                 FieldValue::String("none".to_string()),
             ]),
+        );
+
+        // WixExternalMedia records for disk 4 and disk 5, plus non-Short record
+        bind_db.add_record(
+            "WixExternalMedia",
+            Record::with_fields(vec![FieldValue::Short(4)]),
+        );
+        bind_db.add_record(
+            "WixExternalMedia",
+            Record::with_fields(vec![FieldValue::Short(5)]),
+        );
+        bind_db.add_record(
+            "WixExternalMedia",
+            Record::with_fields(vec![FieldValue::String("not_short".to_string())]),
         );
 
         bind_db.add_record(
@@ -9952,6 +10088,22 @@ mod tests {
                 FieldValue::Short(99), // No Media entry for disk 99
             ]),
         );
+        bind_db.add_record(
+            "WixFile",
+            Record::with_fields(vec![
+                FieldValue::String("FileD".to_string()),
+                FieldValue::String(dummy_src_d.to_string_lossy().to_string()),
+                FieldValue::Short(4),
+            ]),
+        );
+        bind_db.add_record(
+            "WixFile",
+            Record::with_fields(vec![
+                FieldValue::String("FileE".to_string()),
+                FieldValue::String(dummy_src_e.to_string_lossy().to_string()),
+                FieldValue::Short(5),
+            ]),
+        );
 
         // Media disk 1 has cab name without '#': "cab1.cab" -> will become "#cab1.cab"
         bind_db.add_record(
@@ -9965,12 +10117,48 @@ mod tests {
                 FieldValue::Null,
             ]),
         );
+        // Media disk 6 has empty string cab name -> exercises if !c.is_empty() false branch
+        bind_db.add_record(
+            "Media",
+            Record::with_fields(vec![
+                FieldValue::Short(6),
+                FieldValue::Long(60),
+                FieldValue::Null,
+                FieldValue::String(String::new()),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
         // Media disk 2 has Null cab name -> will become "#cab2.cab"
         bind_db.add_record(
             "Media",
             Record::with_fields(vec![
                 FieldValue::Short(2),
                 FieldValue::Long(20),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        // Media disk 4 is external with explicit cab name -> will strip '#' and become external "myextcab4.cab"
+        bind_db.add_record(
+            "Media",
+            Record::with_fields(vec![
+                FieldValue::Short(4),
+                FieldValue::Long(40),
+                FieldValue::Null,
+                FieldValue::String("#myextcab4.cab".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        // Media disk 5 is external with Null cab name -> will become external "cab5.cab"
+        bind_db.add_record(
+            "Media",
+            Record::with_fields(vec![
+                FieldValue::Short(5),
+                FieldValue::Long(50),
                 FieldValue::Null,
                 FieldValue::Null,
                 FieldValue::Null,
@@ -10054,6 +10242,32 @@ mod tests {
                 FieldValue::Short(3),
             ]),
         );
+        bind_db.add_record(
+            "File",
+            Record::with_fields(vec![
+                FieldValue::String("FileD".to_string()),
+                FieldValue::String("Comp1".to_string()),
+                FieldValue::String("fileD.bin".to_string()),
+                FieldValue::Long(18),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Short(0),
+                FieldValue::Short(4),
+            ]),
+        );
+        bind_db.add_record(
+            "File",
+            Record::with_fields(vec![
+                FieldValue::String("FileE".to_string()),
+                FieldValue::String("Comp1".to_string()),
+                FieldValue::String("fileE.bin".to_string()),
+                FieldValue::Long(18),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Short(0),
+                FieldValue::Short(5),
+            ]),
+        );
 
         linker.set_cab_per_component(false);
         let _ = linker.bind_files_and_pack_cabinets(&mut bind_db);
@@ -10061,6 +10275,28 @@ mod tests {
         assert!(embedded.contains_key("#mycab1.cab"));
         assert!(embedded.contains_key("#cab2.cab"));
         assert!(embedded.contains_key("#cab99.cab"));
+        let ext = linker.external_cabinets();
+        assert!(ext.contains_key("myextcab4.cab"));
+        assert!(ext.contains_key("cab5.cab"));
+
+        // Test ICE warning suppression flag (self.suppress_all_warnings)
+        let mut warn_ice_db = LinkedDatabase::default();
+        warn_ice_db.add_record(
+            "Registry",
+            Record::with_fields(vec![
+                FieldValue::String("Reg1".to_string()),
+                FieldValue::Short(0),
+                FieldValue::String("CLSID\\MyCom".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::String("Comp1".to_string()),
+            ]),
+        );
+        let mut warn_linker = Linker::new();
+        warn_linker.set_suppress_all_warnings(true);
+        assert!(warn_linker
+            .run_filtered_ice_validations(&warn_ice_db)
+            .is_ok());
 
         // 4. Coverage for solve_symbol_graph:
         // - Action reference matching ExecuteAction which is in STANDARD_INSTALL_UI_ACTIONS

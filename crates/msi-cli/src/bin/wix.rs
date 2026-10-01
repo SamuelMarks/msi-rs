@@ -362,11 +362,11 @@ pub fn run(args: &[String]) -> i32 {
             println!("wix.exe : Burn bundle creation");
             0
         }
-        "-v" | "--version" | "version" => {
+        "-v" | "--version" | "-version" | "version" => {
             println!("WiX Toolset v5.0.0");
             0
         }
-        "-h" | "--help" | "help" => {
+        "-h" | "--help" | "-help" | "help" | "-?" | "/?" => {
             println!("WiX Toolset CLI");
             println!("Usage: wix <command> [options]");
             0
@@ -819,5 +819,19 @@ mod tests {
         assert_eq!(code, ExitCode::FAILURE);
 
         let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_wix_version_and_help() {
+        assert_eq!(run(&["-version".to_string()]), 0);
+        assert_eq!(run(&["--version".to_string()]), 0);
+        assert_eq!(run(&["-v".to_string()]), 0);
+        assert_eq!(run(&["version".to_string()]), 0);
+        assert_eq!(run(&["-?".to_string()]), 0);
+        assert_eq!(run(&["/?".to_string()]), 0);
+        assert_eq!(run(&["-help".to_string()]), 0);
+        assert_eq!(run(&["--help".to_string()]), 0);
+        assert_eq!(run(&["-h".to_string()]), 0);
+        assert_eq!(run(&["help".to_string()]), 0);
     }
 }

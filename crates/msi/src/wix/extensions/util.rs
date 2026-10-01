@@ -29,6 +29,149 @@ impl UtilExtension {
     /// # Errors
     ///
     /// Returns [`Error::WixCompiler`] if required attributes are missing.
+    /// Compiles a `<util:Group>` node.
+    ///
+    /// # Errors
+    /// Returns [`Error::WixCompiler`] if required attributes are missing.
+    fn compile_group(
+        node: &XmlNode,
+        parent_id: Option<&str>,
+        tables: &mut HashMap<String, IntermediateTable>,
+    ) -> Result<()> {
+        let id = node.attribute("Id").ok_or_else(|| Error::WixCompiler {
+            element: "util:Group".to_string(),
+            message: "missing required 'Id' attribute".to_string(),
+        })?;
+
+        let name = node.attribute("Name").ok_or_else(|| Error::WixCompiler {
+            element: "util:Group".to_string(),
+            message: "missing required 'Name' attribute".to_string(),
+        })?;
+
+        let component = parent_id.ok_or_else(|| Error::WixCompiler {
+            element: "util:Group".to_string(),
+            message: "Group element must be nested within a Component".to_string(),
+        })?;
+
+        let domain = node.attribute("Domain").unwrap_or("");
+
+        let row = Record::with_fields(vec![
+            FieldValue::String(id.to_string()),
+            FieldValue::String(component.to_string()),
+            FieldValue::String(name.to_string()),
+            FieldValue::String(domain.to_string()),
+        ]);
+
+        tables
+            .entry("_util:Group".to_string())
+            .or_insert_with(|| IntermediateTable::new("_util:Group"))
+            .push_record(row);
+
+        Ok(())
+    }
+
+    /// Compiles a `<util:FileShare>` node.
+    ///
+    /// # Errors
+    /// Returns [`Error::WixCompiler`] if required attributes are missing.
+    fn compile_file_share(
+        node: &XmlNode,
+        parent_id: Option<&str>,
+        tables: &mut HashMap<String, IntermediateTable>,
+    ) -> Result<()> {
+        let id = node.attribute("Id").ok_or_else(|| Error::WixCompiler {
+            element: "util:FileShare".to_string(),
+            message: "missing required 'Id' attribute".to_string(),
+        })?;
+
+        let name = node.attribute("Name").ok_or_else(|| Error::WixCompiler {
+            element: "util:FileShare".to_string(),
+            message: "missing required 'Name' attribute".to_string(),
+        })?;
+
+        let component = parent_id.ok_or_else(|| Error::WixCompiler {
+            element: "util:FileShare".to_string(),
+            message: "FileShare element must be nested within a Component".to_string(),
+        })?;
+
+        let description = node.attribute("Description").unwrap_or("");
+
+        let row = Record::with_fields(vec![
+            FieldValue::String(id.to_string()),
+            FieldValue::String(name.to_string()),
+            FieldValue::String(description.to_string()),
+            FieldValue::String(component.to_string()),
+        ]);
+
+        tables
+            .entry("_util:FileShare".to_string())
+            .or_insert_with(|| IntermediateTable::new("_util:FileShare"))
+            .push_record(row);
+
+        Ok(())
+    }
+
+    /// Compiles a `<util:XmlFile>` node.
+    ///
+    /// # Errors
+    /// Returns [`Error::WixCompiler`] if required attributes are missing.
+    fn compile_xml_file(
+        node: &XmlNode,
+        parent_id: Option<&str>,
+        tables: &mut HashMap<String, IntermediateTable>,
+    ) -> Result<()> {
+        let id = node.attribute("Id").ok_or_else(|| Error::WixCompiler {
+            element: "util:XmlFile".to_string(),
+            message: "missing required 'Id' attribute".to_string(),
+        })?;
+
+        let file = node.attribute("File").ok_or_else(|| Error::WixCompiler {
+            element: "util:XmlFile".to_string(),
+            message: "missing required 'File' attribute".to_string(),
+        })?;
+
+        let element_path = node
+            .attribute("ElementPath")
+            .ok_or_else(|| Error::WixCompiler {
+                element: "util:XmlFile".to_string(),
+                message: "missing required 'ElementPath' attribute".to_string(),
+            })?;
+
+        let component = parent_id.ok_or_else(|| Error::WixCompiler {
+            element: "util:XmlFile".to_string(),
+            message: "XmlFile element must be nested within a Component".to_string(),
+        })?;
+
+        let value = node.attribute("Value").unwrap_or("");
+
+        let row = Record::with_fields(vec![
+            FieldValue::String(id.to_string()),
+            FieldValue::String(file.to_string()),
+            FieldValue::String(element_path.to_string()),
+            FieldValue::String(value.to_string()),
+            FieldValue::String(component.to_string()),
+        ]);
+
+        tables
+            .entry("_util:XmlFile".to_string())
+            .or_insert_with(|| IntermediateTable::new("_util:XmlFile"))
+            .push_record(row);
+
+        Ok(())
+    }
+
+    /// Compiles a `<util:User>` node into `WixUtilUser` table.
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - User XML node.
+    /// * `parent_id` - Optional enclosing Component identifier.
+    /// * `section` - `WiX` section to update.
+    /// * `tables` - Intermediate tables.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::WixCompiler`] on missing ID or Name.
     fn compile_user(
         node: &XmlNode,
         parent_id: Option<&str>,
@@ -104,6 +247,9 @@ impl WixExtension for UtilExtension {
 
         match tag_name {
             "User" => Self::compile_user(node, parent_id, tables),
+            "Group" => Self::compile_group(node, parent_id, tables),
+            "FileShare" => Self::compile_file_share(node, parent_id, tables),
+            "XmlFile" => Self::compile_xml_file(node, parent_id, tables),
             _ => Err(Error::WixExtension {
                 extension: self.id().to_string(),
                 message: format!("unsupported element: '{tag_name}'"),
@@ -238,6 +384,157 @@ mod tests {
 
         let res = ext.compile_node(&node, None, &mut section, &mut tables);
         assert!(matches!(res, Err(Error::WixCompiler { .. })));
+    }
+
+    #[test]
+    fn test_compile_group_success() {
+        let ext = UtilExtension::new();
+        let xml = r#"<util:Group Id="grp1" Name="Admins" Domain="WORKGROUP" />"#;
+        let parser = crate::wix::xml::XmlParser::new();
+        let node = parser.parse(xml).unwrap_or_default();
+
+        let mut section = IntermediateSection::new(SectionType::Product, Some("prod".to_string()));
+        let mut tables = HashMap::new();
+
+        ext.compile_node(&node, Some("cmp1"), &mut section, &mut tables)
+            .unwrap_or_default();
+
+        let fields = tables["_util:Group"].records[0].fields();
+        assert_eq!(fields[0], FieldValue::String("grp1".to_string()));
+        assert_eq!(fields[1], FieldValue::String("cmp1".to_string()));
+        assert_eq!(fields[2], FieldValue::String("Admins".to_string()));
+        assert_eq!(fields[3], FieldValue::String("WORKGROUP".to_string()));
+    }
+
+    #[test]
+    fn test_compile_group_errors() {
+        let ext = UtilExtension::new();
+        let parser = crate::wix::xml::XmlParser::new();
+        let mut section = IntermediateSection::new(SectionType::Product, None);
+
+        let node_no_id = parser
+            .parse(r#"<util:Group Name="A" />"#)
+            .unwrap_or_default();
+        assert!(ext
+            .compile_node(&node_no_id, Some("c"), &mut section, &mut HashMap::new())
+            .is_err());
+
+        let node_no_name = parser.parse(r#"<util:Group Id="g" />"#).unwrap_or_default();
+        assert!(ext
+            .compile_node(&node_no_name, Some("c"), &mut section, &mut HashMap::new())
+            .is_err());
+
+        let node_ok = parser
+            .parse(r#"<util:Group Id="g" Name="A" />"#)
+            .unwrap_or_default();
+        assert!(ext
+            .compile_node(&node_ok, None, &mut section, &mut HashMap::new())
+            .is_err());
+    }
+
+    #[test]
+    fn test_compile_file_share_success() {
+        let ext = UtilExtension::new();
+        let xml = r#"<util:FileShare Id="fs1" Name="Share" Description="Desc" />"#;
+        let parser = crate::wix::xml::XmlParser::new();
+        let node = parser.parse(xml).unwrap_or_default();
+
+        let mut section = IntermediateSection::new(SectionType::Product, Some("prod".to_string()));
+        let mut tables = HashMap::new();
+
+        ext.compile_node(&node, Some("cmp1"), &mut section, &mut tables)
+            .unwrap_or_default();
+
+        let fields = tables["_util:FileShare"].records[0].fields();
+        assert_eq!(fields[0], FieldValue::String("fs1".to_string()));
+        assert_eq!(fields[1], FieldValue::String("Share".to_string()));
+        assert_eq!(fields[2], FieldValue::String("Desc".to_string()));
+        assert_eq!(fields[3], FieldValue::String("cmp1".to_string()));
+    }
+
+    #[test]
+    fn test_compile_file_share_errors() {
+        let ext = UtilExtension::new();
+        let parser = crate::wix::xml::XmlParser::new();
+        let mut section = IntermediateSection::new(SectionType::Product, None);
+
+        let node_no_id = parser
+            .parse(r#"<util:FileShare Name="A" />"#)
+            .unwrap_or_default();
+        assert!(ext
+            .compile_node(&node_no_id, Some("c"), &mut section, &mut HashMap::new())
+            .is_err());
+
+        let node_no_name = parser
+            .parse(r#"<util:FileShare Id="f" />"#)
+            .unwrap_or_default();
+        assert!(ext
+            .compile_node(&node_no_name, Some("c"), &mut section, &mut HashMap::new())
+            .is_err());
+
+        let node_ok = parser
+            .parse(r#"<util:FileShare Id="f" Name="A" />"#)
+            .unwrap_or_default();
+        assert!(ext
+            .compile_node(&node_ok, None, &mut section, &mut HashMap::new())
+            .is_err());
+    }
+
+    #[test]
+    fn test_compile_xml_file_success() {
+        let ext = UtilExtension::new();
+        let xml =
+            r#"<util:XmlFile Id="x1" File="app.config" ElementPath="//appSettings" Value="val" />"#;
+        let parser = crate::wix::xml::XmlParser::new();
+        let node = parser.parse(xml).unwrap_or_default();
+
+        let mut section = IntermediateSection::new(SectionType::Product, Some("prod".to_string()));
+        let mut tables = HashMap::new();
+
+        ext.compile_node(&node, Some("cmp1"), &mut section, &mut tables)
+            .unwrap_or_default();
+
+        let fields = tables["_util:XmlFile"].records[0].fields();
+        assert_eq!(fields[0], FieldValue::String("x1".to_string()));
+        assert_eq!(fields[1], FieldValue::String("app.config".to_string()));
+        assert_eq!(fields[2], FieldValue::String("//appSettings".to_string()));
+        assert_eq!(fields[3], FieldValue::String("val".to_string()));
+        assert_eq!(fields[4], FieldValue::String("cmp1".to_string()));
+    }
+
+    #[test]
+    fn test_compile_xml_file_errors() {
+        let ext = UtilExtension::new();
+        let parser = crate::wix::xml::XmlParser::new();
+        let mut section = IntermediateSection::new(SectionType::Product, None);
+
+        let node_no_id = parser
+            .parse(r#"<util:XmlFile File="a" ElementPath="b" />"#)
+            .unwrap_or_default();
+        assert!(ext
+            .compile_node(&node_no_id, Some("c"), &mut section, &mut HashMap::new())
+            .is_err());
+
+        let node_no_file = parser
+            .parse(r#"<util:XmlFile Id="x" ElementPath="b" />"#)
+            .unwrap_or_default();
+        assert!(ext
+            .compile_node(&node_no_file, Some("c"), &mut section, &mut HashMap::new())
+            .is_err());
+
+        let node_no_path = parser
+            .parse(r#"<util:XmlFile Id="x" File="a" />"#)
+            .unwrap_or_default();
+        assert!(ext
+            .compile_node(&node_no_path, Some("c"), &mut section, &mut HashMap::new())
+            .is_err());
+
+        let node_ok = parser
+            .parse(r#"<util:XmlFile Id="x" File="a" ElementPath="b" />"#)
+            .unwrap_or_default();
+        assert!(ext
+            .compile_node(&node_ok, None, &mut section, &mut HashMap::new())
+            .is_err());
     }
 
     #[test]

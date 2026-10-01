@@ -81,6 +81,8 @@ pub enum Architecture {
     /// 32-bit x86 architecture (Intel / x86).
     #[default]
     X86,
+    /// 32-bit ARM architecture (Arm).
+    Arm,
     /// 64-bit x86-64 / AMD64 architecture (x64).
     X64,
     /// 64-bit ARM architecture (Arm64).
@@ -90,7 +92,7 @@ pub enum Architecture {
 }
 
 impl Architecture {
-    /// Returns the canonical WiX/MSI template name string for this architecture (e.g. `Intel`, `x64`, `Arm64`, `Intel64`).
+    /// Returns the canonical WiX/MSI template name string for this architecture (e.g. `Intel`, `Arm`, `x64`, `Arm64`, `Intel64`).
     ///
     /// # Returns
     ///
@@ -99,13 +101,14 @@ impl Architecture {
     pub const fn template_name(&self) -> &'static str {
         match *self {
             Self::X86 => "Intel",
+            Self::Arm => "Arm",
             Self::X64 => "x64",
             Self::Arm64 => "Arm64",
             Self::Ia64 => "Intel64",
         }
     }
 
-    /// Returns the lowercase CLI flag / identifier for this architecture (e.g. `x86`, `x64`, `arm64`, `ia64`).
+    /// Returns the lowercase CLI flag / identifier for this architecture (e.g. `x86`, `arm`, `x64`, `arm64`, `ia64`).
     ///
     /// # Returns
     ///
@@ -114,6 +117,7 @@ impl Architecture {
     pub const fn as_str(&self) -> &'static str {
         match *self {
             Self::X86 => "x86",
+            Self::Arm => "arm",
             Self::X64 => "x64",
             Self::Arm64 => "arm64",
             Self::Ia64 => "ia64",
@@ -124,7 +128,7 @@ impl Architecture {
     ///
     /// # Returns
     ///
-    /// `true` for `x64`, `arm64`, or `ia64`; `false` for `x86`.
+    /// `true` for `x64`, `arm64`, or `ia64`; `false` for `x86` or `arm`.
     #[must_use]
     pub const fn is_64_bit(&self) -> bool {
         matches!(self, Self::X64 | Self::Arm64 | Self::Ia64)
@@ -134,7 +138,7 @@ impl Architecture {
     ///
     /// # Arguments
     ///
-    /// * `s` - Architecture string (e.g. `x64`, `x86`, `amd64`, `intel`, `arm64`).
+    /// * `s` - Architecture string (e.g. `x64`, `x86`, `arm`, `amd64`, `intel`, `arm64`).
     ///
     /// # Returns
     ///
@@ -147,6 +151,7 @@ impl Architecture {
         let lower = s.trim().to_ascii_lowercase();
         match lower.as_str() {
             "x86" | "intel" | "i386" | "i686" | "ia32" => Ok(Self::X86),
+            "arm" | "armv7" | "armv7l" | "arm32" => Ok(Self::Arm),
             "x64" | "x86_64" | "amd64" => Ok(Self::X64),
             "arm64" | "aarch64" => Ok(Self::Arm64),
             "ia64" | "intel64" | "itanium" => Ok(Self::Ia64),
@@ -838,25 +843,33 @@ mod tests {
     fn test_architecture() {
         assert_eq!(Architecture::default(), Architecture::X86);
         assert!(!Architecture::X86.is_64_bit());
+        assert!(!Architecture::Arm.is_64_bit());
         assert!(Architecture::X64.is_64_bit());
         assert!(Architecture::Arm64.is_64_bit());
         assert!(Architecture::Ia64.is_64_bit());
 
         assert_eq!(Architecture::X86.template_name(), "Intel");
+        assert_eq!(Architecture::Arm.template_name(), "Arm");
         assert_eq!(Architecture::X64.template_name(), "x64");
         assert_eq!(Architecture::Arm64.template_name(), "Arm64");
         assert_eq!(Architecture::Ia64.template_name(), "Intel64");
 
         assert_eq!(Architecture::X86.as_str(), "x86");
+        assert_eq!(Architecture::Arm.as_str(), "arm");
         assert_eq!(Architecture::X64.as_str(), "x64");
         assert_eq!(Architecture::Arm64.as_str(), "arm64");
         assert_eq!(Architecture::Ia64.as_str(), "ia64");
         assert_eq!(format!("{}", Architecture::X64), "x64");
+        assert_eq!(format!("{}", Architecture::Arm), "arm");
 
         // Parse aliases
         for alias in ["x86", "intel", "i386", "i686", "ia32", "  X86  "] {
             assert_eq!(Architecture::parse(alias), Ok(Architecture::X86));
             assert_eq!(alias.trim().parse::<Architecture>(), Ok(Architecture::X86));
+        }
+        for alias in ["arm", "armv7", "armv7l", "arm32", "ARM"] {
+            assert_eq!(Architecture::parse(alias), Ok(Architecture::Arm));
+            assert_eq!(alias.trim().parse::<Architecture>(), Ok(Architecture::Arm));
         }
         for alias in ["x64", "x86_64", "amd64", "X64"] {
             assert_eq!(Architecture::parse(alias), Ok(Architecture::X64));

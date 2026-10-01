@@ -340,6 +340,33 @@ pub enum Error {
         message: String,
     },
 
+    /// A `WiX` extension XML parsing error occurred.
+    #[display("WiX extension XML parse error in '{extension}': {reason}")]
+    ExtensionXmlParse {
+        /// Name of the `WiX` extension.
+        extension: String,
+        /// Detail regarding the failure.
+        reason: String,
+    },
+
+    /// A linker payload error occurred.
+    #[display("Linker payload error for '{payload_id}': {reason}")]
+    LinkerPayloadError {
+        /// Identifier of the payload.
+        payload_id: String,
+        /// Detail regarding the failure.
+        reason: String,
+    },
+
+    /// A custom action bridging error occurred.
+    #[display("Custom action bridge error for '{action}': {reason}")]
+    CustomActionBridgeError {
+        /// Name of the custom action.
+        action: String,
+        /// Detail regarding the failure.
+        reason: String,
+    },
+
     /// An Internal Consistency Evaluator (ICE) validation failed.
     #[display("ICE validation failure [{ice}]: {message}")]
     IceValidation {
@@ -972,6 +999,15 @@ mod tests {
             "WiX extension error in 'WixUtilExtension': failed to register backend custom actions"
         );
 
+        let err_ext_xml = Error::ExtensionXmlParse {
+            extension: "WixUtilExtension".to_string(),
+            reason: "invalid syntax".to_string(),
+        };
+        assert_eq!(
+            format!("{err_ext_xml}"),
+            "WiX extension XML parse error in 'WixUtilExtension': invalid syntax"
+        );
+
         let err_ice = Error::IceValidation {
             ice: "ICE03".to_string(),
             message: "Table 'File' column 'Sequence' cannot be null".to_string(),
@@ -1049,6 +1085,24 @@ mod tests {
         assert_eq!(
             format!("{err_ui}"),
             "UI error in dialog 'InstallDlg' control 'NextButton': invalid target event"
+        );
+
+        let err_payload = Error::LinkerPayloadError {
+            payload_id: "payload_1".to_string(),
+            reason: "file not found".to_string(),
+        };
+        assert_eq!(
+            format!("{err_payload}"),
+            "Linker payload error for 'payload_1': file not found"
+        );
+
+        let err_bridge = Error::CustomActionBridgeError {
+            action: "InstallService".to_string(),
+            reason: "unsupported parameter".to_string(),
+        };
+        assert_eq!(
+            format!("{err_bridge}"),
+            "Custom action bridge error for 'InstallService': unsupported parameter"
         );
 
         let err_script_rt = Error::ScriptRuntimeError {

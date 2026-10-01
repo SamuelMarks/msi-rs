@@ -1075,6 +1075,32 @@ fn parse_reg_value(raw_val: &str) -> (&'static str, String) {
     }
 }
 
+/// Generates a `WiX` XML fragment registering a package in the `CMake` Package Registry.
+///
+/// Follows `CMake`'s convention under `Software\Kitware\CMake\Packages\<PackageName>`,
+/// mapping the package installation directory identifier and ensuring clean removal on uninstall.
+///
+/// # Arguments
+///
+/// * `package_name` - Name of the `CMake` package.
+/// * `install_dir_id` - Directory identifier holding the package installation directory.
+/// * `per_machine` - Whether to register under `HKLM` (machine-wide) or `HKCU` (current user).
+///
+/// # Returns
+///
+/// `WiX` `<Fragment>` XML string declaring the component, registry key, and removal directive.
+#[must_use]
+pub fn generate_cmake_package_registry_fragment(
+    package_name: &str,
+    install_dir_id: &str,
+    per_machine: bool,
+) -> String {
+    let root = if per_machine { "HKLM" } else { "HKCU" };
+    format!(
+        "<Wix xmlns=\"http://schemas.microsoft.com/wix/2006/wi\">\n    <Fragment>\n        <DirectoryRef Id=\"{install_dir_id}\">\n            <Component Id=\"CM_PACKAGE_REGISTRY_{package_name}\" Guid=\"*\">\n                <RegistryKey Root=\"{root}\" Key=\"Software\\Kitware\\CMake\\Packages\\{package_name}\">\n                    <RegistryValue Value=\"[{install_dir_id}]\" Type=\"string\" KeyPath=\"yes\" />\n                </RegistryKey>\n                <RemoveRegistryKey Root=\"{root}\" Key=\"Software\\Kitware\\CMake\\Packages\\{package_name}\" Action=\"removeOnUninstall\" />\n            </Component>\n        </DirectoryRef>\n    </Fragment>\n</Wix>"
+    )
+}
+
 #[cfg(test)]
 #[allow(clippy::manual_flatten)]
 mod tests {
@@ -1974,5 +2000,19 @@ LineWithoutEquals
         );
 
         let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    /// Tests generating `CMake` Package Registry fragments for per-machine and per-user scopes.
+    #[test]
+    fn test_cmake_package_registry_fragment() {
+        let frag_machine = generate_cmake_package_registry_fragment("MyLib", "INSTALLDIR", true);
+        assert!(frag_machine.contains("Root=\"HKLM\""));
+        assert!(frag_machine.contains("Key=\"Software\\Kitware\\CMake\\Packages\\MyLib\""));
+        assert!(frag_machine.contains("<RemoveRegistryKey Root=\"HKLM\""));
+
+        let frag_user = generate_cmake_package_registry_fragment("MyLib", "INSTALLDIR", false);
+        assert!(frag_user.contains("Root=\"HKCU\""));
+        assert!(frag_user.contains("Key=\"Software\\Kitware\\CMake\\Packages\\MyLib\""));
+        assert!(frag_user.contains("<RemoveRegistryKey Root=\"HKCU\""));
     }
 }

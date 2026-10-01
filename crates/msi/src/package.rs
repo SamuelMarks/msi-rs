@@ -323,11 +323,22 @@ impl Package {
         let product_name =
             find_prop("ProductName").unwrap_or_else(|| "WiX Application".to_string());
         let manufacturer = find_prop("Manufacturer").unwrap_or_else(|| "WiX Author".to_string());
-        let product_code = find_prop("ProductCode")
+        let raw_product_code = find_prop("ProductCode")
             .unwrap_or_else(|| "{00000000-0000-0000-0000-000000000000}".to_string());
         let version = find_prop("ProductVersion")
             .and_then(|v| ProductVersion::parse(&v).ok())
             .unwrap_or_else(|| ProductVersion::new(1, 0, 0));
+
+        let product_code = if raw_product_code == "*" || raw_product_code == "?" {
+            let seed = format!("{product_name}_{manufacturer}_{version}");
+            crate::database::tables::types::ComponentGuid::generate_deterministic(
+                "ProductCode",
+                &seed,
+            )
+            .to_string()
+        } else {
+            raw_product_code
+        };
 
         let metadata = PackageMetadata::new(
             product_name.clone(),
@@ -357,8 +368,13 @@ impl Package {
             }
         }
 
+        let codepage = find_prop("ProductCodepage")
+            .or_else(|| find_prop("SummaryCodepage"))
+            .and_then(|cp| cp.parse::<u16>().ok())
+            .unwrap_or(CODEPAGE_UTF8);
+
         let summary_info = SummaryInfo {
-            codepage: Some(CODEPAGE_UTF8),
+            codepage: Some(codepage),
             title: Some("Installation Database".to_string()),
             subject: Some(product_name),
             author: Some(manufacturer),
@@ -2350,5 +2366,69 @@ mod tests {
             pkg_prop_single_lang.summary_info().template.as_deref(),
             Some("Intel;1041")
         );
+    }
+
+    /// Tests auto-generated product codes (* and ?), summary codepage fallback, missing table schema handling in serialization, and package file saving.
+    #[test]
+    fn test_package_remaining_coverage() {
+        // 1. Package::from_database with ProductCode = "*"
+        let mut db_star = LinkedDatabase::default();
+        let _ = db_star.add_or_merge_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("ProductCode".to_string()),
+                FieldValue::String("*".to_string()),
+            ]),
+        );
+        let pkg_star = Package::from_database(db_star, HashMap::new());
+        let code_star = pkg_star.metadata().product_code();
+        assert_eq!(code_star.len(), 38);
+        assert_eq!(code_star.chars().next(), Some('{'));
+        assert_eq!(code_star.chars().last(), Some('}'));
+
+        // 2. Package::from_database with ProductCode = "?"
+        let mut db_qmark = LinkedDatabase::default();
+        let _ = db_qmark.add_or_merge_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("ProductCode".to_string()),
+                FieldValue::String("?".to_string()),
+            ]),
+        );
+        let pkg_qmark = Package::from_database(db_qmark, HashMap::new());
+        let code_qmark = pkg_qmark.metadata().product_code();
+        assert_eq!(code_qmark.len(), 38);
+        assert_eq!(code_qmark.chars().next(), Some('{'));
+        assert_eq!(code_qmark.chars().last(), Some('}'));
+
+        // 3. SummaryCodepage fallback when ProductCodepage is absent
+        let mut db_cp = LinkedDatabase::default();
+        let _ = db_cp.add_or_merge_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("SummaryCodepage".to_string()),
+                FieldValue::String("1252".to_string()),
+            ]),
+        );
+        let pkg_cp = Package::from_database(db_cp, HashMap::new());
+        assert_eq!(pkg_cp.summary_info().codepage, Some(1252));
+
+        // 4. Missing table schema in catalog during serialization (Line 760)
+        let mut db_unknown = LinkedDatabase::default();
+        db_unknown.tables.insert(
+            "NonExistentTableWithoutSchema".to_string(),
+            vec![Record::with_fields(vec![FieldValue::String(
+                "val".to_string(),
+            )])],
+        );
+        let pkg_unknown = Package::from_database(db_unknown, HashMap::new());
+        let bytes_unknown = pkg_unknown.to_bytes().unwrap_or_default();
+        assert!(!bytes_unknown.is_empty());
+
+        // 5. Package::save (Lines 805-806)
+        let temp_file = std::env::temp_dir().join(format!("test_save_{}.msi", std::process::id()));
+        assert!(pkg_star.save(&temp_file).is_ok());
+        assert!(temp_file.exists());
+        let _ = fs::remove_file(&temp_file);
     }
 }

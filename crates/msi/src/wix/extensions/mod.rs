@@ -1,3 +1,6 @@
+#![deny(clippy::unwrap_used)]
+#![deny(missing_docs)]
+
 //! Dynamic `WiX` Extension Architecture.
 //!
 //! This module defines the plugin system for `msi-rs` to support `WiX` extensions like
@@ -27,7 +30,19 @@ use crate::wix::xml::XmlNode;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+pub mod bal;
 pub mod util;
+
+pub mod complus;
+pub mod firewall;
+pub mod http;
+pub mod iis;
+pub mod netfx;
+pub mod sql;
+
+pub mod dependency;
+
+pub mod ca;
 
 /// Trait defining the lifecycle and hooks for a dynamic `WiX` extension.
 ///
@@ -132,6 +147,35 @@ impl ExtensionRegistry {
         }
     }
 
+    /// Creates an [`ExtensionRegistry`] pre-populated with all native built-in `WiX` extensions.
+    ///
+    /// # Returns
+    ///
+    /// An [`ExtensionRegistry`] containing standard extensions:
+    /// - `WixUtilExtension`
+    /// - `WixFirewallExtension`
+    /// - `WixBalExtension`
+    /// - `WixNetFxExtension`
+    /// - `WixHttpExtension`
+    /// - `WixIIsExtension`
+    /// - `WixSqlExtension`
+    /// - `WixComPlusExtension`
+    /// - `WixDependencyExtension`
+    #[must_use]
+    pub fn with_builtin_extensions() -> Self {
+        let mut reg = Self::new();
+        reg.register(Arc::new(util::UtilExtension::new()));
+        reg.register(Arc::new(firewall::FirewallExtension::new()));
+        reg.register(Arc::new(bal::BalExtension::new()));
+        reg.register(Arc::new(netfx::NetFxExtension::new()));
+        reg.register(Arc::new(http::HttpExtension::new()));
+        reg.register(Arc::new(iis::IisExtension::new()));
+        reg.register(Arc::new(sql::SqlExtension::new()));
+        reg.register(Arc::new(complus::ComPlusExtension::new()));
+        reg.register(Arc::new(dependency::DependencyExtension::new()));
+        reg
+    }
+
     /// Registers a new `WiX` extension.
     ///
     /// # Arguments
@@ -190,6 +234,7 @@ impl ExtensionRegistry {
 mod tests {
     use super::*;
 
+    /// Mock extension used for validating registry behavior.
     struct MockExtension;
 
     impl WixExtension for MockExtension {
@@ -216,11 +261,19 @@ mod tests {
         }
     }
 
+    /// Tests `ExtensionRegistry` registration, lookups, iteration, cloning, default constructor, and debug formatting.
     #[test]
     fn test_extension_registry() {
         let mut registry = ExtensionRegistry::new();
+        let _ = ExtensionRegistry::default();
         let mock: Arc<dyn WixExtension> = Arc::new(MockExtension);
         registry.register(Arc::clone(&mock));
+
+        let cloned_registry = registry.clone();
+        assert_eq!(
+            cloned_registry.get_by_id("MockExtension").map(|e| e.id()),
+            Some("MockExtension")
+        );
 
         assert_eq!(
             registry.get_by_id("MockExtension").map(|e| e.id()),
@@ -263,5 +316,20 @@ mod tests {
 
         // Verify Debug representation
         assert!(format!("{registry:?}").contains("MockExtension"));
+    }
+
+    /// Tests that `with_builtin_extensions` registers all expected standard extensions.
+    #[test]
+    fn test_builtin_extensions() {
+        let registry = ExtensionRegistry::with_builtin_extensions();
+        assert!(registry.get_by_id("WixUtilExtension").is_some());
+        assert!(registry.get_by_id("WixFirewallExtension").is_some());
+        assert!(registry.get_by_id("WixBalExtension").is_some());
+        assert!(registry.get_by_id("WixNetFxExtension").is_some());
+        assert!(registry.get_by_id("WixHttpExtension").is_some());
+        assert!(registry.get_by_id("WixIisExtension").is_some());
+        assert!(registry.get_by_id("WixSqlExtension").is_some());
+        assert!(registry.get_by_id("WixComPlusExtension").is_some());
+        assert!(registry.get_by_id("WixDependencyExtension").is_some());
     }
 }
