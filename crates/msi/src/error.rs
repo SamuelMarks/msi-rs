@@ -679,6 +679,20 @@ pub enum MsiError {
         /// Description of the XML parsing failure.
         reason: String,
     },
+
+    /// Emitted when table columns cannot be sorted into a physical layout.
+    #[display("Physical layout error: {reason}")]
+    PhysicalLayoutError {
+        /// Reason the layout failed.
+        reason: String,
+    },
+
+    /// Emitted when an integer exceeds the masking bounds during serialization.
+    #[display("Data integrity error: {reason}")]
+    DataIntegrityError {
+        /// Reason for data integrity failure.
+        reason: String,
+    },
 }
 
 impl From<std::io::Error> for MsiError {
@@ -1452,6 +1466,38 @@ mod tests {
             err_xml,
             MsiError::WimXmlParseError {
                 reason: "missing root node".to_string(),
+            }
+        );
+    }
+
+    /// Tests formatting and equality for layout and integrity errors.
+    #[test]
+    fn test_layout_and_integrity_errors() {
+        let err_layout = MsiError::PhysicalLayoutError {
+            reason: "invalid column type".to_string(),
+        };
+        assert_eq!(
+            format!("{err_layout}"),
+            "Physical layout error: invalid column type"
+        );
+        assert_eq!(
+            err_layout,
+            MsiError::PhysicalLayoutError {
+                reason: "invalid column type".to_string(),
+            }
+        );
+
+        let err_integrity = MsiError::DataIntegrityError {
+            reason: "value out of bounds".to_string(),
+        };
+        assert_eq!(
+            format!("{err_integrity}"),
+            "Data integrity error: value out of bounds"
+        );
+        assert_eq!(
+            err_integrity,
+            MsiError::DataIntegrityError {
+                reason: "value out of bounds".to_string(),
             }
         );
     }

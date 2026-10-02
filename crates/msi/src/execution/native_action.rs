@@ -1993,6 +1993,10 @@ mod tests {
         fail_write_at: Option<usize>,
         /// Total write calls made so far.
         write_count: usize,
+        /// Read call ordinal that should return an I/O error.
+        fail_read_at: Option<usize>,
+        /// Total read calls made so far.
+        read_count: usize,
     }
 
     impl MockFailStream {
@@ -2004,12 +2008,21 @@ mod tests {
                 read_bytes,
                 fail_write_at: None,
                 write_count: 0,
+                fail_read_at: None,
+                read_count: 0,
             }
         }
     }
 
     impl std::io::Read for MockFailStream {
         fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            self.read_count += 1;
+            if self.fail_read_at == Some(self.read_count) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "simulated read error",
+                ));
+            }
             let to_read = buf.len().min(self.read_bytes.len());
             for (slot, b) in buf.iter_mut().zip(self.read_bytes.drain(..to_read)) {
                 *slot = b;
@@ -2101,5 +2114,36 @@ mod tests {
 
         let mut s = MockFailStream::with_bytes(&server_stream_bytes);
         assert!(client.execute_wire_session(&mut s, &statements).is_ok());
+    }
+
+    #[test]
+    fn test_sql_provisioner_client_read_errors() {
+        let cfg = SqlProvisionerConfig::default();
+        let client = SqlProvisionerClient::new(cfg);
+        let statements = vec!["SELECT 1;".to_string()];
+
+        let mut server_stream_bytes = Vec::new();
+        // Handshake packet (10 bytes payload)
+        server_stream_bytes.extend_from_slice(&[10, 0, 0, 0]);
+        server_stream_bytes.extend_from_slice(&[0u8; 10]);
+        // Auth packet (1 byte payload)
+        server_stream_bytes.extend_from_slice(&[1, 0, 0, 2]);
+        server_stream_bytes.extend_from_slice(&[0x00]); // Success
+
+        // 1. Fail on 5th read (query response header)
+        let mut s5 = MockFailStream::with_bytes(&server_stream_bytes);
+        s5.fail_read_at = Some(5);
+        let err5 = client.execute_wire_session(&mut s5, &statements);
+        assert!(err5.is_err());
+        assert!(matches!(err5, Err(MsiError::SqlProvisioning(..))));
+
+        // 2. Fail on 6th read (query response payload)
+        // Add query res header (4 bytes, len=1) to bytes for 6th read
+        server_stream_bytes.extend_from_slice(&[1, 0, 0, 3]);
+        let mut s6 = MockFailStream::with_bytes(&server_stream_bytes);
+        s6.fail_read_at = Some(6);
+        let err6 = client.execute_wire_session(&mut s6, &statements);
+        assert!(err6.is_err());
+        assert!(matches!(err6, Err(MsiError::SqlProvisioning(..))));
     }
 }

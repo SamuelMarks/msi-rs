@@ -1,3 +1,5 @@
+#![deny(missing_docs)]
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Native Python extension module `_msi` for Windows Installer package creation and inspection.
 
 #![allow(

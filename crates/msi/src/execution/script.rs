@@ -156,6 +156,23 @@ pub enum ScriptOp {
         /// Destination extraction path.
         destination: String,
     },
+    /// Installs an ODBC Driver.
+    InstallODBCDriver {
+        /// Driver name.
+        driver_name: String,
+    },
+    /// Installs an ODBC Data Source.
+    InstallODBCDataSource {
+        /// DSN Name.
+        name: String,
+    },
+    /// Registers a Font.
+    RegisterFont {
+        /// File path.
+        file_path: String,
+        /// Font title.
+        font_title: String,
+    },
 }
 
 impl ScriptOp {
@@ -180,6 +197,9 @@ impl ScriptOp {
             Self::CustomAction { .. } => 15,
             Self::ExtractCabinetFile { .. } => 16,
             Self::ExtractWimFile { .. } => 17,
+            Self::InstallODBCDriver { .. } => 18,
+            Self::InstallODBCDataSource { .. } => 19,
+            Self::RegisterFont { .. } => 20,
         }
     }
 }
@@ -243,6 +263,23 @@ pub enum RollbackOp {
         /// Target or parameter string.
         target: String,
     },
+    /// Uninstalls an ODBC Driver.
+    UninstallODBCDriver {
+        /// Driver name.
+        driver_name: String,
+    },
+    /// Uninstalls an ODBC Data Source.
+    UninstallODBCDataSource {
+        /// DSN Name.
+        name: String,
+    },
+    /// Unregisters a Font.
+    UnregisterFont {
+        /// File path.
+        file_path: String,
+        /// Font title.
+        font_title: String,
+    },
 }
 
 impl RollbackOp {
@@ -258,6 +295,9 @@ impl RollbackOp {
             Self::DeleteService { .. } => 6,
             Self::StopService { .. } => 7,
             Self::RollbackCustomAction { .. } => 8,
+            Self::UninstallODBCDriver { .. } => 9,
+            Self::UninstallODBCDataSource { .. } => 10,
+            Self::UnregisterFont { .. } => 11,
         }
     }
 }
@@ -452,6 +492,15 @@ impl InstallScript {
                     out.extend_from_slice(&image_index.to_le_bytes());
                     write_string(&mut out, wim_path);
                     write_string(&mut out, destination);
+                }
+                ScriptOp::InstallODBCDriver { driver_name } => write_string(&mut out, driver_name),
+                ScriptOp::InstallODBCDataSource { name } => write_string(&mut out, name),
+                ScriptOp::RegisterFont {
+                    file_path,
+                    font_title,
+                } => {
+                    write_string(&mut out, file_path);
+                    write_string(&mut out, font_title);
                 }
             }
         }
@@ -662,6 +711,16 @@ impl InstallScript {
                         destination,
                     }
                 }
+                18 => ScriptOp::InstallODBCDriver {
+                    driver_name: read_string(data, &mut offset)?,
+                },
+                19 => ScriptOp::InstallODBCDataSource {
+                    name: read_string(data, &mut offset)?,
+                },
+                20 => ScriptOp::RegisterFont {
+                    file_path: read_string(data, &mut offset)?,
+                    font_title: read_string(data, &mut offset)?,
+                },
                 other => {
                     return Err(MsiError::ScriptError {
                         opcode: format!("Opcode({other})"),
@@ -789,6 +848,17 @@ impl RollbackScript {
                     write_string(&mut out, source);
                     write_string(&mut out, target);
                 }
+                RollbackOp::UninstallODBCDriver { driver_name } => {
+                    write_string(&mut out, driver_name);
+                }
+                RollbackOp::UninstallODBCDataSource { name } => write_string(&mut out, name),
+                RollbackOp::UnregisterFont {
+                    file_path,
+                    font_title,
+                } => {
+                    write_string(&mut out, file_path);
+                    write_string(&mut out, font_title);
+                }
             }
         }
 
@@ -808,6 +878,7 @@ impl RollbackScript {
     /// # Errors
     ///
     /// Returns [`MsiError::ScriptError`] if the magic header is invalid or data is truncated.
+    #[allow(clippy::too_many_lines)]
     pub fn deserialize(data: &[u8]) -> Result<Self> {
         if data.len() < 12 {
             return Err(MsiError::ScriptError {
@@ -899,6 +970,16 @@ impl RollbackScript {
                         target,
                     }
                 }
+                9 => RollbackOp::UninstallODBCDriver {
+                    driver_name: read_string(data, &mut offset)?,
+                },
+                10 => RollbackOp::UninstallODBCDataSource {
+                    name: read_string(data, &mut offset)?,
+                },
+                11 => RollbackOp::UnregisterFont {
+                    file_path: read_string(data, &mut offset)?,
+                    font_title: read_string(data, &mut offset)?,
+                },
                 other => {
                     return Err(MsiError::ScriptError {
                         opcode: format!("RollbackOpcode({other})"),
@@ -964,6 +1045,11 @@ impl fmt::Display for ScriptOp {
                 f,
                 "ExtractWimFile({wim_source}[{image_index}]:{wim_path} -> {destination})"
             ),
+            Self::InstallODBCDriver { driver_name } => {
+                write!(f, "InstallODBCDriver({driver_name})")
+            }
+            Self::InstallODBCDataSource { name } => write!(f, "InstallODBCDataSource({name})"),
+            Self::RegisterFont { font_title, .. } => write!(f, "RegisterFont({font_title})"),
         }
     }
 }
@@ -991,6 +1077,11 @@ impl fmt::Display for RollbackOp {
             Self::RollbackCustomAction { action, .. } => {
                 write!(f, "RollbackCustomAction({action})")
             }
+            Self::UninstallODBCDriver { driver_name } => {
+                write!(f, "UninstallODBCDriver({driver_name})")
+            }
+            Self::UninstallODBCDataSource { name } => write!(f, "UninstallODBCDataSource({name})"),
+            Self::UnregisterFont { font_title, .. } => write!(f, "UnregisterFont({font_title})"),
         }
     }
 }
@@ -1587,4 +1678,47 @@ fn test_script_wim_roundtrip_success() -> Result<()> {
         ScriptOp::ExtractWimFile { image_index: 2, .. }
     ));
     Ok(())
+}
+
+#[test]
+fn test_script_extra_opcodes() {
+    let ops = vec![
+        ScriptOp::InstallODBCDriver {
+            driver_name: "A".to_string(),
+        },
+        ScriptOp::InstallODBCDataSource {
+            name: "B".to_string(),
+        },
+        ScriptOp::RegisterFont {
+            file_path: "C".to_string(),
+            font_title: "D".to_string(),
+        },
+    ];
+    let mut iscript = InstallScript::default();
+    for op in ops {
+        iscript.push(op);
+    }
+    let serialized = iscript.serialize();
+    let deserialized = InstallScript::deserialize(&serialized).unwrap();
+    assert_eq!(iscript.operations, deserialized.operations);
+
+    let rops = vec![
+        RollbackOp::UninstallODBCDriver {
+            driver_name: "E".to_string(),
+        },
+        RollbackOp::UninstallODBCDataSource {
+            name: "F".to_string(),
+        },
+        RollbackOp::UnregisterFont {
+            file_path: "G".to_string(),
+            font_title: "H".to_string(),
+        },
+    ];
+    let mut rscript = RollbackScript::default();
+    for rop in rops {
+        rscript.push(rop);
+    }
+    let r_serialized = rscript.serialize();
+    let r_deserialized = RollbackScript::deserialize(&r_serialized).unwrap();
+    assert_eq!(rscript.operations, r_deserialized.operations);
 }

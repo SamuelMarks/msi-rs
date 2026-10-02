@@ -3,6 +3,7 @@
 //! Conforms directly to the Windows Installer SDK physical table stream layout.
 
 use crate::database::column::{ColumnDef, DataType};
+use crate::database::physical::{PhysicalIndex, PhysicalTableLayout};
 use crate::database::string_pool::StringPool;
 use crate::database::tables::types::StringPoolId;
 use crate::error::{MsiError, Result};
@@ -13,6 +14,14 @@ pub const MSI_NULL_INTEGER_16: i16 = i16::MIN;
 
 /// 32-bit Sentinel representing `NULL` integer (`0x80000000` / `-2147483648`).
 pub const MSI_NULL_INTEGER_32: i32 = i32::MIN;
+
+/// Mask used to serialize and deserialize MSI short integers.
+///
+/// According to the Windows Installer specification, valid short integers (16-bit)
+/// are transformed by applying an XOR mask of `0x8000`. The physical value `0x0000`
+/// is reserved explicitly to represent a `NULL` short integer, meaning the valid
+/// physical range for values shifts. This avoids collisions with the `NULL` sentinel.
+pub const MSI_SHORT_INT_MASK: u16 = 0x8000;
 
 /// Strongly-typed field value in an MSI database table record.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -228,7 +237,7 @@ impl Record {
     ///
     /// # Arguments
     ///
-    /// * `columns` - Table column definitions.
+    /// * `layout` - Physical table layout for field ordering.
     /// * `pool` - String pool used to intern strings and obtain 1-based indices.
     /// * `string_index_size` - Size of string pool index (2 or 3 bytes).
     ///
@@ -242,10 +251,11 @@ impl Record {
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     pub fn serialize(
         &self,
-        columns: &[ColumnDef],
+        layout: &PhysicalTableLayout<'_>,
         pool: &mut StringPool,
         string_index_size: usize,
     ) -> Result<Vec<u8>> {
+        let columns = layout.columns();
         if self.fields.len() != columns.len() {
             return Err(MsiError::RecordLengthMismatch {
                 expected: columns.len(),
@@ -255,21 +265,44 @@ impl Record {
 
         let mut out = Vec::new();
 
-        for (field, col) in self.fields.iter().zip(columns.iter()) {
+        for physical_idx in 0..columns.len() {
+            let logical_idx = layout
+                .logical_index(PhysicalIndex(physical_idx))
+                .unwrap_or(crate::database::physical::LogicalIndex(0));
+            let col = &columns[logical_idx.0];
+            let field = &self.fields[logical_idx.0];
+
             match col.data_type {
                 DataType::Short => {
                     let val = match field {
-                        FieldValue::Short(s) => *s,
-                        FieldValue::Null => MSI_NULL_INTEGER_16,
-                        _ => 0,
+                        FieldValue::Short(s) => (*s as u16) ^ MSI_SHORT_INT_MASK,
+                        FieldValue::Null => 0x0000,
+                        FieldValue::Long(l) => {
+                            if *l > i32::from(i16::MAX) || *l < i32::from(i16::MIN) {
+                                return Err(MsiError::DataIntegrityError {
+                                    reason: "integer exceeds bounds for short".into(),
+                                });
+                            }
+                            (*l as u16) ^ MSI_SHORT_INT_MASK
+                        }
+                        _ => {
+                            return Err(MsiError::DataIntegrityError {
+                                reason: format!("expected short integer, got {field:?}"),
+                            });
+                        }
                     };
-                    out.extend_from_slice(&(val as u16).to_le_bytes());
+                    out.extend_from_slice(&val.to_le_bytes());
                 }
                 DataType::Long => {
                     let val = match field {
                         FieldValue::Long(l) => *l,
                         FieldValue::Null => MSI_NULL_INTEGER_32,
-                        _ => 0,
+                        FieldValue::Short(s) => i32::from(*s),
+                        _ => {
+                            return Err(MsiError::DataIntegrityError {
+                                reason: format!("expected long integer, got {field:?}"),
+                            });
+                        }
                     };
                     out.extend_from_slice(&(val as u32).to_le_bytes());
                 }
@@ -298,7 +331,7 @@ impl Record {
     /// # Arguments
     ///
     /// * `bytes` - Slice containing record bytes.
-    /// * `columns` - Table column definitions.
+    /// * `layout` - Physical table layout.
     /// * `pool` - String pool used to resolve string indices.
     /// * `string_index_size` - Size of string pool index (2 or 3 bytes).
     ///
@@ -309,12 +342,14 @@ impl Record {
     /// # Errors
     ///
     /// Returns [`MsiError::RecordLengthMismatch`] or string pool retrieval errors.
+    #[allow(clippy::cast_possible_wrap)]
     pub fn deserialize(
         bytes: &[u8],
-        columns: &[ColumnDef],
+        layout: &PhysicalTableLayout<'_>,
         pool: &StringPool,
         string_index_size: usize,
     ) -> Result<Self> {
+        let columns = layout.columns();
         let expected_size: usize = columns
             .iter()
             .map(|c| c.data_type.record_field_size(string_index_size))
@@ -327,18 +362,23 @@ impl Record {
             });
         }
 
-        let mut fields = Vec::with_capacity(columns.len());
+        let mut logical_fields = vec![FieldValue::Null; columns.len()];
         let mut cursor = 0;
 
-        for col in columns {
-            match col.data_type {
+        for physical_idx in 0..columns.len() {
+            let logical_idx = layout
+                .logical_index(PhysicalIndex(physical_idx))
+                .unwrap_or(crate::database::physical::LogicalIndex(0));
+            let col = &columns[logical_idx.0];
+
+            let field_val = match col.data_type {
                 DataType::Short => {
-                    let val = i16::from_le_bytes([bytes[cursor], bytes[cursor + 1]]);
+                    let raw = u16::from_le_bytes([bytes[cursor], bytes[cursor + 1]]);
                     cursor += 2;
-                    if col.nullable && val == MSI_NULL_INTEGER_16 {
-                        fields.push(FieldValue::Null);
+                    if raw == 0x0000 {
+                        FieldValue::Null
                     } else {
-                        fields.push(FieldValue::Short(val));
+                        FieldValue::Short((raw ^ MSI_SHORT_INT_MASK) as i16)
                     }
                 }
                 DataType::Long => {
@@ -350,9 +390,9 @@ impl Record {
                     ]);
                     cursor += 4;
                     if col.nullable && val == MSI_NULL_INTEGER_32 {
-                        fields.push(FieldValue::Null);
+                        FieldValue::Null
                     } else {
-                        fields.push(FieldValue::Long(val));
+                        FieldValue::Long(val)
                     }
                 }
                 DataType::String { .. } => {
@@ -373,13 +413,13 @@ impl Record {
 
                     if str_id == 0 {
                         if col.nullable {
-                            fields.push(FieldValue::Null);
+                            FieldValue::Null
                         } else {
-                            fields.push(FieldValue::String(String::new()));
+                            FieldValue::String(String::new())
                         }
                     } else {
                         let s = pool.get_string(str_id)?;
-                        fields.push(FieldValue::String(s.to_string()));
+                        FieldValue::String(s.to_string())
                     }
                 }
                 DataType::Stream => {
@@ -399,15 +439,19 @@ impl Record {
                     };
 
                     if str_id == 0 {
-                        fields.push(FieldValue::Null);
+                        FieldValue::Null
                     } else {
-                        fields.push(FieldValue::Stream(StringPoolId::new(str_id)));
+                        FieldValue::Stream(StringPoolId::new(str_id))
                     }
                 }
-            }
+            };
+
+            logical_fields[logical_idx.0] = field_val;
         }
 
-        Ok(Self { fields })
+        Ok(Self {
+            fields: logical_fields,
+        })
     }
 }
 
@@ -435,7 +479,10 @@ mod tests {
         pool: &mut StringPool,
         str_bytes: usize,
     ) -> Vec<u8> {
-        match rec.serialize(cols, pool, str_bytes) {
+        let Ok(layout) = PhysicalTableLayout::new(cols) else {
+            return Vec::new();
+        };
+        match rec.serialize(&layout, pool, str_bytes) {
             Ok(b) => b,
             Err(_) => Vec::new(),
         }
@@ -460,10 +507,70 @@ mod tests {
         pool: &StringPool,
         str_bytes: usize,
     ) -> Vec<Record> {
-        match Record::deserialize(bytes, cols, pool, str_bytes) {
+        let Ok(layout) = PhysicalTableLayout::new(cols) else {
+            return Vec::new();
+        };
+        match Record::deserialize(bytes, &layout, pool, str_bytes) {
             Ok(r) => vec![r],
             Err(_) => Vec::new(),
         }
+    }
+
+    /// Tests serialization and deserialization using divergent physical and logical layout.
+    #[test]
+    fn test_record_layout_reordering() {
+        let mut pool = StringPool::new(CODEPAGE_UTF8);
+
+        // Example schema where physical != logical:
+        // Logically:
+        // 0: Value (String)
+        // 1: Name (String) [PK]
+        // 2: Id (Short)
+        let cols = vec![
+            ColumnDef::new("Value", DataType::String { max_len: 255 }).nullable(),
+            ColumnDef::new("Name", DataType::String { max_len: 72 }).primary_key(),
+            ColumnDef::new("Id", DataType::Short),
+        ];
+
+        // Physically:
+        // 0: Name (String) [PK] -> Logical 1
+        // 1: Id (Short) -> Logical 2
+        // 2: Value (String) -> Logical 0
+
+        let rec = Record::with_fields(vec![
+            FieldValue::String("MyValue".to_string()), // Logical 0
+            FieldValue::String("MyName".to_string()),  // Logical 1
+            FieldValue::Short(123),                    // Logical 2
+        ]);
+
+        let bytes = try_serialize(&rec, &cols, &mut pool, 2);
+
+        // Calculate expected bytes:
+        // Name string id = 1 (inserted first because physical iteration hits it first)
+        // Id short = 123 ^ 0x8000 = 0x807B -> 7B 80
+        // Value string id = 2
+
+        let expected_bytes = vec![
+            0x01, 0x00, // Name (str id = 1)
+            0x7B, 0x80, // Id (short = 123)
+            0x02, 0x00, // Value (str id = 2)
+        ];
+
+        assert_eq!(bytes, expected_bytes);
+
+        let des_rec = try_deserialize(&bytes, &cols, &pool, 2);
+        assert_eq!(des_rec.len(), 1);
+
+        // Fields should be back in LOGICAL order!
+        assert_eq!(
+            des_rec[0].fields()[0],
+            FieldValue::String("MyValue".to_string())
+        );
+        assert_eq!(
+            des_rec[0].fields()[1],
+            FieldValue::String("MyName".to_string())
+        );
+        assert_eq!(des_rec[0].fields()[2], FieldValue::Short(123));
     }
 
     /// Tests basic record mutations and schema validation.
@@ -599,10 +706,11 @@ mod tests {
     fn test_record_errors() {
         let mut pool = StringPool::new(CODEPAGE_UTF8);
         let cols = vec![ColumnDef::new("Col1", DataType::Short)];
+        let layout = PhysicalTableLayout::new(&cols).unwrap();
         let r = Record::new(); // 0 fields, but 1 column expected
         assert_eq!(r.fields().len(), 0);
-        assert!(r.serialize(&cols, &mut pool, 2).is_err());
-        assert!(Record::deserialize(&[], &cols, &pool, 2).is_err());
+        assert!(r.serialize(&layout, &mut pool, 2).is_err());
+        assert!(Record::deserialize(&[], &layout, &pool, 2).is_err());
 
         // Test non-nullable string with str_id 0 and stream with str_id 0
         let zero_cols = vec![
@@ -633,7 +741,7 @@ mod tests {
             FieldValue::String("NaN".to_string()), // Mismatched field for Long
         ]);
         let ser_fallback = try_serialize(&fallback_rec, &zero_cols, &mut pool, 2);
-        assert_eq!(ser_fallback.len(), 10);
+        assert_eq!(ser_fallback.len(), 0); // Serialization now fails correctly
 
         // Test Record::set and Record::fields_mut
         let mut test_rec = Record::with_fields(vec![FieldValue::Short(10), FieldValue::Short(20)]);
@@ -644,6 +752,102 @@ mod tests {
         assert_eq!(
             test_rec.get(1),
             Some(&FieldValue::String("mutated".to_string()))
+        );
+    }
+
+    /// Tests short integer serialization boundaries and hex output.
+    #[test]
+    fn test_short_integer_serialization_exhaustive() {
+        let mut pool = StringPool::new(CODEPAGE_UTF8);
+        let cols = vec![ColumnDef::new("Col1", DataType::Short)];
+
+        let cases = vec![
+            (FieldValue::Short(0), vec![0x00, 0x80]),
+            (FieldValue::Short(1), vec![0x01, 0x80]),
+            (FieldValue::Short(32767), vec![0xFF, 0xFF]),
+            (FieldValue::Short(-1), vec![0xFF, 0x7F]),
+            (FieldValue::Short(i16::MIN), vec![0x00, 0x00]), // -32768 is physically identical to NULL
+            (FieldValue::Null, vec![0x00, 0x00]),
+        ];
+
+        for (field_val, expected_bytes) in cases {
+            let r = Record::with_fields(vec![field_val.clone()]);
+            let bytes = try_serialize(&r, &cols, &mut pool, 2);
+            assert_eq!(
+                bytes, expected_bytes,
+                "Serialization failed for {field_val:?}",
+            );
+
+            let des_res = try_deserialize(&bytes, &cols, &pool, 2);
+            assert_eq!(des_res.len(), 1);
+            let des_field = des_res[0].get(0).unwrap();
+
+            // i16::MIN and Null both deserialize back to Null
+            let expected_des = if field_val == FieldValue::Short(i16::MIN) {
+                FieldValue::Null
+            } else {
+                field_val.clone()
+            };
+            assert_eq!(
+                des_field, &expected_des,
+                "Deserialization failed for {field_val:?}",
+            );
+        }
+    }
+
+    /// Tests integer data integrity errors during serialization.
+    #[test]
+    fn test_integer_data_integrity() {
+        let mut pool = StringPool::new(CODEPAGE_UTF8);
+
+        let cols_short = vec![ColumnDef::new("Col1", DataType::Short)];
+        let layout_short = PhysicalTableLayout::new(&cols_short).unwrap();
+
+        let r_out_of_bounds = Record::with_fields(vec![FieldValue::Long(32768)]);
+        let res = r_out_of_bounds.serialize(&layout_short, &mut pool, 2);
+        assert!(matches!(res, Err(MsiError::DataIntegrityError { .. })));
+
+        let r_out_of_bounds2 = Record::with_fields(vec![FieldValue::Long(-32769)]);
+        let res2 = r_out_of_bounds2.serialize(&layout_short, &mut pool, 2);
+        assert!(matches!(res2, Err(MsiError::DataIntegrityError { .. })));
+
+        let r_wrong_type = Record::with_fields(vec![FieldValue::String("NaN".to_string())]);
+        let res3 = r_wrong_type.serialize(&layout_short, &mut pool, 2);
+        assert!(matches!(res3, Err(MsiError::DataIntegrityError { .. })));
+
+        let cols_long = vec![ColumnDef::new("Col1", DataType::Long)];
+        let layout_long = PhysicalTableLayout::new(&cols_long).unwrap();
+
+        let r_wrong_type_long = Record::with_fields(vec![FieldValue::String("NaN".to_string())]);
+        let res4 = r_wrong_type_long.serialize(&layout_long, &mut pool, 2);
+        assert!(matches!(res4, Err(MsiError::DataIntegrityError { .. })));
+    }
+
+    #[test]
+    fn test_record_extra_coverage() {
+        let mut pool = StringPool::new(CODEPAGE_UTF8);
+        let cols = vec![ColumnDef::new("Col1", DataType::Short)];
+        let layout = PhysicalTableLayout::new(&cols).unwrap();
+
+        // Line 374-375
+        assert!(Record::deserialize(&[0; 0], &layout, &pool, 2).is_err());
+
+        // Line 487: Stream str_id == 0 -> Null
+        let cols_stream = vec![ColumnDef::new("Col1", DataType::Stream)];
+        let layout_stream = PhysicalTableLayout::new(&cols_stream).unwrap();
+        let des = Record::deserialize(&[0, 0], &layout_stream, &pool, 2).unwrap();
+        assert_eq!(des.fields()[0], FieldValue::Null);
+
+        // try_serialize fail
+        assert_eq!(
+            try_serialize(
+                &Record::with_fields(vec![FieldValue::Long(32768)]),
+                &cols,
+                &mut pool,
+                2
+            )
+            .len(),
+            0
         );
     }
 }

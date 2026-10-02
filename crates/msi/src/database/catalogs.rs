@@ -1,6 +1,7 @@
 //! MSI Database System Catalogs (`_Tables`, `_Columns`, `_Streams`, `_Storages`).
 
 use crate::database::column::{ColumnDef, DataType};
+use crate::database::physical::PhysicalTableLayout;
 use crate::error::{MsiError, Result};
 use std::collections::HashMap;
 
@@ -97,6 +98,19 @@ impl TableSchema {
             .iter()
             .map(|c| c.data_type.record_field_size(string_index_size))
             .sum()
+    }
+
+    /// Computes the physical table layout from the logical column schema.
+    ///
+    /// # Returns
+    ///
+    /// The physical layout mapping.
+    ///
+    /// # Errors
+    ///
+    /// Returns `PhysicalLayoutError` if the columns cannot be mapped.
+    pub fn physical_layout(&self) -> Result<PhysicalTableLayout<'_>> {
+        PhysicalTableLayout::new(&self.columns)
     }
 }
 

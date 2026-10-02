@@ -1,3 +1,6 @@
+#![deny(missing_docs)]
+#![deny(clippy::unwrap_used)]
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! # msi-cli
 //!
 //! Command-line interface for creating, inspecting, and manipulating Windows Installer (`.msi`) packages.

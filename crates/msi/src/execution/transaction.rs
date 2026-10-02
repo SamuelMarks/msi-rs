@@ -1158,6 +1158,7 @@ impl WorkerContext {
                     let masked = self.evaluation_context.mask_log_string(&log_entry);
                     self.executed_actions.push(masked);
                 }
+                _ => {}
             }
         }
 
@@ -1233,6 +1234,7 @@ impl WorkerContext {
                     self.executed_actions
                         .push(format!("RollbackCustomAction({action})"));
                 }
+                _ => {}
             }
         }
 
@@ -2943,6 +2945,70 @@ impl Transaction<Uninitialized> {
                         }
                     }
                 }
+                "InstallODBC" => {
+                    let odbc_driver_records = self.database.get_records("ODBCDriver");
+                    for rec in odbc_driver_records {
+                        if let Some(FieldValue::String(driver_name)) = rec.get(1) {
+                            self.install_script.push(ScriptOp::CustomAction {
+                                action: "@@InstallODBCDriver".to_string(),
+                                action_type: 0,
+                                source: String::new(),
+                                target: driver_name.clone(),
+                            });
+                            self.rollback_script.push(RollbackOp::RollbackCustomAction {
+                                action: "@@UninstallODBCDriver".to_string(),
+                                action_type: 0,
+                                source: String::new(),
+                                target: driver_name.clone(),
+                            });
+                        }
+                    }
+                    let odbc_ds_records = self.database.get_records("ODBCDataSource");
+                    for rec in odbc_ds_records {
+                        if let Some(FieldValue::String(ds_name)) = rec.get(1) {
+                            self.install_script.push(ScriptOp::CustomAction {
+                                action: "@@InstallODBCDataSource".to_string(),
+                                action_type: 0,
+                                source: String::new(),
+                                target: ds_name.clone(),
+                            });
+                            self.rollback_script.push(RollbackOp::RollbackCustomAction {
+                                action: "@@UninstallODBCDataSource".to_string(),
+                                action_type: 0,
+                                source: String::new(),
+                                target: ds_name.clone(),
+                            });
+                        }
+                    }
+                }
+                "RegisterFonts" => {
+                    let font_records = self.database.get_records("Font");
+                    for rec in font_records {
+                        if let (
+                            Some(FieldValue::String(file_id)),
+                            Some(FieldValue::String(font_title)),
+                        ) = (rec.get(0), rec.get(1))
+                        {
+                            let file_path = self.context.get_property(file_id).map_or_else(
+                                || format!("C:\\Windows\\Fonts\\{file_id}"),
+                                ToString::to_string,
+                            );
+                            let target = format!("{file_path}|{font_title}");
+                            self.install_script.push(ScriptOp::CustomAction {
+                                action: "@@RegisterFont".to_string(),
+                                action_type: 0,
+                                source: String::new(),
+                                target: target.clone(),
+                            });
+                            self.rollback_script.push(RollbackOp::RollbackCustomAction {
+                                action: "@@UnregisterFont".to_string(),
+                                action_type: 0,
+                                source: String::new(),
+                                target,
+                            });
+                        }
+                    }
+                }
                 custom_act => {
                     let (action_type, source, target) =
                         if let Some(ca) = custom_actions_map.get(custom_act) {
@@ -3351,6 +3417,7 @@ mod tests {
     }
 
     /// Tests successful two-phase transaction execution and commit.
+
     #[test]
     fn test_transaction_full_success_commit() {
         let db = unwrap_result(create_test_database());
@@ -7194,6 +7261,58 @@ mod tests {
             .install_child_package_from_path(&temp_child_fail, "")
             .is_err());
         let _ = std::fs::remove_file(&temp_child_fail);
+    }
+
+    #[test]
+    fn test_transaction_execute_odbc_fonts() {
+        use crate::database::tables::record::{FieldValue, Record};
+        let mut db = unwrap_result(create_test_database());
+        db.add_record(
+            "InstallExecuteSequence",
+            Record::with_fields(vec![
+                FieldValue::String("InstallODBC".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(100),
+            ]),
+        );
+        db.add_record(
+            "InstallExecuteSequence",
+            Record::with_fields(vec![
+                FieldValue::String("RegisterFonts".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(200),
+            ]),
+        );
+        db.add_record(
+            "ODBCDriver",
+            Record::with_fields(vec![
+                FieldValue::String("Driver1".to_string()),
+                FieldValue::String("Driver1Name".to_string()),
+            ]),
+        );
+        db.add_record(
+            "ODBCDataSource",
+            Record::with_fields(vec![
+                FieldValue::String("DSN1".to_string()),
+                FieldValue::String("DSN1Name".to_string()),
+            ]),
+        );
+        db.add_record(
+            "Font",
+            Record::with_fields(vec![
+                FieldValue::String("FontFile1".to_string()),
+                FieldValue::String("FontTitle1".to_string()),
+            ]),
+        );
+
+        let context = EvaluationContext::new();
+        let cost_engine = DiskCostEngine::new();
+        let tx_init = Transaction::new(db, context, cost_engine);
+        let tx_prep = tx_init.prepare().unwrap();
+
+        let ops = tx_prep.install_script().operations();
+        let has_odbc = ops.iter().any(|op| matches!(op, ScriptOp::CustomAction { action, .. } if action == "@@InstallODBCDriver"));
+        assert!(has_odbc);
     }
 }
 #[cfg(test)]

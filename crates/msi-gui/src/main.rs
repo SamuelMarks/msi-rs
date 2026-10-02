@@ -1,3 +1,5 @@
+#![deny(missing_docs)]
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! # msi-gui
 //!
 //! Interactive Native Desktop GUI Windowing Runtime for Windows Installer (`.msi`) packages.

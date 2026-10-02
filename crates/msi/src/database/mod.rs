@@ -10,6 +10,7 @@
 pub mod catalogs;
 pub mod column;
 pub mod idt;
+pub mod physical;
 pub mod sql;
 pub mod string_pool;
 pub mod summary_info;

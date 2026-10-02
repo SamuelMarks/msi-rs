@@ -1,3 +1,4 @@
+#![deny(clippy::unwrap_used)]
 //! # msiextract
 //!
 //! Windows Installer Package Extractor replicating GNOME `msiextract`.

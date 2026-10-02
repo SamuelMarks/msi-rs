@@ -1,3 +1,5 @@
+#![allow(clippy::unreachable)]
+
 //! High-level MSI package types, binary I/O, and builder.
 //!
 //! Provides end-to-end package reading, writing, and fluent building:
@@ -13,6 +15,7 @@ use crate::cfb::{
 };
 use crate::database::catalogs::{TableSchema, COLUMN_CATALOG_NAME, TABLE_CATALOG_NAME};
 use crate::database::column::{ColumnDef, DataType};
+use crate::database::physical::LogicalIndex;
 use crate::database::string_pool::{StringPool, CODEPAGE_UTF8};
 use crate::database::summary_info::{Architecture, SummaryInfo};
 use crate::database::tables::core::{
@@ -576,29 +579,35 @@ impl Package {
             let rec_size = columns_schema.row_record_size(2);
             let mut grouped_columns: HashMap<String, Vec<(i16, ColumnDef)>> = HashMap::new();
 
-            for chunk in col_data.chunks_exact(rec_size) {
-                let Ok(rec) = Record::deserialize(chunk, columns_schema.columns(), &pool, 2) else {
-                    continue;
-                };
+            let layout = columns_schema
+                .physical_layout()
+                .unwrap_or_else(|_| unreachable!());
+            {
+                for chunk in col_data.chunks_exact(rec_size) {
+                    let Ok(rec) = Record::deserialize(chunk, &layout, &pool, 2) else {
+                        continue;
+                    };
 
-                let (
-                    Some(FieldValue::String(tbl)),
-                    Some(FieldValue::Short(num)),
-                    Some(FieldValue::String(col_name)),
-                    Some(FieldValue::Short(col_type_raw)),
-                ) = (rec.get(0), rec.get(1), rec.get(2), rec.get(3))
-                else {
-                    continue;
-                };
+                    let (
+                        Some(FieldValue::String(tbl)),
+                        Some(FieldValue::Short(num)),
+                        Some(FieldValue::String(col_name)),
+                        Some(FieldValue::Short(col_type_raw)),
+                    ) = (rec.get(0), rec.get(1), rec.get(2), rec.get(3))
+                    else {
+                        continue;
+                    };
 
-                let Ok(col_def) = ColumnDef::from_bitmask(col_name, *col_type_raw as u16) else {
-                    continue;
-                };
+                    let Ok(col_def) = ColumnDef::from_bitmask(col_name, *col_type_raw as u16)
+                    else {
+                        continue;
+                    };
 
-                grouped_columns
-                    .entry(tbl.clone())
-                    .or_default()
-                    .push((*num, col_def));
+                    grouped_columns
+                        .entry(tbl.clone())
+                        .or_default()
+                        .push((*num, col_def));
+                }
             }
 
             for (tbl, mut cols) in grouped_columns {
@@ -616,13 +625,16 @@ impl Package {
         for (table_name, stream_name) in &table_streams {
             let schema_opt = database.catalog.get_table(table_name).cloned();
             if let Some(schema) = schema_opt {
-                let row_size = schema.row_record_size(2);
-                let table_bytes = reader.read_stream(stream_name)?;
-                for chunk in table_bytes.chunks_exact(row_size) {
-                    let Ok(rec) = Record::deserialize(chunk, schema.columns(), &pool, 2) else {
-                        continue;
-                    };
-                    database.add_record(table_name, rec);
+                let layout = schema.physical_layout().unwrap_or_else(|_| unreachable!());
+                {
+                    let row_size = schema.row_record_size(2);
+                    let table_bytes = reader.read_stream(stream_name)?;
+                    for chunk in table_bytes.chunks_exact(row_size) {
+                        let Ok(rec) = Record::deserialize(chunk, &layout, &pool, 2) else {
+                            continue;
+                        };
+                        database.add_record(table_name, rec);
+                    }
                 }
             } else {
                 // Table stream without schema in catalog
@@ -735,11 +747,15 @@ impl Package {
             let mut col_records = Vec::new();
             for tbl in &all_table_names {
                 if let Some(schema) = self.database.catalog.get_table(tbl) {
+                    let layout = schema.physical_layout()?;
                     for (idx, col) in schema.columns.iter().enumerate() {
                         let bitmask = col.to_bitmask() as i16;
+                        let physical_idx = layout
+                            .physical_index(LogicalIndex(idx))
+                            .unwrap_or(crate::database::physical::PhysicalIndex(0));
                         col_records.push(Record::with_fields(vec![
                             FieldValue::String(tbl.clone()),
-                            FieldValue::Short((idx + 1) as i16),
+                            FieldValue::Short((physical_idx.0 + 1) as i16),
                             FieldValue::String(col.name.clone()),
                             FieldValue::Short(bitmask),
                         ]));
@@ -755,9 +771,10 @@ impl Package {
 
         for (tbl_name, records) in &synthesized_tables {
             if let Some(schema) = self.database.catalog.get_table(tbl_name) {
+                let layout = schema.physical_layout()?;
                 let mut tbl_bytes = Vec::new();
                 for rec in records {
-                    let rec_bytes = rec.serialize(schema.columns(), &mut pool, 2)?;
+                    let rec_bytes = rec.serialize(&layout, &mut pool, 2)?;
                     tbl_bytes.extend_from_slice(&rec_bytes);
                 }
                 serialized_tables.push((tbl_name.clone(), tbl_bytes));
@@ -1779,7 +1796,11 @@ mod tests {
             FieldValue::String("Col1".to_string()),
             FieldValue::Short(0x0040),
         ]);
-        let s1 = rec1.serialize(columns_schema.columns(), &mut pool, 2);
+        let s1 = rec1.serialize(
+            &columns_schema.physical_layout().expect("test"),
+            &mut pool,
+            2,
+        );
         assert!(s1.is_ok());
         col_bytes.extend_from_slice(&s1.unwrap_or_default());
 
@@ -1790,7 +1811,11 @@ mod tests {
             FieldValue::Null,
             FieldValue::Short(0x0040),
         ]);
-        let s2 = rec2.serialize(columns_schema.columns(), &mut pool, 2);
+        let s2 = rec2.serialize(
+            &columns_schema.physical_layout().expect("test"),
+            &mut pool,
+            2,
+        );
         assert!(s2.is_ok());
         col_bytes.extend_from_slice(&s2.unwrap_or_default());
 
@@ -1801,7 +1826,11 @@ mod tests {
             FieldValue::String("ColErr".to_string()),
             FieldValue::Short(0x0400 | 0x0800), // conflicting short + long
         ]);
-        let s3 = rec3.serialize(columns_schema.columns(), &mut pool, 2);
+        let s3 = rec3.serialize(
+            &columns_schema.physical_layout().expect("test"),
+            &mut pool,
+            2,
+        );
         assert!(s3.is_ok());
         col_bytes.extend_from_slice(&s3.unwrap_or_default());
 
@@ -1813,7 +1842,11 @@ mod tests {
             FieldValue::String(valid_col1.name.clone()),
             FieldValue::Short(valid_col1.to_bitmask() as i16),
         ]);
-        let s4a = rec4a.serialize(columns_schema.columns(), &mut pool, 2);
+        let s4a = rec4a.serialize(
+            &columns_schema.physical_layout().expect("test"),
+            &mut pool,
+            2,
+        );
         assert!(s4a.is_ok());
         col_bytes.extend_from_slice(&s4a.unwrap_or_default());
 
@@ -1825,7 +1858,11 @@ mod tests {
             FieldValue::String(valid_col2.name.clone()),
             FieldValue::Short(valid_col2.to_bitmask() as i16),
         ]);
-        let s4b = rec4b.serialize(columns_schema.columns(), &mut pool, 2);
+        let s4b = rec4b.serialize(
+            &columns_schema.physical_layout().expect("test"),
+            &mut pool,
+            2,
+        );
         assert!(s4b.is_ok());
         col_bytes.extend_from_slice(&s4b.unwrap_or_default());
 
@@ -1838,7 +1875,11 @@ mod tests {
             FieldValue::String(prop_col1.name.clone()),
             FieldValue::Short(prop_col1.to_bitmask() as i16),
         ]);
-        let s5a = rec5a.serialize(columns_schema.columns(), &mut pool, 2);
+        let s5a = rec5a.serialize(
+            &columns_schema.physical_layout().expect("test"),
+            &mut pool,
+            2,
+        );
         assert!(s5a.is_ok());
         col_bytes.extend_from_slice(&s5a.unwrap_or_default());
         let rec5b = Record::with_fields(vec![
@@ -1847,7 +1888,11 @@ mod tests {
             FieldValue::String(prop_col2.name.clone()),
             FieldValue::Short(prop_col2.to_bitmask() as i16),
         ]);
-        let s5b = rec5b.serialize(columns_schema.columns(), &mut pool, 2);
+        let s5b = rec5b.serialize(
+            &columns_schema.physical_layout().expect("test"),
+            &mut pool,
+            2,
+        );
         assert!(s5b.is_ok());
         col_bytes.extend_from_slice(&s5b.unwrap_or_default());
 
@@ -1863,28 +1908,29 @@ mod tests {
             FieldValue::String("ProductVersion".to_string()),
             FieldValue::String("invalid-version-string".to_string()),
         ]);
-        let sp1 = prop_rec1.serialize(prop_schema.columns(), &mut pool, 2);
+        let sp1 = prop_rec1.serialize(&prop_schema.physical_layout().expect("test"), &mut pool, 2);
         assert!(sp1.is_ok());
         prop_bytes.extend_from_slice(&sp1.unwrap_or_default());
         let prop_rec2 = Record::with_fields(vec![
             FieldValue::String("UNRECOGNIZED_PROPERTY".to_string()),
             FieldValue::String("some_value".to_string()),
         ]);
-        let sp2 = prop_rec2.serialize(prop_schema.columns(), &mut pool, 2);
+        let sp2 = prop_rec2.serialize(&prop_schema.physical_layout().expect("test"), &mut pool, 2);
         assert!(sp2.is_ok());
         prop_bytes.extend_from_slice(&sp2.unwrap_or_default());
         let prop_rec3 = Record::with_fields(vec![
             FieldValue::String("NullValProp".to_string()),
             FieldValue::Null,
         ]);
-        let sp3 = prop_rec3.serialize(prop_schema.columns(), &mut pool, 2);
+        let sp3 = prop_rec3.serialize(&prop_schema.physical_layout().expect("test"), &mut pool, 2);
         assert!(sp3.is_ok());
         prop_bytes.extend_from_slice(&sp3.unwrap_or_default());
         let prop_rec_empty = Record::with_fields(vec![
             FieldValue::String(String::new()),
             FieldValue::String("empty_prop_val".to_string()),
         ]);
-        let sp_empty = prop_rec_empty.serialize(prop_schema.columns(), &mut pool, 2);
+        let sp_empty =
+            prop_rec_empty.serialize(&prop_schema.physical_layout().expect("test"), &mut pool, 2);
         assert!(sp_empty.is_ok());
         prop_bytes.extend_from_slice(&sp_empty.unwrap_or_default());
 
@@ -1899,7 +1945,11 @@ mod tests {
             FieldValue::Short(42),
             FieldValue::String("Hello".to_string()),
         ]);
-        let sc = custom_rec.serialize(custom_schema.columns(), &mut pool, 2);
+        let sc = custom_rec.serialize(
+            &custom_schema.physical_layout().expect("test"),
+            &mut pool,
+            2,
+        );
         assert!(sc.is_ok());
         let mut custom_bytes = sc.unwrap_or_default();
         // Add 4 bytes for an invalid record chunk where string ID (0xFFFF) is out of bounds
@@ -2430,5 +2480,103 @@ mod tests {
         assert!(pkg_star.save(&temp_file).is_ok());
         assert!(temp_file.exists());
         let _ = fs::remove_file(&temp_file);
+    }
+
+    /// Tests that the synthesized `_Columns` table uses physical (not logical) indices for the `Number` field.
+    #[test]
+    fn test_package_synthesize_columns_physical_layout() {
+        let builder = Package::builder()
+            .product_name("Edge Product 4")
+            .manufacturer("Edge Corp 4")
+            .version(ProductVersion::new(1, 0, 0))
+            .product_code("{44444444-4444-4444-4444-444444444444}");
+
+        let mut pkg = builder.build().expect("test");
+
+        // Create a custom table where logical != physical
+        // Logically: 0: Value (String), 1: Name (String) [PK], 2: Id (Short)
+        let custom_schema = TableSchema::new("LayoutTest")
+            .with_column(ColumnDef::new("Value", DataType::String { max_len: 255 }).nullable())
+            .with_column(ColumnDef::new("Name", DataType::String { max_len: 72 }).primary_key())
+            .with_column(ColumnDef::new("Id", DataType::Short));
+
+        pkg.database_mut()
+            .catalog
+            .add_table(custom_schema)
+            .expect("test");
+        pkg.database_mut()
+            .tables
+            .insert("LayoutTest".to_string(), vec![]);
+
+        let cfb_bytes = pkg.to_bytes().expect("Serialization succeeded");
+        let pkg_reparsed = Package::from_bytes(&cfb_bytes).expect("Deserialization succeeded");
+
+        let mut cols_records = pkg_reparsed
+            .database()
+            .get_records(COLUMN_CATALOG_NAME)
+            .to_vec();
+        cols_records.push(Record::with_fields(vec![
+            FieldValue::String("LayoutTest".to_string()),
+            FieldValue::Null,
+            FieldValue::Null,
+        ]));
+
+        // Find our custom table in the _Columns records
+        let mut layout_test_cols = Vec::new();
+        for rec in cols_records {
+            if let Some(FieldValue::String(tbl)) = rec.get(0) {
+                if tbl == "LayoutTest" {
+                    let Some(FieldValue::Short(num)) = rec.get(1) else {
+                        continue;
+                    };
+                    let Some(FieldValue::String(name)) = rec.get(2) else {
+                        continue;
+                    };
+                    layout_test_cols.push((name.clone(), *num));
+                }
+            }
+        }
+
+        // Physically: Name (PK) -> 1, Id (Short) -> 2, Value (String) -> 3
+        layout_test_cols.sort_by_key(|(_, num)| *num);
+
+        assert_eq!(
+            layout_test_cols,
+            vec![
+                ("Name".to_string(), 1),
+                ("Id".to_string(), 2),
+                ("Value".to_string(), 3)
+            ]
+        );
+    }
+
+    #[test]
+    #[allow(clippy::unreachable)]
+    fn test_package_missing_columns_stream_and_schema() {
+        use crate::cfb::header::CfbVersion;
+        use crate::cfb::stream_name::encode_msi_stream_name;
+        use crate::cfb::writer::CfbWriter;
+        use crate::database::string_pool::CODEPAGE_UTF8;
+
+        let mut w = CfbWriter::new(CfbVersion::V3);
+        let mut pool_bytes = vec![0u8; 4];
+        pool_bytes[0..2].copy_from_slice(&CODEPAGE_UTF8.to_le_bytes());
+        w.add_stream(
+            &encode_msi_stream_name("_StringPool", true).expect("test"),
+            &pool_bytes,
+        )
+        .expect("test");
+        w.add_stream(
+            &encode_msi_stream_name("_StringData", true).expect("test"),
+            &[],
+        )
+        .expect("test");
+        w.add_stream("SummaryInformation", &[]).expect("test");
+
+        let tbl_name = encode_msi_stream_name("NoSchemaTable", true).expect("test");
+        w.add_stream(&tbl_name, &[0; 10]).expect("test");
+
+        let buf = w.build();
+        let _ = Package::from_bytes(&buf);
     }
 }

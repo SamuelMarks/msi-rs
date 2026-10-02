@@ -1,3 +1,5 @@
+#![deny(missing_docs)]
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! # msi-ffi
 //!
 //! C-compatible Foreign Function Interface (C-ABI) for `msi-rs`.
