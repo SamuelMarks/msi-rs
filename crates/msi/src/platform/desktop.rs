@@ -192,7 +192,7 @@ impl XdgDesktopEntry {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] on filesystem write failure.
+    /// Returns [`crate::MsiError`] on filesystem write failure.
     pub fn install_to_directory(&self, dir: &Path) -> Result<PathBuf> {
         let slug = self.name.to_lowercase().replace(' ', "-");
         let file_path = dir.join(format!("{slug}.desktop"));

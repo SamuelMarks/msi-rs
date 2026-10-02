@@ -29,7 +29,7 @@ use std::path::{Path, PathBuf};
 ///
 /// # Errors
 ///
-/// Returns [`Error`] on filesystem creation failure.
+/// Returns [`msi::MsiError`] on filesystem creation failure.
 fn create_test_temp_dir(test_name: &str) -> Result<PathBuf> {
     let dir = std::env::temp_dir().join(format!("msi_{test_name}_{}", std::process::id()));
     fs::create_dir_all(&dir)?;
@@ -50,7 +50,7 @@ fn create_test_temp_dir(test_name: &str) -> Result<PathBuf> {
 ///
 /// # Errors
 ///
-/// Returns [`Error`] on filesystem write failure.
+/// Returns [`msi::MsiError`] on filesystem write failure.
 fn write_test_file(dir: &Path, filename: &str, content: &[u8]) -> Result<PathBuf> {
     let path = dir.join(filename);
     if let Some(parent) = path.parent() {
@@ -65,7 +65,7 @@ fn write_test_file(dir: &Path, filename: &str, content: &[u8]) -> Result<PathBuf
 ///
 /// # Errors
 ///
-/// Returns [`Error`] on harvesting or verification failure.
+/// Returns [`msi::MsiError`] on harvesting or verification failure.
 #[test]
 fn test_payload_harvester_reproducibility_and_filters() -> Result<()> {
     let temp_dir = create_test_temp_dir("harvest_repro")?;
@@ -153,7 +153,7 @@ echo app",
 ///
 /// # Errors
 ///
-/// Returns [`Error`] on compilation, linking, or verification failure.
+/// Returns [`msi::MsiError`] on compilation, linking, or verification failure.
 #[test]
 fn test_harvest_payload_end_to_end_linking() -> Result<()> {
     let temp_dir = create_test_temp_dir("harvest_linking")?;
@@ -252,7 +252,7 @@ fn test_harvest_payload_end_to_end_linking() -> Result<()> {
 ///
 /// # Errors
 ///
-/// Returns [`Error`] on harvesting or verification failure.
+/// Returns [`msi::MsiError`] on harvesting or verification failure.
 #[test]
 fn test_harvest_automatic_split_size_media_disks() -> Result<()> {
     let temp_dir = create_test_temp_dir("harvest_split")?;

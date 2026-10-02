@@ -512,7 +512,7 @@ impl Package {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] if the CFB container, string pool, summary information, or table records are malformed.
+    /// Returns [`crate::MsiError`] if the CFB container, string pool, summary information, or table records are malformed.
     #[allow(clippy::too_many_lines, clippy::cast_sign_loss)]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
         let reader = CfbReader::new(bytes)?;
@@ -682,7 +682,7 @@ impl Package {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] on filesystem read errors or parsing failure.
+    /// Returns [`crate::MsiError`] on filesystem read errors or parsing failure.
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let bytes = fs::read(path)?;
         Self::from_bytes(&bytes)
@@ -696,7 +696,7 @@ impl Package {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] if record serialization or stream name encoding fails.
+    /// Returns [`crate::MsiError`] if record serialization or stream name encoding fails.
     #[allow(
         clippy::too_many_lines,
         clippy::cast_possible_truncation,
@@ -800,7 +800,7 @@ impl Package {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] on serialization or filesystem write failure.
+    /// Returns [`crate::MsiError`] on serialization or filesystem write failure.
     pub fn save(&self, path: impl AsRef<Path>) -> Result<()> {
         let bytes = self.to_bytes()?;
         fs::write(path, bytes)?;

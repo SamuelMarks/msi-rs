@@ -275,7 +275,7 @@ impl UiEngine {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] if condition syntax is invalid.
+    /// Returns [`crate::MsiError`] if condition syntax is invalid.
     pub fn evaluate_conditions_and_formatting(&mut self) -> Result<()> {
         let Some(active_dlg) = self.active_dialog.clone() else {
             return Ok(());
@@ -339,7 +339,7 @@ impl UiEngine {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] if event execution encounters an error.
+    /// Returns [`crate::MsiError`] if event execution encounters an error.
     pub fn click_control(
         &mut self,
         dialog: &str,
@@ -461,7 +461,7 @@ impl UiEngine {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] if property condition evaluation fails.
+    /// Returns [`crate::MsiError`] if property condition evaluation fails.
     pub fn update_control_value(&mut self, dialog: &str, control: &str, value: &str) -> Result<()> {
         let key = (dialog.to_string(), control.to_string());
         if let Some(state) = self.control_states.get_mut(&key) {
@@ -493,7 +493,7 @@ impl UiEngine {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] if condition evaluation fails.
+    /// Returns [`crate::MsiError`] if condition evaluation fails.
     pub fn toggle_checkbox(&mut self, dialog: &str, control: &str) -> Result<()> {
         let key = (dialog.to_string(), control.to_string());
         let cur_val = self
@@ -515,7 +515,7 @@ impl UiEngine {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] if condition evaluation fails.
+    /// Returns [`crate::MsiError`] if condition evaluation fails.
     pub fn select_radio_button(&mut self, dialog: &str, control: &str, value: &str) -> Result<()> {
         self.update_control_value(dialog, control, value)
     }
@@ -528,7 +528,7 @@ impl UiEngine {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] if loading or initial condition formatting fails.
+    /// Returns [`crate::MsiError`] if loading or initial condition formatting fails.
     #[allow(
         clippy::too_many_lines,
         clippy::cast_possible_truncation,

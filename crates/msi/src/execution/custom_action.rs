@@ -287,7 +287,7 @@ impl CustomActionDefinition {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] if the type bits are invalid.
+    /// Returns [`crate::MsiError`] if the type bits are invalid.
     pub fn parse(name: &str, raw_type: u32, source: &str, target: &str) -> Result<Self> {
         let source_type = CustomActionSourceType::from_raw(raw_type)?;
 

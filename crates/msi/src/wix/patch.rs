@@ -1036,7 +1036,7 @@ impl PatchPackageBuilder {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] on container generation or cabinet packing failures.
+    /// Returns [`crate::MsiError`] on container generation or cabinet packing failures.
     pub fn build(self) -> Result<Vec<u8>> {
         let mut cfb_writer = CfbWriter::new(CfbVersion::V3).with_root_clsid(StorageClsid::MsiPatch);
 
@@ -1118,7 +1118,7 @@ impl PatchPackageBuilder {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] on container build or file I/O failure.
+    /// Returns [`crate::MsiError`] on container build or file I/O failure.
     pub fn build_to_file(self, path: impl AsRef<Path>) -> Result<()> {
         self.build_to_file_path(path.as_ref())
     }

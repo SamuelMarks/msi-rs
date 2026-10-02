@@ -489,7 +489,7 @@ impl CandleOptions {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] on preprocessing, parsing, or I/O failure.
+    /// Returns [`crate::MsiError`] on preprocessing, parsing, or I/O failure.
     #[allow(clippy::option_if_let_else)]
     pub fn execute(&self) -> Result<Vec<PathBuf>> {
         for ext in &self.extensions {
@@ -1084,7 +1084,7 @@ impl LightOptions {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] on linking, binding, or I/O failure.
+    /// Returns [`crate::MsiError`] on linking, binding, or I/O failure.
     pub fn execute(&self) -> Result<PathBuf> {
         for ext in &self.extensions {
             let _ = validate_extension(ext)?;
@@ -1489,7 +1489,7 @@ impl WixBuildOptions {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] on compilation, linking, or I/O failure.
+    /// Returns [`crate::MsiError`] on compilation, linking, or I/O failure.
     pub fn execute(&self) -> Result<PathBuf> {
         for ext in &self.extensions {
             let _ = validate_extension(ext)?;

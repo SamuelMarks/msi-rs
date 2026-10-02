@@ -57,7 +57,7 @@ impl CfbReader {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] if header validation, FAT traversal, directory parsing,
+    /// Returns [`crate::MsiError`] if header validation, FAT traversal, directory parsing,
     /// or Mini-Stream extraction encounters corruption or cycles.
     #[allow(clippy::too_many_lines, clippy::cast_possible_truncation)]
     pub fn new(bytes: &[u8]) -> Result<Self> {

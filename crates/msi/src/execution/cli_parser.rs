@@ -590,7 +590,7 @@ impl MsiExecOptions {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] on fatal filesystem, database, or transaction execution failure.
+    /// Returns [`crate::MsiError`] on fatal filesystem, database, or transaction execution failure.
     #[allow(clippy::too_many_lines)]
     pub fn execute_with_streams(
         &self,
@@ -754,7 +754,7 @@ impl MsiExecOptions {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] on fatal filesystem, database, or transaction execution failure.
+    /// Returns [`crate::MsiError`] on fatal filesystem, database, or transaction execution failure.
     pub fn execute(&self) -> Result<MsiExitCode> {
         self.execute_with_streams(None, None)
     }

@@ -225,7 +225,7 @@ impl ControlEvent {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] if condition syntax is invalid.
+    /// Returns [`crate::MsiError`] if condition syntax is invalid.
     pub fn is_satisfied(&self, context: &EvaluationContext) -> Result<bool> {
         self.condition.as_ref().map_or(Ok(true), |cond| {
             if cond.trim().is_empty() || cond == "1" {

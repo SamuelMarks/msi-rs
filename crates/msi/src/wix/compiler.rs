@@ -5024,7 +5024,7 @@ mod tests {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] if XML parsing or compilation fails.
+    /// Returns [`crate::MsiError`] if XML parsing or compilation fails.
     #[test]
     fn test_compiler_top_level_and_section_variations() {
         let parser = XmlParser::new();
@@ -5123,7 +5123,7 @@ mod tests {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] if XML parsing or compilation fails.
+    /// Returns [`crate::MsiError`] if XML parsing or compilation fails.
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_compiler_features_and_components_branches() {
@@ -5212,7 +5212,7 @@ mod tests {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] if XML parsing or compilation fails.
+    /// Returns [`crate::MsiError`] if XML parsing or compilation fails.
     #[test]
     fn test_compiler_custom_actions_all_branches() {
         let parser = XmlParser::new();
@@ -5250,7 +5250,7 @@ mod tests {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] if XML parsing or compilation fails.
+    /// Returns [`crate::MsiError`] if XML parsing or compilation fails.
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_compiler_searches_nested_and_types() {
@@ -5340,7 +5340,7 @@ mod tests {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] if XML parsing or compilation fails.
+    /// Returns [`crate::MsiError`] if XML parsing or compilation fails.
     #[test]
     fn test_compiler_ui_controls_publish_and_events() {
         let parser = XmlParser::new();
@@ -5408,7 +5408,7 @@ mod tests {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] if XML parsing or compilation fails.
+    /// Returns [`crate::MsiError`] if XML parsing or compilation fails.
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_compiler_groups_sequences_and_helpers() {
@@ -5529,7 +5529,7 @@ mod tests {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] if XML parsing fails unexpectedly.
+    /// Returns [`crate::MsiError`] if XML parsing fails unexpectedly.
     #[test]
     fn test_compiler_all_missing_id_errors() {
         let parser = XmlParser::new();
@@ -5565,7 +5565,7 @@ mod tests {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] if XML parsing or compilation fails.
+    /// Returns [`crate::MsiError`] if XML parsing or compilation fails.
     #[test]
     #[allow(clippy::too_many_lines, clippy::similar_names)]
     fn test_compiler_libscript_parity_features() {
@@ -5836,7 +5836,7 @@ mod tests {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] if XML parsing or compilation fails.
+    /// Returns [`crate::MsiError`] if XML parsing or compilation fails.
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_compiler_system_and_com_elements() {
@@ -6043,7 +6043,7 @@ mod tests {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] if XML parsing fails.
+    /// Returns [`crate::MsiError`] if XML parsing fails.
     #[test]
     fn test_compiler_media_compression_level() {
         let xml = r#"

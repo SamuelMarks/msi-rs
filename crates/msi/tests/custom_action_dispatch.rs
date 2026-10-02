@@ -31,7 +31,7 @@ use std::path::PathBuf;
 ///
 /// # Errors
 ///
-/// Returns [`Error`] if filesystem directory creation fails.
+/// Returns [`msi::MsiError`] if filesystem directory creation fails.
 fn create_test_dir(test_name: &str) -> Result<PathBuf> {
     let dir = std::env::temp_dir().join(format!("msi_ca_test_{test_name}"));
     if dir.exists() {

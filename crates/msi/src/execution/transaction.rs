@@ -214,7 +214,7 @@ impl WorkerContext {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] if the cabinet header or files cannot be parsed.
+    /// Returns [`crate::MsiError`] if the cabinet header or files cannot be parsed.
     pub fn add_cabinet_bytes(&mut self, name: &str, bytes: &[u8]) -> Result<()> {
         let reader = crate::cab::reader::CabinetReader::new(bytes)?;
         self.cabinet_readers.insert(name.to_string(), reader);
@@ -240,7 +240,7 @@ impl WorkerContext {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] if parsing fails.
+    /// Returns [`crate::MsiError`] if parsing fails.
     pub fn with_cabinet_bytes(mut self, name: &str, bytes: &[u8]) -> Result<Self> {
         self.add_cabinet_bytes(name, bytes)?;
         Ok(self)
@@ -1251,7 +1251,7 @@ impl WorkerContext {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] on failure.
+    /// Returns [`crate::MsiError`] on failure.
     pub fn commit(&mut self) -> Result<()> {
         self.quarantine_files.clear();
         self.executed_actions.push("CommitSuccess".to_string());
@@ -1679,7 +1679,7 @@ impl MultiPackageTransactionManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] on extraction or filesystem write failure.
+    /// Returns [`crate::MsiError`] on extraction or filesystem write failure.
     pub fn extract_all_child_packages(
         &mut self,
         package: &Package,
@@ -1905,7 +1905,7 @@ impl MultiPackageTransactionManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] if opening or installing the package fails.
+    /// Returns [`crate::MsiError`] if opening or installing the package fails.
     pub fn install_child_package_from_path(
         &mut self,
         path: impl AsRef<Path>,
@@ -1931,7 +1931,7 @@ impl MultiPackageTransactionManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] if any child package installation fails (after rolling back preceding packages).
+    /// Returns [`crate::MsiError`] if any child package installation fails (after rolling back preceding packages).
     pub fn orchestrate_child_packages(
         &mut self,
         child_packages: &[(&Package, Option<&str>)],
@@ -1979,7 +1979,7 @@ impl MultiPackageTransactionManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] on execution failure.
+    /// Returns [`crate::MsiError`] on execution failure.
     pub fn orchestrate_master_package(
         &mut self,
         master_pkg: &Package,
@@ -2452,7 +2452,7 @@ impl Transaction<Uninitialized> {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] if condition evaluation or disk costing fails.
+    /// Returns [`crate::MsiError`] if condition evaluation or disk costing fails.
     #[allow(clippy::too_many_lines)]
     pub fn prepare(mut self) -> Result<Transaction<Prepared>> {
         let records = self.database.get_records(&self.sequence_table);
@@ -3156,7 +3156,7 @@ impl Transaction<Executed> {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] on commit failure.
+    /// Returns [`crate::MsiError`] on commit failure.
     pub fn commit(self, worker: &mut WorkerContext) -> Result<Transaction<Committed>> {
         worker.commit()?;
         Ok(Transaction {

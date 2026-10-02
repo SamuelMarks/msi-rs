@@ -42,7 +42,7 @@ pub enum QueryResult {
 ///
 /// # Errors
 ///
-/// Returns [`Error`] on syntax error, type violation, or primary key constraint failure.
+/// Returns [`crate::MsiError`] on syntax error, type violation, or primary key constraint failure.
 pub fn execute_sql(
     db: &mut LinkedDatabase,
     sql: &str,
@@ -70,7 +70,7 @@ pub fn execute_sql(
 ///
 /// # Errors
 ///
-/// Returns [`Error`] on constraint violation or schema failure.
+/// Returns [`crate::MsiError`] on constraint violation or schema failure.
 #[allow(clippy::too_many_lines)]
 pub fn execute_statement(
     db: &mut LinkedDatabase,

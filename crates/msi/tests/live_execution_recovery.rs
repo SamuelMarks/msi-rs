@@ -27,7 +27,7 @@ use std::path::PathBuf;
 ///
 /// # Errors
 ///
-/// Returns [`Error`] if filesystem directory creation fails.
+/// Returns [`msi::MsiError`] if filesystem directory creation fails.
 fn create_test_sandbox(test_name: &str) -> Result<(PathBuf, PathBuf, PathBuf)> {
     let temp_root = std::env::temp_dir().join(format!("msi_test_{test_name}"));
     let target_dir = temp_root.join("target");
@@ -50,7 +50,7 @@ fn create_test_sandbox(test_name: &str) -> Result<(PathBuf, PathBuf, PathBuf)> {
 ///
 /// # Errors
 ///
-/// Returns [`Error`] if cabinet creation fails.
+/// Returns [`msi::MsiError`] if cabinet creation fails.
 fn build_sample_cabinet() -> Result<Vec<u8>> {
     let mut writer = CabinetWriter::new(CompressionType::Mszip);
     writer.add_file("fil_entry_sh", b"#!/bin/sh\necho Launching Application\n")?;
@@ -75,7 +75,7 @@ fn build_sample_cabinet() -> Result<Vec<u8>> {
 ///
 /// # Errors
 ///
-/// Returns [`Error`] if database records cannot be created.
+/// Returns [`msi::MsiError`] if database records cannot be created.
 fn build_sample_database(cab_name: &str) -> Result<LinkedDatabase> {
     let mut db = LinkedDatabase::new()?;
 

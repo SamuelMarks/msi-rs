@@ -300,7 +300,7 @@ impl BackgroundTransactionWorker {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] if command dispatch fails.
+    /// Returns [`crate::MsiError`] if command dispatch fails.
     pub fn request_cancel(&mut self) -> Result<()> {
         self.cancelled = true;
         self.command_tx
@@ -336,7 +336,7 @@ impl BackgroundTransactionWorker {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] if the worker task failed or panicked.
+    /// Returns [`crate::MsiError`] if the worker task failed or panicked.
     pub fn join(mut self) -> Result<bool> {
         if let Some(handle) = self.worker_handle.take() {
             handle.join().map_err(|_| MsiError::WorkerIpcError {

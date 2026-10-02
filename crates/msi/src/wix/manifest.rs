@@ -982,7 +982,7 @@ impl ManifestMsiSynthesizer {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] on compilation, linking, or filesystem error.
+    /// Returns [`crate::MsiError`] on compilation, linking, or filesystem error.
     pub fn build_msi(&self, out_path: &Path) -> Result<PathBuf> {
         static BUILD_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let xml_str = self.generate_wix_xml()?;
@@ -1006,7 +1006,7 @@ impl ManifestMsiSynthesizer {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] on compilation, linking, or filesystem error.
+    /// Returns [`crate::MsiError`] on compilation, linking, or filesystem error.
     pub fn build_msi_in_dir(
         &self,
         out_path: &Path,

@@ -508,7 +508,7 @@ impl LinkedDatabase {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] if catalog population fails.
+    /// Returns [`crate::MsiError`] if catalog population fails.
     pub fn new() -> Result<Self> {
         Ok(Self::default())
     }
@@ -738,7 +738,7 @@ impl LinkedDatabase {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] on table schema or primary key merge collisions.
+    /// Returns [`crate::MsiError`] on table schema or primary key merge collisions.
     #[allow(clippy::too_many_lines)]
     pub fn merge_module(
         &mut self,
@@ -1019,7 +1019,7 @@ impl MergeModule {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] on container parsing or database deserialization failure.
+    /// Returns [`crate::MsiError`] on container parsing or database deserialization failure.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
         let pkg = Package::from_bytes(bytes)?;
         Ok(Self::from_database(pkg.database().clone()))
@@ -1037,7 +1037,7 @@ impl MergeModule {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] on file I/O, container parsing, or database error.
+    /// Returns [`crate::MsiError`] on file I/O, container parsing, or database error.
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         Self::open_path(path.as_ref())
     }
@@ -1544,7 +1544,7 @@ impl CubValidator {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] if container parsing or database deserialization fails.
+    /// Returns [`crate::MsiError`] if container parsing or database deserialization fails.
     pub fn from_bytes(name: impl Into<String>, bytes: &[u8]) -> Result<Self> {
         let pkg = Package::from_bytes(bytes)?;
         Ok(Self {
@@ -1565,7 +1565,7 @@ impl CubValidator {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] on file read, parsing, or database errors.
+    /// Returns [`crate::MsiError`] on file read, parsing, or database errors.
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         Self::open_path(path.as_ref())
     }
@@ -1645,7 +1645,7 @@ impl CubValidator {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] if script execution fails unexpectedly.
+    /// Returns [`crate::MsiError`] if script execution fails unexpectedly.
     #[allow(clippy::too_many_lines)]
     pub fn execute(&self, target_db: &LinkedDatabase) -> Result<Vec<IceDiagnostic>> {
         let mut diagnostics = Vec::new();
@@ -3203,7 +3203,7 @@ impl Linker {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] on filesystem read errors.
+    /// Returns [`crate::MsiError`] on filesystem read errors.
     fn bind_binaries(&mut self, db: &mut LinkedDatabase) -> Result<()> {
         let wix_binaries = db.tables.remove("WixBinary").unwrap_or_default();
         for r in &wix_binaries {
@@ -9020,7 +9020,7 @@ mod tests {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] on test setup or execution failure.
+    /// Returns [`crate::MsiError`] on test setup or execution failure.
     #[test]
     #[allow(
         clippy::too_many_lines,

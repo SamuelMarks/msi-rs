@@ -847,7 +847,7 @@ impl LiveSecurityApplier {
     ///
     /// # Errors
     ///
-    /// Returns [`Error`] on parse or application failure.
+    /// Returns [`crate::MsiError`] on parse or application failure.
     pub fn apply_security_descriptor(
         &mut self,
         path: &Path,

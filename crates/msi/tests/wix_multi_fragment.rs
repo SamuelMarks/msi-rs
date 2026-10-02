@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 ///
 /// # Errors
 ///
-/// Returns [`Error`] on filesystem creation failure.
+/// Returns [`msi::MsiError`] on filesystem creation failure.
 fn create_test_temp_dir(test_name: &str) -> Result<PathBuf> {
     let dir = std::env::temp_dir().join(format!("msi_{test_name}_{}", std::process::id()));
     fs::create_dir_all(&dir)?;
@@ -42,7 +42,7 @@ fn create_test_temp_dir(test_name: &str) -> Result<PathBuf> {
 ///
 /// # Errors
 ///
-/// Returns [`Error`] on filesystem write failure.
+/// Returns [`msi::MsiError`] on filesystem write failure.
 fn write_test_file(dir: &Path, filename: &str, content: &str) -> Result<PathBuf> {
     let path = dir.join(filename);
     fs::write(&path, content)?;
@@ -54,7 +54,7 @@ fn write_test_file(dir: &Path, filename: &str, content: &str) -> Result<PathBuf>
 ///
 /// # Errors
 ///
-/// Returns [`Error`] on compilation, linking, or verification failure.
+/// Returns [`msi::MsiError`] on compilation, linking, or verification failure.
 #[test]
 fn test_wix_multi_source_cross_fragment_component_group() -> Result<()> {
     let temp_dir = create_test_temp_dir("multi_src_cg")?;
@@ -141,7 +141,7 @@ fn test_wix_multi_source_cross_fragment_component_group() -> Result<()> {
 ///
 /// # Errors
 ///
-/// Returns [`Error`] on compilation, linking, or verification failure.
+/// Returns [`msi::MsiError`] on compilation, linking, or verification failure.
 #[test]
 fn test_wix_multi_fragment_component_group_merging() -> Result<()> {
     let temp_dir = create_test_temp_dir("cg_merging")?;
@@ -251,7 +251,7 @@ fn test_wix_multi_fragment_component_group_merging() -> Result<()> {
 ///
 /// # Errors
 ///
-/// Returns [`Error`] on compilation, linking, or verification failure.
+/// Returns [`msi::MsiError`] on compilation, linking, or verification failure.
 #[test]
 fn test_wix_directory_reference_rebinding() -> Result<()> {
     let temp_dir = create_test_temp_dir("dir_rebinding")?;
@@ -333,7 +333,7 @@ fn test_wix_directory_reference_rebinding() -> Result<()> {
 ///
 /// # Errors
 ///
-/// Returns [`Error`] on compilation, linking, or verification failure.
+/// Returns [`msi::MsiError`] on compilation, linking, or verification failure.
 #[test]
 fn test_wix_long_identifier_auto_hashing_parity() -> Result<()> {
     let temp_dir = create_test_temp_dir("long_id")?;
@@ -435,7 +435,7 @@ fn test_wix_long_identifier_auto_hashing_parity() -> Result<()> {
 ///
 /// # Errors
 ///
-/// Returns [`Error`] on unexpected success or failure.
+/// Returns [`msi::MsiError`] on unexpected success or failure.
 #[test]
 fn test_wix_missing_symbol_diagnostics() -> Result<()> {
     let temp_dir = create_test_temp_dir("missing_sym")?;
@@ -491,7 +491,7 @@ fn test_wix_missing_symbol_diagnostics() -> Result<()> {
 ///
 /// # Errors
 ///
-/// Returns [`Error`] on compilation, linking, or verification failure.
+/// Returns [`msi::MsiError`] on compilation, linking, or verification failure.
 #[test]
 fn test_wix_mixed_wxs_and_wixobj_inputs() -> Result<()> {
     let temp_dir = create_test_temp_dir("mixed_inputs")?;
@@ -584,7 +584,7 @@ fn test_wix_mixed_wxs_and_wixobj_inputs() -> Result<()> {
 ///
 /// # Errors
 ///
-/// Returns [`Error`] if file I/O, compilation, or verification fails.
+/// Returns [`msi::MsiError`] if file I/O, compilation, or verification fails.
 #[test]
 #[allow(clippy::too_many_lines)]
 fn test_wix_cross_fragment_directory_attachment_chain() -> Result<()> {
@@ -719,7 +719,7 @@ fn test_wix_cross_fragment_directory_attachment_chain() -> Result<()> {
 ///
 /// # Errors
 ///
-/// Returns [`Error`] if file I/O, compilation, or verification fails.
+/// Returns [`msi::MsiError`] if file I/O, compilation, or verification fails.
 #[test]
 fn test_wix_cross_fragment_feature_ref_bindings() -> Result<()> {
     let temp_dir = create_test_temp_dir("feat_ref")?;
@@ -828,7 +828,7 @@ fn test_wix_cross_fragment_feature_ref_bindings() -> Result<()> {
 ///
 /// # Errors
 ///
-/// Returns [`Error`] if file I/O fails unexpectedly.
+/// Returns [`msi::MsiError`] if file I/O fails unexpectedly.
 #[test]
 fn test_wix_negative_undefined_symbol_references() -> Result<()> {
     let temp_dir = create_test_temp_dir("neg_refs")?;
