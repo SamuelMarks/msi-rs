@@ -126,6 +126,8 @@ pub struct IDispatch {
 }
 
 pub mod variant;
+pub mod dll;
+pub mod dispatch;
 
 #[cfg(test)]
 mod tests {

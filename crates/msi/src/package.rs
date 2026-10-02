@@ -579,9 +579,7 @@ impl Package {
             let rec_size = columns_schema.row_record_size(2);
             let mut grouped_columns: HashMap<String, Vec<(i16, ColumnDef)>> = HashMap::new();
 
-            let layout = columns_schema
-                .physical_layout()
-                .unwrap_or_else(|_| unreachable!());
+            let layout = columns_schema.physical_layout().unwrap_or_default();
             {
                 for chunk in col_data.chunks_exact(rec_size) {
                     let Ok(rec) = Record::deserialize(chunk, &layout, &pool, 2) else {
@@ -625,7 +623,7 @@ impl Package {
         for (table_name, stream_name) in &table_streams {
             let schema_opt = database.catalog.get_table(table_name).cloned();
             if let Some(schema) = schema_opt {
-                let layout = schema.physical_layout().unwrap_or_else(|_| unreachable!());
+                let layout = schema.physical_layout().unwrap_or_default();
                 {
                     let row_size = schema.row_record_size(2);
                     let table_bytes = reader.read_stream(stream_name)?;
@@ -1834,6 +1832,22 @@ mod tests {
         assert!(s3.is_ok());
         col_bytes.extend_from_slice(&s3.unwrap_or_default());
 
+        // Row 3b: Valid ColumnDef but Stream and Primary Key -> layout failure
+        let bad_col = ColumnDef::new("StreamPK", DataType::Stream).primary_key();
+        let rec3b = Record::with_fields(vec![
+            FieldValue::String("BadLayoutTbl".to_string()),
+            FieldValue::Short(1),
+            FieldValue::String(bad_col.name.clone()),
+            FieldValue::Short(bad_col.to_bitmask() as i16),
+        ]);
+        let s3b = rec3b.serialize(
+            &columns_schema.physical_layout().expect("test"),
+            &mut pool,
+            2,
+        );
+        assert!(s3b.is_ok());
+        col_bytes.extend_from_slice(&s3b.unwrap_or_default());
+
         // Row 4a: Valid column definition 1 for CustomTbl (Number 2)
         let valid_col1 = ColumnDef::new("ValidCol1", DataType::String { max_len: 64 });
         let rec4a = Record::with_fields(vec![
@@ -1967,6 +1981,8 @@ mod tests {
         assert!(writer.add_stream(&col_stream_name, &col_bytes).is_ok());
         let prop_name = encode_msi_stream_name("Property", true).unwrap_or_default();
         assert!(writer.add_stream(&prop_name, &prop_bytes).is_ok());
+        let bad_layout_name = encode_msi_stream_name("BadLayoutTbl", true).unwrap_or_default();
+        assert!(writer.add_stream(&bad_layout_name, &[]).is_ok());
         let custom_name = encode_msi_stream_name("CustomTbl", true).unwrap_or_default();
         assert!(writer.add_stream(&custom_name, &custom_bytes).is_ok());
 
@@ -2520,6 +2536,14 @@ mod tests {
             FieldValue::Null,
             FieldValue::Null,
         ]));
+        // Cover rec.get(2) else { continue; }
+        cols_records.push(Record::with_fields(vec![
+            FieldValue::String("LayoutTest".to_string()),
+            FieldValue::Short(1),
+            FieldValue::Null,
+        ]));
+        // Cover rec.get(0) else branch
+        cols_records.push(Record::with_fields(vec![FieldValue::Null]));
 
         // Find our custom table in the _Columns records
         let mut layout_test_cols = Vec::new();

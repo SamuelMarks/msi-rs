@@ -849,5 +849,30 @@ mod tests {
             .len(),
             0
         );
+
+        // Lines 285-286: Long to Short valid
+        let r_long_to_short = Record::with_fields(vec![FieldValue::Long(123)]);
+        let serialized_short = r_long_to_short.serialize(&layout, &mut pool, 2).unwrap();
+        assert_eq!(serialized_short, vec![0x7B, 0x80]);
+
+        // Line 300: Short to Long valid
+        let cols_long = vec![ColumnDef::new("Col1", DataType::Long)];
+        let layout_long = PhysicalTableLayout::new(&cols_long).unwrap();
+        let r_short_to_long = Record::with_fields(vec![FieldValue::Short(123)]);
+        let serialized_long = r_short_to_long
+            .serialize(&layout_long, &mut pool, 2)
+            .unwrap();
+        assert_eq!(serialized_long, vec![123, 0, 0, 0]);
+
+        // Lines 483 and 511: try_serialize and try_deserialize with invalid cols
+        let bad_cols = vec![ColumnDef::new("BadCol", DataType::Stream).primary_key()];
+        assert_eq!(
+            try_serialize(&Record::new(), &bad_cols, &mut pool, 2),
+            Vec::<u8>::new()
+        );
+        assert_eq!(
+            try_deserialize(&[], &bad_cols, &pool, 2),
+            Vec::<Record>::new()
+        );
     }
 }

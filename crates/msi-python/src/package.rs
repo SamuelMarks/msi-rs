@@ -169,6 +169,15 @@ impl PyPackage {
     ///
     /// Returns [`crate::error::DatabaseError`] if table schema cannot be found.
     pub fn get_table<'py>(&self, py: Python<'py>, name: &str) -> PyResult<Vec<Bound<'py, PyDict>>> {
+        self.get_table_impl(py, name)
+    }
+
+    /// Internal implementation for getting a table.
+    fn get_table_impl<'py>(
+        &self,
+        py: Python<'py>,
+        name: &str,
+    ) -> PyResult<Vec<Bound<'py, PyDict>>> {
         let db = self.inner.database();
         let schema = db.catalog.get_table(name).ok_or_else(|| {
             crate::error::DatabaseError::new_err(format!("Table '{name}' not found in catalog"))
@@ -182,23 +191,13 @@ impl PyPackage {
             for rec in recs {
                 let dict = PyDict::new_bound(py);
                 for (i, col_name) in col_names.iter().enumerate() {
-                    match rec.get(i) {
-                        Some(FieldValue::Null) | None => {
-                            let _ = dict.set_item(col_name, py.None());
-                        }
-                        Some(FieldValue::Short(s)) => {
-                            let _ = dict.set_item(col_name, s);
-                        }
-                        Some(FieldValue::Long(l)) => {
-                            let _ = dict.set_item(col_name, l);
-                        }
-                        Some(FieldValue::String(s)) => {
-                            let _ = dict.set_item(col_name, s);
-                        }
-                        Some(FieldValue::Stream(id)) => {
-                            let _ = dict.set_item(col_name, id.to_string());
-                        }
-                    }
+                    let _ = match rec.get(i) {
+                        Some(FieldValue::Null) | None => dict.set_item(col_name, py.None()),
+                        Some(FieldValue::Short(s)) => dict.set_item(col_name, s),
+                        Some(FieldValue::Long(l)) => dict.set_item(col_name, l),
+                        Some(FieldValue::String(s)) => dict.set_item(col_name, s),
+                        Some(FieldValue::Stream(id)) => dict.set_item(col_name, id.to_string()),
+                    };
                 }
                 rows.push(dict);
             }

@@ -4,6 +4,7 @@
 //! - Command-line parsing matching `msiexec.exe` actions, UI levels, and logging modes.
 //! - Property scoping, formatted string expansion, and rich condition expression evaluation.
 
+pub mod appsearch;
 pub mod bare_metal;
 pub mod cli_parser;
 pub mod costing;

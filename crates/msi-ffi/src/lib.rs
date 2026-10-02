@@ -27,17 +27,21 @@
 
 pub mod builder;
 pub mod error;
+pub mod handles;
 pub mod md5;
 pub mod package;
 pub mod transaction;
 pub mod types;
+pub mod win32;
 pub mod wix;
 
 pub use builder::*;
 pub use error::*;
+pub use handles::*;
 pub use package::*;
 pub use transaction::*;
 pub use types::*;
+pub use win32::*;
 pub use wix::*;
 
 #[cfg(test)]

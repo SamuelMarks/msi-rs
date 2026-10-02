@@ -1722,3 +1722,38 @@ fn test_script_extra_opcodes() {
     let r_deserialized = RollbackScript::deserialize(&r_serialized).unwrap();
     assert_eq!(rscript.operations, r_deserialized.operations);
 }
+
+#[test]
+fn test_script_display_coverage() {
+    let op1 = ScriptOp::InstallODBCDriver {
+        driver_name: "Driver1".to_string(),
+    };
+    assert_eq!(op1.to_string(), "InstallODBCDriver(Driver1)");
+
+    let op2 = ScriptOp::InstallODBCDataSource {
+        name: "DS1".to_string(),
+    };
+    assert_eq!(op2.to_string(), "InstallODBCDataSource(DS1)");
+
+    let op3 = ScriptOp::RegisterFont {
+        font_title: "Font1".to_string(),
+        file_path: "path".to_string(),
+    };
+    assert_eq!(op3.to_string(), "RegisterFont(Font1)");
+
+    let rb1 = RollbackOp::UninstallODBCDriver {
+        driver_name: "Driver2".to_string(),
+    };
+    assert_eq!(rb1.to_string(), "UninstallODBCDriver(Driver2)");
+
+    let rb2 = RollbackOp::UninstallODBCDataSource {
+        name: "DS2".to_string(),
+    };
+    assert_eq!(rb2.to_string(), "UninstallODBCDataSource(DS2)");
+
+    let rb3 = RollbackOp::UnregisterFont {
+        font_title: "Font2".to_string(),
+        file_path: "path2".to_string(),
+    };
+    assert_eq!(rb3.to_string(), "UnregisterFont(Font2)");
+}

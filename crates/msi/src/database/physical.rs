@@ -12,7 +12,7 @@ pub struct LogicalIndex(pub usize);
 pub struct PhysicalIndex(pub usize);
 
 /// Maintains the mapping between logical and physical column indices for a table.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PhysicalTableLayout<'a> {
     /// Reference to the table's logical column definitions.
     columns: &'a [ColumnDef],

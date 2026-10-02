@@ -250,6 +250,8 @@ def calculate_test_coverage(repo_root: Path, force_run: bool = True) -> float:
                 "--json",
                 "--output-path",
                 str(cov_path),
+                "--",
+                "--test-threads=1",
             ],
             cwd=repo_root,
         )

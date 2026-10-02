@@ -7368,4 +7368,137 @@ mod transaction_wim_tests {
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
+
+    #[test]
+    fn test_worker_unhandled_ops() {
+        let mut worker = WorkerContext::new();
+        let mut script = InstallScript::new();
+        script.push(ScriptOp::InstallODBCDriver {
+            driver_name: "test".to_string(),
+        });
+        script.push(ScriptOp::InstallODBCDataSource {
+            name: "test".to_string(),
+        });
+        script.push(ScriptOp::RegisterFont {
+            font_title: "test".to_string(),
+            file_path: "test".to_string(),
+        });
+        assert!(worker.execute_script(&script).is_ok());
+
+        let mut rscript = RollbackScript::default();
+        rscript.push(RollbackOp::UninstallODBCDriver {
+            driver_name: "test".to_string(),
+        });
+        rscript.push(RollbackOp::UninstallODBCDataSource {
+            name: "test".to_string(),
+        });
+        rscript.push(RollbackOp::UnregisterFont {
+            font_title: "test".to_string(),
+            file_path: "test".to_string(),
+        });
+        assert!(worker.execute_rollback(&rscript).is_ok());
+    }
+
+    #[test]
+    fn test_odbc_and_font_script_generation() {
+        use crate::database::Record;
+        let mut db = LinkedDatabase::new().unwrap();
+        db.add_record(
+            "ODBCDriver",
+            Record::with_fields(vec![
+                FieldValue::String("id1".to_string()),
+                FieldValue::String("Driver1".to_string()),
+            ]),
+        );
+        db.add_record(
+            "ODBCDataSource",
+            Record::with_fields(vec![
+                FieldValue::String("id2".to_string()),
+                FieldValue::String("DS1".to_string()),
+            ]),
+        );
+        db.add_record(
+            "Font",
+            Record::with_fields(vec![
+                FieldValue::String("file_id".to_string()),
+                FieldValue::String("Title1".to_string()),
+            ]),
+        );
+
+        // Failing records to cover the `else` branches of the `if let`
+        db.add_record(
+            "ODBCDriver",
+            Record::with_fields(vec![
+                FieldValue::String("id1_fail".to_string()),
+                FieldValue::Null,
+            ]),
+        );
+        db.add_record(
+            "ODBCDataSource",
+            Record::with_fields(vec![
+                FieldValue::String("id2_fail".to_string()),
+                FieldValue::Null,
+            ]),
+        );
+        db.add_record(
+            "Font",
+            Record::with_fields(vec![
+                FieldValue::String("file_id_fail".to_string()),
+                FieldValue::Null,
+            ]),
+        );
+
+        db.add_record(
+            "Font",
+            Record::with_fields(vec![
+                FieldValue::Null,
+                FieldValue::String("Title2".to_string()),
+            ]),
+        );
+
+        let mut ctx = EvaluationContext::new();
+        ctx.set_property("file_id", "C:\\Fonts\\font.ttf");
+        let cost_engine = DiskCostEngine::default();
+
+        let mut tx = Transaction::new(db, ctx, cost_engine);
+
+        let actions = [
+            ("InstallODBC".to_string(), "1".to_string()),
+            ("RegisterFonts".to_string(), "1".to_string()),
+        ];
+
+        for (i, (act, cond)) in actions.iter().enumerate() {
+            tx.database.add_record(
+                "InstallExecuteSequence",
+                Record::with_fields(vec![
+                    FieldValue::String(act.clone()),
+                    FieldValue::String(cond.clone()),
+                    FieldValue::Short(i16::try_from(i + 100).unwrap_or(0)),
+                ]),
+            );
+        }
+
+        let prepared = tx.prepare().unwrap();
+
+        let iscript = prepared.install_script().operations();
+        let rscript = prepared.rollback_script().operations();
+
+        let has_install_driver = iscript.iter().any(|op| matches!(op, ScriptOp::CustomAction { action, .. } if action == "@@InstallODBCDriver"));
+        let has_install_ds = iscript.iter().any(|op| matches!(op, ScriptOp::CustomAction { action, .. } if action == "@@InstallODBCDataSource"));
+        let has_reg_font = iscript.iter().any(
+            |op| matches!(op, ScriptOp::CustomAction { action, .. } if action == "@@RegisterFont"),
+        );
+
+        assert!(has_install_driver);
+        assert!(has_install_ds);
+        assert!(has_reg_font);
+
+        let has_un_driver = rscript.iter().any(|op| matches!(op, RollbackOp::RollbackCustomAction { action, .. } if action == "@@UninstallODBCDriver"));
+        let has_un_ds = rscript.iter().any(|op| matches!(op, RollbackOp::RollbackCustomAction { action, .. } if action == "@@UninstallODBCDataSource"));
+        let has_un_font = rscript.iter().any(|op| matches!(op, RollbackOp::RollbackCustomAction { action, .. } if action == "@@UnregisterFont"));
+
+        assert!(has_un_driver);
+        assert!(has_un_ds);
+        assert!(has_un_font);
+    }
 }

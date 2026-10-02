@@ -10,9 +10,12 @@ use std::collections::HashMap;
 /// Result type.
 pub type Result<T> = std::result::Result<T, MsiError>;
 
-/// AppSearch registry/locator trait.
+/// `AppSearch` registry/locator trait.
 pub trait HostSystem {
     /// Retrieves a registry value.
+    ///
+    /// # Errors
+    /// Returns `MsiError` on system access failure.
     fn get_registry_value(
         &self,
         root: i32,
@@ -20,6 +23,9 @@ pub trait HostSystem {
         name: Option<&str>,
     ) -> Result<Option<String>>;
     /// Retrieves an ini value.
+    ///
+    /// # Errors
+    /// Returns `MsiError` on system access failure.
     fn get_ini_value(
         &self,
         file: &str,
@@ -28,10 +34,19 @@ pub trait HostSystem {
         field: Option<u32>,
     ) -> Result<Option<String>>;
     /// Finds a file by name.
+    ///
+    /// # Errors
+    /// Returns `MsiError` on system access failure.
     fn find_file(&self, path: &str, name: &str, depth: u32) -> Result<Option<String>>;
     /// Finds a directory by path.
+    ///
+    /// # Errors
+    /// Returns `MsiError` on system access failure.
     fn find_dir(&self, path: &str, depth: u32) -> Result<Option<String>>;
     /// Validates a file against a signature.
+    ///
+    /// # Errors
+    /// Returns `MsiError` on system access failure.
     fn check_signature(&self, path: &str, sig: &Signature) -> Result<bool>;
 }
 
@@ -117,11 +132,14 @@ pub struct CompLocator {
 /// Application search dispatcher.
 #[derive(Debug)]
 pub struct AppSearch<'a, H: HostSystem> {
+    /// Linked database.
     db: &'a LinkedDatabase,
+    /// Host system.
     host: H,
 }
 
 impl<'a, H: HostSystem> AppSearch<'a, H> {
+    /// Gets a string field from a record.
     fn get_string(r: &Record, idx: usize) -> Option<&str> {
         match r.get(idx) {
             Some(FieldValue::String(s)) => Some(s),
@@ -129,10 +147,11 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
         }
     }
 
+    /// Gets an integer field from a record.
     fn get_i32(r: &Record, idx: usize) -> Option<i32> {
         match r.get(idx) {
             Some(FieldValue::Long(i)) => Some(*i),
-            Some(FieldValue::Short(i)) => Some(*i as i32),
+            Some(FieldValue::Short(i)) => Some(i32::from(*i)),
             _ => None,
         }
     }
@@ -143,7 +162,10 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
         Self { db, host }
     }
 
-    /// Executes the AppSearch action, returning a map of resolved properties.
+    /// Executes the `AppSearch` action, returning a map of resolved properties.
+    ///
+    /// # Errors
+    /// Returns `MsiError` on evaluation failure.
     pub fn execute(&self) -> Result<HashMap<String, String>> {
         let mut results = HashMap::new();
         // Parse the AppSearch table
@@ -163,6 +185,7 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
         Ok(results)
     }
 
+    /// Resolves a signature ID to a path.
     fn resolve_signature(&self, sig_id: &str) -> Option<String> {
         // Step 1: Query CompLocator
         if let Some(_comp_loc) = self.find_comp_locator(sig_id) {
@@ -177,7 +200,7 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
             {
                 if reg_loc.locator_type == 2 {
                     return Some(val); // Raw registry value
-                } else if self.is_file_or_dir_locator(reg_loc.locator_type) {
+                } else if Self::is_file_or_dir_locator(reg_loc.locator_type) {
                     return self.validate_with_signature(sig_id, &val);
                 }
             }
@@ -193,7 +216,7 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
             ) {
                 if ini_loc.locator_type == 2 {
                     return Some(val); // Raw ini value
-                } else if self.is_file_or_dir_locator(ini_loc.locator_type) {
+                } else if Self::is_file_or_dir_locator(ini_loc.locator_type) {
                     return self.validate_with_signature(sig_id, &val);
                 }
             }
@@ -205,12 +228,12 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
                 .parent
                 .as_ref()
                 .and_then(|p| self.resolve_signature(p))
-                .unwrap_or_else(|| String::new());
+                .unwrap_or_default();
             let search_path = if let Some(p) = &dr_loc.path {
                 if base_path.is_empty() {
                     p.clone()
                 } else {
-                    format!("{}\\{}", base_path, p)
+                    format!("{base_path}\\{p}")
                 }
             } else {
                 base_path
@@ -219,36 +242,32 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
             let depth = dr_loc.depth.unwrap_or(0);
             if let Some(sig) = self.find_signature(sig_id) {
                 if let Ok(Some(found)) = self.host.find_file(&search_path, &sig.filename, depth) {
-                    if let Ok(true) = self.host.check_signature(&found, &sig) {
+                    if self.host.check_signature(&found, &sig) == Ok(true) {
                         return Some(found);
                     }
                 }
-            } else {
-                if let Ok(Some(found)) = self.host.find_dir(&search_path, depth) {
-                    return Some(found);
-                }
+            } else if let Ok(Some(found)) = self.host.find_dir(&search_path, depth) {
+                return Some(found);
             }
         }
 
         None
     }
 
+    /// Validates a path against a signature.
     fn validate_with_signature(&self, sig_id: &str, path: &str) -> Option<String> {
-        if let Some(sig) = self.find_signature(sig_id) {
-            if let Ok(true) = self.host.check_signature(path, &sig) {
-                Some(path.to_string())
-            } else {
-                None
-            }
-        } else {
-            Some(path.to_string())
-        }
+        self.find_signature(sig_id).map_or_else(
+            || Some(path.to_string()),
+            |sig| (self.host.check_signature(path, &sig) == Ok(true)).then(|| path.to_string()),
+        )
     }
 
-    fn is_file_or_dir_locator(&self, locator_type: u32) -> bool {
+    /// Checks if a locator type is file or directory.
+    const fn is_file_or_dir_locator(locator_type: u32) -> bool {
         locator_type == 0 || locator_type == 1
     }
 
+    /// Finds a signature by ID.
     fn find_signature(&self, sig_id: &str) -> Option<Signature> {
         self.db
             .tables
@@ -256,18 +275,19 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
             .iter()
             .find(|r| Self::get_string(r, 0) == Some(sig_id))
             .map(|r| Signature {
-                id: Self::get_string(r, 0).unwrap().to_string(),
-                filename: Self::get_string(r, 1).unwrap().to_string(),
-                min_version: Self::get_string(r, 2).map(|s| s.to_string()),
-                max_version: Self::get_string(r, 3).map(|s| s.to_string()),
-                min_size: Self::get_i32(r, 4).map(|i| i as u32),
-                max_size: Self::get_i32(r, 5).map(|i| i as u32),
-                min_date: Self::get_i32(r, 6).map(|i| i as u32),
-                max_date: Self::get_i32(r, 7).map(|i| i as u32),
-                languages: Self::get_string(r, 8).map(|s| s.to_string()),
+                id: Self::get_string(r, 0).unwrap_or_default().to_string(),
+                filename: Self::get_string(r, 1).unwrap_or_default().to_string(),
+                min_version: Self::get_string(r, 2).map(ToString::to_string),
+                max_version: Self::get_string(r, 3).map(ToString::to_string),
+                min_size: Self::get_i32(r, 4).map(|i| u32::try_from(i).unwrap_or(0)),
+                max_size: Self::get_i32(r, 5).map(|i| u32::try_from(i).unwrap_or(0)),
+                min_date: Self::get_i32(r, 6).map(|i| u32::try_from(i).unwrap_or(0)),
+                max_date: Self::get_i32(r, 7).map(|i| u32::try_from(i).unwrap_or(0)),
+                languages: Self::get_string(r, 8).map(ToString::to_string),
             })
     }
 
+    /// Finds a `RegLocator` by signature ID.
     fn find_reg_locator(&self, sig_id: &str) -> Option<RegLocator> {
         self.db
             .tables
@@ -275,14 +295,15 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
             .iter()
             .find(|r| Self::get_string(r, 0) == Some(sig_id))
             .map(|r| RegLocator {
-                sig_id: Self::get_string(r, 0).unwrap().to_string(),
+                sig_id: Self::get_string(r, 0).unwrap_or_default().to_string(),
                 root: Self::get_i32(r, 1).unwrap_or(0),
                 key: Self::get_string(r, 2).unwrap_or_default().to_string(),
-                name: Self::get_string(r, 3).map(|s| s.to_string()),
-                locator_type: Self::get_i32(r, 4).unwrap_or(0) as u32,
+                name: Self::get_string(r, 3).map(ToString::to_string),
+                locator_type: Self::get_i32(r, 4).unwrap_or(0).try_into().unwrap_or(0),
             })
     }
 
+    /// Finds an `IniLocator` by signature ID.
     fn find_ini_locator(&self, sig_id: &str) -> Option<IniLocator> {
         self.db
             .tables
@@ -290,15 +311,16 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
             .iter()
             .find(|r| Self::get_string(r, 0) == Some(sig_id))
             .map(|r| IniLocator {
-                sig_id: Self::get_string(r, 0).unwrap().to_string(),
+                sig_id: Self::get_string(r, 0).unwrap_or_default().to_string(),
                 filename: Self::get_string(r, 1).unwrap_or_default().to_string(),
                 section: Self::get_string(r, 2).unwrap_or_default().to_string(),
                 key: Self::get_string(r, 3).unwrap_or_default().to_string(),
-                field: Self::get_i32(r, 4).map(|i| i as u32),
-                locator_type: Self::get_i32(r, 5).unwrap_or(0) as u32,
+                field: Self::get_i32(r, 4).map(|i| u32::try_from(i).unwrap_or(0)),
+                locator_type: Self::get_i32(r, 5).unwrap_or(0).try_into().unwrap_or(0),
             })
     }
 
+    /// Finds a `DrLocator` by signature ID.
     fn find_dr_locator(&self, sig_id: &str) -> Option<DrLocator> {
         self.db
             .tables
@@ -306,13 +328,14 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
             .iter()
             .find(|r| Self::get_string(r, 0) == Some(sig_id))
             .map(|r| DrLocator {
-                sig_id: Self::get_string(r, 0).unwrap().to_string(),
-                parent: Self::get_string(r, 1).map(|s| s.to_string()),
-                path: Self::get_string(r, 2).map(|s| s.to_string()),
-                depth: Self::get_i32(r, 3).map(|i| i as u32),
+                sig_id: Self::get_string(r, 0).unwrap_or_default().to_string(),
+                parent: Self::get_string(r, 1).map(ToString::to_string),
+                path: Self::get_string(r, 2).map(ToString::to_string),
+                depth: Self::get_i32(r, 3).map(|i| u32::try_from(i).unwrap_or(0)),
             })
     }
 
+    /// Finds a `CompLocator` by signature ID.
     fn find_comp_locator(&self, sig_id: &str) -> Option<CompLocator> {
         self.db
             .tables
@@ -320,9 +343,9 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
             .iter()
             .find(|r| Self::get_string(r, 0) == Some(sig_id))
             .map(|r| CompLocator {
-                sig_id: Self::get_string(r, 0).unwrap().to_string(),
+                sig_id: Self::get_string(r, 0).unwrap_or_default().to_string(),
                 component_id: Self::get_string(r, 1).unwrap_or_default().to_string(),
-                locator_type: Self::get_i32(r, 2).unwrap_or(0) as u32,
+                locator_type: Self::get_i32(r, 2).unwrap_or(0).try_into().unwrap_or(0),
             })
     }
 }
@@ -351,7 +374,7 @@ mod tests {
         ) -> Result<Option<String>> {
             Ok(self
                 .registry
-                .get(&(root, key.to_string(), name.map(|s| s.to_string())))
+                .get(&(root, key.to_string(), name.map(ToString::to_string)))
                 .cloned())
         }
         fn get_ini_value(
@@ -375,7 +398,7 @@ mod tests {
             let full = if path.is_empty() {
                 name.to_string()
             } else {
-                format!("{}\\{}", path, name)
+                format!("{path}\\{name}")
             };
             if self.files.contains_key(&full) {
                 Ok(Some(full))
@@ -425,6 +448,45 @@ mod tests {
             ]),
         );
 
+        // RegLocator value not found
+        db.add_record(
+            "AppSearch",
+            Record::with_fields(vec![
+                FieldValue::String("MYREGNONE".to_string()),
+                FieldValue::String("SigRegNone".to_string()),
+            ]),
+        );
+        db.add_record(
+            "RegLocator",
+            Record::with_fields(vec![
+                FieldValue::String("SigRegNone".to_string()),
+                FieldValue::Long(2),
+                FieldValue::String("Software\\None".to_string()),
+                FieldValue::Null,
+                FieldValue::Long(2),
+            ]),
+        );
+
+        // IniLocator value not found
+        db.add_record(
+            "AppSearch",
+            Record::with_fields(vec![
+                FieldValue::String("MYININONE".to_string()),
+                FieldValue::String("SigIniNone".to_string()),
+            ]),
+        );
+        db.add_record(
+            "IniLocator",
+            Record::with_fields(vec![
+                FieldValue::String("SigIniNone".to_string()),
+                FieldValue::String("testnone.ini".to_string()),
+                FieldValue::String("SecNone".to_string()),
+                FieldValue::String("KeyNone".to_string()),
+                FieldValue::Null,
+                FieldValue::Long(2),
+            ]),
+        );
+
         let mut host = MockHost::default();
         host.registry.insert(
             (
@@ -437,7 +499,7 @@ mod tests {
 
         let app_search = AppSearch::new(&db, host);
         let res = app_search.execute().unwrap();
-        assert_eq!(res.get("MYPROP").unwrap(), "C:\\Acme");
+        assert_eq!(&res["MYPROP"], "C:\\Acme");
     }
 
     #[test]
@@ -475,6 +537,45 @@ mod tests {
             ]),
         );
 
+        // RegLocator value not found
+        db.add_record(
+            "AppSearch",
+            Record::with_fields(vec![
+                FieldValue::String("MYREGNONE".to_string()),
+                FieldValue::String("SigRegNone".to_string()),
+            ]),
+        );
+        db.add_record(
+            "RegLocator",
+            Record::with_fields(vec![
+                FieldValue::String("SigRegNone".to_string()),
+                FieldValue::Long(2),
+                FieldValue::String("Software\\None".to_string()),
+                FieldValue::Null,
+                FieldValue::Long(2),
+            ]),
+        );
+
+        // IniLocator value not found
+        db.add_record(
+            "AppSearch",
+            Record::with_fields(vec![
+                FieldValue::String("MYININONE".to_string()),
+                FieldValue::String("SigIniNone".to_string()),
+            ]),
+        );
+        db.add_record(
+            "IniLocator",
+            Record::with_fields(vec![
+                FieldValue::String("SigIniNone".to_string()),
+                FieldValue::String("testnone.ini".to_string()),
+                FieldValue::String("SecNone".to_string()),
+                FieldValue::String("KeyNone".to_string()),
+                FieldValue::Null,
+                FieldValue::Long(2),
+            ]),
+        );
+
         let mut host = MockHost::default();
         host.registry.insert(
             (2, "Software\\Acme".to_string(), None),
@@ -485,7 +586,7 @@ mod tests {
 
         let app_search = AppSearch::new(&db, host);
         let res = app_search.execute().unwrap();
-        assert_eq!(res.get("MYPROP").unwrap(), "C:\\Acme\\acme.exe");
+        assert_eq!(&res["MYPROP"], "C:\\Acme\\acme.exe");
     }
 
     #[test]
@@ -510,6 +611,45 @@ mod tests {
             ]),
         );
 
+        // RegLocator value not found
+        db.add_record(
+            "AppSearch",
+            Record::with_fields(vec![
+                FieldValue::String("MYREGNONE".to_string()),
+                FieldValue::String("SigRegNone".to_string()),
+            ]),
+        );
+        db.add_record(
+            "RegLocator",
+            Record::with_fields(vec![
+                FieldValue::String("SigRegNone".to_string()),
+                FieldValue::Long(2),
+                FieldValue::String("Software\\None".to_string()),
+                FieldValue::Null,
+                FieldValue::Long(2),
+            ]),
+        );
+
+        // IniLocator value not found
+        db.add_record(
+            "AppSearch",
+            Record::with_fields(vec![
+                FieldValue::String("MYININONE".to_string()),
+                FieldValue::String("SigIniNone".to_string()),
+            ]),
+        );
+        db.add_record(
+            "IniLocator",
+            Record::with_fields(vec![
+                FieldValue::String("SigIniNone".to_string()),
+                FieldValue::String("testnone.ini".to_string()),
+                FieldValue::String("SecNone".to_string()),
+                FieldValue::String("KeyNone".to_string()),
+                FieldValue::Null,
+                FieldValue::Long(2),
+            ]),
+        );
+
         let mut host = MockHost::default();
         host.ini.insert(
             (
@@ -523,7 +663,7 @@ mod tests {
 
         let app_search = AppSearch::new(&db, host);
         let res = app_search.execute().unwrap();
-        assert_eq!(res.get("MYINI").unwrap(), "IniValue");
+        assert_eq!(&res["MYINI"], "IniValue");
     }
 
     #[test]
@@ -546,6 +686,45 @@ mod tests {
             ]),
         );
 
+        // RegLocator value not found
+        db.add_record(
+            "AppSearch",
+            Record::with_fields(vec![
+                FieldValue::String("MYREGNONE".to_string()),
+                FieldValue::String("SigRegNone".to_string()),
+            ]),
+        );
+        db.add_record(
+            "RegLocator",
+            Record::with_fields(vec![
+                FieldValue::String("SigRegNone".to_string()),
+                FieldValue::Long(2),
+                FieldValue::String("Software\\None".to_string()),
+                FieldValue::Null,
+                FieldValue::Long(2),
+            ]),
+        );
+
+        // IniLocator value not found
+        db.add_record(
+            "AppSearch",
+            Record::with_fields(vec![
+                FieldValue::String("MYININONE".to_string()),
+                FieldValue::String("SigIniNone".to_string()),
+            ]),
+        );
+        db.add_record(
+            "IniLocator",
+            Record::with_fields(vec![
+                FieldValue::String("SigIniNone".to_string()),
+                FieldValue::String("testnone.ini".to_string()),
+                FieldValue::String("SecNone".to_string()),
+                FieldValue::String("KeyNone".to_string()),
+                FieldValue::Null,
+                FieldValue::Long(2),
+            ]),
+        );
+
         let mut host = MockHost::default();
         host.dirs.insert(
             "C:\\Program Files\\Acme".to_string(),
@@ -554,7 +733,7 @@ mod tests {
 
         let app_search = AppSearch::new(&db, host);
         let res = app_search.execute().unwrap();
-        assert_eq!(res.get("MYDIR").unwrap(), "C:\\Program Files\\Acme");
+        assert_eq!(&res["MYDIR"], "C:\\Program Files\\Acme");
     }
 
     #[test]
@@ -591,6 +770,45 @@ mod tests {
             ]),
         );
 
+        // RegLocator value not found
+        db.add_record(
+            "AppSearch",
+            Record::with_fields(vec![
+                FieldValue::String("MYREGNONE".to_string()),
+                FieldValue::String("SigRegNone".to_string()),
+            ]),
+        );
+        db.add_record(
+            "RegLocator",
+            Record::with_fields(vec![
+                FieldValue::String("SigRegNone".to_string()),
+                FieldValue::Long(2),
+                FieldValue::String("Software\\None".to_string()),
+                FieldValue::Null,
+                FieldValue::Long(2),
+            ]),
+        );
+
+        // IniLocator value not found
+        db.add_record(
+            "AppSearch",
+            Record::with_fields(vec![
+                FieldValue::String("MYININONE".to_string()),
+                FieldValue::String("SigIniNone".to_string()),
+            ]),
+        );
+        db.add_record(
+            "IniLocator",
+            Record::with_fields(vec![
+                FieldValue::String("SigIniNone".to_string()),
+                FieldValue::String("testnone.ini".to_string()),
+                FieldValue::String("SecNone".to_string()),
+                FieldValue::String("KeyNone".to_string()),
+                FieldValue::Null,
+                FieldValue::Long(2),
+            ]),
+        );
+
         let mut host = MockHost::default();
         host.files.insert(
             "C:\\App\\app.exe".to_string(),
@@ -600,7 +818,7 @@ mod tests {
 
         let app_search = AppSearch::new(&db, host);
         let res = app_search.execute().unwrap();
-        assert_eq!(res.get("MYFILE").unwrap(), "C:\\App\\app.exe");
+        assert_eq!(&res["MYFILE"], "C:\\App\\app.exe");
     }
 
     #[test]
@@ -627,5 +845,457 @@ mod tests {
         let res = app_search.execute().unwrap();
         // CompLocator unimpl
         assert!(res.is_empty());
+    }
+
+    #[test]
+    fn test_appsearch_extra_coverage() {
+        let mut db = LinkedDatabase::new().unwrap();
+        // 1) AppSearch empty prop/sig
+        db.add_record(
+            "AppSearch",
+            Record::with_fields(vec![
+                FieldValue::String(String::new()),
+                FieldValue::String("SigEmpty".to_string()),
+            ]),
+        );
+        db.add_record(
+            "AppSearch",
+            Record::with_fields(vec![
+                FieldValue::String("PROP".to_string()),
+                FieldValue::String(String::new()),
+            ]),
+        );
+
+        // 2) Unresolved signature
+        db.add_record(
+            "AppSearch",
+            Record::with_fields(vec![
+                FieldValue::String("PROP_UNRES".to_string()),
+                FieldValue::String("SigUnresolved".to_string()),
+            ]),
+        );
+
+        // 3) IniLocator with locator_type=0 (file) and missing signature (line 196-199, 244)
+        db.add_record(
+            "AppSearch",
+            Record::with_fields(vec![
+                FieldValue::String("MYINIFILE".to_string()),
+                FieldValue::String("SigIniFile".to_string()),
+            ]),
+        );
+        db.add_record(
+            "IniLocator",
+            Record::with_fields(vec![
+                FieldValue::String("SigIniFile".to_string()),
+                FieldValue::String("test2.ini".to_string()),
+                FieldValue::String("Sec2".to_string()),
+                FieldValue::String("Key2".to_string()),
+                FieldValue::Short(1),
+                FieldValue::Long(0),
+            ]),
+        );
+
+        // 4) RegLocator where check_signature fails
+        db.add_record(
+            "AppSearch",
+            Record::with_fields(vec![
+                FieldValue::String("MYREGFAIL".to_string()),
+                FieldValue::String("SigRegFail".to_string()),
+            ]),
+        );
+        db.add_record(
+            "RegLocator",
+            Record::with_fields(vec![
+                FieldValue::String("SigRegFail".to_string()),
+                FieldValue::Long(2),
+                FieldValue::String("Software\\Fail".to_string()),
+                FieldValue::Null,
+                FieldValue::Long(0),
+            ]),
+        );
+        db.add_record(
+            "Signature",
+            Record::with_fields(vec![
+                FieldValue::String("SigRegFail".to_string()),
+                FieldValue::String("fail.exe".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+
+        let mut host = MockHost::default();
+        host.ini.insert(
+            (
+                "test2.ini".to_string(),
+                "Sec2".to_string(),
+                "Key2".to_string(),
+                Some(1),
+            ),
+            r"C:\IniFile".to_string(),
+        );
+        host.registry.insert(
+            (2, r"Software\Fail".to_string(), None),
+            r"C:\FailFile.exe".to_string(),
+        );
+        host.signatures
+            .insert(r"C:\FailFile.exe".to_string(), false);
+        let app_search = AppSearch::new(&db, host);
+        let res = app_search.execute().unwrap();
+        assert_eq!(&res["MYINIFILE"], r"C:\IniFile");
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_appsearch_extra_coverage_pt2() {
+        let mut db = LinkedDatabase::new().unwrap();
+
+        // 5) DrLocator missing path but has parent (line 216), parent resolves to "C:\Parent"
+        db.add_record(
+            "AppSearch",
+            Record::with_fields(vec![
+                FieldValue::String("MYDIRPARENT".to_string()),
+                FieldValue::String("SigDirParent".to_string()),
+            ]),
+        );
+        db.add_record(
+            "DrLocator",
+            Record::with_fields(vec![
+                FieldValue::String("SigDirParent".to_string()),
+                FieldValue::String("SigParentReg".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        db.add_record(
+            "RegLocator",
+            Record::with_fields(vec![
+                FieldValue::String("SigParentReg".to_string()),
+                FieldValue::Long(2),
+                FieldValue::String("Software\\Parent".to_string()),
+                FieldValue::Null,
+                FieldValue::Long(2),
+            ]),
+        );
+
+        // 6) DrLocator with parent and path (line 213)
+        db.add_record(
+            "AppSearch",
+            Record::with_fields(vec![
+                FieldValue::String("MYDIRBOTH".to_string()),
+                FieldValue::String("SigDirBoth".to_string()),
+            ]),
+        );
+        db.add_record(
+            "DrLocator",
+            Record::with_fields(vec![
+                FieldValue::String("SigDirBoth".to_string()),
+                FieldValue::String("SigParentReg".to_string()),
+                FieldValue::String("Child".to_string()),
+                FieldValue::Null,
+            ]),
+        );
+
+        // 7) DrLocator find_dir fails (Line 390)
+        db.add_record(
+            "AppSearch",
+            Record::with_fields(vec![
+                FieldValue::String("MYDIRFAIL".to_string()),
+                FieldValue::String("SigDirFail".to_string()),
+            ]),
+        );
+        db.add_record(
+            "DrLocator",
+            Record::with_fields(vec![
+                FieldValue::String("SigDirFail".to_string()),
+                FieldValue::Null,
+                FieldValue::String("C:\\MissingDir".to_string()),
+                FieldValue::Null,
+            ]),
+        );
+
+        // 8) DrLocator find_file empty path (Line 376) and fails (Line 383, 225)
+        db.add_record(
+            "AppSearch",
+            Record::with_fields(vec![
+                FieldValue::String("MYFILEFAIL".to_string()),
+                FieldValue::String("SigFileFail".to_string()),
+            ]),
+        );
+        db.add_record(
+            "DrLocator",
+            Record::with_fields(vec![
+                FieldValue::String("SigFileFail".to_string()),
+                FieldValue::Null,
+                FieldValue::String(String::new()),
+                FieldValue::Null,
+            ]),
+        );
+        db.add_record(
+            "Signature",
+            Record::with_fields(vec![
+                FieldValue::String("SigFileFail".to_string()),
+                FieldValue::String("missing.exe".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+
+        // 9) DrLocator check_signature fails (Line 224)
+        db.add_record(
+            "AppSearch",
+            Record::with_fields(vec![
+                FieldValue::String("MYFILEFAIL2".to_string()),
+                FieldValue::String("SigFileFail2".to_string()),
+            ]),
+        );
+        db.add_record(
+            "DrLocator",
+            Record::with_fields(vec![
+                FieldValue::String("SigFileFail2".to_string()),
+                FieldValue::Null,
+                FieldValue::String("C:\\Found".to_string()),
+                FieldValue::Null,
+            ]),
+        );
+        db.add_record(
+            "Signature",
+            Record::with_fields(vec![
+                FieldValue::String("SigFileFail2".to_string()),
+                FieldValue::String("found_bad_sig.exe".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+
+        // RegLocator value not found
+        db.add_record(
+            "AppSearch",
+            Record::with_fields(vec![
+                FieldValue::String("MYREGNONE".to_string()),
+                FieldValue::String("SigRegNone".to_string()),
+            ]),
+        );
+        db.add_record(
+            "RegLocator",
+            Record::with_fields(vec![
+                FieldValue::String("SigRegNone".to_string()),
+                FieldValue::Long(2),
+                FieldValue::String("Software\\None".to_string()),
+                FieldValue::Null,
+                FieldValue::Long(2),
+            ]),
+        );
+
+        // IniLocator value not found
+        db.add_record(
+            "AppSearch",
+            Record::with_fields(vec![
+                FieldValue::String("MYININONE".to_string()),
+                FieldValue::String("SigIniNone".to_string()),
+            ]),
+        );
+        db.add_record(
+            "IniLocator",
+            Record::with_fields(vec![
+                FieldValue::String("SigIniNone".to_string()),
+                FieldValue::String("testnone.ini".to_string()),
+                FieldValue::String("SecNone".to_string()),
+                FieldValue::String("KeyNone".to_string()),
+                FieldValue::Null,
+                FieldValue::Long(2),
+            ]),
+        );
+
+        let mut host = MockHost::default();
+        host.ini.insert(
+            (
+                "test2.ini".to_string(),
+                "Sec2".to_string(),
+                "Key2".to_string(),
+                Some(1),
+            ),
+            "C:\\IniFile".to_string(),
+        );
+        host.registry.insert(
+            (2, "Software\\Fail".to_string(), None),
+            "C:\\FailFile.exe".to_string(),
+        );
+        host.signatures
+            .insert("C:\\FailFile.exe".to_string(), false);
+
+        host.registry.insert(
+            (2, "Software\\Parent".to_string(), None),
+            "C:\\Parent".to_string(),
+        );
+        host.dirs
+            .insert("C:\\Parent".to_string(), "C:\\Parent".to_string());
+        host.dirs.insert(
+            "C:\\Parent\\Child".to_string(),
+            "C:\\Parent\\Child".to_string(),
+        );
+
+        host.files.insert(
+            "C:\\Found\\found_bad_sig.exe".to_string(),
+            "C:\\Found\\found_bad_sig.exe".to_string(),
+        );
+        host.signatures
+            .insert("C:\\Found\\found_bad_sig.exe".to_string(), false);
+
+        let app_search = AppSearch::new(&db, host);
+        let res = app_search.execute().unwrap();
+
+        assert_eq!(&res["MYDIRPARENT"], "C:\\Parent");
+        assert_eq!(&res["MYDIRBOTH"], "C:\\Parent\\Child");
+    }
+
+    #[test]
+    fn test_appsearch_locator_type_unsupported() {
+        let mut db = LinkedDatabase::new().unwrap();
+        db.add_record(
+            "AppSearch",
+            Record::with_fields(vec![
+                FieldValue::String("MYREG".to_string()),
+                FieldValue::String("SigRegFailType".to_string()),
+            ]),
+        );
+        db.add_record(
+            "RegLocator",
+            Record::with_fields(vec![
+                FieldValue::String("SigRegFailType".to_string()),
+                FieldValue::Long(2),
+                FieldValue::String("Software\\Type".to_string()),
+                FieldValue::Null,
+                FieldValue::Long(3),
+            ]),
+        );
+
+        db.add_record(
+            "AppSearch",
+            Record::with_fields(vec![
+                FieldValue::String("MYINI".to_string()),
+                FieldValue::String("SigIniFailType".to_string()),
+            ]),
+        );
+        db.add_record(
+            "IniLocator",
+            Record::with_fields(vec![
+                FieldValue::String("SigIniFailType".to_string()),
+                FieldValue::String("test3.ini".to_string()),
+                FieldValue::String("Sec3".to_string()),
+                FieldValue::String("Key3".to_string()),
+                FieldValue::Null,
+                FieldValue::Long(3),
+            ]),
+        );
+
+        // RegLocator value not found
+        db.add_record(
+            "AppSearch",
+            Record::with_fields(vec![
+                FieldValue::String("MYREGNONE".to_string()),
+                FieldValue::String("SigRegNone".to_string()),
+            ]),
+        );
+        db.add_record(
+            "RegLocator",
+            Record::with_fields(vec![
+                FieldValue::String("SigRegNone".to_string()),
+                FieldValue::Long(2),
+                FieldValue::String("Software\\None".to_string()),
+                FieldValue::Null,
+                FieldValue::Long(2),
+            ]),
+        );
+
+        // IniLocator value not found
+        db.add_record(
+            "AppSearch",
+            Record::with_fields(vec![
+                FieldValue::String("MYININONE".to_string()),
+                FieldValue::String("SigIniNone".to_string()),
+            ]),
+        );
+        db.add_record(
+            "IniLocator",
+            Record::with_fields(vec![
+                FieldValue::String("SigIniNone".to_string()),
+                FieldValue::String("testnone.ini".to_string()),
+                FieldValue::String("SecNone".to_string()),
+                FieldValue::String("KeyNone".to_string()),
+                FieldValue::Null,
+                FieldValue::Long(2),
+            ]),
+        );
+
+        let mut host = MockHost::default();
+        host.registry
+            .insert((2, "Software\\Type".to_string(), None), "Val".to_string());
+        host.ini.insert(
+            (
+                "test3.ini".to_string(),
+                "Sec3".to_string(),
+                "Key3".to_string(),
+                None,
+            ),
+            "Val".to_string(),
+        );
+
+        let app_search = AppSearch::new(&db, host);
+        let res = app_search.execute().unwrap();
+        assert!(res.is_empty());
+    }
+
+    #[test]
+    #[allow(clippy::unwrap_used)]
+    fn test_appsearch_negative_values() {
+        let mut db = LinkedDatabase::new().unwrap();
+        db.add_record(
+            "AppSearch",
+            Record::with_fields(vec![
+                FieldValue::String("PROP".to_string()),
+                FieldValue::String("SigNeg".to_string()),
+            ]),
+        );
+        db.add_record(
+            "Signature",
+            Record::with_fields(vec![
+                FieldValue::String("SigNeg".to_string()),
+                FieldValue::String("file.txt".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Short(-1),
+                FieldValue::Short(-1),
+                FieldValue::Short(-1),
+                FieldValue::Short(-1),
+                FieldValue::Null,
+            ]),
+        );
+        db.add_record(
+            "DrLocator",
+            Record::with_fields(vec![
+                FieldValue::String("SigNeg".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Short(-1),
+            ]),
+        );
+        let host = MockHost::default();
+        let app_search = AppSearch::new(&db, host);
+        let _ = app_search.execute();
     }
 }

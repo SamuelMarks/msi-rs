@@ -367,3 +367,7 @@ mod tests {
         assert_ne!(buf, buf_other);
     }
 }
+
+/// Opaque wrapper for a relational database view.
+#[derive(Debug)]
+pub struct MsiViewHandle;
