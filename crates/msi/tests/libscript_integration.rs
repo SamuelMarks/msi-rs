@@ -19,7 +19,7 @@ use std::fs;
 ///
 /// # Errors
 ///
-/// Returns [`msi::Error`] on compiler, linker, or package verification failure.
+/// Returns [`msi::MsiError`] on compiler, linker, or package verification failure.
 #[test]
 #[allow(clippy::too_many_lines)]
 fn test_libscript_template_msi_workflow() -> Result<()> {
@@ -172,7 +172,7 @@ fn test_libscript_template_msi_workflow() -> Result<()> {
 ///
 /// # Errors
 ///
-/// Returns [`msi::Error`] on compilation or verification failure.
+/// Returns [`msi::MsiError`] on compilation or verification failure.
 #[test]
 #[allow(clippy::too_many_lines, clippy::needless_raw_string_hashes)]
 fn test_libscript_build_msi_multicab_and_long_identifiers() -> Result<()> {
@@ -302,7 +302,7 @@ fn test_libscript_build_msi_multicab_and_long_identifiers() -> Result<()> {
 ///
 /// # Errors
 ///
-/// Returns [`msi::Error`] on compiler, linker, or package verification failure.
+/// Returns [`msi::MsiError`] on compiler, linker, or package verification failure.
 #[test]
 #[allow(clippy::too_many_lines)]
 fn test_libscript_openedx_online_dual_fragment_workflow() -> Result<()> {
@@ -451,7 +451,7 @@ fn test_libscript_openedx_online_dual_fragment_workflow() -> Result<()> {
 ///
 /// # Errors
 ///
-/// Returns [`msi::Error`] on packaging, linking, or cabinet extraction failure.
+/// Returns [`msi::MsiError`] on packaging, linking, or cabinet extraction failure.
 #[test]
 fn test_libscript_openedx_offline_multicab_extraction() -> Result<()> {
     let temp_dir =
@@ -560,7 +560,7 @@ fn test_libscript_openedx_offline_multicab_extraction() -> Result<()> {
 ///
 /// # Errors
 ///
-/// Returns [`msi::Error`] on evaluation failure.
+/// Returns [`msi::MsiError`] on evaluation failure.
 #[test]
 fn test_libscript_unattended_silent_execution_guards() -> Result<()> {
     use msi::execution::properties::EvaluationContext;
@@ -607,7 +607,7 @@ fn test_libscript_unattended_silent_execution_guards() -> Result<()> {
 ///
 /// # Errors
 ///
-/// Returns [`msi::Error`] on compilation, linking, or verification failure.
+/// Returns [`msi::MsiError`] on compilation, linking, or verification failure.
 #[test]
 #[allow(clippy::too_many_lines)]
 fn test_wix_ui_extension_branding_and_font_presets() -> Result<()> {
@@ -755,7 +755,7 @@ fn test_wix_ui_extension_branding_and_font_presets() -> Result<()> {
         if let Some(FieldValue::String(text)) = r.get(9) {
             assert!(text.contains("Standard EULA Content"));
         } else {
-            return Err(msi::Error::Validation {
+            return Err(msi::MsiError::Validation {
                 element: "Control.Text".to_string(),
                 reason: "missing or non-string license text in ScrollableText control".to_string(),
             });

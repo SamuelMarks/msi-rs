@@ -4,7 +4,7 @@
 //! boot sector generators for NTFS and ext4, CLI formatting tool builders for
 //! Linux/Windows bare-metal environments, and post-format integrity verification.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 
 /// Target filesystem architecture category.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -85,14 +85,14 @@ impl Fat32Formatter {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::FileSystemFormatError`] if sector count is too small (< 65536 clusters for FAT32).
+    /// Returns [`MsiError::FileSystemFormatError`] if sector count is too small (< 65536 clusters for FAT32).
     pub fn format_filesystem(
         total_sectors: u64,
         sector_size: u32,
         options: &Fat32FormatOptions,
     ) -> Result<Vec<u8>> {
         if sector_size != 512 {
-            return Err(Error::FileSystemFormatError {
+            return Err(MsiError::FileSystemFormatError {
                 fs_type: "FAT32".to_string(),
                 reason: format!("unsupported sector size {sector_size}, only 512 supported"),
             });
@@ -102,7 +102,7 @@ impl Fat32Formatter {
         let spc = u64::from(options.sectors_per_cluster);
         let min_sectors = 65_536 * spc + u64::from(options.reserved_sectors);
         if total_sectors < min_sectors {
-            return Err(Error::FileSystemFormatError {
+            return Err(MsiError::FileSystemFormatError {
                 fs_type: "FAT32".to_string(),
                 reason: format!(
                     "total sectors ({total_sectors}) too small for FAT32 (minimum {min_sectors})"
@@ -185,7 +185,7 @@ impl Fat32Formatter {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::FileSystemFormatError`] if cluster indices are invalid (< 2).
+    /// Returns [`MsiError::FileSystemFormatError`] if cluster indices are invalid (< 2).
     pub fn allocate_cluster_chain(
         image: &mut [u8],
         reserved_sectors: u16,
@@ -201,7 +201,7 @@ impl Fat32Formatter {
 
         for (i, &cluster) in clusters.iter().enumerate() {
             if cluster < 2 {
-                return Err(Error::FileSystemFormatError {
+                return Err(MsiError::FileSystemFormatError {
                     fs_type: "FAT32".to_string(),
                     reason: format!("invalid cluster index {cluster}, must be >= 2"),
                 });
@@ -215,7 +215,7 @@ impl Fat32Formatter {
 
             let entry_offset = (cluster as usize) * 4;
             if fat2_offset + entry_offset + 4 > image.len() {
-                return Err(Error::FileSystemFormatError {
+                return Err(MsiError::FileSystemFormatError {
                     fs_type: "FAT32".to_string(),
                     reason: format!("cluster index {cluster} exceeds image buffer"),
                 });
@@ -375,14 +375,14 @@ impl NtfsFormatter {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::FileSystemFormatError`] if sector count is too small (< 2048 sectors).
+    /// Returns [`MsiError::FileSystemFormatError`] if sector count is too small (< 2048 sectors).
     pub fn format_filesystem(
         total_sectors: u64,
         volume_serial: u64,
         volume_label: &str,
     ) -> Result<Vec<u8>> {
         if total_sectors < 2048 {
-            return Err(Error::FileSystemFormatError {
+            return Err(MsiError::FileSystemFormatError {
                 fs_type: "NTFS".to_string(),
                 reason: format!(
                     "partition sector count ({total_sectors}) too small for NTFS (minimum 2048)"
@@ -505,14 +505,14 @@ impl Ext4Formatter {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::FileSystemFormatError`] if block count is too small (< 256 blocks).
+    /// Returns [`MsiError::FileSystemFormatError`] if block count is too small (< 256 blocks).
     pub fn format_filesystem(
         block_count: u64,
         volume_uuid: [u8; 16],
         volume_label: &str,
     ) -> Result<Vec<u8>> {
         if block_count < 256 {
-            return Err(Error::FileSystemFormatError {
+            return Err(MsiError::FileSystemFormatError {
                 fs_type: "ext4".to_string(),
                 reason: format!("block count ({block_count}) too small for ext4 (minimum 256)"),
             });
@@ -636,7 +636,7 @@ impl FileSystemVerifier {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::FileSystemFormatError`] if validation signatures or headers are corrupt.
+    /// Returns [`MsiError::FileSystemFormatError`] if validation signatures or headers are corrupt.
     pub fn verify(fs: FileSystemKind, buffer: &[u8]) -> Result<()> {
         match fs {
             FileSystemKind::Fat32 => Self::verify_fat32(buffer),
@@ -650,7 +650,7 @@ impl FileSystemVerifier {
     /// Verifies FAT32 BPB signatures, OEM ID, and `FSInfo` magic numbers.
     fn verify_fat32(buffer: &[u8]) -> Result<()> {
         if buffer.len() < 1024 {
-            return Err(Error::FileSystemFormatError {
+            return Err(MsiError::FileSystemFormatError {
                 fs_type: "FAT32".to_string(),
                 reason: "buffer too small for FAT32 boot sector and FSInfo".to_string(),
             });
@@ -658,7 +658,7 @@ impl FileSystemVerifier {
 
         // Check boot signature 0xAA55
         if buffer[510] != 0x55 || buffer[511] != 0xAA {
-            return Err(Error::FileSystemFormatError {
+            return Err(MsiError::FileSystemFormatError {
                 fs_type: "FAT32".to_string(),
                 reason: "invalid boot sector signature, expected 0x55AA".to_string(),
             });
@@ -666,7 +666,7 @@ impl FileSystemVerifier {
 
         // Check FAT32 string identifier at offset 82..90
         if &buffer[82..90] != b"FAT32   " {
-            return Err(Error::FileSystemFormatError {
+            return Err(MsiError::FileSystemFormatError {
                 fs_type: "FAT32".to_string(),
                 reason: "missing FAT32 type string in BPB".to_string(),
             });
@@ -674,7 +674,7 @@ impl FileSystemVerifier {
 
         // Check FSInfo lead signature
         if buffer[512..516] != 0x4161_5252u32.to_le_bytes() {
-            return Err(Error::FileSystemFormatError {
+            return Err(MsiError::FileSystemFormatError {
                 fs_type: "FAT32".to_string(),
                 reason: "corrupt FSInfo lead signature".to_string(),
             });
@@ -686,21 +686,21 @@ impl FileSystemVerifier {
     /// Verifies NTFS OEM signature and boot sector ending.
     fn verify_ntfs(buffer: &[u8]) -> Result<()> {
         if buffer.len() < 512 {
-            return Err(Error::FileSystemFormatError {
+            return Err(MsiError::FileSystemFormatError {
                 fs_type: "NTFS".to_string(),
                 reason: "buffer too small for NTFS boot sector".to_string(),
             });
         }
 
         if &buffer[3..11] != b"NTFS    " {
-            return Err(Error::FileSystemFormatError {
+            return Err(MsiError::FileSystemFormatError {
                 fs_type: "NTFS".to_string(),
                 reason: "invalid NTFS OEM identifier".to_string(),
             });
         }
 
         if buffer[510] != 0x55 || buffer[511] != 0xAA {
-            return Err(Error::FileSystemFormatError {
+            return Err(MsiError::FileSystemFormatError {
                 fs_type: "NTFS".to_string(),
                 reason: "invalid boot sector signature, expected 0x55AA".to_string(),
             });
@@ -710,7 +710,7 @@ impl FileSystemVerifier {
         if buffer.len() >= (4 * 4096) + 4 {
             let mft_start = 4 * 4096;
             if &buffer[mft_start..mft_start + 4] != b"FILE" {
-                return Err(Error::FileSystemFormatError {
+                return Err(MsiError::FileSystemFormatError {
                     fs_type: "NTFS".to_string(),
                     reason: "corrupt $MFT record 0 FILE signature".to_string(),
                 });
@@ -725,7 +725,7 @@ impl FileSystemVerifier {
         // Superblock starts at byte 1024 (offset 0x400)
         let sb_offset = 1024;
         if buffer.len() < sb_offset + 1024 {
-            return Err(Error::FileSystemFormatError {
+            return Err(MsiError::FileSystemFormatError {
                 fs_type: "ext4".to_string(),
                 reason: "buffer too small for ext4 superblock".to_string(),
             });
@@ -733,7 +733,7 @@ impl FileSystemVerifier {
 
         let magic = u16::from_le_bytes([buffer[sb_offset + 56], buffer[sb_offset + 57]]);
         if magic != 0xEF53 {
-            return Err(Error::FileSystemFormatError {
+            return Err(MsiError::FileSystemFormatError {
                 fs_type: "ext4".to_string(),
                 reason: format!("invalid ext4 magic 0x{magic:04X}, expected 0xEF53"),
             });
@@ -744,7 +744,7 @@ impl FileSystemVerifier {
             let block_bitmap =
                 u32::from_le_bytes([buffer[4096], buffer[4097], buffer[4098], buffer[4099]]);
             if block_bitmap != 2 {
-                return Err(Error::FileSystemFormatError {
+                return Err(MsiError::FileSystemFormatError {
                     fs_type: "ext4".to_string(),
                     reason: format!("invalid block bitmap block LBA {block_bitmap}, expected 2"),
                 });
@@ -758,7 +758,7 @@ impl FileSystemVerifier {
     fn verify_btrfs(buffer: &[u8]) -> Result<()> {
         let sb_offset = 65_536;
         if buffer.len() < sb_offset + 64 {
-            return Err(Error::FileSystemFormatError {
+            return Err(MsiError::FileSystemFormatError {
                 fs_type: "Btrfs".to_string(),
                 reason: "buffer too small for Btrfs primary superblock".to_string(),
             });
@@ -766,7 +766,7 @@ impl FileSystemVerifier {
 
         let magic = &buffer[sb_offset + 64..sb_offset + 72];
         if magic != b"_BHRfS_M" {
-            return Err(Error::FileSystemFormatError {
+            return Err(MsiError::FileSystemFormatError {
                 fs_type: "Btrfs".to_string(),
                 reason: "invalid Btrfs magic signature".to_string(),
             });
@@ -778,14 +778,14 @@ impl FileSystemVerifier {
     /// Verifies XFS superblock magic number (`XFSB` at offset 0).
     fn verify_xfs(buffer: &[u8]) -> Result<()> {
         if buffer.len() < 512 {
-            return Err(Error::FileSystemFormatError {
+            return Err(MsiError::FileSystemFormatError {
                 fs_type: "XFS".to_string(),
                 reason: "buffer too small for XFS superblock".to_string(),
             });
         }
 
         if &buffer[0..4] != b"XFSB" {
-            return Err(Error::FileSystemFormatError {
+            return Err(MsiError::FileSystemFormatError {
                 fs_type: "XFS".to_string(),
                 reason: "invalid XFS magic signature".to_string(),
             });

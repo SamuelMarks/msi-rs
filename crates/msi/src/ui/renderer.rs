@@ -780,11 +780,11 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// `Ok(())` on success, or [`Error::Validation`] if the control state is missing.
+    /// `Ok(())` on success, or [`MsiError::Validation`] if the control state is missing.
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] if the specified control does not exist.
+    /// Returns [`MsiError::Validation`] if the specified control does not exist.
     #[allow(clippy::or_fun_call)]
     fn add_selection_tree_node(
         engine: &mut UiEngine,
@@ -794,7 +794,7 @@ mod tests {
         let tre_state =
             engine
                 .get_control_state_mut(dlg, ctrl)
-                .ok_or(crate::error::Error::Validation {
+                .ok_or(crate::error::MsiError::Validation {
                     element: "Tre".to_string(),
                     reason: "missing state".to_string(),
                 })?;

@@ -241,7 +241,7 @@ impl PyPackage {
 
         py.allow_threads(move || {
             let reader = CabinetReader::new(&cab_data).map_err(|e| to_py_err(&e))?;
-            fs::create_dir_all(&dest).map_err(|e| to_py_err(&msi::Error::Io(e.to_string())))?;
+            fs::create_dir_all(&dest).map_err(|e| to_py_err(&msi::MsiError::Io(e.to_string())))?;
 
             let mut extracted = Vec::new();
             for file in reader.files() {
@@ -250,7 +250,7 @@ impl PyPackage {
                     .map_err(|e| to_py_err(&e))?;
                 let file_path = Path::new(&dest).join(&file.filename);
                 fs::write(&file_path, file_data)
-                    .map_err(|e| to_py_err(&msi::Error::Io(e.to_string())))?;
+                    .map_err(|e| to_py_err(&msi::MsiError::Io(e.to_string())))?;
                 extracted.push(file.filename.clone());
             }
 
@@ -300,8 +300,8 @@ mod tests {
     ///
     /// # Errors
     ///
-    /// Returns [`msi::Error`] on validation or packaging failure.
-    fn create_test_package_helper(fail_build: bool) -> Result<PyPackage, msi::Error> {
+    /// Returns [`msi::MsiError`] on validation or packaging failure.
+    fn create_test_package_helper(fail_build: bool) -> Result<PyPackage, msi::MsiError> {
         let mut cw = CabinetWriter::new(CompressionType::None);
         let _ = cw.add_file("sample.txt", b"sample file content");
         let cab_bytes = cw.build();
@@ -368,13 +368,13 @@ mod tests {
     ///
     /// # Errors
     ///
-    /// Returns [`msi::Error`] on failure.
-    fn create_test_package() -> Result<PyPackage, msi::Error> {
+    /// Returns [`msi::MsiError`] on failure.
+    fn create_test_package() -> Result<PyPackage, msi::MsiError> {
         create_test_package_helper(false)
     }
 
     /// Helper verifying properties extraction and table names listing.
-    fn check_package_properties(res: Result<PyPackage, msi::Error>) -> bool {
+    fn check_package_properties(res: Result<PyPackage, msi::MsiError>) -> bool {
         res.is_ok_and(|py_pkg| {
             // Test Debug and Clone derives
             let cloned = py_pkg.clone();
@@ -482,14 +482,14 @@ mod tests {
         assert!(create_test_package_helper(true).is_err());
         assert!(check_package_properties(create_test_package()));
         assert!(!check_package_properties(Err(
-            msi::Error::InvalidCabSignature {
+            msi::MsiError::InvalidCabSignature {
                 found: [0, 0, 0, 0],
             }
         )));
     }
 
     /// Helper verifying table retrieval and `FieldValue` mapping.
-    fn check_package_get_table(res: Result<PyPackage, msi::Error>) -> bool {
+    fn check_package_get_table(res: Result<PyPackage, msi::MsiError>) -> bool {
         res.is_ok_and(|py_pkg| {
             Python::with_gil(|py| {
                 // Non-existent table -> DatabaseError
@@ -546,14 +546,14 @@ mod tests {
         pyo3::prepare_freethreaded_python();
         assert!(check_package_get_table(create_test_package()));
         assert!(!check_package_get_table(Err(
-            msi::Error::InvalidCabSignature {
+            msi::MsiError::InvalidCabSignature {
                 found: [0, 0, 0, 0],
             }
         )));
     }
 
     /// Helper verifying cabinet extraction across all success and error paths.
-    fn check_package_extract_cabinet(res: Result<PyPackage, msi::Error>) -> bool {
+    fn check_package_extract_cabinet(res: Result<PyPackage, msi::MsiError>) -> bool {
         res.is_ok_and(|py_pkg| {
             Python::with_gil(|py| {
                 let temp_dir = std::env::temp_dir().join("msi_test_py_cab_extract");
@@ -635,14 +635,14 @@ mod tests {
         pyo3::prepare_freethreaded_python();
         assert!(check_package_extract_cabinet(create_test_package()));
         assert!(!check_package_extract_cabinet(Err(
-            msi::Error::InvalidCabSignature {
+            msi::MsiError::InvalidCabSignature {
                 found: [0, 0, 0, 0],
             }
         )));
     }
 
     /// Helper verifying serialization, deserialization, save, and open roundtrips and error paths.
-    fn check_package_io_and_bytes(res: Result<PyPackage, msi::Error>) -> bool {
+    fn check_package_io_and_bytes(res: Result<PyPackage, msi::MsiError>) -> bool {
         res.is_ok_and(|py_pkg| {
             Python::with_gil(|py| {
                 // to_bytes & from_bytes
@@ -696,7 +696,7 @@ mod tests {
         pyo3::prepare_freethreaded_python();
         assert!(check_package_io_and_bytes(create_test_package()));
         assert!(!check_package_io_and_bytes(Err(
-            msi::Error::InvalidCabSignature {
+            msi::MsiError::InvalidCabSignature {
                 found: [0, 0, 0, 0],
             }
         )));
@@ -767,7 +767,7 @@ with m.Package.from_bytes(bytes(pkg_bytes)) as p:
     }
 
     /// Helper verifying context manager operations and Python script integration.
-    fn check_package_context_manager(res: Result<PyPackage, msi::Error>) -> bool {
+    fn check_package_context_manager(res: Result<PyPackage, msi::MsiError>) -> bool {
         res.is_ok_and(|py_pkg| {
             Python::with_gil(|py| {
                 assert!(run_pkg_script(
@@ -789,7 +789,7 @@ with m.Package.from_bytes(bytes(pkg_bytes)) as p:
         pyo3::prepare_freethreaded_python();
         assert!(check_package_context_manager(create_test_package()));
         assert!(!check_package_context_manager(Err(
-            msi::Error::InvalidCabSignature {
+            msi::MsiError::InvalidCabSignature {
                 found: [0, 0, 0, 0],
             }
         )));

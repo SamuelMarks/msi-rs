@@ -5,7 +5,7 @@
 //! - Target platforms: `Linux`, `MacOs`, `FreeBsd`, `SunOs`, `Windows`.
 //! - Support for `$XDG_DATA_HOME`, `$XDG_CONFIG_HOME`, `$XDG_DESKTOP_DIR`, and `$TMPDIR` overrides.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -254,14 +254,14 @@ impl PathResolver {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::SysrootMountError`] if path escapes the sysroot hierarchy.
+    /// Returns [`MsiError::SysrootMountError`] if path escapes the sysroot hierarchy.
     pub fn sanitize_sysroot_path(sysroot: &Path, subpath: &Path) -> Result<PathBuf> {
         let mut clean = sysroot.to_path_buf();
         for component in subpath.components() {
             match component {
                 std::path::Component::ParentDir => {
                     if clean == sysroot {
-                        return Err(Error::SysrootMountError {
+                        return Err(MsiError::SysrootMountError {
                             path: subpath.display().to_string(),
                             reason:
                                 "path attempts to escape sysroot via parent directory traversal"

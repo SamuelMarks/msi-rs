@@ -5,7 +5,7 @@
 use crate::database::catalogs::TableSchema;
 use crate::database::column::{ColumnDef, DataType};
 use crate::database::tables::record::{FieldValue, Record};
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 
 /// Creates the official schema for the `MsiEmbeddedChainer` table.
 ///
@@ -63,7 +63,7 @@ impl MsiEmbeddedChainerRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] if required fields are empty or exceed length limits.
+    /// Returns [`MsiError::Validation`] if required fields are empty or exceed length limits.
     pub fn new(
         chainer: impl Into<String>,
         condition: Option<String>,
@@ -89,25 +89,25 @@ impl MsiEmbeddedChainerRow {
         chainer_type: i32,
     ) -> Result<Self> {
         if chainer.is_empty() {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "MsiEmbeddedChainer.MsiEmbeddedChainer".to_string(),
                 reason: "primary key cannot be empty".to_string(),
             });
         }
         if chainer.len() > 72 {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "MsiEmbeddedChainer.MsiEmbeddedChainer".to_string(),
                 reason: format!("identifier length {} exceeds maximum 72", chainer.len()),
             });
         }
         if source.is_empty() {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "MsiEmbeddedChainer.Source".to_string(),
                 reason: "source identifier cannot be empty".to_string(),
             });
         }
         if source.len() > 72 {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "MsiEmbeddedChainer.Source".to_string(),
                 reason: format!(
                     "source identifier length {} exceeds maximum 72",
@@ -157,10 +157,10 @@ impl MsiEmbeddedChainerRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::RecordLengthMismatch`] or [`Error::Validation`] on invalid data.
+    /// Returns [`MsiError::RecordLengthMismatch`] or [`MsiError::Validation`] on invalid data.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 5 {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 5,
                 actual: rec.len(),
             });
@@ -169,7 +169,7 @@ impl MsiEmbeddedChainerRow {
         let chainer = match rec.get(0) {
             Some(FieldValue::String(s)) if !s.is_empty() => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "MsiEmbeddedChainer.MsiEmbeddedChainer".to_string(),
                     reason: "missing or empty primary key".to_string(),
                 });
@@ -189,7 +189,7 @@ impl MsiEmbeddedChainerRow {
         let source = match rec.get(3) {
             Some(FieldValue::String(s)) if !s.is_empty() => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "MsiEmbeddedChainer.Source".to_string(),
                     reason: "missing or empty source identifier".to_string(),
                 });
@@ -374,7 +374,7 @@ mod tests {
         let short_rec = Record::with_fields(vec![FieldValue::String("Chainer1".to_string())]);
         assert!(matches!(
             MsiEmbeddedChainerRow::from_record(&short_rec),
-            Err(Error::RecordLengthMismatch { .. })
+            Err(MsiError::RecordLengthMismatch { .. })
         ));
 
         // Missing or empty primary key in record
@@ -387,7 +387,7 @@ mod tests {
         ]);
         assert!(matches!(
             MsiEmbeddedChainerRow::from_record(&empty_pk_rec),
-            Err(Error::Validation { .. })
+            Err(MsiError::Validation { .. })
         ));
 
         let empty_str_pk = Record::with_fields(vec![
@@ -399,7 +399,7 @@ mod tests {
         ]);
         assert!(matches!(
             MsiEmbeddedChainerRow::from_record(&empty_str_pk),
-            Err(Error::Validation { .. })
+            Err(MsiError::Validation { .. })
         ));
 
         let non_str_pk = Record::with_fields(vec![
@@ -411,7 +411,7 @@ mod tests {
         ]);
         assert!(matches!(
             MsiEmbeddedChainerRow::from_record(&non_str_pk),
-            Err(Error::Validation { .. })
+            Err(MsiError::Validation { .. })
         ));
 
         // Missing or empty source in record
@@ -424,7 +424,7 @@ mod tests {
         ]);
         assert!(matches!(
             MsiEmbeddedChainerRow::from_record(&empty_src_rec),
-            Err(Error::Validation { .. })
+            Err(MsiError::Validation { .. })
         ));
 
         let empty_str_src = Record::with_fields(vec![
@@ -436,7 +436,7 @@ mod tests {
         ]);
         assert!(matches!(
             MsiEmbeddedChainerRow::from_record(&empty_str_src),
-            Err(Error::Validation { .. })
+            Err(MsiError::Validation { .. })
         ));
 
         let non_str_src = Record::with_fields(vec![
@@ -448,7 +448,7 @@ mod tests {
         ]);
         assert!(matches!(
             MsiEmbeddedChainerRow::from_record(&non_str_src),
-            Err(Error::Validation { .. })
+            Err(MsiError::Validation { .. })
         ));
 
         // from_record with fields exceeding 72 chars

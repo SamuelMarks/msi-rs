@@ -5,7 +5,7 @@ use crate::cfb::directory::{
 };
 use crate::cfb::header::{CfbHeader, CfbVersion};
 use crate::cfb::sector::{MiniSectorId, SectorId};
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use std::cmp::Ordering;
 use std::collections::HashSet;
 
@@ -82,7 +82,7 @@ impl CfbReader {
                     break;
                 }
                 if !visited_difat.insert(current_difat) {
-                    return Err(Error::SectorChainCycle {
+                    return Err(MsiError::SectorChainCycle {
                         sector: current_difat.as_u32(),
                     });
                 }
@@ -90,7 +90,7 @@ impl CfbReader {
                 let offset = current_difat.file_offset(header.sector_shift())? as usize;
                 let sector_size = header.sector_size();
                 if offset + sector_size > data.len() {
-                    return Err(Error::CfbCorrupted {
+                    return Err(MsiError::CfbCorrupted {
                         offset: offset as u64,
                         reason: "DIFAT sector extends beyond file boundary".to_string(),
                     });
@@ -132,7 +132,7 @@ impl CfbReader {
             let offset = fat_sec.file_offset(header.sector_shift())? as usize;
             let sector_size = header.sector_size();
             if offset + sector_size > data.len() {
-                return Err(Error::CfbCorrupted {
+                return Err(MsiError::CfbCorrupted {
                     offset: offset as u64,
                     reason: "FAT sector extends beyond file boundary".to_string(),
                 });
@@ -169,7 +169,7 @@ impl CfbReader {
         }
 
         if directory_entries.is_empty() {
-            return Err(Error::CfbCorrupted {
+            return Err(MsiError::CfbCorrupted {
                 offset: 0,
                 reason: "Directory table contains zero entries; root entry missing".to_string(),
             });
@@ -186,7 +186,7 @@ impl CfbReader {
                 header.sector_shift(),
             )?;
             if raw_mini.len() < mini_stream_len {
-                return Err(Error::StreamSizeMismatch {
+                return Err(MsiError::StreamSizeMismatch {
                     expected: mini_stream_len as u64,
                     actual: raw_mini.len() as u64,
                 });
@@ -250,14 +250,14 @@ impl CfbReader {
 
         while current.is_regular() {
             if !visited.insert(current) {
-                return Err(Error::SectorChainCycle {
+                return Err(MsiError::SectorChainCycle {
                     sector: current.as_u32(),
                 });
             }
 
             let offset = current.file_offset(sector_shift)? as usize;
             if offset + sector_size > data.len() {
-                return Err(Error::CfbCorrupted {
+                return Err(MsiError::CfbCorrupted {
                     offset: offset as u64,
                     reason: "Sector extends beyond file boundary".to_string(),
                 });
@@ -354,11 +354,11 @@ impl CfbReader {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::StreamNotFound`] if no entry with this name exists.
+    /// Returns [`MsiError::StreamNotFound`] if no entry with this name exists.
     pub fn find_entry(&self, name: &str) -> Result<&DirectoryEntry> {
         let root_child = self.directory_entries[0].child();
         let Some(stream_id) = self.find_in_tree(root_child, name) else {
-            return Err(Error::StreamNotFound {
+            return Err(MsiError::StreamNotFound {
                 name: name.to_string(),
             });
         };
@@ -381,12 +381,12 @@ impl CfbReader {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::StreamNotFound`], [`Error::InvalidSector`], or [`Error::CfbCorrupted`].
+    /// Returns [`MsiError::StreamNotFound`], [`MsiError::InvalidSector`], or [`MsiError::CfbCorrupted`].
     #[allow(clippy::cast_possible_truncation)]
     pub fn read_stream(&self, name: &str) -> Result<Vec<u8>> {
         let entry = self.find_entry(name)?;
         if entry.object_type() != ObjectType::Stream {
-            return Err(Error::InvalidArgument {
+            return Err(MsiError::InvalidArgument {
                 argument: "name".to_string(),
                 reason: format!("entry '{name}' is not a stream"),
             });
@@ -407,14 +407,14 @@ impl CfbReader {
 
             while current.is_regular() {
                 if !visited.insert(current) {
-                    return Err(Error::SectorChainCycle {
+                    return Err(MsiError::SectorChainCycle {
                         sector: current.as_u32(),
                     });
                 }
 
                 let offset = current.mini_stream_offset(mini_shift)? as usize;
                 if offset + mini_size > self.mini_stream.len() {
-                    return Err(Error::CfbCorrupted {
+                    return Err(MsiError::CfbCorrupted {
                         offset: offset as u64,
                         reason: "Mini-sector extends beyond mini-stream boundary".to_string(),
                     });
@@ -430,7 +430,7 @@ impl CfbReader {
             }
 
             if result.len() < stream_len {
-                return Err(Error::StreamSizeMismatch {
+                return Err(MsiError::StreamSizeMismatch {
                     expected: stream_len as u64,
                     actual: result.len() as u64,
                 });
@@ -447,7 +447,7 @@ impl CfbReader {
             )?;
 
             if raw_bytes.len() < stream_len {
-                return Err(Error::StreamSizeMismatch {
+                return Err(MsiError::StreamSizeMismatch {
                     expected: stream_len as u64,
                     actual: raw_bytes.len() as u64,
                 });
@@ -565,7 +565,7 @@ mod tests {
         // Read non-stream entry (SubStorage)
         assert!(matches!(
             r.read_stream("SubStorage"),
-            Err(Error::InvalidArgument { .. })
+            Err(MsiError::InvalidArgument { .. })
         ));
 
         Ok(())
@@ -588,7 +588,7 @@ mod tests {
         zero_dir_bytes[0..512].copy_from_slice(&header.to_bytes());
         assert!(matches!(
             CfbReader::new(&zero_dir_bytes),
-            Err(Error::CfbCorrupted { .. })
+            Err(MsiError::CfbCorrupted { .. })
         ));
 
         Ok(())
@@ -629,7 +629,7 @@ mod tests {
         cycle_bytes[0..512].copy_from_slice(&header_cycle.to_bytes());
         assert!(matches!(
             CfbReader::new(&cycle_bytes),
-            Err(Error::SectorChainCycle { .. })
+            Err(MsiError::SectorChainCycle { .. })
         ));
 
         // Test DIFAT out of bounds
@@ -637,7 +637,7 @@ mod tests {
         oob_bytes.truncate(difat_offset + 256); // Truncate sector 3
         assert!(matches!(
             CfbReader::new(&oob_bytes),
-            Err(Error::CfbCorrupted { .. })
+            Err(MsiError::CfbCorrupted { .. })
         ));
 
         // Test FAT sector out of bounds
@@ -647,7 +647,7 @@ mod tests {
         bad_fat_bytes[0..512].copy_from_slice(&bad_fat_header.to_bytes());
         assert!(matches!(
             CfbReader::new(&bad_fat_bytes),
-            Err(Error::CfbCorrupted { .. })
+            Err(MsiError::CfbCorrupted { .. })
         ));
 
         Ok(())
@@ -665,7 +665,7 @@ mod tests {
         let reader = CfbReader::new(&cycle_bytes)?;
         assert!(matches!(
             reader.read_stream("TestStream"),
-            Err(Error::SectorChainCycle { .. })
+            Err(MsiError::SectorChainCycle { .. })
         ));
 
         // Test Mini-Stream reading with writer
@@ -693,7 +693,7 @@ mod tests {
         let reader_mini_cycle = CfbReader::new(&cycle_mini_bin)?;
         assert!(matches!(
             reader_mini_cycle.read_stream("Mini1"),
-            Err(Error::SectorChainCycle { .. })
+            Err(MsiError::SectorChainCycle { .. })
         ));
 
         // Test early DIFAT chain end when num_difat_sectors > actual chain
@@ -713,7 +713,7 @@ mod tests {
         bad_root_bytes[dir_off + 120..dir_off + 128].copy_from_slice(&999_999u64.to_le_bytes());
         assert!(matches!(
             CfbReader::new(&bad_root_bytes),
-            Err(Error::StreamSizeMismatch { .. })
+            Err(MsiError::StreamSizeMismatch { .. })
         ));
 
         // Test stream size mismatch on regular stream
@@ -725,7 +725,7 @@ mod tests {
         let reader_bad = CfbReader::new(&bad_stream_bytes)?;
         assert!(matches!(
             reader_bad.read_stream("TestStream"),
-            Err(Error::StreamSizeMismatch { .. })
+            Err(MsiError::StreamSizeMismatch { .. })
         ));
 
         // Test tree search with out-of-bounds StreamId
@@ -735,7 +735,7 @@ mod tests {
         let reader_bad_tree = CfbReader::new(&bad_tree_bytes)?;
         assert!(matches!(
             reader_bad_tree.find_entry("Mini1"),
-            Err(Error::StreamNotFound { .. })
+            Err(MsiError::StreamNotFound { .. })
         ));
 
         // Test mini-stream sector out of bounds of mini-stream buffer
@@ -747,7 +747,7 @@ mod tests {
         let reader_bad_minisec = CfbReader::new(&bad_mini_sec_bytes)?;
         assert!(matches!(
             reader_bad_minisec.read_stream("Mini1"),
-            Err(Error::CfbCorrupted { .. })
+            Err(MsiError::CfbCorrupted { .. })
         ));
 
         // Test mini-stream size mismatch (mini-stream ends before stream_size)
@@ -758,7 +758,7 @@ mod tests {
         let reader_short_chain = CfbReader::new(&short_chain_bytes)?;
         assert!(matches!(
             reader_short_chain.read_stream("Mini1"),
-            Err(Error::StreamSizeMismatch { .. })
+            Err(MsiError::StreamSizeMismatch { .. })
         ));
 
         // Test FAT chain index pointing beyond file boundary
@@ -769,7 +769,7 @@ mod tests {
         let reader_oob = CfbReader::new(&oob_chain_bytes)?;
         assert!(matches!(
             reader_oob.read_stream("TestStream"),
-            Err(Error::CfbCorrupted { .. })
+            Err(MsiError::CfbCorrupted { .. })
         ));
         // Test read_sector_chain_bytes when idx >= fat.len()
         let short_fat_data = vec![0u8; 512 * 5];
@@ -795,7 +795,7 @@ mod tests {
         let reader_oob_minifat = CfbReader::new(&oob_minifat_bin)?;
         assert!(matches!(
             reader_oob_minifat.read_stream("Mini1"),
-            Err(Error::CfbCorrupted { .. })
+            Err(MsiError::CfbCorrupted { .. })
         ));
 
         Ok(())
@@ -829,7 +829,7 @@ mod tests {
         invalid_dir_cfb[1024 + 128 + 64..1024 + 128 + 66].copy_from_slice(&100u16.to_le_bytes());
         assert!(matches!(
             CfbReader::new(&invalid_dir_cfb),
-            Err(Error::InvalidDirectoryEntry { .. })
+            Err(MsiError::InvalidDirectoryEntry { .. })
         ));
 
         // 2. Mini-stream and MiniFAT sector chain cycles
@@ -854,7 +854,7 @@ mod tests {
             .copy_from_slice(&(root_start as u32).to_le_bytes());
         assert!(matches!(
             CfbReader::new(&root_cycle_cfb),
-            Err(Error::SectorChainCycle { .. })
+            Err(MsiError::SectorChainCycle { .. })
         ));
 
         // MiniFAT sector chain FAT cycle
@@ -864,7 +864,7 @@ mod tests {
             .copy_from_slice(&(minifat_sec as u32).to_le_bytes());
         assert!(matches!(
             CfbReader::new(&minifat_cycle_cfb),
-            Err(Error::SectorChainCycle { .. })
+            Err(MsiError::SectorChainCycle { .. })
         ));
 
         Ok(())

@@ -544,8 +544,8 @@ fn handle_info(args: &InfoArgs) -> Result<String, String> {
     Ok(format!("Inspecting package: {}", args.path))
 }
 
-/// Converts an [`msi::Error`] into an error message [`String`].
-fn err_to_string(err: msi::Error) -> String {
+/// Converts an [`msi::MsiError`] into an error message [`String`].
+fn err_to_string(err: msi::MsiError) -> String {
     let s = err.to_string();
     drop(err);
     s
@@ -1519,7 +1519,7 @@ mod tests {
     fn test_main() {
         let code = main();
         assert_eq!(code, ExitCode::FAILURE);
-        assert_ne!(err_to_string(msi::Error::Io("err".to_string())), "");
+        assert_ne!(err_to_string(msi::MsiError::Io("err".to_string())), "");
     }
 
     /// Tests conversion from `CliUiLevel` to `UiLevel` and vice-versa.

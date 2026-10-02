@@ -6,7 +6,7 @@
 //! - Provides commands for cache updates (`update-desktop-database`, `gtk-update-icon-cache`, `lsregister`).
 
 #[allow(unused_imports)]
-use crate::error::Error;
+use crate::error::MsiError;
 use crate::error::Result;
 use std::path::{Path, PathBuf};
 
@@ -361,7 +361,7 @@ impl MacOsAppBundle {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Io`] on filesystem error.
+    /// Returns [`MsiError::Io`] on filesystem error.
     pub fn create_applications_symlink(
         bundle_path: &Path,
         link_name: Option<&str>,
@@ -614,7 +614,7 @@ impl Win32ShellLink {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Io`] on write failure.
+    /// Returns [`MsiError::Io`] on write failure.
     pub fn save_to_disk(&self, dest: &Path) -> Result<()> {
         let path = dest;
         if let Some(parent) = path.parent() {

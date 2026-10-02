@@ -3,7 +3,7 @@
 //! Provides document object model extraction with line and column tracking
 //! for precise diagnostic error reporting.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use std::collections::HashMap;
 
 /// An XML node element representing a tag in a `WiX` source file.
@@ -168,7 +168,7 @@ impl XmlParser {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::XmlParse`] if the document is malformed or has unclosed tags.
+    /// Returns [`MsiError::XmlParse`] if the document is malformed or has unclosed tags.
     #[allow(clippy::too_many_lines)]
     pub fn parse(&self, input: &str) -> Result<XmlNode> {
         let mut chars = input.char_indices().peekable();
@@ -285,7 +285,7 @@ impl XmlParser {
                     }
 
                     if !closed {
-                        return Err(Error::XmlParse {
+                        return Err(MsiError::XmlParse {
                             line: start_line,
                             column: start_col,
                             message: format!("unclosed closing tag '</{close_tag}'"),
@@ -294,7 +294,7 @@ impl XmlParser {
 
                     if let Some(top) = stack.pop() {
                         if top.tag != close_tag {
-                            return Err(Error::XmlParse {
+                            return Err(MsiError::XmlParse {
                                 line: start_line,
                                 column: start_col,
                                 message: format!(
@@ -309,7 +309,7 @@ impl XmlParser {
                             root = Some(top);
                         }
                     } else {
-                        return Err(Error::XmlParse {
+                        return Err(MsiError::XmlParse {
                             line: start_line,
                             column: start_col,
                             message: format!("unexpected closing tag '</{close_tag}>'"),
@@ -390,14 +390,14 @@ impl XmlParser {
 
         if !stack.is_empty() {
             let unclosed = &stack[stack.len() - 1];
-            return Err(Error::XmlParse {
+            return Err(MsiError::XmlParse {
                 line: unclosed.line,
                 column: unclosed.column,
                 message: format!("unclosed element '<{}>'", unclosed.tag),
             });
         }
 
-        root.ok_or_else(|| Error::XmlParse {
+        root.ok_or_else(|| MsiError::XmlParse {
             line: 1,
             column: 1,
             message: "empty XML document".to_string(),
@@ -411,7 +411,7 @@ impl XmlParser {
         let tag_name = match parts.next() {
             Some(t) => t.to_string(),
             None => {
-                return Err(Error::XmlParse {
+                return Err(MsiError::XmlParse {
                     line: 1,
                     column: 1,
                     message: "missing tag name".to_string(),

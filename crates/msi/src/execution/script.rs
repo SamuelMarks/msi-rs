@@ -7,7 +7,7 @@
 //!   order upon error or cancellation.
 //! - `.rbf` (Rollback File): Quarantine files storing pristine original copies of overwritten artifacts.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use std::fmt;
 
 /// Magic header bytes identifying an MSI Installation Binary Script (`.ibs`).
@@ -142,7 +142,18 @@ pub enum ScriptOp {
         cabinet: String,
         /// File identifier or file name in cabinet.
         file_key: String,
-        /// Destination file path on target filesystem.
+        /// Destination extraction path.
+        destination: String,
+    },
+    /// Extracts a file payload from a WIM archive to a destination path.
+    ExtractWimFile {
+        /// WIM source path or stream.
+        wim_source: String,
+        /// Image index within the WIM.
+        image_index: u32,
+        /// Target file path in the WIM image.
+        wim_path: String,
+        /// Destination extraction path.
         destination: String,
     },
 }
@@ -168,6 +179,7 @@ impl ScriptOp {
             Self::StopService { .. } => 14,
             Self::CustomAction { .. } => 15,
             Self::ExtractCabinetFile { .. } => 16,
+            Self::ExtractWimFile { .. } => 17,
         }
     }
 }
@@ -430,6 +442,17 @@ impl InstallScript {
                     write_string(&mut out, file_key);
                     write_string(&mut out, destination);
                 }
+                ScriptOp::ExtractWimFile {
+                    wim_source,
+                    image_index,
+                    wim_path,
+                    destination,
+                } => {
+                    write_string(&mut out, wim_source);
+                    out.extend_from_slice(&image_index.to_le_bytes());
+                    write_string(&mut out, wim_path);
+                    write_string(&mut out, destination);
+                }
             }
         }
 
@@ -448,17 +471,17 @@ impl InstallScript {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::ScriptError`] if the magic header is invalid or data is truncated.
+    /// Returns [`MsiError::ScriptError`] if the magic header is invalid or data is truncated.
     #[allow(clippy::too_many_lines)]
     pub fn deserialize(data: &[u8]) -> Result<Self> {
         if data.len() < 12 {
-            return Err(Error::ScriptError {
+            return Err(MsiError::ScriptError {
                 opcode: "Header".to_string(),
                 reason: "Data too short for IBS header".to_string(),
             });
         }
         if &data[0..8] != IBS_MAGIC {
-            return Err(Error::ScriptError {
+            return Err(MsiError::ScriptError {
                 opcode: "Header".to_string(),
                 reason: "Invalid IBS magic header".to_string(),
             });
@@ -476,7 +499,7 @@ impl InstallScript {
 
         for _ in 0..count {
             if offset >= data.len() {
-                return Err(Error::ScriptError {
+                return Err(MsiError::ScriptError {
                     opcode: "Opcode".to_string(),
                     reason: "Unexpected EOF reading opcode ID".to_string(),
                 });
@@ -495,7 +518,7 @@ impl InstallScript {
                     let source = read_string(data, &mut offset)?;
                     let destination = read_string(data, &mut offset)?;
                     if offset >= data.len() {
-                        return Err(Error::ScriptError {
+                        return Err(MsiError::ScriptError {
                             opcode: "CopyFile".to_string(),
                             reason: "Unexpected EOF reading overwrite flag".to_string(),
                         });
@@ -551,7 +574,7 @@ impl InstallScript {
                     let arguments = read_opt_string(data, &mut offset)?;
                     let icon_path = read_opt_string(data, &mut offset)?;
                     if offset >= data.len() {
-                        return Err(Error::ScriptError {
+                        return Err(MsiError::ScriptError {
                             opcode: "CreateShortcut".to_string(),
                             reason: "Unexpected EOF reading icon index flag".to_string(),
                         });
@@ -621,8 +644,26 @@ impl InstallScript {
                         destination,
                     }
                 }
+                17 => {
+                    let wim_source = read_string(data, &mut offset)?;
+                    if offset + 4 > data.len() {
+                        return Err(MsiError::Io("truncated wim index".to_string()));
+                    }
+                    let mut idx_bytes = [0u8; 4];
+                    idx_bytes.copy_from_slice(&data[offset..offset + 4]);
+                    let image_index = u32::from_le_bytes(idx_bytes);
+                    offset += 4;
+                    let wim_path = read_string(data, &mut offset)?;
+                    let destination = read_string(data, &mut offset)?;
+                    ScriptOp::ExtractWimFile {
+                        wim_source,
+                        image_index,
+                        wim_path,
+                        destination,
+                    }
+                }
                 other => {
-                    return Err(Error::ScriptError {
+                    return Err(MsiError::ScriptError {
                         opcode: format!("Opcode({other})"),
                         reason: "Unknown script opcode ID".to_string(),
                     });
@@ -766,16 +807,16 @@ impl RollbackScript {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::ScriptError`] if the magic header is invalid or data is truncated.
+    /// Returns [`MsiError::ScriptError`] if the magic header is invalid or data is truncated.
     pub fn deserialize(data: &[u8]) -> Result<Self> {
         if data.len() < 12 {
-            return Err(Error::ScriptError {
+            return Err(MsiError::ScriptError {
                 opcode: "Header".to_string(),
                 reason: "Data too short for RBS header".to_string(),
             });
         }
         if &data[0..8] != RBS_MAGIC {
-            return Err(Error::ScriptError {
+            return Err(MsiError::ScriptError {
                 opcode: "Header".to_string(),
                 reason: "Invalid RBS magic header".to_string(),
             });
@@ -793,7 +834,7 @@ impl RollbackScript {
 
         for _ in 0..count {
             if offset >= data.len() {
-                return Err(Error::ScriptError {
+                return Err(MsiError::ScriptError {
                     opcode: "Opcode".to_string(),
                     reason: "Unexpected EOF reading rollback opcode ID".to_string(),
                 });
@@ -822,7 +863,7 @@ impl RollbackScript {
                     let name = read_opt_string(data, &mut offset)?;
                     let previous_value = read_opt_string(data, &mut offset)?;
                     if offset >= data.len() {
-                        return Err(Error::ScriptError {
+                        return Err(MsiError::ScriptError {
                             opcode: "RestoreRegistry".to_string(),
                             reason: "Unexpected EOF reading existed flag".to_string(),
                         });
@@ -859,7 +900,7 @@ impl RollbackScript {
                     }
                 }
                 other => {
-                    return Err(Error::ScriptError {
+                    return Err(MsiError::ScriptError {
                         opcode: format!("RollbackOpcode({other})"),
                         reason: "Unknown rollback opcode ID".to_string(),
                     });
@@ -913,6 +954,15 @@ impl fmt::Display for ScriptOp {
             } => write!(
                 f,
                 "ExtractCabinetFile({cabinet}:{file_key} -> {destination})"
+            ),
+            Self::ExtractWimFile {
+                wim_source,
+                image_index,
+                wim_path,
+                destination,
+            } => write!(
+                f,
+                "ExtractWimFile({wim_source}[{image_index}]:{wim_path} -> {destination})"
             ),
         }
     }
@@ -973,7 +1023,7 @@ fn write_bytes(out: &mut Vec<u8>, bytes: &[u8]) {
 /// Helper function to read a `u32` integer from byte slice.
 fn read_u32(data: &[u8], offset: &mut usize) -> Result<u32> {
     if *offset + 4 > data.len() {
-        return Err(Error::ScriptError {
+        return Err(MsiError::ScriptError {
             opcode: "ReadU32".to_string(),
             reason: "Unexpected EOF reading u32".to_string(),
         });
@@ -987,7 +1037,7 @@ fn read_u32(data: &[u8], offset: &mut usize) -> Result<u32> {
 /// Helper function to read an `i32` integer from byte slice.
 fn read_i32(data: &[u8], offset: &mut usize) -> Result<i32> {
     if *offset + 4 > data.len() {
-        return Err(Error::ScriptError {
+        return Err(MsiError::ScriptError {
             opcode: "ReadI32".to_string(),
             reason: "Unexpected EOF reading i32".to_string(),
         });
@@ -1002,16 +1052,17 @@ fn read_i32(data: &[u8], offset: &mut usize) -> Result<i32> {
 fn read_string(data: &[u8], offset: &mut usize) -> Result<String> {
     let len = read_u32(data, offset)? as usize;
     if *offset + len > data.len() {
-        return Err(Error::ScriptError {
+        return Err(MsiError::ScriptError {
             opcode: "ReadString".to_string(),
             reason: "Unexpected EOF reading string content".to_string(),
         });
     }
-    let s =
-        std::str::from_utf8(&data[*offset..*offset + len]).map_err(|err| Error::ScriptError {
+    let s = std::str::from_utf8(&data[*offset..*offset + len]).map_err(|err| {
+        MsiError::ScriptError {
             opcode: "ReadString".to_string(),
             reason: format!("Invalid UTF-8 in string: {err}"),
-        })?;
+        }
+    })?;
     *offset += len;
     Ok(s.to_string())
 }
@@ -1019,7 +1070,7 @@ fn read_string(data: &[u8], offset: &mut usize) -> Result<String> {
 /// Helper function to read an optional string with presence flag byte.
 fn read_opt_string(data: &[u8], offset: &mut usize) -> Result<Option<String>> {
     if *offset >= data.len() {
-        return Err(Error::ScriptError {
+        return Err(MsiError::ScriptError {
             opcode: "ReadOptString".to_string(),
             reason: "Unexpected EOF reading optional string flag".to_string(),
         });
@@ -1037,7 +1088,7 @@ fn read_opt_string(data: &[u8], offset: &mut usize) -> Result<Option<String>> {
 fn read_bytes(data: &[u8], offset: &mut usize) -> Result<Vec<u8>> {
     let len = read_u32(data, offset)? as usize;
     if *offset + len > data.len() {
-        return Err(Error::ScriptError {
+        return Err(MsiError::ScriptError {
             opcode: "ReadBytes".to_string(),
             reason: "Unexpected EOF reading byte buffer".to_string(),
         });
@@ -1482,4 +1533,58 @@ mod tests {
             assert!(RollbackScript::deserialize(&all_rbs[..len]).is_err());
         }
     }
+}
+#[test]
+fn test_script_wim_truncation_edge_cases() {
+    use crate::error::MsiError;
+    let mut truncated = vec![17];
+
+    let wrap = |payload: &[u8]| -> Vec<u8> {
+        let mut out = Vec::new();
+        out.extend_from_slice(IBS_MAGIC);
+        out.extend_from_slice(&1u32.to_le_bytes()); // 1 op
+        out.extend_from_slice(payload);
+        out
+    };
+
+    assert!(InstallScript::deserialize(&wrap(&truncated)).is_err());
+
+    write_string(&mut truncated, "wim");
+    assert!(InstallScript::deserialize(&wrap(&truncated)).is_err()); // index truncated
+
+    let mut idx_trunc = truncated.clone();
+    idx_trunc.push(0);
+    idx_trunc.push(0);
+    let res = InstallScript::deserialize(&wrap(&idx_trunc));
+    assert!(matches!(res, Err(MsiError::Io(_)))); // hits line 648
+
+    truncated.extend_from_slice(&1u32.to_le_bytes());
+    assert!(InstallScript::deserialize(&wrap(&truncated)).is_err()); // path truncated
+
+    write_string(&mut truncated, "path");
+    truncated.extend_from_slice(b"abc"); // no null
+    assert!(InstallScript::deserialize(&wrap(&truncated)).is_err()); // dest truncated
+}
+
+#[test]
+fn test_script_wim_roundtrip_success() -> Result<()> {
+    let mut script = InstallScript::new();
+    let op = ScriptOp::ExtractWimFile {
+        wim_source: "install.wim".to_string(),
+        image_index: 2,
+        wim_path: "Windows\\System32\\cmd.exe".to_string(),
+        destination: "C:\\Windows\\System32\\cmd.exe".to_string(),
+    };
+    script.push(op.clone());
+
+    assert_eq!(format!("{op}"), "ExtractWimFile(install.wim[2]:Windows\\System32\\cmd.exe -> C:\\Windows\\System32\\cmd.exe)");
+
+    let bytes = script.serialize();
+    let parsed = InstallScript::deserialize(&bytes)?;
+    assert_eq!(parsed.len(), 1);
+    assert!(matches!(
+        &parsed.operations()[0],
+        ScriptOp::ExtractWimFile { image_index: 2, .. }
+    ));
+    Ok(())
 }

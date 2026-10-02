@@ -3,7 +3,7 @@
 //! Provides cross-platform physical disk discovery, hardware metadata parsing,
 //! read-only install media filtering, and SMART health status monitoring.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use std::path::{Path, PathBuf};
 
 /// Hardware bus connection interface type.
@@ -211,14 +211,14 @@ impl BlockDeviceScanner {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::BlockDeviceError`] if reading directory fails.
+    /// Returns [`MsiError::BlockDeviceError`] if reading directory fails.
     pub fn scan_sysfs(sysfs_block_root: Option<&Path>) -> Result<Vec<BlockDevice>> {
         let block_dir = sysfs_block_root.unwrap_or_else(|| Path::new("/sys/block"));
         if !block_dir.exists() {
             return Ok(Vec::new());
         }
 
-        let read_dir = std::fs::read_dir(block_dir).map_err(|e| Error::BlockDeviceError {
+        let read_dir = std::fs::read_dir(block_dir).map_err(|e| MsiError::BlockDeviceError {
             path: block_dir.display().to_string(),
             reason: format!("failed to read sysfs block directory: {e}"),
         })?;

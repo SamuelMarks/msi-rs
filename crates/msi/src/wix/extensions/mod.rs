@@ -82,7 +82,7 @@ pub trait WixExtension: Send + Sync {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error`] if processing the XML node fails or schema validation fails.
+    /// Returns [`crate::error::MsiError`] if processing the XML node fails or schema validation fails.
     fn compile_node(
         &self,
         node: &XmlNode,
@@ -109,7 +109,7 @@ pub trait WixExtension: Send + Sync {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error`] if database mutations or table injection fail.
+    /// Returns [`crate::error::MsiError`] if database mutations or table injection fail.
     fn link_database(&self, db: &mut LinkedDatabase) -> Result<()>;
 }
 

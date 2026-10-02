@@ -45,7 +45,7 @@ impl fmt::Display for WixUiDialogSet {
 }
 
 impl FromStr for WixUiDialogSet {
-    type Err = crate::error::Error;
+    type Err = crate::error::MsiError;
 
     fn from_str(s: &str) -> Result<Self> {
         match s.to_ascii_lowercase().as_str() {
@@ -54,7 +54,7 @@ impl FromStr for WixUiDialogSet {
             "wixui_mondo" | "mondo" => Ok(Self::Mondo),
             "wixui_minimal" | "minimal" => Ok(Self::Minimal),
             "wixui_advanced" | "advanced" => Ok(Self::Advanced),
-            _ => Err(crate::error::Error::WixCompiler {
+            _ => Err(crate::error::MsiError::WixCompiler {
                 element: "UIRef".to_string(),
                 message: format!("Unknown WiX UI dialog set '{s}'"),
             }),
@@ -202,7 +202,7 @@ pub fn generate_placeholder_ico(width: u32, height: u32, red: u8, green: u8, blu
 ///
 /// # Errors
 ///
-/// Returns [`crate::error::Error`] on database record construction failure.
+/// Returns [`crate::error::MsiError`] on database record construction failure.
 #[allow(clippy::too_many_lines)]
 pub fn inject_ui_library(
     db: &mut LinkedDatabase,
@@ -1175,7 +1175,7 @@ pub fn inject_ui_library(
 #[allow(clippy::manual_flatten)]
 mod tests {
     use super::*;
-    use crate::error::Error;
+    use crate::error::MsiError;
 
     #[test]
     fn test_wix_ui_dialog_set_parsing_and_display() {
@@ -1231,7 +1231,7 @@ mod tests {
     fn test_inject_ui_library_installdir() {
         for mut db in [
             LinkedDatabase::new(),
-            Err(Error::Sql {
+            Err(MsiError::Sql {
                 message: "simulated".to_string(),
             }),
         ]
@@ -1267,7 +1267,7 @@ mod tests {
     fn test_inject_ui_library_featuretree_and_minimal() {
         for mut db_feat in [
             LinkedDatabase::new(),
-            Err(Error::Sql {
+            Err(MsiError::Sql {
                 message: "simulated".to_string(),
             }),
         ]
@@ -1286,7 +1286,7 @@ mod tests {
 
         for mut db_min in [
             LinkedDatabase::new(),
-            Err(Error::Sql {
+            Err(MsiError::Sql {
                 message: "simulated".to_string(),
             }),
         ]
@@ -1318,7 +1318,7 @@ mod tests {
     fn test_inject_ui_library_mondo_and_advanced() {
         for mut db_mondo in [
             LinkedDatabase::new(),
-            Err(Error::Sql {
+            Err(MsiError::Sql {
                 message: "simulated".to_string(),
             }),
         ]
@@ -1359,7 +1359,7 @@ mod tests {
         // Test Advanced set
         for mut db_adv in [
             LinkedDatabase::new(),
-            Err(Error::Sql {
+            Err(MsiError::Sql {
                 message: "simulated".to_string(),
             }),
         ]

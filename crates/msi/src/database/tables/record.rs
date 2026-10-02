@@ -5,7 +5,7 @@
 use crate::database::column::{ColumnDef, DataType};
 use crate::database::string_pool::StringPool;
 use crate::database::tables::types::StringPoolId;
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use std::fmt;
 
 /// Sentinels representing `NULL` integers in Windows Installer SDK (`MsiRecordGetInteger`).
@@ -174,10 +174,10 @@ impl Record {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::RecordLengthMismatch`] or [`Error::Validation`] on violation.
+    /// Returns [`MsiError::RecordLengthMismatch`] or [`MsiError::Validation`] on violation.
     pub fn validate(&self, table_name: &str, columns: &[ColumnDef]) -> Result<()> {
         if self.fields.len() != columns.len() {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: columns.len(),
                 actual: self.fields.len(),
             });
@@ -185,7 +185,7 @@ impl Record {
 
         for (i, (field, col)) in self.fields.iter().zip(columns.iter()).enumerate() {
             if !col.nullable && field.is_null() {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: format!("{table_name}.{}", col.name),
                     reason: format!("column {} is not nullable, but field {i} is NULL", col.name),
                 });
@@ -198,7 +198,7 @@ impl Record {
                 | (FieldValue::Null, _) => {}
                 (FieldValue::String(ref s), DataType::String { max_len }) => {
                     if max_len > 0 && s.len() > usize::from(max_len) {
-                        return Err(Error::Validation {
+                        return Err(MsiError::Validation {
                             element: format!("{table_name}.{}", col.name),
                             reason: format!(
                                 "string length {} exceeds maximum allowed length of {} for column {}",
@@ -210,7 +210,7 @@ impl Record {
                     }
                 }
                 _ => {
-                    return Err(Error::Validation {
+                    return Err(MsiError::Validation {
                         element: format!("{table_name}.{}", col.name),
                         reason: format!(
                             "field type mismatch for column {}: expected {:?}, got {:?}",
@@ -238,7 +238,7 @@ impl Record {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::RecordLengthMismatch`] if field count does not match column count.
+    /// Returns [`MsiError::RecordLengthMismatch`] if field count does not match column count.
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     pub fn serialize(
         &self,
@@ -247,7 +247,7 @@ impl Record {
         string_index_size: usize,
     ) -> Result<Vec<u8>> {
         if self.fields.len() != columns.len() {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: columns.len(),
                 actual: self.fields.len(),
             });
@@ -308,7 +308,7 @@ impl Record {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::RecordLengthMismatch`] or string pool retrieval errors.
+    /// Returns [`MsiError::RecordLengthMismatch`] or string pool retrieval errors.
     pub fn deserialize(
         bytes: &[u8],
         columns: &[ColumnDef],
@@ -321,7 +321,7 @@ impl Record {
             .sum();
 
         if bytes.len() < expected_size {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: expected_size,
                 actual: bytes.len(),
             });

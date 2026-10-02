@@ -53,7 +53,7 @@ pub fn run(args: &[String]) -> i32 {
     if !opts.nologo && !opts.quiet {
         println!(
             "Windows Installer XML Toolset Compiler version 3.14.0.1703
-Copyright (c) .NET Foundation and contributors. All rights reserved.
+Clean-room reverse-engineered. (Apache-2.0 OR MIT) licensed. See https://github.com/SamuelMarks/msi-rs
 "
         );
     }
@@ -69,8 +69,8 @@ Copyright (c) .NET Foundation and contributors. All rights reserved.
         }
         Err(err) => {
             let code = match &err {
-                msi::Error::Preprocessor { .. } => 2,
-                msi::Error::WixCompiler { .. } | msi::Error::XmlParse { .. } => 3,
+                msi::MsiError::Preprocessor { .. } => 2,
+                msi::MsiError::WixCompiler { .. } | msi::MsiError::XmlParse { .. } => 3,
                 _ => 1,
             };
             eprintln!("candle.exe : error CNDL0002 : {err}");

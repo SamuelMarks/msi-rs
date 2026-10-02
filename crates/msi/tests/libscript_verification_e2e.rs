@@ -30,7 +30,7 @@ use std::path::PathBuf;
 ///
 /// # Errors
 ///
-/// Returns [`msi::Error`] on filesystem creation failure.
+/// Returns [`msi::MsiError`] on filesystem creation failure.
 fn create_test_dir(prefix: &str) -> Result<PathBuf> {
     let p = std::env::temp_dir().join(format!("libscript_verify_{prefix}_{}", std::process::id()));
     if p.exists() {
@@ -44,7 +44,7 @@ fn create_test_dir(prefix: &str) -> Result<PathBuf> {
 ///
 /// # Errors
 ///
-/// Returns [`msi::Error`] if packing fails.
+/// Returns [`msi::MsiError`] if packing fails.
 #[test]
 fn test_verify_build_msi_dual_fragments() -> Result<()> {
     let temp = create_test_dir("dual_frag")?;
@@ -118,7 +118,7 @@ fn test_verify_build_msi_dual_fragments() -> Result<()> {
 ///
 /// # Errors
 ///
-/// Returns [`msi::Error`] on harvest failure.
+/// Returns [`msi::MsiError`] on harvest failure.
 #[test]
 fn test_verify_harvest_payload_dropin() -> Result<()> {
     let temp = create_test_dir("harvest")?;
@@ -151,7 +151,7 @@ fn test_verify_harvest_payload_dropin() -> Result<()> {
 ///
 /// # Errors
 ///
-/// Returns [`msi::Error`] on component build failure.
+/// Returns [`msi::MsiError`] on component build failure.
 #[test]
 fn test_verify_standalone_component_packaging() -> Result<()> {
     let temp = create_test_dir("components")?;
@@ -231,7 +231,7 @@ fn test_verify_standalone_component_packaging() -> Result<()> {
 ///
 /// # Errors
 ///
-/// Returns [`msi::Error`] on execution failure.
+/// Returns [`msi::MsiError`] on execution failure.
 #[test]
 fn test_verify_silent_unattended_deployment_with_forwarded_props() -> Result<()> {
     let mut context = EvaluationContext::new();
@@ -270,7 +270,7 @@ fn test_verify_silent_unattended_deployment_with_forwarded_props() -> Result<()>
 ///
 /// # Errors
 ///
-/// Returns [`msi::Error`] on cabinet packaging failure.
+/// Returns [`msi::MsiError`] on cabinet packaging failure.
 #[test]
 fn test_verify_offline_airgapped_multi_cab_partitions() -> Result<()> {
     let temp = create_test_dir("multi_cab")?;
@@ -356,7 +356,7 @@ fn test_verify_offline_airgapped_multi_cab_partitions() -> Result<()> {
 ///
 /// # Errors
 ///
-/// Returns [`msi::Error`] on setup failure.
+/// Returns [`msi::MsiError`] on setup failure.
 #[test]
 fn test_verify_atomic_rollback_on_custom_action_failure() -> Result<()> {
     let temp = create_test_dir("rollback_ca")?;

@@ -26,9 +26,10 @@ pub mod package;
 pub mod platform;
 pub mod qa;
 pub mod ui;
+pub mod wim;
 pub mod wix;
 
-pub use error::{Error, Result};
+pub use error::{MsiError, Result};
 pub use execution::{
     ActionMode, AdvertiseScope, EvaluationContext, InstallState, LoggingOptions, MsiExecOptions,
     RepairFlags, UiLevel,

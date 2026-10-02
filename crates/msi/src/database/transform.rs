@@ -103,7 +103,7 @@ impl DatabaseTransform {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error`] on schema or diffing errors.
+    /// Returns [`crate::error::MsiError`] on schema or diffing errors.
     #[allow(clippy::too_many_lines)]
     pub fn diff(baseline: &LinkedDatabase, updated: &LinkedDatabase) -> Result<Self> {
         let mut transform = Self::new();
@@ -190,7 +190,7 @@ impl DatabaseTransform {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error`] if table schemas are missing or row modifications fail.
+    /// Returns [`crate::error::MsiError`] if table schemas are missing or row modifications fail.
     pub fn apply(&self, db: &mut LinkedDatabase) -> Result<()> {
         for (table_name, tt) in &self.tables {
             if tt.is_dropped {
@@ -243,7 +243,7 @@ impl DatabaseTransform {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error`] on serialization failure.
+    /// Returns [`crate::error::MsiError`] on serialization failure.
     pub fn to_bytes(&self) -> Result<Vec<u8>> {
         let mut writer = CfbWriter::new(CfbVersion::V3).with_root_clsid(StorageClsid::MsiTransform);
 
@@ -286,7 +286,7 @@ impl DatabaseTransform {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error`] on invalid CFB container or corrupt transform data.
+    /// Returns [`crate::error::MsiError`] on invalid CFB container or corrupt transform data.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
         let reader = CfbReader::new(bytes)?;
         let mut transform = Self::new();
@@ -355,7 +355,7 @@ fn rows_primary_keys_match(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error::Error;
+    use crate::error::MsiError;
 
     /// Tests validation flags constants, default implementations, and trait derives.
     #[test]
@@ -464,7 +464,7 @@ mod tests {
         for (res, should_ok) in [
             (diff_res, true),
             (
-                Err(Error::InvalidArgument {
+                Err(MsiError::InvalidArgument {
                     argument: String::new(),
                     reason: String::new(),
                 }),
@@ -493,7 +493,7 @@ mod tests {
                 for (b_res, b_ok) in [
                     (bytes_res, true),
                     (
-                        Err(Error::InvalidArgument {
+                        Err(MsiError::InvalidArgument {
                             argument: String::new(),
                             reason: String::new(),
                         }),
@@ -528,7 +528,7 @@ mod tests {
         for (res, ok) in [
             (diff_res, true),
             (
-                Err(Error::InvalidArgument {
+                Err(MsiError::InvalidArgument {
                     argument: String::new(),
                     reason: String::new(),
                 }),
@@ -589,7 +589,7 @@ mod tests {
         for (res, ok) in [
             (diff_res, true),
             (
-                Err(Error::InvalidArgument {
+                Err(MsiError::InvalidArgument {
                     argument: String::new(),
                     reason: String::new(),
                 }),
@@ -721,7 +721,7 @@ mod tests {
         for (b_res, b_ok) in [
             (bytes_res, true),
             (
-                Err(Error::InvalidArgument {
+                Err(MsiError::InvalidArgument {
                     argument: String::new(),
                     reason: String::new(),
                 }),

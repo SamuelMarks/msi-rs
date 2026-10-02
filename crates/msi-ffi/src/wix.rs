@@ -105,7 +105,7 @@ pub unsafe extern "C" fn msi_compile_wix_file(
             let in_path = c_str_to_str(wxs_path, "wxs_path")?;
             let source = fs::read_to_string(in_path).map_err(|e| {
                 (
-                    map_msi_error(&msi::Error::Io(e.to_string())),
+                    map_msi_error(&msi::MsiError::Io(e.to_string())),
                     format!("Failed reading WiX source file '{in_path}'"),
                 )
             })?;

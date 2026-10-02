@@ -29,7 +29,7 @@
 #![allow(clippy::significant_drop_tightening, non_snake_case)]
 
 use crate::database::tables::record::{FieldValue, Record, MSI_NULL_INTEGER_32};
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::execution::native_action::{
     SqlProvisionerAction, SqlProvisionerClient, SqlProvisionerConfig,
 };
@@ -171,7 +171,7 @@ impl CustomActionSourceType {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidArgument`] if the source type bits are unrecognized.
+    /// Returns [`MsiError::InvalidArgument`] if the source type bits are unrecognized.
     pub fn from_raw(raw: u32) -> Result<Self> {
         let source_bits = raw & 0x003F;
         match source_bits {
@@ -187,7 +187,7 @@ impl CustomActionSourceType {
             MSIDB_CUSTOM_ACTION_TYPE_DIRECTORY => Ok(Self::Directory),
             MSIDB_CUSTOM_ACTION_TYPE_PROPERTY_EXE => Ok(Self::PropertyExe),
             MSIDB_CUSTOM_ACTION_TYPE_PROPERTY => Ok(Self::Property),
-            other => Err(Error::InvalidArgument {
+            other => Err(MsiError::InvalidArgument {
                 argument: "CustomAction.Type".to_string(),
                 reason: format!("Unrecognized custom action source type 0x{other:04X}"),
             }),
@@ -887,7 +887,7 @@ impl CustomActionExecutor {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::CustomActionFailed`] if execution fails.
+    /// Returns [`MsiError::CustomActionFailed`] if execution fails.
     #[allow(clippy::too_many_lines)]
     pub fn execute(
         &self,
@@ -901,7 +901,7 @@ impl CustomActionExecutor {
                     return Ok(ERROR_SUCCESS);
                 }
                 crate::execution::bare_metal::OfflineActionDisposition::RejectUnsafe => {
-                    return Err(Error::CustomActionFailed {
+                    return Err(MsiError::CustomActionFailed {
                         action: action.name().to_string(),
                         reason: format!(
                             "Custom action '{}' (type 0x{:04X}) rejected by offline execution policy",
@@ -917,7 +917,7 @@ impl CustomActionExecutor {
 
         if let Some(&code) = self.mock_results.get(action.name()) {
             if code != ERROR_SUCCESS {
-                return Err(Error::CustomActionFailed {
+                return Err(MsiError::CustomActionFailed {
                     action: action.name().to_string(),
                     reason: format!("Mock failure code {code}"),
                 });
@@ -928,7 +928,7 @@ impl CustomActionExecutor {
         match action.source_type() {
             CustomActionSourceType::Error => {
                 let formatted_msg = context.format_string(action.target())?;
-                Err(Error::CustomActionFailed {
+                Err(MsiError::CustomActionFailed {
                     action: action.name().to_string(),
                     reason: if formatted_msg.is_empty() {
                         format!("Custom action '{}' aborted installation", action.name())
@@ -1125,7 +1125,7 @@ impl CustomActionExecutor {
                                 if action.execution_mode().is_continue() {
                                     Ok(ERROR_SUCCESS)
                                 } else {
-                                    Err(Error::CustomActionFailed {
+                                    Err(MsiError::CustomActionFailed {
                                         action: action.name().to_string(),
                                         reason: e.to_string(),
                                     })
@@ -1173,7 +1173,7 @@ impl CustomActionExecutor {
                     if action.execution_mode().is_continue() {
                         return Ok(ERROR_SUCCESS);
                     }
-                    return Err(Error::CustomActionFailed {
+                    return Err(MsiError::CustomActionFailed {
                         action: action.name().to_string(),
                         reason: e.to_string(),
                     });
@@ -1864,7 +1864,7 @@ mod tests {
         let res_f = executor.execute(&ca_fail, &mut context);
         assert_eq!(
             res_f,
-            Err(Error::CustomActionFailed {
+            Err(MsiError::CustomActionFailed {
                 action: "FailingAction".to_string(),
                 reason: "Mock failure code 1603".to_string(),
             })
@@ -2062,7 +2062,7 @@ mod tests {
         ));
         assert_eq!(
             executor.execute(&failing_dll, &mut ctx),
-            Err(Error::CustomActionFailed {
+            Err(MsiError::CustomActionFailed {
                 action: "FailingEntry".to_string(),
                 reason: "native custom action returned error code 1603".to_string(),
             })
@@ -2509,7 +2509,10 @@ mod tests {
             "EntryPoint",
         ));
         let res_reject = executor_strict.execute(&ca_dll, &mut context);
-        assert!(matches!(res_reject, Err(Error::CustomActionFailed { .. })));
+        assert!(matches!(
+            res_reject,
+            Err(MsiError::CustomActionFailed { .. })
+        ));
 
         // 2. SkipWithSuccess skips with ERROR_SUCCESS
         let skip_policy =
@@ -2563,7 +2566,7 @@ mod tests {
         let res = executor.execute(&err_action, &mut context);
         assert_eq!(
             res,
-            Err(Error::CustomActionFailed {
+            Err(MsiError::CustomActionFailed {
                 action: "AbortLicense".to_string(),
                 reason: "Installation of LibScript CMS cannot continue without agreeing to all licenses.".to_string(),
             })
@@ -2579,7 +2582,7 @@ mod tests {
         let res_empty = executor.execute(&empty_err_action, &mut context);
         assert_eq!(
             res_empty,
-            Err(Error::CustomActionFailed {
+            Err(MsiError::CustomActionFailed {
                 action: "EmptyAbort".to_string(),
                 reason: "Custom action 'EmptyAbort' aborted installation".to_string(),
             })

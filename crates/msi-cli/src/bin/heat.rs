@@ -266,7 +266,7 @@ pub fn run(args: &[String]) -> i32 {
     if !opts.nologo {
         println!(
             "Windows Installer XML Toolset Harvester version 3.14.0.1703
-Copyright (c) .NET Foundation and contributors. All rights reserved.
+Clean-room reverse-engineered. (Apache-2.0 OR MIT) licensed. See https://github.com/SamuelMarks/msi-rs
 "
         );
     }

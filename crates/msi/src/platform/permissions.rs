@@ -6,7 +6,7 @@
 //! - Extended Attributes (xattr): macOS `com.apple.quarantine`, Linux `SELinux` context (`security.selinux`),
 //!   and Linux file capabilities (`security.capability`).
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::platform::paths::TargetOs;
 #[cfg(any(unix, test))]
 use std::fs;
@@ -327,7 +327,7 @@ impl AclEntry {
 ///
 /// # Errors
 ///
-/// Returns [`Error::InvalidArgument`] if SDDL syntax is malformed.
+/// Returns [`MsiError::InvalidArgument`] if SDDL syntax is malformed.
 pub fn translate_sddl(sddl: &str) -> Result<Vec<AclEntry>> {
     let mut entries = Vec::new();
     let trimmed = sddl.trim();
@@ -341,7 +341,7 @@ pub fn translate_sddl(sddl: &str) -> Result<Vec<AclEntry>> {
     let mut rest = dacl;
     while let Some(start) = rest.find('(') {
         let Some(end) = rest[start..].find(')') else {
-            return Err(Error::InvalidArgument {
+            return Err(MsiError::InvalidArgument {
                 argument: "SDDL".to_string(),
                 reason: "Unmatched parenthesis in SDDL string".to_string(),
             });
@@ -483,16 +483,16 @@ impl LiveSecurityApplier {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Io`] on unexpected syscall failure.
+    /// Returns [`MsiError::Io`] on unexpected syscall failure.
     #[allow(clippy::missing_const_for_fn)]
     pub fn set_xattr(path: &Path, name: &str, value: &[u8]) -> Result<()> {
         #[cfg(target_os = "macos")]
         {
             use std::ffi::CString;
             let c_path = CString::new(path.as_os_str().as_encoded_bytes())
-                .map_err(|e| Error::Io(format!("Invalid path for xattr: {e}")))?;
+                .map_err(|e| MsiError::Io(format!("Invalid path for xattr: {e}")))?;
             let c_name =
-                CString::new(name).map_err(|e| Error::Io(format!("Invalid xattr name: {e}")))?;
+                CString::new(name).map_err(|e| MsiError::Io(format!("Invalid xattr name: {e}")))?;
 
             // SAFETY: Valid null-terminated C strings and byte buffer pointers passed to setxattr.
             let ret = unsafe {
@@ -510,7 +510,7 @@ impl LiveSecurityApplier {
                 if matches!(err.raw_os_error(), Some(libc::ENOTSUP | libc::EPERM)) {
                     return Ok(());
                 }
-                return Err(Error::Io(format!(
+                return Err(MsiError::Io(format!(
                     "Failed to set xattr '{name}' on {}: {err}",
                     path.display()
                 )));
@@ -522,9 +522,9 @@ impl LiveSecurityApplier {
         {
             use std::ffi::CString;
             let c_path = CString::new(path.as_os_str().as_encoded_bytes())
-                .map_err(|e| Error::Io(format!("Invalid path for xattr: {e}")))?;
+                .map_err(|e| MsiError::Io(format!("Invalid path for xattr: {e}")))?;
             let c_name =
-                CString::new(name).map_err(|e| Error::Io(format!("Invalid xattr name: {e}")))?;
+                CString::new(name).map_err(|e| MsiError::Io(format!("Invalid xattr name: {e}")))?;
 
             // SAFETY: Valid null-terminated C strings and byte buffer pointers passed to setxattr.
             let ret = unsafe {
@@ -541,7 +541,7 @@ impl LiveSecurityApplier {
                 if matches!(err.raw_os_error(), Some(libc::ENOTSUP | libc::EPERM)) {
                     return Ok(());
                 }
-                return Err(Error::Io(format!(
+                return Err(MsiError::Io(format!(
                     "Failed to set xattr '{name}' on {}: {err}",
                     path.display()
                 )));
@@ -553,7 +553,7 @@ impl LiveSecurityApplier {
         {
             let _ = (name, value);
             if !path.exists() {
-                return Err(Error::Io(format!(
+                return Err(MsiError::Io(format!(
                     "Failed to set xattr '{name}' on {}: No such file or directory",
                     path.display()
                 )));
@@ -575,16 +575,16 @@ impl LiveSecurityApplier {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Io`] on unexpected syscall failure.
+    /// Returns [`MsiError::Io`] on unexpected syscall failure.
     #[allow(clippy::missing_const_for_fn)]
     pub fn get_xattr(path: &Path, name: &str) -> Result<Option<Vec<u8>>> {
         #[cfg(target_os = "macos")]
         {
             use std::ffi::CString;
             let c_path = CString::new(path.as_os_str().as_encoded_bytes())
-                .map_err(|e| Error::Io(format!("Invalid path for xattr: {e}")))?;
+                .map_err(|e| MsiError::Io(format!("Invalid path for xattr: {e}")))?;
             let c_name =
-                CString::new(name).map_err(|e| Error::Io(format!("Invalid xattr name: {e}")))?;
+                CString::new(name).map_err(|e| MsiError::Io(format!("Invalid xattr name: {e}")))?;
 
             // SAFETY: Null buffer passed to query required attribute length.
             let size = unsafe {
@@ -624,9 +624,9 @@ impl LiveSecurityApplier {
         {
             use std::ffi::CString;
             let c_path = CString::new(path.as_os_str().as_encoded_bytes())
-                .map_err(|e| Error::Io(format!("Invalid path for xattr: {e}")))?;
+                .map_err(|e| MsiError::Io(format!("Invalid path for xattr: {e}")))?;
             let c_name =
-                CString::new(name).map_err(|e| Error::Io(format!("Invalid xattr name: {e}")))?;
+                CString::new(name).map_err(|e| MsiError::Io(format!("Invalid xattr name: {e}")))?;
 
             // SAFETY: Null buffer passed to query required attribute length.
             let size = unsafe {
@@ -669,10 +669,10 @@ impl LiveSecurityApplier {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Io`] on failure.
+    /// Returns [`MsiError::Io`] on failure.
     pub fn apply_mode(&self, path: &Path, mode: PosixMode) -> Result<()> {
         if !path.exists() {
-            return Err(Error::Io(format!(
+            return Err(MsiError::Io(format!(
                 "Path does not exist: {}",
                 path.display()
             )));
@@ -683,7 +683,7 @@ impl LiveSecurityApplier {
             use std::os::unix::fs::PermissionsExt;
             let perm = fs::Permissions::from_mode(mode.as_octal());
             fs::set_permissions(path, perm).map_err(|e| {
-                Error::Io(format!(
+                MsiError::Io(format!(
                     "Failed to set mode {:04o} on {}: {e}",
                     mode.as_octal(),
                     path.display()
@@ -705,7 +705,7 @@ impl LiveSecurityApplier {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Io`] on failure.
+    /// Returns [`MsiError::Io`] on failure.
     pub fn apply_posix1e_acl(&mut self, path: &Path, acl_text: &str) -> Result<()> {
         let cmd = format!("setfacl -m {acl_text} {}", path.display());
         self.executed_commands.push(cmd.clone());
@@ -729,7 +729,7 @@ impl LiveSecurityApplier {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Io`] on failure.
+    /// Returns [`MsiError::Io`] on failure.
     pub fn apply_nfsv4_acl(&mut self, path: &Path, entries: &[AclEntry]) -> Result<()> {
         for entry in entries {
             let cmd = format!(
@@ -759,7 +759,7 @@ impl LiveSecurityApplier {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Io`] on failure.
+    /// Returns [`MsiError::Io`] on failure.
     pub fn apply_macos_acl(&mut self, path: &Path, entries: &[AclEntry]) -> Result<()> {
         for entry in entries {
             let cmd = format!(
@@ -789,7 +789,7 @@ impl LiveSecurityApplier {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Io`] on failure.
+    /// Returns [`MsiError::Io`] on failure.
     pub fn apply_extended_attribute(
         &mut self,
         path: &Path,

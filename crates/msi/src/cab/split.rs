@@ -15,7 +15,7 @@ use crate::cab::folder::CompressionType;
 use crate::cab::header::CfHeader;
 use crate::cab::reader::CabinetReader;
 use crate::cab::writer::CabinetWriter;
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use std::collections::HashMap;
 
 /// Standard target media volume byte size: CD-ROM 650 MB.
@@ -40,7 +40,7 @@ pub trait MediaPromptCallback {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Io`] or [`Error::InvalidCabData`] if the requested disk cannot be provided.
+    /// Returns [`MsiError::Io`] or [`MsiError::InvalidCabData`] if the requested disk cannot be provided.
     fn request_cabinet(&mut self, disk_label: &str, cabinet_name: &str) -> Result<Vec<u8>>;
 }
 
@@ -74,7 +74,7 @@ impl MediaPromptCallback for InMemoryMediaProvider {
         self.cabinets
             .get(cabinet_name)
             .cloned()
-            .ok_or_else(|| Error::InvalidCabData {
+            .ok_or_else(|| MsiError::InvalidCabData {
                 reason: format!(
                     "Media volume '{disk_label}' with cabinet file '{cabinet_name}' not available"
                 ),
@@ -114,17 +114,17 @@ impl SplitSetValidator {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidCabData`] if validation fails.
+    /// Returns [`MsiError::InvalidCabData`] if validation fails.
     pub fn validate_split_set(cabinets: &[(String, Vec<u8>)]) -> Result<()> {
         if cabinets.is_empty() {
-            return Err(Error::InvalidCabData {
+            return Err(MsiError::InvalidCabData {
                 reason: "Empty multi-cabinet split set".to_string(),
             });
         }
 
         let mut parsed_headers = Vec::with_capacity(cabinets.len());
         for (name, bytes) in cabinets {
-            let (header, _) = CfHeader::parse(bytes).map_err(|e| Error::InvalidCabData {
+            let (header, _) = CfHeader::parse(bytes).map_err(|e| MsiError::InvalidCabData {
                 reason: format!("Failed to parse header in cabinet '{name}': {e}"),
             })?;
             parsed_headers.push((name.as_str(), header));
@@ -136,7 +136,7 @@ impl SplitSetValidator {
             #[allow(clippy::cast_possible_truncation)]
             let expected_idx = idx as u16;
             if header.cabinet_index != expected_idx {
-                return Err(Error::InvalidCabData {
+                return Err(MsiError::InvalidCabData {
                     reason: format!(
                         "Cabinet '{name}' has index {} but expected {expected_idx}",
                         header.cabinet_index
@@ -145,7 +145,7 @@ impl SplitSetValidator {
             }
 
             if header.set_id != expected_set_id {
-                return Err(Error::InvalidCabData {
+                return Err(MsiError::InvalidCabData {
                     reason: format!(
                         "Cabinet '{name}' has setID {} which does not match expected {expected_set_id}",
                         header.set_id
@@ -157,12 +157,12 @@ impl SplitSetValidator {
             if idx > 0 {
                 let prev_name = parsed_headers[idx - 1].0;
                 if !header.flags.has_prev_cabinet() {
-                    return Err(Error::InvalidCabData {
+                    return Err(MsiError::InvalidCabData {
                         reason: format!("Cabinet '{name}' missing CFHDR_PREV_CABINET flag"),
                     });
                 }
                 if header.prev_cabinet.as_deref() != Some(prev_name) {
-                    return Err(Error::InvalidCabData {
+                    return Err(MsiError::InvalidCabData {
                         reason: format!(
                             "Cabinet '{name}' has prev_cabinet '{:?}', expected '{prev_name}'",
                             header.prev_cabinet
@@ -170,7 +170,7 @@ impl SplitSetValidator {
                     });
                 }
             } else if header.flags.has_prev_cabinet() {
-                return Err(Error::InvalidCabData {
+                return Err(MsiError::InvalidCabData {
                     reason: format!(
                         "First cabinet '{name}' should not have CFHDR_PREV_CABINET flag"
                     ),
@@ -181,12 +181,12 @@ impl SplitSetValidator {
             if idx + 1 < parsed_headers.len() {
                 let next_name = parsed_headers[idx + 1].0;
                 if !header.flags.has_next_cabinet() {
-                    return Err(Error::InvalidCabData {
+                    return Err(MsiError::InvalidCabData {
                         reason: format!("Cabinet '{name}' missing CFHDR_NEXT_CABINET flag"),
                     });
                 }
                 if header.next_cabinet.as_deref() != Some(next_name) {
-                    return Err(Error::InvalidCabData {
+                    return Err(MsiError::InvalidCabData {
                         reason: format!(
                             "Cabinet '{name}' has next_cabinet '{:?}', expected '{next_name}'",
                             header.next_cabinet
@@ -194,7 +194,7 @@ impl SplitSetValidator {
                     });
                 }
             } else if header.flags.has_next_cabinet() {
-                return Err(Error::InvalidCabData {
+                return Err(MsiError::InvalidCabData {
                     reason: format!(
                         "Last cabinet '{name}' should not have CFHDR_NEXT_CABINET flag"
                     ),
@@ -236,7 +236,7 @@ impl MultiCabinetReader {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidCabData`] if the primary cabinet cannot be parsed.
+    /// Returns [`MsiError::InvalidCabData`] if the primary cabinet cannot be parsed.
     pub fn new(
         primary_data: &[u8],
         provider: Option<Box<dyn MediaPromptCallback>>,
@@ -260,7 +260,7 @@ impl MultiCabinetReader {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidCabData`] or [`Error::CabinetFileNotFound`] on failure.
+    /// Returns [`MsiError::InvalidCabData`] or [`MsiError::CabinetFileNotFound`] on failure.
     pub fn extract_file(&mut self, filename: &str) -> Result<Vec<u8>> {
         // Find file entry in primary cabinet
         let file_entry = self
@@ -271,7 +271,7 @@ impl MultiCabinetReader {
             .cloned();
 
         let Some(file) = file_entry else {
-            return Err(Error::CabinetFileNotFound {
+            return Err(MsiError::CabinetFileNotFound {
                 name: filename.to_string(),
             });
         };
@@ -287,14 +287,14 @@ impl MultiCabinetReader {
                 let next_disk_name = header.next_disk.as_deref().unwrap_or("").to_string();
 
                 if next_cab_name.is_empty() {
-                    return Err(Error::InvalidCabData {
+                    return Err(MsiError::InvalidCabData {
                         reason: "File marked ContinuedToNext but next_cabinet header field is empty"
                             .to_string(),
                     });
                 }
 
                 let Some(ref mut prov) = self.provider else {
-                    return Err(Error::InvalidCabData {
+                    return Err(MsiError::InvalidCabData {
                         reason: format!(
                             "Cannot extract continued file '{filename}': no MediaPromptCallback provided"
                         ),
@@ -313,7 +313,7 @@ impl MultiCabinetReader {
                 combined.extend_from_slice(&part2);
                 Ok(combined)
             }
-            FolderIndex::ContinuedFromPrev => Err(Error::InvalidCabData {
+            FolderIndex::ContinuedFromPrev => Err(MsiError::InvalidCabData {
                 reason: format!(
                     "File '{filename}' starts in previous cabinet; must begin extraction from earlier volume"
                 ),
@@ -380,11 +380,11 @@ impl MultiCabinetWriter {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidArgument`] if filename is already staged.
+    /// Returns [`MsiError::InvalidArgument`] if filename is already staged.
     pub fn add_file(&mut self, filename: impl Into<String>, data: &[u8]) -> Result<()> {
         let name = filename.into();
         if self.files.iter().any(|(f, _)| f == &name) {
-            return Err(Error::InvalidArgument {
+            return Err(MsiError::InvalidArgument {
                 argument: "filename".to_string(),
                 reason: format!("File '{name}' already added to multi-cabinet set"),
             });
@@ -401,7 +401,7 @@ impl MultiCabinetWriter {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidCabData`] on packing failure.
+    /// Returns [`MsiError::InvalidCabData`] on packing failure.
     pub fn pack(&mut self) -> Result<Vec<SplitCabinetArtifact>> {
         if self.files.is_empty() {
             let mut writer = CabinetWriter::new(self.compression_type);
@@ -653,7 +653,7 @@ mod tests {
         assert!(artifacts_res.is_ok());
         for res in [
             artifacts_res,
-            Err(Error::InvalidCabData {
+            Err(MsiError::InvalidCabData {
                 reason: String::new(),
             }),
         ] {
@@ -773,7 +773,7 @@ mod tests {
             MultiCabinetWriter::new(1000, 1, "Disk", "disk", CompressionType::None);
         for res in [
             writer_empty.pack(),
-            Err(Error::InvalidCabData {
+            Err(MsiError::InvalidCabData {
                 reason: String::new(),
             }),
         ] {
@@ -800,7 +800,7 @@ mod tests {
             .is_ok());
         for res in [
             writer_small_then_large.pack(),
-            Err(Error::InvalidCabData {
+            Err(MsiError::InvalidCabData {
                 reason: String::new(),
             }),
         ] {
@@ -816,7 +816,7 @@ mod tests {
         assert!(writer_multi.add_file("m2.txt", &[0x44; 30]).is_ok());
         for res in [
             writer_multi.pack(),
-            Err(Error::InvalidCabData {
+            Err(MsiError::InvalidCabData {
                 reason: String::new(),
             }),
         ] {

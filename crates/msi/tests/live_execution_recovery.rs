@@ -5,7 +5,7 @@ use msi::cab::folder::CompressionType;
 use msi::cab::writer::CabinetWriter;
 use msi::database::summary_info::SummaryInfo;
 use msi::database::tables::record::{FieldValue, Record};
-use msi::error::{Error, Result};
+use msi::error::{MsiError, Result};
 use msi::execution::costing::DiskCostEngine;
 use msi::execution::properties::EvaluationContext;
 use msi::execution::transaction::{Transaction, WorkerContext, ERROR_SUCCESS};
@@ -322,7 +322,7 @@ fn test_live_execution_disk_space_exhaustion() -> Result<()> {
     let tx = Transaction::new(db, context, cost_engine);
     let prep_res = tx.prepare();
 
-    if let Err(Error::DiskCostExceeded {
+    if let Err(MsiError::DiskCostExceeded {
         volume,
         required_bytes,
         available_bytes,
@@ -332,7 +332,7 @@ fn test_live_execution_disk_space_exhaustion() -> Result<()> {
         assert!(required_bytes > available_bytes);
         assert_eq!(available_bytes, 10);
     } else {
-        assert!(matches!(prep_res, Err(Error::DiskCostExceeded { .. })));
+        assert!(matches!(prep_res, Err(MsiError::DiskCostExceeded { .. })));
     }
 
     // Verify no physical directories or files were created

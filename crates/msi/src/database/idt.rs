@@ -9,7 +9,7 @@
 use crate::database::column::{ColumnDef, DataType};
 use crate::database::tables::record::{FieldValue, Record};
 use crate::database::TableSchema;
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use std::fmt::Write;
 
 /// Represents a parsed IDT file containing table schema and rows.
@@ -34,22 +34,22 @@ impl IdtTable {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] on invalid header lines or format errors.
+    /// Returns [`MsiError::Validation`] on invalid header lines or format errors.
     #[allow(clippy::too_many_lines, clippy::similar_names)]
     pub fn parse(content: &str) -> Result<Self> {
         let mut lines = content.lines();
 
-        let line1 = lines.next().ok_or_else(|| Error::Validation {
+        let line1 = lines.next().ok_or_else(|| MsiError::Validation {
             element: "IDT".to_string(),
             reason: "missing column names header (line 1)".to_string(),
         })?;
 
-        let line2 = lines.next().ok_or_else(|| Error::Validation {
+        let line2 = lines.next().ok_or_else(|| MsiError::Validation {
             element: "IDT".to_string(),
             reason: "missing column types header (line 2)".to_string(),
         })?;
 
-        let line3 = lines.next().ok_or_else(|| Error::Validation {
+        let line3 = lines.next().ok_or_else(|| MsiError::Validation {
             element: "IDT".to_string(),
             reason: "missing table name and primary keys header (line 3)".to_string(),
         })?;
@@ -59,7 +59,7 @@ impl IdtTable {
         let table_header: Vec<&str> = line3.split('\t').collect();
 
         if col_names.len() != col_types.len() {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "IDT".to_string(),
                 reason: format!(
                     "column count mismatch: {} names vs {} types",
@@ -70,7 +70,7 @@ impl IdtTable {
         }
 
         if table_header[0].is_empty() {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "IDT".to_string(),
                 reason: "missing table name on line 3".to_string(),
             });
@@ -108,14 +108,14 @@ impl IdtTable {
                     let unescaped = unescape_idt_value(cell);
                     match col.data_type {
                         DataType::Short => {
-                            let n = unescaped.parse::<i16>().map_err(|e| Error::Validation {
+                            let n = unescaped.parse::<i16>().map_err(|e| MsiError::Validation {
                                 element: col.name.clone(),
                                 reason: format!("invalid short integer '{cell}': {e}"),
                             })?;
                             FieldValue::Short(n)
                         }
                         DataType::Long => {
-                            let n = unescaped.parse::<i32>().map_err(|e| Error::Validation {
+                            let n = unescaped.parse::<i32>().map_err(|e| MsiError::Validation {
                                 element: col.name.clone(),
                                 reason: format!("invalid long integer '{cell}': {e}"),
                             })?;
@@ -192,7 +192,7 @@ impl IdtTable {
 /// Parses an IDT column definition string into a [`ColumnDef`].
 fn parse_idt_column(name: &str, type_str: &str, is_pk: bool) -> Result<ColumnDef> {
     if type_str.is_empty() {
-        return Err(Error::Validation {
+        return Err(MsiError::Validation {
             element: name.to_string(),
             reason: "empty IDT column type".to_string(),
         });
@@ -300,7 +300,7 @@ mod tests {
 
         for res in [
             IdtTable::parse(idt_text),
-            Err(Error::InvalidColumnType { raw: 0 }),
+            Err(MsiError::InvalidColumnType { raw: 0 }),
         ] {
             if let Ok(parsed) = res {
                 assert_eq!(parsed.schema.name, "Property");
@@ -321,7 +321,7 @@ mod tests {
 
                 for r_res in [
                     IdtTable::parse(&serialized),
-                    Err(Error::InvalidColumnType { raw: 0 }),
+                    Err(MsiError::InvalidColumnType { raw: 0 }),
                 ] {
                     if let Ok(reparsed) = r_res {
                         assert_eq!(parsed, reparsed);
@@ -362,7 +362,7 @@ mod tests {
     fn test_idt_column_types_and_derives() {
         for res in [
             parse_idt_column("Binary", "V0", false),
-            Err(Error::InvalidColumnType { raw: 0 }),
+            Err(MsiError::InvalidColumnType { raw: 0 }),
         ] {
             if let Ok(col_stream) = res {
                 assert_eq!(col_stream.data_type, DataType::Stream);
@@ -373,7 +373,7 @@ mod tests {
 
         for res in [
             parse_idt_column("SmallInt", "I2", true),
-            Err(Error::InvalidColumnType { raw: 0 }),
+            Err(MsiError::InvalidColumnType { raw: 0 }),
         ] {
             if let Ok(col_short) = res {
                 assert_eq!(col_short.data_type, DataType::Short);
@@ -385,7 +385,7 @@ mod tests {
 
         for res in [
             parse_idt_column("BigInt", "I4", false),
-            Err(Error::InvalidColumnType { raw: 0 }),
+            Err(MsiError::InvalidColumnType { raw: 0 }),
         ] {
             if let Ok(col_long) = res {
                 assert_eq!(col_long.data_type, DataType::Long);
@@ -396,7 +396,7 @@ mod tests {
 
         for res in [
             parse_idt_column("Custom", "g38", false),
-            Err(Error::InvalidColumnType { raw: 0 }),
+            Err(MsiError::InvalidColumnType { raw: 0 }),
         ] {
             if let Ok(col_other) = res {
                 assert_eq!(col_other.data_type, DataType::String { max_len: 0 });

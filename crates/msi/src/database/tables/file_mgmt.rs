@@ -12,7 +12,7 @@ use crate::database::catalogs::TableSchema;
 use crate::database::column::{ColumnDef, DataType};
 use crate::database::tables::record::{FieldValue, Record};
 use crate::database::tables::types::{ComponentName, DirectoryId};
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 
 /// Row in the `CreateFolder` table.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,10 +45,10 @@ impl CreateFolderRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] or [`Error::RecordLengthMismatch`].
+    /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`].
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 2 {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 2,
                 actual: rec.len(),
             });
@@ -56,7 +56,7 @@ impl CreateFolderRow {
         let directory = match rec.get(0) {
             Some(FieldValue::String(s)) => DirectoryId::new(s.as_str())?,
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "CreateFolder.Directory_".to_string(),
                     reason: "missing Directory_".to_string(),
                 })
@@ -65,7 +65,7 @@ impl CreateFolderRow {
         let component = match rec.get(1) {
             Some(FieldValue::String(s)) => ComponentName::new(s.as_str())?,
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "CreateFolder.Component_".to_string(),
                     reason: "missing Component_".to_string(),
                 })
@@ -213,10 +213,10 @@ impl RemoveFileRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] or [`Error::RecordLengthMismatch`].
+    /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`].
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 5 {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 5,
                 actual: rec.len(),
             });
@@ -224,7 +224,7 @@ impl RemoveFileRow {
         let file_key = match rec.get(0) {
             Some(FieldValue::String(s)) => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "RemoveFile.FileKey".to_string(),
                     reason: "missing FileKey".to_string(),
                 })
@@ -233,7 +233,7 @@ impl RemoveFileRow {
         let component = match rec.get(1) {
             Some(FieldValue::String(s)) => ComponentName::new(s.as_str())?,
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "RemoveFile.Component_".to_string(),
                     reason: "missing Component_".to_string(),
                 })
@@ -246,7 +246,7 @@ impl RemoveFileRow {
         let dir_property = match rec.get(3) {
             Some(FieldValue::String(s)) => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "RemoveFile.DirProperty".to_string(),
                     reason: "missing DirProperty".to_string(),
                 })
@@ -396,7 +396,7 @@ mod tests {
         ]);
         assert_eq!(
             CreateFolderRow::from_record(&bad_dir),
-            Err(Error::Validation {
+            Err(MsiError::Validation {
                 element: "CreateFolder.Directory_".to_string(),
                 reason: "missing Directory_".to_string(),
             })
@@ -416,7 +416,7 @@ mod tests {
         ]);
         assert_eq!(
             CreateFolderRow::from_record(&bad_comp),
-            Err(Error::Validation {
+            Err(MsiError::Validation {
                 element: "CreateFolder.Component_".to_string(),
                 reason: "missing Component_".to_string(),
             })
@@ -462,7 +462,7 @@ mod tests {
         ]);
         assert_eq!(
             RemoveFileRow::from_record(&bad_fk),
-            Err(Error::Validation {
+            Err(MsiError::Validation {
                 element: "RemoveFile.FileKey".to_string(),
                 reason: "missing FileKey".to_string(),
             })
@@ -478,7 +478,7 @@ mod tests {
         ]);
         assert_eq!(
             RemoveFileRow::from_record(&bad_comp),
-            Err(Error::Validation {
+            Err(MsiError::Validation {
                 element: "RemoveFile.Component_".to_string(),
                 reason: "missing Component_".to_string(),
             })
@@ -517,7 +517,7 @@ mod tests {
         ]);
         assert_eq!(
             RemoveFileRow::from_record(&bad_dir),
-            Err(Error::Validation {
+            Err(MsiError::Validation {
                 element: "RemoveFile.DirProperty".to_string(),
                 reason: "missing DirProperty".to_string(),
             })

@@ -1,6 +1,6 @@
 //! Cabinet File Entry structures and MS-DOS date/time translation (`CFFILE`).
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 
 /// File is read-only.
 pub const ATTR_READONLY: u16 = 0x0001;
@@ -297,10 +297,10 @@ impl CfFile {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidCabData`] if the entry is truncated or filename is unterminated.
+    /// Returns [`MsiError::InvalidCabData`] if the entry is truncated or filename is unterminated.
     pub fn parse(bytes: &[u8]) -> Result<(Self, usize)> {
         if bytes.len() < 16 {
-            return Err(Error::InvalidCabData {
+            return Err(MsiError::InvalidCabData {
                 reason: format!("file structure too short: {} bytes (min 16)", bytes.len()),
             });
         }
@@ -315,7 +315,7 @@ impl CfFile {
         let attributes = FileAttributes::from_bits(raw_attribs);
 
         let Some(pos) = bytes[16..].iter().position(|&b| b == 0) else {
-            return Err(Error::InvalidCabData {
+            return Err(MsiError::InvalidCabData {
                 reason: "unterminated filename in file structure".to_string(),
             });
         };

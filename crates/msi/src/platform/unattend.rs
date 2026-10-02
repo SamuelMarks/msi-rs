@@ -4,7 +4,7 @@
 //! - Windows `unattend.xml` (Panther OOBE bypass, regional settings, automated user setup).
 //! - Linux `#cloud-config` YAML and systemd `sysusers.d` provisioning files.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::platform::linux_config::ProvisionUserAccount;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -205,11 +205,11 @@ impl WindowsUnattendConfig {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::UnattendError`] if directory creation or file write fails.
+    /// Returns [`MsiError::UnattendError`] if directory creation or file write fails.
     pub fn write_to_sysroot(&self, sysroot: &Path) -> Result<PathBuf> {
         let panther = sysroot.join("Windows/Panther");
         if let Err(e) = std::fs::create_dir_all(&panther) {
-            return Err(Error::UnattendError {
+            return Err(MsiError::UnattendError {
                 reason: format!("failed to create Windows/Panther directory: {e}"),
             });
         }
@@ -217,7 +217,7 @@ impl WindowsUnattendConfig {
         let target_file = panther.join("unattend.xml");
         let xml_content = self.render_xml();
         if let Err(e) = std::fs::write(&target_file, xml_content) {
-            return Err(Error::UnattendError {
+            return Err(MsiError::UnattendError {
                 reason: format!("failed to write unattend.xml: {e}"),
             });
         }
@@ -351,14 +351,14 @@ runcmd:
     ///
     /// # Errors
     ///
-    /// Returns [`Error::UnattendError`] if directory or file write fails.
+    /// Returns [`MsiError::UnattendError`] if directory or file write fails.
     pub fn write_to_sysroot(&self, sysroot: &Path) -> Result<()> {
         let cloud_dir = sysroot.join("etc/cloud/cloud.cfg.d");
         let sysusers_dir = sysroot.join("etc/sysusers.d");
 
         for d in &[&cloud_dir, &sysusers_dir] {
             if let Err(e) = std::fs::create_dir_all(d) {
-                return Err(Error::UnattendError {
+                return Err(MsiError::UnattendError {
                     reason: format!("failed to create config directory '{}': {e}", d.display()),
                 });
             }
@@ -366,14 +366,14 @@ runcmd:
 
         let cloud_file = cloud_dir.join("99-msi-installer.cfg");
         if let Err(e) = std::fs::write(&cloud_file, self.render_yaml()) {
-            return Err(Error::UnattendError {
+            return Err(MsiError::UnattendError {
                 reason: format!("failed to write cloud-init configuration: {e}"),
             });
         }
 
         let sysusers_file = sysusers_dir.join("00-msi-users.conf");
         if let Err(e) = std::fs::write(&sysusers_file, self.render_sysusers()) {
-            return Err(Error::UnattendError {
+            return Err(MsiError::UnattendError {
                 reason: format!("failed to write sysusers.d configuration: {e}"),
             });
         }

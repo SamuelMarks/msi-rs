@@ -3,7 +3,7 @@
 //! Provides minimal bootable Linux runtime generation (initramfs, kernel configuration,
 //! UKI packaging, hybrid ISO/USB layout) and `WinPE` automation harnesses.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::platform::partition::{GptPartitionEntry, Lba, PartitionTypeGuid, PartitionUuid};
 use std::fmt::Write as _;
 
@@ -122,22 +122,22 @@ impl KernelConfig {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::BootHarnessError`] if `NVMe`, AHCI, or VFAT drivers are missing.
+    /// Returns [`MsiError::BootHarnessError`] if `NVMe`, AHCI, or VFAT drivers are missing.
     pub fn verify_essentials(&self) -> Result<()> {
         if !self.drivers.contains(&KernelDriverKind::Nvme) {
-            return Err(Error::BootHarnessError {
+            return Err(MsiError::BootHarnessError {
                 recipe: "kernel-config".to_string(),
                 reason: "missing required NVMe driver (CONFIG_BLK_DEV_NVME)".to_string(),
             });
         }
         if !self.drivers.contains(&KernelDriverKind::Ahci) {
-            return Err(Error::BootHarnessError {
+            return Err(MsiError::BootHarnessError {
                 recipe: "kernel-config".to_string(),
                 reason: "missing required AHCI/SATA driver (CONFIG_SATA_AHCI)".to_string(),
             });
         }
         if !self.drivers.contains(&KernelDriverKind::Vfat) {
-            return Err(Error::BootHarnessError {
+            return Err(MsiError::BootHarnessError {
                 recipe: "kernel-config".to_string(),
                 reason: "missing required VFAT driver for EFI System Partition".to_string(),
             });
@@ -510,13 +510,13 @@ impl UserlandBundle {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::BootHarnessError`] if an entry path is invalid or empty.
+    /// Returns [`MsiError::BootHarnessError`] if an entry path is invalid or empty.
     pub fn generate_cpio_archive(entries: &[(&str, &[u8])]) -> Result<Vec<u8>> {
         let mut archive = Vec::new();
 
         for (path, content) in entries {
             if path.is_empty() {
-                return Err(Error::BootHarnessError {
+                return Err(MsiError::BootHarnessError {
                     recipe: "cpio".to_string(),
                     reason: "entry path cannot be empty".to_string(),
                 });
@@ -580,7 +580,7 @@ impl UkiPackager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::UkiPackageError`] if stub, kernel, or initramfs are empty.
+    /// Returns [`MsiError::UkiPackageError`] if stub, kernel, or initramfs are empty.
     pub fn package(
         stub: &[u8],
         kernel: &[u8],
@@ -611,7 +611,7 @@ impl UkiPackager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::UkiPackageError`] if critical input components are empty.
+    /// Returns [`MsiError::UkiPackageError`] if critical input components are empty.
     #[allow(clippy::too_many_lines, clippy::cast_possible_truncation)]
     pub fn package_full(
         stub: &[u8],
@@ -622,17 +622,17 @@ impl UkiPackager {
         uname: &str,
     ) -> Result<Vec<u8>> {
         if stub.is_empty() {
-            return Err(Error::UkiPackageError {
+            return Err(MsiError::UkiPackageError {
                 reason: "EFI stub binary cannot be empty".to_string(),
             });
         }
         if kernel.is_empty() {
-            return Err(Error::UkiPackageError {
+            return Err(MsiError::UkiPackageError {
                 reason: "Kernel binary cannot be empty".to_string(),
             });
         }
         if initramfs.is_empty() {
-            return Err(Error::UkiPackageError {
+            return Err(MsiError::UkiPackageError {
                 reason: "Initramfs archive cannot be empty".to_string(),
             });
         }
@@ -734,10 +734,10 @@ impl UkiPackager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::UkiPackageError`] if the binary is not a valid PE image.
+    /// Returns [`MsiError::UkiPackageError`] if the binary is not a valid PE image.
     pub fn query_sections(uki_bytes: &[u8]) -> Result<Vec<(String, u32, u32, u32)>> {
         if uki_bytes.len() < 0x40 || uki_bytes[0] != 0x4D || uki_bytes[1] != 0x5A {
-            return Err(Error::UkiPackageError {
+            return Err(MsiError::UkiPackageError {
                 reason: "not a valid DOS/PE executable".to_string(),
             });
         }
@@ -750,7 +750,7 @@ impl UkiPackager {
         ]) as usize;
 
         if uki_bytes.len() < e_lfanew + 24 || &uki_bytes[e_lfanew..e_lfanew + 4] != b"PE\0\0" {
-            return Err(Error::UkiPackageError {
+            return Err(MsiError::UkiPackageError {
                 reason: "corrupt PE signature".to_string(),
             });
         }
@@ -853,16 +853,16 @@ impl LiveMediaGenerator {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::BootHarnessError`] if bootloader is empty or label is invalid.
+    /// Returns [`MsiError::BootHarnessError`] if bootloader is empty or label is invalid.
     pub fn generate(&self) -> Result<Vec<u8>> {
         if self.bootloader_efi.is_empty() {
-            return Err(Error::BootHarnessError {
+            return Err(MsiError::BootHarnessError {
                 recipe: "live-media".to_string(),
                 reason: "bootloader EFI binary cannot be empty".to_string(),
             });
         }
         if self.volume_label.is_empty() {
-            return Err(Error::BootHarnessError {
+            return Err(MsiError::BootHarnessError {
                 recipe: "live-media".to_string(),
                 reason: "volume label cannot be empty".to_string(),
             });

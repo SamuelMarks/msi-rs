@@ -8,7 +8,7 @@
 //!   and configuring them with `Password="yes"` in UI controls and registering them in `MsiHiddenProperties`.
 //! - Synthesizing `WiX` XML manifests and binary `.msi` packages without external templating scripts.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::wix::toolchain::WixBuildOptions;
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
@@ -43,7 +43,7 @@ impl JsonValue {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] on JSON syntax or parsing failure.
+    /// Returns [`MsiError::Validation`] on JSON syntax or parsing failure.
     pub fn parse(input: &str) -> Result<Self> {
         let chars: Vec<char> = input.chars().collect();
         let mut idx = 0;
@@ -51,7 +51,7 @@ impl JsonValue {
         let val = parse_value(&chars, &mut idx)?;
         skip_ws(&chars, &mut idx);
         if idx < chars.len() {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "JsonValue".to_string(),
                 reason: format!(
                     "unexpected trailing character '{}' at offset {idx}",
@@ -151,11 +151,11 @@ fn skip_ws(chars: &[char], idx: &mut usize) {
 ///
 /// # Errors
 ///
-/// Returns [`Error::Validation`] on unexpected end of input or invalid character.
+/// Returns [`MsiError::Validation`] on unexpected end of input or invalid character.
 fn parse_value(chars: &[char], idx: &mut usize) -> Result<JsonValue> {
     skip_ws(chars, idx);
     if *idx >= chars.len() {
-        return Err(Error::Validation {
+        return Err(MsiError::Validation {
             element: "JsonValue".to_string(),
             reason: "unexpected end of input".to_string(),
         });
@@ -168,7 +168,7 @@ fn parse_value(chars: &[char], idx: &mut usize) -> Result<JsonValue> {
         't' | 'f' => parse_bool(chars, idx),
         'n' => parse_null(chars, idx),
         c if c == '-' || c.is_ascii_digit() => parse_number(chars, idx),
-        other => Err(Error::Validation {
+        other => Err(MsiError::Validation {
             element: "JsonValue".to_string(),
             reason: format!("unexpected character '{other}' at index {idx}"),
         }),
@@ -188,7 +188,7 @@ fn parse_value(chars: &[char], idx: &mut usize) -> Result<JsonValue> {
 ///
 /// # Errors
 ///
-/// Returns [`Error::Validation`] on invalid object syntax.
+/// Returns [`MsiError::Validation`] on invalid object syntax.
 fn parse_object(chars: &[char], idx: &mut usize) -> Result<JsonValue> {
     *idx += 1; // skip '{'
     skip_ws(chars, idx);
@@ -202,7 +202,7 @@ fn parse_object(chars: &[char], idx: &mut usize) -> Result<JsonValue> {
     loop {
         skip_ws(chars, idx);
         if *idx >= chars.len() || chars[*idx] != '"' {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "JsonValue::Object".to_string(),
                 reason: format!("expected string key at index {idx}"),
             });
@@ -210,7 +210,7 @@ fn parse_object(chars: &[char], idx: &mut usize) -> Result<JsonValue> {
         let key = parse_string(chars, idx)?;
         skip_ws(chars, idx);
         if *idx >= chars.len() || chars[*idx] != ':' {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "JsonValue::Object".to_string(),
                 reason: format!("expected ':' after key '{key}' at index {idx}"),
             });
@@ -221,7 +221,7 @@ fn parse_object(chars: &[char], idx: &mut usize) -> Result<JsonValue> {
         skip_ws(chars, idx);
 
         if *idx >= chars.len() {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "JsonValue::Object".to_string(),
                 reason: "unclosed object".to_string(),
             });
@@ -233,7 +233,7 @@ fn parse_object(chars: &[char], idx: &mut usize) -> Result<JsonValue> {
         } else if chars[*idx] == ',' {
             *idx += 1;
         } else {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "JsonValue::Object".to_string(),
                 reason: format!("expected ',' or '}}' at index {idx}"),
             });
@@ -256,7 +256,7 @@ fn parse_object(chars: &[char], idx: &mut usize) -> Result<JsonValue> {
 ///
 /// # Errors
 ///
-/// Returns [`Error::Validation`] on invalid array syntax.
+/// Returns [`MsiError::Validation`] on invalid array syntax.
 fn parse_array(chars: &[char], idx: &mut usize) -> Result<JsonValue> {
     *idx += 1; // skip '['
     skip_ws(chars, idx);
@@ -273,7 +273,7 @@ fn parse_array(chars: &[char], idx: &mut usize) -> Result<JsonValue> {
         skip_ws(chars, idx);
 
         if *idx >= chars.len() {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "JsonValue::Array".to_string(),
                 reason: "unclosed array".to_string(),
             });
@@ -285,7 +285,7 @@ fn parse_array(chars: &[char], idx: &mut usize) -> Result<JsonValue> {
         } else if chars[*idx] == ',' {
             *idx += 1;
         } else {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "JsonValue::Array".to_string(),
                 reason: format!("expected ',' or ']' at index {idx}"),
             });
@@ -308,7 +308,7 @@ fn parse_array(chars: &[char], idx: &mut usize) -> Result<JsonValue> {
 ///
 /// # Errors
 ///
-/// Returns [`Error::Validation`] on invalid string or escape syntax.
+/// Returns [`MsiError::Validation`] on invalid string or escape syntax.
 fn parse_string(chars: &[char], idx: &mut usize) -> Result<String> {
     *idx += 1; // skip '"'
     let mut s = String::new();
@@ -320,7 +320,7 @@ fn parse_string(chars: &[char], idx: &mut usize) -> Result<String> {
         }
         if ch == '\\' {
             if *idx >= chars.len() {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "JsonValue::String".to_string(),
                     reason: "unclosed escape sequence".to_string(),
                 });
@@ -338,18 +338,19 @@ fn parse_string(chars: &[char], idx: &mut usize) -> Result<String> {
                 't' => s.push('\t'),
                 'u' => {
                     if *idx + 4 > chars.len() {
-                        return Err(Error::Validation {
+                        return Err(MsiError::Validation {
                             element: "JsonValue::String".to_string(),
                             reason: "invalid unicode escape".to_string(),
                         });
                     }
                     let hex_str: String = chars[*idx..*idx + 4].iter().collect();
                     *idx += 4;
-                    let cp = u32::from_str_radix(&hex_str, 16).map_err(|e| Error::Validation {
-                        element: "JsonValue::String".to_string(),
-                        reason: format!("invalid unicode hex '{hex_str}': {e}"),
-                    })?;
-                    let c = char::from_u32(cp).ok_or_else(|| Error::Validation {
+                    let cp =
+                        u32::from_str_radix(&hex_str, 16).map_err(|e| MsiError::Validation {
+                            element: "JsonValue::String".to_string(),
+                            reason: format!("invalid unicode hex '{hex_str}': {e}"),
+                        })?;
+                    let c = char::from_u32(cp).ok_or_else(|| MsiError::Validation {
                         element: "JsonValue::String".to_string(),
                         reason: format!("invalid unicode code point '{hex_str}'"),
                     })?;
@@ -361,7 +362,7 @@ fn parse_string(chars: &[char], idx: &mut usize) -> Result<String> {
             s.push(ch);
         }
     }
-    Err(Error::Validation {
+    Err(MsiError::Validation {
         element: "JsonValue::String".to_string(),
         reason: "unclosed string literal".to_string(),
     })
@@ -380,7 +381,7 @@ fn parse_string(chars: &[char], idx: &mut usize) -> Result<String> {
 ///
 /// # Errors
 ///
-/// Returns [`Error::Validation`] if token is neither `true` nor `false`.
+/// Returns [`MsiError::Validation`] if token is neither `true` nor `false`.
 fn parse_bool(chars: &[char], idx: &mut usize) -> Result<JsonValue> {
     if chars[*idx..].starts_with(&['t', 'r', 'u', 'e']) {
         *idx += 4;
@@ -389,7 +390,7 @@ fn parse_bool(chars: &[char], idx: &mut usize) -> Result<JsonValue> {
         *idx += 5;
         Ok(JsonValue::Bool(false))
     } else {
-        Err(Error::Validation {
+        Err(MsiError::Validation {
             element: "JsonValue::Bool".to_string(),
             reason: format!("invalid boolean token at index {idx}"),
         })
@@ -409,13 +410,13 @@ fn parse_bool(chars: &[char], idx: &mut usize) -> Result<JsonValue> {
 ///
 /// # Errors
 ///
-/// Returns [`Error::Validation`] if token is not `null`.
+/// Returns [`MsiError::Validation`] if token is not `null`.
 fn parse_null(chars: &[char], idx: &mut usize) -> Result<JsonValue> {
     if chars[*idx..].starts_with(&['n', 'u', 'l', 'l']) {
         *idx += 4;
         Ok(JsonValue::Null)
     } else {
-        Err(Error::Validation {
+        Err(MsiError::Validation {
             element: "JsonValue::Null".to_string(),
             reason: format!("invalid null token at index {idx}"),
         })
@@ -435,7 +436,7 @@ fn parse_null(chars: &[char], idx: &mut usize) -> Result<JsonValue> {
 ///
 /// # Errors
 ///
-/// Returns [`Error::Validation`] on invalid numeric format.
+/// Returns [`MsiError::Validation`] on invalid numeric format.
 fn parse_number(chars: &[char], idx: &mut usize) -> Result<JsonValue> {
     let start = *idx;
     if *idx < chars.len() && chars[*idx] == '-' {
@@ -460,7 +461,7 @@ fn parse_number(chars: &[char], idx: &mut usize) -> Result<JsonValue> {
         }
     }
     let num_str: String = chars[start..*idx].iter().collect();
-    let num = num_str.parse::<f64>().map_err(|e| Error::Validation {
+    let num = num_str.parse::<f64>().map_err(|e| MsiError::Validation {
         element: "JsonValue::Number".to_string(),
         reason: format!("invalid number format '{num_str}': {e}"),
     })?;
@@ -536,14 +537,14 @@ impl PackagingManifest {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] on missing required fields.
+    /// Returns [`MsiError::Validation`] on missing required fields.
     pub fn parse(json_text: &str) -> Result<Self> {
         let json = JsonValue::parse(json_text)?;
 
         let name = json
             .get("name")
             .and_then(JsonValue::as_str)
-            .ok_or_else(|| Error::Validation {
+            .ok_or_else(|| MsiError::Validation {
                 element: "PackagingManifest".to_string(),
                 reason: "missing required 'name' field".to_string(),
             })?
@@ -609,7 +610,7 @@ impl PackagingManifest {
 ///
 /// # Errors
 ///
-/// Returns [`Error::Validation`] on JSON syntax failure.
+/// Returns [`MsiError::Validation`] on JSON syntax failure.
 pub fn parse_vars_schema(component_name: &str, json_text: &str) -> Result<Vec<SchemaProperty>> {
     let json = JsonValue::parse(json_text)?;
     let mut properties = Vec::new();
@@ -953,7 +954,7 @@ impl ManifestMsiSynthesizer {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] on JSON manifest or schema parse failure.
+    /// Returns [`MsiError::Validation`] on JSON manifest or schema parse failure.
     pub fn generate_wix_xml(&self) -> Result<String> {
         let manifest = PackagingManifest::parse(&self.manifest_content)?;
         let properties = if let Some(ref schema) = self.schema_content {

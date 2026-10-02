@@ -14,7 +14,7 @@ use crate::database::catalogs::TableSchema;
 use crate::database::column::{ColumnDef, DataType};
 use crate::database::tables::record::{FieldValue, Record};
 use crate::database::tables::types::FileKey;
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 
 /// Row in the `SelfReg` table.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,10 +47,10 @@ impl SelfRegRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] or [`Error::RecordLengthMismatch`].
+    /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`].
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 2 {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 2,
                 actual: rec.len(),
             });
@@ -58,7 +58,7 @@ impl SelfRegRow {
         let file = match rec.get(0) {
             Some(FieldValue::String(s)) => FileKey::new(s.as_str())?,
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "SelfReg.File_".to_string(),
                     reason: "missing File_".to_string(),
                 })

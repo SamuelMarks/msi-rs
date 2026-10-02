@@ -9,7 +9,7 @@
 //! - Message serialization/deserialization for deferred transaction execution, commit,
 //!   rollback, and progress reporting.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::execution::worker::executor::LiveWorkerExecutor;
 use std::io::{Read, Write};
 
@@ -115,11 +115,11 @@ impl IpcFrame {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::WorkerIpcError`] if the frame is incomplete, magic is invalid,
+    /// Returns [`MsiError::WorkerIpcError`] if the frame is incomplete, magic is invalid,
     /// or CRC32 checksum does not match.
     pub fn decode(bytes: &[u8]) -> Result<(Self, usize)> {
         if bytes.len() < IPC_FRAME_HEADER_SIZE {
-            return Err(Error::WorkerIpcError {
+            return Err(MsiError::WorkerIpcError {
                 reason: format!(
                     "Incomplete IPC frame header: expected at least {IPC_FRAME_HEADER_SIZE} bytes, got {}",
                     bytes.len()
@@ -128,7 +128,7 @@ impl IpcFrame {
         }
 
         if bytes[0..6] != IPC_FRAME_MAGIC {
-            return Err(Error::WorkerIpcError {
+            return Err(MsiError::WorkerIpcError {
                 reason: "Invalid IPC frame magic header".to_string(),
             });
         }
@@ -139,7 +139,7 @@ impl IpcFrame {
 
         let total_frame_len = IPC_FRAME_HEADER_SIZE + payload_len;
         if bytes.len() < total_frame_len {
-            return Err(Error::WorkerIpcError {
+            return Err(MsiError::WorkerIpcError {
                 reason: format!(
                     "Incomplete IPC frame payload: expected {total_frame_len} bytes, got {}",
                     bytes.len()
@@ -155,7 +155,7 @@ impl IpcFrame {
         let actual_crc = compute_crc32(&payload);
 
         if actual_crc != expected_crc {
-            return Err(Error::WorkerIpcError {
+            return Err(MsiError::WorkerIpcError {
                 reason: format!(
                     "IPC frame CRC32 mismatch: expected 0x{expected_crc:08X}, computed 0x{actual_crc:08X}"
                 ),
@@ -305,10 +305,10 @@ impl WorkerMessage {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::WorkerIpcError`] on corrupt payload or unexpected opcode.
+    /// Returns [`MsiError::WorkerIpcError`] on corrupt payload or unexpected opcode.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
         if bytes.is_empty() {
-            return Err(Error::WorkerIpcError {
+            return Err(MsiError::WorkerIpcError {
                 reason: "Empty worker message payload".to_string(),
             });
         }
@@ -325,7 +325,7 @@ impl WorkerMessage {
                 let q_len = read_u32(bytes, &mut offset)? as usize;
                 let q_bytes = read_slice(bytes, &mut offset, q_len)?;
                 let quarantine_dir =
-                    String::from_utf8(q_bytes).map_err(|e| Error::WorkerIpcError {
+                    String::from_utf8(q_bytes).map_err(|e| MsiError::WorkerIpcError {
                         reason: format!("Invalid UTF-8 quarantine path: {e}"),
                     })?;
                 Ok(Self::ExecuteScript {
@@ -338,7 +338,7 @@ impl WorkerMessage {
                 let q_len = read_u32(bytes, &mut offset)? as usize;
                 let q_bytes = read_slice(bytes, &mut offset, q_len)?;
                 let quarantine_dir =
-                    String::from_utf8(q_bytes).map_err(|e| Error::WorkerIpcError {
+                    String::from_utf8(q_bytes).map_err(|e| MsiError::WorkerIpcError {
                         reason: format!("Invalid UTF-8 quarantine path: {e}"),
                     })?;
                 Ok(Self::CommitTransaction { quarantine_dir })
@@ -349,7 +349,7 @@ impl WorkerMessage {
                 let q_len = read_u32(bytes, &mut offset)? as usize;
                 let q_bytes = read_slice(bytes, &mut offset, q_len)?;
                 let quarantine_dir =
-                    String::from_utf8(q_bytes).map_err(|e| Error::WorkerIpcError {
+                    String::from_utf8(q_bytes).map_err(|e| MsiError::WorkerIpcError {
                         reason: format!("Invalid UTF-8 quarantine path: {e}"),
                     })?;
                 Ok(Self::RollbackTransaction {
@@ -362,7 +362,7 @@ impl WorkerMessage {
                 let total = read_u32(bytes, &mut offset)?;
                 let p_len = read_u32(bytes, &mut offset)? as usize;
                 let p_bytes = read_slice(bytes, &mut offset, p_len)?;
-                let phase = String::from_utf8(p_bytes).map_err(|e| Error::WorkerIpcError {
+                let phase = String::from_utf8(p_bytes).map_err(|e| MsiError::WorkerIpcError {
                     reason: format!("Invalid UTF-8 phase description: {e}"),
                 })?;
                 Ok(Self::ProgressUpdate {
@@ -373,7 +373,7 @@ impl WorkerMessage {
             }
             5 => {
                 if offset >= bytes.len() {
-                    return Err(Error::WorkerIpcError {
+                    return Err(MsiError::WorkerIpcError {
                         reason: "Truncated WorkerResponse payload".to_string(),
                     });
                 }
@@ -382,7 +382,7 @@ impl WorkerMessage {
                 let code = read_i32(bytes, &mut offset)?;
                 let m_len = read_u32(bytes, &mut offset)? as usize;
                 let m_bytes = read_slice(bytes, &mut offset, m_len)?;
-                let message = String::from_utf8(m_bytes).map_err(|e| Error::WorkerIpcError {
+                let message = String::from_utf8(m_bytes).map_err(|e| MsiError::WorkerIpcError {
                     reason: format!("Invalid UTF-8 response message: {e}"),
                 })?;
                 Ok(Self::WorkerResponse {
@@ -391,7 +391,7 @@ impl WorkerMessage {
                     message,
                 })
             }
-            other => Err(Error::WorkerIpcError {
+            other => Err(MsiError::WorkerIpcError {
                 reason: format!("Unknown worker message opcode: {other}"),
             }),
         }
@@ -401,7 +401,7 @@ impl WorkerMessage {
 /// Helper reading a 32-bit big-endian unsigned integer from slice.
 fn read_u32(bytes: &[u8], offset: &mut usize) -> Result<u32> {
     if *offset + 4 > bytes.len() {
-        return Err(Error::WorkerIpcError {
+        return Err(MsiError::WorkerIpcError {
             reason: "Truncated u32 field in worker message".to_string(),
         });
     }
@@ -414,7 +414,7 @@ fn read_u32(bytes: &[u8], offset: &mut usize) -> Result<u32> {
 /// Helper reading a 32-bit big-endian signed integer from slice.
 fn read_i32(bytes: &[u8], offset: &mut usize) -> Result<i32> {
     if *offset + 4 > bytes.len() {
-        return Err(Error::WorkerIpcError {
+        return Err(MsiError::WorkerIpcError {
             reason: "Truncated i32 field in worker message".to_string(),
         });
     }
@@ -427,7 +427,7 @@ fn read_i32(bytes: &[u8], offset: &mut usize) -> Result<i32> {
 /// Helper reading a subslice of bytes.
 fn read_slice(bytes: &[u8], offset: &mut usize, len: usize) -> Result<Vec<u8>> {
     if *offset + len > bytes.len() {
-        return Err(Error::WorkerIpcError {
+        return Err(MsiError::WorkerIpcError {
             reason: format!(
                 "Truncated slice in worker message: needed {len} bytes, only {} available",
                 bytes.len() - *offset
@@ -486,7 +486,7 @@ impl IpcSocketEndpoint {
 ///
 /// # Errors
 ///
-/// Returns [`Error::WorkerIpcError`] or [`Error::Io`] on protocol or transmission errors.
+/// Returns [`MsiError::WorkerIpcError`] or [`MsiError::Io`] on protocol or transmission errors.
 pub fn handle_ipc_stream<R: Read, W: Write>(
     mut reader: R,
     mut writer: W,
@@ -509,7 +509,7 @@ fn handle_ipc_stream_internal(
             Ok(0) => break,
             Ok(n) => n,
             Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(e) => return Err(Error::Io(format!("Worker socket read error: {e}"))),
+            Err(e) => return Err(MsiError::Io(format!("Worker socket read error: {e}"))),
         };
         buffer.extend_from_slice(&chunk[..bytes_read]);
 
@@ -565,7 +565,7 @@ fn handle_ipc_stream_internal(
                     writer.write_all(&resp_frame)?;
                     writer.flush()?;
                 }
-                Err(Error::WorkerIpcError { reason })
+                Err(MsiError::WorkerIpcError { reason })
                     if reason.contains("Incomplete IPC frame") =>
                 {
                     break;
@@ -879,7 +879,7 @@ mod tests {
         )
         .is_ok());
 
-        // Test stream handling with invalid frame (bad magic, decode fails with Error::WorkerIpcError)
+        // Test stream handling with invalid frame (bad magic, decode fails with MsiError::WorkerIpcError)
         let mut invalid_frame_input = Vec::new();
         invalid_frame_input.extend_from_slice(b"BADMAGIC");
         invalid_frame_input.extend_from_slice(&10u32.to_be_bytes());

@@ -14,7 +14,7 @@ use crate::database::tables::types::{
     generate_deterministic_id, ComponentGuid, ComponentName, DirectoryId, FeatureName, FileKey,
     PropertyName,
 };
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::wix::schema::WixSchemaVersion;
 use crate::wix::wixobj::{
     IntermediateSection, IntermediateTable, Reference, SectionType, SourceSpan, Symbol, WixObject,
@@ -122,7 +122,7 @@ impl Compiler {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::WixCompiler`] if any mandatory attribute or element structure is invalid.
+    /// Returns [`MsiError::WixCompiler`] if any mandatory attribute or element structure is invalid.
     pub fn compile(&self, root: &XmlNode) -> Result<WixObject> {
         let mut obj = WixObject::new();
 
@@ -422,10 +422,11 @@ impl Compiler {
         for child in &node.children {
             match child.tag.as_str() {
                 "Directory" => {
-                    let dir_id_str = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
-                        element: "Directory".to_string(),
-                        message: "missing required 'Id' attribute".to_string(),
-                    })?;
+                    let dir_id_str =
+                        child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
+                            element: "Directory".to_string(),
+                            message: "missing required 'Id' attribute".to_string(),
+                        })?;
                     let dir_name = child.attribute("Name").unwrap_or(dir_id_str);
 
                     let dir_id = DirectoryId::new(dir_id_str)?;
@@ -453,10 +454,11 @@ impl Compiler {
                     self.compile_element_tree(child, Some(dir_id_str), section, tables)?;
                 }
                 "Component" => {
-                    let comp_id_str = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
-                        element: "Component".to_string(),
-                        message: "missing required 'Id' attribute".to_string(),
-                    })?;
+                    let comp_id_str =
+                        child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
+                            element: "Component".to_string(),
+                            message: "missing required 'Id' attribute".to_string(),
+                        })?;
                     let comp_name = ComponentName::new(comp_id_str)?;
                     let dir_id = parent_id.map_or_else(
                         || DirectoryId::from_static("TARGETDIR"),
@@ -554,10 +556,11 @@ impl Compiler {
                     self.compile_element_tree(child, Some(comp_name.as_str()), section, tables)?;
                 }
                 "File" => {
-                    let file_id_str = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
-                        element: "File".to_string(),
-                        message: "missing required 'Id' attribute".to_string(),
-                    })?;
+                    let file_id_str =
+                        child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
+                            element: "File".to_string(),
+                            message: "missing required 'Id' attribute".to_string(),
+                        })?;
                     let file_name = child
                         .attribute("Name")
                         .or_else(|| child.attribute("Source"))
@@ -718,10 +721,11 @@ impl Compiler {
                     }
                 }
                 "Feature" => {
-                    let feat_id_str = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
-                        element: "Feature".to_string(),
-                        message: "missing required 'Id' attribute".to_string(),
-                    })?;
+                    let feat_id_str =
+                        child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
+                            element: "Feature".to_string(),
+                            message: "missing required 'Id' attribute".to_string(),
+                        })?;
                     let title = child.attribute("Title").map(ToString::to_string);
                     let desc = child.attribute("Description").map(ToString::to_string);
                     let level: i16 = child
@@ -849,20 +853,22 @@ impl Compiler {
                     self.compile_element_tree(child, Some(feat_id_str), section, tables)?;
                 }
                 "DirectoryRef" => {
-                    let dir_id_str = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
-                        element: "DirectoryRef".to_string(),
-                        message: "missing required 'Id' attribute".to_string(),
-                    })?;
+                    let dir_id_str =
+                        child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
+                            element: "DirectoryRef".to_string(),
+                            message: "missing required 'Id' attribute".to_string(),
+                        })?;
                     let dir_id = DirectoryId::new(dir_id_str)?;
                     let span = SourceSpan::new(child.line, child.column);
                     section.add_reference(Reference::with_span("Directory", dir_id.as_str(), span));
                     self.compile_element_tree(child, Some(dir_id.as_str()), section, tables)?;
                 }
                 "ComponentGroup" => {
-                    let group_id_str = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
-                        element: "ComponentGroup".to_string(),
-                        message: "missing required 'Id' attribute".to_string(),
-                    })?;
+                    let group_id_str =
+                        child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
+                            element: "ComponentGroup".to_string(),
+                            message: "missing required 'Id' attribute".to_string(),
+                        })?;
                     let span = SourceSpan::new(child.line, child.column);
                     section.add_symbol(Symbol::with_span("ComponentGroup", group_id_str, span));
                     let comp_dir = child.attribute("Directory").or(parent_id);
@@ -925,10 +931,11 @@ impl Compiler {
                     self.compile_element_tree(child, comp_dir, section, tables)?;
                 }
                 "ComponentGroupRef" => {
-                    let group_ref_id = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
-                        element: "ComponentGroupRef".to_string(),
-                        message: "missing required 'Id' attribute".to_string(),
-                    })?;
+                    let group_ref_id =
+                        child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
+                            element: "ComponentGroupRef".to_string(),
+                            message: "missing required 'Id' attribute".to_string(),
+                        })?;
                     let span = SourceSpan::new(child.line, child.column);
                     section.add_reference(Reference::with_span(
                         "ComponentGroup",
@@ -937,44 +944,49 @@ impl Compiler {
                     ));
                 }
                 "PackageGroup" => {
-                    let group_id_str = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
-                        element: "PackageGroup".to_string(),
-                        message: "missing required 'Id' attribute".to_string(),
-                    })?;
+                    let group_id_str =
+                        child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
+                            element: "PackageGroup".to_string(),
+                            message: "missing required 'Id' attribute".to_string(),
+                        })?;
                     let span = SourceSpan::new(child.line, child.column);
                     section.add_symbol(Symbol::with_span("PackageGroup", group_id_str, span));
                     self.compile_element_tree(child, parent_id, section, tables)?;
                 }
                 "PackageGroupRef" => {
-                    let group_ref_id = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
-                        element: "PackageGroupRef".to_string(),
-                        message: "missing required 'Id' attribute".to_string(),
-                    })?;
+                    let group_ref_id =
+                        child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
+                            element: "PackageGroupRef".to_string(),
+                            message: "missing required 'Id' attribute".to_string(),
+                        })?;
                     let span = SourceSpan::new(child.line, child.column);
                     section.add_reference(Reference::with_span("PackageGroup", group_ref_id, span));
                 }
                 "FeatureGroup" => {
-                    let group_id_str = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
-                        element: "FeatureGroup".to_string(),
-                        message: "missing required 'Id' attribute".to_string(),
-                    })?;
+                    let group_id_str =
+                        child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
+                            element: "FeatureGroup".to_string(),
+                            message: "missing required 'Id' attribute".to_string(),
+                        })?;
                     let span = SourceSpan::new(child.line, child.column);
                     section.add_symbol(Symbol::with_span("FeatureGroup", group_id_str, span));
                     self.compile_element_tree(child, parent_id, section, tables)?;
                 }
                 "FeatureGroupRef" => {
-                    let group_ref_id = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
-                        element: "FeatureGroupRef".to_string(),
-                        message: "missing required 'Id' attribute".to_string(),
-                    })?;
+                    let group_ref_id =
+                        child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
+                            element: "FeatureGroupRef".to_string(),
+                            message: "missing required 'Id' attribute".to_string(),
+                        })?;
                     let span = SourceSpan::new(child.line, child.column);
                     section.add_reference(Reference::with_span("FeatureGroup", group_ref_id, span));
                 }
                 "FeatureRef" => {
-                    let feat_ref_id = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
-                        element: "FeatureRef".to_string(),
-                        message: "missing required 'Id' attribute".to_string(),
-                    })?;
+                    let feat_ref_id =
+                        child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
+                            element: "FeatureRef".to_string(),
+                            message: "missing required 'Id' attribute".to_string(),
+                        })?;
                     let feat_name = FeatureName::new(feat_ref_id)?;
                     let feat_span = SourceSpan::new(child.line, child.column);
                     section.add_reference(Reference::with_span("Feature", feat_ref_id, feat_span));
@@ -1119,10 +1131,11 @@ impl Compiler {
                     self.compile_element_tree(child, parent_id, section, tables)?;
                 }
                 "SetDirectory" => {
-                    let dir_id_str = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
-                        element: "SetDirectory".to_string(),
-                        message: "missing required 'Id' attribute".to_string(),
-                    })?;
+                    let dir_id_str =
+                        child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
+                            element: "SetDirectory".to_string(),
+                            message: "missing required 'Id' attribute".to_string(),
+                        })?;
                     let value = child.attribute("Value").unwrap_or("");
                     let action_name = child
                         .attribute("Action")
@@ -1176,7 +1189,7 @@ impl Compiler {
                         .push_record(row.to_record());
                 }
                 "RemoveFolder" => {
-                    let rem_id = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
+                    let rem_id = child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
                         element: "RemoveFolder".to_string(),
                         message: "missing required 'Id' attribute".to_string(),
                     })?;
@@ -1207,7 +1220,7 @@ impl Compiler {
                         .push_record(row.to_record());
                 }
                 "Environment" => {
-                    let env_id = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
+                    let env_id = child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
                         element: "Environment".to_string(),
                         message: "missing required 'Id' attribute".to_string(),
                     })?;
@@ -1308,7 +1321,7 @@ impl Compiler {
                     }
                 }
                 "WixVariable" => {
-                    let var_id = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
+                    let var_id = child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
                         element: "WixVariable".to_string(),
                         message: "missing required 'Id' attribute".to_string(),
                     })?;
@@ -1332,10 +1345,11 @@ impl Compiler {
                         .push_record(rec);
                 }
                 "Property" => {
-                    let prop_id_str = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
-                        element: "Property".to_string(),
-                        message: "missing required 'Id' attribute".to_string(),
-                    })?;
+                    let prop_id_str =
+                        child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
+                            element: "Property".to_string(),
+                            message: "missing required 'Id' attribute".to_string(),
+                        })?;
                     let prop_val = child.attribute("Value").unwrap_or("");
 
                     let prop_name = PropertyName::new(prop_id_str)?;
@@ -1890,7 +1904,7 @@ impl Compiler {
         section: &mut IntermediateSection,
         tables: &mut HashMap<String, IntermediateTable>,
     ) -> Result<()> {
-        let id = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
+        let id = child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
             element: "EmbeddedChainer".to_string(),
             message: "missing required 'Id' attribute".to_string(),
         })?;
@@ -1958,7 +1972,7 @@ impl Compiler {
         section: &mut IntermediateSection,
         tables: &mut HashMap<String, IntermediateTable>,
     ) -> Result<()> {
-        let db_id = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
+        let db_id = child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
             element: "SqlDatabase".to_string(),
             message: "missing required 'Id' attribute".to_string(),
         })?;
@@ -2014,7 +2028,7 @@ impl Compiler {
         section: &mut IntermediateSection,
         tables: &mut HashMap<String, IntermediateTable>,
     ) -> Result<()> {
-        let str_id = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
+        let str_id = child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
             element: "SqlString".to_string(),
             message: "missing required 'Id' attribute".to_string(),
         })?;
@@ -2034,7 +2048,7 @@ impl Compiler {
         };
 
         if sql_text.is_empty() {
-            return Err(Error::WixCompiler {
+            return Err(MsiError::WixCompiler {
                 element: "SqlString".to_string(),
                 message: format!("missing SQL statement text in SqlString '{str_id}'"),
             });
@@ -2088,7 +2102,7 @@ impl Compiler {
         section: &mut IntermediateSection,
         tables: &mut HashMap<String, IntermediateTable>,
     ) -> Result<()> {
-        let script_id = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
+        let script_id = child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
             element: "SqlScript".to_string(),
             message: "missing required 'Id' attribute".to_string(),
         })?;
@@ -2152,7 +2166,7 @@ impl Compiler {
         section: &mut IntermediateSection,
         tables: &mut HashMap<String, IntermediateTable>,
     ) -> Result<()> {
-        let ca_id = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
+        let ca_id = child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
             element: "CustomAction".to_string(),
             message: "missing required 'Id' attribute".to_string(),
         })?;
@@ -2244,7 +2258,7 @@ impl Compiler {
         section: &mut IntermediateSection,
         tables: &mut HashMap<String, IntermediateTable>,
     ) -> Result<()> {
-        let dlg_id = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
+        let dlg_id = child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
             element: "Dialog".to_string(),
             message: "missing required 'Id' attribute".to_string(),
         })?;
@@ -2313,7 +2327,7 @@ impl Compiler {
         section: &mut IntermediateSection,
         tables: &mut HashMap<String, IntermediateTable>,
     ) -> Result<()> {
-        let ctrl_id = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
+        let ctrl_id = child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
             element: "Control".to_string(),
             message: "missing required 'Id' attribute".to_string(),
         })?;
@@ -4810,7 +4824,7 @@ mod tests {
             _section: &mut IntermediateSection,
             _tables: &mut HashMap<String, IntermediateTable>,
         ) -> Result<()> {
-            Err(Error::WixExtension {
+            Err(MsiError::WixExtension {
                 extension: "FailingMockExtension".to_string(),
                 message: "fail".to_string(),
             })

@@ -4,7 +4,7 @@
 //! API mocking for services unavailable prior to first boot, and disk-level
 //! rollback journaling for atomic recovery.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::platform::disk::BlockDevicePath;
 use std::path::{Path, PathBuf};
 
@@ -183,7 +183,7 @@ impl OfflineChrootSandbox {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::SysrootMountError`] if creating mount mountpoints fails.
+    /// Returns [`MsiError::SysrootMountError`] if creating mount mountpoints fails.
     pub fn setup_environment(&mut self) -> Result<()> {
         let dev = self.sysroot.join("dev");
         let proc = self.sysroot.join("proc");
@@ -191,7 +191,7 @@ impl OfflineChrootSandbox {
 
         for dir in &[&dev, &proc, &sys] {
             if let Err(e) = std::fs::create_dir_all(dir) {
-                return Err(Error::SysrootMountError {
+                return Err(MsiError::SysrootMountError {
                     path: dir.display().to_string(),
                     reason: format!("failed to create chroot pseudofs directory: {e}"),
                 });
@@ -206,7 +206,7 @@ impl OfflineChrootSandbox {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::SysrootMountError`] if cleanup fails.
+    /// Returns [`MsiError::SysrootMountError`] if cleanup fails.
     pub const fn teardown(&mut self) -> Result<()> {
         self.is_active = false;
         Ok(())
@@ -238,7 +238,7 @@ impl OfflineChrootSandbox {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::ExecutionFailed`] if spawning or waiting on the sandboxed child fails.
+    /// Returns [`MsiError::ExecutionFailed`] if spawning or waiting on the sandboxed child fails.
     pub fn execute_command(&self, program: &str, args: &[String]) -> Result<std::process::Output> {
         #[cfg(unix)]
         {
@@ -266,7 +266,7 @@ impl OfflineChrootSandbox {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::ExecutionFailed`] if spawning or waiting on the sandboxed child fails.
+    /// Returns [`MsiError::ExecutionFailed`] if spawning or waiting on the sandboxed child fails.
     pub fn execute_command_internal(
         &self,
         program: &str,
@@ -289,7 +289,7 @@ impl OfflineChrootSandbox {
                 cmd.arg(&self.sysroot);
                 cmd.arg(program);
                 cmd.args(args);
-                let out = cmd.output().map_err(|e| Error::ExecutionFailed {
+                let out = cmd.output().map_err(|e| MsiError::ExecutionFailed {
                     action: format!("chroot {program}"),
                     return_code: 1,
                     message: format!("chroot execution failed: {e}"),
@@ -309,7 +309,7 @@ impl OfflineChrootSandbox {
         let mut cmd = std::process::Command::new(&prog_to_run);
         cmd.args(args);
         cmd.current_dir(&self.sysroot);
-        cmd.output().map_err(|e| Error::ExecutionFailed {
+        cmd.output().map_err(|e| MsiError::ExecutionFailed {
             action: format!("sandbox {program}"),
             return_code: 1,
             message: format!("sandbox execution failed: {e}"),
@@ -425,7 +425,7 @@ impl BareMetalRollbackJournal {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::RollbackFailed`] if opening, seeking, or writing zeroes fails.
+    /// Returns [`MsiError::RollbackFailed`] if opening, seeking, or writing zeroes fails.
     pub fn wipe_sector_range(
         device_path: &Path,
         start_lba: u64,
@@ -437,7 +437,7 @@ impl BareMetalRollbackJournal {
                 .read(true)
                 .write(true)
                 .open(device_path)
-                .map_err(|e| Error::RollbackFailed {
+                .map_err(|e| MsiError::RollbackFailed {
                     action: "wipe_sector_range".to_string(),
                     reason: format!(
                         "failed to open '{}' for sector wipe: {e}",
@@ -445,7 +445,7 @@ impl BareMetalRollbackJournal {
                     ),
                 })?;
             Self::wipe_stream(&mut file, start_lba, count, sector_size).map_err(|e| {
-                Error::RollbackFailed {
+                MsiError::RollbackFailed {
                     action: "wipe_sector_range".to_string(),
                     reason: format!("zero write failed on '{}': {e}", device_path.display()),
                 }
@@ -493,7 +493,7 @@ impl BareMetalRollbackJournal {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::RollbackFailed`] if any critical rollback action fails.
+    /// Returns [`MsiError::RollbackFailed`] if any critical rollback action fails.
     pub fn execute_rollback(&mut self) -> Result<()> {
         while let Some(action) = self.actions.pop() {
             match action {

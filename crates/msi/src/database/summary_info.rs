@@ -1,6 +1,6 @@
 //! OLE Property Set Summary Information Stream implementation ([MS-OLEPS]).
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use std::fmt;
 use std::str::FromStr;
 
@@ -146,7 +146,7 @@ impl Architecture {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidArchitecture`] if the string is unrecognized.
+    /// Returns [`MsiError::InvalidArchitecture`] if the string is unrecognized.
     pub fn parse(s: &str) -> Result<Self> {
         let lower = s.trim().to_ascii_lowercase();
         match lower.as_str() {
@@ -155,7 +155,7 @@ impl Architecture {
             "x64" | "x86_64" | "amd64" => Ok(Self::X64),
             "arm64" | "aarch64" => Ok(Self::Arm64),
             "ia64" | "intel64" | "itanium" => Ok(Self::Ia64),
-            _ => Err(Error::InvalidArchitecture {
+            _ => Err(MsiError::InvalidArchitecture {
                 name: s.to_string(),
             }),
         }
@@ -169,7 +169,7 @@ impl fmt::Display for Architecture {
 }
 
 impl FromStr for Architecture {
-    type Err = Error;
+    type Err = MsiError;
 
     fn from_str(s: &str) -> Result<Self> {
         Self::parse(s)
@@ -218,11 +218,11 @@ impl SummaryTemplate {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidSummaryTemplate`] if the platform or language IDs cannot be parsed.
+    /// Returns [`MsiError::InvalidSummaryTemplate`] if the platform or language IDs cannot be parsed.
     pub fn parse(s: &str) -> Result<Self> {
         let trimmed = s.trim();
         if trimmed.is_empty() {
-            return Err(Error::InvalidSummaryTemplate {
+            return Err(MsiError::InvalidSummaryTemplate {
                 template: s.to_string(),
                 reason: "template string cannot be empty".to_string(),
             });
@@ -236,7 +236,7 @@ impl SummaryTemplate {
         let architecture = if platform_str.is_empty() {
             Architecture::X86
         } else {
-            Architecture::parse(platform_str).map_err(|e| Error::InvalidSummaryTemplate {
+            Architecture::parse(platform_str).map_err(|e| MsiError::InvalidSummaryTemplate {
                 template: s.to_string(),
                 reason: format!("{e}"),
             })?
@@ -252,7 +252,7 @@ impl SummaryTemplate {
                 let lcid =
                     trimmed_part
                         .parse::<u16>()
-                        .map_err(|_| Error::InvalidSummaryTemplate {
+                        .map_err(|_| MsiError::InvalidSummaryTemplate {
                             template: s.to_string(),
                             reason: format!("invalid numeric language ID '{trimmed_part}'"),
                         })?;
@@ -507,11 +507,11 @@ impl SummaryInfo {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidSummaryInfo`] if the stream header or property set is malformed.
+    /// Returns [`MsiError::InvalidSummaryInfo`] if the stream header or property set is malformed.
     #[allow(clippy::too_many_lines, clippy::cast_possible_wrap)]
     pub fn parse(bytes: &[u8]) -> Result<Self> {
         if bytes.len() < 48 {
-            return Err(Error::InvalidSummaryInfo {
+            return Err(MsiError::InvalidSummaryInfo {
                 reason: format!(
                     "stream truncated: {} bytes (expected at least 48)",
                     bytes.len()
@@ -521,14 +521,14 @@ impl SummaryInfo {
 
         let byte_order = u16::from_le_bytes([bytes[0], bytes[1]]);
         if byte_order != OLEPS_BYTE_ORDER {
-            return Err(Error::InvalidSummaryInfo {
+            return Err(MsiError::InvalidSummaryInfo {
                 reason: format!("invalid byte order mark 0x{byte_order:04X}"),
             });
         }
 
         let num_sections = u32::from_le_bytes([bytes[24], bytes[25], bytes[26], bytes[27]]);
         if num_sections == 0 {
-            return Err(Error::InvalidSummaryInfo {
+            return Err(MsiError::InvalidSummaryInfo {
                 reason: "zero sections in property set".to_string(),
             });
         }
@@ -536,14 +536,14 @@ impl SummaryInfo {
         let section_offset =
             u32::from_le_bytes([bytes[44], bytes[45], bytes[46], bytes[47]]) as usize;
         if section_offset >= bytes.len() {
-            return Err(Error::InvalidSummaryInfo {
+            return Err(MsiError::InvalidSummaryInfo {
                 reason: "section offset extends beyond stream boundary".to_string(),
             });
         }
 
         let section_bytes = &bytes[section_offset..];
         if section_bytes.len() < 8 {
-            return Err(Error::InvalidSummaryInfo {
+            return Err(MsiError::InvalidSummaryInfo {
                 reason: "section header truncated".to_string(),
             });
         }

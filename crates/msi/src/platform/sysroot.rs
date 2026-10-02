@@ -3,7 +3,7 @@
 //! Provides sysroot mount orchestration, mounting target OS and ESP partitions,
 //! automatic RAII unmount teardown, directory tree scaffolding, and target disk space evaluation.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::platform::disk::BlockDevicePath;
 use crate::platform::paths::TargetOs;
 use std::path::{Path, PathBuf};
@@ -111,13 +111,13 @@ impl SysrootMountGuard {
             use std::mem::size_of;
 
             let c_src = CString::new(source.as_os_str().as_encoded_bytes()).map_err(|e| {
-                Error::SysrootMountError {
+                MsiError::SysrootMountError {
                     path: source.display().to_string(),
                     reason: format!("invalid mount source: {e}"),
                 }
             })?;
             let c_tgt = CString::new(target.as_os_str().as_encoded_bytes()).map_err(|e| {
-                Error::SysrootMountError {
+                MsiError::SysrootMountError {
                     path: target.display().to_string(),
                     reason: format!("invalid mount target: {e}"),
                 }
@@ -142,7 +142,7 @@ impl SysrootMountGuard {
             };
             if ret != 0 {
                 let err = std::io::Error::last_os_error();
-                return Err(Error::SysrootMountError {
+                return Err(MsiError::SysrootMountError {
                     path: target.display().to_string(),
                     reason: format!("mount syscall failed: {err}"),
                 });
@@ -164,7 +164,7 @@ impl SysrootMountGuard {
         {
             use std::ffi::CString;
             let c_tgt = CString::new(target.as_os_str().as_encoded_bytes()).map_err(|e| {
-                Error::SysrootMountError {
+                MsiError::SysrootMountError {
                     path: target.display().to_string(),
                     reason: format!("invalid unmount target: {e}"),
                 }
@@ -178,7 +178,7 @@ impl SysrootMountGuard {
                 let ret_lazy = unsafe { libc::umount2(c_tgt.as_ptr(), libc::MNT_DETACH) };
                 if ret_lazy != 0 {
                     let err = std::io::Error::last_os_error();
-                    return Err(Error::SysrootMountError {
+                    return Err(MsiError::SysrootMountError {
                         path: target.display().to_string(),
                         reason: format!("unmount syscall failed: {err}"),
                     });
@@ -198,9 +198,9 @@ impl SysrootMountGuard {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::SysrootMountError`] if creating scratch directories or mounting fails.
+    /// Returns [`MsiError::SysrootMountError`] if creating scratch directories or mounting fails.
     pub fn mount_active(&mut self) -> Result<()> {
-        std::fs::create_dir_all(&self.scratch_dir).map_err(|e| Error::SysrootMountError {
+        std::fs::create_dir_all(&self.scratch_dir).map_err(|e| MsiError::SysrootMountError {
             path: self.scratch_dir.display().to_string(),
             reason: format!("failed to create sysroot scratch directory: {e}"),
         })?;
@@ -212,7 +212,7 @@ impl SysrootMountGuard {
 
         // If ESP device is specified, stage mount path under target boot
         if let (Some(ref esp_path), Some(ref esp_dev)) = (&self.esp_mount_dir, &self.esp_device) {
-            std::fs::create_dir_all(esp_path).map_err(|e| Error::SysrootMountError {
+            std::fs::create_dir_all(esp_path).map_err(|e| MsiError::SysrootMountError {
                 path: esp_path.display().to_string(),
                 reason: format!("failed to create ESP sub-mount directory: {e}"),
             })?;
@@ -240,7 +240,7 @@ impl SysrootMountGuard {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::SysrootMountError`] if creating scratch directories fails.
+    /// Returns [`MsiError::SysrootMountError`] if creating scratch directories fails.
     pub fn mount(
         target_device: BlockDevicePath,
         esp_device: Option<BlockDevicePath>,
@@ -255,7 +255,7 @@ impl SysrootMountGuard {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::SysrootMountError`] if creating mountpoints fails.
+    /// Returns [`MsiError::SysrootMountError`] if creating mountpoints fails.
     pub fn mount_pseudofs(&mut self) -> Result<()> {
         let pseudofs = [
             ("dev", "/dev"),
@@ -267,7 +267,7 @@ impl SysrootMountGuard {
 
         for (rel, host_src) in pseudofs {
             let target_sub = self.scratch_dir.join(rel);
-            std::fs::create_dir_all(&target_sub).map_err(|e| Error::SysrootMountError {
+            std::fs::create_dir_all(&target_sub).map_err(|e| MsiError::SysrootMountError {
                 path: target_sub.display().to_string(),
                 reason: format!("failed to create pseudofs mountpoint '{rel}': {e}"),
             })?;
@@ -288,7 +288,7 @@ impl SysrootMountGuard {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::SysrootMountError`] if unmount operations fail.
+    /// Returns [`MsiError::SysrootMountError`] if unmount operations fail.
     pub fn unmount_all(&mut self) -> Result<()> {
         if !self.is_mounted {
             return Ok(());
@@ -343,10 +343,10 @@ impl SysrootMountGuard {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::SysrootMountError`] if directory creation fails.
+    /// Returns [`MsiError::SysrootMountError`] if directory creation fails.
     pub fn create_essential_hierarchy(&self, target_os: TargetOs) -> Result<()> {
         if !self.is_mounted {
-            return Err(Error::SysrootMountError {
+            return Err(MsiError::SysrootMountError {
                 path: self.scratch_dir.display().to_string(),
                 reason: "cannot create hierarchy on unmounted sysroot".to_string(),
             });
@@ -396,7 +396,7 @@ impl SysrootMountGuard {
 
         for d in dirs {
             let full = self.scratch_dir.join(d);
-            std::fs::create_dir_all(&full).map_err(|e| Error::SysrootMountError {
+            std::fs::create_dir_all(&full).map_err(|e| MsiError::SysrootMountError {
                 path: full.display().to_string(),
                 reason: format!("failed to create base sysroot directory '{d}': {e}"),
             })?;
@@ -413,10 +413,10 @@ impl SysrootMountGuard {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::SysrootMountError`] if filesystem stats query fails.
+    /// Returns [`MsiError::SysrootMountError`] if filesystem stats query fails.
     pub fn evaluate_available_space(&self) -> Result<u64> {
         if !self.scratch_dir.exists() {
-            return Err(Error::SysrootMountError {
+            return Err(MsiError::SysrootMountError {
                 path: self.scratch_dir.display().to_string(),
                 reason: "sysroot target path does not exist".to_string(),
             });

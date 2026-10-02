@@ -5,7 +5,7 @@
 //! - Reads and extracts intermediate sections and symbols for multi-package consumption.
 //! - Seamlessly integrates with the [`crate::wix::linker::Linker`] linking pipeline with symbol dead-stripping.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::wix::wixobj::{IntermediateSection, WixObject};
 use std::collections::HashMap;
 use std::fs;
@@ -124,18 +124,18 @@ impl WixLibrary {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] on corrupted format or mismatched magic signature.
+    /// Returns [`MsiError::Validation`] on corrupted format or mismatched magic signature.
     #[allow(clippy::too_many_lines)]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
         if bytes.len() < 12 {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "WixLibrary".to_string(),
                 reason: "library buffer too short".to_string(),
             });
         }
 
         if &bytes[0..8] != WIXLIB_MAGIC {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "WixLibrary".to_string(),
                 reason: "invalid wixlib magic header".to_string(),
             });
@@ -149,7 +149,7 @@ impl WixLibrary {
 
         for _ in 0..count {
             if offset + 4 > bytes.len() {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "WixLibrary".to_string(),
                     reason: "unexpected EOF reading object payload size".to_string(),
                 });
@@ -164,7 +164,7 @@ impl WixLibrary {
             offset += 4;
 
             if offset + obj_len > bytes.len() {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "WixLibrary".to_string(),
                     reason: "unexpected EOF reading object payload bytes".to_string(),
                 });
@@ -179,7 +179,7 @@ impl WixLibrary {
         let mut bound_files = HashMap::new();
         if offset < bytes.len() {
             if offset + 4 > bytes.len() {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "WixLibrary".to_string(),
                     reason: "unexpected EOF reading bound files count".to_string(),
                 });
@@ -195,7 +195,7 @@ impl WixLibrary {
 
             for _ in 0..files_count {
                 if offset + 4 > bytes.len() {
-                    return Err(Error::Validation {
+                    return Err(MsiError::Validation {
                         element: "WixLibrary".to_string(),
                         reason: "unexpected EOF reading bound file key length".to_string(),
                     });
@@ -209,7 +209,7 @@ impl WixLibrary {
                 offset += 4;
 
                 if offset + klen > bytes.len() {
-                    return Err(Error::Validation {
+                    return Err(MsiError::Validation {
                         element: "WixLibrary".to_string(),
                         reason: "unexpected EOF reading bound file key string".to_string(),
                     });
@@ -218,7 +218,7 @@ impl WixLibrary {
                 offset += klen;
 
                 if offset + 4 > bytes.len() {
-                    return Err(Error::Validation {
+                    return Err(MsiError::Validation {
                         element: "WixLibrary".to_string(),
                         reason: "unexpected EOF reading bound file data length".to_string(),
                     });
@@ -232,7 +232,7 @@ impl WixLibrary {
                 offset += 4;
 
                 if offset + dlen > bytes.len() {
-                    return Err(Error::Validation {
+                    return Err(MsiError::Validation {
                         element: "WixLibrary".to_string(),
                         reason: "unexpected EOF reading bound file data".to_string(),
                     });
@@ -258,7 +258,7 @@ impl WixLibrary {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Io`] on filesystem write failure.
+    /// Returns [`MsiError::Io`] on filesystem write failure.
     pub fn save(&self, path: &Path) -> Result<()> {
         let bytes = self.to_bytes();
         fs::write(path, bytes)?;
@@ -277,7 +277,7 @@ impl WixLibrary {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Io`] or [`Error::Validation`] on read or parsing failure.
+    /// Returns [`MsiError::Io`] or [`MsiError::Validation`] on read or parsing failure.
     pub fn open(path: &Path) -> Result<Self> {
         let bytes = fs::read(path)?;
         Self::from_bytes(&bytes)
@@ -322,7 +322,7 @@ mod tests {
 
         for res in [
             WixLibrary::from_bytes(&bytes),
-            Err(Error::Validation {
+            Err(MsiError::Validation {
                 element: "WixLibrary".to_string(),
                 reason: "simulated".to_string(),
             }),
@@ -372,7 +372,7 @@ mod tests {
         // Only 12 bytes total, so offset + 4 (16) > bytes.len() (12)
         assert_eq!(
             WixLibrary::from_bytes(&truncated_size),
-            Err(Error::Validation {
+            Err(MsiError::Validation {
                 element: "WixLibrary".to_string(),
                 reason: "unexpected EOF reading object payload size".to_string(),
             })
@@ -386,7 +386,7 @@ mod tests {
         truncated_data.extend_from_slice(&[0u8; 10]); // Only provides 10 bytes
         assert_eq!(
             WixLibrary::from_bytes(&truncated_data),
-            Err(Error::Validation {
+            Err(MsiError::Validation {
                 element: "WixLibrary".to_string(),
                 reason: "unexpected EOF reading object payload bytes".to_string(),
             })
@@ -411,7 +411,7 @@ mod tests {
         let bytes = lib.to_bytes();
         for res in [
             WixLibrary::from_bytes(&bytes),
-            Err(Error::Validation {
+            Err(MsiError::Validation {
                 element: "WixLibrary".to_string(),
                 reason: "simulated".to_string(),
             }),
@@ -468,7 +468,7 @@ mod tests {
         let legacy_lib = empty_lib[..empty_lib.len() - 4].to_vec();
         for res in [
             WixLibrary::from_bytes(&legacy_lib),
-            Err(Error::Validation {
+            Err(MsiError::Validation {
                 element: "WixLibrary".to_string(),
                 reason: "simulated".to_string(),
             }),

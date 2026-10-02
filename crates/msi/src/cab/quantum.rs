@@ -7,7 +7,7 @@
 //! - State persistence across consecutive `CFDATA` blocks within the same `CFFOLDER`.
 //! - Boundary validation and defensive bounds checking on match offsets and bitstreams.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 
 /// Minimum allowed Quantum window size in bits ($2^{10} = 1024$ bytes).
 pub const QUANTUM_MIN_WINDOW_BITS: u8 = 10;
@@ -162,7 +162,7 @@ impl<'a> ArithmeticReader<'a> {
         }
         self.ensure_bits(count);
         if self.bits_in_buf < count {
-            return Err(Error::InvalidCabData {
+            return Err(MsiError::InvalidCabData {
                 reason: "Unexpected EOF reading Quantum bitstream".to_string(),
             });
         }
@@ -240,10 +240,10 @@ impl<'a> RangeDecoder<'a> {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidCabData`] if the input stream is empty or truncated.
+    /// Returns [`MsiError::InvalidCabData`] if the input stream is empty or truncated.
     pub fn new(bytes: &'a [u8]) -> Result<Self> {
         if bytes.is_empty() {
-            return Err(Error::InvalidCabData {
+            return Err(MsiError::InvalidCabData {
                 reason: "Empty Quantum bitstream".to_string(),
             });
         }
@@ -272,7 +272,7 @@ impl<'a> RangeDecoder<'a> {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidCabData`] if bitstream reading fails.
+    /// Returns [`MsiError::InvalidCabData`] if bitstream reading fails.
     #[allow(clippy::cast_possible_truncation)]
     pub fn decode_symbol(&mut self, model: &mut AdaptiveModel) -> Result<usize> {
         let range = u64::from(self.high - self.low + 1);
@@ -446,10 +446,10 @@ impl QuantumDecompressor {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidCabData`] if window bits is out of range.
+    /// Returns [`MsiError::InvalidCabData`] if window bits is out of range.
     pub fn new(window_bits: u8) -> Result<Self> {
         if !(QUANTUM_MIN_WINDOW_BITS..=QUANTUM_MAX_WINDOW_BITS).contains(&window_bits) {
-            return Err(Error::InvalidCabData {
+            return Err(MsiError::InvalidCabData {
                 reason: format!(
                     "Invalid Quantum window bits {window_bits}; must be {QUANTUM_MIN_WINDOW_BITS}..={QUANTUM_MAX_WINDOW_BITS}"
                 ),
@@ -499,7 +499,7 @@ impl QuantumDecompressor {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidCabData`] on bitstream corruption or invalid match offsets.
+    /// Returns [`MsiError::InvalidCabData`] on bitstream corruption or invalid match offsets.
     pub fn decompress_block(
         &mut self,
         compressed: &[u8],
@@ -549,7 +549,7 @@ impl QuantumDecompressor {
                 let match_offset = base_offset + extra_val;
 
                 if match_offset > self.total_written.min(window_size) {
-                    return Err(Error::InvalidCabData {
+                    return Err(MsiError::InvalidCabData {
                         reason: format!(
                             "Invalid Quantum match offset {match_offset} exceeds available history {}",
                             self.total_written.min(window_size)
@@ -629,10 +629,10 @@ impl QuantumCompressor {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidCabData`] if window bits is out of bounds.
+    /// Returns [`MsiError::InvalidCabData`] if window bits is out of bounds.
     pub fn new(window_bits: u8) -> Result<Self> {
         if !(QUANTUM_MIN_WINDOW_BITS..=QUANTUM_MAX_WINDOW_BITS).contains(&window_bits) {
-            return Err(Error::InvalidCabData {
+            return Err(MsiError::InvalidCabData {
                 reason: format!("Invalid Quantum window bits: {window_bits}"),
             });
         }

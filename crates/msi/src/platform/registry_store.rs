@@ -7,7 +7,7 @@
 //!   and binary persistence.
 //! - Native POSIX configuration bridges: drop-in environment scripts (`/etc/profile.d/<product>.sh`, `/etc/paths.d/<product>`).
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -81,14 +81,14 @@ impl RegistryRoot {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidArgument`] if root index is invalid.
+    /// Returns [`MsiError::InvalidArgument`] if root index is invalid.
     pub fn from_u32(root: u32) -> Result<Self> {
         match root {
             HKEY_CLASSES_ROOT => Ok(Self::ClassesRoot),
             HKEY_CURRENT_USER => Ok(Self::CurrentUser),
             HKEY_LOCAL_MACHINE => Ok(Self::LocalMachine),
             HKEY_USERS => Ok(Self::Users),
-            other => Err(Error::InvalidArgument {
+            other => Err(MsiError::InvalidArgument {
                 argument: "Registry.Root".to_string(),
                 reason: format!("Unknown registry root index {other}"),
             }),
@@ -248,11 +248,11 @@ impl RegistryStore {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] if `path` is empty.
+    /// Returns [`MsiError::Validation`] if `path` is empty.
     pub fn get_shared_dll_ref(&self, path: &str) -> Result<u32> {
         let norm_path = Self::normalize_key(path);
         if norm_path.is_empty() {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "SharedDLLs.path".to_string(),
                 reason: "path cannot be empty".to_string(),
             });
@@ -282,7 +282,7 @@ impl RegistryStore {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] if `path` is empty.
+    /// Returns [`MsiError::Validation`] if `path` is empty.
     pub fn increment_shared_dll_ref(&mut self, path: &str) -> Result<u32> {
         let current = self.get_shared_dll_ref(path)?;
         let new_count = current.saturating_add(1);
@@ -312,7 +312,7 @@ impl RegistryStore {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] if `path` is empty.
+    /// Returns [`MsiError::Validation`] if `path` is empty.
     pub fn decrement_shared_dll_ref(&mut self, path: &str) -> Result<u32> {
         let current = self.get_shared_dll_ref(path)?;
         let new_count = current.saturating_sub(1);
@@ -352,11 +352,11 @@ impl RegistryStore {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] if `component_id` is empty.
+    /// Returns [`MsiError::Validation`] if `component_id` is empty.
     pub fn get_component_clients(&self, component_id: &str) -> Result<Vec<String>> {
         let norm_comp = Self::normalize_key(component_id);
         if norm_comp.is_empty() {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "Components.component_id".to_string(),
                 reason: "component_id cannot be empty".to_string(),
             });
@@ -386,7 +386,7 @@ impl RegistryStore {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] if `component_id` is empty.
+    /// Returns [`MsiError::Validation`] if `component_id` is empty.
     pub fn get_component_client_count(&self, component_id: &str) -> Result<u32> {
         let clients = self.get_component_clients(component_id)?;
         Ok(u32::try_from(clients.len()).unwrap_or(u32::MAX))
@@ -404,7 +404,7 @@ impl RegistryStore {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] if `component_id` is empty.
+    /// Returns [`MsiError::Validation`] if `component_id` is empty.
     pub fn is_component_shared(&self, component_id: &str) -> Result<bool> {
         let count = self.get_component_client_count(component_id)?;
         Ok(count > 1)
@@ -426,7 +426,7 @@ impl RegistryStore {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] if `component_id` or `product_code` is empty.
+    /// Returns [`MsiError::Validation`] if `component_id` or `product_code` is empty.
     pub fn register_component_client(
         &mut self,
         component_id: &str,
@@ -435,14 +435,14 @@ impl RegistryStore {
     ) -> Result<u32> {
         let norm_comp = Self::normalize_key(component_id);
         if norm_comp.is_empty() {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "Components.component_id".to_string(),
                 reason: "component_id cannot be empty".to_string(),
             });
         }
         let norm_prod = Self::normalize_key(product_code);
         if norm_prod.is_empty() {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "Components.product_code".to_string(),
                 reason: "product_code cannot be empty".to_string(),
             });
@@ -482,7 +482,7 @@ impl RegistryStore {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] if `component_id` or `product_code` is empty.
+    /// Returns [`MsiError::Validation`] if `component_id` or `product_code` is empty.
     pub fn unregister_component_client(
         &mut self,
         component_id: &str,
@@ -491,14 +491,14 @@ impl RegistryStore {
     ) -> Result<u32> {
         let norm_comp = Self::normalize_key(component_id);
         if norm_comp.is_empty() {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "Components.component_id".to_string(),
                 reason: "component_id cannot be empty".to_string(),
             });
         }
         let norm_prod = Self::normalize_key(product_code);
         if norm_prod.is_empty() {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "Components.product_code".to_string(),
                 reason: "product_code cannot be empty".to_string(),
             });
@@ -726,7 +726,7 @@ impl SqliteRegistryDriver {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Io`] on filesystem write failure.
+    /// Returns [`MsiError::Io`] on filesystem write failure.
     #[allow(clippy::format_push_string)]
     pub fn save_to_disk(&self) -> Result<()> {
         if self.db_path == Path::new(":memory:") {
@@ -783,7 +783,7 @@ impl SqliteRegistryDriver {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Io`] on filesystem read failure.
+    /// Returns [`MsiError::Io`] on filesystem read failure.
     pub fn load_from_disk(path: impl AsRef<Path>) -> Result<Self> {
         let content = std::fs::read_to_string(path.as_ref())?;
         let mut driver = Self::new(path.as_ref());

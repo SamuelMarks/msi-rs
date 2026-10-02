@@ -816,7 +816,7 @@ pub unsafe extern "C" fn msi_package_builder_pack_files_from_disk(
 
                 let data = fs::read(src_path).map_err(|e| {
                     (
-                        map_msi_error(&msi::Error::Io(e.to_string())),
+                        map_msi_error(&msi::MsiError::Io(e.to_string())),
                         format!("Failed reading source file '{src_path}'"),
                     )
                 })?;

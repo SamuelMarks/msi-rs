@@ -8,7 +8,7 @@
 //! - Subprocess execution runner with stdin/stdout/stderr capture, working directory setup, timeout enforcement,
 //!   and exit code mapping (`0` -> `ERROR_SUCCESS`, `3010` -> `ERROR_SUCCESS_REBOOT_REQUIRED`, non-zero -> `ERROR_INSTALL_FAILURE`).
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::execution::custom_action::{ERROR_FUNCTION_FAILED, ERROR_SUCCESS, MSIHANDLE};
 use crate::execution::transaction::ERROR_INSTALL_FAILURE;
 use std::collections::HashMap;
@@ -341,7 +341,7 @@ impl NativeLibraryLoader {
     ///
     /// Inspects file magic header bytes. On non-Windows platforms, if a Windows PE DLL is loaded,
     /// checks for Wine availability; if Wine is present, configures the Wine execution bridge,
-    /// or returns [`Error::UnsupportedPlatform`] if Wine is unavailable.
+    /// or returns [`MsiError::UnsupportedPlatform`] if Wine is unavailable.
     ///
     /// # Arguments
     ///
@@ -349,8 +349,8 @@ impl NativeLibraryLoader {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::UnsupportedPlatform`] if a Windows PE DLL is loaded on non-Windows without Wine,
-    /// or [`Error::CustomActionFailed`] on I/O or dynamic loading failure.
+    /// Returns [`MsiError::UnsupportedPlatform`] if a Windows PE DLL is loaded on non-Windows without Wine,
+    /// or [`MsiError::CustomActionFailed`] on I/O or dynamic loading failure.
     pub fn load_library(&mut self, path: &Path) -> Result<()> {
         if let Ok(header) = fs::read(path) {
             let format = BinaryFormat::detect(&header);
@@ -364,7 +364,7 @@ impl NativeLibraryLoader {
                         self.wine_executable = Some(wine_bin);
                         return Ok(());
                     }
-                    return Err(Error::UnsupportedPlatform {
+                    return Err(MsiError::UnsupportedPlatform {
                         platform: "Windows PE (PE32/PE32+)".to_string(),
                         reason: format!(
                             "cannot execute Windows PE dynamic library '{}' on non-Windows host without Wine ('wine64' or 'wine')",
@@ -379,7 +379,7 @@ impl NativeLibraryLoader {
         {
             use std::ffi::CString;
             let c_path = CString::new(path.as_os_str().as_encoded_bytes()).map_err(|e| {
-                Error::CustomActionFailed {
+                MsiError::CustomActionFailed {
                     action: path.display().to_string(),
                     reason: format!("invalid path for dlopen: {e}"),
                 }
@@ -399,7 +399,7 @@ impl NativeLibraryLoader {
                 // SAFETY: Reading thread-local dlerror string.
                 let raw_err = unsafe { libc::dlerror() };
                 let dl_msg = Self::format_dlerror(raw_err);
-                return Err(Error::CustomActionFailed {
+                return Err(MsiError::CustomActionFailed {
                     action: path.display().to_string(),
                     reason: format!("dlopen failed: {dl_msg}"),
                 });
@@ -411,7 +411,7 @@ impl NativeLibraryLoader {
         #[cfg(windows)]
         {
             if !path.exists() {
-                return Err(Error::CustomActionFailed {
+                return Err(MsiError::CustomActionFailed {
                     action: path.display().to_string(),
                     reason: format!("dynamic library file not found: {}", path.display()),
                 });
@@ -435,7 +435,7 @@ impl NativeLibraryLoader {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Io`] if sandbox creation or file write fails.
+    /// Returns [`MsiError::Io`] if sandbox creation or file write fails.
     pub fn extract_to_sandbox(&mut self, lib_name: &str, data: &[u8]) -> Result<PathBuf> {
         let counter = SANDBOX_COUNTER.fetch_add(1, Ordering::SeqCst);
         let pid = std::process::id();
@@ -480,7 +480,7 @@ impl NativeLibraryLoader {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::CustomActionFailed`] if entry point is missing, if native code panics,
+    /// Returns [`MsiError::CustomActionFailed`] if entry point is missing, if native code panics,
     /// or if Wine execution fails.
     pub fn invoke_action(&self, entry_point: &str, h_install: MSIHANDLE) -> Result<u32> {
         if let Some(ref wine_bin) = self.wine_executable {
@@ -502,14 +502,14 @@ impl NativeLibraryLoader {
                 if let Some(h) = self.dl_handle {
                     use std::ffi::CString;
                     let c_sym =
-                        CString::new(entry_point).map_err(|e| Error::CustomActionFailed {
+                        CString::new(entry_point).map_err(|e| MsiError::CustomActionFailed {
                             action: entry_point.to_string(),
                             reason: format!("invalid entry point symbol: {e}"),
                         })?;
                     // SAFETY: Resolving symbol pointer from valid non-null library handle.
                     let sym_ptr = unsafe { libc::dlsym(h, c_sym.as_ptr()) };
                     if sym_ptr.is_null() {
-                        return Err(Error::CustomActionFailed {
+                        return Err(MsiError::CustomActionFailed {
                             action: entry_point.to_string(),
                             reason: format!(
                                 "entry point '{entry_point}' not found in loaded library or registered symbols"
@@ -521,7 +521,7 @@ impl NativeLibraryLoader {
                         std::mem::transmute::<*mut std::ffi::c_void, MsiCustomActionFn>(sym_ptr)
                     }
                 } else {
-                    return Err(Error::CustomActionFailed {
+                    return Err(MsiError::CustomActionFailed {
                         action: entry_point.to_string(),
                         reason: format!(
                             "entry point '{entry_point}' not found in registered native symbols"
@@ -531,7 +531,7 @@ impl NativeLibraryLoader {
             }
             #[cfg(not(unix))]
             {
-                return Err(Error::CustomActionFailed {
+                return Err(MsiError::CustomActionFailed {
                     action: entry_point.to_string(),
                     reason: format!(
                         "entry point '{entry_point}' not found in registered native symbols"
@@ -548,7 +548,7 @@ impl NativeLibraryLoader {
 
         result.map_or_else(
             |_| {
-                Err(Error::CustomActionFailed {
+                Err(MsiError::CustomActionFailed {
                     action: entry_point.to_string(),
                     reason: "panic caught inside native custom action execution".to_string(),
                 })
@@ -557,7 +557,7 @@ impl NativeLibraryLoader {
                 if code == ERROR_SUCCESS || code == ERROR_SUCCESS_REBOOT_REQUIRED {
                     Ok(code)
                 } else {
-                    Err(Error::CustomActionFailed {
+                    Err(MsiError::CustomActionFailed {
                         action: entry_point.to_string(),
                         reason: format!("native custom action returned error code {code}"),
                     })
@@ -705,7 +705,7 @@ impl SubprocessRunner {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::ExecutionFailed`] if spawning fails, process times out, or exit code indicates error.
+    /// Returns [`MsiError::ExecutionFailed`] if spawning fails, process times out, or exit code indicates error.
     pub fn run(
         &self,
         executable: &Path,
@@ -718,7 +718,7 @@ impl SubprocessRunner {
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
 
-        let mut child = cmd.spawn().map_err(|e| Error::ExecutionFailed {
+        let mut child = cmd.spawn().map_err(|e| MsiError::ExecutionFailed {
             action: executable.to_string_lossy().to_string(),
             return_code: ERROR_FUNCTION_FAILED,
             message: format!("failed to spawn executable: {e}"),
@@ -748,7 +748,7 @@ impl SubprocessRunner {
                 let msi_code = Self::map_exit_code(raw_code);
 
                 if msi_code == ERROR_INSTALL_FAILURE {
-                    return Err(Error::ExecutionFailed {
+                    return Err(MsiError::ExecutionFailed {
                         action: executable.to_string_lossy().to_string(),
                         return_code: msi_code,
                         message: format!("process exited with code {raw_code}: {stderr}"),
@@ -764,7 +764,7 @@ impl SubprocessRunner {
 
             if start_time.elapsed() > timeout {
                 let _ = child.kill();
-                return Err(Error::ExecutionFailed {
+                return Err(MsiError::ExecutionFailed {
                     action: executable.to_string_lossy().to_string(),
                     return_code: ERROR_INSTALL_FAILURE,
                     message: format!(
@@ -792,7 +792,7 @@ impl SubprocessRunner {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::ExecutionFailed`] if spawning fails.
+    /// Returns [`MsiError::ExecutionFailed`] if spawning fails.
     pub fn spawn_async(
         &self,
         executable: &Path,
@@ -805,7 +805,7 @@ impl SubprocessRunner {
         cmd.stdout(Stdio::null());
         cmd.stderr(Stdio::null());
 
-        cmd.spawn().map_err(|e| Error::ExecutionFailed {
+        cmd.spawn().map_err(|e| MsiError::ExecutionFailed {
             action: executable.to_string_lossy().to_string(),
             return_code: ERROR_FUNCTION_FAILED,
             message: format!("failed to spawn async executable: {e}"),
@@ -1033,7 +1033,7 @@ impl SqlProvisionerClient {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::SqlProvisioning`] on connection or execution failure.
+    /// Returns [`MsiError::SqlProvisioning`] on connection or execution failure.
     pub fn execute(&self, action: SqlProvisionerAction) -> Result<SqlProvisionerResult> {
         let statements = self.config.generate_statements(action);
 
@@ -1048,7 +1048,7 @@ impl SqlProvisionerClient {
         let sock_addr = match addr.parse() {
             Ok(sa) => sa,
             Err(e) => {
-                return Err(Error::SqlProvisioning(format!(
+                return Err(MsiError::SqlProvisioning(format!(
                     "invalid socket address '{addr}': {e}"
                 )));
             }
@@ -1059,7 +1059,7 @@ impl SqlProvisionerClient {
         let mut stream = match stream_res {
             Ok(s) => s,
             Err(e) => {
-                return Err(Error::SqlProvisioning(format!(
+                return Err(MsiError::SqlProvisioning(format!(
                     "failed to connect to MySQL server at {addr}: {e}"
                 )));
             }
@@ -1085,7 +1085,7 @@ impl SqlProvisionerClient {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::SqlProvisioning`] on communication, authentication, or query failure.
+    /// Returns [`MsiError::SqlProvisioning`] on communication, authentication, or query failure.
     #[allow(clippy::too_many_lines)]
     pub fn execute_wire_session(
         &self,
@@ -1094,7 +1094,7 @@ impl SqlProvisionerClient {
     ) -> Result<()> {
         let mut header = [0u8; 4];
         stream.read_exact(&mut header).map_err(|e| {
-            Error::SqlProvisioning(format!("failed to read MySQL handshake packet header: {e}"))
+            MsiError::SqlProvisioning(format!("failed to read MySQL handshake packet header: {e}"))
         })?;
 
         let payload_len = (u32::from(header[0])
@@ -1103,7 +1103,7 @@ impl SqlProvisionerClient {
 
         let mut handshake_payload = vec![0u8; payload_len];
         stream.read_exact(&mut handshake_payload).map_err(|e| {
-            Error::SqlProvisioning(format!("failed to read MySQL handshake payload: {e}"))
+            MsiError::SqlProvisioning(format!("failed to read MySQL handshake payload: {e}"))
         })?;
 
         let mut response_payload = Vec::new();
@@ -1123,26 +1123,26 @@ impl SqlProvisionerClient {
         resp_header[3] = 1;
 
         stream.write_all(&resp_header).map_err(|e| {
-            Error::SqlProvisioning(format!("failed to write handshake response header: {e}"))
+            MsiError::SqlProvisioning(format!("failed to write handshake response header: {e}"))
         })?;
         stream.write_all(&response_payload).map_err(|e| {
-            Error::SqlProvisioning(format!("failed to write handshake response payload: {e}"))
+            MsiError::SqlProvisioning(format!("failed to write handshake response payload: {e}"))
         })?;
 
         let mut auth_header = [0u8; 4];
         stream.read_exact(&mut auth_header).map_err(|e| {
-            Error::SqlProvisioning(format!("failed to read auth response packet: {e}"))
+            MsiError::SqlProvisioning(format!("failed to read auth response packet: {e}"))
         })?;
         let auth_len = (u32::from(auth_header[0])
             | (u32::from(auth_header[1]) << 8)
             | (u32::from(auth_header[2]) << 16)) as usize;
         let mut auth_result = vec![0u8; auth_len];
         stream.read_exact(&mut auth_result).map_err(|e| {
-            Error::SqlProvisioning(format!("failed to read auth response payload: {e}"))
+            MsiError::SqlProvisioning(format!("failed to read auth response payload: {e}"))
         })?;
 
         if !auth_result.is_empty() && auth_result[0] == 0xFF {
-            return Err(Error::SqlProvisioning(
+            return Err(MsiError::SqlProvisioning(
                 "authentication failed with MySQL server".to_string(),
             ));
         }
@@ -1161,27 +1161,27 @@ impl SqlProvisionerClient {
             q_header[2] = ((q_len >> 16) & 0xFF) as u8;
             q_header[3] = seq;
 
-            stream
-                .write_all(&q_header)
-                .map_err(|e| Error::SqlProvisioning(format!("failed to send query header: {e}")))?;
-            stream
-                .write_all(&query_payload)
-                .map_err(|e| Error::SqlProvisioning(format!("failed to send query text: {e}")))?;
+            stream.write_all(&q_header).map_err(|e| {
+                MsiError::SqlProvisioning(format!("failed to send query header: {e}"))
+            })?;
+            stream.write_all(&query_payload).map_err(|e| {
+                MsiError::SqlProvisioning(format!("failed to send query text: {e}"))
+            })?;
 
             let mut query_res_header = [0u8; 4];
             stream.read_exact(&mut query_res_header).map_err(|e| {
-                Error::SqlProvisioning(format!("failed to read query response header: {e}"))
+                MsiError::SqlProvisioning(format!("failed to read query response header: {e}"))
             })?;
             let r_len = (u32::from(query_res_header[0])
                 | (u32::from(query_res_header[1]) << 8)
                 | (u32::from(query_res_header[2]) << 16)) as usize;
             let mut q_result = vec![0u8; r_len];
             stream.read_exact(&mut q_result).map_err(|e| {
-                Error::SqlProvisioning(format!("failed to read query response payload: {e}"))
+                MsiError::SqlProvisioning(format!("failed to read query response payload: {e}"))
             })?;
 
             if !q_result.is_empty() && q_result[0] == 0xFF {
-                return Err(Error::SqlProvisioning(format!(
+                return Err(MsiError::SqlProvisioning(format!(
                     "SQL execution error executing query '{sql}'"
                 )));
             }
@@ -1408,7 +1408,7 @@ mod tests {
             let load_disabled = disabled_loader.load_library(&temp_pe);
             assert!(matches!(
                 load_disabled,
-                Err(Error::UnsupportedPlatform { .. })
+                Err(MsiError::UnsupportedPlatform { .. })
             ));
             assert!(disabled_loader.wine_executable().is_none());
 
@@ -1648,7 +1648,7 @@ mod tests {
         let real_client = SqlProvisionerClient::new(cfg_real.clone());
         let err = real_client.execute(SqlProvisionerAction::Install);
         assert!(err.is_err());
-        assert!(matches!(err, Err(Error::SqlProvisioning(..))));
+        assert!(matches!(err, Err(MsiError::SqlProvisioning(..))));
 
         // 7. Invalid host address
         let mut cfg_bad_addr = cfg_purge;
@@ -1657,7 +1657,7 @@ mod tests {
         let bad_client = SqlProvisionerClient::new(cfg_bad_addr);
         let err_addr = bad_client.execute(SqlProvisionerAction::Install);
         assert!(err_addr.is_err());
-        assert!(matches!(err_addr, Err(Error::SqlProvisioning(..))));
+        assert!(matches!(err_addr, Err(MsiError::SqlProvisioning(..))));
 
         // 8. Statements empty with non-mock mode
         let mut cfg_no_stmts = cfg_real;
@@ -1978,7 +1978,7 @@ mod tests {
             let client = SqlProvisionerClient::new(cfg);
             let res = client.execute(SqlProvisionerAction::Install);
             assert!(res.is_err(), "mode {mode:?} should have failed");
-            assert!(matches!(res, Err(Error::SqlProvisioning(..))));
+            assert!(matches!(res, Err(MsiError::SqlProvisioning(..))));
 
             let _ = handle.join();
         }
@@ -2058,7 +2058,7 @@ mod tests {
         s1.fail_write_at = Some(1);
         let err1 = client.execute_wire_session(&mut s1, &statements);
         assert!(err1.is_err());
-        assert!(matches!(err1, Err(Error::SqlProvisioning(..))));
+        assert!(matches!(err1, Err(MsiError::SqlProvisioning(..))));
         assert!(s1.flush().is_ok());
 
         // 2. Fail on 2nd write: handshake response payload
@@ -2066,21 +2066,21 @@ mod tests {
         s2.fail_write_at = Some(2);
         let err2 = client.execute_wire_session(&mut s2, &statements);
         assert!(err2.is_err());
-        assert!(matches!(err2, Err(Error::SqlProvisioning(..))));
+        assert!(matches!(err2, Err(MsiError::SqlProvisioning(..))));
 
         // 3. Fail on 3rd write: query header
         let mut s3 = MockFailStream::with_bytes(&server_stream_bytes);
         s3.fail_write_at = Some(3);
         let err3 = client.execute_wire_session(&mut s3, &statements);
         assert!(err3.is_err());
-        assert!(matches!(err3, Err(Error::SqlProvisioning(..))));
+        assert!(matches!(err3, Err(MsiError::SqlProvisioning(..))));
 
         // 4. Fail on 4th write: query text
         let mut s4 = MockFailStream::with_bytes(&server_stream_bytes);
         s4.fail_write_at = Some(4);
         let err4 = client.execute_wire_session(&mut s4, &statements);
         assert!(err4.is_err());
-        assert!(matches!(err4, Err(Error::SqlProvisioning(..))));
+        assert!(matches!(err4, Err(MsiError::SqlProvisioning(..))));
     }
 
     /// Tests processing of empty auth and query response payloads (0-byte payloads).

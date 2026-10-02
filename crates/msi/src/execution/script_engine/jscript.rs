@@ -12,7 +12,7 @@
 //! - Sandboxed execution: strictly in-memory, bounded recursion and execution fuel,
 //!   and detailed line/column runtime error diagnostics with call stack tracking.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::execution::script_engine::session::ScriptSession;
 use std::collections::HashMap;
 
@@ -302,7 +302,7 @@ impl<'a> Lexer<'a> {
                     Some('\\') => text.push('\\'),
                     Some(c) => text.push(c),
                     None => {
-                        return Err(Error::ScriptRuntimeError {
+                        return Err(MsiError::ScriptRuntimeError {
                             line: self.line,
                             col: self.col,
                             message: "Unterminated string escape sequence".to_string(),
@@ -313,7 +313,7 @@ impl<'a> Lexer<'a> {
                 text.push(ch);
             }
         }
-        Err(Error::ScriptRuntimeError {
+        Err(MsiError::ScriptRuntimeError {
             line: start_line,
             col: start_col,
             message: "Unterminated string literal in script".to_string(),
@@ -352,7 +352,7 @@ impl<'a> Lexer<'a> {
             }
             let n = num_str
                 .parse::<f64>()
-                .map_err(|_| Error::ScriptRuntimeError {
+                .map_err(|_| MsiError::ScriptRuntimeError {
                     line: start_line,
                     col: start_col,
                     message: format!("Invalid numeric literal: {num_str}"),
@@ -470,7 +470,7 @@ impl<'a> Lexer<'a> {
                     self.advance();
                     TokenKind::AmpAmp
                 } else {
-                    return Err(Error::ScriptRuntimeError {
+                    return Err(MsiError::ScriptRuntimeError {
                         line: start_line,
                         col: start_col,
                         message: "Unexpected single '&' operator".to_string(),
@@ -482,7 +482,7 @@ impl<'a> Lexer<'a> {
                     self.advance();
                     TokenKind::PipePipe
                 } else {
-                    return Err(Error::ScriptRuntimeError {
+                    return Err(MsiError::ScriptRuntimeError {
                         line: start_line,
                         col: start_col,
                         message: "Unexpected single '|' operator".to_string(),
@@ -501,7 +501,7 @@ impl<'a> Lexer<'a> {
             ',' => TokenKind::Comma,
             '.' => TokenKind::Dot,
             other => {
-                return Err(Error::ScriptRuntimeError {
+                return Err(MsiError::ScriptRuntimeError {
                     line: start_line,
                     col: start_col,
                     message: format!("Unexpected character: '{other}'"),
@@ -802,7 +802,7 @@ impl Parser {
         if &tok.kind == kind {
             Ok(self.advance())
         } else {
-            Err(Error::ScriptRuntimeError {
+            Err(MsiError::ScriptRuntimeError {
                 line: tok.line,
                 col: tok.col,
                 message: format!("Parse error: expected {msg}, found {:?}", tok.kind),
@@ -830,7 +830,7 @@ impl Parser {
                 let name = match next_tok.kind {
                     TokenKind::Identifier(s) => s,
                     other => {
-                        return Err(Error::ScriptRuntimeError {
+                        return Err(MsiError::ScriptRuntimeError {
                             line: next_tok.line,
                             col: next_tok.col,
                             message: format!("Expected variable identifier, found {other:?}"),
@@ -919,7 +919,7 @@ impl Parser {
                 let name = match next_tok.kind {
                     TokenKind::Identifier(s) => s,
                     other => {
-                        return Err(Error::ScriptRuntimeError {
+                        return Err(MsiError::ScriptRuntimeError {
                             line: next_tok.line,
                             col: next_tok.col,
                             message: format!("Expected function name, found {other:?}"),
@@ -1252,7 +1252,7 @@ impl Parser {
                     let prop = match prop_tok.kind {
                         TokenKind::Identifier(s) => s,
                         other => {
-                            return Err(Error::ScriptRuntimeError {
+                            return Err(MsiError::ScriptRuntimeError {
                                 line: prop_tok.line,
                                 col: prop_tok.col,
                                 message: format!("Expected member name after '.', found {other:?}"),
@@ -1338,7 +1338,7 @@ impl Parser {
                 self.expect(&TokenKind::RightParen, "')' closing parenthesis")?;
                 Ok(expr)
             }
-            _ => Err(Error::ScriptRuntimeError {
+            _ => Err(MsiError::ScriptRuntimeError {
                 line: tok.line,
                 col: tok.col,
                 message: format!("Unexpected token in expression: {:?}", tok.kind),
@@ -1396,7 +1396,7 @@ impl JScriptEngine {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::ScriptRuntimeError`] on syntax or execution failure.
+    /// Returns [`MsiError::ScriptRuntimeError`] on syntax or execution failure.
     pub fn execute(&mut self, script: &str, session: &mut ScriptSession) -> Result<JsValue> {
         let mut lexer = Lexer::new(script);
         let tokens = lexer.tokenize_all()?;
@@ -1686,7 +1686,7 @@ impl JScriptEngine {
                     return self.call_function(fn_name, &evaluated_args, *line, *col, session);
                 }
 
-                Err(Error::ScriptRuntimeError {
+                Err(MsiError::ScriptRuntimeError {
                     line: *line,
                     col: *col,
                     message: "Invalid callee in function call".to_string(),
@@ -1858,7 +1858,7 @@ impl JScriptEngine {
                                 return Ok(eval_val);
                             }
                         }
-                        Err(Error::ScriptRuntimeError {
+                        Err(MsiError::ScriptRuntimeError {
                             line: *line,
                             col: *col,
                             message: "Invalid left-hand side assignment target".to_string(),
@@ -1875,7 +1875,7 @@ impl JScriptEngine {
                         }
                         Ok(eval_val)
                     }
-                    _ => Err(Error::ScriptRuntimeError {
+                    _ => Err(MsiError::ScriptRuntimeError {
                         line: *line,
                         col: *col,
                         message: "Invalid left-hand side assignment target".to_string(),
@@ -1959,7 +1959,7 @@ impl JScriptEngine {
                         let ret = session.do_action(&action_name);
                         Ok(JsValue::Number(f64::from(ret)))
                     }
-                    _ => Err(Error::ScriptRuntimeError {
+                    _ => Err(MsiError::ScriptRuntimeError {
                         line,
                         col,
                         message: format!("Unknown method '{method}' on Session object"),
@@ -1982,7 +1982,7 @@ impl JScriptEngine {
                     "RowCount" => Ok(JsValue::Number(
                         session.database().row_count(&table_name) as f64
                     )),
-                    _ => Err(Error::ScriptRuntimeError {
+                    _ => Err(MsiError::ScriptRuntimeError {
                         line,
                         col,
                         message: format!("Unknown method '{method}' on Database object"),
@@ -2008,14 +2008,14 @@ impl JScriptEngine {
                         let second_num = evaluated_args.get(1).map_or(0.0, JsValue::to_number);
                         Ok(JsValue::Number(first_num.min(second_num)))
                     }
-                    _ => Err(Error::ScriptRuntimeError {
+                    _ => Err(MsiError::ScriptRuntimeError {
                         line,
                         col,
                         message: format!("Unknown method '{method}' on Math object"),
                     }),
                 }
             }
-            _ => Err(Error::ScriptRuntimeError {
+            _ => Err(MsiError::ScriptRuntimeError {
                 line,
                 col,
                 message: format!("Cannot call method '{method}' on non-object"),
@@ -2075,7 +2075,7 @@ impl JScriptEngine {
                     session.pop_call();
                     Ok(ret)
                 } else {
-                    Err(Error::ScriptRuntimeError {
+                    Err(MsiError::ScriptRuntimeError {
                         line,
                         col,
                         message: format!("Undefined function '{name}'"),
@@ -2176,7 +2176,7 @@ mod tests {
         let res = engine.execute(script, &mut session);
         assert!(matches!(
             res,
-            Err(Error::ScriptRuntimeError { line: 1, .. })
+            Err(MsiError::ScriptRuntimeError { line: 1, .. })
         ));
     }
 
@@ -2596,7 +2596,7 @@ mod tests {
         let while_infinite = "while (true) { }";
         assert!(matches!(
             engine.execute(while_infinite, &mut fuel_session),
-            Err(Error::ScriptRuntimeError { .. })
+            Err(MsiError::ScriptRuntimeError { .. })
         ));
     }
 

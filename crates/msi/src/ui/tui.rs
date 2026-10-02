@@ -386,7 +386,7 @@ impl TerminalWizard {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error`] on event execution failure.
+    /// Returns [`crate::error::MsiError`] on event execution failure.
     #[allow(clippy::too_many_lines)]
     pub fn handle_key(&mut self, key: TuiKey) -> Result<Option<DialogReturnCode>> {
         let Some(dialog) = self.engine.active_dialog().cloned() else {
@@ -621,7 +621,7 @@ impl TerminalWizard {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error`] on event dispatch failure.
+    /// Returns [`crate::error::MsiError`] on event dispatch failure.
     pub fn handle_event(
         &mut self,
         event: TerminalEvent,
@@ -659,7 +659,7 @@ impl TerminalWizard {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error`] on I/O or execution failure.
+    /// Returns [`crate::error::MsiError`] on I/O or execution failure.
     pub fn run_event_stream<R: std::io::Read, W: std::io::Write>(
         &mut self,
         mut input: R,
@@ -685,7 +685,7 @@ impl TerminalWizard {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error`] on I/O or execution failure.
+    /// Returns [`crate::error::MsiError`] on I/O or execution failure.
     fn run_event_stream_io(
         &mut self,
         input: &mut dyn std::io::Read,
@@ -996,7 +996,7 @@ impl TerminalWizard {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error::Error;
+    use crate::error::MsiError;
     use crate::execution::properties::EvaluationContext;
     use crate::ui::controls::ControlDefinition;
     use crate::ui::engine::{DialogDefinition, DIALOG_ATTR_VISIBLE};
@@ -1594,7 +1594,7 @@ mod tests {
         assert!(handle_res.is_ok());
         for h in [
             handle_res,
-            Err(Error::CfbCorrupted {
+            Err(MsiError::CfbCorrupted {
                 offset: 0,
                 reason: "err".to_string(),
             }),

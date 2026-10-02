@@ -7,7 +7,7 @@
 
 use crate::database::tables::core::PropertyRow;
 use crate::database::tables::types::PropertyName;
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::package::Package;
 use crate::wix::linker::Linker;
 use crate::wix::localization::WixLocalization;
@@ -22,7 +22,7 @@ use std::path::PathBuf;
 /// Validates and standardizes a `WiX` extension name passed via `-ext`.
 ///
 /// Returns `Ok(canonical_name)` for supported native extensions, or returns
-/// [`Error::WixExtension`] when given an unsupported external .NET `.dll` or unknown extension.
+/// [`MsiError::WixExtension`] when given an unsupported external .NET `.dll` or unknown extension.
 ///
 /// # Arguments
 ///
@@ -34,13 +34,13 @@ use std::path::PathBuf;
 ///
 /// # Errors
 ///
-/// Returns [`Error::WixExtension`] if the extension is an unsupported .NET assembly or unknown.
+/// Returns [`MsiError::WixExtension`] if the extension is an unsupported .NET assembly or unknown.
 pub fn validate_extension(ext_arg: &str) -> Result<&'static str> {
     let trimmed = ext_arg.trim();
     let lower = trimmed.to_ascii_lowercase();
     #[allow(clippy::case_sensitive_file_extension_comparisons)]
     if lower.ends_with(".dll") || lower.ends_with(".exe") {
-        return Err(Error::WixExtension {
+        return Err(MsiError::WixExtension {
             extension: trimmed.to_string(),
             message: format!(
                 "unsupported external .NET extension assembly '{trimmed}': msi-rs provides native built-in extensions (WixUIExtension, WixUtilExtension, WixFirewallExtension, WixNetFxExtension, WixBalExtension, WixHttpExtension, WixIIsExtension, WixSqlExtension, WixComPlusExtension, WixDependencyExtension)"
@@ -109,7 +109,7 @@ impl WixToolchainDiscovery {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::WixLinker`] if `candle` or `light` cannot be discovered.
+    /// Returns [`MsiError::WixLinker`] if `candle` or `light` cannot be discovered.
     pub fn discover(hint_dir: Option<&std::path::Path>) -> Result<Self> {
         let cpack_root = std::env::var_os("CPACK_WIX_ROOT").map(PathBuf::from);
         let wix_env = std::env::var_os("WIX").map(PathBuf::from);
@@ -147,7 +147,7 @@ impl WixToolchainDiscovery {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::WixLinker`] if `candle` or `light` cannot be discovered.
+    /// Returns [`MsiError::WixLinker`] if `candle` or `light` cannot be discovered.
     pub fn discover_with_search_dirs(
         hint_dir: Option<&std::path::Path>,
         cpack_wix_root: Option<&std::path::Path>,
@@ -184,11 +184,11 @@ impl WixToolchainDiscovery {
             None
         };
 
-        let candle = probe_binary("candle").ok_or_else(|| Error::WixLinker {
+        let candle = probe_binary("candle").ok_or_else(|| MsiError::WixLinker {
             message: "could not discover 'candle' executable in search paths".to_string(),
         })?;
 
-        let light = probe_binary("light").ok_or_else(|| Error::WixLinker {
+        let light = probe_binary("light").ok_or_else(|| MsiError::WixLinker {
             message: "could not discover 'light' executable in search paths".to_string(),
         })?;
 
@@ -304,7 +304,7 @@ impl CandleOptions {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::WixCompiler`] on invalid flags or missing required argument values.
+    /// Returns [`MsiError::WixCompiler`] on invalid flags or missing required argument values.
     #[allow(clippy::too_many_lines, clippy::branches_sharing_code)]
     pub fn parse(raw_args: &[String]) -> Result<Self> {
         let args = expand_response_files(raw_args)?;
@@ -322,7 +322,7 @@ impl CandleOptions {
                 } else if lower == "arch" {
                     idx += 1;
                     if idx >= args.len() {
-                        return Err(Error::WixCompiler {
+                        return Err(MsiError::WixCompiler {
                             element: "candle".to_string(),
                             message: "missing argument value for '-arch'".to_string(),
                         });
@@ -332,7 +332,7 @@ impl CandleOptions {
                 } else if flag.eq_ignore_ascii_case("d") || flag.eq_ignore_ascii_case("define") {
                     idx += 1;
                     if idx >= args.len() || is_flag(&args[idx]) {
-                        return Err(Error::WixCompiler {
+                        return Err(MsiError::WixCompiler {
                             element: "candle".to_string(),
                             message: "missing argument value for '-d'".to_string(),
                         });
@@ -354,7 +354,7 @@ impl CandleOptions {
                 } else if lower == "ext" {
                     idx += 1;
                     if idx >= args.len() || is_flag(&args[idx]) {
-                        return Err(Error::WixCompiler {
+                        return Err(MsiError::WixCompiler {
                             element: "candle".to_string(),
                             message: "missing argument value for '-ext'".to_string(),
                         });
@@ -365,7 +365,7 @@ impl CandleOptions {
                     if inc_path.is_empty() {
                         idx += 1;
                         if idx >= args.len() {
-                            return Err(Error::WixCompiler {
+                            return Err(MsiError::WixCompiler {
                                 element: "candle".to_string(),
                                 message: "missing path for '-I'".to_string(),
                             });
@@ -378,7 +378,7 @@ impl CandleOptions {
                 } else if lower == "o" || lower == "out" {
                     idx += 1;
                     if idx >= args.len() {
-                        return Err(Error::WixCompiler {
+                        return Err(MsiError::WixCompiler {
                             element: "candle".to_string(),
                             message: "missing output path for '-out'".to_string(),
                         });
@@ -391,7 +391,7 @@ impl CandleOptions {
                 } else if lower == "platform" {
                     idx += 1;
                     if idx >= args.len() {
-                        return Err(Error::WixCompiler {
+                        return Err(MsiError::WixCompiler {
                             element: "candle".to_string(),
                             message: "missing argument value for '-platform'".to_string(),
                         });
@@ -454,7 +454,7 @@ impl CandleOptions {
                 } else if lower == "cc" {
                     idx += 1;
                     if idx >= args.len() {
-                        return Err(Error::WixCompiler {
+                        return Err(MsiError::WixCompiler {
                             element: "candle".to_string(),
                             message: "missing cache directory for '-cc'".to_string(),
                         });
@@ -471,7 +471,7 @@ impl CandleOptions {
         }
 
         if opts.sources.is_empty() {
-            return Err(Error::WixCompiler {
+            return Err(MsiError::WixCompiler {
                 element: "candle".to_string(),
                 message: "no source files specified for compilation".to_string(),
             });
@@ -625,7 +625,7 @@ fn parse_response_file_tokens(content: &str) -> Vec<String> {
 /// Helper expanding `@response_file` arguments recursively with a depth limit.
 fn expand_response_files_recursive(args: &[String], depth: usize) -> Result<Vec<String>> {
     if depth > 16 {
-        return Err(Error::WixCompiler {
+        return Err(MsiError::WixCompiler {
             element: "response_file".to_string(),
             message: "maximum response file recursion depth exceeded".to_string(),
         });
@@ -778,7 +778,7 @@ impl LightOptions {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::WixLinker`] on invalid flags or missing required argument values.
+    /// Returns [`MsiError::WixLinker`] on invalid flags or missing required argument values.
     #[allow(clippy::too_many_lines, clippy::branches_sharing_code)]
     pub fn parse(raw_args: &[String]) -> Result<Self> {
         let args = expand_response_files(raw_args)?;
@@ -814,7 +814,7 @@ impl LightOptions {
                 } else if lower == "arch" {
                     idx += 1;
                     if idx >= args.len() {
-                        return Err(Error::WixLinker {
+                        return Err(MsiError::WixLinker {
                             message: "missing architecture argument for '-arch'".to_string(),
                         });
                     }
@@ -920,7 +920,7 @@ impl LightOptions {
                 } else if lower == "cc" {
                     idx += 1;
                     if idx >= args.len() {
-                        return Err(Error::WixLinker {
+                        return Err(MsiError::WixLinker {
                             message: "missing cabinet cache directory for '-cc'".to_string(),
                         });
                     }
@@ -930,7 +930,7 @@ impl LightOptions {
                     let ct_str = if ct_rest.is_empty() {
                         idx += 1;
                         if idx >= args.len() {
-                            return Err(Error::WixLinker {
+                            return Err(MsiError::WixLinker {
                                 message: "missing thread count for '-ct'".to_string(),
                             });
                         }
@@ -946,7 +946,7 @@ impl LightOptions {
                     let dr_str = if dr_rest.is_empty() {
                         idx += 1;
                         if idx >= args.len() {
-                            return Err(Error::WixLinker {
+                            return Err(MsiError::WixLinker {
                                 message: "missing directory ID for '-dr'".to_string(),
                             });
                         }
@@ -959,7 +959,7 @@ impl LightOptions {
                 } else if flag.eq_ignore_ascii_case("d") || flag.eq_ignore_ascii_case("define") {
                     idx += 1;
                     if idx >= args.len() || is_flag(&args[idx]) {
-                        return Err(Error::WixLinker {
+                        return Err(MsiError::WixLinker {
                             message: "missing argument value for '-d'".to_string(),
                         });
                     }
@@ -981,7 +981,7 @@ impl LightOptions {
                     let usf_path = if usf_rest.is_empty() {
                         idx += 1;
                         if idx >= args.len() {
-                            return Err(Error::WixLinker {
+                            return Err(MsiError::WixLinker {
                                 message: "missing output path for '-usf'".to_string(),
                             });
                         }
@@ -994,7 +994,7 @@ impl LightOptions {
                 } else if lower == "ext" {
                     idx += 1;
                     if idx >= args.len() || is_flag(&args[idx]) {
-                        return Err(Error::WixLinker {
+                        return Err(MsiError::WixLinker {
                             message: "missing argument value for '-ext'".to_string(),
                         });
                     }
@@ -1012,7 +1012,7 @@ impl LightOptions {
                 } else if lower == "loc" {
                     idx += 1;
                     if idx >= args.len() {
-                        return Err(Error::WixLinker {
+                        return Err(MsiError::WixLinker {
                             message: "missing argument value for '-loc'".to_string(),
                         });
                     }
@@ -1021,7 +1021,7 @@ impl LightOptions {
                 } else if lower == "b" {
                     idx += 1;
                     if idx >= args.len() {
-                        return Err(Error::WixLinker {
+                        return Err(MsiError::WixLinker {
                             message: "missing argument value for '-b'".to_string(),
                         });
                     }
@@ -1031,7 +1031,7 @@ impl LightOptions {
                     let rest = if bd_rest.is_empty() {
                         idx += 1;
                         if idx >= args.len() {
-                            return Err(Error::WixLinker {
+                            return Err(MsiError::WixLinker {
                                 message: "missing argument value for '-bd'".to_string(),
                             });
                         }
@@ -1046,7 +1046,7 @@ impl LightOptions {
                 } else if lower == "out" || lower == "o" {
                     idx += 1;
                     if idx >= args.len() {
-                        return Err(Error::WixLinker {
+                        return Err(MsiError::WixLinker {
                             message: "missing argument value for '-out'".to_string(),
                         });
                     }
@@ -1068,7 +1068,7 @@ impl LightOptions {
         }
 
         if opts.inputs.is_empty() {
-            return Err(Error::WixLinker {
+            return Err(MsiError::WixLinker {
                 message: "no input objects specified for linking".to_string(),
             });
         }
@@ -1271,7 +1271,7 @@ impl WixBuildOptions {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::WixCompiler`] on missing flags or required arguments.
+    /// Returns [`MsiError::WixCompiler`] on missing flags or required arguments.
     #[allow(clippy::branches_sharing_code, clippy::too_many_lines)]
     pub fn parse(raw_args: &[String]) -> Result<Self> {
         let args = expand_response_files(raw_args)?;
@@ -1286,7 +1286,7 @@ impl WixBuildOptions {
                 if lower == "arch" {
                     idx += 1;
                     if idx >= args.len() {
-                        return Err(Error::WixCompiler {
+                        return Err(MsiError::WixCompiler {
                             element: "wix".to_string(),
                             message: "missing argument value for '-arch'".to_string(),
                         });
@@ -1296,7 +1296,7 @@ impl WixBuildOptions {
                 } else if lower == "ext" {
                     idx += 1;
                     if idx >= args.len() || is_flag(&args[idx]) {
-                        return Err(Error::WixCompiler {
+                        return Err(MsiError::WixCompiler {
                             element: "wix".to_string(),
                             message: "missing argument value for '-ext'".to_string(),
                         });
@@ -1306,7 +1306,7 @@ impl WixBuildOptions {
                 } else if lower == "culture" {
                     idx += 1;
                     if idx >= args.len() {
-                        return Err(Error::WixCompiler {
+                        return Err(MsiError::WixCompiler {
                             element: "wix".to_string(),
                             message: "missing argument value for '-culture'".to_string(),
                         });
@@ -1316,7 +1316,7 @@ impl WixBuildOptions {
                 } else if lower == "b" || lower == "bind-path" {
                     idx += 1;
                     if idx >= args.len() {
-                        return Err(Error::WixCompiler {
+                        return Err(MsiError::WixCompiler {
                             element: "wix".to_string(),
                             message: "missing argument value for '-b'".to_string(),
                         });
@@ -1326,7 +1326,7 @@ impl WixBuildOptions {
                 } else if lower == "i" || lower == "include" {
                     idx += 1;
                     if idx >= args.len() {
-                        return Err(Error::WixCompiler {
+                        return Err(MsiError::WixCompiler {
                             element: "wix".to_string(),
                             message: "missing argument value for '-I'".to_string(),
                         });
@@ -1336,7 +1336,7 @@ impl WixBuildOptions {
                 } else if lower == "o" || lower == "out" || lower == "output" {
                     idx += 1;
                     if idx >= args.len() {
-                        return Err(Error::WixCompiler {
+                        return Err(MsiError::WixCompiler {
                             element: "wix".to_string(),
                             message: "missing argument value for '-o'".to_string(),
                         });
@@ -1346,7 +1346,7 @@ impl WixBuildOptions {
                 } else if flag.eq_ignore_ascii_case("d") || flag.eq_ignore_ascii_case("define") {
                     idx += 1;
                     if idx >= args.len() {
-                        return Err(Error::WixCompiler {
+                        return Err(MsiError::WixCompiler {
                             element: "wix".to_string(),
                             message: "missing argument value for '-d'".to_string(),
                         });
@@ -1404,7 +1404,7 @@ impl WixBuildOptions {
         }
 
         if opts.sources.is_empty() {
-            return Err(Error::WixCompiler {
+            return Err(MsiError::WixCompiler {
                 element: "wix".to_string(),
                 message: "no source files specified for wix build".to_string(),
             });
@@ -2949,9 +2949,9 @@ mod extra_toolchain_tests {
 
         // Unsupported .NET assembly DLL or EXE
         let dll_err = validate_extension("C:\\Tools\\CustomExtension.dll");
-        assert!(matches!(dll_err, Err(Error::WixExtension { .. })));
+        assert!(matches!(dll_err, Err(MsiError::WixExtension { .. })));
         let exe_err = validate_extension("C:\\Tools\\CustomExtension.exe");
-        assert!(matches!(exe_err, Err(Error::WixExtension { .. })));
+        assert!(matches!(exe_err, Err(MsiError::WixExtension { .. })));
 
         // Unrecognized extension defaults to CustomExtension
         assert_eq!(

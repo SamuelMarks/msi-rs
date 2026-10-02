@@ -78,7 +78,7 @@ impl LiveWorkerExecutor {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::Io`] on filesystem failure.
+    /// Returns [`crate::error::MsiError::Io`] on filesystem failure.
     pub fn create_directory(&mut self, path: &Path, mode_octal: Option<u32>) -> Result<()> {
         if !path.exists() {
             fs::create_dir_all(path)?;
@@ -112,7 +112,7 @@ impl LiveWorkerExecutor {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::Io`] on write or quarantine failure.
+    /// Returns [`crate::error::MsiError::Io`] on write or quarantine failure.
     pub fn write_file_atomic(
         &mut self,
         target_path: &Path,
@@ -184,7 +184,7 @@ impl LiveWorkerExecutor {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::Io`] on failure to remove quarantine storage.
+    /// Returns [`crate::error::MsiError::Io`] on failure to remove quarantine storage.
     pub fn commit(&mut self) -> Result<()> {
         if self.quarantine_dir.exists() {
             fs::remove_dir_all(&self.quarantine_dir)?;
@@ -202,7 +202,7 @@ impl LiveWorkerExecutor {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::Io`] if rollback file restoration fails.
+    /// Returns [`crate::error::MsiError::Io`] if rollback file restoration fails.
     pub fn rollback(&mut self) -> Result<()> {
         // Restore files in reverse
         for record in self.installed_files.values() {

@@ -13,7 +13,7 @@ use crate::cfb::directory::StorageClsid;
 use crate::cfb::header::CfbVersion;
 use crate::cfb::writer::CfbWriter;
 use crate::database::summary_info::SummaryInfo;
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::wix::xml::{XmlNode, XmlParser};
 use std::collections::HashMap;
 use std::path::Path;
@@ -81,7 +81,7 @@ impl CPackWiXPatch {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::XmlParse`] on syntax error or [`Error::WixCompiler`]
+    /// Returns [`MsiError::XmlParse`] on syntax error or [`MsiError::WixCompiler`]
     /// on schema validation failure.
     pub fn parse(xml_content: &str) -> Result<Self> {
         let parser = XmlParser::new();
@@ -101,7 +101,7 @@ impl CPackWiXPatch {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::XmlParse`] or [`Error::WixCompiler`] on syntax or validation errors.
+    /// Returns [`MsiError::XmlParse`] or [`MsiError::WixCompiler`] on syntax or validation errors.
     pub fn parse_multiple(xml_contents: &[&str]) -> Result<Self> {
         let mut combined = Self::new();
         for content in xml_contents {
@@ -123,10 +123,10 @@ impl CPackWiXPatch {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::WixCompiler`] if root is not `<CPackWiXPatch>` or missing `Id`.
+    /// Returns [`MsiError::WixCompiler`] if root is not `<CPackWiXPatch>` or missing `Id`.
     pub fn from_xml_node(root: &XmlNode) -> Result<Self> {
         if root.tag != "CPackWiXPatch" {
-            return Err(Error::WixCompiler {
+            return Err(MsiError::WixCompiler {
                 element: root.tag.clone(),
                 message: "expected root element <CPackWiXPatch>".to_string(),
             });
@@ -136,7 +136,7 @@ impl CPackWiXPatch {
 
         for child in &root.children {
             if child.tag == "CPackWiXFragment" {
-                let id = child.attribute("Id").ok_or_else(|| Error::WixCompiler {
+                let id = child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
                     element: "CPackWiXFragment".to_string(),
                     message: "missing required 'Id' attribute".to_string(),
                 })?;
@@ -370,7 +370,7 @@ impl PatchCreation {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::XmlParse`] on invalid XML syntax or [`Error::WixCompiler`]
+    /// Returns [`MsiError::XmlParse`] on invalid XML syntax or [`MsiError::WixCompiler`]
     /// on schema validation failures.
     pub fn parse(xml_content: &str) -> Result<Self> {
         let parser = XmlParser::new();
@@ -390,11 +390,11 @@ impl PatchCreation {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::WixCompiler`] if required elements or attributes are missing.
+    /// Returns [`MsiError::WixCompiler`] if required elements or attributes are missing.
     #[allow(clippy::too_many_lines)]
     pub fn from_xml_node(root: &XmlNode) -> Result<Self> {
         if root.tag != "PatchCreation" && root.tag != "Patch" {
-            return Err(Error::WixCompiler {
+            return Err(MsiError::WixCompiler {
                 element: root.tag.clone(),
                 message: "expected root element <PatchCreation> or <Patch>".to_string(),
             });
@@ -697,7 +697,7 @@ impl BinaryDelta {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidArgument`] if instruction copy bounds exceed baseline length.
+    /// Returns [`MsiError::InvalidArgument`] if instruction copy bounds exceed baseline length.
     pub fn apply(&self, baseline: &[u8]) -> Result<Vec<u8>> {
         let mut output = Vec::with_capacity(self.updated_size);
         for instr in &self.instructions {
@@ -706,12 +706,12 @@ impl BinaryDelta {
                     let end =
                         offset
                             .checked_add(*length)
-                            .ok_or_else(|| Error::InvalidArgument {
+                            .ok_or_else(|| MsiError::InvalidArgument {
                                 argument: "length".to_string(),
                                 reason: "copy offset and length overflow".to_string(),
                             })?;
                     if end > baseline.len() {
-                        return Err(Error::InvalidArgument {
+                        return Err(MsiError::InvalidArgument {
                             argument: "offset".to_string(),
                             reason: format!(
                                 "copy end {end} exceeds baseline length {}",
@@ -772,11 +772,11 @@ impl BinaryDelta {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidArgument`] if payload is corrupt or magic header is invalid.
+    /// Returns [`MsiError::InvalidArgument`] if payload is corrupt or magic header is invalid.
     #[allow(clippy::cast_possible_truncation, clippy::too_many_lines)]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
         if bytes.len() < 9 + 8 + 8 + 4 || &bytes[0..9] != Self::MAGIC {
-            return Err(Error::InvalidArgument {
+            return Err(MsiError::InvalidArgument {
                 argument: "bytes".to_string(),
                 reason: "invalid or truncated MSPDELTA binary stream".to_string(),
             });
@@ -794,7 +794,7 @@ impl BinaryDelta {
 
         let read_u64 = |c: &mut usize| -> Result<u64> {
             if *c + 8 > bytes.len() {
-                return Err(Error::InvalidArgument {
+                return Err(MsiError::InvalidArgument {
                     argument: "bytes".to_string(),
                     reason: "unexpected EOF reading u64".to_string(),
                 });
@@ -806,7 +806,7 @@ impl BinaryDelta {
         };
         let read_u32 = |c: &mut usize| -> Result<u32> {
             if *c + 4 > bytes.len() {
-                return Err(Error::InvalidArgument {
+                return Err(MsiError::InvalidArgument {
                     argument: "bytes".to_string(),
                     reason: "unexpected EOF reading u32".to_string(),
                 });
@@ -820,7 +820,7 @@ impl BinaryDelta {
         let mut instructions = Vec::with_capacity(instr_count);
         for _ in 0..instr_count {
             if cursor >= bytes.len() {
-                return Err(Error::InvalidArgument {
+                return Err(MsiError::InvalidArgument {
                     argument: "bytes".to_string(),
                     reason: "unexpected EOF reading instruction opcode".to_string(),
                 });
@@ -836,7 +836,7 @@ impl BinaryDelta {
                 2 => {
                     let len = read_u32(&mut cursor)? as usize;
                     if cursor + len > bytes.len() {
-                        return Err(Error::InvalidArgument {
+                        return Err(MsiError::InvalidArgument {
                             argument: "bytes".to_string(),
                             reason: "unexpected EOF reading insert payload".to_string(),
                         });
@@ -846,7 +846,7 @@ impl BinaryDelta {
                     instructions.push(BinaryDeltaInstruction::Insert { data });
                 }
                 other => {
-                    return Err(Error::InvalidArgument {
+                    return Err(MsiError::InvalidArgument {
                         argument: "opcode".to_string(),
                         reason: format!("unknown delta opcode {other}"),
                     });
@@ -1157,14 +1157,14 @@ mod tests {
     #[test]
     fn test_patch_parsing_and_injection() {
         assert_eq!(
-            extract_patch_or_default(Err(Error::InvalidArgument {
+            extract_patch_or_default(Err(MsiError::InvalidArgument {
                 argument: String::new(),
                 reason: String::new(),
             })),
             CPackWiXPatch::default()
         );
         assert_eq!(
-            extract_node_or_default(Err(Error::InvalidArgument {
+            extract_node_or_default(Err(MsiError::InvalidArgument {
                 argument: String::new(),
                 reason: String::new(),
             })),

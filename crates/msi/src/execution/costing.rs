@@ -5,7 +5,7 @@
 //! - Calculates net cost differences for new files and file overwrites.
 //! - Validates available disk space before deferred installation begins.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use std::collections::HashMap;
 
 /// Default filesystem cluster size in bytes (4096 bytes).
@@ -310,11 +310,11 @@ impl DiskCostEngine {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::DiskCostExceeded`] if any volume requires more bytes than available.
+    /// Returns [`MsiError::DiskCostExceeded`] if any volume requires more bytes than available.
     pub fn cost_finalize(&self) -> Result<&HashMap<String, VolumeCost>> {
         for (vol_name, cost) in &self.volumes {
             if cost.is_exceeded() {
-                return Err(Error::DiskCostExceeded {
+                return Err(MsiError::DiskCostExceeded {
                     volume: vol_name.clone(),
                     required_bytes: u64::try_from(cost.cost_bytes).unwrap_or(0),
                     available_bytes: cost.available_bytes,
@@ -448,7 +448,7 @@ mod tests {
         let res = engine.cost_finalize();
         assert_eq!(
             res,
-            Err(Error::DiskCostExceeded {
+            Err(MsiError::DiskCostExceeded {
                 volume: r"C:\".to_string(),
                 required_bytes: 8192,
                 available_bytes: 4096,

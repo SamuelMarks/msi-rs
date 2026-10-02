@@ -11,7 +11,7 @@ use crate::database::catalogs::TableSchema;
 use crate::database::column::{ColumnDef, DataType};
 use crate::database::tables::record::{FieldValue, Record};
 use crate::database::tables::types::{ComponentName, DirectoryId, FileKey};
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 
 /// Row in the `PosixFile` table.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,10 +57,10 @@ impl PosixFileRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] or [`Error::RecordLengthMismatch`].
+    /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`].
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 5 {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 5,
                 actual: rec.len(),
             });
@@ -68,7 +68,7 @@ impl PosixFileRow {
         let file = match rec.get(0) {
             Some(FieldValue::String(s)) => FileKey::new(s.as_str())?,
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "PosixFile.File_".to_string(),
                     reason: "missing File_".to_string(),
                 })
@@ -155,10 +155,10 @@ impl PosixSymlinkRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] or [`Error::RecordLengthMismatch`].
+    /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`].
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 5 {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 5,
                 actual: rec.len(),
             });
@@ -166,7 +166,7 @@ impl PosixSymlinkRow {
         let symlink_key = match rec.get(0) {
             Some(FieldValue::String(s)) => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "PosixSymlink.SymlinkKey".to_string(),
                     reason: "missing SymlinkKey".to_string(),
                 })
@@ -179,7 +179,7 @@ impl PosixSymlinkRow {
         let link_directory = match rec.get(2) {
             Some(FieldValue::String(s)) => DirectoryId::new(s.as_str())?,
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "PosixSymlink.LinkDirectory_".to_string(),
                     reason: "missing LinkDirectory_".to_string(),
                 })
@@ -192,7 +192,7 @@ impl PosixSymlinkRow {
         let component = match rec.get(4) {
             Some(FieldValue::String(s)) => ComponentName::new(s.as_str())?,
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "PosixSymlink.Component_".to_string(),
                     reason: "missing Component_".to_string(),
                 })

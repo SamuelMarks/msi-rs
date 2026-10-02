@@ -1,6 +1,6 @@
 //! MSI table column types, bitmasks, and validation rules (MSI SDK).
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use std::fmt;
 
 /// Non-nullable column flag (`0x0000`).
@@ -174,7 +174,7 @@ impl ColumnDef {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidColumnType`] if conflicting type flags are specified.
+    /// Returns [`MsiError::InvalidColumnType`] if conflicting type flags are specified.
     pub fn from_bitmask(name: impl Into<String>, bitmask: u16) -> Result<Self> {
         let nullable = (bitmask & MSIDB_NULLABLE) != 0;
         let primary_key = (bitmask & MSIDB_PRIMARY_KEY) != 0;
@@ -186,7 +186,7 @@ impl ColumnDef {
 
         let type_flags_count = u8::from(has_short) + u8::from(has_long) + u8::from(has_stream);
         if type_flags_count > 1 {
-            return Err(Error::InvalidColumnType { raw: bitmask });
+            return Err(MsiError::InvalidColumnType { raw: bitmask });
         }
 
         let data_type = if has_short {

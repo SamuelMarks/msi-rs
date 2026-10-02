@@ -7,7 +7,7 @@
 
 A complete, memory-safe, cross-platform implementation of the Windows Installer technology stack written in Rust.
 
-`msi-rs` provides pure-Rust readers, writers, compilers, execution runtimes, desktop/terminal UI environments, and multi-language bindings for `.msi`, `.msp`, `.msm`, and `.mst` packages across Linux, macOS, FreeBSD, illumos/Solaris, and Windows.
+`msi-rs` provides pure-Rust readers, writers, compilers, execution runtimes, desktop/terminal UI environments, and multi-language bindings for `.msi`, `.msp`, `.msm`, `.mst`, `.wim`, and `.esd` packages across Linux, macOS, FreeBSD, illumos/Solaris, and Windows.
 
 ---
 
@@ -45,6 +45,13 @@ Traditionally, authoring, compiling, inspecting, and executing Windows Installer
 - **Privileged Worker Boundary**: Replaces the Windows `msiserver` RPC service with cross-process IPC (Unix domain sockets / Windows named pipes) and privilege escalation (`sudo`, PolicyKit `pkexec`, macOS `SMJobBless`, or `runas`).
 - **Standard Action Translation**: Translates MSI Win32 actions (`InstallFiles`, `WriteRegistryValues`, `CreateShortcuts`, `InstallServices`) into native POSIX filesystem hierarchies, service supervisors, and desktop launchers.
 - **Native GUI & TUI**: Delivers both a desktop GUI wizard (`msi-gui`) replicating classic WiX dialog layouts (`WixUI_Mondo`, `WixUI_InstallDir`, `WixUI_FeatureTree`) and an interactive terminal wizard (`msi-cli install --tui`) for headless server installations.
+
+### 3. Bare-Metal OS Provisioning (WIM/ESD Extraction)
+Beyond standard userspace `.msi` installers, `msi-rs` operates as a privileged execution engine for bare-metal OS deployments:
+- **Windows Imaging Format (WIM) & Solid ESD Engine**: Natively parses and validates `WIMHEADER` architectures, XML image manifests, and SHA-1 chunked offset lookup tables.
+- **LZX, XPRESS, & LZMS Decompression**: Streams payloads from official Microsoft deployment media (`install.wim`, `install.esd`) using memory-safe delta-range coders and chunk sliding windows.
+- **Offline Sysroot Targeting**: Integrates WIM extraction alongside native disk partitioning (`platform::disk`, `platform::partition`), EFI bootloader staging (`systemd-stub`), and offline registry editing (`platform::hive`) to deploy full Operating Systems without an underlying kernel installer.
+
 
 ---
 
@@ -118,6 +125,7 @@ CLI tool providing drop-in command-line parity with Microsoft Win32 `msiexec.exe
 | :--- | :--- | :--- |
 | **[MS-CFB]** | Compound File Binary Format (v14.0) | `crates/msi/src/cfb/` |
 | **Cabinet (CAB)** | Microsoft Cabinet File Format & SDK | `crates/msi/src/cab/` |
+| **WIM/ESD** | Windows Imaging Format (WIM) & LZMS Solid ESD | `crates/msi/src/wim/` |
 | **LZX** | Microsoft LZX Data Compression Specification | `crates/msi/src/cab/lzx.rs` |
 | **MSZIP** | Deflate Compression with Cabinet Frame Reset | `crates/msi/src/cab/mszip.rs` |
 | **Quantum** | Adaptive Arithmetic Compression Specification | `crates/msi/src/cab/quantum.rs` |

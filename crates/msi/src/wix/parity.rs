@@ -54,7 +54,7 @@ impl MsiDecompiler {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error`] if required product properties are missing.
+    /// Returns [`crate::error::MsiError`] if required product properties are missing.
     #[allow(clippy::too_many_lines, clippy::format_push_string)]
     pub fn decompile(&self, database: &LinkedDatabase) -> Result<String> {
         let mut properties = HashMap::new();
@@ -67,7 +67,7 @@ impl MsiDecompiler {
         }
 
         if properties.is_empty() {
-            return Err(crate::error::Error::Validation {
+            return Err(crate::error::MsiError::Validation {
                 element: "Property".to_string(),
                 reason: "missing required Property table or records in database".to_string(),
             });
@@ -364,7 +364,7 @@ impl MsiDecompiler {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::Io`] or [`crate::error::Error::CabinetFileNotFound`] on extraction failure.
+    /// Returns [`crate::error::MsiError::Io`] or [`crate::error::MsiError::CabinetFileNotFound`] on extraction failure.
     pub fn extract_assets(
         &self,
         package: &crate::package::Package,
@@ -419,7 +419,7 @@ impl MsiDecompiler {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error`] if decompilation or recompilation fails.
+    /// Returns [`crate::error::MsiError`] if decompilation or recompilation fails.
     pub fn roundtrip(&self, database: &LinkedDatabase) -> Result<LinkedDatabase> {
         let decompiled_xml = self.decompile(database)?;
         let parser = XmlParser::new();

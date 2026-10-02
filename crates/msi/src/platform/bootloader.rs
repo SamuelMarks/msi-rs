@@ -6,7 +6,7 @@
 //! - Linux bootloader generators: `systemd-boot` entries, `GRUB2` `grub.cfg`, and `Limine` `limine.cfg`.
 //! - EFI NVRAM Variable manipulation (`efivarfs`) for non-volatile `BootXXXX` and `BootOrder` entries.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::platform::hive::{OfflineRegistryData, OfflineRegistryHive};
 use crate::platform::partition::{GptPartitionEntry, PartitionUuid};
 use std::fmt::Write as _;
@@ -43,11 +43,11 @@ impl EspLayoutManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::BootloaderError`] if staging operations fail.
+    /// Returns [`MsiError::BootloaderError`] if staging operations fail.
     pub fn stage_fallback_bootloader(esp_root: &Path, binary: &[u8]) -> Result<PathBuf> {
         let boot_dir = esp_root.join("EFI/BOOT");
         if let Err(e) = std::fs::create_dir_all(&boot_dir) {
-            return Err(Error::BootloaderError {
+            return Err(MsiError::BootloaderError {
                 target: "ESP/BOOT".to_string(),
                 reason: format!("failed to create EFI/BOOT directory: {e}"),
             });
@@ -55,7 +55,7 @@ impl EspLayoutManager {
 
         let target_path = boot_dir.join("BOOTX64.EFI");
         if let Err(e) = std::fs::write(&target_path, binary) {
-            return Err(Error::BootloaderError {
+            return Err(MsiError::BootloaderError {
                 target: "BOOTX64.EFI".to_string(),
                 reason: format!("failed to write fallback bootloader binary: {e}"),
             });
@@ -79,7 +79,7 @@ impl EspLayoutManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::BootloaderError`] if write fails.
+    /// Returns [`MsiError::BootloaderError`] if write fails.
     pub fn stage_vendor_bootloader(
         esp_root: &Path,
         vendor: &str,
@@ -88,7 +88,7 @@ impl EspLayoutManager {
     ) -> Result<PathBuf> {
         let vendor_dir = esp_root.join("EFI").join(vendor);
         if let Err(e) = std::fs::create_dir_all(&vendor_dir) {
-            return Err(Error::BootloaderError {
+            return Err(MsiError::BootloaderError {
                 target: format!("EFI/{vendor}"),
                 reason: format!("failed to create vendor directory: {e}"),
             });
@@ -96,7 +96,7 @@ impl EspLayoutManager {
 
         let dest = vendor_dir.join(filename);
         if let Err(e) = std::fs::write(&dest, binary) {
-            return Err(Error::BootloaderError {
+            return Err(MsiError::BootloaderError {
                 target: filename.to_string(),
                 reason: format!("failed to write vendor bootloader: {e}"),
             });
@@ -130,7 +130,7 @@ impl WindowsBcdStore {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::BootloaderError`] if hive generation or disk write fails.
+    /// Returns [`MsiError::BootloaderError`] if hive generation or disk write fails.
     pub fn create_offline_bcd(
         esp_root: &Path,
         os_partition_uuid: PartitionUuid,
@@ -138,7 +138,7 @@ impl WindowsBcdStore {
     ) -> Result<PathBuf> {
         let bcd_dir = esp_root.join("EFI/Microsoft/Boot");
         if let Err(e) = std::fs::create_dir_all(&bcd_dir) {
-            return Err(Error::BootloaderError {
+            return Err(MsiError::BootloaderError {
                 target: "BCD".to_string(),
                 reason: format!("failed to create BCD directory: {e}"),
             });
@@ -209,7 +209,7 @@ impl WindowsBcdStore {
 
         let bcd_path = bcd_dir.join("BCD");
         hive.save_to_file(&bcd_path)
-            .map_err(|e| Error::BootloaderError {
+            .map_err(|e| MsiError::BootloaderError {
                 target: "BCD".to_string(),
                 reason: format!("failed to write BCD hive: {e}"),
             })?;
@@ -236,7 +236,7 @@ impl LinuxBootloaderConfig {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::BootloaderError`] if writing configuration files fails.
+    /// Returns [`MsiError::BootloaderError`] if writing configuration files fails.
     pub fn write_systemd_boot(
         esp_root: &Path,
         entry_name: &str,
@@ -247,7 +247,7 @@ impl LinuxBootloaderConfig {
     ) -> Result<()> {
         let entries_dir = esp_root.join("loader/entries");
         if let Err(e) = std::fs::create_dir_all(&entries_dir) {
-            return Err(Error::BootloaderError {
+            return Err(MsiError::BootloaderError {
                 target: "systemd-boot".to_string(),
                 reason: format!("failed to create loader/entries: {e}"),
             });
@@ -271,7 +271,7 @@ console-mode max
         let _ = writeln!(entry_content, "options {cmdline_options}");
 
         let entry_path = entries_dir.join(format!("{entry_name}.conf"));
-        std::fs::write(&entry_path, entry_content).map_err(|e| Error::BootloaderError {
+        std::fs::write(&entry_path, entry_content).map_err(|e| MsiError::BootloaderError {
             target: format!("{entry_name}.conf"),
             reason: format!("failed to write systemd-boot entry: {e}"),
         })?;
@@ -450,7 +450,7 @@ impl EfiNvramManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::BootloaderError`] if `efivarfs` is inaccessible or variable writing fails.
+    /// Returns [`MsiError::BootloaderError`] if `efivarfs` is inaccessible or variable writing fails.
     pub fn create_boot_entry(
         efivarfs_root: Option<&Path>,
         boot_index: u16,
@@ -461,7 +461,7 @@ impl EfiNvramManager {
     ) -> Result<()> {
         let root = efivarfs_root.unwrap_or_else(|| Path::new("/sys/firmware/efi/efivars"));
         if !root.exists() {
-            return Err(Error::BootloaderError {
+            return Err(MsiError::BootloaderError {
                 target: "efivarfs".to_string(),
                 reason: format!("efivarfs directory does not exist at {}", root.display()),
             });
@@ -521,7 +521,7 @@ impl EfiNvramManager {
             u16::try_from(payload.len().saturating_sub(fp_start)).unwrap_or(u16::MAX);
         payload[fpl_pos..fpl_pos + 2].copy_from_slice(&fp_total_len.to_le_bytes());
 
-        std::fs::write(&var_path, payload).map_err(|e| Error::BootloaderError {
+        std::fs::write(&var_path, payload).map_err(|e| MsiError::BootloaderError {
             target: format!("Boot{boot_index:04X}"),
             reason: format!("failed to write boot entry to efivarfs: {e}"),
         })?;
@@ -538,7 +538,7 @@ impl EfiNvramManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::BootloaderError`] if writing `BootOrder` fails.
+    /// Returns [`MsiError::BootloaderError`] if writing `BootOrder` fails.
     pub fn set_boot_order(efivarfs_root: Option<&Path>, order: &[u16]) -> Result<()> {
         let root = efivarfs_root.unwrap_or_else(|| Path::new("/sys/firmware/efi/efivars"));
         let var_filename = format!("BootOrder-{}", Self::EFI_GLOBAL_VARIABLE_GUID);
@@ -550,7 +550,7 @@ impl EfiNvramManager {
             payload.extend_from_slice(&idx.to_le_bytes());
         }
 
-        std::fs::write(&var_path, payload).map_err(|e| Error::BootloaderError {
+        std::fs::write(&var_path, payload).map_err(|e| MsiError::BootloaderError {
             target: "BootOrder".to_string(),
             reason: format!("failed to write BootOrder variable: {e}"),
         })?;

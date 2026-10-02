@@ -20,7 +20,7 @@ use crate::database::tables::core::{
 };
 use crate::database::tables::record::{FieldValue, Record};
 use crate::database::tables::types::PropertyName;
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::wix::linker::LinkedDatabase;
 use std::collections::HashMap;
 use std::fmt;
@@ -103,18 +103,18 @@ impl ProductVersion {
     ///
     /// # Returns
     ///
-    /// A [`Result`] containing the parsed [`ProductVersion`], or an [`Error::InvalidArgument`]
+    /// A [`Result`] containing the parsed [`ProductVersion`], or an [`MsiError::InvalidArgument`]
     /// if the string format or numeric bounds are invalid.
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidArgument`] when:
+    /// Returns [`MsiError::InvalidArgument`] when:
     /// - The string contains fewer than 2 or more than 3 dot-separated components.
     /// - Any component fails to parse into its appropriate integer type.
     pub fn parse(input: &str) -> Result<Self> {
         let parts: Vec<&str> = input.split('.').collect();
         if parts.len() < 2 || parts.len() > 3 {
-            return Err(Error::InvalidArgument {
+            return Err(MsiError::InvalidArgument {
                 argument: "version".to_string(),
                 reason: "ProductVersion must have 2 or 3 dot-separated components".to_string(),
             });
@@ -123,7 +123,7 @@ impl ProductVersion {
         let major: u8 =
             parts[0]
                 .parse()
-                .map_err(|err: std::num::ParseIntError| Error::InvalidArgument {
+                .map_err(|err: std::num::ParseIntError| MsiError::InvalidArgument {
                     argument: "version.major".to_string(),
                     reason: err.to_string(),
                 })?;
@@ -131,7 +131,7 @@ impl ProductVersion {
         let minor: u8 =
             parts[1]
                 .parse()
-                .map_err(|err: std::num::ParseIntError| Error::InvalidArgument {
+                .map_err(|err: std::num::ParseIntError| MsiError::InvalidArgument {
                     argument: "version.minor".to_string(),
                     reason: err.to_string(),
                 })?;
@@ -139,7 +139,7 @@ impl ProductVersion {
         let build: u16 = if parts.len() == 3 {
             parts[2]
                 .parse()
-                .map_err(|err: std::num::ParseIntError| Error::InvalidArgument {
+                .map_err(|err: std::num::ParseIntError| MsiError::InvalidArgument {
                     argument: "version.build".to_string(),
                     reason: err.to_string(),
                 })?
@@ -1090,13 +1090,13 @@ impl PackageBuilder {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] if any required property is missing or empty.
+    /// Returns [`MsiError::Validation`] if any required property is missing or empty.
     #[allow(clippy::too_many_lines)]
     pub fn build(self) -> Result<Package> {
         let product_name = match self.product_name {
             Some(ref name) if !name.trim().is_empty() => name.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "ProductName".to_string(),
                     reason: "Product name must not be empty".to_string(),
                 });
@@ -1106,7 +1106,7 @@ impl PackageBuilder {
         let manufacturer = match self.manufacturer {
             Some(ref mfr) if !mfr.trim().is_empty() => mfr.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "Manufacturer".to_string(),
                     reason: "Manufacturer must not be empty".to_string(),
                 });
@@ -1114,7 +1114,7 @@ impl PackageBuilder {
         };
 
         let Some(version) = self.version else {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "ProductVersion".to_string(),
                 reason: "Product version must be specified".to_string(),
             });
@@ -1123,7 +1123,7 @@ impl PackageBuilder {
         let product_code = match self.product_code {
             Some(ref code) if !code.trim().is_empty() => code.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "ProductCode".to_string(),
                     reason: "Product code must not be empty".to_string(),
                 });
@@ -1450,7 +1450,7 @@ mod tests {
                         assert!(bytes_res.is_ok());
                         for bt in [
                             bytes_res,
-                            Err(Error::CfbCorrupted {
+                            Err(MsiError::CfbCorrupted {
                                 offset: 0,
                                 reason: "bad".to_string(),
                             }),
@@ -1525,7 +1525,7 @@ mod tests {
             .build();
         assert_eq!(
             res_missing_name,
-            Err(Error::Validation {
+            Err(MsiError::Validation {
                 element: "ProductName".to_string(),
                 reason: "Product name must not be empty".to_string()
             })
@@ -1539,7 +1539,7 @@ mod tests {
             .build();
         assert_eq!(
             res_whitespace_name,
-            Err(Error::Validation {
+            Err(MsiError::Validation {
                 element: "ProductName".to_string(),
                 reason: "Product name must not be empty".to_string()
             })
@@ -1552,7 +1552,7 @@ mod tests {
             .build();
         assert_eq!(
             res_missing_mfr,
-            Err(Error::Validation {
+            Err(MsiError::Validation {
                 element: "Manufacturer".to_string(),
                 reason: "Manufacturer must not be empty".to_string()
             })
@@ -1566,7 +1566,7 @@ mod tests {
             .build();
         assert_eq!(
             res_whitespace_mfr,
-            Err(Error::Validation {
+            Err(MsiError::Validation {
                 element: "Manufacturer".to_string(),
                 reason: "Manufacturer must not be empty".to_string()
             })
@@ -1579,7 +1579,7 @@ mod tests {
             .build();
         assert_eq!(
             res_missing_ver,
-            Err(Error::Validation {
+            Err(MsiError::Validation {
                 element: "ProductVersion".to_string(),
                 reason: "Product version must be specified".to_string()
             })
@@ -1592,7 +1592,7 @@ mod tests {
             .build();
         assert_eq!(
             res_missing_code,
-            Err(Error::Validation {
+            Err(MsiError::Validation {
                 element: "ProductCode".to_string(),
                 reason: "Product code must not be empty".to_string()
             })
@@ -1606,7 +1606,7 @@ mod tests {
             .build();
         assert_eq!(
             res_whitespace_code,
-            Err(Error::Validation {
+            Err(MsiError::Validation {
                 element: "ProductCode".to_string(),
                 reason: "Product code must not be empty".to_string()
             })

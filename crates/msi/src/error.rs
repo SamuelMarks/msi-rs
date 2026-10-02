@@ -5,7 +5,7 @@ use derive_more::{Display, Error};
 
 /// Primary error enum for all MSI operations.
 #[derive(Debug, Display, Error, PartialEq, Eq)]
-pub enum Error {
+pub enum MsiError {
     /// An I/O error occurred during an operation.
     #[display("I/O error: {_0}")]
     #[error(ignore)]
@@ -648,10 +648,41 @@ pub enum Error {
         /// The invalid CLSID string.
         clsid: String,
     },
+    /// The WIM file magic signature is invalid or unrecognized.
+    #[display("Invalid WIM magic signature: {magic:?}")]
+    WimInvalidMagic {
+        /// The invalid magic signature byte array.
+        magic: [u8; 8],
+    },
+
+    /// The checksum of the extracted WIM resource did not match the expected SHA-1 hash.
+    #[display("WIM checksum mismatch: expected {expected}, actual {actual}")]
+    WimChecksumMismatch {
+        /// Expected SHA-1 hash (hex string).
+        expected: String,
+        /// Actual computed SHA-1 hash (hex string).
+        actual: String,
+    },
+
+    /// An error occurred while decompressing a WIM chunk (XPRESS, LZX, or LZMS).
+    #[display("WIM decompression error in algorithm '{algorithm}': {reason}")]
+    WimDecompressionError {
+        /// The compression algorithm that failed.
+        algorithm: String,
+        /// The specific failure reason.
+        reason: String,
+    },
+
+    /// An error occurred while parsing the WIM XML manifest.
+    #[display("WIM XML parse error: {reason}")]
+    WimXmlParseError {
+        /// Description of the XML parsing failure.
+        reason: String,
+    },
 }
 
-impl From<std::io::Error> for Error {
-    /// Converts a standard [`std::io::Error`] into an [`Error::Io`].
+impl From<std::io::Error> for MsiError {
+    /// Converts a standard [`std::io::Error`] into an [`MsiError::Io`].
     ///
     /// # Arguments
     ///
@@ -659,14 +690,14 @@ impl From<std::io::Error> for Error {
     ///
     /// # Returns
     ///
-    /// An [`Error::Io`] containing the string description of the I/O error.
+    /// An [`MsiError::Io`] containing the string description of the I/O error.
     fn from(err: std::io::Error) -> Self {
         Self::Io(err.to_string())
     }
 }
 
 /// A specialized [`Result`] type for MSI package operations.
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, MsiError>;
 
 #[cfg(test)]
 mod tests {
@@ -675,10 +706,10 @@ mod tests {
     /// Tests core error variant display formatting.
     #[test]
     fn test_error_display_core() {
-        let err_io = Error::Io("file not found".to_string());
+        let err_io = MsiError::Io("file not found".to_string());
         assert_eq!(format!("{err_io}"), "I/O error: file not found");
 
-        let err_arg = Error::InvalidArgument {
+        let err_arg = MsiError::InvalidArgument {
             argument: "name".to_string(),
             reason: "cannot be empty".to_string(),
         };
@@ -687,12 +718,12 @@ mod tests {
             "Invalid argument 'name': cannot be empty"
         );
 
-        let err_table = Error::MissingTable {
+        let err_table = MsiError::MissingTable {
             name: "Property".to_string(),
         };
         assert_eq!(format!("{err_table}"), "Missing required table: Property");
 
-        let err_val = Error::Validation {
+        let err_val = MsiError::Validation {
             element: "ProductCode".to_string(),
             reason: "must be a valid GUID".to_string(),
         };
@@ -701,7 +732,7 @@ mod tests {
             "Validation error on ProductCode: must be a valid GUID"
         );
 
-        let err_unsup = Error::Unsupported {
+        let err_unsup = MsiError::Unsupported {
             name: "ARM64X".to_string(),
         };
         assert_eq!(format!("{err_unsup}"), "Unsupported feature: ARM64X");
@@ -711,31 +742,31 @@ mod tests {
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_error_display_cfb() {
-        let err_sig = Error::InvalidCfbSignature { found: [0; 8] };
+        let err_sig = MsiError::InvalidCfbSignature { found: [0; 8] };
         assert_eq!(
             format!("{err_sig}"),
             "Invalid CFB header signature: [00, 00, 00, 00, 00, 00, 00, 00]"
         );
 
-        let err_clsid = Error::InvalidCfbClsid { found: [1; 16] };
+        let err_clsid = MsiError::InvalidCfbClsid { found: [1; 16] };
         assert_eq!(
             format!("{err_clsid}"),
             "Invalid CFB header CLSID: [01, 01, 01, 01, 01, 01, 01, 01, 01, 01, 01, 01, 01, 01, 01, 01]"
         );
 
-        let err_min_v = Error::InvalidCfbMinorVersion { found: 0x003F };
+        let err_min_v = MsiError::InvalidCfbMinorVersion { found: 0x003F };
         assert_eq!(format!("{err_min_v}"), "Invalid CFB minor version: 0x003F");
 
-        let err_maj_v = Error::InvalidCfbMajorVersion { found: 0x0002 };
+        let err_maj_v = MsiError::InvalidCfbMajorVersion { found: 0x0002 };
         assert_eq!(format!("{err_maj_v}"), "Invalid CFB major version: 0x0002");
 
-        let err_order = Error::InvalidCfbByteOrder { found: 0x1234 };
+        let err_order = MsiError::InvalidCfbByteOrder { found: 0x1234 };
         assert_eq!(
             format!("{err_order}"),
             "Invalid CFB byte order marker: 0x1234"
         );
 
-        let err_shift = Error::InvalidCfbSectorShift {
+        let err_shift = MsiError::InvalidCfbSectorShift {
             major_version: 3,
             shift: 12,
         };
@@ -744,13 +775,13 @@ mod tests {
             "Invalid CFB sector shift 12 for major version 3"
         );
 
-        let err_mini_shift = Error::InvalidCfbMiniSectorShift { shift: 7 };
+        let err_mini_shift = MsiError::InvalidCfbMiniSectorShift { shift: 7 };
         assert_eq!(
             format!("{err_mini_shift}"),
             "Invalid CFB mini sector shift: 0x0007"
         );
 
-        let err_res = Error::InvalidCfbReserved {
+        let err_res = MsiError::InvalidCfbReserved {
             found: [1, 2, 3, 4, 5, 6],
         };
         assert_eq!(
@@ -758,7 +789,7 @@ mod tests {
             "Invalid CFB header reserved bytes: [01, 02, 03, 04, 05, 06]"
         );
 
-        let err_dir_sec = Error::InvalidCfbDirectorySectors {
+        let err_dir_sec = MsiError::InvalidCfbDirectorySectors {
             major_version: 3,
             count: 5,
         };
@@ -767,13 +798,13 @@ mod tests {
             "Invalid CFB directory sector count 5 for major version 3"
         );
 
-        let err_cutoff = Error::InvalidCfbMiniStreamCutoff { cutoff: 2048 };
+        let err_cutoff = MsiError::InvalidCfbMiniStreamCutoff { cutoff: 2048 };
         assert_eq!(
             format!("{err_cutoff}"),
             "Invalid CFB mini stream cutoff size: 2048"
         );
 
-        let err_sec = Error::InvalidSector {
+        let err_sec = MsiError::InvalidSector {
             sector: 0x10,
             reason: "out of range".to_string(),
         };
@@ -782,13 +813,13 @@ mod tests {
             "Invalid sector index 0x00000010: out of range"
         );
 
-        let err_cycle = Error::SectorChainCycle { sector: 0x20 };
+        let err_cycle = MsiError::SectorChainCycle { sector: 0x20 };
         assert_eq!(
             format!("{err_cycle}"),
             "Cycle detected in CFB sector chain starting at sector 0x00000020"
         );
 
-        let err_dir = Error::InvalidDirectoryEntry {
+        let err_dir = MsiError::InvalidDirectoryEntry {
             index: 2,
             reason: "bad name".to_string(),
         };
@@ -797,7 +828,7 @@ mod tests {
             "Invalid directory entry at index 2: bad name"
         );
 
-        let err_st_not = Error::StreamNotFound {
+        let err_st_not = MsiError::StreamNotFound {
             name: "test".to_string(),
         };
         assert_eq!(
@@ -805,12 +836,12 @@ mod tests {
             "Stream 'test' was not found in container"
         );
 
-        let err_dup = Error::DuplicateDirectoryEntry {
+        let err_dup = MsiError::DuplicateDirectoryEntry {
             name: "dup".to_string(),
         };
         assert_eq!(format!("{err_dup}"), "Duplicate directory entry name 'dup'");
 
-        let err_corr = Error::CfbCorrupted {
+        let err_corr = MsiError::CfbCorrupted {
             offset: 512,
             reason: "truncated sector".to_string(),
         };
@@ -819,7 +850,7 @@ mod tests {
             "CFB corruption at byte offset 512: truncated sector"
         );
 
-        let err_name = Error::InvalidStreamName {
+        let err_name = MsiError::InvalidStreamName {
             name: "bad!name".to_string(),
             reason: "unsupported character".to_string(),
         };
@@ -828,7 +859,7 @@ mod tests {
             "Invalid stream name 'bad!name': unsupported character"
         );
 
-        let err_sz = Error::StreamSizeMismatch {
+        let err_sz = MsiError::StreamSizeMismatch {
             expected: 100,
             actual: 90,
         };
@@ -841,7 +872,7 @@ mod tests {
     /// Tests Cabinet format error variant display formatting.
     #[test]
     fn test_error_display_cab() {
-        let err_sig = Error::InvalidCabSignature {
+        let err_sig = MsiError::InvalidCabSignature {
             found: [1, 2, 3, 4],
         };
         assert_eq!(
@@ -849,10 +880,10 @@ mod tests {
             "Invalid Cabinet signature: [01, 02, 03, 04]"
         );
 
-        let err_ver = Error::InvalidCabVersion { major: 2, minor: 0 };
+        let err_ver = MsiError::InvalidCabVersion { major: 2, minor: 0 };
         assert_eq!(format!("{err_ver}"), "Unsupported Cabinet version 2.0");
 
-        let err_csum = Error::InvalidCabChecksum {
+        let err_csum = MsiError::InvalidCabChecksum {
             expected: 0x1234,
             actual: 0x5678,
         };
@@ -861,7 +892,7 @@ mod tests {
             "Cabinet checksum mismatch: expected 0x00001234, actual 0x00005678"
         );
 
-        let err_data = Error::InvalidCabData {
+        let err_data = MsiError::InvalidCabData {
             reason: "truncated header".to_string(),
         };
         assert_eq!(
@@ -869,7 +900,7 @@ mod tests {
             "Invalid Cabinet data: truncated header"
         );
 
-        let err_decomp = Error::DecompressionFailed {
+        let err_decomp = MsiError::DecompressionFailed {
             method: "MSZIP".to_string(),
             reason: "bad frame".to_string(),
         };
@@ -878,7 +909,7 @@ mod tests {
             "Decompression failed using MSZIP: bad frame"
         );
 
-        let err_comp = Error::CompressionFailed {
+        let err_comp = MsiError::CompressionFailed {
             method: "LZX".to_string(),
             reason: "window overflow".to_string(),
         };
@@ -887,7 +918,7 @@ mod tests {
             "Compression failed using LZX: window overflow"
         );
 
-        let err_fnf = Error::CabinetFileNotFound {
+        let err_fnf = MsiError::CabinetFileNotFound {
             name: "test.dll".to_string(),
         };
         assert_eq!(
@@ -899,13 +930,13 @@ mod tests {
     /// Tests Database and String Pool error variant display formatting.
     #[test]
     fn test_error_display_db() {
-        let err_col = Error::InvalidColumnType { raw: 0xFFFF };
+        let err_col = MsiError::InvalidColumnType { raw: 0xFFFF };
         assert_eq!(
             format!("{err_col}"),
             "Invalid MSI column type bitmask: 0xFFFF"
         );
 
-        let err_sp = Error::InvalidStringPool {
+        let err_sp = MsiError::InvalidStringPool {
             reason: "corrupted codepage".to_string(),
         };
         assert_eq!(
@@ -913,18 +944,18 @@ mod tests {
             "Invalid MSI string pool: corrupted codepage"
         );
 
-        let err_sql = Error::Sql {
+        let err_sql = MsiError::Sql {
             message: "syntax error".to_string(),
         };
         assert_eq!(format!("{err_sql}"), "SQL query error: syntax error");
 
-        let err_idx = Error::StringPoolIndexOutOfBounds { index: 50, max: 40 };
+        let err_idx = MsiError::StringPoolIndexOutOfBounds { index: 50, max: 40 };
         assert_eq!(
             format!("{err_idx}"),
             "String pool index 50 out of bounds (max 40)"
         );
 
-        let err_sum = Error::InvalidSummaryInfo {
+        let err_sum = MsiError::InvalidSummaryInfo {
             reason: "bad property type".to_string(),
         };
         assert_eq!(
@@ -932,7 +963,7 @@ mod tests {
             "Invalid Summary Information stream: bad property type"
         );
 
-        let err_rec = Error::RecordLengthMismatch {
+        let err_rec = MsiError::RecordLengthMismatch {
             expected: 4,
             actual: 3,
         };
@@ -945,7 +976,7 @@ mod tests {
     /// Tests formatting of WiX-related error variants.
     #[test]
     fn test_error_display_wix() {
-        let err_prep = Error::Preprocessor {
+        let err_prep = MsiError::Preprocessor {
             line: 10,
             column: 5,
             message: "undefined variable $(var.FOO)".to_string(),
@@ -955,7 +986,7 @@ mod tests {
             "WiX preprocessor error at 10:5: undefined variable $(var.FOO)"
         );
 
-        let err_xml = Error::XmlParse {
+        let err_xml = MsiError::XmlParse {
             line: 12,
             column: 1,
             message: "unclosed tag <Product>".to_string(),
@@ -965,7 +996,7 @@ mod tests {
             "WiX XML parse error at 12:1: unclosed tag <Product>"
         );
 
-        let err_wix = Error::WixCompiler {
+        let err_wix = MsiError::WixCompiler {
             element: "Component".to_string(),
             message: "missing Guid attribute".to_string(),
         };
@@ -974,7 +1005,7 @@ mod tests {
             "WiX compiler error in element 'Component': missing Guid attribute"
         );
 
-        let err_obj = Error::InvalidWixObject {
+        let err_obj = MsiError::InvalidWixObject {
             reason: "bad magic signature".to_string(),
         };
         assert_eq!(
@@ -982,7 +1013,7 @@ mod tests {
             "Invalid WiX intermediate object file: bad magic signature"
         );
 
-        let err_link = Error::WixLinker {
+        let err_link = MsiError::WixLinker {
             message: "unresolved symbol Component:Comp1".to_string(),
         };
         assert_eq!(
@@ -990,7 +1021,7 @@ mod tests {
             "WiX linker error: unresolved symbol Component:Comp1"
         );
 
-        let err_ext = Error::WixExtension {
+        let err_ext = MsiError::WixExtension {
             extension: "WixUtilExtension".to_string(),
             message: "failed to register backend custom actions".to_string(),
         };
@@ -999,7 +1030,7 @@ mod tests {
             "WiX extension error in 'WixUtilExtension': failed to register backend custom actions"
         );
 
-        let err_ext_xml = Error::ExtensionXmlParse {
+        let err_ext_xml = MsiError::ExtensionXmlParse {
             extension: "WixUtilExtension".to_string(),
             reason: "invalid syntax".to_string(),
         };
@@ -1008,7 +1039,7 @@ mod tests {
             "WiX extension XML parse error in 'WixUtilExtension': invalid syntax"
         );
 
-        let err_ice = Error::IceValidation {
+        let err_ice = MsiError::IceValidation {
             ice: "ICE03".to_string(),
             message: "Table 'File' column 'Sequence' cannot be null".to_string(),
         };
@@ -1021,7 +1052,7 @@ mod tests {
     /// Tests formatting of execution and transaction error variants.
     #[test]
     fn test_error_display_execution() {
-        let err_exec = Error::ExecutionFailed {
+        let err_exec = MsiError::ExecutionFailed {
             action: "InstallFiles".to_string(),
             return_code: 1603,
             message: "Access denied".to_string(),
@@ -1031,7 +1062,7 @@ mod tests {
             "Action 'InstallFiles' failed with return code 1603: Access denied"
         );
 
-        let err_rb = Error::RollbackFailed {
+        let err_rb = MsiError::RollbackFailed {
             action: "DeleteFile".to_string(),
             reason: "file is locked".to_string(),
         };
@@ -1040,7 +1071,7 @@ mod tests {
             "Rollback failed during action 'DeleteFile': file is locked"
         );
 
-        let err_state = Error::TransactionStateMismatch {
+        let err_state = MsiError::TransactionStateMismatch {
             expected: "Prepared".to_string(),
             actual: "Uninitialized".to_string(),
         };
@@ -1049,7 +1080,7 @@ mod tests {
             "Transaction state mismatch: expected 'Prepared', found 'Uninitialized'"
         );
 
-        let err_cost = Error::DiskCostExceeded {
+        let err_cost = MsiError::DiskCostExceeded {
             volume: "C:\\".to_string(),
             required_bytes: 1_048_576,
             available_bytes: 524_288,
@@ -1059,7 +1090,7 @@ mod tests {
             "Insufficient disk space on volume 'C:\\': required 1048576 bytes, available 524288 bytes"
         );
 
-        let err_ca = Error::CustomActionFailed {
+        let err_ca = MsiError::CustomActionFailed {
             action: "CheckPreReqs".to_string(),
             reason: "missing .NET runtime".to_string(),
         };
@@ -1068,7 +1099,7 @@ mod tests {
             "Custom action 'CheckPreReqs' failed: missing .NET runtime"
         );
 
-        let err_script = Error::ScriptError {
+        let err_script = MsiError::ScriptError {
             opcode: "InstallFile".to_string(),
             reason: "corrupted stream payload".to_string(),
         };
@@ -1077,7 +1108,7 @@ mod tests {
             "Script processing error on opcode 'InstallFile': corrupted stream payload"
         );
 
-        let err_ui = Error::UiError {
+        let err_ui = MsiError::UiError {
             dialog: "InstallDlg".to_string(),
             control: "NextButton".to_string(),
             reason: "invalid target event".to_string(),
@@ -1087,7 +1118,7 @@ mod tests {
             "UI error in dialog 'InstallDlg' control 'NextButton': invalid target event"
         );
 
-        let err_payload = Error::LinkerPayloadError {
+        let err_payload = MsiError::LinkerPayloadError {
             payload_id: "payload_1".to_string(),
             reason: "file not found".to_string(),
         };
@@ -1096,7 +1127,7 @@ mod tests {
             "Linker payload error for 'payload_1': file not found"
         );
 
-        let err_bridge = Error::CustomActionBridgeError {
+        let err_bridge = MsiError::CustomActionBridgeError {
             action: "InstallService".to_string(),
             reason: "unsupported parameter".to_string(),
         };
@@ -1105,7 +1136,7 @@ mod tests {
             "Custom action bridge error for 'InstallService': unsupported parameter"
         );
 
-        let err_script_rt = Error::ScriptRuntimeError {
+        let err_script_rt = MsiError::ScriptRuntimeError {
             line: 42,
             col: 10,
             message: "undefined identifier 'Foo'".to_string(),
@@ -1115,7 +1146,7 @@ mod tests {
             "Script runtime error at line 42, col 10: undefined identifier 'Foo'"
         );
 
-        let err_ipc = Error::WorkerIpcError {
+        let err_ipc = MsiError::WorkerIpcError {
             reason: "CRC32 frame checksum mismatch".to_string(),
         };
         assert_eq!(
@@ -1128,7 +1159,7 @@ mod tests {
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_error_display_bare_metal() {
-        let err_boot = Error::BootHarnessError {
+        let err_boot = MsiError::BootHarnessError {
             recipe: "linux-uki".to_string(),
             reason: "missing kernel image".to_string(),
         };
@@ -1137,7 +1168,7 @@ mod tests {
             "Boot harness error for recipe 'linux-uki': missing kernel image"
         );
 
-        let err_console = Error::ConsoleInitError {
+        let err_console = MsiError::ConsoleInitError {
             device: "/dev/tty0".to_string(),
             reason: "permission denied".to_string(),
         };
@@ -1146,7 +1177,7 @@ mod tests {
             "Console initialization error on device '/dev/tty0': permission denied"
         );
 
-        let err_uki = Error::UkiPackageError {
+        let err_uki = MsiError::UkiPackageError {
             reason: "invalid EFI stub binary".to_string(),
         };
         assert_eq!(
@@ -1154,7 +1185,7 @@ mod tests {
             "UKI packaging error: invalid EFI stub binary"
         );
 
-        let err_block = Error::BlockDeviceError {
+        let err_block = MsiError::BlockDeviceError {
             path: "/dev/nvme0n1".to_string(),
             reason: "device is read-only".to_string(),
         };
@@ -1163,7 +1194,7 @@ mod tests {
             "Block device error on '/dev/nvme0n1': device is read-only"
         );
 
-        let err_part = Error::PartitionError {
+        let err_part = MsiError::PartitionError {
             reason: "GPT header CRC32 mismatch".to_string(),
         };
         assert_eq!(
@@ -1171,7 +1202,7 @@ mod tests {
             "Partition error: GPT header CRC32 mismatch"
         );
 
-        let err_fmt = Error::FileSystemFormatError {
+        let err_fmt = MsiError::FileSystemFormatError {
             fs_type: "FAT32".to_string(),
             reason: "too few clusters".to_string(),
         };
@@ -1180,7 +1211,7 @@ mod tests {
             "Filesystem formatting error for 'FAT32': too few clusters"
         );
 
-        let err_sysroot = Error::SysrootMountError {
+        let err_sysroot = MsiError::SysrootMountError {
             path: "/mnt/target".to_string(),
             reason: "target mount failed".to_string(),
         };
@@ -1189,7 +1220,7 @@ mod tests {
             "Sysroot mount error at '/mnt/target': target mount failed"
         );
 
-        let err_hive = Error::RegistryHiveError {
+        let err_hive = MsiError::RegistryHiveError {
             hive: "SYSTEM".to_string(),
             reason: "invalid regf header signature".to_string(),
         };
@@ -1198,7 +1229,7 @@ mod tests {
             "Registry hive error on 'SYSTEM': invalid regf header signature"
         );
 
-        let err_drv = Error::DriverServicingError {
+        let err_drv = MsiError::DriverServicingError {
             inf: "netio.inf".to_string(),
             reason: "unsigned driver catalog".to_string(),
         };
@@ -1207,7 +1238,7 @@ mod tests {
             "Driver servicing error for INF 'netio.inf': unsigned driver catalog"
         );
 
-        let err_bootloader = Error::BootloaderError {
+        let err_bootloader = MsiError::BootloaderError {
             target: "systemd-boot".to_string(),
             reason: "loader entry write failure".to_string(),
         };
@@ -1216,7 +1247,7 @@ mod tests {
             "Bootloader error for target 'systemd-boot': loader entry write failure"
         );
 
-        let err_unattend = Error::UnattendError {
+        let err_unattend = MsiError::UnattendError {
             reason: "missing ProductKey element".to_string(),
         };
         assert_eq!(
@@ -1224,7 +1255,7 @@ mod tests {
             "Unattend configuration error: missing ProductKey element"
         );
 
-        let err_unsupported_plat = Error::UnsupportedPlatform {
+        let err_unsupported_plat = MsiError::UnsupportedPlatform {
             platform: "Windows PE".to_string(),
             reason: "Wine not found".to_string(),
         };
@@ -1233,7 +1264,7 @@ mod tests {
             "Unsupported platform 'Windows PE': Wine not found"
         );
 
-        let err_unsupported_plat_feat = Error::UnsupportedPlatformFeature {
+        let err_unsupported_plat_feat = MsiError::UnsupportedPlatformFeature {
             feature: "KernelDriver".to_string(),
             target_os: TargetOs::SunOs,
             reason: "Windows NT kernel driver service is not supported on illumos".to_string(),
@@ -1243,7 +1274,7 @@ mod tests {
             "Feature 'KernelDriver' is unsupported on target OS SunOs: Windows NT kernel driver service is not supported on illumos"
         );
 
-        let err_gui = Error::GuiError {
+        let err_gui = MsiError::GuiError {
             reason: "failed to initialize window".to_string(),
         };
         assert_eq!(
@@ -1251,7 +1282,7 @@ mod tests {
             "GUI error: failed to initialize window"
         );
 
-        let err_net = Error::NetworkConfigError {
+        let err_net = MsiError::NetworkConfigError {
             reason: "invalid IPv4 address".to_string(),
         };
         assert_eq!(
@@ -1259,7 +1290,7 @@ mod tests {
             "Network configuration error: invalid IPv4 address"
         );
 
-        let err_user = Error::UserProvisioningError {
+        let err_user = MsiError::UserProvisioningError {
             reason: "password too short".to_string(),
         };
         assert_eq!(
@@ -1267,7 +1298,7 @@ mod tests {
             "User provisioning error: password too short"
         );
 
-        let err_live_media = Error::LiveMediaError {
+        let err_live_media = MsiError::LiveMediaError {
             reason: "ISO creation failed".to_string(),
         };
         assert_eq!(
@@ -1275,7 +1306,7 @@ mod tests {
             "Live media error: ISO creation failed"
         );
 
-        let err_burn = Error::BurnBundleError {
+        let err_burn = MsiError::BurnBundleError {
             reason: "manifest missing".to_string(),
         };
         assert_eq!(format!("{err_burn}"), "Burn bundle error: manifest missing");
@@ -1284,48 +1315,48 @@ mod tests {
     /// Tests formatting of chainer, sql provisioning, and service configuration error variants.
     #[test]
     fn test_error_display_chainer_and_provisioning() {
-        let err_chainer = Error::Chainer("failed to join transaction".to_string());
+        let err_chainer = MsiError::Chainer("failed to join transaction".to_string());
         assert_eq!(
             format!("{err_chainer}"),
             "Chainer error: failed to join transaction"
         );
         assert_eq!(
             err_chainer,
-            Error::Chainer("failed to join transaction".to_string())
+            MsiError::Chainer("failed to join transaction".to_string())
         );
 
-        let err_sql = Error::SqlProvisioning("connection timeout".to_string());
+        let err_sql = MsiError::SqlProvisioning("connection timeout".to_string());
         assert_eq!(
             format!("{err_sql}"),
             "SQL provisioning error: connection timeout"
         );
         assert_eq!(
             err_sql,
-            Error::SqlProvisioning("connection timeout".to_string())
+            MsiError::SqlProvisioning("connection timeout".to_string())
         );
 
-        let err_svc = Error::ServiceConfiguration("invalid failure action".to_string());
+        let err_svc = MsiError::ServiceConfiguration("invalid failure action".to_string());
         assert_eq!(
             format!("{err_svc}"),
             "Service configuration error: invalid failure action"
         );
         assert_eq!(
             err_svc,
-            Error::ServiceConfiguration("invalid failure action".to_string())
+            MsiError::ServiceConfiguration("invalid failure action".to_string())
         );
 
-        let err_arch = Error::InvalidArchitecture {
+        let err_arch = MsiError::InvalidArchitecture {
             name: "mips".to_string(),
         };
         assert_eq!(format!("{err_arch}"), "Invalid architecture 'mips'");
         assert_eq!(
             err_arch,
-            Error::InvalidArchitecture {
+            MsiError::InvalidArchitecture {
                 name: "mips".to_string()
             }
         );
 
-        let err_tmpl = Error::InvalidSummaryTemplate {
+        let err_tmpl = MsiError::InvalidSummaryTemplate {
             template: "invalid;template".to_string(),
             reason: "malformed language id".to_string(),
         };
@@ -1335,19 +1366,19 @@ mod tests {
         );
         assert_eq!(
             err_tmpl,
-            Error::InvalidSummaryTemplate {
+            MsiError::InvalidSummaryTemplate {
                 template: "invalid;template".to_string(),
                 reason: "malformed language id".to_string(),
             }
         );
 
-        let err_clsid = Error::InvalidStorageClsid {
+        let err_clsid = MsiError::InvalidStorageClsid {
             clsid: "bad-guid".to_string(),
         };
         assert_eq!(format!("{err_clsid}"), "Invalid storage CLSID 'bad-guid'");
         assert_eq!(
             err_clsid,
-            Error::InvalidStorageClsid {
+            MsiError::InvalidStorageClsid {
                 clsid: "bad-guid".to_string()
             }
         );
@@ -1357,7 +1388,71 @@ mod tests {
     #[test]
     fn test_io_error_conversion() {
         let std_err = std::io::Error::new(std::io::ErrorKind::NotFound, "disk read failure");
-        let msi_err = Error::from(std_err);
-        assert_eq!(msi_err, Error::Io("disk read failure".to_string()));
+        let msi_err = MsiError::from(std_err);
+        assert_eq!(msi_err, MsiError::Io("disk read failure".to_string()));
+    }
+
+    /// Tests formatting and equality for WIM-specific error variants.
+    #[test]
+    fn test_wim_errors() {
+        let err_magic = MsiError::WimInvalidMagic {
+            magic: [0x4D, 0x53, 0x57, 0x49, 0x4D, 0x00, 0x00, 0x01],
+        };
+        assert_eq!(
+            format!("{err_magic}"),
+            "Invalid WIM magic signature: [77, 83, 87, 73, 77, 0, 0, 1]"
+        );
+        assert_eq!(
+            err_magic,
+            MsiError::WimInvalidMagic {
+                magic: [0x4D, 0x53, 0x57, 0x49, 0x4D, 0x00, 0x00, 0x01]
+            }
+        );
+
+        let err_checksum = MsiError::WimChecksumMismatch {
+            expected: "expected_hash".to_string(),
+            actual: "actual_hash".to_string(),
+        };
+        assert_eq!(
+            format!("{err_checksum}"),
+            "WIM checksum mismatch: expected expected_hash, actual actual_hash"
+        );
+        assert_eq!(
+            err_checksum,
+            MsiError::WimChecksumMismatch {
+                expected: "expected_hash".to_string(),
+                actual: "actual_hash".to_string(),
+            }
+        );
+
+        let err_decompression = MsiError::WimDecompressionError {
+            algorithm: "LZX".to_string(),
+            reason: "corrupted chunk".to_string(),
+        };
+        assert_eq!(
+            format!("{err_decompression}"),
+            "WIM decompression error in algorithm 'LZX': corrupted chunk"
+        );
+        assert_eq!(
+            err_decompression,
+            MsiError::WimDecompressionError {
+                algorithm: "LZX".to_string(),
+                reason: "corrupted chunk".to_string(),
+            }
+        );
+
+        let err_xml = MsiError::WimXmlParseError {
+            reason: "missing root node".to_string(),
+        };
+        assert_eq!(
+            format!("{err_xml}"),
+            "WIM XML parse error: missing root node"
+        );
+        assert_eq!(
+            err_xml,
+            MsiError::WimXmlParseError {
+                reason: "missing root node".to_string(),
+            }
+        );
     }
 }

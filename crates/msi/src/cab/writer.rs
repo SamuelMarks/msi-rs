@@ -7,7 +7,7 @@ use crate::cab::folder::{CfFolder, CompressionType};
 use crate::cab::header::CfHeader;
 use crate::cab::lzx::LzxState;
 use crate::cab::mszip::MszipEngine;
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 
 /// Staged file entry to be packaged into a Cabinet archive.
 #[derive(Debug, Clone)]
@@ -122,7 +122,7 @@ impl CabinetWriter {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidArgument`] if filename already exists.
+    /// Returns [`MsiError::InvalidArgument`] if filename already exists.
     pub fn add_file(&mut self, filename: &str, data: &[u8]) -> Result<()> {
         self.add_file_with_folder_index(filename, data, FolderIndex::Index(0))
     }
@@ -137,7 +137,7 @@ impl CabinetWriter {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidArgument`] if filename already exists in this cabinet.
+    /// Returns [`MsiError::InvalidArgument`] if filename already exists in this cabinet.
     pub fn add_file_with_folder_index(
         &mut self,
         filename: &str,
@@ -146,7 +146,7 @@ impl CabinetWriter {
     ) -> Result<()> {
         for f in &self.files {
             if f.filename.eq_ignore_ascii_case(filename) {
-                return Err(Error::InvalidArgument {
+                return Err(MsiError::InvalidArgument {
                     argument: "filename".to_string(),
                     reason: format!("file '{filename}' already added to cabinet"),
                 });
@@ -341,7 +341,7 @@ mod tests {
 
         for res in [
             CabinetReader::new(&cab_bytes),
-            Err(Error::InvalidCabData {
+            Err(MsiError::InvalidCabData {
                 reason: "simulated".to_string(),
             }),
         ] {
@@ -364,7 +364,7 @@ mod tests {
         let cab_bytes = writer.build();
         for res in [
             CabinetReader::new(&cab_bytes),
-            Err(Error::InvalidCabData {
+            Err(MsiError::InvalidCabData {
                 reason: "simulated".to_string(),
             }),
         ] {
@@ -397,7 +397,7 @@ mod tests {
         let bytes_none = writer_none.build();
         for res in [
             CabinetReader::new(&bytes_none),
-            Err(Error::InvalidCabData {
+            Err(MsiError::InvalidCabData {
                 reason: "simulated".to_string(),
             }),
         ] {
@@ -415,7 +415,7 @@ mod tests {
         assert_ne!(bytes_q.len(), 0);
         for res in [
             CabinetReader::new(&bytes_q),
-            Err(Error::InvalidCabData {
+            Err(MsiError::InvalidCabData {
                 reason: "simulated".to_string(),
             }),
         ] {
@@ -438,7 +438,7 @@ mod tests {
         let cab_bytes = writer.build();
         for res in [
             CabinetReader::new(&cab_bytes),
-            Err(Error::InvalidCabData {
+            Err(MsiError::InvalidCabData {
                 reason: "simulated".to_string(),
             }),
         ] {
@@ -457,7 +457,7 @@ mod tests {
 
         for res in [
             CabinetReader::new(&cab_bytes),
-            Err(Error::InvalidCabData {
+            Err(MsiError::InvalidCabData {
                 reason: "simulated".to_string(),
             }),
         ] {
@@ -481,7 +481,7 @@ mod tests {
         let cab_bytes = writer.build();
         for res in [
             CfHeader::parse(&cab_bytes),
-            Err(Error::InvalidCabData {
+            Err(MsiError::InvalidCabData {
                 reason: "simulated".to_string(),
             }),
         ] {
@@ -493,7 +493,7 @@ mod tests {
 
                 for r_res in [
                     CabinetReader::new(&cab_bytes),
-                    Err(Error::InvalidCabData {
+                    Err(MsiError::InvalidCabData {
                         reason: "simulated".to_string(),
                     }),
                 ] {

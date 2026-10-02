@@ -6,7 +6,7 @@
 //! - Sensitive property masking in execution logs via `MsiHiddenProperties`
 
 use msi::database::tables::record::{FieldValue, Record};
-use msi::error::{Error, Result};
+use msi::error::{MsiError, Result};
 use msi::execution::costing::DiskCostEngine;
 use msi::execution::custom_action::{
     ERROR_SUCCESS, MSIDB_CUSTOM_ACTION_TYPE_DIRECTORY_EXE, MSIDB_CUSTOM_ACTION_TYPE_DLL,
@@ -88,7 +88,7 @@ fn test_type_19_error_abort_action_conditions() -> Result<()> {
     let prep_res1 = tx1.prepare();
 
     match prep_res1 {
-        Err(Error::CustomActionFailed { action, reason }) => {
+        Err(MsiError::CustomActionFailed { action, reason }) => {
             assert_eq!(action, "CA_AbortNoLicense");
             assert_eq!(
                 reason,
@@ -96,7 +96,7 @@ fn test_type_19_error_abort_action_conditions() -> Result<()> {
             );
         }
         other => {
-            assert!(matches!(other, Err(Error::CustomActionFailed { .. })));
+            assert!(matches!(other, Err(MsiError::CustomActionFailed { .. })));
         }
     }
 

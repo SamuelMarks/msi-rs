@@ -3,7 +3,7 @@
 //! Provides parsing and linker support for `http://schemas.microsoft.com/wix/UtilExtension`.
 
 use crate::database::tables::record::{FieldValue, Record};
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::wix::extensions::WixExtension;
 use crate::wix::linker::LinkedDatabase;
 use crate::wix::wixobj::{IntermediateSection, IntermediateTable};
@@ -28,27 +28,29 @@ impl UtilExtension {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::WixCompiler`] if required attributes are missing.
+    /// Returns [`MsiError::WixCompiler`] if required attributes are missing.
     /// Compiles a `<util:Group>` node.
     ///
     /// # Errors
-    /// Returns [`Error::WixCompiler`] if required attributes are missing.
+    /// Returns [`MsiError::WixCompiler`] if required attributes are missing.
     fn compile_group(
         node: &XmlNode,
         parent_id: Option<&str>,
         tables: &mut HashMap<String, IntermediateTable>,
     ) -> Result<()> {
-        let id = node.attribute("Id").ok_or_else(|| Error::WixCompiler {
+        let id = node.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
             element: "util:Group".to_string(),
             message: "missing required 'Id' attribute".to_string(),
         })?;
 
-        let name = node.attribute("Name").ok_or_else(|| Error::WixCompiler {
-            element: "util:Group".to_string(),
-            message: "missing required 'Name' attribute".to_string(),
-        })?;
+        let name = node
+            .attribute("Name")
+            .ok_or_else(|| MsiError::WixCompiler {
+                element: "util:Group".to_string(),
+                message: "missing required 'Name' attribute".to_string(),
+            })?;
 
-        let component = parent_id.ok_or_else(|| Error::WixCompiler {
+        let component = parent_id.ok_or_else(|| MsiError::WixCompiler {
             element: "util:Group".to_string(),
             message: "Group element must be nested within a Component".to_string(),
         })?;
@@ -73,23 +75,25 @@ impl UtilExtension {
     /// Compiles a `<util:FileShare>` node.
     ///
     /// # Errors
-    /// Returns [`Error::WixCompiler`] if required attributes are missing.
+    /// Returns [`MsiError::WixCompiler`] if required attributes are missing.
     fn compile_file_share(
         node: &XmlNode,
         parent_id: Option<&str>,
         tables: &mut HashMap<String, IntermediateTable>,
     ) -> Result<()> {
-        let id = node.attribute("Id").ok_or_else(|| Error::WixCompiler {
+        let id = node.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
             element: "util:FileShare".to_string(),
             message: "missing required 'Id' attribute".to_string(),
         })?;
 
-        let name = node.attribute("Name").ok_or_else(|| Error::WixCompiler {
-            element: "util:FileShare".to_string(),
-            message: "missing required 'Name' attribute".to_string(),
-        })?;
+        let name = node
+            .attribute("Name")
+            .ok_or_else(|| MsiError::WixCompiler {
+                element: "util:FileShare".to_string(),
+                message: "missing required 'Name' attribute".to_string(),
+            })?;
 
-        let component = parent_id.ok_or_else(|| Error::WixCompiler {
+        let component = parent_id.ok_or_else(|| MsiError::WixCompiler {
             element: "util:FileShare".to_string(),
             message: "FileShare element must be nested within a Component".to_string(),
         })?;
@@ -114,30 +118,32 @@ impl UtilExtension {
     /// Compiles a `<util:XmlFile>` node.
     ///
     /// # Errors
-    /// Returns [`Error::WixCompiler`] if required attributes are missing.
+    /// Returns [`MsiError::WixCompiler`] if required attributes are missing.
     fn compile_xml_file(
         node: &XmlNode,
         parent_id: Option<&str>,
         tables: &mut HashMap<String, IntermediateTable>,
     ) -> Result<()> {
-        let id = node.attribute("Id").ok_or_else(|| Error::WixCompiler {
+        let id = node.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
             element: "util:XmlFile".to_string(),
             message: "missing required 'Id' attribute".to_string(),
         })?;
 
-        let file = node.attribute("File").ok_or_else(|| Error::WixCompiler {
-            element: "util:XmlFile".to_string(),
-            message: "missing required 'File' attribute".to_string(),
-        })?;
+        let file = node
+            .attribute("File")
+            .ok_or_else(|| MsiError::WixCompiler {
+                element: "util:XmlFile".to_string(),
+                message: "missing required 'File' attribute".to_string(),
+            })?;
 
         let element_path = node
             .attribute("ElementPath")
-            .ok_or_else(|| Error::WixCompiler {
+            .ok_or_else(|| MsiError::WixCompiler {
                 element: "util:XmlFile".to_string(),
                 message: "missing required 'ElementPath' attribute".to_string(),
             })?;
 
-        let component = parent_id.ok_or_else(|| Error::WixCompiler {
+        let component = parent_id.ok_or_else(|| MsiError::WixCompiler {
             element: "util:XmlFile".to_string(),
             message: "XmlFile element must be nested within a Component".to_string(),
         })?;
@@ -171,23 +177,25 @@ impl UtilExtension {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::WixCompiler`] on missing ID or Name.
+    /// Returns [`MsiError::WixCompiler`] on missing ID or Name.
     fn compile_user(
         node: &XmlNode,
         parent_id: Option<&str>,
         tables: &mut HashMap<String, IntermediateTable>,
     ) -> Result<()> {
-        let id = node.attribute("Id").ok_or_else(|| Error::WixCompiler {
+        let id = node.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
             element: "util:User".to_string(),
             message: "missing required 'Id' attribute".to_string(),
         })?;
 
-        let name = node.attribute("Name").ok_or_else(|| Error::WixCompiler {
-            element: "util:User".to_string(),
-            message: "missing required 'Name' attribute".to_string(),
-        })?;
+        let name = node
+            .attribute("Name")
+            .ok_or_else(|| MsiError::WixCompiler {
+                element: "util:User".to_string(),
+                message: "missing required 'Name' attribute".to_string(),
+            })?;
 
-        let component = parent_id.ok_or_else(|| Error::WixCompiler {
+        let component = parent_id.ok_or_else(|| MsiError::WixCompiler {
             element: "util:User".to_string(),
             message: "User element must be nested within a Component".to_string(),
         })?;
@@ -250,7 +258,7 @@ impl WixExtension for UtilExtension {
             "Group" => Self::compile_group(node, parent_id, tables),
             "FileShare" => Self::compile_file_share(node, parent_id, tables),
             "XmlFile" => Self::compile_xml_file(node, parent_id, tables),
-            _ => Err(Error::WixExtension {
+            _ => Err(MsiError::WixExtension {
                 extension: self.id().to_string(),
                 message: format!("unsupported element: '{tag_name}'"),
             }),
@@ -355,7 +363,7 @@ mod tests {
         let mut tables = HashMap::new();
 
         let res = ext.compile_node(&node, Some("cmp1"), &mut section, &mut tables);
-        assert!(matches!(res, Err(Error::WixCompiler { .. })));
+        assert!(matches!(res, Err(MsiError::WixCompiler { .. })));
     }
 
     #[test]
@@ -369,7 +377,7 @@ mod tests {
         let mut tables = HashMap::new();
 
         let res = ext.compile_node(&node, Some("cmp1"), &mut section, &mut tables);
-        assert!(matches!(res, Err(Error::WixCompiler { .. })));
+        assert!(matches!(res, Err(MsiError::WixCompiler { .. })));
     }
 
     #[test]
@@ -383,7 +391,7 @@ mod tests {
         let mut tables = HashMap::new();
 
         let res = ext.compile_node(&node, None, &mut section, &mut tables);
-        assert!(matches!(res, Err(Error::WixCompiler { .. })));
+        assert!(matches!(res, Err(MsiError::WixCompiler { .. })));
     }
 
     #[test]
@@ -548,7 +556,7 @@ mod tests {
         let mut tables = HashMap::new();
 
         let res = ext.compile_node(&node, Some("cmp1"), &mut section, &mut tables);
-        assert!(matches!(res, Err(Error::WixExtension { .. })));
+        assert!(matches!(res, Err(MsiError::WixExtension { .. })));
     }
 
     #[test]

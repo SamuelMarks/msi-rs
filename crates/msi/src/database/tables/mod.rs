@@ -139,7 +139,7 @@ pub fn all_standard_schemas() -> Vec<TableSchema> {
 ///
 /// # Errors
 ///
-/// Returns [`crate::error::Error`] if adding any schema fails.
+/// Returns [`crate::error::MsiError`] if adding any schema fails.
 pub fn populate_standard_tables(catalog: &mut DatabaseCatalog) -> Result<()> {
     for schema in all_standard_schemas() {
         catalog.add_table(schema)?;

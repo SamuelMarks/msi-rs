@@ -14,7 +14,7 @@
 
 use crate::database::catalogs::DatabaseCatalog;
 use crate::database::tables::record::{FieldValue, Record};
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::execution::properties::EvaluationContext;
 use crate::execution::script_engine::{
     ScriptDatabase, ScriptEngine, ScriptLanguage, ScriptSession,
@@ -536,7 +536,7 @@ impl LinkedDatabase {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::WixLinker`] on conflicting primary key duplicate records.
+    /// Returns [`MsiError::WixLinker`] on conflicting primary key duplicate records.
     pub fn add_or_merge_record(&mut self, table: &str, record: Record) -> Result<()> {
         let records = self.tables.entry(table.to_string()).or_default();
 
@@ -573,7 +573,7 @@ impl LinkedDatabase {
                         // Exactly identical record (e.g. TARGETDIR Directory definition across fragments)
                         return Ok(());
                     }
-                    return Err(Error::WixLinker {
+                    return Err(MsiError::WixLinker {
                         message: format!(
                             "primary key collision in table '{table}': conflicting record definitions for key {:?}",
                             pk_indices.iter().map(|&i| record.get(i)).collect::<Vec<_>>()
@@ -2051,7 +2051,7 @@ impl Linker {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::WixLinker`] or [`Error::IceValidation`] on linking or validation failures.
+    /// Returns [`MsiError::WixLinker`] or [`MsiError::IceValidation`] on linking or validation failures.
     pub fn link(&mut self) -> Result<LinkedDatabase> {
         // 1. Solve linker symbol graph
         let active_sections = self.solve_symbol_graph()?;
@@ -2172,7 +2172,7 @@ impl Linker {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::WixLinker`] if a cyclic dependency is detected.
+    /// Returns [`MsiError::WixLinker`] if a cyclic dependency is detected.
     #[allow(clippy::too_many_lines)]
     fn solve_relative_sequences(db: &mut LinkedDatabase) -> Result<()> {
         let rel_records = db.tables.remove("_WixSequenceRelative").unwrap_or_default();
@@ -2289,7 +2289,7 @@ impl Linker {
             }
 
             if sorted_count < in_degree.len() {
-                return Err(Error::WixLinker {
+                return Err(MsiError::WixLinker {
                     message: format!(
                         "cycle detected in relative sequencing constraints for {table_name}"
                     ),
@@ -2667,7 +2667,7 @@ impl Linker {
 
                 let Some(resolved_path) = self.resolve_source_path(&src_path_str) else {
                     if !self.base_directories.is_empty() || !self.bind_paths.is_empty() {
-                        return Err(Error::WixLinker {
+                        return Err(MsiError::WixLinker {
                             message: format!(
                                 "Source file '{src_path_str}' for File '{file_id}' not found in any base directory"
                             ),
@@ -2835,7 +2835,7 @@ impl Linker {
             }
 
             if rep.is_error {
-                return Err(Error::IceValidation {
+                return Err(MsiError::IceValidation {
                     ice: rep.ice,
                     message: rep.message,
                 });
@@ -2846,7 +2846,7 @@ impl Linker {
             }
 
             if self.warnings_as_errors {
-                return Err(Error::IceValidation {
+                return Err(MsiError::IceValidation {
                     ice: rep.ice,
                     message: format!("warning treated as error: {}", rep.message),
                 });
@@ -2876,12 +2876,12 @@ impl Linker {
             .collect();
 
         if entry_sections.is_empty() {
-            return Err(Error::WixLinker {
+            return Err(MsiError::WixLinker {
                 message: "no entry section (Product or Module) found in input objects".to_string(),
             });
         }
         if entry_sections.len() > 1 {
-            return Err(Error::WixLinker {
+            return Err(MsiError::WixLinker {
                 message: format!(
                     "multiple entry sections found: expected 1, found {}",
                     entry_sections.len()
@@ -2905,7 +2905,7 @@ impl Linker {
                         continue;
                     }
                     let first_idx = existing_indices[0];
-                    return Err(Error::WixLinker {
+                    return Err(MsiError::WixLinker {
                         message: format!(
                             "duplicate symbol definition '{sym}' across sections {first_idx} and {sec_idx}"
                         ),
@@ -2985,7 +2985,7 @@ impl Linker {
                     let loc_info = rf.span.map_or_else(String::new, |span| {
                         format!(" at line {}, column {}", span.line, span.column)
                     });
-                    return Err(Error::WixLinker {
+                    return Err(MsiError::WixLinker {
                         message: format!(
                             "unresolved symbol reference '{rf}' in section {:?}{loc_info}",
                             current_sec.id
@@ -3227,7 +3227,7 @@ impl Linker {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::WixLinker`] if a referenced `Binary` or `File` stream cannot be resolved.
+    /// Returns [`MsiError::WixLinker`] if a referenced `Binary` or `File` stream cannot be resolved.
     fn validate_embedded_chainers(db: &LinkedDatabase) -> Result<()> {
         let chainers = db.get_records("MsiEmbeddedChainer");
         if chainers.is_empty() {
@@ -3264,7 +3264,7 @@ impl Linker {
                 _ => None,
             }) {
                 if let Err(e) = eval_ctx.evaluate_condition(cond.trim()) {
-                    return Err(Error::WixLinker {
+                    return Err(MsiError::WixLinker {
                         message: format!(
                             "invalid Condition syntax '{cond}' in EmbeddedChainer '{chainer_id}': {e}"
                         ),
@@ -3283,7 +3283,7 @@ impl Linker {
 
             if chainer_type == 1 {
                 if !existing_binaries.contains(source) {
-                    return Err(Error::WixLinker {
+                    return Err(MsiError::WixLinker {
                         message: format!(
                             "unresolved binary reference '{source}' for EmbeddedChainer '{chainer_id}'"
                         ),
@@ -3291,14 +3291,14 @@ impl Linker {
                 }
             } else if chainer_type == 2 {
                 if !existing_files.contains(source) {
-                    return Err(Error::WixLinker {
+                    return Err(MsiError::WixLinker {
                         message: format!(
                             "unresolved file reference '{source}' for EmbeddedChainer '{chainer_id}'"
                         ),
                     });
                 }
             } else {
-                return Err(Error::WixLinker {
+                return Err(MsiError::WixLinker {
                     message: format!(
                         "invalid Type '{chainer_type}' for EmbeddedChainer '{chainer_id}': expected 1 (Binary) or 2 (File)"
                     ),
@@ -3420,7 +3420,7 @@ impl Linker {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::IceValidation`] on the first failing ICE error rule.
+    /// Returns [`MsiError::IceValidation`] on the first failing ICE error rule.
     pub fn run_ice_validations(db: &LinkedDatabase) -> Result<()> {
         let _ = Self::run_ice_validations_filtered(db, &[], &[])?;
         Ok(())
@@ -3440,7 +3440,7 @@ impl Linker {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::IceValidation`] on the first failing ICE error rule encountered.
+    /// Returns [`MsiError::IceValidation`] on the first failing ICE error rule encountered.
     #[allow(clippy::too_many_lines)]
     pub fn run_ice_validations_filtered(
         db: &LinkedDatabase,
@@ -3567,7 +3567,7 @@ impl Linker {
             }
             if let Some(rep) = validator(db) {
                 if rep.is_error {
-                    return Err(Error::IceValidation {
+                    return Err(MsiError::IceValidation {
                         ice: rep.ice,
                         message: rep.message,
                     });
@@ -11224,13 +11224,13 @@ mod tests {
             _section: &mut IntermediateSection,
             _tables: &mut HashMap<String, IntermediateTable>,
         ) -> Result<()> {
-            Err(Error::WixExtension {
+            Err(MsiError::WixExtension {
                 extension: "FailingMockExtension".to_string(),
                 message: "fail".to_string(),
             })
         }
         fn link_database(&self, _db: &mut LinkedDatabase) -> Result<()> {
-            Err(Error::WixExtension {
+            Err(MsiError::WixExtension {
                 extension: "FailingMockExtension".to_string(),
                 message: "fail".to_string(),
             })

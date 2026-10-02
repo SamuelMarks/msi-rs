@@ -6,7 +6,7 @@
 //! Provides parsing and linker support for `http://schemas.microsoft.com/wix/IIsExtension`.
 
 use crate::database::tables::record::{FieldValue, Record};
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::wix::extensions::WixExtension;
 use crate::wix::linker::LinkedDatabase;
 use crate::wix::wixobj::{IntermediateSection, IntermediateTable};
@@ -30,13 +30,13 @@ impl IisExtension {
     /// Compiles an `<iis:WebAppPool>` node into intermediate tables.
     ///
     /// # Errors
-    /// Returns [`Error::WixCompiler`] if required attributes are missing.
+    /// Returns [`MsiError::WixCompiler`] if required attributes are missing.
     fn compile_web_app_pool(
         node: &XmlNode,
         parent_id: Option<&str>,
         tables: &mut HashMap<String, IntermediateTable>,
     ) -> Result<()> {
-        let id = node.attribute("Id").ok_or_else(|| Error::WixCompiler {
+        let id = node.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
             element: "iis:WebAppPool".to_string(),
             message: "missing required 'Id' attribute".to_string(),
         })?;
@@ -74,13 +74,13 @@ impl IisExtension {
     /// Compiles an `<iis:WebSite>` node into intermediate tables.
     ///
     /// # Errors
-    /// Returns [`Error::WixCompiler`] if required attributes are missing.
+    /// Returns [`MsiError::WixCompiler`] if required attributes are missing.
     fn compile_web_site(
         node: &XmlNode,
         parent_id: Option<&str>,
         tables: &mut HashMap<String, IntermediateTable>,
     ) -> Result<()> {
-        let id = node.attribute("Id").ok_or_else(|| Error::WixCompiler {
+        let id = node.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
             element: "iis:WebSite".to_string(),
             message: "missing required 'Id' attribute".to_string(),
         })?;
@@ -89,7 +89,7 @@ impl IisExtension {
 
         let directory = node
             .attribute("Directory")
-            .ok_or_else(|| Error::WixCompiler {
+            .ok_or_else(|| MsiError::WixCompiler {
                 element: "iis:WebSite".to_string(),
                 message: "missing required 'Directory' attribute".to_string(),
             })?;
@@ -135,7 +135,7 @@ impl WixExtension for IisExtension {
         match tag_name {
             "WebAppPool" => Self::compile_web_app_pool(node, parent_id, tables),
             "WebSite" => Self::compile_web_site(node, parent_id, tables),
-            _ => Err(Error::WixExtension {
+            _ => Err(MsiError::WixExtension {
                 extension: self.id().to_string(),
                 message: format!("unsupported element: '{tag_name}'"),
             }),
@@ -341,7 +341,7 @@ mod tests {
             .is_err());
     }
 
-    /// Tests compiling unsupported elements returns [`Error::WixExtension`].
+    /// Tests compiling unsupported elements returns [`MsiError::WixExtension`].
     #[test]
     fn test_unsupported_element() {
         let ext = IisExtension::new();
@@ -353,7 +353,7 @@ mod tests {
         let mut tables = HashMap::new();
 
         let res = ext.compile_node(&node, Some("cmp1"), &mut section, &mut tables);
-        assert!(matches!(res, Err(Error::WixExtension { .. })));
+        assert!(matches!(res, Err(MsiError::WixExtension { .. })));
     }
 
     /// Tests linking behavior with web sites or app pools.

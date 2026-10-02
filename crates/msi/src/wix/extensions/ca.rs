@@ -8,7 +8,7 @@
 //! `CustomAction` tables.
 
 use crate::database::tables::record::{FieldValue, Record};
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::wix::linker::LinkedDatabase;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -49,7 +49,7 @@ impl CustomActionCompiler {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::CustomActionBridgeError`] if the compilation fails.
+    /// Returns [`MsiError::CustomActionBridgeError`] if the compilation fails.
     pub fn compile(&self, release: bool) -> Result<PathBuf> {
         let mut cmd = Command::new("cargo");
         cmd.arg("build").current_dir(&self.source_dir);
@@ -58,13 +58,15 @@ impl CustomActionCompiler {
             cmd.arg("--release");
         }
 
-        let status = cmd.status().map_err(|e| Error::CustomActionBridgeError {
-            action: "compile_ca".to_string(),
-            reason: format!("Failed to invoke cargo: {e}"),
-        })?;
+        let status = cmd
+            .status()
+            .map_err(|e| MsiError::CustomActionBridgeError {
+                action: "compile_ca".to_string(),
+                reason: format!("Failed to invoke cargo: {e}"),
+            })?;
 
         if !status.success() {
-            return Err(Error::CustomActionBridgeError {
+            return Err(MsiError::CustomActionBridgeError {
                 action: "compile_ca".to_string(),
                 reason: "Cargo build failed".to_string(),
             });
@@ -76,7 +78,7 @@ impl CustomActionCompiler {
         let out_dir = target_dir.join(profile_dir);
 
         // Find a dll in the output directory
-        let dlls = std::fs::read_dir(&out_dir).map_err(|e| Error::CustomActionBridgeError {
+        let dlls = std::fs::read_dir(&out_dir).map_err(|e| MsiError::CustomActionBridgeError {
             action: "compile_ca".to_string(),
             reason: format!("Failed to read target dir: {e}"),
         })?;
@@ -87,7 +89,7 @@ impl CustomActionCompiler {
             }
         }
 
-        Err(Error::CustomActionBridgeError {
+        Err(MsiError::CustomActionBridgeError {
             action: "compile_ca".to_string(),
             reason: "No .dll found in target directory after build".to_string(),
         })
@@ -109,7 +111,7 @@ impl CustomActionCompiler {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::CustomActionBridgeError`] if the DLL cannot be read or table insertion fails.
+    /// Returns [`MsiError::CustomActionBridgeError`] if the DLL cannot be read or table insertion fails.
     pub fn inject(
         &self,
         db: &mut LinkedDatabase,
@@ -121,7 +123,7 @@ impl CustomActionCompiler {
         let binary_id = format!("CA_Binary_{action_id}");
 
         if !dll_path.exists() {
-            return Err(Error::CustomActionBridgeError {
+            return Err(MsiError::CustomActionBridgeError {
                 action: action_id.to_string(),
                 reason: format!("DLL payload not found at: {}", dll_path.display()),
             });

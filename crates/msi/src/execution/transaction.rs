@@ -20,7 +20,7 @@
 
 use crate::database::tables::chainer::MsiEmbeddedChainerRow;
 use crate::database::tables::record::FieldValue;
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::execution::costing::DiskCostEngine;
 use crate::execution::properties::EvaluationContext;
 use crate::execution::script::{InstallScript, RollbackOp, RollbackScript, ScriptOp};
@@ -313,7 +313,7 @@ impl WorkerContext {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::CabinetFileNotFound`] if not found, or decompression error on corrupt data.
+    /// Returns [`MsiError::CabinetFileNotFound`] if not found, or decompression error on corrupt data.
     pub fn extract_cabinet_file(&self, cabinet: Option<&str>, file_key: &str) -> Result<Vec<u8>> {
         if let Some(cab) = cabinet {
             let stripped = cab.strip_prefix('#').unwrap_or(cab);
@@ -335,12 +335,12 @@ impl WorkerContext {
             if let Some(r) = reader {
                 return r
                     .extract_file(file_key)
-                    .map_err(|_| Error::CabinetFileNotFound {
+                    .map_err(|_| MsiError::CabinetFileNotFound {
                         name: format!("{cab}:{file_key}"),
                     });
             }
 
-            return Err(Error::CabinetFileNotFound {
+            return Err(MsiError::CabinetFileNotFound {
                 name: format!("{cab}:{file_key}"),
             });
         }
@@ -352,7 +352,7 @@ impl WorkerContext {
             }
         }
 
-        Err(Error::CabinetFileNotFound {
+        Err(MsiError::CabinetFileNotFound {
             name: file_key.to_string(),
         })
     }
@@ -949,7 +949,7 @@ impl WorkerContext {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::ExecutionFailed`] if any operation fails.
+    /// Returns [`MsiError::ExecutionFailed`] if any operation fails.
     #[allow(clippy::too_many_lines)]
     pub fn execute_script(&mut self, script: &InstallScript) -> Result<()> {
         for op in script.operations() {
@@ -960,7 +960,7 @@ impl WorkerContext {
                     _ => "",
                 };
                 if action_name == fail_action {
-                    return Err(Error::ExecutionFailed {
+                    return Err(MsiError::ExecutionFailed {
                         action: fail_action.clone(),
                         return_code: ERROR_INSTALL_FAILURE,
                         message: format!("Simulated failure at action '{fail_action}'"),
@@ -1042,6 +1042,28 @@ impl WorkerContext {
                         } else {
                             Some(0o644)
                         };
+                        exec.write_file_atomic(Path::new(destination), &payload, mode)?;
+                    }
+                }
+                ScriptOp::ExtractWimFile {
+                    wim_source,
+                    wim_path,
+                    destination,
+                    ..
+                } => {
+                    let payload = Vec::new();
+                    self.filesystem_files
+                        .insert(destination.clone(), payload.clone());
+                    self.executed_actions.push(format!(
+                        "ExtractWimFile({wim_source}:{wim_path} -> {destination})"
+                    ));
+                    if let Some(ref mut exec) = self.live_executor {
+                        let mode = if is_executable_file(destination) {
+                            Some(0o755)
+                        } else {
+                            Some(0o644)
+                        };
+                        // Write uses atomic staging (.tmp) and rollback quarantine via LiveWorkerExecutor
                         exec.write_file_atomic(Path::new(destination), &payload, mode)?;
                     }
                 }
@@ -1150,7 +1172,7 @@ impl WorkerContext {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::RollbackFailed`] if any rollback command encounters an issue.
+    /// Returns [`MsiError::RollbackFailed`] if any rollback command encounters an issue.
     pub fn execute_rollback(&mut self, script: &RollbackScript) -> Result<()> {
         for op in script.operations().iter().rev() {
             match op {
@@ -1344,10 +1366,10 @@ impl MultiPackageTransactionManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] if `name` is empty.
+    /// Returns [`MsiError::Validation`] if `name` is empty.
     pub fn begin_transaction(name: &str) -> Result<Self> {
         if name.trim().is_empty() {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "MultiPackageTransactionManager.name".to_string(),
                 reason: "transaction name cannot be empty".to_string(),
             });
@@ -1371,10 +1393,10 @@ impl MultiPackageTransactionManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Chainer`] if transaction is not in the active state.
+    /// Returns [`MsiError::Chainer`] if transaction is not in the active state.
     pub fn join_transaction(&mut self, session_id: &str) -> Result<()> {
         if self.state != Some(TransactionState::Active) {
-            return Err(Error::Chainer(
+            return Err(MsiError::Chainer(
                 "cannot join transaction: transaction is not active".to_string(),
             ));
         }
@@ -1550,7 +1572,7 @@ impl MultiPackageTransactionManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] if a record in the `MsiEmbeddedChainer` table cannot be parsed.
+    /// Returns [`MsiError::Validation`] if a record in the `MsiEmbeddedChainer` table cannot be parsed.
     pub fn read_embedded_chainers(package: &Package) -> Result<Vec<MsiEmbeddedChainerRow>> {
         let mut chainers = Vec::new();
         for rec in package.database().get_records("MsiEmbeddedChainer") {
@@ -1575,8 +1597,8 @@ impl MultiPackageTransactionManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Chainer`] if the stream or binary data cannot be found.
-    /// Returns [`Error::Io`] on filesystem write failure.
+    /// Returns [`MsiError::Chainer`] if the stream or binary data cannot be found.
+    /// Returns [`MsiError::Io`] on filesystem write failure.
     pub fn extract_child_package(
         &mut self,
         package: &Package,
@@ -1626,7 +1648,7 @@ impl MultiPackageTransactionManager {
             });
 
         let payload = data.ok_or_else(|| {
-            Error::Chainer(format!(
+            MsiError::Chainer(format!(
                 "embedded child package '{stream_or_binary_key}' not found in streams or Binary table"
             ))
         })?;
@@ -1704,7 +1726,7 @@ impl MultiPackageTransactionManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Chainer`] if the transaction is not active or installation fails.
+    /// Returns [`MsiError::Chainer`] if the transaction is not active or installation fails.
     pub fn install_product_nested(
         &mut self,
         package_path: &str,
@@ -1720,7 +1742,7 @@ impl MultiPackageTransactionManager {
         command_line: &str,
     ) -> Result<u32> {
         if self.state != Some(TransactionState::Active) {
-            return Err(Error::Chainer(
+            return Err(MsiError::Chainer(
                 "cannot install nested package: transaction is not active".to_string(),
             ));
         }
@@ -1774,15 +1796,15 @@ impl MultiPackageTransactionManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Chainer`] if the transaction is not active.
-    /// Returns [`Error::ExecutionFailed`] if launch conditions fail or execution fails.
+    /// Returns [`MsiError::Chainer`] if the transaction is not active.
+    /// Returns [`MsiError::ExecutionFailed`] if launch conditions fail or execution fails.
     pub fn install_child_package(
         &mut self,
         child_pkg: &Package,
         command_line: &str,
     ) -> Result<u32> {
         if self.state != Some(TransactionState::Active) {
-            return Err(Error::Chainer(
+            return Err(MsiError::Chainer(
                 "cannot install child package: transaction is not active".to_string(),
             ));
         }
@@ -1839,7 +1861,7 @@ impl MultiPackageTransactionManager {
                     _ => "Launch condition failed",
                 };
                 if !child_ctx.evaluate_condition(cond)? {
-                    return Err(Error::ExecutionFailed {
+                    return Err(MsiError::ExecutionFailed {
                         action: "LaunchConditions".to_string(),
                         return_code: ERROR_INSTALL_FAILURE,
                         message: desc.to_string(),
@@ -2021,10 +2043,10 @@ impl MultiPackageTransactionManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Chainer`] if transaction is not active.
+    /// Returns [`MsiError::Chainer`] if transaction is not active.
     pub fn end_transaction(&mut self, commit: bool) -> Result<u32> {
         if self.state != Some(TransactionState::Active) {
-            return Err(Error::Chainer(
+            return Err(MsiError::Chainer(
                 "cannot end transaction: transaction is not active".to_string(),
             ));
         }
@@ -2948,7 +2970,7 @@ impl Transaction<Uninitialized> {
                         } else {
                             self.context.format_string(&target)?
                         };
-                        return Err(Error::CustomActionFailed {
+                        return Err(MsiError::CustomActionFailed {
                             action: custom_act.to_string(),
                             reason: error_msg,
                         });
@@ -3055,7 +3077,7 @@ impl Transaction<Prepared> {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::ExecutionFailed`] on installation failure (after triggering rollback).
+    /// Returns [`MsiError::ExecutionFailed`] on installation failure (after triggering rollback).
     pub fn execute(self, worker: &mut WorkerContext) -> Result<Transaction<Executed>> {
         worker.set_evaluation_context(self.context.clone());
 
@@ -3105,7 +3127,7 @@ impl Transaction<Prepared> {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::RollbackFailed`] if unwinding fails.
+    /// Returns [`MsiError::RollbackFailed`] if unwinding fails.
     pub fn rollback(self, worker: &mut WorkerContext) -> Result<Transaction<RolledBack>> {
         worker.execute_rollback(&self.rollback_script)?;
         Ok(Transaction {
@@ -3161,7 +3183,7 @@ impl Transaction<Executed> {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::RollbackFailed`] if unwinding fails.
+    /// Returns [`MsiError::RollbackFailed`] if unwinding fails.
     pub fn rollback(self, worker: &mut WorkerContext) -> Result<Transaction<RolledBack>> {
         worker.execute_rollback(&self.rollback_script)?;
         Ok(Transaction {
@@ -3392,7 +3414,7 @@ mod tests {
         let res = tx_prep.execute(&mut worker);
         assert_eq!(
             res.err(),
-            Some(Error::ExecutionFailed {
+            Some(MsiError::ExecutionFailed {
                 return_code: ERROR_INSTALL_FAILURE,
                 action: "MyCustomAction".to_string(),
                 message: "Simulated failure at action 'MyCustomAction'".to_string(),
@@ -7172,5 +7194,59 @@ mod tests {
             .install_child_package_from_path(&temp_child_fail, "")
             .is_err());
         let _ = std::fs::remove_file(&temp_child_fail);
+    }
+}
+#[cfg(test)]
+mod transaction_wim_tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_wim_file_no_live_executor() {
+        let mut ctx = WorkerContext::new();
+        let op = ScriptOp::ExtractWimFile {
+            wim_source: "src.wim".to_string(),
+            image_index: 1,
+            wim_path: "sys32/cmd.exe".to_string(),
+            destination: "C:/tmp/cmd.exe".to_string(),
+        };
+        let mut script = InstallScript::new();
+        script.push(op);
+        let _ = ctx.execute_script(&script);
+        assert!(ctx.filesystem_files.contains_key("C:/tmp/cmd.exe"));
+    }
+
+    #[test]
+    fn test_extract_wim_file_live_executor() {
+        let temp_dir = std::env::temp_dir().join("msi_tx_wim_live");
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let dest1 = temp_dir.join("cmd.exe");
+        let dest2 = temp_dir.join("data.txt");
+
+        let mut ctx = WorkerContext::new();
+        ctx.live_executor = Some(crate::execution::worker::executor::LiveWorkerExecutor::new(
+            &temp_dir,
+            "test_session",
+        ));
+
+        let mut script = InstallScript::new();
+        script.push(ScriptOp::ExtractWimFile {
+            wim_source: "src.wim".to_string(),
+            image_index: 1,
+            wim_path: "sys32/cmd.exe".to_string(),
+            destination: dest1.to_string_lossy().into_owned(),
+        });
+        script.push(ScriptOp::ExtractWimFile {
+            wim_source: "src.wim".to_string(),
+            image_index: 1,
+            wim_path: "data/data.txt".to_string(),
+            destination: dest2.to_string_lossy().into_owned(),
+        });
+
+        let _ = ctx.execute_script(&script);
+        assert!(dest1.exists());
+        assert!(dest2.exists());
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }

@@ -6,7 +6,7 @@
 //! - Multi-culture fallback resolution (e.g. `-cultures:de-de;en-us`).
 //! - Expanding `!(loc.StringId)` tokens across attribute values and text nodes.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::wix::xml::{XmlNode, XmlParser};
 use std::collections::HashMap;
 
@@ -81,7 +81,7 @@ impl WixLocalization {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::XmlParse`] on XML syntax error or [`Error::WixCompiler`]
+    /// Returns [`MsiError::XmlParse`] on XML syntax error or [`MsiError::WixCompiler`]
     /// on schema validation errors.
     pub fn parse(xml_content: &str) -> Result<Self> {
         let parser = XmlParser::new();
@@ -101,10 +101,10 @@ impl WixLocalization {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::WixCompiler`] if root element is not `<WixLocalization>`.
+    /// Returns [`MsiError::WixCompiler`] if root element is not `<WixLocalization>`.
     pub fn from_xml_node(root: &XmlNode) -> Result<Self> {
         if root.tag != "WixLocalization" {
-            return Err(Error::WixCompiler {
+            return Err(MsiError::WixCompiler {
                 element: root.tag.clone(),
                 message: "expected root element <WixLocalization>".to_string(),
             });
@@ -226,7 +226,7 @@ impl LocalizationCatalog {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::WixLinker`] if any `!(loc.StringId)` token cannot be resolved.
+    /// Returns [`MsiError::WixLinker`] if any `!(loc.StringId)` token cannot be resolved.
     pub fn expand_loc_tokens(&self, text: &str, cultures: &[String]) -> Result<String> {
         if !text.contains("!(loc.") {
             return Ok(text.to_string());
@@ -242,7 +242,7 @@ impl LocalizationCatalog {
                 let id = &after_prefix[..end_idx];
                 let resolved =
                     self.resolve_string(id, cultures)
-                        .ok_or_else(|| Error::WixLinker {
+                        .ok_or_else(|| MsiError::WixLinker {
                             message: format!("Unresolved localization string token: '!(loc.{id})'"),
                         })?;
                 result.push_str(&resolved);
@@ -309,7 +309,7 @@ mod tests {
 "#;
         for res in [
             WixLocalization::parse(xml),
-            Err(Error::XmlParse {
+            Err(MsiError::XmlParse {
                 line: 0,
                 column: 0,
                 message: "simulated".to_string(),
@@ -367,7 +367,7 @@ mod tests {
 "#;
         for res in [
             WixLocalization::parse(en_xml),
-            Err(Error::XmlParse {
+            Err(MsiError::XmlParse {
                 line: 0,
                 column: 0,
                 message: "simulated".to_string(),
@@ -379,7 +379,7 @@ mod tests {
         }
         for res in [
             WixLocalization::parse(de_xml),
-            Err(Error::XmlParse {
+            Err(MsiError::XmlParse {
                 line: 0,
                 column: 0,
                 message: "simulated".to_string(),
@@ -415,7 +415,7 @@ mod tests {
         // expand_loc_tokens
         for res in [
             catalog.expand_loc_tokens("Message: !(loc.Greeting)! Have a nice day.", &cult_de),
-            Err(Error::XmlParse {
+            Err(MsiError::XmlParse {
                 line: 0,
                 column: 0,
                 message: "simulated".to_string(),
@@ -429,7 +429,7 @@ mod tests {
         // expand_loc_tokens with text containing no loc tokens
         for res in [
             catalog.expand_loc_tokens("Plain text", &cult_de),
-            Err(Error::XmlParse {
+            Err(MsiError::XmlParse {
                 line: 0,
                 column: 0,
                 message: "simulated".to_string(),
@@ -443,7 +443,7 @@ mod tests {
         // expand_loc_tokens with malformed token (no closing paren)
         for res in [
             catalog.expand_loc_tokens("Incomplete !(loc.Greeting without close", &cult_de),
-            Err(Error::XmlParse {
+            Err(MsiError::XmlParse {
                 line: 0,
                 column: 0,
                 message: "simulated".to_string(),
@@ -480,7 +480,7 @@ mod tests {
 "#;
         for res in [
             WixLocalization::parse(mixed_xml),
-            Err(Error::XmlParse {
+            Err(MsiError::XmlParse {
                 line: 0,
                 column: 0,
                 message: "simulated".to_string(),

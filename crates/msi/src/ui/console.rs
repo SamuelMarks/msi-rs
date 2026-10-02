@@ -4,7 +4,7 @@
 //! decoding, serial console auto-detection, and direct UEFI Graphics Output Protocol (GOP)
 //! framebuffer rasterization.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::ui::theme::Color32;
 use crate::ui::tui::TuiKey;
 use std::fmt::Write as _;
@@ -356,10 +356,10 @@ impl UefiGopFramebuffer {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::ConsoleInitError`] if pixel is out of screen bounds or buffer is truncated.
+    /// Returns [`MsiError::ConsoleInitError`] if pixel is out of screen bounds or buffer is truncated.
     pub fn put_pixel(&self, x: u32, y: u32, color: Color32, buffer: &mut [u8]) -> Result<()> {
         if x >= self.width || y >= self.height {
-            return Err(Error::ConsoleInitError {
+            return Err(MsiError::ConsoleInitError {
                 device: "uefi-gop".to_string(),
                 reason: format!(
                     "coordinates ({}, {}) out of bounds ({}x{})",
@@ -370,7 +370,7 @@ impl UefiGopFramebuffer {
 
         let offset = ((y * self.stride + x) * 4) as usize;
         if offset + 4 > buffer.len() {
-            return Err(Error::ConsoleInitError {
+            return Err(MsiError::ConsoleInitError {
                 device: "uefi-gop".to_string(),
                 reason: "framebuffer slice too small".to_string(),
             });
@@ -420,11 +420,11 @@ impl UefiGopFramebuffer {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::ConsoleInitError`] if buffer length is inadequate.
+    /// Returns [`MsiError::ConsoleInitError`] if buffer length is inadequate.
     pub fn clear(&self, color: Color32, buffer: &mut [u8]) -> Result<()> {
         let total_bytes = (self.height * self.stride * 4) as usize;
         if buffer.len() < total_bytes {
-            return Err(Error::ConsoleInitError {
+            return Err(MsiError::ConsoleInitError {
                 device: "uefi-gop".to_string(),
                 reason: "buffer shorter than required framebuffer size".to_string(),
             });

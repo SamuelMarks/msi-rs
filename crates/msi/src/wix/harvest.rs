@@ -239,14 +239,14 @@ impl Harvester {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::Validation`] if parsing fails.
+    /// Returns [`crate::error::MsiError::Validation`] if parsing fails.
     pub fn set_root_namespace_guid_str(&mut self, guid_str: &str) -> Result<()> {
         let clean = guid_str
             .trim_matches('{')
             .trim_matches('}')
             .replace('-', "");
         if clean.len() != 32 {
-            return Err(crate::error::Error::Validation {
+            return Err(crate::error::MsiError::Validation {
                 element: "Harvester".to_string(),
                 reason: format!("invalid GUID length: {}", clean.len()),
             });
@@ -254,7 +254,7 @@ impl Harvester {
         let mut bytes = [0u8; 16];
         for i in 0..16 {
             bytes[i] = u8::from_str_radix(&clean[i * 2..i * 2 + 2], 16).map_err(|e| {
-                crate::error::Error::Validation {
+                crate::error::MsiError::Validation {
                     element: "Harvester".to_string(),
                     reason: format!("invalid hex character in GUID: {e}"),
                 }
@@ -327,7 +327,7 @@ impl Harvester {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::Io`] if reading the file fails.
+    /// Returns [`crate::error::MsiError::Io`] if reading the file fails.
     pub fn load_gitignore(&mut self, gitignore_path: &Path) -> Result<()> {
         let content = fs::read_to_string(gitignore_path)?;
         for line in content.lines() {
@@ -374,7 +374,7 @@ impl Harvester {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::Io`] if reading files or directories fails.
+    /// Returns [`crate::error::MsiError::Io`] if reading files or directories fails.
     #[allow(clippy::too_many_lines, clippy::format_push_string)]
     pub fn harvest_directory(
         &self,
@@ -622,7 +622,7 @@ impl Harvester {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::Io`] on filesystem traversal failure.
+    /// Returns [`crate::error::MsiError::Io`] on filesystem traversal failure.
     pub fn generate_manifest(&self, root_path: &Path) -> Result<Vec<String>> {
         let mut paths = Vec::new();
         self.collect_manifest_recursive(root_path, root_path, &mut paths)?;
@@ -640,7 +640,7 @@ impl Harvester {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::Io`] on directory traversal failure.
+    /// Returns [`crate::error::MsiError::Io`] on directory traversal failure.
     fn collect_manifest_recursive(
         &self,
         root_path: &Path,
@@ -699,7 +699,7 @@ impl Harvester {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::Io`] on traversal or file write failure.
+    /// Returns [`crate::error::MsiError::Io`] on traversal or file write failure.
     pub fn write_manifest(&self, root_path: &Path, manifest_file: &Path) -> Result<usize> {
         let paths = self.generate_manifest(root_path)?;
         manifest_file.parent().map_or(Ok(()), fs::create_dir_all)?;
@@ -724,7 +724,7 @@ impl Harvester {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::Io`] on file copy or directory creation failure.
+    /// Returns [`crate::error::MsiError::Io`] on file copy or directory creation failure.
     pub fn copy_payload(&self, root_path: &Path, output_dir: &Path) -> Result<usize> {
         let paths = self.generate_manifest(root_path)?;
         for rel in &paths {
@@ -751,7 +751,7 @@ impl Harvester {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error`] on harvesting, copying, or XML generation failure.
+    /// Returns [`crate::error::MsiError`] on harvesting, copying, or XML generation failure.
     pub fn harvest_payload(
         &self,
         root_path: &Path,
@@ -834,11 +834,11 @@ impl Harvester {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::Validation`] on malformed registry syntax.
+    /// Returns [`crate::error::MsiError::Validation`] on malformed registry syntax.
     #[allow(clippy::too_many_lines, clippy::format_push_string)]
     pub fn harvest_registry(&self, reg_text: &str, component_id: &str) -> Result<String> {
         if reg_text.trim().is_empty() {
-            return Err(crate::error::Error::Validation {
+            return Err(crate::error::MsiError::Validation {
                 element: "Registry".to_string(),
                 reason: "registry file content is empty".to_string(),
             });
@@ -982,7 +982,7 @@ impl Harvester {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::Io`] on filesystem read failure.
+    /// Returns [`crate::error::MsiError::Io`] on filesystem read failure.
     pub fn harvest_build_outputs(&self, build_output_dir: &Path, group_id: &str) -> Result<String> {
         self.harvest_directory(build_output_dir, group_id, "INSTALLFOLDER")
     }
@@ -1105,7 +1105,7 @@ pub fn generate_cmake_package_registry_fragment(
 #[allow(clippy::manual_flatten)]
 mod tests {
     use super::*;
-    use crate::error::Error;
+    use crate::error::MsiError;
 
     /// Tests harvesting local directory trees, excluding extensions, handling files without extension,
     /// and generating short 8.3 names and deterministic component GUIDs.
@@ -1316,7 +1316,7 @@ LineWithoutEquals
 
         for xml in [
             harvester.harvest_directory(&temp_dir, "MainComponents", "INSTALLFOLDER"),
-            Err(Error::Io("simulated".to_string())),
+            Err(MsiError::Io("simulated".to_string())),
         ]
         .into_iter()
         .flatten()

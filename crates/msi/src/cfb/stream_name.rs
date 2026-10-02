@@ -1,6 +1,6 @@
 //! MSI stream name encoding and decoding schemes ([MS-CFB] & MSI SDK).
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 
 /// Stream name prefix for OLE Summary Information stream (`\u{0005}`).
 pub const SUMMARY_INFORMATION_PREFIX: char = '\u{0005}';
@@ -35,7 +35,7 @@ const ALPHABET: &[u8; 64] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmn
 ///
 /// # Errors
 ///
-/// Returns [`Error::InvalidStreamName`] if character is not in the 64-character alphabet.
+/// Returns [`MsiError::InvalidStreamName`] if character is not in the 64-character alphabet.
 pub fn char_to_index(ch: char) -> Result<u16> {
     match ch {
         '0'..='9' => Ok(ch as u16 - '0' as u16),
@@ -43,7 +43,7 @@ pub fn char_to_index(ch: char) -> Result<u16> {
         'a'..='z' => Ok(ch as u16 - 'a' as u16 + 36),
         '.' => Ok(62),
         '_' => Ok(63),
-        _ => Err(Error::InvalidStreamName {
+        _ => Err(MsiError::InvalidStreamName {
             name: ch.to_string(),
             reason: format!("character '{ch}' is not in the MSI 64-character subset"),
         }),
@@ -62,12 +62,12 @@ pub fn char_to_index(ch: char) -> Result<u16> {
 ///
 /// # Errors
 ///
-/// Returns [`Error::InvalidStreamName`] if index is 64 or greater.
+/// Returns [`MsiError::InvalidStreamName`] if index is 64 or greater.
 pub fn index_to_char(index: u16) -> Result<char> {
     if index < 64 {
         Ok(ALPHABET[index as usize] as char)
     } else {
-        Err(Error::InvalidStreamName {
+        Err(MsiError::InvalidStreamName {
             name: index.to_string(),
             reason: format!("alphabet index {index} out of bounds (max 63)"),
         })
@@ -87,9 +87,9 @@ pub fn index_to_char(index: u16) -> Result<char> {
 ///
 /// # Errors
 ///
-/// Returns [`Error::InvalidStreamName`] if the units contain unpaired UTF-16 surrogates.
+/// Returns [`MsiError::InvalidStreamName`] if the units contain unpaired UTF-16 surrogates.
 pub fn utf16_units_to_string(units: &[u16], name: &str) -> Result<String> {
-    String::from_utf16(units).map_err(|err| Error::InvalidStreamName {
+    String::from_utf16(units).map_err(|err| MsiError::InvalidStreamName {
         name: name.to_string(),
         reason: format!("failed to form valid UTF-16 stream name: {err}"),
     })
@@ -108,7 +108,7 @@ pub fn utf16_units_to_string(units: &[u16], name: &str) -> Result<String> {
 ///
 /// # Errors
 ///
-/// Returns [`Error::InvalidStreamName`] if any character cannot be represented.
+/// Returns [`MsiError::InvalidStreamName`] if any character cannot be represented.
 pub fn encode_msi_stream_name(name: &str, is_table: bool) -> Result<String> {
     if name.is_empty() {
         return Ok(String::new());
@@ -155,7 +155,7 @@ pub fn encode_msi_stream_name(name: &str, is_table: bool) -> Result<String> {
 ///
 /// # Errors
 ///
-/// Returns [`Error::InvalidStreamName`] if decoding encounters malformed words.
+/// Returns [`MsiError::InvalidStreamName`] if decoding encounters malformed words.
 #[allow(clippy::cast_possible_truncation)]
 pub fn decode_msi_stream_name(encoded: &str) -> Result<(String, bool)> {
     if encoded.is_empty() {

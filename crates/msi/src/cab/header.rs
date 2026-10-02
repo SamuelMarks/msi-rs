@@ -1,6 +1,6 @@
 //! Cabinet File Header structures and flags (`CFHEADER`).
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 
 /// Magic 4-byte signature for Microsoft Cabinet files (`MSCF` / `0x4D534346`).
 pub const CAB_SIGNATURE: [u8; 4] = *b"MSCF";
@@ -151,7 +151,7 @@ impl CfHeader {
     fn parse_cstring(bytes: &[u8], cursor: &mut usize) -> Result<String> {
         let start = *cursor;
         let Some(pos) = bytes[start..].iter().position(|&b| b == 0) else {
-            return Err(Error::InvalidCabData {
+            return Err(MsiError::InvalidCabData {
                 reason: "unterminated string in cabinet header".to_string(),
             });
         };
@@ -172,19 +172,19 @@ impl CfHeader {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidCabSignature`], [`Error::InvalidCabVersion`], or
-    /// [`Error::InvalidCabData`] if the header is corrupted.
+    /// Returns [`MsiError::InvalidCabSignature`], [`MsiError::InvalidCabVersion`], or
+    /// [`MsiError::InvalidCabData`] if the header is corrupted.
     #[allow(clippy::too_many_lines)]
     pub fn parse(bytes: &[u8]) -> Result<(Self, usize)> {
         if bytes.len() < 32 {
-            return Err(Error::InvalidCabData {
+            return Err(MsiError::InvalidCabData {
                 reason: format!("cabinet header too short: {} bytes (min 32)", bytes.len()),
             });
         }
 
         // 1. Signature
         if bytes[0..4] != CAB_SIGNATURE {
-            return Err(Error::InvalidCabSignature {
+            return Err(MsiError::InvalidCabSignature {
                 found: [bytes[0], bytes[1], bytes[2], bytes[3]],
             });
         }
@@ -192,7 +192,7 @@ impl CfHeader {
         // 2. Reserved1 (must be 0)
         let res1 = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
         if res1 != 0 {
-            return Err(Error::InvalidCabData {
+            return Err(MsiError::InvalidCabData {
                 reason: format!("reserved1 field must be 0, found 0x{res1:08X}"),
             });
         }
@@ -203,7 +203,7 @@ impl CfHeader {
         // 4. Reserved2 (must be 0)
         let res2 = u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]);
         if res2 != 0 {
-            return Err(Error::InvalidCabData {
+            return Err(MsiError::InvalidCabData {
                 reason: format!("reserved2 field must be 0, found 0x{res2:08X}"),
             });
         }
@@ -214,7 +214,7 @@ impl CfHeader {
         // 6. Reserved3 (must be 0)
         let res3 = u32::from_le_bytes([bytes[20], bytes[21], bytes[22], bytes[23]]);
         if res3 != 0 {
-            return Err(Error::InvalidCabData {
+            return Err(MsiError::InvalidCabData {
                 reason: format!("reserved3 field must be 0, found 0x{res3:08X}"),
             });
         }
@@ -223,7 +223,7 @@ impl CfHeader {
         let version_minor = bytes[24];
         let version_major = bytes[25];
         if version_major != CAB_VERSION_MAJOR || version_minor != CAB_VERSION_MINOR {
-            return Err(Error::InvalidCabVersion {
+            return Err(MsiError::InvalidCabVersion {
                 major: version_major,
                 minor: version_minor,
             });
@@ -239,7 +239,7 @@ impl CfHeader {
 
         // 10. setID & iCabinet
         if bytes.len() < 36 {
-            return Err(Error::InvalidCabData {
+            return Err(MsiError::InvalidCabData {
                 reason: "cabinet header truncated before setID/iCabinet".to_string(),
             });
         }
@@ -253,7 +253,7 @@ impl CfHeader {
         // 11. Optional reserve
         if flags.has_reserve() {
             if bytes.len() < cursor + 4 {
-                return Err(Error::InvalidCabData {
+                return Err(MsiError::InvalidCabData {
                     reason: "cabinet header truncated in reserve sizes".to_string(),
                 });
             }
@@ -271,7 +271,7 @@ impl CfHeader {
             if cb_header > 0 {
                 let end = cursor + cb_header as usize;
                 if bytes.len() < end {
-                    return Err(Error::InvalidCabData {
+                    return Err(MsiError::InvalidCabData {
                         reason: "cabinet header truncated in reserve data".to_string(),
                     });
                 }
@@ -515,7 +515,7 @@ mod tests {
         bad_sig[0] = b'X';
         assert!(matches!(
             CfHeader::parse(&bad_sig),
-            Err(Error::InvalidCabSignature { .. })
+            Err(MsiError::InvalidCabSignature { .. })
         ));
 
         // Bad reserved1
@@ -523,7 +523,7 @@ mod tests {
         bad_res1[4] = 1;
         assert!(matches!(
             CfHeader::parse(&bad_res1),
-            Err(Error::InvalidCabData { .. })
+            Err(MsiError::InvalidCabData { .. })
         ));
 
         // Bad reserved2
@@ -531,7 +531,7 @@ mod tests {
         bad_res2[12] = 1;
         assert!(matches!(
             CfHeader::parse(&bad_res2),
-            Err(Error::InvalidCabData { .. })
+            Err(MsiError::InvalidCabData { .. })
         ));
 
         // Bad reserved3
@@ -539,7 +539,7 @@ mod tests {
         bad_res3[20] = 1;
         assert!(matches!(
             CfHeader::parse(&bad_res3),
-            Err(Error::InvalidCabData { .. })
+            Err(MsiError::InvalidCabData { .. })
         ));
 
         // Bad major version
@@ -547,7 +547,7 @@ mod tests {
         bad_ver[25] = 2; // Major version 2
         assert!(matches!(
             CfHeader::parse(&bad_ver),
-            Err(Error::InvalidCabVersion { .. })
+            Err(MsiError::InvalidCabVersion { .. })
         ));
 
         // Bad minor version
@@ -555,7 +555,7 @@ mod tests {
         bad_ver_minor[24] = 99; // Minor version 99 with major 1
         assert!(matches!(
             CfHeader::parse(&bad_ver_minor),
-            Err(Error::InvalidCabVersion { .. })
+            Err(MsiError::InvalidCabVersion { .. })
         ));
 
         // Truncated before setID

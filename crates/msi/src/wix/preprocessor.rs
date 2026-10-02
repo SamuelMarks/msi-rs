@@ -3,7 +3,7 @@
 //! Implements macro expansions, variable scoping stack, conditional blocks,
 //! loop unrolling (`foreach`), and file inclusions per the `WiX` Preprocessor specification.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -233,7 +233,7 @@ impl Preprocessor {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Preprocessor`] if any directive syntax or macro expansion fails.
+    /// Returns [`MsiError::Preprocessor`] if any directive syntax or macro expansion fails.
     pub fn process(&self, source: &str, ctx: &mut PreprocessorContext) -> Result<String> {
         let lines: Vec<&str> = source.lines().collect();
         let (processed_lines, _) = self.process_lines(&lines, 0, ctx, true)?;
@@ -355,7 +355,7 @@ impl Preprocessor {
                     .trim();
                 let parts: Vec<&str> = body.split(" in ").collect();
                 if parts.len() != 2 {
-                    return Err(Error::Preprocessor {
+                    return Err(MsiError::Preprocessor {
                         line: idx + 1,
                         column: 1,
                         message: format!("invalid foreach syntax: '{trimmed}'"),
@@ -442,7 +442,7 @@ impl Preprocessor {
                         .trim_end_matches("?>")
                         .trim();
                     let expanded_msg = self.expand_macros(err_msg, ctx)?;
-                    return Err(Error::Preprocessor {
+                    return Err(MsiError::Preprocessor {
                         line: idx + 1,
                         column: 1,
                         message: expanded_msg,
@@ -492,7 +492,7 @@ impl Preprocessor {
         }
 
         let Some(file_path) = resolved else {
-            return Err(Error::Preprocessor {
+            return Err(MsiError::Preprocessor {
                 line,
                 column: 1,
                 message: format!("cannot resolve include file '{clean_path}'"),
@@ -509,7 +509,7 @@ impl Preprocessor {
 
         ctx.included_files.insert(canonical.clone());
 
-        std::fs::read_to_string(&canonical).map_err(|e| Error::Preprocessor {
+        std::fs::read_to_string(&canonical).map_err(|e| MsiError::Preprocessor {
             line,
             column: 1,
             message: format!("failed to read include file '{}': {e}", canonical.display()),
@@ -571,7 +571,7 @@ impl Preprocessor {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Preprocessor`] if macro expansion fails.
+    /// Returns [`MsiError::Preprocessor`] if macro expansion fails.
     fn eval_expression(&self, expr: &str, ctx: &PreprocessorContext) -> Result<bool> {
         let expanded = self.expand_macros(expr, ctx)?;
         Ok(Self::eval_expanded(expanded.trim()))
@@ -666,7 +666,7 @@ impl Preprocessor {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Preprocessor`] if any macro variable cannot be resolved.
+    /// Returns [`MsiError::Preprocessor`] if any macro variable cannot be resolved.
     pub fn expand_macros(&self, input: &str, ctx: &PreprocessorContext) -> Result<String> {
         let mut out = String::with_capacity(input.len());
         let mut cursor = 0;
@@ -699,7 +699,7 @@ impl Preprocessor {
                     cursor = close_idx + 1;
                     continue;
                 }
-                return Err(Error::Preprocessor {
+                return Err(MsiError::Preprocessor {
                     line: 1,
                     column: cursor + 1,
                     message: format!("unclosed macro expression in '{input}'"),
@@ -715,14 +715,14 @@ impl Preprocessor {
     /// Resolves advanced preprocessor functions (`$(fun.NAME(...))`).
     fn resolve_fun_macro(expr: &str) -> Result<String> {
         let Some(paren_open) = expr.find('(') else {
-            return Err(Error::Preprocessor {
+            return Err(MsiError::Preprocessor {
                 line: 1,
                 column: 1,
                 message: format!("missing function argument list in '$(fun.{expr})'"),
             });
         };
         let Some(paren_close) = expr.rfind(')') else {
-            return Err(Error::Preprocessor {
+            return Err(MsiError::Preprocessor {
                 line: 1,
                 column: 1,
                 message: format!("unclosed function call in '$(fun.{expr})'"),
@@ -778,7 +778,7 @@ impl Preprocessor {
                     crate::database::tables::types::ComponentGuid::generate("AutoGuid", seed_str);
                 Ok(format!("{guid}"))
             }
-            other => Err(Error::Preprocessor {
+            other => Err(MsiError::Preprocessor {
                 line: 1,
                 column: 1,
                 message: format!("unknown preprocessor function '$(fun.{other})'"),
@@ -795,7 +795,7 @@ impl Preprocessor {
         match macro_expr.split_once('.') {
             Some(("var", var_name)) => ctx.get_var(var_name).map_or_else(
                 || {
-                    Err(Error::Preprocessor {
+                    Err(MsiError::Preprocessor {
                         line: 1,
                         column: 1,
                         message: format!("undefined variable '$(var.{var_name})'"),
@@ -805,7 +805,7 @@ impl Preprocessor {
             ),
             Some(("env", env_name)) => ctx.get_env(env_name).map_or_else(
                 || {
-                    Err(Error::Preprocessor {
+                    Err(MsiError::Preprocessor {
                         line: 1,
                         column: 1,
                         message: format!("undefined environment variable '$(env.{env_name})'"),
@@ -823,12 +823,12 @@ impl Preprocessor {
                 Ok(ctx.sys_vars.source_file_path.to_string_lossy().to_string())
             }
             Some(("sys", "BUILDARCH")) => Ok(ctx.sys_vars.build_arch.clone()),
-            Some(("sys", other)) => Err(Error::Preprocessor {
+            Some(("sys", other)) => Err(MsiError::Preprocessor {
                 line: 1,
                 column: 1,
                 message: format!("unknown system variable '$(sys.{other})'"),
             }),
-            _ => Err(Error::Preprocessor {
+            _ => Err(MsiError::Preprocessor {
                 line: 1,
                 column: 1,
                 message: format!("unrecognized macro syntax '$({macro_expr})'"),

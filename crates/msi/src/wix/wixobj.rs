@@ -5,7 +5,7 @@
 
 use crate::database::tables::record::{FieldValue, Record};
 use crate::database::tables::types::StringPoolId;
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use std::fmt;
 
 /// Magic signature for `.wixobj` binary format (`"WOBJ"`).
@@ -46,7 +46,7 @@ impl SectionType {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidWixObject`] if `val` is unrecognized.
+    /// Returns [`MsiError::InvalidWixObject`] if `val` is unrecognized.
     pub fn from_u8(val: u8) -> Result<Self> {
         match val {
             1 => Ok(Self::Product),
@@ -54,7 +54,7 @@ impl SectionType {
             3 => Ok(Self::Fragment),
             4 => Ok(Self::PatchCreation),
             5 => Ok(Self::Patch),
-            other => Err(Error::InvalidWixObject {
+            other => Err(MsiError::InvalidWixObject {
                 reason: format!("unknown section type code: {other}"),
             }),
         }
@@ -547,24 +547,24 @@ impl WixObject {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidWixObject`] if the signature or payload is invalid.
+    /// Returns [`MsiError::InvalidWixObject`] if the signature or payload is invalid.
     #[allow(clippy::too_many_lines)]
     pub fn deserialize(bytes: &[u8]) -> Result<Self> {
         if bytes.len() < 10 {
-            return Err(Error::InvalidWixObject {
+            return Err(MsiError::InvalidWixObject {
                 reason: "file smaller than header size (10 bytes)".to_string(),
             });
         }
 
         if bytes[0..4] != WIXOBJ_MAGIC {
-            return Err(Error::InvalidWixObject {
+            return Err(MsiError::InvalidWixObject {
                 reason: format!("invalid magic signature: {:?}", &bytes[0..4]),
             });
         }
 
         let version = u16::from_le_bytes([bytes[4], bytes[5]]);
         if version != 1 && version != WIXOBJ_VERSION {
-            return Err(Error::InvalidWixObject {
+            return Err(MsiError::InvalidWixObject {
                 reason: format!("unsupported format version: {version}"),
             });
         }
@@ -575,7 +575,7 @@ impl WixObject {
 
         for _ in 0..section_count {
             if cursor >= bytes.len() {
-                return Err(Error::InvalidWixObject {
+                return Err(MsiError::InvalidWixObject {
                     reason: "unexpected end of file reading section header".to_string(),
                 });
             }
@@ -588,7 +588,7 @@ impl WixObject {
 
             // Symbols
             if cursor + 4 > bytes.len() {
-                return Err(Error::InvalidWixObject {
+                return Err(MsiError::InvalidWixObject {
                     reason: "truncated symbols count".to_string(),
                 });
             }
@@ -608,7 +608,7 @@ impl WixObject {
                     cursor = c2;
                 } else {
                     if c2 + 8 > bytes.len() {
-                        return Err(Error::InvalidWixObject {
+                        return Err(MsiError::InvalidWixObject {
                             reason: "truncated symbol span".to_string(),
                         });
                     }
@@ -631,7 +631,7 @@ impl WixObject {
 
             // References
             if cursor + 4 > bytes.len() {
-                return Err(Error::InvalidWixObject {
+                return Err(MsiError::InvalidWixObject {
                     reason: "truncated references count".to_string(),
                 });
             }
@@ -651,7 +651,7 @@ impl WixObject {
                     cursor = c2;
                 } else {
                     if c2 + 8 > bytes.len() {
-                        return Err(Error::InvalidWixObject {
+                        return Err(MsiError::InvalidWixObject {
                             reason: "truncated reference span".to_string(),
                         });
                     }
@@ -674,7 +674,7 @@ impl WixObject {
 
             // Tables
             if cursor + 4 > bytes.len() {
-                return Err(Error::InvalidWixObject {
+                return Err(MsiError::InvalidWixObject {
                     reason: "truncated tables count".to_string(),
                 });
             }
@@ -690,7 +690,7 @@ impl WixObject {
                 let (tbl_name, c_name) = Self::read_string(bytes, cursor)?;
                 cursor = c_name;
                 if cursor + 4 > bytes.len() {
-                    return Err(Error::InvalidWixObject {
+                    return Err(MsiError::InvalidWixObject {
                         reason: "truncated records count".to_string(),
                     });
                 }
@@ -704,7 +704,7 @@ impl WixObject {
                 let mut tbl = IntermediateTable::new(tbl_name);
                 for _ in 0..num_records {
                     if cursor + 4 > bytes.len() {
-                        return Err(Error::InvalidWixObject {
+                        return Err(MsiError::InvalidWixObject {
                             reason: "truncated field count".to_string(),
                         });
                     }
@@ -718,7 +718,7 @@ impl WixObject {
                     let mut rec = Record::new();
                     for _ in 0..field_count {
                         if cursor >= bytes.len() {
-                            return Err(Error::InvalidWixObject {
+                            return Err(MsiError::InvalidWixObject {
                                 reason: "truncated field type".to_string(),
                             });
                         }
@@ -728,7 +728,7 @@ impl WixObject {
                             0 => FieldValue::Null,
                             1 => {
                                 if cursor + 2 > bytes.len() {
-                                    return Err(Error::InvalidWixObject {
+                                    return Err(MsiError::InvalidWixObject {
                                         reason: "truncated Short field".to_string(),
                                     });
                                 }
@@ -738,7 +738,7 @@ impl WixObject {
                             }
                             2 => {
                                 if cursor + 4 > bytes.len() {
-                                    return Err(Error::InvalidWixObject {
+                                    return Err(MsiError::InvalidWixObject {
                                         reason: "truncated Long field".to_string(),
                                     });
                                 }
@@ -758,7 +758,7 @@ impl WixObject {
                             }
                             4 => {
                                 if cursor + 4 > bytes.len() {
-                                    return Err(Error::InvalidWixObject {
+                                    return Err(MsiError::InvalidWixObject {
                                         reason: "truncated Stream field".to_string(),
                                     });
                                 }
@@ -772,7 +772,7 @@ impl WixObject {
                                 FieldValue::Stream(StringPoolId::new(stream_id))
                             }
                             other => {
-                                return Err(Error::InvalidWixObject {
+                                return Err(MsiError::InvalidWixObject {
                                     reason: format!("unknown field type: {other}"),
                                 });
                             }
@@ -820,7 +820,7 @@ impl WixObject {
     /// Reads a length-prefixed string starting at `cursor`.
     fn read_string(bytes: &[u8], cursor: usize) -> Result<(String, usize)> {
         if cursor + 4 > bytes.len() {
-            return Err(Error::InvalidWixObject {
+            return Err(MsiError::InvalidWixObject {
                 reason: "string length out of bounds".to_string(),
             });
         }
@@ -833,7 +833,7 @@ impl WixObject {
         let start = cursor + 4;
         let end = start + len;
         if end > bytes.len() {
-            return Err(Error::InvalidWixObject {
+            return Err(MsiError::InvalidWixObject {
                 reason: "string payload out of bounds".to_string(),
             });
         }
@@ -844,7 +844,7 @@ impl WixObject {
     /// Reads an optional length-prefixed string starting at `cursor`.
     fn read_opt_string(bytes: &[u8], cursor: usize) -> Result<(Option<String>, usize)> {
         if cursor >= bytes.len() {
-            return Err(Error::InvalidWixObject {
+            return Err(MsiError::InvalidWixObject {
                 reason: "optional string marker out of bounds".to_string(),
             });
         }
@@ -991,7 +991,7 @@ mod tests {
 
         for res in [
             WixObject::deserialize(&bytes),
-            Err(Error::InvalidWixObject {
+            Err(MsiError::InvalidWixObject {
                 reason: "simulated".to_string(),
             }),
         ] {
@@ -1048,7 +1048,7 @@ mod tests {
         v1_bytes.extend_from_slice(&0u32.to_le_bytes()); // 0 tables
         let v1_obj = WixObject::deserialize(&v1_bytes);
         assert!(v1_obj.is_ok());
-        for res in [v1_obj, Err(Error::Io("fail".into()))] {
+        for res in [v1_obj, Err(MsiError::Io("fail".into()))] {
             if let Ok(deser_v1) = res {
                 assert_eq!(deser_v1.sections[0].symbols[0].id, "C1");
                 assert_eq!(deser_v1.sections[0].symbols[0].span, None);

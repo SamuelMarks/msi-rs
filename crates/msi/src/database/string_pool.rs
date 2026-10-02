@@ -1,6 +1,6 @@
 //! MSI String Pool stream serialization and deserialization (`_StringPool` & `_StringData`).
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use std::collections::HashMap;
 
 /// Standard UTF-8 Windows Installer code page (`65001`).
@@ -137,7 +137,7 @@ impl StringPool {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::StringPoolIndexOutOfBounds`] if `id` exceeds the pool size.
+    /// Returns [`MsiError::StringPoolIndexOutOfBounds`] if `id` exceeds the pool size.
     #[allow(clippy::cast_possible_truncation)]
     pub fn get_string(&self, id: u32) -> Result<&str> {
         if id == 0 {
@@ -145,7 +145,7 @@ impl StringPool {
         }
         let idx = (id - 1) as usize;
         if idx >= self.entries.len() {
-            return Err(Error::StringPoolIndexOutOfBounds {
+            return Err(MsiError::StringPoolIndexOutOfBounds {
                 index: id,
                 max: self.entries.len() as u32,
             });
@@ -196,11 +196,11 @@ impl StringPool {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidStringPool`] if header or string data is malformed.
+    /// Returns [`MsiError::InvalidStringPool`] if header or string data is malformed.
     #[allow(clippy::cast_possible_truncation)]
     pub fn deserialize(pool_bytes: &[u8], data_bytes: &[u8]) -> Result<Self> {
         if pool_bytes.len() < 4 {
-            return Err(Error::InvalidStringPool {
+            return Err(MsiError::InvalidStringPool {
                 reason: "string pool header truncated".to_string(),
             });
         }
@@ -209,7 +209,7 @@ impl StringPool {
         let entries_data = &pool_bytes[4..];
 
         if entries_data.len() % 4 != 0 {
-            return Err(Error::InvalidStringPool {
+            return Err(MsiError::InvalidStringPool {
                 reason: format!(
                     "string pool size {} is not a multiple of 4",
                     entries_data.len()
@@ -232,7 +232,7 @@ impl StringPool {
 
             let end = data_cursor + str_len;
             if end > data_bytes.len() {
-                return Err(Error::InvalidStringPool {
+                return Err(MsiError::InvalidStringPool {
                     reason: format!(
                         "string data overflow: entry {i} extends beyond data stream boundary"
                     ),

@@ -6,7 +6,7 @@
 //! Provides parsing and linker support for `http://schemas.microsoft.com/wix/NetFxExtension`.
 
 use crate::database::tables::record::{FieldValue, Record};
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::wix::extensions::WixExtension;
 use crate::wix::linker::LinkedDatabase;
 use crate::wix::wixobj::{IntermediateSection, IntermediateTable};
@@ -31,18 +31,18 @@ impl NetFxExtension {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::WixCompiler`] if required attributes are missing.
+    /// Returns [`MsiError::WixCompiler`] if required attributes are missing.
     fn compile_native_image(
         node: &XmlNode,
         parent_id: Option<&str>,
         tables: &mut HashMap<String, IntermediateTable>,
     ) -> Result<()> {
-        let id = node.attribute("Id").ok_or_else(|| Error::WixCompiler {
+        let id = node.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
             element: "netfx:NativeImage".to_string(),
             message: "missing required 'Id' attribute".to_string(),
         })?;
 
-        let file = parent_id.ok_or_else(|| Error::WixCompiler {
+        let file = parent_id.ok_or_else(|| MsiError::WixCompiler {
             element: "netfx:NativeImage".to_string(),
             message: "NativeImage must be nested under a File element".to_string(),
         })?;
@@ -96,7 +96,7 @@ impl WixExtension for NetFxExtension {
 
         match tag_name {
             "NativeImage" => Self::compile_native_image(node, parent_id, tables),
-            _ => Err(Error::WixExtension {
+            _ => Err(MsiError::WixExtension {
                 extension: self.id().to_string(),
                 message: format!("unsupported element: '{tag_name}'"),
             }),
@@ -226,7 +226,7 @@ mod tests {
         let mut tables = HashMap::new();
 
         let res = ext.compile_node(&node, Some("file1"), &mut section, &mut tables);
-        assert!(matches!(res, Err(Error::WixCompiler { .. })));
+        assert!(matches!(res, Err(MsiError::WixCompiler { .. })));
     }
 
     /// Tests compiling `<netfx:NativeImage>` when missing parent file returns error.
@@ -241,10 +241,10 @@ mod tests {
         let mut tables = HashMap::new();
 
         let res = ext.compile_node(&node, None, &mut section, &mut tables);
-        assert!(matches!(res, Err(Error::WixCompiler { .. })));
+        assert!(matches!(res, Err(MsiError::WixCompiler { .. })));
     }
 
-    /// Tests compiling unsupported elements returns [`Error::WixExtension`].
+    /// Tests compiling unsupported elements returns [`MsiError::WixExtension`].
     #[test]
     fn test_unsupported_element() {
         let ext = NetFxExtension::new();
@@ -256,7 +256,7 @@ mod tests {
         let mut tables = HashMap::new();
 
         let res = ext.compile_node(&node, Some("file1"), &mut section, &mut tables);
-        assert!(matches!(res, Err(Error::WixExtension { .. })));
+        assert!(matches!(res, Err(MsiError::WixExtension { .. })));
     }
 
     /// Tests linking native image actions into database.

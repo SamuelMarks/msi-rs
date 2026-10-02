@@ -1,6 +1,6 @@
 //! Lexer for Windows Installer SQL dialect.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 
 /// A lexical token in the Windows Installer SQL dialect.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -140,7 +140,7 @@ impl Lexer {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Sql`] on unclosed string literals or unexpected characters.
+    /// Returns [`MsiError::Sql`] on unclosed string literals or unexpected characters.
     #[allow(clippy::too_many_lines)]
     pub fn tokenize(&mut self) -> Result<Vec<Token>> {
         let mut tokens = Vec::new();
@@ -205,7 +205,7 @@ impl Lexer {
                         tokens.push(Token::NotEqual);
                         self.pos += 1;
                     } else {
-                        return Err(Error::Sql {
+                        return Err(MsiError::Sql {
                             message: format!("unexpected character '!' at index {}", self.pos - 1),
                         });
                     }
@@ -226,7 +226,7 @@ impl Lexer {
                         self.pos += 1;
                     }
                     if !closed {
-                        return Err(Error::Sql {
+                        return Err(MsiError::Sql {
                             message: "unclosed string literal in SQL".to_string(),
                         });
                     }
@@ -251,7 +251,7 @@ impl Lexer {
                         self.pos += 1;
                     }
                     if !closed {
-                        return Err(Error::Sql {
+                        return Err(MsiError::Sql {
                             message: "unclosed square bracket identifier in SQL".to_string(),
                         });
                     }
@@ -270,7 +270,7 @@ impl Lexer {
                     if let Ok(num) = num_str.parse::<i32>() {
                         tokens.push(Token::IntegerLiteral(num));
                     } else {
-                        return Err(Error::Sql {
+                        return Err(MsiError::Sql {
                             message: format!("invalid integer literal '{num_str}'"),
                         });
                     }
@@ -286,7 +286,7 @@ impl Lexer {
                     tokens.push(match_keyword_or_ident(&word));
                 }
                 other => {
-                    return Err(Error::Sql {
+                    return Err(MsiError::Sql {
                         message: format!("unexpected character '{other}' in SQL query"),
                     });
                 }
@@ -387,7 +387,7 @@ mod tests {
         let mut lexer = Lexer::new(sql);
         for res in [
             lexer.tokenize(),
-            Err(Error::Sql {
+            Err(MsiError::Sql {
                 message: "simulated".to_string(),
             }),
         ] {
@@ -444,7 +444,7 @@ mod tests {
         let mut lexer = Lexer::new(sql);
         for res in [
             lexer.tokenize(),
-            Err(Error::Sql {
+            Err(MsiError::Sql {
                 message: "simulated".to_string(),
             }),
         ] {

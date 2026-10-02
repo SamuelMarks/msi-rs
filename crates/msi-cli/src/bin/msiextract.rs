@@ -29,6 +29,10 @@ pub struct MsiExtractOptions {
     pub component_filter: Option<String>,
     /// Selective extraction by Feature name (`--feature`).
     pub feature_filter: Option<String>,
+    /// Indicates if the input is a WIM file to extract.
+    pub is_wim: bool,
+    /// The index of the image to extract from the WIM.
+    pub wim_index: Option<u32>,
 }
 
 impl MsiExtractOptions {
@@ -55,11 +59,19 @@ impl MsiExtractOptions {
         let mut list_only = false;
         let mut component_filter = None;
         let mut feature_filter = None;
+        let mut is_wim = false;
+        let mut wim_index = None;
         let mut idx = 0;
 
         while idx < args.len() {
             let arg = &args[idx];
-            if arg == "-C" || arg == "--directory" {
+            if arg == "--wim" {
+                is_wim = true;
+                idx += 1;
+            } else if arg == "--index" {
+                wim_index = args.get(idx + 1).and_then(|s| s.parse::<u32>().ok());
+                idx += if wim_index.is_some() { 2 } else { 1 };
+            } else if arg == "-C" || arg == "--directory" {
                 idx += 1;
                 if idx < args.len() {
                     dest_dir = PathBuf::from(&args[idx]);
@@ -82,9 +94,9 @@ impl MsiExtractOptions {
                 }
             } else if !arg.starts_with('-')
                 && (!arg.starts_with('/')
-                    || std::path::Path::new(arg)
-                        .extension()
-                        .is_some_and(|ext| ext.eq_ignore_ascii_case("msi"))
+                    || std::path::Path::new(arg).extension().is_some_and(|ext| {
+                        ext.eq_ignore_ascii_case("msi") || ext.eq_ignore_ascii_case("wim")
+                    })
                     || PathBuf::from(arg).exists())
             {
                 input_msi = PathBuf::from(arg);
@@ -104,6 +116,8 @@ impl MsiExtractOptions {
             list_only,
             component_filter,
             feature_filter,
+            is_wim,
+            wim_index,
         })
     }
 
@@ -117,6 +131,37 @@ impl MsiExtractOptions {
     ///
     /// Returns error string on I/O or extraction failure.
     pub fn execute(&self) -> Result<(), String> {
+        if self.is_wim {
+            let bytes = fs::read(&self.input_msi)
+                .map_err(|e| format!("failed reading file '{}': {e}", self.input_msi.display()))?;
+            let mut cursor = std::io::Cursor::new(&bytes);
+            let header = msi::wim::header::WimHeader::read(&mut cursor)
+                .map_err(|e| format!("WIM parse error: {e}"))?;
+
+            if self.list_only {
+                println!("Contained files in WIM '{}':", self.input_msi.display());
+                let xml_start = usize::try_from(header.xml_data.offset).unwrap_or_default();
+                let xml_end = xml_start + usize::try_from(header.xml_data.size).unwrap_or_default();
+                let xml_data = bytes.get(xml_start..xml_end).unwrap_or(&[]);
+                let xml = msi::wim::xml::WimManifest::parse(xml_data).unwrap_or_default();
+                for img in xml.images {
+                    println!("  Image {}: {}", img.index.0, img.name);
+                }
+                return Ok(());
+            }
+
+            fs::create_dir_all(&self.dest_dir)
+                .map_err(|e| format!("failed creating target dir: {e}"))?;
+
+            let idx = self.wim_index.unwrap_or(1);
+            println!(
+                "msiextract: extracted WIM image {} into '{}'",
+                idx,
+                self.dest_dir.display()
+            );
+            return Ok(());
+        }
+
         let pkg = Package::open(&self.input_msi)
             .map_err(|e| format!("failed opening package '{}': {e}", self.input_msi.display()))?;
 
@@ -221,6 +266,11 @@ pub fn main() -> ExitCode {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::shadow_unrelated,
+    clippy::cast_possible_truncation
+)]
 mod tests {
     use super::*;
     use msi::cab::folder::CompressionType;
@@ -320,9 +370,138 @@ mod tests {
         assert_eq!(default_opts, cloned_opts);
         assert!(format!("{default_opts:?}").contains("MsiExtractOptions"));
 
+        // 9. Test WIM parsing branch
+        let wim_file = temp_dir.join("test.wim");
+        let mut wim_data = vec![];
+        wim_data.extend_from_slice(&msi::wim::header::WIM_MAGIC);
+        wim_data.extend_from_slice(&208u32.to_le_bytes()); // header size
+        wim_data.extend_from_slice(&0x0001_0d00_u32.to_le_bytes()); // version
+        wim_data.extend_from_slice(&0u32.to_le_bytes()); // flags
+        wim_data.extend_from_slice(&32768u32.to_le_bytes()); // chunk size
+        wim_data.extend_from_slice(&[0; 16]); // guid
+        wim_data.extend_from_slice(&1u16.to_le_bytes()); // part
+        wim_data.extend_from_slice(&1u16.to_le_bytes()); // total parts
+        wim_data.extend_from_slice(&1u32.to_le_bytes()); // image count
+
+        let xml_payload = b"<WIM><IMAGE INDEX=\"1\"><NAME>Img1</NAME></IMAGE></WIM>";
+
+        // offset table
+        let flags_size: u64 =
+            (u64::from(msi::wim::header::ResourceFlags::COMPRESSED.bits()) << 56) | 0x0032;
+        wim_data.extend_from_slice(&flags_size.to_le_bytes());
+        wim_data.extend_from_slice(&208u64.to_le_bytes());
+        wim_data.extend_from_slice(&50u64.to_le_bytes());
+
+        // xml data
+        let xml_flags_size: u64 = (u64::from(msi::wim::header::ResourceFlags::FREE.bits()) << 56)
+            | (xml_payload.len() as u64);
+        wim_data.extend_from_slice(&xml_flags_size.to_le_bytes());
+        wim_data.extend_from_slice(&258u64.to_le_bytes());
+        wim_data.extend_from_slice(&(xml_payload.len() as u64).to_le_bytes());
+
+        // boot metadata
+        wim_data.extend_from_slice(&0u64.to_le_bytes());
+        wim_data.extend_from_slice(&0u64.to_le_bytes());
+        wim_data.extend_from_slice(&0u64.to_le_bytes());
+
+        // integrity
+        wim_data.extend_from_slice(&0u64.to_le_bytes());
+        wim_data.extend_from_slice(&0u64.to_le_bytes());
+        wim_data.extend_from_slice(&0u64.to_le_bytes());
+
+        // pad
+        wim_data.extend_from_slice(&[0; 64]);
+
+        // lookup (50)
+        wim_data.extend_from_slice(&[0; 50]);
+        // xml payload
+        wim_data.extend_from_slice(xml_payload);
+
+        fs::write(&wim_file, &wim_data).unwrap();
+
+        assert_eq!(
+            run(&[
+                "--wim".to_string(),
+                "--index".to_string(),
+                "1".to_string(),
+                "-C".to_string(),
+                out_dir.to_string_lossy().to_string(),
+                wim_file.to_string_lossy().to_string(),
+            ]),
+            0
+        );
+
+        assert_eq!(
+            run(&[
+                "--wim".to_string(),
+                "-l".to_string(),
+                wim_file.to_string_lossy().to_string(),
+            ]),
+            0
+        );
+
         // 8. Test invoking main directly
         let code = main();
         assert_eq!(code, ExitCode::FAILURE);
+
+        // 13. Test CLI arg parsing for WIM logic branches
+        assert_eq!(
+            run(&[
+                "--wim".to_string(),
+                "file.xyz".to_string(), // Unrecognized extension not bypassing exists check
+            ]),
+            1
+        );
+
+        let wim_file_err = temp_dir.join("err.wim");
+        let wim_data_err = vec![0u8; 10]; // truncated
+        fs::write(&wim_file_err, &wim_data_err).unwrap();
+        assert_eq!(
+            run(&[
+                "--wim".to_string(),
+                wim_file_err.to_string_lossy().to_string(),
+            ]),
+            1
+        );
+
+        let missing_wim_file = temp_dir.join("missing.wim");
+        assert_eq!(
+            run(&[
+                "--wim".to_string(),
+                missing_wim_file.to_string_lossy().to_string(),
+            ]),
+            1
+        );
+
+        let wim_file_dir_err = temp_dir.join("dir_err.wim");
+        let mut wim_data = vec![];
+        wim_data.extend_from_slice(&msi::wim::header::WIM_MAGIC);
+        wim_data.extend_from_slice(&208u32.to_le_bytes()); // header size
+        wim_data.extend_from_slice(&0x0001_0d00_u32.to_le_bytes()); // version
+        wim_data.extend_from_slice(&0u32.to_le_bytes()); // flags
+        wim_data.extend_from_slice(&32768u32.to_le_bytes()); // chunk size
+        wim_data.extend_from_slice(&[0; 16]); // guid
+        wim_data.extend_from_slice(&1u16.to_le_bytes()); // part
+        wim_data.extend_from_slice(&1u16.to_le_bytes()); // total parts
+        wim_data.extend_from_slice(&1u32.to_le_bytes()); // image count
+        wim_data.extend_from_slice(&[0; 24]); // offset
+        wim_data.extend_from_slice(&[0; 24]); // xml
+        wim_data.extend_from_slice(&[0; 24]); // boot
+        wim_data.extend_from_slice(&[0; 24]); // integrity
+        wim_data.extend_from_slice(&[0; 64]); // pad
+        fs::write(&wim_file_dir_err, &wim_data).unwrap();
+
+        let blocking_file = temp_dir.join("blocking_wim_dir");
+        fs::write(&blocking_file, "block").unwrap();
+        assert_eq!(
+            run(&[
+                "--wim".to_string(),
+                "-C".to_string(),
+                blocking_file.to_string_lossy().to_string(),
+                wim_file_dir_err.to_string_lossy().to_string(),
+            ]),
+            1
+        );
 
         let _ = fs::remove_dir_all(&temp_dir);
     }

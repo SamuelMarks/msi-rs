@@ -9,7 +9,7 @@
 //! - Full `VBScript` error handling constructs: `On Error Resume Next`, `On Error Goto 0`,
 //!   and the built-in `Err` object (`Err.Number`, `Err.Description`, `Err.Clear`, `Err.Raise`).
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::execution::script_engine::session::ScriptSession;
 use std::collections::HashMap;
 
@@ -294,7 +294,7 @@ impl<'a> VbLexer<'a> {
                 text.push(ch);
             }
         }
-        Err(Error::ScriptRuntimeError {
+        Err(MsiError::ScriptRuntimeError {
             line: start_line,
             col: start_col,
             message: "Unterminated string literal in VBScript".to_string(),
@@ -342,7 +342,7 @@ impl<'a> VbLexer<'a> {
             }
             let n = num_str
                 .parse::<i64>()
-                .map_err(|_| Error::ScriptRuntimeError {
+                .map_err(|_| MsiError::ScriptRuntimeError {
                     line: start_line,
                     col: start_col,
                     message: format!("Invalid integer: {num_str}"),
@@ -454,7 +454,7 @@ impl<'a> VbLexer<'a> {
             '.' => VbTokenKind::Dot,
             ':' => VbTokenKind::Colon,
             other => {
-                return Err(Error::ScriptRuntimeError {
+                return Err(MsiError::ScriptRuntimeError {
                     line: start_line,
                     col: start_col,
                     message: format!("Unexpected character in VBScript: '{other}'"),
@@ -745,7 +745,7 @@ impl VbParser {
         if &tok.kind == kind {
             Ok(self.advance())
         } else {
-            Err(Error::ScriptRuntimeError {
+            Err(MsiError::ScriptRuntimeError {
                 line: tok.line,
                 col: tok.col,
                 message: format!("VBScript parse error: expected {msg}, found {:?}", tok.kind),
@@ -778,7 +778,7 @@ impl VbParser {
                     if let VbTokenKind::Identifier(id) = next_tok.kind {
                         vars.push(id);
                     } else {
-                        return Err(Error::ScriptRuntimeError {
+                        return Err(MsiError::ScriptRuntimeError {
                             line: next_tok.line,
                             col: next_tok.col,
                             message: "Expected variable name after Dim".to_string(),
@@ -809,7 +809,7 @@ impl VbParser {
                         });
                     }
                 }
-                Err(Error::ScriptRuntimeError {
+                Err(MsiError::ScriptRuntimeError {
                     line: tok.line,
                     col: tok.col,
                     message: "Unsupported 'On Error' directive".to_string(),
@@ -821,7 +821,7 @@ impl VbParser {
                 let name = match next_tok.kind {
                     VbTokenKind::Identifier(s) => s,
                     other => {
-                        return Err(Error::ScriptRuntimeError {
+                        return Err(MsiError::ScriptRuntimeError {
                             line: next_tok.line,
                             col: next_tok.col,
                             message: format!("Expected subroutine name, found {other:?}"),
@@ -850,7 +850,7 @@ impl VbParser {
                 let name = match next_tok.kind {
                     VbTokenKind::Identifier(s) => s,
                     other => {
-                        return Err(Error::ScriptRuntimeError {
+                        return Err(MsiError::ScriptRuntimeError {
                             line: next_tok.line,
                             col: next_tok.col,
                             message: format!("Expected function name, found {other:?}"),
@@ -945,7 +945,7 @@ impl VbParser {
                 let var_name = match next_tok.kind {
                     VbTokenKind::Identifier(s) => s,
                     other => {
-                        return Err(Error::ScriptRuntimeError {
+                        return Err(MsiError::ScriptRuntimeError {
                             line: next_tok.line,
                             col: next_tok.col,
                             message: format!("Expected for loop variable, found {other:?}"),
@@ -990,7 +990,7 @@ impl VbParser {
                 } else if self.match_token(&VbTokenKind::KeywordFunction) {
                     Ok(VbStmt::ExitFunction)
                 } else {
-                    Err(Error::ScriptRuntimeError {
+                    Err(MsiError::ScriptRuntimeError {
                         line: tok.line,
                         col: tok.col,
                         message: "Unsupported 'Exit' statement in VBScript".to_string(),
@@ -1287,7 +1287,7 @@ impl VbParser {
                     let member = match next_tok.kind {
                         VbTokenKind::Identifier(s) => s,
                         other => {
-                            return Err(Error::ScriptRuntimeError {
+                            return Err(MsiError::ScriptRuntimeError {
                                 line: next_tok.line,
                                 col: next_tok.col,
                                 message: format!("Expected member name after '.', found {other:?}"),
@@ -1350,7 +1350,7 @@ impl VbParser {
                 self.expect(&VbTokenKind::RightParen, "')' closing parenthesis")?;
                 Ok(expr)
             }
-            _ => Err(Error::ScriptRuntimeError {
+            _ => Err(MsiError::ScriptRuntimeError {
                 line: tok.line,
                 col: tok.col,
                 message: format!("Unexpected token in VBScript expression: {:?}", tok.kind),
@@ -1422,7 +1422,7 @@ impl VBScriptEngine {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::ScriptRuntimeError`] on syntax or execution failure.
+    /// Returns [`MsiError::ScriptRuntimeError`] on syntax or execution failure.
     pub fn execute(&mut self, script: &str, session: &mut ScriptSession) -> Result<Variant> {
         let mut lexer = VbLexer::new(script);
         let tokens = lexer.tokenize_all()?;
@@ -1936,7 +1936,7 @@ impl VBScriptEngine {
                     self.err.number = num;
                     self.err.description.clone_from(&desc);
                     if !self.resume_next {
-                        return Err(Error::ScriptRuntimeError {
+                        return Err(MsiError::ScriptRuntimeError {
                             line,
                             col,
                             message: format!("VBScript Err.Raise #{num}: {desc}"),
@@ -2061,7 +2061,7 @@ impl VBScriptEngine {
         if self.resume_next {
             Ok(())
         } else {
-            Err(Error::ScriptRuntimeError {
+            Err(MsiError::ScriptRuntimeError {
                 line,
                 col,
                 message: msg.to_string(),
@@ -2220,7 +2220,7 @@ mod tests {
         let res = engine.execute(script, &mut session);
         assert_eq!(
             res,
-            Err(Error::ScriptRuntimeError {
+            Err(MsiError::ScriptRuntimeError {
                 line: 2,
                 col: 13,
                 message: "VBScript Err.Raise #500: Fatal error occurred".to_string(),

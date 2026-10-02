@@ -10,7 +10,7 @@
 //! - `InstallationCompleteDialog`: prompt to eject installation media and reboot.
 //! - `DiagnosticsLogConsole`: live log view with `F2` split console toggle and error dumping.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::platform::disk::{BlockDevice, BlockDevicePath, BusType};
 use crate::ui::tui::TuiKey;
 use std::fmt::Write as _;
@@ -1076,13 +1076,13 @@ impl DiagnosticsLogConsole {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Io`] if file write fails.
+    /// Returns [`MsiError::Io`] if file write fails.
     pub fn export_to_file(&self, dest_path: &Path) -> Result<()> {
         let mut out = String::new();
         for line in &self.logs {
             let _ = writeln!(out, "{line}");
         }
-        std::fs::write(dest_path, out).map_err(|e| Error::Io(e.to_string()))
+        std::fs::write(dest_path, out).map_err(|e| MsiError::Io(e.to_string()))
     }
 }
 

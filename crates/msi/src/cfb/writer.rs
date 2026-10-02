@@ -9,7 +9,7 @@ use crate::cfb::header::{
     CFB_MINI_STREAM_CUTOFF_STANDARD,
 };
 use crate::cfb::sector::{MiniSectorId, SectorId};
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use std::cmp::Ordering;
 
 /// In-memory stream item staged for packaging into a CFB container.
@@ -47,7 +47,7 @@ impl CfbWriter {
         Self {
             version,
             streams: Vec::new(),
-            root_clsid: StorageClsid::Empty,
+            root_clsid: StorageClsid::MsiPackage,
         }
     }
 
@@ -94,11 +94,11 @@ impl CfbWriter {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::DuplicateDirectoryEntry`] if a stream with this name has already been added.
+    /// Returns [`MsiError::DuplicateDirectoryEntry`] if a stream with this name has already been added.
     pub fn add_stream(&mut self, name: &str, data: &[u8]) -> Result<()> {
         for s in &self.streams {
             if compare_cfb_names(&s.name, name) == Ordering::Equal {
-                return Err(Error::DuplicateDirectoryEntry {
+                return Err(MsiError::DuplicateDirectoryEntry {
                     name: name.to_string(),
                 });
             }
@@ -920,7 +920,7 @@ mod tests {
         let bytes = writer.build();
         for res in [
             CfbReader::new(&bytes),
-            Err(Error::StreamNotFound {
+            Err(MsiError::StreamNotFound {
                 name: "simulated".to_string(),
             }),
         ] {
@@ -930,7 +930,7 @@ mod tests {
 
                 for r_large in [
                     reader.read_stream("LargeStream"),
-                    Err(Error::StreamNotFound {
+                    Err(MsiError::StreamNotFound {
                         name: "simulated".to_string(),
                     }),
                 ] {
@@ -942,7 +942,7 @@ mod tests {
 
                 for r_mini in [
                     reader.read_stream("MiniStream"),
-                    Err(Error::StreamNotFound {
+                    Err(MsiError::StreamNotFound {
                         name: "simulated".to_string(),
                     }),
                 ] {
@@ -970,5 +970,26 @@ mod tests {
         let reader = CfbReader::new(&bytes).unwrap_or_default();
         assert_eq!(reader.root_clsid(), StorageClsid::MsiPackage);
         assert!(reader.root_clsid().is_msi_package());
+    }
+}
+
+#[cfg(test)]
+mod phase4_tests {
+    use super::*;
+    use crate::cfb::directory::MSI_PACKAGE_STORAGE_CLSID;
+    use crate::cfb::header::CfbVersion;
+    use crate::error::Result;
+
+    #[test]
+    fn test_cfb_writer_injects_mandatory_msi_guid() -> Result<()> {
+        let mut writer = CfbWriter::new(CfbVersion::V3);
+        writer.add_stream("TestStream", b"content")?;
+        let bytes = writer.build();
+        let first_dir_sector = u32::from_le_bytes([bytes[48], bytes[49], bytes[50], bytes[51]]);
+        let root_entry_offset = 512 + (first_dir_sector as usize * 512);
+        let clsid_offset = root_entry_offset + 80;
+        let written_clsid = &bytes[clsid_offset..clsid_offset + 16];
+        assert_eq!(written_clsid, MSI_PACKAGE_STORAGE_CLSID);
+        Ok(())
     }
 }

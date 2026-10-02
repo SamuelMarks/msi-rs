@@ -1,6 +1,6 @@
 //! Sector representations and constants for Compound File Binary Format ([MS-CFB] 2.3 & 2.4).
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use std::fmt;
 
 /// Strongly-typed sector identifier in a Compound File ([MS-CFB] 2.3).
@@ -117,10 +117,10 @@ impl SectorId {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidSector`] if this sector is not a regular sector.
+    /// Returns [`MsiError::InvalidSector`] if this sector is not a regular sector.
     pub fn file_offset(&self, sector_shift: u16) -> Result<u64> {
         if !self.is_regular() {
-            return Err(Error::InvalidSector {
+            return Err(MsiError::InvalidSector {
                 sector: self.0,
                 reason: "cannot calculate file offset for non-regular sector".to_string(),
             });
@@ -128,7 +128,7 @@ impl SectorId {
         let sector_index = u64::from(self.0);
         let offset = (sector_index + 1)
             .checked_shl(u32::from(sector_shift))
-            .ok_or_else(|| Error::InvalidSector {
+            .ok_or_else(|| MsiError::InvalidSector {
                 sector: self.0,
                 reason: "sector offset calculation overflowed".to_string(),
             })?;
@@ -237,10 +237,10 @@ impl MiniSectorId {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidSector`] if not a regular mini-sector.
+    /// Returns [`MsiError::InvalidSector`] if not a regular mini-sector.
     pub fn mini_stream_offset(&self, mini_sector_shift: u16) -> Result<u64> {
         if !self.is_regular() {
-            return Err(Error::InvalidSector {
+            return Err(MsiError::InvalidSector {
                 sector: self.0,
                 reason: "cannot calculate mini-stream offset for non-regular mini-sector"
                     .to_string(),
@@ -249,7 +249,7 @@ impl MiniSectorId {
         let index = u64::from(self.0);
         let offset = index
             .checked_shl(u32::from(mini_sector_shift))
-            .ok_or_else(|| Error::InvalidSector {
+            .ok_or_else(|| MsiError::InvalidSector {
                 sector: self.0,
                 reason: "mini-sector offset calculation overflowed".to_string(),
             })?;

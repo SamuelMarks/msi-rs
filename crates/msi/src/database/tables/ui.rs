@@ -20,7 +20,7 @@
 use crate::database::catalogs::TableSchema;
 use crate::database::column::{ColumnDef, DataType};
 use crate::database::tables::record::{FieldValue, Record};
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 
 /// Row in the `Dialog` table.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,10 +83,10 @@ impl DialogRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] or [`Error::RecordLengthMismatch`].
+    /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`].
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 10 {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 10,
                 actual: rec.len(),
             });
@@ -94,7 +94,7 @@ impl DialogRow {
         let dialog = match rec.get(0) {
             Some(FieldValue::String(s)) => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "Dialog.Dialog".to_string(),
                     reason: "missing Dialog PK".to_string(),
                 })
@@ -127,7 +127,7 @@ impl DialogRow {
         let control_first = match rec.get(7) {
             Some(FieldValue::String(s)) => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "Dialog.Control_First".to_string(),
                     reason: "missing Control_First".to_string(),
                 })

@@ -1,7 +1,7 @@
 //! MSI Database System Catalogs (`_Tables`, `_Columns`, `_Streams`, `_Storages`).
 
 use crate::database::column::{ColumnDef, DataType};
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use std::collections::HashMap;
 
 /// Name of the system catalog table defining all user and system tables.
@@ -169,10 +169,10 @@ impl DatabaseCatalog {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] if a table with this name already exists.
+    /// Returns [`MsiError::Validation`] if a table with this name already exists.
     pub fn add_table(&mut self, schema: TableSchema) -> Result<()> {
         if self.tables.contains_key(&schema.name) {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: schema.name,
                 reason: "table already exists in catalog".to_string(),
             });

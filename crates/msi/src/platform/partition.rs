@@ -6,7 +6,7 @@
 //! - Automated standard partition scheme synthesis (UEFI Windows, UEFI Linux, BIOS fallback).
 //! - Custom user partition layout sizing and validation.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 
 /// Logical Block Address (LBA) representing a 64-bit sector index.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -285,11 +285,11 @@ impl GptTable {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::PartitionError`] if `total_sectors` is insufficient (< 68 sectors).
+    /// Returns [`MsiError::PartitionError`] if `total_sectors` is insufficient (< 68 sectors).
     pub fn new(total_sectors: u64, sector_size: u32, disk_guid: [u8; 16]) -> Result<Self> {
         let min_sectors = 68;
         if total_sectors < min_sectors {
-            return Err(Error::PartitionError {
+            return Err(MsiError::PartitionError {
                 reason: format!("total sectors ({total_sectors}) too small for GPT layout (minimum {min_sectors})"),
             });
         }
@@ -300,7 +300,7 @@ impl GptTable {
         let first_usable_aligned = first_usable.max(2048);
 
         if last_usable <= first_usable_aligned {
-            return Err(Error::PartitionError {
+            return Err(MsiError::PartitionError {
                 reason: format!(
                     "total sectors ({total_sectors}) too small for usable partition space"
                 ),
@@ -326,10 +326,10 @@ impl GptTable {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::PartitionError`] if boundaries exceed disk bounds or overlap existing partitions.
+    /// Returns [`MsiError::PartitionError`] if boundaries exceed disk bounds or overlap existing partitions.
     pub fn add_partition(&mut self, entry: GptPartitionEntry) -> Result<()> {
         if entry.start_lba.0 < self.first_usable_lba.0 {
-            return Err(Error::PartitionError {
+            return Err(MsiError::PartitionError {
                 reason: format!(
                     "partition start LBA {} is before first usable LBA {}",
                     entry.start_lba.0, self.first_usable_lba.0
@@ -337,7 +337,7 @@ impl GptTable {
             });
         }
         if entry.end_lba.0 > self.last_usable_lba.0 {
-            return Err(Error::PartitionError {
+            return Err(MsiError::PartitionError {
                 reason: format!(
                     "partition end LBA {} exceeds last usable LBA {}",
                     entry.end_lba.0, self.last_usable_lba.0
@@ -345,7 +345,7 @@ impl GptTable {
             });
         }
         if entry.end_lba.0 < entry.start_lba.0 {
-            return Err(Error::PartitionError {
+            return Err(MsiError::PartitionError {
                 reason: format!(
                     "partition end LBA {} is less than start LBA {}",
                     entry.end_lba.0, entry.start_lba.0
@@ -355,7 +355,7 @@ impl GptTable {
 
         for existing in &self.partitions {
             if !(entry.end_lba.0 < existing.start_lba.0 || entry.start_lba.0 > existing.end_lba.0) {
-                return Err(Error::PartitionError {
+                return Err(MsiError::PartitionError {
                     reason: format!(
                         "partition range {}..={} overlaps existing partition {}..={}",
                         entry.start_lba.0,
@@ -532,7 +532,7 @@ impl StandardPartitionScheme {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::PartitionError`] if disk capacity is insufficient for standard partitions.
+    /// Returns [`MsiError::PartitionError`] if disk capacity is insufficient for standard partitions.
     pub fn provision(
         &self,
         total_sectors: u64,
@@ -581,7 +581,7 @@ impl StandardPartitionScheme {
             .saturating_sub(table.first_usable_lba.0)
             < total_required
         {
-            return Err(Error::PartitionError {
+            return Err(MsiError::PartitionError {
                 reason: "disk capacity too small for standard Windows UEFI layout".to_string(),
             });
         }
@@ -657,7 +657,7 @@ impl StandardPartitionScheme {
             .saturating_sub(table.first_usable_lba.0)
             < total_required
         {
-            return Err(Error::PartitionError {
+            return Err(MsiError::PartitionError {
                 reason: "disk capacity too small for standard Linux UEFI layout".to_string(),
             });
         }

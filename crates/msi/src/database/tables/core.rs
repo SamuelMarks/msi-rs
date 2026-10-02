@@ -26,7 +26,7 @@ use crate::database::tables::record::{FieldValue, Record};
 use crate::database::tables::types::{
     ComponentGuid, ComponentName, DirectoryId, FeatureName, FileKey, PropertyName,
 };
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 
 /// Bit flags for `Component.Attributes`.
 pub mod component_attributes {
@@ -133,10 +133,10 @@ impl ComponentRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] or [`Error::RecordLengthMismatch`] on invalid record.
+    /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 6 {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 6,
                 actual: rec.len(),
             });
@@ -145,7 +145,7 @@ impl ComponentRow {
         let component = match rec.get(0) {
             Some(FieldValue::String(s)) => ComponentName::new(s.as_str())?,
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "Component.Component".to_string(),
                     reason: "missing or invalid Component primary key".to_string(),
                 });
@@ -160,7 +160,7 @@ impl ComponentRow {
         let directory = match rec.get(2) {
             Some(FieldValue::String(s)) => DirectoryId::new(s.as_str())?,
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "Component.Directory_".to_string(),
                     reason: "missing or invalid Directory_".to_string(),
                 });
@@ -269,10 +269,10 @@ impl FeatureRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] or [`Error::RecordLengthMismatch`] on invalid record.
+    /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 8 {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 8,
                 actual: rec.len(),
             });
@@ -281,7 +281,7 @@ impl FeatureRow {
         let feature = match rec.get(0) {
             Some(FieldValue::String(s)) => FeatureName::new(s.as_str())?,
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "Feature.Feature".to_string(),
                     reason: "missing Feature primary key".to_string(),
                 });
@@ -393,10 +393,10 @@ impl FeatureComponentsRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] or [`Error::RecordLengthMismatch`] on invalid record.
+    /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 2 {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 2,
                 actual: rec.len(),
             });
@@ -405,7 +405,7 @@ impl FeatureComponentsRow {
         let feature = match rec.get(0) {
             Some(FieldValue::String(s)) => FeatureName::new(s.as_str())?,
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "FeatureComponents.Feature_".to_string(),
                     reason: "missing Feature_".to_string(),
                 });
@@ -415,7 +415,7 @@ impl FeatureComponentsRow {
         let component = match rec.get(1) {
             Some(FieldValue::String(s)) => ComponentName::new(s.as_str())?,
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "FeatureComponents.Component_".to_string(),
                     reason: "missing Component_".to_string(),
                 });
@@ -476,10 +476,10 @@ impl DirectoryRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] or [`Error::RecordLengthMismatch`] on invalid record.
+    /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 3 {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 3,
                 actual: rec.len(),
             });
@@ -488,7 +488,7 @@ impl DirectoryRow {
         let directory = match rec.get(0) {
             Some(FieldValue::String(s)) => DirectoryId::new(s.as_str())?,
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "Directory.Directory".to_string(),
                     reason: "missing Directory primary key".to_string(),
                 });
@@ -581,10 +581,10 @@ impl FileRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] or [`Error::RecordLengthMismatch`] on invalid record.
+    /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 8 {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 8,
                 actual: rec.len(),
             });
@@ -593,7 +593,7 @@ impl FileRow {
         let file = match rec.get(0) {
             Some(FieldValue::String(s)) => FileKey::new(s.as_str())?,
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "File.File".to_string(),
                     reason: "missing File primary key".to_string(),
                 });
@@ -603,7 +603,7 @@ impl FileRow {
         let component = match rec.get(1) {
             Some(FieldValue::String(s)) => ComponentName::new(s.as_str())?,
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "File.Component_".to_string(),
                     reason: "missing Component_".to_string(),
                 });
@@ -613,7 +613,7 @@ impl FileRow {
         let file_name = match rec.get(2) {
             Some(FieldValue::String(s)) => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "File.FileName".to_string(),
                     reason: "missing FileName".to_string(),
                 });
@@ -722,10 +722,10 @@ impl FileHashRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] or [`Error::RecordLengthMismatch`] on invalid record.
+    /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 6 {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 6,
                 actual: rec.len(),
             });
@@ -734,7 +734,7 @@ impl FileHashRow {
         let file = match rec.get(0) {
             Some(FieldValue::String(s)) => FileKey::new(s.as_str())?,
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "FileHash.File_".to_string(),
                     reason: "missing File_ foreign key".to_string(),
                 });
@@ -844,10 +844,10 @@ impl MediaRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] or [`Error::RecordLengthMismatch`] on invalid record.
+    /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 6 {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 6,
                 actual: rec.len(),
             });
@@ -856,7 +856,7 @@ impl MediaRow {
         let disk_id = match rec.get(0) {
             Some(FieldValue::Short(id)) => *id,
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "Media.DiskId".to_string(),
                     reason: "missing DiskId primary key".to_string(),
                 });
@@ -950,10 +950,10 @@ impl PropertyRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] or [`Error::RecordLengthMismatch`] on invalid record.
+    /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 2 {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 2,
                 actual: rec.len(),
             });
@@ -962,7 +962,7 @@ impl PropertyRow {
         let property = match rec.get(0) {
             Some(FieldValue::String(s)) => PropertyName::new(s.as_str())?,
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "Property.Property".to_string(),
                     reason: "missing Property primary key".to_string(),
                 });
@@ -1021,10 +1021,10 @@ impl BinaryRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] or [`Error::RecordLengthMismatch`] on invalid record.
+    /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 2 {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 2,
                 actual: rec.len(),
             });
@@ -1033,7 +1033,7 @@ impl BinaryRow {
         let name = match rec.get(0) {
             Some(FieldValue::String(s)) => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "Binary.Name".to_string(),
                     reason: "missing Name primary key".to_string(),
                 });
@@ -1094,10 +1094,10 @@ impl FontRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] or [`Error::RecordLengthMismatch`] on invalid record.
+    /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 2 {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 2,
                 actual: rec.len(),
             });
@@ -1106,7 +1106,7 @@ impl FontRow {
         let file = match rec.get(0) {
             Some(FieldValue::String(s)) => FileKey::new(s.as_str())?,
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "Font.File_".to_string(),
                     reason: "missing File_ primary key".to_string(),
                 });
@@ -1165,10 +1165,10 @@ impl PatchPackageRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] or [`Error::RecordLengthMismatch`] on invalid record.
+    /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 2 {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 2,
                 actual: rec.len(),
             });
@@ -1177,7 +1177,7 @@ impl PatchPackageRow {
         let patch_id = match rec.get(0) {
             Some(FieldValue::String(s)) => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "PatchPackage.PatchId".to_string(),
                     reason: "missing PatchId primary key".to_string(),
                 });
@@ -1269,10 +1269,10 @@ impl ModuleConfigurationRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] or [`Error::RecordLengthMismatch`] on invalid record.
+    /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 2 {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 2,
                 actual: rec.len(),
             });
@@ -1281,7 +1281,7 @@ impl ModuleConfigurationRow {
         let name = match rec.get(0) {
             Some(FieldValue::String(s)) => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "ModuleConfiguration.Name".to_string(),
                     reason: "missing Name primary key".to_string(),
                 });
@@ -1408,10 +1408,10 @@ impl ModuleSubstitutionRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] or [`Error::RecordLengthMismatch`] on invalid record.
+    /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 3 {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 3,
                 actual: rec.len(),
             });
@@ -1420,7 +1420,7 @@ impl ModuleSubstitutionRow {
         let table = match rec.get(0) {
             Some(FieldValue::String(s)) => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "ModuleSubstitution.Table".to_string(),
                     reason: "missing Table primary key".to_string(),
                 });
@@ -1430,7 +1430,7 @@ impl ModuleSubstitutionRow {
         let row = match rec.get(1) {
             Some(FieldValue::String(s)) => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "ModuleSubstitution.Row".to_string(),
                     reason: "missing Row primary key".to_string(),
                 });
@@ -1440,7 +1440,7 @@ impl ModuleSubstitutionRow {
         let column = match rec.get(2) {
             Some(FieldValue::String(s)) => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "ModuleSubstitution.Column".to_string(),
                     reason: "missing Column primary key".to_string(),
                 });
@@ -1506,10 +1506,10 @@ impl ModuleIgnoreModularizationRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] or [`Error::RecordLengthMismatch`] on invalid record.
+    /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.is_empty() {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 1,
                 actual: 0,
             });
@@ -1518,7 +1518,7 @@ impl ModuleIgnoreModularizationRow {
         let name = match rec.get(0) {
             Some(FieldValue::String(s)) => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "ModuleIgnoreModularization.Name".to_string(),
                     reason: "missing Name primary key".to_string(),
                 });
@@ -1580,10 +1580,10 @@ impl ModuleSignatureRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] or [`Error::RecordLengthMismatch`] on invalid record.
+    /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 3 {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 3,
                 actual: rec.len(),
             });
@@ -1592,7 +1592,7 @@ impl ModuleSignatureRow {
         let module_id = match rec.get(0) {
             Some(FieldValue::String(s)) => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "ModuleSignature.ModuleID".to_string(),
                     reason: "missing ModuleID primary key".to_string(),
                 });
@@ -1602,7 +1602,7 @@ impl ModuleSignatureRow {
         let language = match rec.get(1) {
             Some(FieldValue::Short(l)) => *l,
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "ModuleSignature.Language".to_string(),
                     reason: "missing Language primary key".to_string(),
                 });
@@ -1612,7 +1612,7 @@ impl ModuleSignatureRow {
         let version = match rec.get(2) {
             Some(FieldValue::String(s)) => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "ModuleSignature.Version".to_string(),
                     reason: "missing Version field".to_string(),
                 });
@@ -1674,10 +1674,10 @@ impl ModuleComponentsRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] or [`Error::RecordLengthMismatch`] on invalid record.
+    /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 3 {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 3,
                 actual: rec.len(),
             });
@@ -1686,7 +1686,7 @@ impl ModuleComponentsRow {
         let component = match rec.get(0) {
             Some(FieldValue::String(s)) => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "ModuleComponents.Component".to_string(),
                     reason: "missing Component primary key".to_string(),
                 });
@@ -1696,7 +1696,7 @@ impl ModuleComponentsRow {
         let module_id = match rec.get(1) {
             Some(FieldValue::String(s)) => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "ModuleComponents.ModuleID".to_string(),
                     reason: "missing ModuleID primary key".to_string(),
                 });
@@ -1706,7 +1706,7 @@ impl ModuleComponentsRow {
         let language = match rec.get(2) {
             Some(FieldValue::Short(l)) => *l,
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "ModuleComponents.Language".to_string(),
                     reason: "missing Language primary key".to_string(),
                 });
@@ -1776,10 +1776,10 @@ impl ModuleDependencyRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] or [`Error::RecordLengthMismatch`] on invalid record.
+    /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 4 {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 4,
                 actual: rec.len(),
             });
@@ -1788,7 +1788,7 @@ impl ModuleDependencyRow {
         let module_id = match rec.get(0) {
             Some(FieldValue::String(s)) => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "ModuleDependency.ModuleID".to_string(),
                     reason: "missing ModuleID primary key".to_string(),
                 });
@@ -1798,7 +1798,7 @@ impl ModuleDependencyRow {
         let module_language = match rec.get(1) {
             Some(FieldValue::Short(l)) => *l,
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "ModuleDependency.ModuleLanguage".to_string(),
                     reason: "missing ModuleLanguage primary key".to_string(),
                 });
@@ -1808,7 +1808,7 @@ impl ModuleDependencyRow {
         let required_id = match rec.get(2) {
             Some(FieldValue::String(s)) => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "ModuleDependency.RequiredID".to_string(),
                     reason: "missing RequiredID primary key".to_string(),
                 });
@@ -1818,7 +1818,7 @@ impl ModuleDependencyRow {
         let required_language = match rec.get(3) {
             Some(FieldValue::Short(l)) => *l,
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "ModuleDependency.RequiredLanguage".to_string(),
                     reason: "missing RequiredLanguage primary key".to_string(),
                 });
@@ -1902,10 +1902,10 @@ impl ModuleExclusionRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] or [`Error::RecordLengthMismatch`] on invalid record.
+    /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 4 {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 4,
                 actual: rec.len(),
             });
@@ -1914,7 +1914,7 @@ impl ModuleExclusionRow {
         let module_id = match rec.get(0) {
             Some(FieldValue::String(s)) => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "ModuleExclusion.ModuleID".to_string(),
                     reason: "missing ModuleID primary key".to_string(),
                 });
@@ -1924,7 +1924,7 @@ impl ModuleExclusionRow {
         let module_language = match rec.get(1) {
             Some(FieldValue::Short(l)) => *l,
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "ModuleExclusion.ModuleLanguage".to_string(),
                     reason: "missing ModuleLanguage primary key".to_string(),
                 });
@@ -1934,7 +1934,7 @@ impl ModuleExclusionRow {
         let excluded_id = match rec.get(2) {
             Some(FieldValue::String(s)) => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "ModuleExclusion.ExcludedID".to_string(),
                     reason: "missing ExcludedID primary key".to_string(),
                 });
@@ -1944,7 +1944,7 @@ impl ModuleExclusionRow {
         let excluded_language = match rec.get(3) {
             Some(FieldValue::Short(l)) => *l,
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "ModuleExclusion.ExcludedLanguage".to_string(),
                     reason: "missing ExcludedLanguage primary key".to_string(),
                 });

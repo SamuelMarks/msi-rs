@@ -9,7 +9,7 @@ use crate::database::catalogs::TableSchema;
 use crate::database::column::{ColumnDef, DataType};
 use crate::database::tables::record::{FieldValue, Record};
 use crate::database::tables::types::ComponentName;
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 
 /// Creates official schema for `SqlDatabase` table.
 ///
@@ -81,7 +81,7 @@ impl SqlDatabaseRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] on invalid or empty required fields.
+    /// Returns [`MsiError::Validation`] on invalid or empty required fields.
     pub fn new(
         sql_database: impl Into<String>,
         server: impl Into<String>,
@@ -113,13 +113,13 @@ impl SqlDatabaseRow {
         attributes: i32,
     ) -> Result<Self> {
         if sql_database.is_empty() {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "SqlDatabase.SqlDatabase".to_string(),
                 reason: "primary key cannot be empty".to_string(),
             });
         }
         if sql_database.len() > 72 {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "SqlDatabase.SqlDatabase".to_string(),
                 reason: format!(
                     "identifier length {} exceeds maximum 72",
@@ -128,13 +128,13 @@ impl SqlDatabaseRow {
             });
         }
         if server.is_empty() {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "SqlDatabase.Server".to_string(),
                 reason: "server cannot be empty".to_string(),
             });
         }
         if database.is_empty() {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "SqlDatabase.Database".to_string(),
                 reason: "database name cannot be empty".to_string(),
             });
@@ -185,10 +185,10 @@ impl SqlDatabaseRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::RecordLengthMismatch`] or [`Error::Validation`] on invalid data.
+    /// Returns [`MsiError::RecordLengthMismatch`] or [`MsiError::Validation`] on invalid data.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 7 {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 7,
                 actual: rec.len(),
             });
@@ -197,7 +197,7 @@ impl SqlDatabaseRow {
         let sql_database = match rec.get(0) {
             Some(FieldValue::String(s)) if !s.is_empty() => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "SqlDatabase.SqlDatabase".to_string(),
                     reason: "missing or empty primary key".to_string(),
                 });
@@ -207,7 +207,7 @@ impl SqlDatabaseRow {
         let server = match rec.get(1) {
             Some(FieldValue::String(s)) if !s.is_empty() => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "SqlDatabase.Server".to_string(),
                     reason: "missing or empty server name".to_string(),
                 });
@@ -222,7 +222,7 @@ impl SqlDatabaseRow {
         let database = match rec.get(3) {
             Some(FieldValue::String(s)) if !s.is_empty() => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "SqlDatabase.Database".to_string(),
                     reason: "missing or empty database name".to_string(),
                 });
@@ -232,7 +232,7 @@ impl SqlDatabaseRow {
         let component = match rec.get(4) {
             Some(FieldValue::String(s)) => ComponentName::new(s.as_str())?,
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "SqlDatabase.Component_".to_string(),
                     reason: "missing or empty component foreign key".to_string(),
                 });
@@ -324,7 +324,7 @@ impl SqlStringRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] on invalid input.
+    /// Returns [`MsiError::Validation`] on invalid input.
     pub fn new(
         sql_string: impl Into<String>,
         sql_database: impl Into<String>,
@@ -353,25 +353,25 @@ impl SqlStringRow {
         sequence: Option<i32>,
     ) -> Result<Self> {
         if sql_string.is_empty() {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "SqlString.SqlString".to_string(),
                 reason: "primary key cannot be empty".to_string(),
             });
         }
         if sql_string.len() > 72 {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "SqlString.SqlString".to_string(),
                 reason: format!("identifier length {} exceeds maximum 72", sql_string.len()),
             });
         }
         if sql_database.is_empty() {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "SqlString.SqlDatabase_".to_string(),
                 reason: "database reference cannot be empty".to_string(),
             });
         }
         if sql.is_empty() {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "SqlString.SQL".to_string(),
                 reason: "SQL statement text cannot be empty".to_string(),
             });
@@ -418,10 +418,10 @@ impl SqlStringRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::RecordLengthMismatch`] or [`Error::Validation`].
+    /// Returns [`MsiError::RecordLengthMismatch`] or [`MsiError::Validation`].
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 6 {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 6,
                 actual: rec.len(),
             });
@@ -430,7 +430,7 @@ impl SqlStringRow {
         let sql_string = match rec.get(0) {
             Some(FieldValue::String(s)) if !s.is_empty() => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "SqlString.SqlString".to_string(),
                     reason: "missing or empty primary key".to_string(),
                 });
@@ -440,7 +440,7 @@ impl SqlStringRow {
         let sql_database = match rec.get(1) {
             Some(FieldValue::String(s)) if !s.is_empty() => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "SqlString.SqlDatabase_".to_string(),
                     reason: "missing or empty database foreign key".to_string(),
                 });
@@ -450,7 +450,7 @@ impl SqlStringRow {
         let sql = match rec.get(2) {
             Some(FieldValue::String(s)) if !s.is_empty() => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "SqlString.SQL".to_string(),
                     reason: "missing or empty SQL text".to_string(),
                 });
@@ -551,7 +551,7 @@ impl SqlScriptRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] on invalid input.
+    /// Returns [`MsiError::Validation`] on invalid input.
     pub fn new(
         sql_script: impl Into<String>,
         sql_database: impl Into<String>,
@@ -583,25 +583,25 @@ impl SqlScriptRow {
         sequence: Option<i32>,
     ) -> Result<Self> {
         if sql_script.is_empty() {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "SqlScript.SqlScript".to_string(),
                 reason: "primary key cannot be empty".to_string(),
             });
         }
         if sql_script.len() > 72 {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "SqlScript.SqlScript".to_string(),
                 reason: format!("identifier length {} exceeds maximum 72", sql_script.len()),
             });
         }
         if sql_database.is_empty() {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "SqlScript.SqlDatabase_".to_string(),
                 reason: "database reference cannot be empty".to_string(),
             });
         }
         if script_file.is_empty() {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "SqlScript.ScriptFile".to_string(),
                 reason: "script file path cannot be empty".to_string(),
             });
@@ -650,10 +650,10 @@ impl SqlScriptRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::RecordLengthMismatch`] or [`Error::Validation`].
+    /// Returns [`MsiError::RecordLengthMismatch`] or [`MsiError::Validation`].
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 7 {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 7,
                 actual: rec.len(),
             });
@@ -662,7 +662,7 @@ impl SqlScriptRow {
         let sql_script = match rec.get(0) {
             Some(FieldValue::String(s)) if !s.is_empty() => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "SqlScript.SqlScript".to_string(),
                     reason: "missing or empty primary key".to_string(),
                 });
@@ -672,7 +672,7 @@ impl SqlScriptRow {
         let sql_database = match rec.get(1) {
             Some(FieldValue::String(s)) if !s.is_empty() => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "SqlScript.SqlDatabase_".to_string(),
                     reason: "missing or empty database foreign key".to_string(),
                 });
@@ -682,7 +682,7 @@ impl SqlScriptRow {
         let component = match rec.get(2) {
             Some(FieldValue::String(s)) => ComponentName::new(s.as_str())?,
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "SqlScript.Component_".to_string(),
                     reason: "missing or empty component foreign key".to_string(),
                 });
@@ -692,7 +692,7 @@ impl SqlScriptRow {
         let script_file = match rec.get(3) {
             Some(FieldValue::String(s)) if !s.is_empty() => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "SqlScript.ScriptFile".to_string(),
                     reason: "missing or empty script file path".to_string(),
                 });

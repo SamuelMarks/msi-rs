@@ -7,7 +7,7 @@
 //! - Control attributes bitmasks (Visible, Enabled, `PasswordInput`, Integer, etc.).
 //! - Rich models for selection trees, volume cost entries, list items, and runtime control state.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::execution::properties::InstallState;
 use crate::ui::layout::DluRect;
 
@@ -96,7 +96,7 @@ impl ControlType {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidArgument`] if the type name is unrecognized.
+    /// Returns [`MsiError::InvalidArgument`] if the type name is unrecognized.
     pub fn from_name(s: &str) -> Result<Self> {
         match s {
             "PushButton" => Ok(Self::PushButton),
@@ -113,7 +113,7 @@ impl ControlType {
             "ScrollableText" => Ok(Self::ScrollableText),
             "VolumeCostList" => Ok(Self::VolumeCostList),
             "SelectionTree" => Ok(Self::SelectionTree),
-            other => Err(Error::InvalidArgument {
+            other => Err(MsiError::InvalidArgument {
                 argument: "Control.Type".to_string(),
                 reason: format!("Unknown MSI control type '{other}'"),
             }),

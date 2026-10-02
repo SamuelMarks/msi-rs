@@ -1,7 +1,7 @@
 //! Compound File Binary Format Header parser, serializer, and validator ([MS-CFB] 2.2).
 
 use crate::cfb::sector::SectorId;
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 
 /// CFB magic signature bytes (`{ 0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1 }`).
 pub const CFB_SIGNATURE: [u8; 8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
@@ -362,21 +362,21 @@ impl CfbHeader {
     /// # Errors
     ///
     /// Returns:
-    /// - [`Error::CfbCorrupted`] if slice is shorter than 512 bytes.
-    /// - [`Error::InvalidCfbSignature`] if magic signature does not match.
-    /// - [`Error::InvalidCfbClsid`] if header CLSID is not all zeroes.
-    /// - [`Error::InvalidCfbMinorVersion`] if minor version is not `0x003E`.
-    /// - [`Error::InvalidCfbMajorVersion`] if major version is not 3 or 4.
-    /// - [`Error::InvalidCfbByteOrder`] if byte order is not little-endian (`0xFFFE`).
-    /// - [`Error::InvalidCfbSectorShift`] if sector shift does not match major version.
-    /// - [`Error::InvalidCfbMiniSectorShift`] if mini sector shift is not 6.
-    /// - [`Error::InvalidCfbReserved`] if reserved 6 bytes are non-zero.
-    /// - [`Error::InvalidCfbDirectorySectors`] if v3 directory sector count is non-zero.
-    /// - [`Error::InvalidCfbMiniStreamCutoff`] if mini stream cutoff is not 4096.
+    /// - [`MsiError::CfbCorrupted`] if slice is shorter than 512 bytes.
+    /// - [`MsiError::InvalidCfbSignature`] if magic signature does not match.
+    /// - [`MsiError::InvalidCfbClsid`] if header CLSID is not all zeroes.
+    /// - [`MsiError::InvalidCfbMinorVersion`] if minor version is not `0x003E`.
+    /// - [`MsiError::InvalidCfbMajorVersion`] if major version is not 3 or 4.
+    /// - [`MsiError::InvalidCfbByteOrder`] if byte order is not little-endian (`0xFFFE`).
+    /// - [`MsiError::InvalidCfbSectorShift`] if sector shift does not match major version.
+    /// - [`MsiError::InvalidCfbMiniSectorShift`] if mini sector shift is not 6.
+    /// - [`MsiError::InvalidCfbReserved`] if reserved 6 bytes are non-zero.
+    /// - [`MsiError::InvalidCfbDirectorySectors`] if v3 directory sector count is non-zero.
+    /// - [`MsiError::InvalidCfbMiniStreamCutoff`] if mini stream cutoff is not 4096.
     #[allow(clippy::too_many_lines)]
     pub fn parse(bytes: &[u8]) -> Result<Self> {
         if bytes.len() < CFB_HEADER_SIZE {
-            return Err(Error::CfbCorrupted {
+            return Err(MsiError::CfbCorrupted {
                 offset: 0,
                 reason: format!(
                     "Header byte slice too short: expected at least {CFB_HEADER_SIZE} bytes, got {}",
@@ -389,20 +389,20 @@ impl CfbHeader {
         let mut sig = [0u8; 8];
         sig.copy_from_slice(&bytes[0..8]);
         if sig != CFB_SIGNATURE {
-            return Err(Error::InvalidCfbSignature { found: sig });
+            return Err(MsiError::InvalidCfbSignature { found: sig });
         }
 
         // 2. Header CLSID (16 bytes, must be all zeroes)
         let mut clsid = [0u8; 16];
         clsid.copy_from_slice(&bytes[8..24]);
         if clsid != [0u8; 16] {
-            return Err(Error::InvalidCfbClsid { found: clsid });
+            return Err(MsiError::InvalidCfbClsid { found: clsid });
         }
 
         // 3. Minor Version (2 bytes, must be 0x003E)
         let minor_version = u16::from_le_bytes([bytes[24], bytes[25]]);
         if minor_version != CFB_MINOR_VERSION {
-            return Err(Error::InvalidCfbMinorVersion {
+            return Err(MsiError::InvalidCfbMinorVersion {
                 found: minor_version,
             });
         }
@@ -412,19 +412,19 @@ impl CfbHeader {
         let version = match major_raw {
             3 => CfbVersion::V3,
             4 => CfbVersion::V4,
-            _ => return Err(Error::InvalidCfbMajorVersion { found: major_raw }),
+            _ => return Err(MsiError::InvalidCfbMajorVersion { found: major_raw }),
         };
 
         // 5. Byte Order (2 bytes, must be 0xFFFE)
         let byte_order = u16::from_le_bytes([bytes[28], bytes[29]]);
         if byte_order != CFB_BYTE_ORDER_LE {
-            return Err(Error::InvalidCfbByteOrder { found: byte_order });
+            return Err(MsiError::InvalidCfbByteOrder { found: byte_order });
         }
 
         // 6. Sector Shift (2 bytes, 9 for v3, 12 for v4)
         let sector_shift = u16::from_le_bytes([bytes[30], bytes[31]]);
         if sector_shift != version.sector_shift() {
-            return Err(Error::InvalidCfbSectorShift {
+            return Err(MsiError::InvalidCfbSectorShift {
                 major_version: version.major_number(),
                 shift: sector_shift,
             });
@@ -433,7 +433,7 @@ impl CfbHeader {
         // 7. Mini Sector Shift (2 bytes, must be 6)
         let mini_sector_shift = u16::from_le_bytes([bytes[32], bytes[33]]);
         if mini_sector_shift != CFB_MINI_SECTOR_SHIFT_STANDARD {
-            return Err(Error::InvalidCfbMiniSectorShift {
+            return Err(MsiError::InvalidCfbMiniSectorShift {
                 shift: mini_sector_shift,
             });
         }
@@ -442,13 +442,13 @@ impl CfbHeader {
         let mut reserved = [0u8; 6];
         reserved.copy_from_slice(&bytes[34..40]);
         if reserved != [0u8; 6] {
-            return Err(Error::InvalidCfbReserved { found: reserved });
+            return Err(MsiError::InvalidCfbReserved { found: reserved });
         }
 
         // 9. Number of Directory Sectors (4 bytes; must be 0 if v3)
         let num_dir_sectors = u32::from_le_bytes([bytes[40], bytes[41], bytes[42], bytes[43]]);
         if version == CfbVersion::V3 && num_dir_sectors != 0 {
-            return Err(Error::InvalidCfbDirectorySectors {
+            return Err(MsiError::InvalidCfbDirectorySectors {
                 major_version: 3,
                 count: num_dir_sectors,
             });
@@ -468,7 +468,7 @@ impl CfbHeader {
         // 13. Mini Stream Cutoff Size (4 bytes, must be 4096)
         let mini_stream_cutoff = u32::from_le_bytes([bytes[56], bytes[57], bytes[58], bytes[59]]);
         if mini_stream_cutoff != CFB_MINI_STREAM_CUTOFF_STANDARD {
-            return Err(Error::InvalidCfbMiniStreamCutoff {
+            return Err(MsiError::InvalidCfbMiniStreamCutoff {
                 cutoff: mini_stream_cutoff,
             });
         }
@@ -652,7 +652,7 @@ mod tests {
         // 1. Too short
         assert!(matches!(
             CfbHeader::parse(&bytes[0..511]),
-            Err(Error::CfbCorrupted { .. })
+            Err(MsiError::CfbCorrupted { .. })
         ));
 
         // 2. Bad signature
@@ -660,7 +660,7 @@ mod tests {
         bad[0] = 0x00;
         assert!(matches!(
             CfbHeader::parse(&bad),
-            Err(Error::InvalidCfbSignature { .. })
+            Err(MsiError::InvalidCfbSignature { .. })
         ));
 
         // 3. Bad CLSID
@@ -668,7 +668,7 @@ mod tests {
         bad[8] = 0xFF;
         assert!(matches!(
             CfbHeader::parse(&bad),
-            Err(Error::InvalidCfbClsid { .. })
+            Err(MsiError::InvalidCfbClsid { .. })
         ));
 
         // 4. Bad minor version
@@ -676,7 +676,7 @@ mod tests {
         bad[24] = 0x3F;
         assert!(matches!(
             CfbHeader::parse(&bad),
-            Err(Error::InvalidCfbMinorVersion { .. })
+            Err(MsiError::InvalidCfbMinorVersion { .. })
         ));
 
         // 5. Bad major version
@@ -684,7 +684,7 @@ mod tests {
         bad[26] = 0x02;
         assert!(matches!(
             CfbHeader::parse(&bad),
-            Err(Error::InvalidCfbMajorVersion { .. })
+            Err(MsiError::InvalidCfbMajorVersion { .. })
         ));
 
         // 6. Bad byte order
@@ -692,7 +692,7 @@ mod tests {
         bad[28] = 0xFD;
         assert!(matches!(
             CfbHeader::parse(&bad),
-            Err(Error::InvalidCfbByteOrder { .. })
+            Err(MsiError::InvalidCfbByteOrder { .. })
         ));
 
         // 7. Bad sector shift
@@ -700,7 +700,7 @@ mod tests {
         bad[30] = 10;
         assert!(matches!(
             CfbHeader::parse(&bad),
-            Err(Error::InvalidCfbSectorShift { .. })
+            Err(MsiError::InvalidCfbSectorShift { .. })
         ));
 
         // 8. Bad mini sector shift
@@ -708,7 +708,7 @@ mod tests {
         bad[32] = 7;
         assert!(matches!(
             CfbHeader::parse(&bad),
-            Err(Error::InvalidCfbMiniSectorShift { .. })
+            Err(MsiError::InvalidCfbMiniSectorShift { .. })
         ));
 
         // 9. Bad reserved bytes
@@ -716,7 +716,7 @@ mod tests {
         bad[34] = 1;
         assert!(matches!(
             CfbHeader::parse(&bad),
-            Err(Error::InvalidCfbReserved { .. })
+            Err(MsiError::InvalidCfbReserved { .. })
         ));
 
         // 10. Non-zero directory sectors in v3
@@ -724,7 +724,7 @@ mod tests {
         bad[40] = 1;
         assert!(matches!(
             CfbHeader::parse(&bad),
-            Err(Error::InvalidCfbDirectorySectors { .. })
+            Err(MsiError::InvalidCfbDirectorySectors { .. })
         ));
 
         // 11. Bad mini stream cutoff
@@ -733,7 +733,7 @@ mod tests {
         bad[57] = 0x08; // 2048
         assert!(matches!(
             CfbHeader::parse(&bad),
-            Err(Error::InvalidCfbMiniStreamCutoff { .. })
+            Err(MsiError::InvalidCfbMiniStreamCutoff { .. })
         ));
     }
 }

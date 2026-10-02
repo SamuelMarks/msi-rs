@@ -6,7 +6,7 @@
 //! Provides parsing and linker support for `http://schemas.microsoft.com/wix/DependencyExtension`.
 
 use crate::database::tables::record::{FieldValue, Record};
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::wix::extensions::WixExtension;
 use crate::wix::linker::LinkedDatabase;
 use crate::wix::wixobj::{IntermediateSection, IntermediateTable};
@@ -32,13 +32,13 @@ impl DependencyExtension {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::WixCompiler`] if required attributes are missing.
+    /// Returns [`MsiError::WixCompiler`] if required attributes are missing.
     fn compile_provides(
         node: &XmlNode,
         parent_id: Option<&str>,
         tables: &mut HashMap<String, IntermediateTable>,
     ) -> Result<()> {
-        let key = node.attribute("Key").ok_or_else(|| Error::WixCompiler {
+        let key = node.attribute("Key").ok_or_else(|| MsiError::WixCompiler {
             element: "dep:Provides".to_string(),
             message: "missing required 'Key' attribute".to_string(),
         })?;
@@ -66,7 +66,7 @@ impl DependencyExtension {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::WixCompiler`] if required attributes are missing.
+    /// Returns [`MsiError::WixCompiler`] if required attributes are missing.
     fn compile_requires(
         node: &XmlNode,
         parent_id: Option<&str>,
@@ -74,7 +74,7 @@ impl DependencyExtension {
     ) -> Result<()> {
         let provider_key = node
             .attribute("ProviderKey")
-            .ok_or_else(|| Error::WixCompiler {
+            .ok_or_else(|| MsiError::WixCompiler {
                 element: "dep:Requires".to_string(),
                 message: "missing required 'ProviderKey' attribute".to_string(),
             })?;
@@ -124,7 +124,7 @@ impl WixExtension for DependencyExtension {
         match tag_name {
             "Provides" => Self::compile_provides(node, parent_id, tables),
             "Requires" => Self::compile_requires(node, parent_id, tables),
-            _ => Err(Error::WixExtension {
+            _ => Err(MsiError::WixExtension {
                 extension: self.id().to_string(),
                 message: format!("unsupported element: '{tag_name}'"),
             }),
@@ -232,7 +232,7 @@ mod tests {
         let mut tables = HashMap::new();
 
         let res = ext.compile_node(&node, Some("cmp1"), &mut section, &mut tables);
-        assert!(matches!(res, Err(Error::WixCompiler { .. })));
+        assert!(matches!(res, Err(MsiError::WixCompiler { .. })));
     }
 
     /// Tests compiling `<dep:Requires>` with explicit attributes.
@@ -274,10 +274,10 @@ mod tests {
         let mut tables = HashMap::new();
 
         let res = ext.compile_node(&node, Some("cmp1"), &mut section, &mut tables);
-        assert!(matches!(res, Err(Error::WixCompiler { .. })));
+        assert!(matches!(res, Err(MsiError::WixCompiler { .. })));
     }
 
-    /// Tests compiling unsupported elements returns [`Error::WixExtension`].
+    /// Tests compiling unsupported elements returns [`MsiError::WixExtension`].
     #[test]
     fn test_unsupported_element() {
         let ext = DependencyExtension::new();
@@ -289,7 +289,7 @@ mod tests {
         let mut tables = HashMap::new();
 
         let res = ext.compile_node(&node, Some("cmp1"), &mut section, &mut tables);
-        assert!(matches!(res, Err(Error::WixExtension { .. })));
+        assert!(matches!(res, Err(MsiError::WixExtension { .. })));
     }
 
     /// Tests linking dependency custom actions and sequences.

@@ -5,7 +5,7 @@
 //! - RFC 1951 Deflate compression and decompression
 //! - Independent dictionary per block (no dictionary carried across `CFDATA` blocks)
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 
 /// Magic 2-byte frame signature preceding every MSZIP block (`'C'`, `'K'`).
 pub const MSZIP_MAGIC: [u8; 2] = [0x43, 0x4B];
@@ -33,11 +33,11 @@ impl MszipEngine {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::CompressionFailed`] if input exceeds [`MSZIP_BLOCK_SIZE`].
+    /// Returns [`MsiError::CompressionFailed`] if input exceeds [`MSZIP_BLOCK_SIZE`].
     #[allow(clippy::cast_possible_truncation)]
     pub fn compress(&self, input: &[u8]) -> Result<Vec<u8>> {
         if input.len() > MSZIP_BLOCK_SIZE {
-            return Err(Error::CompressionFailed {
+            return Err(MsiError::CompressionFailed {
                 method: "MSZIP".to_string(),
                 reason: format!(
                     "input length {} exceeds block maximum {MSZIP_BLOCK_SIZE}",
@@ -81,18 +81,18 @@ impl MszipEngine {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::DecompressionFailed`] if signature is invalid or
+    /// Returns [`MsiError::DecompressionFailed`] if signature is invalid or
     /// Deflate stream is malformed.
     pub fn decompress(&self, input: &[u8], expected_uncomp_len: usize) -> Result<Vec<u8>> {
         if input.len() < 2 {
-            return Err(Error::DecompressionFailed {
+            return Err(MsiError::DecompressionFailed {
                 method: "MSZIP".to_string(),
                 reason: "block too short (min 2 bytes for 'CK' signature)".to_string(),
             });
         }
 
         if input[0..2] != MSZIP_MAGIC {
-            return Err(Error::DecompressionFailed {
+            return Err(MsiError::DecompressionFailed {
                 method: "MSZIP".to_string(),
                 reason: format!(
                     "invalid MSZIP signature: expected [0x43, 0x4B], got [0x{:02X}, 0x{:02X}]",
@@ -118,7 +118,7 @@ impl MszipEngine {
                     let len = reader.read_u16_le()?;
                     let nlen = reader.read_u16_le()?;
                     if len != !nlen {
-                        return Err(Error::DecompressionFailed {
+                        return Err(MsiError::DecompressionFailed {
                             method: "MSZIP".to_string(),
                             reason: format!("stored block LEN/NLEN mismatch: len=0x{len:04X}, nlen=0x{nlen:04X}"),
                         });
@@ -136,7 +136,7 @@ impl MszipEngine {
                     Self::decompress_dynamic_huffman(&mut reader, &mut output)?;
                 }
                 _ => {
-                    return Err(Error::DecompressionFailed {
+                    return Err(MsiError::DecompressionFailed {
                         method: "MSZIP".to_string(),
                         reason: "reserved BTYPE 11 encountered".to_string(),
                     });
@@ -145,7 +145,7 @@ impl MszipEngine {
         }
 
         if output.len() != expected_uncomp_len {
-            return Err(Error::DecompressionFailed {
+            return Err(MsiError::DecompressionFailed {
                 method: "MSZIP".to_string(),
                 reason: format!(
                     "decompressed size mismatch: expected {expected_uncomp_len} bytes, got {}",
@@ -227,7 +227,7 @@ impl MszipEngine {
 
         let idx = (symbol.saturating_sub(257)) as usize;
         if idx >= BASE_LEN.len() {
-            return Err(Error::DecompressionFailed {
+            return Err(MsiError::DecompressionFailed {
                 method: "MSZIP".to_string(),
                 reason: format!("invalid length code symbol {symbol}"),
             });
@@ -257,7 +257,7 @@ impl MszipEngine {
 
         let idx = code as usize;
         if idx >= BASE_DIST.len() {
-            return Err(Error::DecompressionFailed {
+            return Err(MsiError::DecompressionFailed {
                 method: "MSZIP".to_string(),
                 reason: format!("invalid distance code {code}"),
             });
@@ -277,7 +277,7 @@ impl MszipEngine {
     /// Copies a previously decompressed match from the output history.
     fn copy_match(output: &mut Vec<u8>, length: usize, distance: usize) -> Result<()> {
         if distance == 0 || distance > output.len() {
-            return Err(Error::DecompressionFailed {
+            return Err(MsiError::DecompressionFailed {
                 method: "MSZIP".to_string(),
                 reason: format!(
                     "match distance {distance} exceeds current output length {}",
@@ -334,7 +334,7 @@ impl MszipEngine {
                 let repeat = (reader.read_bits(2)? + 3) as usize;
                 let last = *code_lengths
                     .last()
-                    .ok_or_else(|| Error::DecompressionFailed {
+                    .ok_or_else(|| MsiError::DecompressionFailed {
                         method: "MSZIP".to_string(),
                         reason: "repeat code 16 with no preceding code".to_string(),
                     })?;
@@ -418,7 +418,7 @@ impl<'a> DeflateBitReader<'a> {
     fn read_bits(&mut self, n: u8) -> Result<u16> {
         while self.bits_count < n {
             if self.cursor >= self.bytes.len() {
-                return Err(Error::DecompressionFailed {
+                return Err(MsiError::DecompressionFailed {
                     method: "MSZIP".to_string(),
                     reason: "unexpected end of bitstream".to_string(),
                 });
@@ -457,7 +457,7 @@ impl<'a> DeflateBitReader<'a> {
         let start = self.cursor - bytes_in_buf;
         let end = start + len;
         if end > self.bytes.len() {
-            return Err(Error::DecompressionFailed {
+            return Err(MsiError::DecompressionFailed {
                 method: "MSZIP".to_string(),
                 reason: "unexpected end of byte stream in uncompressed block".to_string(),
             });
@@ -537,7 +537,7 @@ impl HuffmanTree {
             }
         }
 
-        Err(Error::DecompressionFailed {
+        Err(MsiError::DecompressionFailed {
             method: "MSZIP".to_string(),
             reason: format!("Huffman symbol decoding failed with code 0x{code:04X}"),
         })

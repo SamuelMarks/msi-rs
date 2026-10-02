@@ -3,7 +3,7 @@
 //! and missing symbol diagnostics.
 
 use msi::database::tables::record::FieldValue;
-use msi::error::{Error, Result};
+use msi::error::{MsiError, Result};
 use msi::package::Package;
 use msi::wix::toolchain::{CandleOptions, WixBuildOptions};
 use std::fs;
@@ -398,7 +398,7 @@ fn test_wix_long_identifier_auto_hashing_parity() -> Result<()> {
             assert!(id.len() <= 72);
             assert!(id.starts_with(&long_comp_id[..50]));
         } else {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "Component.Component".to_string(),
                 reason: "missing component id field".to_string(),
             });
@@ -413,7 +413,7 @@ fn test_wix_long_identifier_auto_hashing_parity() -> Result<()> {
             assert!(id.len() <= 72);
             assert!(id.starts_with(&long_file_id[..50]));
         } else {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "File.File".to_string(),
                 reason: "missing file id field".to_string(),
             });
@@ -431,7 +431,7 @@ fn test_wix_long_identifier_auto_hashing_parity() -> Result<()> {
     Ok(())
 }
 
-/// Tests that referencing an undefined symbol produces a structured `Error::WixLinker` diagnostic.
+/// Tests that referencing an undefined symbol produces a structured `MsiError::WixLinker` diagnostic.
 ///
 /// # Errors
 ///
@@ -473,13 +473,13 @@ fn test_wix_missing_symbol_diagnostics() -> Result<()> {
 
     let result = build_opts.execute();
     assert!(result.is_err());
-    if let Err(Error::WixLinker { message }) = result {
+    if let Err(MsiError::WixLinker { message }) = result {
         assert!(message.contains("unresolved symbol reference"));
         assert!(message.contains("NonExistentComponentGroup"));
     } else {
-        return Err(Error::Validation {
+        return Err(MsiError::Validation {
             element: "test_wix_missing_symbol_diagnostics".to_string(),
-            reason: "expected Error::WixLinker for missing symbol".to_string(),
+            reason: "expected MsiError::WixLinker for missing symbol".to_string(),
         });
     }
 
@@ -857,8 +857,8 @@ fn test_wix_negative_undefined_symbol_references() -> Result<()> {
     };
     let res1 = opts1.execute();
     assert!(
-        matches!(res1, Err(Error::WixLinker { ref message }) if message.contains("unresolved symbol reference 'Directory:NonExistentParentDir'") && message.contains("line 6")),
-        "Expected Error::WixLinker with line 6, got {res1:?}"
+        matches!(res1, Err(MsiError::WixLinker { ref message }) if message.contains("unresolved symbol reference 'Directory:NonExistentParentDir'") && message.contains("line 6")),
+        "Expected MsiError::WixLinker with line 6, got {res1:?}"
     );
 
     // 2. Undefined Component reference
@@ -887,8 +887,8 @@ fn test_wix_negative_undefined_symbol_references() -> Result<()> {
     };
     let res2 = opts2.execute();
     assert!(
-        matches!(res2, Err(Error::WixLinker { ref message }) if message.contains("unresolved symbol reference 'Component:NonExistentComponentRef'") && message.contains("line 8")),
-        "Expected Error::WixLinker with line 8, got {res2:?}"
+        matches!(res2, Err(MsiError::WixLinker { ref message }) if message.contains("unresolved symbol reference 'Component:NonExistentComponentRef'") && message.contains("line 8")),
+        "Expected MsiError::WixLinker with line 8, got {res2:?}"
     );
 
     // 3. Undefined Feature reference
@@ -915,8 +915,8 @@ fn test_wix_negative_undefined_symbol_references() -> Result<()> {
     };
     let res3 = opts3.execute();
     assert!(
-        matches!(res3, Err(Error::WixLinker { ref message }) if message.contains("unresolved symbol reference 'Feature:NonExistentFeatureRef'") && message.contains("line 7")),
-        "Expected Error::WixLinker with line 7, got {res3:?}"
+        matches!(res3, Err(MsiError::WixLinker { ref message }) if message.contains("unresolved symbol reference 'Feature:NonExistentFeatureRef'") && message.contains("line 7")),
+        "Expected MsiError::WixLinker with line 7, got {res3:?}"
     );
 
     let _ = fs::remove_dir_all(&temp_dir);

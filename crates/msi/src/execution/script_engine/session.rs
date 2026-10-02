@@ -11,7 +11,7 @@
 //! - Execution fuel limiter guaranteeing sandboxed termination without hangs.
 
 use crate::database::catalogs::DatabaseCatalog;
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::execution::properties::EvaluationContext;
 use std::collections::HashMap;
 
@@ -431,7 +431,7 @@ impl ScriptSession {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::ScriptRuntimeError`] if fuel is exhausted.
+    /// Returns [`MsiError::ScriptRuntimeError`] if fuel is exhausted.
     pub fn consume_fuel(&mut self, line: usize, col: usize) -> Result<()> {
         if self.fuel == 0 {
             let stack_trace = if self.call_stack.is_empty() {
@@ -439,7 +439,7 @@ impl ScriptSession {
             } else {
                 format!(" (stack: {})", self.call_stack.join(" -> "))
             };
-            return Err(Error::ScriptRuntimeError {
+            return Err(MsiError::ScriptRuntimeError {
                 line,
                 col,
                 message: format!(
@@ -572,7 +572,7 @@ mod tests {
         assert_eq!(session.consume_fuel(11, 5), Ok(()));
         assert_eq!(
             session.consume_fuel(12, 5),
-            Err(Error::ScriptRuntimeError {
+            Err(MsiError::ScriptRuntimeError {
                 line: 12,
                 col: 5,
                 message:
@@ -588,7 +588,7 @@ mod tests {
         let mut empty_session = ScriptSession::with_fuel(EvaluationContext::new(), 0);
         assert_eq!(
             empty_session.consume_fuel(1, 1),
-            Err(Error::ScriptRuntimeError {
+            Err(MsiError::ScriptRuntimeError {
                 line: 1,
                 col: 1,
                 message: "Script execution step limit reached; sandbox aborted".to_string(),

@@ -8,7 +8,7 @@ use crate::database::sql::lexer::Lexer;
 use crate::database::sql::parser::Parser;
 use crate::database::tables::record::{FieldValue, Record};
 use crate::database::TableSchema;
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::wix::LinkedDatabase;
 use std::cmp::Ordering;
 
@@ -86,7 +86,7 @@ pub fn execute_statement(
             where_clause,
             order_by,
         } => {
-            let schema = db.catalog.get_table(table).ok_or_else(|| Error::Sql {
+            let schema = db.catalog.get_table(table).ok_or_else(|| MsiError::Sql {
                 message: format!("table '{table}' does not exist in database"),
             })?;
 
@@ -120,7 +120,7 @@ pub fn execute_statement(
                         .columns
                         .iter()
                         .position(|c| c.name.eq_ignore_ascii_case(col_name))
-                        .ok_or_else(|| Error::Sql {
+                        .ok_or_else(|| MsiError::Sql {
                             message: format!(
                                 "column '{col_name}' does not exist in table '{table}'"
                             ),
@@ -168,7 +168,7 @@ pub fn execute_statement(
             columns,
             values,
         } => {
-            let schema = db.catalog.get_table(table).ok_or_else(|| Error::Sql {
+            let schema = db.catalog.get_table(table).ok_or_else(|| MsiError::Sql {
                 message: format!("table '{table}' does not exist in database"),
             })?;
 
@@ -177,7 +177,7 @@ pub fn execute_statement(
 
             if let Some(col_names) = columns {
                 if col_names.len() != values.len() {
-                    return Err(Error::Sql {
+                    return Err(MsiError::Sql {
                         message: "column count does not match values count in INSERT".to_string(),
                     });
                 }
@@ -191,7 +191,7 @@ pub fn execute_statement(
                     } else if col.nullable {
                         record.push(FieldValue::Null);
                     } else {
-                        return Err(Error::Sql {
+                        return Err(MsiError::Sql {
                             message: format!("missing non-null column '{}' in INSERT", col.name),
                         });
                     }
@@ -216,7 +216,7 @@ pub fn execute_statement(
                 for existing in rows.iter() {
                     let matches_pk = pk_indices.iter().all(|&i| existing.get(i) == record.get(i));
                     if matches_pk {
-                        return Err(Error::Sql {
+                        return Err(MsiError::Sql {
                             message: format!("duplicate primary key in table '{table}'"),
                         });
                     }
@@ -231,7 +231,7 @@ pub fn execute_statement(
             assignments,
             where_clause,
         } => {
-            let schema = db.catalog.get_table(table).ok_or_else(|| Error::Sql {
+            let schema = db.catalog.get_table(table).ok_or_else(|| MsiError::Sql {
                 message: format!("table '{table}' does not exist in database"),
             })?;
 
@@ -241,7 +241,7 @@ pub fn execute_statement(
                     .columns
                     .iter()
                     .position(|c| c.name.eq_ignore_ascii_case(col_name))
-                    .ok_or_else(|| Error::Sql {
+                    .ok_or_else(|| MsiError::Sql {
                         message: format!("column '{col_name}' does not exist in table '{table}'"),
                     })?;
                 assign_indices.push((idx, val));
@@ -273,7 +273,7 @@ pub fn execute_statement(
             table,
             where_clause,
         } => {
-            let schema = db.catalog.get_table(table).ok_or_else(|| Error::Sql {
+            let schema = db.catalog.get_table(table).ok_or_else(|| MsiError::Sql {
                 message: format!("table '{table}' does not exist in database"),
             })?;
 
@@ -347,7 +347,7 @@ pub fn execute_statement(
                 let updated_schema = schema.with_column(col_def);
                 let _ = db.catalog.add_table(updated_schema);
             } else {
-                return Err(Error::Sql {
+                return Err(MsiError::Sql {
                     message: format!("table '{table}' does not exist in database"),
                 });
             }
@@ -377,7 +377,7 @@ fn resolve_sql_value(
                 *param_idx += 1;
                 Ok(res)
             } else {
-                Err(Error::Sql {
+                Err(MsiError::Sql {
                     message: format!("missing parameter binding at index {param_idx}"),
                 })
             }
@@ -399,7 +399,7 @@ fn eval_expression(
                 .columns
                 .iter()
                 .position(|c| c.name.eq_ignore_ascii_case(column))
-                .ok_or_else(|| Error::Sql {
+                .ok_or_else(|| MsiError::Sql {
                     message: format!("unknown column '{column}' in WHERE expression"),
                 })?;
 
@@ -413,7 +413,7 @@ fn eval_expression(
                 .columns
                 .iter()
                 .position(|c| c.name.eq_ignore_ascii_case(column))
-                .ok_or_else(|| Error::Sql {
+                .ok_or_else(|| MsiError::Sql {
                     message: format!("unknown column '{column}' in WHERE expression"),
                 })?;
 

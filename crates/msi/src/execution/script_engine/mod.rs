@@ -113,7 +113,7 @@ impl ScriptEngine {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::ScriptRuntimeError`] on syntax or execution errors.
+    /// Returns [`crate::error::MsiError::ScriptRuntimeError`] on syntax or execution errors.
     pub fn execute(
         &mut self,
         lang: ScriptLanguage,

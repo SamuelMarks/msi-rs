@@ -3,7 +3,7 @@
 //! Provides in-memory mock block storage devices, mock UEFI NVRAM variable stores,
 //! and automated QEMU/KVM virtual machine test runners for bare-metal OS installation validation.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
@@ -34,10 +34,10 @@ impl MockBlockDevice {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::BlockDeviceError`] if sector size is invalid or capacity is not sector-aligned.
+    /// Returns [`MsiError::BlockDeviceError`] if sector size is invalid or capacity is not sector-aligned.
     pub fn new(capacity_bytes: usize, sector_size: u32) -> Result<Self> {
         if sector_size == 0 || (sector_size != 512 && sector_size != 4096) {
-            return Err(Error::BlockDeviceError {
+            return Err(MsiError::BlockDeviceError {
                 path: "mock://disk0".to_string(),
                 reason: format!("invalid sector size {sector_size}, only 512 or 4096 supported"),
             });
@@ -45,7 +45,7 @@ impl MockBlockDevice {
 
         let ss = sector_size as usize;
         if capacity_bytes % ss != 0 {
-            return Err(Error::BlockDeviceError {
+            return Err(MsiError::BlockDeviceError {
                 path: "mock://disk0".to_string(),
                 reason: format!(
                     "capacity ({capacity_bytes}) must be multiple of sector size ({ss})"
@@ -74,14 +74,14 @@ impl MockBlockDevice {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::BlockDeviceError`] if request exceeds device capacity.
+    /// Returns [`MsiError::BlockDeviceError`] if request exceeds device capacity.
     pub fn read_sectors(&self, start_lba: u64, sector_count: u32) -> Result<Vec<u8>> {
         let ss = self.sector_size as usize;
         let Some(start_byte) = start_lba
             .checked_mul(u64::from(self.sector_size))
             .and_then(|b| usize::try_from(b).ok())
         else {
-            return Err(Error::BlockDeviceError {
+            return Err(MsiError::BlockDeviceError {
                 path: "mock://disk0".to_string(),
                 reason: "start_lba byte offset overflowed usize bounds".to_string(),
             });
@@ -90,7 +90,7 @@ impl MockBlockDevice {
         let end_byte = start_byte.saturating_add(len_bytes);
 
         if end_byte > self.capacity_bytes {
-            return Err(Error::BlockDeviceError {
+            return Err(MsiError::BlockDeviceError {
                 path: "mock://disk0".to_string(),
                 reason: format!(
                     "read range [{}..{}] exceeds disk capacity {}",
@@ -111,10 +111,10 @@ impl MockBlockDevice {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::BlockDeviceError`] if device is read-only or range exceeds capacity.
+    /// Returns [`MsiError::BlockDeviceError`] if device is read-only or range exceeds capacity.
     pub fn write_sectors(&mut self, start_lba: u64, data: &[u8]) -> Result<()> {
         if self.read_only {
-            return Err(Error::BlockDeviceError {
+            return Err(MsiError::BlockDeviceError {
                 path: "mock://disk0".to_string(),
                 reason: "cannot write to read-only mock block device".to_string(),
             });
@@ -122,7 +122,7 @@ impl MockBlockDevice {
 
         let ss = self.sector_size as usize;
         if data.len() % ss != 0 {
-            return Err(Error::BlockDeviceError {
+            return Err(MsiError::BlockDeviceError {
                 path: "mock://disk0".to_string(),
                 reason: format!(
                     "write payload len ({}) must be multiple of sector size ({ss})",
@@ -135,7 +135,7 @@ impl MockBlockDevice {
             .checked_mul(u64::from(self.sector_size))
             .and_then(|b| usize::try_from(b).ok())
         else {
-            return Err(Error::BlockDeviceError {
+            return Err(MsiError::BlockDeviceError {
                 path: "mock://disk0".to_string(),
                 reason: "start_lba byte offset overflowed usize bounds".to_string(),
             });
@@ -144,7 +144,7 @@ impl MockBlockDevice {
         let end_byte = start_byte.saturating_add(data.len());
 
         if end_byte > self.capacity_bytes {
-            return Err(Error::BlockDeviceError {
+            return Err(MsiError::BlockDeviceError {
                 path: "mock://disk0".to_string(),
                 reason: format!(
                     "write range [{}..{}] exceeds disk capacity {}",
@@ -315,7 +315,7 @@ impl QemuProcess {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::ExecutionFailed`] if execution times out, process returns non-zero,
+    /// Returns [`MsiError::ExecutionFailed`] if execution times out, process returns non-zero,
     /// or if the success sentinel string is not found in the output.
     pub fn wait_for_completion(&mut self) -> Result<String> {
         use std::io::Read;
@@ -340,7 +340,7 @@ impl QemuProcess {
                     let code = status.code().unwrap_or(1);
                     if code != 0 {
                         let code_u32 = u32::try_from(code).unwrap_or(1);
-                        return Err(Error::ExecutionFailed {
+                        return Err(MsiError::ExecutionFailed {
                             action: "qemu".to_string(),
                             return_code: code_u32,
                             message: format!("QEMU process failed with exit code {code}: {stderr}"),
@@ -349,7 +349,7 @@ impl QemuProcess {
 
                     if let Some(ref sentinel) = self.success_sentinel {
                         if !combined.contains(sentinel) {
-                            return Err(Error::ExecutionFailed {
+                            return Err(MsiError::ExecutionFailed {
                                 action: "qemu".to_string(),
                                 return_code: 1,
                                 message: format!(
@@ -365,7 +365,7 @@ impl QemuProcess {
                     if start.elapsed() > self.timeout {
                         let _ = self.child.kill();
                         let _ = self.child.wait();
-                        return Err(Error::ExecutionFailed {
+                        return Err(MsiError::ExecutionFailed {
                             action: "qemu".to_string(),
                             return_code: 1,
                             message: format!(
@@ -377,7 +377,7 @@ impl QemuProcess {
                     std::thread::sleep(std::time::Duration::from_millis(20));
                 }
                 Err(e) => {
-                    return Err(Error::ExecutionFailed {
+                    return Err(MsiError::ExecutionFailed {
                         action: "qemu".to_string(),
                         return_code: 1,
                         message: format!("failed to wait on QEMU process: {e}"),
@@ -451,7 +451,7 @@ impl QemuTestRunner {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::ExecutionFailed`] if spawning fails.
+    /// Returns [`MsiError::ExecutionFailed`] if spawning fails.
     pub fn spawn(&self) -> Result<QemuProcess> {
         let args = self.build_command_args();
         let program = &args[0];
@@ -472,7 +472,7 @@ impl QemuTestRunner {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::ExecutionFailed`] if spawning fails.
+    /// Returns [`MsiError::ExecutionFailed`] if spawning fails.
     pub fn spawn_custom(&self, program: &str, args: &[String]) -> Result<QemuProcess> {
         let mut cmd = std::process::Command::new(program);
         cmd.args(args);
@@ -480,7 +480,7 @@ impl QemuTestRunner {
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
 
-        let child = cmd.spawn().map_err(|e| Error::ExecutionFailed {
+        let child = cmd.spawn().map_err(|e| MsiError::ExecutionFailed {
             action: program.to_string(),
             return_code: 1,
             message: format!("failed to spawn QEMU/VM process '{program}': {e}"),

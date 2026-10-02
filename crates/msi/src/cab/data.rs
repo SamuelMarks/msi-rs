@@ -1,7 +1,7 @@
 //! Cabinet File Data Block structures and verification (`CFDATA`).
 
 use crate::cab::csum::csum_compute;
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 
 /// Maximum uncompressed or compressed payload size per `CFDATA` block (32,768 bytes).
 pub const CAB_BLOCK_MAX_SIZE: usize = 32_768;
@@ -36,11 +36,11 @@ impl CfData {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidCabData`] if payload length exceeds 32,768 bytes.
+    /// Returns [`MsiError::InvalidCabData`] if payload length exceeds 32,768 bytes.
     #[allow(clippy::cast_possible_truncation)]
     pub fn new(payload: Vec<u8>, uncompressed_size: u16, reserve_data: Vec<u8>) -> Result<Self> {
         if payload.len() > CAB_BLOCK_MAX_SIZE {
-            return Err(Error::InvalidCabData {
+            return Err(MsiError::InvalidCabData {
                 reason: format!(
                     "payload size {} exceeds maximum block size {CAB_BLOCK_MAX_SIZE}",
                     payload.len()
@@ -81,12 +81,12 @@ impl CfData {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidCabData`] if truncated, or [`Error::InvalidCabChecksum`]
+    /// Returns [`MsiError::InvalidCabData`] if truncated, or [`MsiError::InvalidCabChecksum`]
     /// if checksum verification fails.
     pub fn parse(bytes: &[u8], data_reserve_len: usize) -> Result<(Self, usize)> {
         let min_len = 8 + data_reserve_len;
         if bytes.len() < min_len {
-            return Err(Error::InvalidCabData {
+            return Err(MsiError::InvalidCabData {
                 reason: format!(
                     "CFDATA block truncated: expected at least {min_len} bytes, got {}",
                     bytes.len()
@@ -105,7 +105,7 @@ impl CfData {
         let payload_start = reserve_end;
         let payload_end = payload_start + compressed_size as usize;
         if bytes.len() < payload_end {
-            return Err(Error::InvalidCabData {
+            return Err(MsiError::InvalidCabData {
                 reason: format!(
                     "CFDATA payload truncated: expected {payload_end} bytes, got {}",
                     bytes.len()
@@ -125,7 +125,7 @@ impl CfData {
             csum = csum_compute(&payload, csum);
 
             if csum != checksum {
-                return Err(Error::InvalidCabChecksum {
+                return Err(MsiError::InvalidCabChecksum {
                     expected: checksum,
                     actual: csum,
                 });
@@ -175,7 +175,7 @@ mod tests {
     #[test]
     fn test_cf_data_roundtrip() {
         assert_eq!(
-            unwrap_data(Err(Error::InvalidCabData {
+            unwrap_data(Err(MsiError::InvalidCabData {
                 reason: String::new()
             }))
             .checksum,
@@ -217,7 +217,7 @@ mod tests {
         bytes[8] ^= 0xFF;
         assert!(matches!(
             CfData::parse(&bytes, 0),
-            Err(Error::InvalidCabChecksum { .. })
+            Err(MsiError::InvalidCabChecksum { .. })
         ));
 
         // Truncated header (< 8 bytes)

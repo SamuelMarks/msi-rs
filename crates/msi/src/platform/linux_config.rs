@@ -5,7 +5,7 @@
 //! - `/etc/hostname`, `/etc/locale.gen`, `/etc/vconsole.conf`, and `/etc/os-release`.
 //! - `/etc/passwd`, `/etc/shadow`, and `/etc/group` for initial root and non-root user setup.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use std::fmt::Write as _;
 use std::path::Path;
 
@@ -216,11 +216,11 @@ impl LinuxIdentityConfig {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::SysrootMountError`] if writing identity files fails.
+    /// Returns [`MsiError::SysrootMountError`] if writing identity files fails.
     pub fn write_to_sysroot(&self, sysroot: &Path) -> Result<()> {
         let etc = sysroot.join("etc");
         if let Err(e) = std::fs::create_dir_all(&etc) {
-            return Err(Error::SysrootMountError {
+            return Err(MsiError::SysrootMountError {
                 path: etc.display().to_string(),
                 reason: format!("failed to create /etc directory: {e}"),
             });
@@ -236,7 +236,7 @@ impl LinuxIdentityConfig {
                 self.hostname
             ),
         ) {
-            return Err(Error::SysrootMountError {
+            return Err(MsiError::SysrootMountError {
                 path: hostname_path.display().to_string(),
                 reason: format!("failed to write /etc/hostname: {e}"),
             });
@@ -251,7 +251,7 @@ FONT=eurlatgr
             self.keymap
         );
         if let Err(e) = std::fs::write(&vconsole_path, vconsole_content) {
-            return Err(Error::SysrootMountError {
+            return Err(MsiError::SysrootMountError {
                 path: vconsole_path.display().to_string(),
                 reason: format!("failed to write /etc/vconsole.conf: {e}"),
             });
@@ -286,7 +286,7 @@ FONT=eurlatgr
             self.os_name, self.os_version
         );
         if let Err(e) = std::fs::write(&os_release_path, os_release) {
-            return Err(Error::SysrootMountError {
+            return Err(MsiError::SysrootMountError {
                 path: os_release_path.display().to_string(),
                 reason: format!("failed to write /etc/os-release: {e}"),
             });

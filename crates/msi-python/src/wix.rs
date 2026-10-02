@@ -73,7 +73,7 @@ pub fn compile_wix_source(py: Python<'_>, source: String, output_path: String) -
 #[pyfunction]
 pub fn compile_wix_file(py: Python<'_>, wxs_path: &str, output_path: String) -> PyResult<()> {
     let source =
-        fs::read_to_string(wxs_path).map_err(|e| to_py_err(&msi::Error::Io(e.to_string())))?;
+        fs::read_to_string(wxs_path).map_err(|e| to_py_err(&msi::MsiError::Io(e.to_string())))?;
     compile_wix_source(py, source, output_path)
 }
 

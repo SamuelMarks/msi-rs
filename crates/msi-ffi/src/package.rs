@@ -278,7 +278,7 @@ pub unsafe extern "C" fn msi_package_extract_cabinet(
 
             fs::create_dir_all(destination).map_err(|e| {
                 (
-                    map_msi_error(&msi::Error::Io(e.to_string())),
+                    map_msi_error(&msi::MsiError::Io(e.to_string())),
                     format!("Failed creating destination directory '{destination}'"),
                 )
             })?;
@@ -291,7 +291,7 @@ pub unsafe extern "C" fn msi_package_extract_cabinet(
                 let file_path = Path::new(destination).join(&file.filename);
                 fs::write(&file_path, file_data).map_err(|e| {
                     (
-                        map_msi_error(&msi::Error::Io(e.to_string())),
+                        map_msi_error(&msi::MsiError::Io(e.to_string())),
                         format!("Failed writing extracted file to '{}'", file_path.display()),
                     )
                 })?;

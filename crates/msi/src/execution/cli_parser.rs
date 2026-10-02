@@ -6,7 +6,7 @@
 //! - Logging options: `/l` (flags `i,w,e,a,r,u,c,m,o,p,v,x,+,!`).
 //! - Public property overrides: `PROPERTY=Value`.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::execution::costing::DiskCostEngine;
 use crate::execution::properties::EvaluationContext;
 use crate::execution::transaction::{Transaction, WorkerContext};
@@ -133,7 +133,7 @@ impl RepairFlags {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidArgument`] if an unrecognized flag character is encountered.
+    /// Returns [`MsiError::InvalidArgument`] if an unrecognized flag character is encountered.
     pub fn parse(flags: &str) -> Result<Self> {
         let mut res = Self::default();
         for ch in flags.chars() {
@@ -149,7 +149,7 @@ impl RepairFlags {
                 's' => res.overwrite_shortcuts = true,
                 'v' => res.recache_source = true,
                 other => {
-                    return Err(Error::InvalidArgument {
+                    return Err(MsiError::InvalidArgument {
                         argument: format!("/f{other}"),
                         reason: format!("unknown repair flag '{other}'"),
                     });
@@ -316,7 +316,7 @@ impl LoggingOptions {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidArgument`] if an unrecognized logging flag is encountered.
+    /// Returns [`MsiError::InvalidArgument`] if an unrecognized logging flag is encountered.
     pub fn parse<F: AsRef<str>, S: Into<String>>(flags: F, log_file: S) -> Result<Self> {
         Self::parse_impl(flags.as_ref(), log_file.into())
     }
@@ -358,7 +358,7 @@ impl LoggingOptions {
                     opts.terminal_props = true;
                 }
                 other => {
-                    return Err(Error::InvalidArgument {
+                    return Err(MsiError::InvalidArgument {
                         argument: format!("/l{other}"),
                         reason: format!("unknown logging flag '{other}'"),
                     });
@@ -398,7 +398,7 @@ impl MsiExecOptions {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidArgument`] if options are missing, conflicting, or malformed.
+    /// Returns [`MsiError::InvalidArgument`] if options are missing, conflicting, or malformed.
     pub fn parse<I, S>(args: I) -> Result<Self>
     where
         I: IntoIterator<Item = S>,
@@ -412,7 +412,7 @@ impl MsiExecOptions {
     #[allow(clippy::too_many_lines)]
     fn parse_strings(arg_list: &[String]) -> Result<Self> {
         if arg_list.is_empty() {
-            return Err(Error::InvalidArgument {
+            return Err(MsiError::InvalidArgument {
                 argument: "args".to_string(),
                 reason: "no arguments provided to msiexec".to_string(),
             });
@@ -457,7 +457,7 @@ impl MsiExecOptions {
                     };
                     i += 1;
                     if i >= arg_list.len() {
-                        return Err(Error::InvalidArgument {
+                        return Err(MsiError::InvalidArgument {
                             argument: arg.clone(),
                             reason: "missing package path for repair".to_string(),
                         });
@@ -472,7 +472,7 @@ impl MsiExecOptions {
                         Some('u') => AdvertiseScope::User,
                         Some('m') | None => AdvertiseScope::Machine,
                         Some(other) => {
-                            return Err(Error::InvalidArgument {
+                            return Err(MsiError::InvalidArgument {
                                 argument: arg.clone(),
                                 reason: format!("unknown advertise scope '{other}'"),
                             });
@@ -480,7 +480,7 @@ impl MsiExecOptions {
                     };
                     i += 1;
                     if i >= arg_list.len() {
-                        return Err(Error::InvalidArgument {
+                        return Err(MsiError::InvalidArgument {
                             argument: arg.clone(),
                             reason: "missing package path for advertise".to_string(),
                         });
@@ -514,14 +514,14 @@ impl MsiExecOptions {
                     let flag_chars = &opt[1..];
                     i += 1;
                     if i >= arg_list.len() {
-                        return Err(Error::InvalidArgument {
+                        return Err(MsiError::InvalidArgument {
                             argument: arg.clone(),
                             reason: "missing log file path".to_string(),
                         });
                     }
                     logging = Some(LoggingOptions::parse(flag_chars, &arg_list[i])?);
                 } else {
-                    return Err(Error::InvalidArgument {
+                    return Err(MsiError::InvalidArgument {
                         argument: arg.clone(),
                         reason: format!("unrecognized command-line option '{arg}'"),
                     });
@@ -530,7 +530,7 @@ impl MsiExecOptions {
                 // Public property override: PROPERTY=Value
                 properties.insert(key.to_string(), val.to_string());
             } else {
-                return Err(Error::InvalidArgument {
+                return Err(MsiError::InvalidArgument {
                     argument: arg.clone(),
                     reason: format!("unexpected argument '{arg}'"),
                 });
@@ -540,7 +540,7 @@ impl MsiExecOptions {
         }
 
         let Some(act) = action else {
-            return Err(Error::InvalidArgument {
+            return Err(MsiError::InvalidArgument {
                 argument: "action".to_string(),
                 reason: "no action mode specified (/i, /x, /a, /f, /j, /p)".to_string(),
             });
@@ -566,7 +566,7 @@ impl MsiExecOptions {
         if rest.is_empty() {
             *i += 1;
             if *i >= arg_list.len() {
-                return Err(Error::InvalidArgument {
+                return Err(MsiError::InvalidArgument {
                     argument: format!("/{prefix}"),
                     reason: format!("missing argument following /{prefix}"),
                 });
@@ -611,7 +611,7 @@ impl MsiExecOptions {
                 {
                     Some(target) => target.clone(),
                     None => {
-                        return Err(Error::InvalidArgument {
+                        return Err(MsiError::InvalidArgument {
                             argument: patch_path.clone(),
                             reason:
                                 "patch application requires target package path via PACKAGE=path"
@@ -623,7 +623,7 @@ impl MsiExecOptions {
         };
 
         if package_path.trim().is_empty() {
-            return Err(Error::InvalidArgument {
+            return Err(MsiError::InvalidArgument {
                 argument: "package".to_string(),
                 reason: "package path cannot be empty".to_string(),
             });
@@ -634,7 +634,7 @@ impl MsiExecOptions {
             if package_path.starts_with('{') {
                 return Ok(MsiExitCode::UnknownProduct);
             }
-            return Err(Error::Io(format!(
+            return Err(MsiError::Io(format!(
                 "Package file not found: '{package_path}'"
             )));
         }
@@ -722,7 +722,7 @@ impl MsiExecOptions {
                     let _ = write_execution_log(log_opts, &context, &dummy_worker, Some(&err));
                 }
                 return match &err {
-                    Error::CustomActionFailed { .. } => Ok(MsiExitCode::InstallFailure),
+                    MsiError::CustomActionFailed { .. } => Ok(MsiExitCode::InstallFailure),
                     _ => Err(err),
                 };
             }
@@ -776,7 +776,7 @@ fn write_execution_log(
     opts: &LoggingOptions,
     context: &EvaluationContext,
     worker: &WorkerContext,
-    err: Option<&Error>,
+    err: Option<&MsiError>,
 ) -> std::io::Result<()> {
     use std::fs::OpenOptions;
     use std::io::Write;
@@ -1783,7 +1783,7 @@ mod tests {
         // Test logging in append mode with error, properties, and actions
         let mut append_logging = full_logging.clone();
         append_logging.append = true;
-        let test_err = Error::ExecutionFailed {
+        let test_err = MsiError::ExecutionFailed {
             action: "TestAction".to_string(),
             return_code: 1603,
             message: "Simulated test error".to_string(),

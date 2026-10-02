@@ -19,7 +19,7 @@
 //!   - `[\%EnvVar]`: System environment variable.
 //!   - Escape sequences: `[\[]`, `[\]]`, `[\{]`, `[\}]`.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use std::collections::HashMap;
 
 /// Installation states for Features and Components in MSI expressions.
@@ -264,7 +264,7 @@ impl EvaluationContext {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] on unclosed brackets.
+    /// Returns [`MsiError::Validation`] on unclosed brackets.
     #[allow(clippy::too_many_lines)]
     pub fn format_string(&self, template: &str) -> Result<String> {
         let mut out = String::new();
@@ -298,7 +298,7 @@ impl EvaluationContext {
                 }
 
                 if !closed {
-                    return Err(Error::Validation {
+                    return Err(MsiError::Validation {
                         element: "FormattedString".to_string(),
                         reason: format!("unclosed bracket starting at position {start}"),
                     });
@@ -357,7 +357,7 @@ impl EvaluationContext {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] on invalid syntax or unclosed parentheses.
+    /// Returns [`MsiError::Validation`] on invalid syntax or unclosed parentheses.
     pub fn evaluate_condition(&self, expr: &str) -> Result<bool> {
         let trimmed = expr.trim();
         if trimmed.is_empty() {
@@ -720,7 +720,7 @@ impl<'a> ConditionParser<'a> {
                 self.advance();
                 return Ok(val);
             }
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "ConditionExpression".to_string(),
                 reason: "missing closing parenthesis".to_string(),
             });
@@ -789,7 +789,7 @@ impl<'a> ConditionParser<'a> {
                     .unwrap_or(InstallState::Absent);
                 Ok(state.as_i32().to_string())
             }
-            other => Err(Error::Validation {
+            other => Err(MsiError::Validation {
                 element: "ConditionExpression".to_string(),
                 reason: format!("expected value or identifier, found {other:?}"),
             }),

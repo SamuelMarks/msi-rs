@@ -9,7 +9,7 @@
 //!   - Deterministic frame simulation testable in headless CI environments.
 
 use crate::database::tables::record::FieldValue;
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::execution::custom_action::{CustomActionDefinition, CustomActionExecutor};
 use crate::execution::properties::EvaluationContext;
 use crate::ui::controls::{ControlDefinition, ControlRuntimeState, ControlType};
@@ -217,10 +217,10 @@ impl UiEngine {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::UiError`] if dialog is not registered.
+    /// Returns [`MsiError::UiError`] if dialog is not registered.
     pub fn set_active_dialog(&mut self, dialog_name: &str) -> Result<()> {
         if !self.dialogs.contains_key(dialog_name) {
-            return Err(Error::UiError {
+            return Err(MsiError::UiError {
                 dialog: dialog_name.to_string(),
                 control: String::new(),
                 reason: format!("Dialog '{dialog_name}' not found"),

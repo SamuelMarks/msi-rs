@@ -6,7 +6,7 @@
 //! - Key nodes (`nk`), value nodes (`vk`), and subkey hash leaf structures (`lh`, `lf`).
 //! - Full offline in-memory modification and serialization back to valid registry hives.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -217,10 +217,10 @@ impl OfflineRegistryHive {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::RegistryHiveError`] if header magic or checksum is invalid.
+    /// Returns [`MsiError::RegistryHiveError`] if header magic or checksum is invalid.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
         if bytes.len() < 4096 {
-            return Err(Error::RegistryHiveError {
+            return Err(MsiError::RegistryHiveError {
                 hive: "unknown".to_string(),
                 reason: "file smaller than standard 4096-byte regf header block".to_string(),
             });
@@ -228,7 +228,7 @@ impl OfflineRegistryHive {
 
         // Verify "regf" signature (0x66676572)
         if &bytes[0..4] != b"regf" {
-            return Err(Error::RegistryHiveError {
+            return Err(MsiError::RegistryHiveError {
                 hive: "unknown".to_string(),
                 reason: "invalid hive signature, expected 'regf'".to_string(),
             });
@@ -242,7 +242,7 @@ impl OfflineRegistryHive {
             calculated_checksum ^= u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
         }
         if calculated_checksum != expected_checksum {
-            return Err(Error::RegistryHiveError {
+            return Err(MsiError::RegistryHiveError {
                 hive: "unknown".to_string(),
                 reason: format!("regf header checksum mismatch: expected 0x{expected_checksum:08X}, calculated 0x{calculated_checksum:08X}"),
             });
@@ -402,17 +402,17 @@ impl OfflineRegistryHive {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::RegistryHiveError`] if writing fails.
+    /// Returns [`MsiError::RegistryHiveError`] if writing fails.
     pub fn save_to_file(&self, destination: &Path) -> Result<()> {
         if let Some(parent) = destination.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| Error::RegistryHiveError {
+            std::fs::create_dir_all(parent).map_err(|e| MsiError::RegistryHiveError {
                 hive: self.hive_name.clone(),
                 reason: format!("failed to create hive parent directories: {e}"),
             })?;
         }
 
         let bytes = self.to_bytes();
-        std::fs::write(destination, bytes).map_err(|e| Error::RegistryHiveError {
+        std::fs::write(destination, bytes).map_err(|e| MsiError::RegistryHiveError {
             hive: self.hive_name.clone(),
             reason: format!("failed to write registry hive file: {e}"),
         })?;
@@ -470,7 +470,7 @@ impl OfflineHiveStore {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::RegistryHiveError`] if saving any hive fails.
+    /// Returns [`MsiError::RegistryHiveError`] if saving any hive fails.
     pub fn flush_all(&self) -> Result<()> {
         if let Some(ref path) = self.system_hive.path {
             self.system_hive.save_to_file(path)?;

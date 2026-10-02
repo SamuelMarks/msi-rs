@@ -10,7 +10,7 @@
 use crate::database::catalogs::TableSchema;
 use crate::database::column::{ColumnDef, DataType};
 use crate::database::tables::record::{FieldValue, Record};
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 
 /// Generic row representing an entry in any standard action sequence table.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,7 +34,7 @@ impl SequenceRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] if action name is empty or exceeds 72 characters.
+    /// Returns [`MsiError::Validation`] if action name is empty or exceeds 72 characters.
     pub fn new(
         action: impl Into<String>,
         condition: Option<String>,
@@ -42,7 +42,7 @@ impl SequenceRow {
     ) -> Result<Self> {
         let a = action.into();
         if a.is_empty() || a.len() > 72 {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "SequenceRow.Action".to_string(),
                 reason: format!(
                     "Action name must be between 1 and 72 characters, got {}",
@@ -81,10 +81,10 @@ impl SequenceRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] or [`Error::RecordLengthMismatch`] on invalid record.
+    /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 3 {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 3,
                 actual: rec.len(),
             });
@@ -93,7 +93,7 @@ impl SequenceRow {
         let action = match rec.get(0) {
             Some(FieldValue::String(s)) => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "Sequence.Action".to_string(),
                     reason: "missing Action primary key".to_string(),
                 });

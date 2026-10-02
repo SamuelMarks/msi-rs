@@ -6,7 +6,7 @@
 //! Provides parsing and linker support for `http://schemas.microsoft.com/wix/BalExtension`.
 
 use crate::database::tables::record::{FieldValue, Record};
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::wix::extensions::WixExtension;
 use crate::wix::linker::LinkedDatabase;
 use crate::wix::wixobj::{IntermediateSection, IntermediateTable};
@@ -30,7 +30,7 @@ impl BalExtension {
     /// Compiles a `<bal:WixStandardBootstrapperApplication>` node.
     ///
     /// # Errors
-    /// Returns [`Error::WixCompiler`] if required attributes are missing.
+    /// Returns [`MsiError::WixCompiler`] if required attributes are missing.
     #[allow(clippy::unnecessary_wraps)]
     fn compile_standard_bootstrapper(
         node: &XmlNode,
@@ -80,7 +80,7 @@ impl WixExtension for BalExtension {
             "WixStandardBootstrapperApplication" => {
                 Self::compile_standard_bootstrapper(node, parent_id, tables)
             }
-            _ => Err(Error::WixExtension {
+            _ => Err(MsiError::WixExtension {
                 extension: self.id().to_string(),
                 message: format!("unsupported element: '{tag_name}'"),
             }),
@@ -181,7 +181,7 @@ mod tests {
         assert_eq!(fields[3], FieldValue::String(String::new())); // LogoFile
     }
 
-    /// Tests unsupported elements returning [`Error::WixExtension`].
+    /// Tests unsupported elements returning [`MsiError::WixExtension`].
     #[test]
     fn test_unsupported_element() {
         let ext = BalExtension::new();
@@ -193,7 +193,7 @@ mod tests {
         let mut tables = HashMap::new();
 
         let res = ext.compile_node(&node, Some("cmp1"), &mut section, &mut tables);
-        assert!(matches!(res, Err(Error::WixExtension { .. })));
+        assert!(matches!(res, Err(MsiError::WixExtension { .. })));
     }
 
     /// Tests linking behavior of `BalExtension` on databases with and without bal tables.

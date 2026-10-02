@@ -78,7 +78,7 @@ use crate::error::Result;
 ///
 /// # Errors
 ///
-/// Returns [`crate::error::Error`] on preprocessing, XML parsing, or compiler validation failures.
+/// Returns [`crate::error::MsiError`] on preprocessing, XML parsing, or compiler validation failures.
 pub fn compile_wix(source: &str, ctx: &mut PreprocessorContext) -> Result<WixObject> {
     let preprocessor = Preprocessor::new();
     let preprocessed_source = preprocessor.process(source, ctx)?;

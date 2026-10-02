@@ -1,7 +1,7 @@
 //! Compound File Binary Format Directory Entries and Red-Black Tree ([MS-CFB] 2.6).
 
 use crate::cfb::sector::SectorId;
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use std::cmp::Ordering;
 use std::fmt;
 
@@ -151,7 +151,7 @@ impl StorageClsid {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidStorageClsid`] if the input string is not a valid GUID representation.
+    /// Returns [`MsiError::InvalidStorageClsid`] if the input string is not a valid GUID representation.
     pub fn parse(s: &str) -> Result<Self> {
         let trimmed = s.trim();
         let unbraced = trimmed
@@ -161,7 +161,7 @@ impl StorageClsid {
 
         let parts: Vec<&str> = unbraced.split('-').collect();
         if parts.len() != 5 {
-            return Err(Error::InvalidStorageClsid {
+            return Err(MsiError::InvalidStorageClsid {
                 clsid: s.to_string(),
             });
         }
@@ -172,26 +172,28 @@ impl StorageClsid {
             || parts[3].len() != 4
             || parts[4].len() != 12
         {
-            return Err(Error::InvalidStorageClsid {
+            return Err(MsiError::InvalidStorageClsid {
                 clsid: s.to_string(),
             });
         }
 
-        let d1 = u32::from_str_radix(parts[0], 16).map_err(|_| Error::InvalidStorageClsid {
+        let d1 = u32::from_str_radix(parts[0], 16).map_err(|_| MsiError::InvalidStorageClsid {
             clsid: s.to_string(),
         })?;
-        let d2 = u16::from_str_radix(parts[1], 16).map_err(|_| Error::InvalidStorageClsid {
+        let d2 = u16::from_str_radix(parts[1], 16).map_err(|_| MsiError::InvalidStorageClsid {
             clsid: s.to_string(),
         })?;
-        let d3 = u16::from_str_radix(parts[2], 16).map_err(|_| Error::InvalidStorageClsid {
+        let d3 = u16::from_str_radix(parts[2], 16).map_err(|_| MsiError::InvalidStorageClsid {
             clsid: s.to_string(),
         })?;
-        let d4_p1 = u16::from_str_radix(parts[3], 16).map_err(|_| Error::InvalidStorageClsid {
-            clsid: s.to_string(),
-        })?;
-        let d4_p2 = u64::from_str_radix(parts[4], 16).map_err(|_| Error::InvalidStorageClsid {
-            clsid: s.to_string(),
-        })?;
+        let d4_p1 =
+            u16::from_str_radix(parts[3], 16).map_err(|_| MsiError::InvalidStorageClsid {
+                clsid: s.to_string(),
+            })?;
+        let d4_p2 =
+            u64::from_str_radix(parts[4], 16).map_err(|_| MsiError::InvalidStorageClsid {
+                clsid: s.to_string(),
+            })?;
 
         let mut bytes = [0u8; 16];
         bytes[0..4].copy_from_slice(&d1.to_le_bytes());
@@ -331,14 +333,14 @@ impl ObjectType {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidDirectoryEntry`] if the byte is not a known object type.
+    /// Returns [`MsiError::InvalidDirectoryEntry`] if the byte is not a known object type.
     pub fn from_u8(byte: u8) -> Result<Self> {
         match byte {
             0x00 => Ok(Self::Unknown),
             0x01 => Ok(Self::Storage),
             0x02 => Ok(Self::Stream),
             0x05 => Ok(Self::Root),
-            other => Err(Error::InvalidDirectoryEntry {
+            other => Err(MsiError::InvalidDirectoryEntry {
                 index: 0,
                 reason: format!("unknown object type byte 0x{other:02X}"),
             }),
@@ -379,12 +381,12 @@ impl ColorFlag {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidDirectoryEntry`] if byte is neither 0 nor 1.
+    /// Returns [`MsiError::InvalidDirectoryEntry`] if byte is neither 0 nor 1.
     pub fn from_u8(byte: u8) -> Result<Self> {
         match byte {
             0x00 => Ok(Self::Red),
             0x01 => Ok(Self::Black),
-            other => Err(Error::InvalidDirectoryEntry {
+            other => Err(MsiError::InvalidDirectoryEntry {
                 index: 0,
                 reason: format!("invalid node color flag 0x{other:02X}"),
             }),
@@ -703,10 +705,10 @@ impl DirectoryEntry {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidDirectoryEntry`] or [`Error::CfbCorrupted`] if the entry is invalid.
+    /// Returns [`MsiError::InvalidDirectoryEntry`] or [`MsiError::CfbCorrupted`] if the entry is invalid.
     pub fn parse(bytes: &[u8], index: u32) -> Result<Self> {
         if bytes.len() < DIRECTORY_ENTRY_SIZE {
-            return Err(Error::CfbCorrupted {
+            return Err(MsiError::CfbCorrupted {
                 offset: u64::from(index) * DIRECTORY_ENTRY_SIZE as u64,
                 reason: format!(
                     "Directory entry byte slice too short: expected {DIRECTORY_ENTRY_SIZE}, got {}",
@@ -721,7 +723,7 @@ impl DirectoryEntry {
             String::new()
         } else {
             if name_byte_len > 64 || name_byte_len % 2 != 0 {
-                return Err(Error::InvalidDirectoryEntry {
+                return Err(MsiError::InvalidDirectoryEntry {
                     index,
                     reason: format!("invalid directory entry name byte length: {name_byte_len}"),
                 });
@@ -736,7 +738,7 @@ impl DirectoryEntry {
                 u16_chars.push(ch);
             }
 
-            String::from_utf16(&u16_chars).map_err(|err| Error::InvalidDirectoryEntry {
+            String::from_utf16(&u16_chars).map_err(|err| MsiError::InvalidDirectoryEntry {
                 index,
                 reason: format!("invalid UTF-16 in entry name: {err}"),
             })?
@@ -995,7 +997,7 @@ mod tests {
         // Too short
         assert!(matches!(
             DirectoryEntry::parse(&[0; 127], 0),
-            Err(Error::CfbCorrupted { .. })
+            Err(MsiError::CfbCorrupted { .. })
         ));
 
         // Name byte length odd
@@ -1003,14 +1005,14 @@ mod tests {
         bytes[64] = 3; // Odd byte length
         assert!(matches!(
             DirectoryEntry::parse(&bytes, 0),
-            Err(Error::InvalidDirectoryEntry { .. })
+            Err(MsiError::InvalidDirectoryEntry { .. })
         ));
 
         // Name byte length > 64
         bytes[64] = 66;
         assert!(matches!(
             DirectoryEntry::parse(&bytes, 0),
-            Err(Error::InvalidDirectoryEntry { .. })
+            Err(MsiError::InvalidDirectoryEntry { .. })
         ));
 
         // Odd name byte length
@@ -1019,7 +1021,7 @@ mod tests {
         odd_bytes[66] = 1;
         assert!(matches!(
             DirectoryEntry::parse(&odd_bytes, 0),
-            Err(Error::InvalidDirectoryEntry { .. })
+            Err(MsiError::InvalidDirectoryEntry { .. })
         ));
 
         // Invalid UTF-16 surrogate
@@ -1029,7 +1031,7 @@ mod tests {
         bad_utf16[1] = 0xD8; // Lone high surrogate U+D800
         assert!(matches!(
             DirectoryEntry::parse(&bad_utf16, 0),
-            Err(Error::InvalidDirectoryEntry { .. })
+            Err(MsiError::InvalidDirectoryEntry { .. })
         ));
 
         // Invalid object type
@@ -1037,7 +1039,7 @@ mod tests {
         bytes[66] = 9; // Bad object type
         assert!(matches!(
             DirectoryEntry::parse(&bytes, 0),
-            Err(Error::InvalidDirectoryEntry { .. })
+            Err(MsiError::InvalidDirectoryEntry { .. })
         ));
 
         // Invalid color flag
@@ -1045,7 +1047,7 @@ mod tests {
         bytes[67] = 5; // Bad color
         assert!(matches!(
             DirectoryEntry::parse(&bytes, 0),
-            Err(Error::InvalidDirectoryEntry { .. })
+            Err(MsiError::InvalidDirectoryEntry { .. })
         ));
     }
 

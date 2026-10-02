@@ -8,7 +8,7 @@
 //! - `<Payload>` and `<PayloadGroup>` embedded assets.
 //! - Centralized `<Log>` logging configuration.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::wix::xml::XmlNode;
 use std::fmt::Write as _;
 
@@ -127,7 +127,7 @@ impl BurnBundle {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::WixCompiler`] if required bundle attributes are missing.
+    /// Returns [`MsiError::WixCompiler`] if required bundle attributes are missing.
     #[allow(clippy::too_many_lines)]
     pub fn parse(root: &XmlNode) -> Result<Self> {
         let bundle_node = if root.tag == "Bundle" {
@@ -135,7 +135,7 @@ impl BurnBundle {
         } else if let Some(child) = root.children.iter().find(|c| c.tag == "Bundle") {
             child
         } else {
-            return Err(Error::WixCompiler {
+            return Err(MsiError::WixCompiler {
                 element: "Bundle".to_string(),
                 message: "missing root '<Bundle>' element".to_string(),
             });
@@ -143,7 +143,7 @@ impl BurnBundle {
 
         let name = bundle_node
             .attribute("Name")
-            .ok_or_else(|| Error::WixCompiler {
+            .ok_or_else(|| MsiError::WixCompiler {
                 element: "Bundle".to_string(),
                 message: "missing required 'Name' attribute".to_string(),
             })?
@@ -318,7 +318,7 @@ impl BurnCompiler {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::WixCompiler`] on XML parse error or missing bundle structure.
+    /// Returns [`MsiError::WixCompiler`] on XML parse error or missing bundle structure.
     pub fn compile_xml(&self, xml_source: &str) -> Result<BurnBundle> {
         let parser = crate::wix::xml::XmlParser::new();
         let root = parser.parse(xml_source)?;
@@ -337,7 +337,7 @@ impl BurnCompiler {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::WixCompiler`] if required bundle elements or attributes are missing.
+    /// Returns [`MsiError::WixCompiler`] if required bundle elements or attributes are missing.
     pub fn compile_node(&self, root: &XmlNode) -> Result<BurnBundle> {
         BurnBundle::parse(root)
     }
@@ -437,7 +437,7 @@ impl BurnLinker {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::BurnBundleError`] or [`Error::InvalidCabData`] if cabinet packaging fails.
+    /// Returns [`MsiError::BurnBundleError`] or [`MsiError::InvalidCabData`] if cabinet packaging fails.
     pub fn pack_bundle(
         &self,
         bundle: &BurnBundle,
@@ -1088,7 +1088,7 @@ mod tests {
             &bundle.chain,
             &mut |pkg| {
                 if pkg.id == "ExtraMsi" {
-                    Err(Error::BurnBundleError {
+                    Err(MsiError::BurnBundleError {
                         reason: "fail".to_string(),
                     })
                 } else {

@@ -7,7 +7,7 @@
 //! - **FreeBSD rc.d:** Conforming `rc.subr` shell scripts and `sysrc` / `service` management.
 //! - **`SunOS` / illumos SMF:** Service Management Facility XML manifests and `svccfg` / `svcadm` commands.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::platform::paths::TargetOs;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -814,8 +814,8 @@ impl HostSupervisorExecutor {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::UnsupportedPlatformFeature`] if Windows kernel or file system drivers are targeted at non-Windows supervisors.
-    /// Returns [`Error::Io`] on filesystem failure.
+    /// Returns [`MsiError::UnsupportedPlatformFeature`] if Windows kernel or file system drivers are targeted at non-Windows supervisors.
+    /// Returns [`MsiError::Io`] on filesystem failure.
     pub fn install_service(
         &mut self,
         svc: &ServiceDefinition,
@@ -825,7 +825,7 @@ impl HostSupervisorExecutor {
         if (svc.service_type == 0x0000_0001 || svc.service_type == 0x0000_0002)
             && supervisor != SupervisorType::WindowsScm
         {
-            return Err(Error::UnsupportedPlatformFeature {
+            return Err(MsiError::UnsupportedPlatformFeature {
                 feature: if svc.service_type == 0x0000_0001 {
                     "SERVICE_KERNEL_DRIVER".to_string()
                 } else {
@@ -869,7 +869,7 @@ impl HostSupervisorExecutor {
         dir.pop();
         if !dir.exists() {
             fs::create_dir_all(&dir).map_err(|e| {
-                Error::Io(format!(
+                MsiError::Io(format!(
                     "Failed to create supervisor directory {}: {e}",
                     dir.display()
                 ))
@@ -877,7 +877,7 @@ impl HostSupervisorExecutor {
         }
 
         fs::write(&target_path, content.as_bytes()).map_err(|e| {
-            Error::Io(format!(
+            MsiError::Io(format!(
                 "Failed to write service unit file {}: {e}",
                 target_path.display()
             ))
@@ -914,7 +914,7 @@ impl HostSupervisorExecutor {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Io`] if service is not found or supervisor rejects command.
+    /// Returns [`MsiError::Io`] if service is not found or supervisor rejects command.
     #[allow(clippy::too_many_lines)]
     pub fn execute_control(
         &mut self,
@@ -1055,7 +1055,7 @@ impl HostSupervisorExecutor {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Io`] if the command fails, times out, or cannot be spawned.
+    /// Returns [`MsiError::Io`] if the command fails, times out, or cannot be spawned.
     fn run_supervisor_command(cmd_str: &str, timeout_ms: u64) -> Result<()> {
         Self::run_supervisor_command_with_shell("sh", cmd_str, timeout_ms)
     }
@@ -1070,7 +1070,7 @@ impl HostSupervisorExecutor {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Io`] if the command fails, times out, or cannot be spawned.
+    /// Returns [`MsiError::Io`] if the command fails, times out, or cannot be spawned.
     fn run_supervisor_command_with_shell(
         shell: &str,
         cmd_str: &str,
@@ -1084,7 +1084,7 @@ impl HostSupervisorExecutor {
         cmd.stderr(Stdio::piped());
 
         let mut child = cmd.spawn().map_err(|e| {
-            Error::Io(format!(
+            MsiError::Io(format!(
                 "Failed to spawn supervisor command '{cmd_str}': {e}"
             ))
         })?;
@@ -1103,13 +1103,13 @@ impl HostSupervisorExecutor {
                     .as_mut()
                     .map(|err| err.read_to_end(&mut stderr_bytes));
                 let stderr = String::from_utf8_lossy(&stderr_bytes);
-                return Err(Error::Io(format!(
+                return Err(MsiError::Io(format!(
                     "Supervisor command '{cmd_str}' failed with status {status}: {stderr}"
                 )));
             }
             if start.elapsed() > timeout {
                 let _ = child.kill();
-                return Err(Error::Io(format!(
+                return Err(MsiError::Io(format!(
                     "Supervisor command '{cmd_str}' timed out after {timeout_ms}ms"
                 )));
             }
@@ -1121,7 +1121,7 @@ impl HostSupervisorExecutor {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Io`] on filesystem deletion failure.
+    /// Returns [`MsiError::Io`] on filesystem deletion failure.
     pub fn rollback(&mut self) -> Result<()> {
         let services_to_rollback = std::mem::take(&mut self.installed_services);
         for svc in services_to_rollback.into_iter().rev() {
@@ -1510,7 +1510,7 @@ mod tests {
     #[test]
     fn test_execute_control_live_command_error() {
         let mut executor = HostSupervisorExecutor::new().with_dry_run(false);
-        // Attempting to control a nonexistent service in live mode fails with Error::Io
+        // Attempting to control a nonexistent service in live mode fails with MsiError::Io
         let res = executor.execute_control(
             "nonexistent-mock-service-msi",
             ServiceControlAction::Start,
@@ -1710,7 +1710,7 @@ mod tests {
             let res = executor.install_service(&kernel_svc, sup, Some(&temp_dir));
             assert_eq!(
                 res,
-                Err(Error::UnsupportedPlatformFeature {
+                Err(MsiError::UnsupportedPlatformFeature {
                     feature: "SERVICE_KERNEL_DRIVER".to_string(),
                     target_os: sup.target_os(),
                     reason: "Windows NT kernel and file system drivers cannot be installed or supervised by POSIX service managers".to_string(),
@@ -1720,7 +1720,7 @@ mod tests {
             let res_fs = executor.install_service(&fs_svc, sup, Some(&temp_dir));
             assert_eq!(
                 res_fs,
-                Err(Error::UnsupportedPlatformFeature {
+                Err(MsiError::UnsupportedPlatformFeature {
                     feature: "SERVICE_FILE_SYSTEM_DRIVER".to_string(),
                     target_os: sup.target_os(),
                     reason: "Windows NT kernel and file system drivers cannot be installed or supervised by POSIX service managers".to_string(),

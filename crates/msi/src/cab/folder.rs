@@ -1,6 +1,6 @@
 //! Cabinet File Folder structures and compression types (`CFFOLDER`).
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 
 /// Uncompressed Cabinet folder type mask.
 pub const TCOMP_TYPE_NONE: u16 = 0x0000;
@@ -53,7 +53,7 @@ impl CompressionType {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidCabData`] if the type or window size is invalid.
+    /// Returns [`MsiError::InvalidCabData`] if the type or window size is invalid.
     pub fn from_u16(raw: u16) -> Result<Self> {
         let type_mask = raw & TCOMP_MASK_TYPE;
         match type_mask {
@@ -63,7 +63,7 @@ impl CompressionType {
             TCOMP_TYPE_LZX => {
                 let window = ((raw & TCOMP_MASK_WINDOW) >> TCOMP_SHIFT_WINDOW) as u8;
                 if !(15..=21).contains(&window) {
-                    return Err(Error::InvalidCabData {
+                    return Err(MsiError::InvalidCabData {
                         reason: format!("invalid LZX window bits: {window} (must be 15..=21)"),
                     });
                 }
@@ -71,7 +71,7 @@ impl CompressionType {
                     window_bits: window,
                 })
             }
-            other => Err(Error::InvalidCabData {
+            other => Err(MsiError::InvalidCabData {
                 reason: format!("unknown compression type code 0x{other:04X}"),
             }),
         }
@@ -147,11 +147,11 @@ impl CfFolder {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidCabData`] if the slice is truncated or compression type is invalid.
+    /// Returns [`MsiError::InvalidCabData`] if the slice is truncated or compression type is invalid.
     pub fn parse(bytes: &[u8], folder_reserve_len: usize) -> Result<(Self, usize)> {
         let expected_len = 8 + folder_reserve_len;
         if bytes.len() < expected_len {
-            return Err(Error::InvalidCabData {
+            return Err(MsiError::InvalidCabData {
                 reason: format!(
                     "folder structure too short: {} bytes (expected {expected_len})",
                     bytes.len()

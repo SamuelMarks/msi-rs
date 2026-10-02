@@ -14,7 +14,7 @@
 //!   - High-contrast focus ring rendering (`Color32::FOCUS_RING`).
 //!   - Screen reader accessibility integration via `AccessKit` node tree publishing.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::ui::controls::{ControlDefinition, ControlType};
 use crate::ui::engine::UiEngine;
 use crate::ui::events::DialogReturnCode;
@@ -305,7 +305,7 @@ impl BackgroundTransactionWorker {
         self.cancelled = true;
         self.command_tx
             .send(TransactionWorkerCommand::Cancel)
-            .map_err(|e| Error::WorkerIpcError {
+            .map_err(|e| MsiError::WorkerIpcError {
                 reason: format!("Failed to send cancel command to worker thread: {e}"),
             })
     }
@@ -339,7 +339,7 @@ impl BackgroundTransactionWorker {
     /// Returns [`Error`] if the worker task failed or panicked.
     pub fn join(mut self) -> Result<bool> {
         if let Some(handle) = self.worker_handle.take() {
-            handle.join().map_err(|_| Error::WorkerIpcError {
+            handle.join().map_err(|_| MsiError::WorkerIpcError {
                 reason: "Transaction worker thread panicked".to_string(),
             })?
         } else {
@@ -751,7 +751,7 @@ impl GuiDesktopRuntime {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error`] if condition or action evaluation fails.
+    /// Returns [`crate::error::MsiError`] if condition or action evaluation fails.
     #[allow(clippy::cast_possible_wrap, clippy::too_many_lines)]
     pub fn process_event(&mut self, event: GuiInputEvent) -> Result<Option<DialogReturnCode>> {
         let Some(dlg) = self.engine.active_dialog().cloned() else {
@@ -903,7 +903,7 @@ impl GuiDesktopRuntime {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error`] if event handling or action execution fails.
+    /// Returns [`crate::error::MsiError`] if event handling or action execution fails.
     pub fn run_event_loop(
         &mut self,
         events: impl IntoIterator<Item = GuiInputEvent>,
@@ -924,7 +924,7 @@ impl GuiDesktopRuntime {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error`] if event handling or action execution fails.
+    /// Returns [`crate::error::MsiError`] if event handling or action execution fails.
     fn run_event_loop_slice(
         &mut self,
         events: &[GuiInputEvent],

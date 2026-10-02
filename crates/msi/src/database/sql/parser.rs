@@ -4,7 +4,7 @@ use crate::database::sql::ast::{
     BinaryOp, Expression, OrderByTerm, OrderDirection, SqlColumnDef, SqlType, SqlValue, Statement,
 };
 use crate::database::sql::lexer::Token;
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 
 /// Parser for the Windows Installer SQL dialect.
 #[derive(Debug, Clone)]
@@ -34,9 +34,9 @@ impl Parser {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Sql`] on syntax errors.
+    /// Returns [`MsiError::Sql`] on syntax errors.
     pub fn parse(&mut self) -> Result<Statement> {
-        let tok = self.peek().ok_or_else(|| Error::Sql {
+        let tok = self.peek().ok_or_else(|| MsiError::Sql {
             message: "unexpected end of SQL input".to_string(),
         })?;
 
@@ -48,7 +48,7 @@ impl Parser {
             Token::Create => self.parse_create_table(),
             Token::Alter => self.parse_alter_table(),
             Token::Drop => self.parse_drop_table(),
-            other => Err(Error::Sql {
+            other => Err(MsiError::Sql {
                 message: format!("unexpected leading token {other:?} in SQL query"),
             }),
         }
@@ -70,13 +70,13 @@ impl Parser {
 
     /// Verifies and consumes the expected token.
     fn expect(&mut self, expected: &Token) -> Result<()> {
-        let tok = self.next_token().ok_or_else(|| Error::Sql {
+        let tok = self.next_token().ok_or_else(|| MsiError::Sql {
             message: format!("expected token {expected:?}, but reached end of input"),
         })?;
         if &tok == expected {
             Ok(())
         } else {
-            Err(Error::Sql {
+            Err(MsiError::Sql {
                 message: format!("expected token {expected:?}, found {tok:?}"),
             })
         }
@@ -84,12 +84,12 @@ impl Parser {
 
     /// Consumes and returns an identifier token.
     fn expect_ident(&mut self) -> Result<String> {
-        let tok = self.next_token().ok_or_else(|| Error::Sql {
+        let tok = self.next_token().ok_or_else(|| MsiError::Sql {
             message: "expected identifier, but reached end of input".to_string(),
         })?;
         match tok {
             Token::Identifier(s) => Ok(s),
-            other => Err(Error::Sql {
+            other => Err(MsiError::Sql {
                 message: format!("expected identifier, found {other:?}"),
             }),
         }
@@ -353,7 +353,7 @@ impl Parser {
     /// Parses a single column definition in `CREATE TABLE` or `ALTER TABLE`.
     fn parse_column_def(&mut self) -> Result<SqlColumnDef> {
         let name = self.expect_ident()?;
-        let type_tok = self.next_token().ok_or_else(|| Error::Sql {
+        let type_tok = self.next_token().ok_or_else(|| MsiError::Sql {
             message: "unexpected end of column type definition".to_string(),
         })?;
 
@@ -373,7 +373,7 @@ impl Parser {
             Token::Long => SqlType::Long,
             Token::Object => SqlType::Stream,
             other => {
-                return Err(Error::Sql {
+                return Err(MsiError::Sql {
                     message: format!("unknown data type token {other:?} for column '{name}'"),
                 });
             }
@@ -415,7 +415,7 @@ impl Parser {
 
     /// Parses a literal or parameter placeholder value.
     fn parse_value(&mut self) -> Result<SqlValue> {
-        let tok = self.next_token().ok_or_else(|| Error::Sql {
+        let tok = self.next_token().ok_or_else(|| MsiError::Sql {
             message: "unexpected end of expression value".to_string(),
         })?;
 
@@ -424,7 +424,7 @@ impl Parser {
             Token::IntegerLiteral(n) => Ok(SqlValue::Integer(n)),
             Token::QuestionMark => Ok(SqlValue::Parameter),
             Token::Null => Ok(SqlValue::Null),
-            other => Err(Error::Sql {
+            other => Err(MsiError::Sql {
                 message: format!("expected literal value, found {other:?}"),
             }),
         }
@@ -486,7 +486,7 @@ impl Parser {
             return Ok(Expression::IsNull { column, negated });
         }
 
-        let op_tok = self.next_token().ok_or_else(|| Error::Sql {
+        let op_tok = self.next_token().ok_or_else(|| MsiError::Sql {
             message: format!("expected comparison operator after column '{column}'"),
         })?;
 
@@ -499,7 +499,7 @@ impl Parser {
             Token::GreaterOrEqual => BinaryOp::GreaterOrEqual,
             Token::Like => BinaryOp::Like,
             other => {
-                return Err(Error::Sql {
+                return Err(MsiError::Sql {
                     message: format!("unexpected comparison operator {other:?}"),
                 });
             }

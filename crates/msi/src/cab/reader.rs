@@ -6,7 +6,7 @@ use crate::cab::folder::{CfFolder, CompressionType};
 use crate::cab::header::CfHeader;
 use crate::cab::lzx::LzxState;
 use crate::cab::mszip::MszipEngine;
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 
 /// Reader for inspecting and extracting files from a Microsoft Cabinet (`.cab`) file.
 #[derive(Debug, Clone, Default)]
@@ -47,8 +47,8 @@ impl CabinetReader {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidCabSignature`], [`Error::InvalidCabVersion`], or
-    /// [`Error::InvalidCabData`] if the archive is corrupted.
+    /// Returns [`MsiError::InvalidCabSignature`], [`MsiError::InvalidCabVersion`], or
+    /// [`MsiError::InvalidCabData`] if the archive is corrupted.
     pub fn new(bytes: &[u8]) -> Result<Self> {
         let (header, header_len) = CfHeader::parse(bytes)?;
         let folder_reserve = header
@@ -71,7 +71,7 @@ impl CabinetReader {
         let mut files = Vec::with_capacity(header.file_count as usize);
         for _ in 0..header.file_count {
             if file_cursor >= bytes.len() {
-                return Err(Error::InvalidCabData {
+                return Err(MsiError::InvalidCabData {
                     reason: "CFFILE entry extends beyond end of file".to_string(),
                 });
             }
@@ -146,12 +146,12 @@ impl CabinetReader {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::CabinetFileNotFound`] if not found, [`Error::Unsupported`] for
+    /// Returns [`MsiError::CabinetFileNotFound`] if not found, [`MsiError::Unsupported`] for
     /// multi-cabinet continuation files, or decompression error.
     pub fn extract_file(&self, name: &str) -> Result<Vec<u8>> {
         let file = self
             .find_file(name)
-            .ok_or_else(|| Error::CabinetFileNotFound {
+            .ok_or_else(|| MsiError::CabinetFileNotFound {
                 name: name.to_string(),
             })?;
 
@@ -159,7 +159,7 @@ impl CabinetReader {
             FolderIndex::Index(_) => self.extract_file_chunk(name),
             FolderIndex::ContinuedFromPrev
             | FolderIndex::ContinuedToNext
-            | FolderIndex::SpansBoth => Err(Error::Unsupported {
+            | FolderIndex::SpansBoth => Err(MsiError::Unsupported {
                 name: "multi-cabinet file continuation".to_string(),
             }),
         }
@@ -179,11 +179,11 @@ impl CabinetReader {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::CabinetFileNotFound`] or decompression error.
+    /// Returns [`MsiError::CabinetFileNotFound`] or decompression error.
     pub fn extract_file_chunk(&self, name: &str) -> Result<Vec<u8>> {
         let file = self
             .find_file(name)
-            .ok_or_else(|| Error::CabinetFileNotFound {
+            .ok_or_else(|| MsiError::CabinetFileNotFound {
                 name: name.to_string(),
             })?;
 
@@ -196,7 +196,7 @@ impl CabinetReader {
         let folder = self
             .folders
             .get(folder_idx)
-            .ok_or_else(|| Error::InvalidCabData {
+            .ok_or_else(|| MsiError::InvalidCabData {
                 reason: format!("invalid folder index {folder_idx}"),
             })?;
 
@@ -225,7 +225,7 @@ impl CabinetReader {
                 break;
             }
             if cursor >= self.data.len() {
-                return Err(Error::InvalidCabData {
+                return Err(MsiError::InvalidCabData {
                     reason: "CFDATA block offset extends beyond file".to_string(),
                 });
             }
@@ -251,7 +251,7 @@ impl CabinetReader {
         let start = file.folder_offset as usize;
         let end = start + file.file_size as usize;
         if folder_decompressed.len() < end {
-            return Err(Error::InvalidCabData {
+            return Err(MsiError::InvalidCabData {
                 reason: format!(
                     "decompressed folder produced {} bytes, expected at least {end}",
                     folder_decompressed.len()

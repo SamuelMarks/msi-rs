@@ -23,7 +23,7 @@ use crate::database::catalogs::TableSchema;
 use crate::database::column::{ColumnDef, DataType};
 use crate::database::tables::record::{FieldValue, Record};
 use crate::database::tables::types::ComponentName;
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 
 /// Standard root keys for `Registry` table.
 pub mod registry_root {
@@ -84,10 +84,10 @@ impl RegistryRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] or [`Error::RecordLengthMismatch`] on invalid record.
+    /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 6 {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 6,
                 actual: rec.len(),
             });
@@ -95,7 +95,7 @@ impl RegistryRow {
         let registry = match rec.get(0) {
             Some(FieldValue::String(s)) => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "Registry.Registry".to_string(),
                     reason: "missing Registry PK".to_string(),
                 })
@@ -120,7 +120,7 @@ impl RegistryRow {
         let component = match rec.get(5) {
             Some(FieldValue::String(c)) => ComponentName::new(c.as_str())?,
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "Registry.Component_".to_string(),
                     reason: "missing Component_".to_string(),
                 })
@@ -242,10 +242,10 @@ impl EnvironmentRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] or [`Error::RecordLengthMismatch`] on invalid record.
+    /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 4 {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 4,
                 actual: rec.len(),
             });
@@ -253,7 +253,7 @@ impl EnvironmentRow {
         let environment = match rec.get(0) {
             Some(FieldValue::String(s)) => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "Environment.Environment".to_string(),
                     reason: "missing Environment PK".to_string(),
                 })
@@ -262,7 +262,7 @@ impl EnvironmentRow {
         let name = match rec.get(1) {
             Some(FieldValue::String(s)) => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "Environment.Name".to_string(),
                     reason: "missing Name".to_string(),
                 })
@@ -271,7 +271,7 @@ impl EnvironmentRow {
         let value = match rec.get(2) {
             Some(FieldValue::String(s)) => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "Environment.Value".to_string(),
                     reason: "missing Value".to_string(),
                 })
@@ -280,7 +280,7 @@ impl EnvironmentRow {
         let component = match rec.get(3) {
             Some(FieldValue::String(s)) => ComponentName::new(s.as_str())?,
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "Environment.Component_".to_string(),
                     reason: "missing Component_".to_string(),
                 })
@@ -450,7 +450,7 @@ impl MsiServiceConfigRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] on invalid input.
+    /// Returns [`MsiError::Validation`] on invalid input.
     pub fn new(
         msi_service_config: impl Into<String>,
         name: impl Into<String>,
@@ -479,13 +479,13 @@ impl MsiServiceConfigRow {
         component: ComponentName,
     ) -> Result<Self> {
         if msi_service_config.is_empty() {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "MsiServiceConfig.MsiServiceConfig".to_string(),
                 reason: "primary key cannot be empty".to_string(),
             });
         }
         if msi_service_config.len() > 72 {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "MsiServiceConfig.MsiServiceConfig".to_string(),
                 reason: format!(
                     "identifier length {} exceeds maximum 72",
@@ -494,7 +494,7 @@ impl MsiServiceConfigRow {
             });
         }
         if name.is_empty() {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "MsiServiceConfig.Name".to_string(),
                 reason: "service name cannot be empty".to_string(),
             });
@@ -541,10 +541,10 @@ impl MsiServiceConfigRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::RecordLengthMismatch`] or [`Error::Validation`] on invalid data.
+    /// Returns [`MsiError::RecordLengthMismatch`] or [`MsiError::Validation`] on invalid data.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 6 {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 6,
                 actual: rec.len(),
             });
@@ -553,7 +553,7 @@ impl MsiServiceConfigRow {
         let msi_service_config = match rec.get(0) {
             Some(FieldValue::String(s)) if !s.is_empty() => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "MsiServiceConfig.MsiServiceConfig".to_string(),
                     reason: "missing or empty primary key".to_string(),
                 });
@@ -563,7 +563,7 @@ impl MsiServiceConfigRow {
         let name = match rec.get(1) {
             Some(FieldValue::String(s)) if !s.is_empty() => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "MsiServiceConfig.Name".to_string(),
                     reason: "missing or empty service name".to_string(),
                 });
@@ -590,7 +590,7 @@ impl MsiServiceConfigRow {
         let component = match rec.get(5) {
             Some(FieldValue::String(s)) => ComponentName::new(s.as_str())?,
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "MsiServiceConfig.Component_".to_string(),
                     reason: "missing or empty component foreign key".to_string(),
                 });
@@ -685,7 +685,7 @@ impl ServiceConfigRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] on invalid input.
+    /// Returns [`MsiError::Validation`] on invalid input.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         service_name: impl Into<String>,
@@ -734,7 +734,7 @@ impl ServiceConfigRow {
         reboot_message: Option<String>,
     ) -> Result<Self> {
         if service_name.is_empty() {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "ServiceConfig.ServiceName".to_string(),
                 reason: "service name cannot be empty".to_string(),
             });
@@ -800,10 +800,10 @@ impl ServiceConfigRow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::RecordLengthMismatch`] or [`Error::Validation`] on invalid data.
+    /// Returns [`MsiError::RecordLengthMismatch`] or [`MsiError::Validation`] on invalid data.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 12 {
-            return Err(Error::RecordLengthMismatch {
+            return Err(MsiError::RecordLengthMismatch {
                 expected: 12,
                 actual: rec.len(),
             });
@@ -812,7 +812,7 @@ impl ServiceConfigRow {
         let service_name = match rec.get(0) {
             Some(FieldValue::String(s)) if !s.is_empty() => s.clone(),
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "ServiceConfig.ServiceName".to_string(),
                     reason: "missing or empty service name".to_string(),
                 });
@@ -822,7 +822,7 @@ impl ServiceConfigRow {
         let component = match rec.get(1) {
             Some(FieldValue::String(s)) => ComponentName::new(s.as_str())?,
             _ => {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: "ServiceConfig.Component_".to_string(),
                     reason: "missing or empty component foreign key".to_string(),
                 });
@@ -1210,7 +1210,7 @@ mod tests {
         ]);
         assert_eq!(
             RegistryRow::from_record(&bad_rec),
-            Err(Error::Validation {
+            Err(MsiError::Validation {
                 element: "Registry.Registry".to_string(),
                 reason: "missing Registry PK".to_string(),
             })
@@ -1227,7 +1227,7 @@ mod tests {
         ]);
         assert_eq!(
             RegistryRow::from_record(&bad_rec2),
-            Err(Error::Validation {
+            Err(MsiError::Validation {
                 element: "Registry.Component_".to_string(),
                 reason: "missing Component_".to_string(),
             })
@@ -1268,7 +1268,7 @@ mod tests {
         ]);
         assert_eq!(
             EnvironmentRow::from_record(&bad_rec),
-            Err(Error::Validation {
+            Err(MsiError::Validation {
                 element: "Environment.Environment".to_string(),
                 reason: "missing Environment PK".to_string(),
             })
@@ -1283,7 +1283,7 @@ mod tests {
         ]);
         assert_eq!(
             EnvironmentRow::from_record(&bad_rec1),
-            Err(Error::Validation {
+            Err(MsiError::Validation {
                 element: "Environment.Name".to_string(),
                 reason: "missing Name".to_string(),
             })
@@ -1298,7 +1298,7 @@ mod tests {
         ]);
         assert_eq!(
             EnvironmentRow::from_record(&bad_rec2),
-            Err(Error::Validation {
+            Err(MsiError::Validation {
                 element: "Environment.Value".to_string(),
                 reason: "missing Value".to_string(),
             })
@@ -1313,7 +1313,7 @@ mod tests {
         ]);
         assert_eq!(
             EnvironmentRow::from_record(&bad_rec3),
-            Err(Error::Validation {
+            Err(MsiError::Validation {
                 element: "Environment.Component_".to_string(),
                 reason: "missing Component_".to_string(),
             })
@@ -1368,7 +1368,7 @@ mod tests {
     /// Returns error when induced failure occurs.
     fn check_msi_service_config_pipeline(stage_to_fail: u8) -> Result<()> {
         let comp = if stage_to_fail == 1 {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "ComponentName".to_string(),
                 reason: "empty".to_string(),
             });
@@ -1377,7 +1377,7 @@ mod tests {
         };
 
         let row = if stage_to_fail == 2 {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "MsiServiceConfig".to_string(),
                 reason: "empty".to_string(),
             });
@@ -1400,7 +1400,7 @@ mod tests {
         let parsed = MsiServiceConfigRow::from_record(&rec);
         if stage_to_fail == 3 {
             assert!(parsed.is_err());
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "short".to_string(),
                 reason: "short".to_string(),
             });
@@ -1408,7 +1408,7 @@ mod tests {
         assert_eq!(parsed.as_ref(), Ok(&row));
 
         if stage_to_fail == 4 {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "MsiServiceConfig".to_string(),
                 reason: "empty".to_string(),
             });
@@ -1539,7 +1539,7 @@ mod tests {
     /// Returns error when induced failure occurs.
     fn check_service_config_pipeline(stage_to_fail: u8) -> Result<()> {
         let comp = if stage_to_fail == 1 {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "ComponentName".to_string(),
                 reason: "empty".to_string(),
             });
@@ -1548,7 +1548,7 @@ mod tests {
         };
 
         let row = if stage_to_fail == 2 {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "ServiceConfig".to_string(),
                 reason: "empty".to_string(),
             });
@@ -1577,7 +1577,7 @@ mod tests {
         let parsed = ServiceConfigRow::from_record(&rec);
         if stage_to_fail == 3 {
             assert!(parsed.is_err());
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "short".to_string(),
                 reason: "short".to_string(),
             });
@@ -1585,7 +1585,7 @@ mod tests {
         assert_eq!(parsed.as_ref(), Ok(&row));
 
         if stage_to_fail == 4 {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "ServiceConfig".to_string(),
                 reason: "empty".to_string(),
             });

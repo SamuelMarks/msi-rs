@@ -6,7 +6,7 @@
 //! - `WiX` v5: `http://wixtoolset.org/schemas/v5/wxs`
 //! - Cross-Platform POSIX Extension: `http://schemas.msi-rs.org/wix/posix/v1`
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use std::fmt;
 
 /// Standard `WiX` v3 XML namespace URI.
@@ -47,14 +47,14 @@ impl WixSchemaVersion {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] if the namespace URI is unrecognized.
+    /// Returns [`MsiError::Validation`] if the namespace URI is unrecognized.
     pub fn from_uri(uri: &str) -> Result<Self> {
         match uri.trim() {
             WIX_V3_NAMESPACE => Ok(Self::V3),
             WIX_V4_NAMESPACE => Ok(Self::V4),
             WIX_V5_NAMESPACE => Ok(Self::V5),
             WIX_POSIX_V1_NAMESPACE => Ok(Self::PosixV1),
-            other => Err(Error::Validation {
+            other => Err(MsiError::Validation {
                 element: "WixSchemaVersion".to_string(),
                 reason: format!("unrecognized WiX schema namespace URI: '{other}'"),
             }),

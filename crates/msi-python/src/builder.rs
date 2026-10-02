@@ -374,7 +374,7 @@ impl PyPackageBuilder {
         file_id: Option<String>,
     ) -> PyResult<String> {
         let path = Path::new(source_path);
-        let data = fs::read(path).map_err(|e| to_py_err(&msi::Error::Io(e.to_string())))?;
+        let data = fs::read(path).map_err(|e| to_py_err(&msi::MsiError::Io(e.to_string())))?;
 
         let file_name_os = path
             .file_name()
@@ -493,7 +493,7 @@ impl PyPackageBuilder {
 #[allow(clippy::multiple_inherent_impl)]
 impl PyPackageBuilder {
     /// Finalizes staged file packaging into an embedded cabinet archive.
-    fn finalize_builder(&self) -> Result<PackageBuilder, msi::Error> {
+    fn finalize_builder(&self) -> Result<PackageBuilder, msi::MsiError> {
         let mut builder = self.inner.clone();
         if !self.staged_files.is_empty() {
             let mut cab_writer =

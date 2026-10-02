@@ -2,7 +2,7 @@
 //!
 //! Grounded directly in official Windows Installer SDK specifications.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use std::fmt;
 
 /// Normalizes a GUID string by wrapping raw 36-character UUIDs with curly braces.
@@ -17,7 +17,7 @@ fn normalize_guid(s: &str) -> String {
 /// Validate whether a string conforms to the Windows Installer GUID format `{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}`.
 fn validate_guid(s: &str, field_name: &'static str) -> Result<()> {
     if s.len() != 38 {
-        return Err(Error::Validation {
+        return Err(MsiError::Validation {
             element: field_name.to_string(),
             reason: format!(
                 "GUID must be exactly 38 characters in '{{...}}' format, got {}",
@@ -27,7 +27,7 @@ fn validate_guid(s: &str, field_name: &'static str) -> Result<()> {
     }
     let bytes = s.as_bytes();
     if bytes[0] != b'{' || bytes[37] != b'}' {
-        return Err(Error::Validation {
+        return Err(MsiError::Validation {
             element: field_name.to_string(),
             reason: "GUID must start with '{' and end with '}'".to_string(),
         });
@@ -38,13 +38,13 @@ fn validate_guid(s: &str, field_name: &'static str) -> Result<()> {
         }
         if i == 9 || i == 14 || i == 19 || i == 24 {
             if b != b'-' {
-                return Err(Error::Validation {
+                return Err(MsiError::Validation {
                     element: field_name.to_string(),
                     reason: format!("expected '-' at position {i} in GUID"),
                 });
             }
         } else if !b.is_ascii_hexdigit() {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: field_name.to_string(),
                 reason: format!(
                     "invalid non-hex character '{}' in GUID at position {i}",
@@ -159,7 +159,7 @@ impl ComponentGuid {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] if the GUID format is invalid.
+    /// Returns [`MsiError::Validation`] if the GUID format is invalid.
     pub fn parse(guid: impl Into<String>) -> Result<Self> {
         let s = normalize_guid(&guid.into());
         validate_guid(&s, "ComponentGuid")?;
@@ -286,7 +286,7 @@ impl ProductCode {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] if the GUID format is invalid.
+    /// Returns [`MsiError::Validation`] if the GUID format is invalid.
     pub fn parse(code: impl Into<String>) -> Result<Self> {
         let s = normalize_guid(&code.into());
         validate_guid(&s, "ProductCode")?;
@@ -325,7 +325,7 @@ impl UpgradeCode {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] if the GUID format is invalid.
+    /// Returns [`MsiError::Validation`] if the GUID format is invalid.
     pub fn parse(code: impl Into<String>) -> Result<Self> {
         let s = normalize_guid(&code.into());
         validate_guid(&s, "UpgradeCode")?;
@@ -362,7 +362,7 @@ impl TableId {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] if `name` is empty or exceeds 64 characters.
+    /// Returns [`MsiError::Validation`] if `name` is empty or exceeds 64 characters.
     pub fn new(name: impl Into<String>) -> Result<Self> {
         Self::new_inner(name.into())
     }
@@ -370,7 +370,7 @@ impl TableId {
     /// Validates and constructs a [`TableId`] from an owned string.
     fn new_inner(s: String) -> Result<Self> {
         if s.is_empty() || s.len() > 64 {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "TableId".to_string(),
                 reason: format!(
                     "Table identifier must be between 1 and 64 characters, got {}",
@@ -411,10 +411,10 @@ impl ColumnIndex {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] if index is 0.
+    /// Returns [`MsiError::Validation`] if index is 0.
     pub fn new(index: u16) -> Result<Self> {
         if index == 0 {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "ColumnIndex".to_string(),
                 reason: "Column index in MSI table must be 1-based".to_string(),
             });
@@ -630,7 +630,7 @@ impl FileKey {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] if `key` is empty.
+    /// Returns [`MsiError::Validation`] if `key` is empty.
     pub fn new(key: impl Into<String>) -> Result<Self> {
         Self::new_inner(key.into())
     }
@@ -638,7 +638,7 @@ impl FileKey {
     /// Validates and constructs a [`FileKey`] from an owned string.
     fn new_inner(s: String) -> Result<Self> {
         if s.is_empty() {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "FileKey".to_string(),
                 reason: "FileKey must not be empty".to_string(),
             });
@@ -705,7 +705,7 @@ impl FeatureName {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] if `name` is empty or exceeds 38 characters.
+    /// Returns [`MsiError::Validation`] if `name` is empty or exceeds 38 characters.
     pub fn new(name: impl Into<String>) -> Result<Self> {
         Self::new_inner(name.into())
     }
@@ -713,7 +713,7 @@ impl FeatureName {
     /// Validates and constructs a [`FeatureName`] from an owned string.
     fn new_inner(s: String) -> Result<Self> {
         if s.is_empty() || s.len() > 38 {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "FeatureName".to_string(),
                 reason: format!(
                     "FeatureName must be between 1 and 38 characters, got {}",
@@ -785,7 +785,7 @@ impl ComponentName {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] if `name` is empty.
+    /// Returns [`MsiError::Validation`] if `name` is empty.
     pub fn new(name: impl Into<String>) -> Result<Self> {
         Self::new_inner(name.into())
     }
@@ -793,7 +793,7 @@ impl ComponentName {
     /// Validates and constructs a [`ComponentName`] from an owned string.
     fn new_inner(s: String) -> Result<Self> {
         if s.is_empty() {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "ComponentName".to_string(),
                 reason: "ComponentName must not be empty".to_string(),
             });
@@ -863,7 +863,7 @@ impl DirectoryId {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] if `id` is empty.
+    /// Returns [`MsiError::Validation`] if `id` is empty.
     pub fn new(id: impl Into<String>) -> Result<Self> {
         Self::new_inner(id.into())
     }
@@ -871,7 +871,7 @@ impl DirectoryId {
     /// Validates and constructs a [`DirectoryId`] from an owned string.
     fn new_inner(s: String) -> Result<Self> {
         if s.is_empty() {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "DirectoryId".to_string(),
                 reason: "DirectoryId must not be empty".to_string(),
             });
@@ -938,7 +938,7 @@ impl PropertyName {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] if `name` is empty or exceeds 72 characters.
+    /// Returns [`MsiError::Validation`] if `name` is empty or exceeds 72 characters.
     pub fn new(name: impl Into<String>) -> Result<Self> {
         Self::new_inner(name.into())
     }
@@ -946,7 +946,7 @@ impl PropertyName {
     /// Validates and constructs a [`PropertyName`] from an owned string.
     fn new_inner(s: String) -> Result<Self> {
         if s.is_empty() || s.len() > 72 {
-            return Err(Error::Validation {
+            return Err(MsiError::Validation {
                 element: "PropertyName".to_string(),
                 reason: format!(
                     "PropertyName must be between 1 and 72 characters, got {}",

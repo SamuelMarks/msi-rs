@@ -6,7 +6,7 @@
 //! Provides parsing and linker support for `http://schemas.microsoft.com/wix/HttpExtension`.
 
 use crate::database::tables::record::{FieldValue, Record};
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::wix::extensions::WixExtension;
 use crate::wix::linker::LinkedDatabase;
 use crate::wix::wixobj::{IntermediateSection, IntermediateTable};
@@ -31,13 +31,13 @@ impl HttpExtension {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::WixCompiler`] if required attributes are missing.
+    /// Returns [`MsiError::WixCompiler`] if required attributes are missing.
     fn compile_url_reservation(
         node: &XmlNode,
         parent_id: Option<&str>,
         tables: &mut HashMap<String, IntermediateTable>,
     ) -> Result<()> {
-        let url = node.attribute("Url").ok_or_else(|| Error::WixCompiler {
+        let url = node.attribute("Url").ok_or_else(|| MsiError::WixCompiler {
             element: "http:UrlReservation".to_string(),
             message: "missing required 'Url' attribute".to_string(),
         })?;
@@ -80,13 +80,13 @@ impl HttpExtension {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::WixCompiler`] if required attributes are missing.
+    /// Returns [`MsiError::WixCompiler`] if required attributes are missing.
     fn compile_certificate_ref(
         node: &XmlNode,
         parent_id: Option<&str>,
         tables: &mut HashMap<String, IntermediateTable>,
     ) -> Result<()> {
-        let id = node.attribute("Id").ok_or_else(|| Error::WixCompiler {
+        let id = node.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
             element: "http:CertificateRef".to_string(),
             message: "missing required 'Id' attribute".to_string(),
         })?;
@@ -128,7 +128,7 @@ impl WixExtension for HttpExtension {
         match tag_name {
             "UrlReservation" => Self::compile_url_reservation(node, parent_id, tables),
             "CertificateRef" => Self::compile_certificate_ref(node, parent_id, tables),
-            _ => Err(Error::WixExtension {
+            _ => Err(MsiError::WixExtension {
                 extension: self.id().to_string(),
                 message: format!("unsupported element: '{tag_name}'"),
             }),
@@ -261,7 +261,7 @@ mod tests {
         let mut tables = HashMap::new();
 
         let res = ext.compile_node(&node, Some("cmp1"), &mut section, &mut tables);
-        assert!(matches!(res, Err(Error::WixCompiler { .. })));
+        assert!(matches!(res, Err(MsiError::WixCompiler { .. })));
     }
 
     /// Tests compiling `<http:CertificateRef>` with explicit attributes.
@@ -295,10 +295,10 @@ mod tests {
         let mut tables = HashMap::new();
 
         let res = ext.compile_node(&node, Some("cmp1"), &mut section, &mut tables);
-        assert!(matches!(res, Err(Error::WixCompiler { .. })));
+        assert!(matches!(res, Err(MsiError::WixCompiler { .. })));
     }
 
-    /// Tests compiling unsupported elements returns [`Error::WixExtension`].
+    /// Tests compiling unsupported elements returns [`MsiError::WixExtension`].
     #[test]
     fn test_unsupported_element() {
         let ext = HttpExtension::new();
@@ -310,7 +310,7 @@ mod tests {
         let mut tables = HashMap::new();
 
         let res = ext.compile_node(&node, Some("cmp1"), &mut section, &mut tables);
-        assert!(matches!(res, Err(Error::WixExtension { .. })));
+        assert!(matches!(res, Err(MsiError::WixExtension { .. })));
     }
 
     /// Tests linking behavior of `HttpExtension` with reservations and certificates.

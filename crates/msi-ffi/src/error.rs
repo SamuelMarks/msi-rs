@@ -134,7 +134,7 @@ pub extern "C" fn msi_clear_last_error() {
     clear_last_error();
 }
 
-/// Maps an internal [`msi::Error`] to an FFI error code.
+/// Maps an internal [`msi::MsiError`] to an FFI error code.
 ///
 /// # Arguments
 ///
@@ -144,29 +144,29 @@ pub extern "C" fn msi_clear_last_error() {
 ///
 /// Corresponding FFI error code constant.
 #[must_use]
-pub const fn map_msi_error(err: &msi::Error) -> i32 {
+pub const fn map_msi_error(err: &msi::MsiError) -> i32 {
     match err {
-        msi::Error::Validation { .. } => MSI_ERROR_VALIDATION,
-        msi::Error::Io(_) => MSI_ERROR_IO,
-        msi::Error::InvalidCabSignature { .. }
-        | msi::Error::InvalidCabVersion { .. }
-        | msi::Error::InvalidCabChecksum { .. }
-        | msi::Error::InvalidCabData { .. }
-        | msi::Error::DecompressionFailed { .. }
-        | msi::Error::CompressionFailed { .. }
-        | msi::Error::CabinetFileNotFound { .. } => MSI_ERROR_CABINET,
-        msi::Error::MissingTable { .. }
-        | msi::Error::RecordLengthMismatch { .. }
-        | msi::Error::InvalidStringPool { .. }
-        | msi::Error::StringPoolIndexOutOfBounds { .. }
-        | msi::Error::InvalidSummaryInfo { .. }
-        | msi::Error::InvalidColumnType { .. } => MSI_ERROR_DATABASE,
-        msi::Error::Preprocessor { .. }
-        | msi::Error::XmlParse { .. }
-        | msi::Error::WixCompiler { .. }
-        | msi::Error::InvalidWixObject { .. }
-        | msi::Error::WixLinker { .. }
-        | msi::Error::IceValidation { .. } => MSI_ERROR_WIX,
+        msi::MsiError::Validation { .. } => MSI_ERROR_VALIDATION,
+        msi::MsiError::Io(_) => MSI_ERROR_IO,
+        msi::MsiError::InvalidCabSignature { .. }
+        | msi::MsiError::InvalidCabVersion { .. }
+        | msi::MsiError::InvalidCabChecksum { .. }
+        | msi::MsiError::InvalidCabData { .. }
+        | msi::MsiError::DecompressionFailed { .. }
+        | msi::MsiError::CompressionFailed { .. }
+        | msi::MsiError::CabinetFileNotFound { .. } => MSI_ERROR_CABINET,
+        msi::MsiError::MissingTable { .. }
+        | msi::MsiError::RecordLengthMismatch { .. }
+        | msi::MsiError::InvalidStringPool { .. }
+        | msi::MsiError::StringPoolIndexOutOfBounds { .. }
+        | msi::MsiError::InvalidSummaryInfo { .. }
+        | msi::MsiError::InvalidColumnType { .. } => MSI_ERROR_DATABASE,
+        msi::MsiError::Preprocessor { .. }
+        | msi::MsiError::XmlParse { .. }
+        | msi::MsiError::WixCompiler { .. }
+        | msi::MsiError::InvalidWixObject { .. }
+        | msi::MsiError::WixLinker { .. }
+        | msi::MsiError::IceValidation { .. } => MSI_ERROR_WIX,
         _ => MSI_ERROR_INVALID_ARGUMENT,
     }
 }
@@ -438,35 +438,35 @@ mod tests {
     #[test]
     fn test_map_msi_error() {
         assert_eq!(
-            map_msi_error(&msi::Error::InvalidArgument {
+            map_msi_error(&msi::MsiError::InvalidArgument {
                 argument: "test".to_string(),
                 reason: "bad".to_string()
             }),
             MSI_ERROR_INVALID_ARGUMENT
         );
         assert_eq!(
-            map_msi_error(&msi::Error::Validation {
+            map_msi_error(&msi::MsiError::Validation {
                 element: "test".to_string(),
                 reason: "bad".to_string()
             }),
             MSI_ERROR_VALIDATION
         );
         assert_eq!(
-            map_msi_error(&msi::Error::Io("io".to_string())),
+            map_msi_error(&msi::MsiError::Io("io".to_string())),
             MSI_ERROR_IO
         );
         assert_eq!(
-            map_msi_error(&msi::Error::InvalidCabSignature { found: [0; 4] }),
+            map_msi_error(&msi::MsiError::InvalidCabSignature { found: [0; 4] }),
             MSI_ERROR_CABINET
         );
         assert_eq!(
-            map_msi_error(&msi::Error::MissingTable {
+            map_msi_error(&msi::MsiError::MissingTable {
                 name: "test".to_string()
             }),
             MSI_ERROR_DATABASE
         );
         assert_eq!(
-            map_msi_error(&msi::Error::WixLinker {
+            map_msi_error(&msi::MsiError::WixLinker {
                 message: "err".to_string()
             }),
             MSI_ERROR_WIX

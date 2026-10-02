@@ -13,7 +13,7 @@
 //!   - `Default`, `Enable`, `Disable`, `Hide`, `Show`.
 //! - Subscribed `EventMapping` entries (e.g. `SetProgress`).
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::execution::properties::EvaluationContext;
 
 /// Dialog loop termination return codes for `EndDialog` events.
@@ -42,14 +42,14 @@ impl DialogReturnCode {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidArgument`] if argument is unknown.
+    /// Returns [`MsiError::InvalidArgument`] if argument is unknown.
     pub fn from_argument(s: &str) -> Result<Self> {
         match s {
             "Return" => Ok(Self::Return),
             "Exit" => Ok(Self::Exit),
             "Retry" => Ok(Self::Retry),
             "Ignore" => Ok(Self::Ignore),
-            other => Err(Error::InvalidArgument {
+            other => Err(MsiError::InvalidArgument {
                 argument: "EndDialog.Argument".to_string(),
                 reason: format!("Unknown EndDialog return code '{other}'"),
             }),
@@ -106,7 +106,7 @@ impl ControlEventType {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidArgument`] if event is unrecognized.
+    /// Returns [`MsiError::InvalidArgument`] if event is unrecognized.
     pub fn parse(event: &str, argument: &str) -> Result<Self> {
         match event {
             "EndDialog" => {
@@ -129,7 +129,7 @@ impl ControlEventType {
             }
             "Reset" => Ok(Self::Reset),
             "DoAction" => Ok(Self::DoAction(argument.to_string())),
-            other => Err(Error::InvalidArgument {
+            other => Err(MsiError::InvalidArgument {
                 argument: "ControlEvent.Event".to_string(),
                 reason: format!("Unrecognized ControlEvent type '{other}'"),
             }),
@@ -267,7 +267,7 @@ impl ControlConditionAction {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidArgument`] if action is unknown.
+    /// Returns [`MsiError::InvalidArgument`] if action is unknown.
     pub fn from_action(s: &str) -> Result<Self> {
         match s {
             "Default" => Ok(Self::Default),
@@ -275,7 +275,7 @@ impl ControlConditionAction {
             "Disable" => Ok(Self::Disable),
             "Hide" => Ok(Self::Hide),
             "Show" => Ok(Self::Show),
-            other => Err(Error::InvalidArgument {
+            other => Err(MsiError::InvalidArgument {
                 argument: "ControlCondition.Action".to_string(),
                 reason: format!("Unknown ControlCondition action '{other}'"),
             }),

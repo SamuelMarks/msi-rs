@@ -4,7 +4,7 @@
         use crate::database::sql::lexer::Token;
         for db_res in [
             LinkedDatabase::new(),
-            Err(Error::Sql {
+            Err(MsiError::Sql {
                 message: "simulated".to_string(),
             }),
         ] {
@@ -78,7 +78,7 @@
                 let mut lexer = Lexer::new("SELECT [My Col], `OtherCol` FROM `Table` WHERE <= >= <> != = ?");
                 for tok_res in [
                     lexer.tokenize(),
-                    Err(Error::Sql {
+                    Err(MsiError::Sql {
                         message: "simulated".to_string(),
                     }),
                 ] {

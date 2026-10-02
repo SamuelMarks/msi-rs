@@ -6,7 +6,7 @@
 //! - Offline registry injection into `Services` and `CriticalDeviceDatabase`.
 //! - Linux kernel module hierarchy creation (`/lib/modules/<version>`) and initramfs synthesis.
 
-use crate::error::{Error, Result};
+use crate::error::{MsiError, Result};
 use crate::platform::hive::{OfflineHiveStore, OfflineRegistryData};
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -48,7 +48,7 @@ impl DriverInf {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::DriverServicingError`] if required sections or keys are missing.
+    /// Returns [`MsiError::DriverServicingError`] if required sections or keys are missing.
     pub fn parse_inf(content: &str) -> Result<Self> {
         let mut sections: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
         let mut current_section = String::new();
@@ -71,12 +71,13 @@ impl DriverInf {
             }
         }
 
-        let version_sec = sections
-            .get("VERSION")
-            .ok_or_else(|| Error::DriverServicingError {
-                inf: "unknown".to_string(),
-                reason: "missing [Version] section".to_string(),
-            })?;
+        let version_sec =
+            sections
+                .get("VERSION")
+                .ok_or_else(|| MsiError::DriverServicingError {
+                    inf: "unknown".to_string(),
+                    reason: "missing [Version] section".to_string(),
+                })?;
 
         let mut class = String::from("Unknown");
         let mut class_guid = String::new();
@@ -156,7 +157,7 @@ impl WindowsDriverStoreServicing {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::DriverServicingError`] if staging operations fail.
+    /// Returns [`MsiError::DriverServicingError`] if staging operations fail.
     pub fn stage_driver_package(
         sysroot: &Path,
         inf_name: &str,
@@ -172,7 +173,7 @@ impl WindowsDriverStoreServicing {
             .join(repo_folder_name);
 
         if let Err(e) = std::fs::create_dir_all(&repo_dir) {
-            return Err(Error::DriverServicingError {
+            return Err(MsiError::DriverServicingError {
                 inf: inf_name.to_string(),
                 reason: format!("failed to create FileRepository directory: {e}"),
             });
@@ -181,7 +182,7 @@ impl WindowsDriverStoreServicing {
         // Write INF
         let target_inf = repo_dir.join(inf_name);
         if let Err(e) = std::fs::write(&target_inf, inf_bytes) {
-            return Err(Error::DriverServicingError {
+            return Err(MsiError::DriverServicingError {
                 inf: inf_name.to_string(),
                 reason: format!("failed to write staged INF file: {e}"),
             });
@@ -191,7 +192,7 @@ impl WindowsDriverStoreServicing {
         for (name, content) in companion_files {
             let dest = repo_dir.join(name);
             if let Err(e) = std::fs::write(&dest, content) {
-                return Err(Error::DriverServicingError {
+                return Err(MsiError::DriverServicingError {
                     inf: inf_name.to_string(),
                     reason: format!("failed to write companion driver file '{name}': {e}"),
                 });
@@ -293,7 +294,7 @@ impl LinuxKernelModuleServicing {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::DriverServicingError`] if staging operations fail.
+    /// Returns [`MsiError::DriverServicingError`] if staging operations fail.
     pub fn stage_modules(
         sysroot: &Path,
         kernel_version: &str,
@@ -301,7 +302,7 @@ impl LinuxKernelModuleServicing {
     ) -> Result<()> {
         let mod_root = sysroot.join(format!("lib/modules/{kernel_version}"));
         if let Err(e) = std::fs::create_dir_all(&mod_root) {
-            return Err(Error::DriverServicingError {
+            return Err(MsiError::DriverServicingError {
                 inf: "linux-modules".to_string(),
                 reason: format!("failed to create modules directory: {e}"),
             });
@@ -313,7 +314,7 @@ impl LinuxKernelModuleServicing {
             let dest = mod_root.join(&m.relative_path);
             let _ = dest.parent().map(std::fs::create_dir_all);
             if let Err(e) = std::fs::write(&dest, bytes) {
-                return Err(Error::DriverServicingError {
+                return Err(MsiError::DriverServicingError {
                     inf: m.name.clone(),
                     reason: format!("failed to write module file: {e}"),
                 });
@@ -325,7 +326,7 @@ impl LinuxKernelModuleServicing {
         // Write modules.dep
         let dep_path = mod_root.join("modules.dep");
         if let Err(e) = std::fs::write(&dep_path, modules_dep) {
-            return Err(Error::DriverServicingError {
+            return Err(MsiError::DriverServicingError {
                 inf: "modules.dep".to_string(),
                 reason: format!("failed to write modules.dep: {e}"),
             });
@@ -348,7 +349,7 @@ impl LinuxKernelModuleServicing {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::DriverServicingError`] if any required module is missing.
+    /// Returns [`MsiError::DriverServicingError`] if any required module is missing.
     pub fn verify_storage_modules(
         sysroot: &Path,
         kernel_version: &str,
@@ -362,7 +363,7 @@ impl LinuxKernelModuleServicing {
         for &req in required_modules {
             let matched = dep_content.lines().any(|line| line.contains(req));
             if !matched {
-                return Err(Error::DriverServicingError {
+                return Err(MsiError::DriverServicingError {
                     inf: req.to_string(),
                     reason: format!(
                         "required boot storage controller module '{req}' missing from modules.dep"
