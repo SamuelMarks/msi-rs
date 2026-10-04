@@ -1,3 +1,8 @@
+#![allow(clippy::used_underscore_binding)]
+#![allow(clippy::unnecessary_safety_doc)]
+#![allow(clippy::cognitive_complexity)]
+#![allow(clippy::too_many_lines)]
+#![allow(clippy::unnecessary_wraps)]
 #![deny(missing_docs)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! # msi-ffi
@@ -25,20 +30,34 @@
     )
 )]
 
+pub mod action;
+pub mod advertisement;
 pub mod builder;
+pub mod database_mutation;
 pub mod error;
 pub mod handles;
+pub mod hooks;
+pub mod locator;
 pub mod md5;
 pub mod package;
+pub mod patching;
+pub mod source_list;
 pub mod transaction;
 pub mod types;
 pub mod win32;
 pub mod wix;
 
+pub use action::*;
+pub use advertisement::*;
 pub use builder::*;
+pub use database_mutation::*;
 pub use error::*;
 pub use handles::*;
+pub use hooks::*;
+pub use locator::*;
 pub use package::*;
+pub use patching::*;
+pub use source_list::*;
 pub use transaction::*;
 pub use types::*;
 pub use win32::*;
@@ -57,3 +76,4 @@ mod tests {
         assert_eq!(MSI_ERROR_NULL_POINTER, -1);
     }
 }
+pub mod com;

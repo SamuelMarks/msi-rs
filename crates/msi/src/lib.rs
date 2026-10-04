@@ -1,5 +1,6 @@
 #![deny(missing_docs)]
 #![deny(clippy::unwrap_used)]
+#![allow(clippy::literal_string_with_formatting_args)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! # msi
 //!

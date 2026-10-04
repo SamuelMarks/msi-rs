@@ -155,7 +155,7 @@ impl XmlParser {
     pub const fn new() -> Self {
         Self
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Parses an XML string into a root [`XmlNode`].
     ///
     /// # Arguments
@@ -694,6 +694,7 @@ Outside text after root
         assert_eq!(node.children_with_tag("missing").count(), 0);
 
         // Traits: Clone, PartialEq, Debug
+        #[allow(clippy::redundant_clone)]
         let cloned_node = node.clone();
         assert_eq!(node, cloned_node);
         assert!(format!("{node:?}").contains("XmlNode"));

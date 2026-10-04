@@ -884,7 +884,7 @@ mod tests {
         assert_eq!(format!("{}", SectionType::PatchCreation), "PatchCreation");
         assert_eq!(format!("{}", SectionType::Patch), "Patch");
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests symbol and reference creation, getters, and display representation.
     #[test]
     fn test_symbol_and_reference() {
@@ -946,7 +946,7 @@ mod tests {
         ref_set.insert(rf.clone());
         assert!(ref_set.contains(&rf));
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests comprehensive binary roundtrip serialization and deserialization with all field value variants and section types.
     #[test]
     fn test_wix_object_binary_roundtrip() {

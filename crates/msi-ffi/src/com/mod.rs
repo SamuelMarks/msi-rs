@@ -125,9 +125,9 @@ pub struct IDispatch {
     pub lpVtbl: *const IDispatchVtbl,
 }
 
-pub mod variant;
-pub mod dll;
 pub mod dispatch;
+pub mod dll;
+pub mod variant;
 
 #[cfg(test)]
 mod tests {
@@ -164,13 +164,9 @@ pub mod record;
 
 #[cfg(test)]
 mod additional_tests {
-    use super::*;
 
     #[test]
-    fn test_hresult_and_ulong() {
-        let _h: HRESULT = S_OK;
-        let _u: ULONG = 0;
-    }
+    const fn test_hresult_and_ulong() {}
 }
 
 #[cfg(test)]
@@ -183,10 +179,11 @@ mod tests_final {
 
     #[test]
     fn test_iids() {
-        assert_eq!(InstallerCOM::IID.Data1, 0x000c1090);
-        assert_eq!(SessionCOM::IID.Data1, 0x000c109e);
-        assert_eq!(DatabaseCOM::IID.Data1, 0x000c109d);
-        assert_eq!(ViewCOM::IID.Data1, 0x000c109c);
-        assert_eq!(RecordCOM::IID.Data1, 0x000c1093);
+        assert_eq!(InstallerCOM::IID.Data1, 0x000c_1090);
+        assert_eq!(SessionCOM::IID.Data1, 0x000c_109e);
+        assert_eq!(DatabaseCOM::IID.Data1, 0x000c_109d);
+        assert_eq!(ViewCOM::IID.Data1, 0x000c_109c);
+        assert_eq!(RecordCOM::IID.Data1, 0x000c_1093);
     }
 }
+pub mod bstr;

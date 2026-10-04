@@ -1621,6 +1621,7 @@ mod tests {
             updated_size: 15,
             instructions: vec![instr_copy, instr_insert],
         };
+        #[allow(clippy::redundant_clone)]
         let delta_cloned = delta_obj.clone();
         assert_eq!(delta_cloned, delta_obj);
         assert!(format!("{delta_obj:?}").contains("BinaryDelta"));
@@ -1717,43 +1718,50 @@ mod tests {
         buf_unknown.push(99); // Unknown opcode 99
         assert!(BinaryDelta::from_bytes(&buf_unknown).is_err());
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests extended branches of `PatchCreation` XML parsing and `PatchPackageBuilder` packaging.
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_patch_creation_and_builder_extended_branches() {
         // Test struct defaults and derives
         let def_frag = CPackWiXFragment::new("FragId".to_string());
+        #[allow(clippy::redundant_clone)]
         let frag_cloned = def_frag.clone();
         assert_eq!(frag_cloned, def_frag);
         assert!(format!("{def_frag:?}").contains("CPackWiXFragment"));
 
         let def_info = PatchInformation::default();
+        #[allow(clippy::redundant_clone)]
         let info_cloned = def_info.clone();
         assert_eq!(info_cloned, def_info);
         assert!(format!("{def_info:?}").contains("PatchInformation"));
 
         let def_meta = PatchMetadata::default();
+        #[allow(clippy::redundant_clone)]
         let meta_cloned = def_meta.clone();
         assert_eq!(meta_cloned, def_meta);
         assert!(format!("{def_meta:?}").contains("PatchMetadata"));
 
         let def_fam = PatchFamily::default();
+        #[allow(clippy::redundant_clone)]
         let fam_cloned = def_fam.clone();
         assert_eq!(fam_cloned, def_fam);
         assert!(format!("{def_fam:?}").contains("PatchFamily"));
 
         let def_target_image = TargetImage::default();
+        #[allow(clippy::redundant_clone)]
         let target_image_cloned = def_target_image.clone();
         assert_eq!(target_image_cloned, def_target_image);
         assert!(format!("{def_target_image:?}").contains("TargetImage"));
 
         let def_upgrade_image = UpgradeImage::default();
+        #[allow(clippy::redundant_clone)]
         let upgrade_image_cloned = def_upgrade_image.clone();
         assert_eq!(upgrade_image_cloned, def_upgrade_image);
         assert!(format!("{def_upgrade_image:?}").contains("UpgradeImage"));
 
         let def_pc = PatchCreation::default();
+        #[allow(clippy::redundant_clone)]
         let pc_cloned = def_pc.clone();
         assert_eq!(pc_cloned, def_pc);
         assert!(format!("{def_pc:?}").contains("PatchCreation"));

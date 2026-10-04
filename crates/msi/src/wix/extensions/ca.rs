@@ -170,6 +170,7 @@ mod tests {
         let _ = fs::create_dir_all(&temp_dir);
 
         let compiler = CustomActionCompiler::new(&temp_dir);
+        #[allow(clippy::redundant_clone)]
         let compiler_clone = compiler.clone();
         let _ = format!("{compiler:?}");
         assert_eq!(compiler.source_dir, temp_dir);

@@ -606,7 +606,7 @@ mod tests {
         ];
         assert!(SplitSetValidator::validate_split_set(&bad_last_next).is_err());
     }
-
+    #[allow(clippy::cognitive_complexity)]
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_multi_cabinet_reader_all_paths() {
@@ -846,6 +846,7 @@ mod tests {
             cabinet_index: 0,
             data: vec![1, 2, 3],
         };
+        #[allow(clippy::redundant_clone)]
         let artifact_clone = artifact.clone();
         assert_eq!(artifact, artifact_clone);
         assert_ne!(format!("{artifact:?}"), "");

@@ -837,7 +837,7 @@ mod tests {
             assert!(SummaryInfo::parse(&stream).is_ok());
         }
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests [`Architecture`] parsing, canonical template names, display, and bitness.
     #[test]
     fn test_architecture() {

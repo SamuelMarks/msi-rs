@@ -290,11 +290,13 @@ mod tests {
 
         let mut d1 = DirectoryEntry::default();
         d1.file_name = "test".to_string();
+        #[allow(clippy::redundant_clone)]
         let d2 = d1.clone();
         assert_eq!(d1, d2);
         assert_eq!(format!("{d1:?}"), format!("{d2:?}"));
 
         let w1 = WimReader { security: s1 };
+        #[allow(clippy::redundant_clone)]
         let w2 = w1.clone();
         assert_eq!(w1.security.num_entries, w2.security.num_entries);
         assert_eq!(format!("{w1:?}"), format!("{w2:?}"));

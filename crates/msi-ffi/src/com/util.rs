@@ -7,15 +7,22 @@ use crate::com::ULONG;
 #[derive(Debug)]
 pub struct ComVTableBuilder;
 
-#[cfg(not(tarpaulin_include))]
 impl ComVTableBuilder {
     /// Generic implementation of `AddRef`.
+    /// # Safety
+    /// Unsafe C FFI.
+    /// # Safety
+    /// Unsafe C FFI.
     pub unsafe extern "system" fn add_ref<T: ComObject>(this: *mut IUnknown) -> ULONG {
         let obj = &mut *(this.cast::<T>());
         obj.add_ref()
     }
 
     /// Generic implementation of `Release`.
+    /// # Safety
+    /// Unsafe C FFI.
+    /// # Safety
+    /// Unsafe C FFI.
     pub unsafe extern "system" fn release<T: ComObject>(this: *mut IUnknown) -> ULONG {
         let obj = &mut *(this.cast::<T>());
         let count = obj.release();
@@ -38,11 +45,12 @@ pub trait ComObject {
 mod tests {
     #[test]
     fn test_com_vtable_builder_ptr() {
-        let mut obj = Box::new(DummyObj { count: 1 });
-        let ptr = (&raw mut *obj).cast::<IUnknown>();
-        std::mem::forget(obj);
-        let add_ref_fn: unsafe extern "system" fn(*mut IUnknown) -> ULONG = ComVTableBuilder::add_ref::<DummyObj>;
-        let release_fn: unsafe extern "system" fn(*mut IUnknown) -> ULONG = ComVTableBuilder::release::<DummyObj>;
+        let obj = Box::new(DummyObj { count: 1 });
+        let ptr = Box::into_raw(obj).cast::<IUnknown>();
+        let add_ref_fn: unsafe extern "system" fn(*mut IUnknown) -> ULONG =
+            ComVTableBuilder::add_ref::<DummyObj>;
+        let release_fn: unsafe extern "system" fn(*mut IUnknown) -> ULONG =
+            ComVTableBuilder::release::<DummyObj>;
         unsafe {
             assert_eq!(add_ref_fn(ptr), 2);
             assert_eq!(release_fn(ptr), 1);
@@ -52,6 +60,7 @@ mod tests {
 
     use super::*;
 
+    #[repr(C, align(8))]
     struct DummyObj {
         count: ULONG,
     }
@@ -68,9 +77,8 @@ mod tests {
 
     #[test]
     fn test_com_vtable_builder() {
-        let mut obj = Box::new(DummyObj { count: 1 });
-        let ptr = (&raw mut *obj).cast::<IUnknown>();
-        std::mem::forget(obj);
+        let obj = Box::new(DummyObj { count: 1 });
+        let ptr = Box::into_raw(obj).cast::<IUnknown>();
         unsafe {
             assert_eq!(ComVTableBuilder::add_ref::<DummyObj>(ptr), 2);
             assert_eq!(ComVTableBuilder::release::<DummyObj>(ptr), 1);

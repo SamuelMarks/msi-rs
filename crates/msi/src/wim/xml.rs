@@ -267,12 +267,14 @@ mod tests {
     fn test_xml_traits() {
         let mut m1 = WimManifest::default();
         m1.total_bytes = 100;
+        #[allow(clippy::redundant_clone)]
         let m2 = m1.clone();
         assert_eq!(m1, m2);
         assert_eq!(format!("{m1:?}"), format!("{m2:?}"));
 
         let mut i1 = WimImage::default();
         i1.name = "Test".to_string();
+        #[allow(clippy::redundant_clone)]
         let i2 = i1.clone();
         assert_eq!(i1, i2);
         assert_eq!(format!("{i1:?}"), format!("{i2:?}"));

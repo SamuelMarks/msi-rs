@@ -110,7 +110,8 @@ impl TableSchema {
     ///
     /// Returns `PhysicalLayoutError` if the columns cannot be mapped.
     pub fn physical_layout(&self) -> Result<PhysicalTableLayout<'_>> {
-        PhysicalTableLayout::new(&self.columns)
+        let is_system = self.name.starts_with('_');
+        PhysicalTableLayout::new(&self.columns, is_system)
     }
 }
 

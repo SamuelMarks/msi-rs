@@ -1147,6 +1147,7 @@ mod tests {
         let widget = UiWidget::Separator {
             color: Color32::LINE_GRAY,
         };
+        #[allow(clippy::redundant_clone)]
         let cloned_widget = widget.clone();
         assert_eq!(widget, cloned_widget);
         assert!(format!("{widget:?}").contains("Separator"));
@@ -1155,11 +1156,13 @@ mod tests {
             rect: PixelRect::new(0, 0, 10, 10),
             color: Color32::WHITE,
         };
+        #[allow(clippy::redundant_clone)]
         let cloned_draw = draw.clone();
         assert_eq!(draw, cloned_draw);
         assert!(format!("{draw:?}").contains("FillRect"));
 
         let buffer = SoftwareBuffer::new(10, 10);
+        #[allow(clippy::redundant_clone)]
         let cloned_buffer = buffer.clone();
         assert_eq!(buffer, cloned_buffer);
         assert!(format!("{buffer:?}").contains("SoftwareBuffer"));

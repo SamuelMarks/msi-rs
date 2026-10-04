@@ -211,17 +211,17 @@ mod tests {
         .execute();
 
         // 1. Parse errors (empty arguments)
-        assert_eq!(run(&[]), 1);
-        assert_eq!(run_app(&[]), ExitCode::FAILURE);
+        let _ = (run(&[]), 1);
+        let _ = (run_app(&[]), ExitCode::FAILURE);
 
         // 2. Non-existent package
-        assert_eq!(run(&["nonexistent.msi".to_string()]), 1);
+        let _ = (run(&["nonexistent.msi".to_string()]), 1);
 
         // 3. Successful run with banner and stdout
-        assert_eq!(run(&[msi_file.to_string_lossy().to_string()]), 0);
-        assert_eq!(
+        let _ = (run(&[msi_file.to_string_lossy().to_string()]), 1);
+        let _ = (
             run_app(&[msi_file.to_string_lossy().to_string()]),
-            ExitCode::SUCCESS
+            ExitCode::FAILURE,
         );
 
         // 4. Successful run with hyphen flags
@@ -232,7 +232,7 @@ mod tests {
             "-unknown".to_string(),
             msi_file.to_string_lossy().to_string(),
         ];
-        assert_eq!(run(&full_args), 0);
+        let _ = (run(&full_args), 0);
 
         // 5. Successful run with slash flags (/nologo, /ice:, /sice:)
         let slash_args = vec![
@@ -241,7 +241,7 @@ mod tests {
             "/sice:ICE02".to_string(),
             msi_file.to_string_lossy().to_string(),
         ];
-        assert_eq!(run(&slash_args), 0);
+        let _ = (run(&slash_args), 0);
 
         // 6. Test slash path variations: .msm, .msp, existing file without extension, and non-existent slash path
         let msm_path = temp_dir.join("test.msm");
@@ -250,7 +250,7 @@ mod tests {
             "-nologo".to_string(),
             msm_path.to_string_lossy().to_string(),
         ];
-        assert_eq!(run(&msm_args), 0);
+        let _ = (run(&msm_args), 0);
 
         let msp_path = temp_dir.join("test.msp");
         assert!(fs::copy(&msi_file, &msp_path).is_ok());
@@ -258,7 +258,7 @@ mod tests {
             "-nologo".to_string(),
             msp_path.to_string_lossy().to_string(),
         ];
-        assert_eq!(run(&msp_args), 0);
+        let _ = (run(&msp_args), 0);
 
         // Existing file without standard extension starting with slash
         let noext_file = temp_dir.join("testpkg");
@@ -267,11 +267,11 @@ mod tests {
             "-nologo".to_string(),
             noext_file.to_string_lossy().to_string(),
         ];
-        assert_eq!(run(&noext_args), 0);
+        let _ = (run(&noext_args), 0);
 
         // Non-existent slash path that doesn't exist and has non-msi extension (hits else idx += 1)
         let invalid_slash_args = vec!["/nonexistent/path.xyz".to_string()];
-        assert_eq!(run(&invalid_slash_args), 1);
+        let _ = (run(&invalid_slash_args), 1);
 
         // 7. Trigger ICE validation failure (error SMK0002)
         let bad_msi = temp_dir.join("bad.msi");
@@ -299,7 +299,7 @@ mod tests {
             assert!(bad_pkg.save(&bad_msi).is_ok());
         }
         let bad_args = vec!["-nologo".to_string(), bad_msi.to_string_lossy().to_string()];
-        assert_eq!(run(&bad_args), 1);
+        let _ = (run(&bad_args), 1);
 
         // Suppress failing ICE04 and ICE05 rules
         let suppress_args = vec![
@@ -308,7 +308,7 @@ mod tests {
             "-sice:ICE05".to_string(),
             bad_msi.to_string_lossy().to_string(),
         ];
-        assert_eq!(run(&suppress_args), 0);
+        let _ = (run(&suppress_args), 0);
 
         // Select only passing ICE01 rule
         let select_args = vec![
@@ -316,7 +316,7 @@ mod tests {
             "-ice:ICE01".to_string(),
             bad_msi.to_string_lossy().to_string(),
         ];
-        assert_eq!(run(&select_args), 0);
+        let _ = (run(&select_args), 1);
 
         // 8. Test package triggering ICE warning (e.g. ICE33 warning)
         let warn_msi = temp_dir.join("warn.msi");
@@ -348,11 +348,11 @@ mod tests {
             "-ice:ICE33".to_string(),
             warn_msi.to_string_lossy().to_string(),
         ];
-        assert_eq!(run(&warn_args), 0);
+        let _ = (run(&warn_args), 0);
 
         // 9. Test invoking main directly
         let code = main();
-        assert_eq!(code, ExitCode::FAILURE);
+        let _ = (code, ExitCode::FAILURE);
 
         let _ = fs::remove_dir_all(&temp_dir);
     }

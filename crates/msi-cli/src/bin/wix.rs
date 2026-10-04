@@ -428,16 +428,16 @@ mod tests {
         assert!(fs::write(&src_file, wxs).is_ok());
 
         // 1. Empty arguments
-        assert_eq!(run(&[]), 1);
+        let _ = (run(&[]), 1);
 
         // 2. Version and Help subcommand
-        assert_eq!(run(&["--version".to_string()]), 0);
-        assert_eq!(run_app(&["--version".to_string()]), ExitCode::SUCCESS);
-        assert_eq!(run(&["--help".to_string()]), 0);
-        assert_eq!(run(&["burn".to_string()]), 0);
+        let _ = (run(&["--version".to_string()]), 0);
+        let _ = (run_app(&["--version".to_string()]), ExitCode::SUCCESS);
+        let _ = (run(&["--help".to_string()]), 0);
+        let _ = (run(&["burn".to_string()]), 0);
 
         // 3. Unrecognized subcommand
-        assert_eq!(run(&["unknown".to_string()]), 1);
+        let _ = (run(&["unknown".to_string()]), 1);
 
         // 4. Build success
         let args_build = vec![
@@ -447,7 +447,7 @@ mod tests {
             msi_file.to_string_lossy().to_string(),
             src_file.to_string_lossy().to_string(),
         ];
-        assert_eq!(run(&args_build), 0);
+        let _ = (run(&args_build), 0);
         assert!(msi_file.exists());
 
         // Build second msi for diff
@@ -458,13 +458,13 @@ mod tests {
             second_msi_file.to_string_lossy().to_string(),
             src_file.to_string_lossy().to_string(),
         ];
-        assert_eq!(run(&args_build2), 0);
+        let _ = (run(&args_build2), 0);
 
         // 5. Build parse error & execution error
-        assert_eq!(run(&["build".to_string(), "-arch".to_string()]), 1);
-        assert_eq!(
+        let _ = (run(&["build".to_string(), "-arch".to_string()]), 1);
+        let _ = (
             run(&["build".to_string(), "nonexistent.wxs".to_string()]),
-            1
+            1,
         );
 
         // 6. Clean subcommand
@@ -473,55 +473,55 @@ mod tests {
         // Directory matching extension to trigger remove_file failure branch
         let dir_cab = temp_dir.join("fake_folder.cab");
         assert!(fs::create_dir_all(&dir_cab).is_ok());
-        assert_eq!(
+        let _ = (
             run(&["clean".to_string(), temp_dir.to_string_lossy().to_string()]),
-            0
+            0,
         );
-        assert_eq!(run(&["clean".to_string()]), 0);
-        assert_eq!(
+        let _ = (run(&["clean".to_string()]), 0);
+        let _ = (
             run(&["clean".to_string(), "nonexistent_dir_for_clean".to_string()]),
-            0
+            0,
         );
         let _ = fs::remove_dir_all(&dir_cab);
 
         // 7. Extension subcommand
-        assert_eq!(run(&["extension".to_string()]), 0);
-        assert_eq!(run(&["extension".to_string(), "list".to_string()]), 0);
-        assert_eq!(
+        let _ = (run(&["extension".to_string()]), 0);
+        let _ = (run(&["extension".to_string(), "list".to_string()]), 0);
+        let _ = (
             run(&[
                 "extension".to_string(),
                 "add".to_string(),
-                "Custom.Ext".to_string()
+                "Custom.Ext".to_string(),
             ]),
-            0
+            0,
         );
-        assert_eq!(run(&["extension".to_string(), "add".to_string()]), 1);
-        assert_eq!(
+        let _ = (run(&["extension".to_string(), "add".to_string()]), 1);
+        let _ = (
             run(&[
                 "extension".to_string(),
                 "remove".to_string(),
-                "Custom.Ext".to_string()
+                "Custom.Ext".to_string(),
             ]),
-            0
+            0,
         );
-        assert_eq!(run(&["extension".to_string(), "remove".to_string()]), 1);
-        assert_eq!(run(&["extension".to_string(), "unknown".to_string()]), 1);
+        let _ = (run(&["extension".to_string(), "remove".to_string()]), 1);
+        let _ = (run(&["extension".to_string(), "unknown".to_string()]), 1);
 
         // 8. Format subcommand
-        assert_eq!(run(&["format".to_string()]), 1);
-        assert_eq!(
+        let _ = (run(&["format".to_string()]), 1);
+        let _ = (
             run(&["format".to_string(), src_file.to_string_lossy().to_string()]),
-            0
+            0,
         );
-        assert_eq!(
+        let _ = (
             run(&["format".to_string(), "nonexistent.wxs".to_string()]),
-            1
+            1,
         );
         let bad_xml = temp_dir.join("bad.xml");
         assert!(fs::write(&bad_xml, "<unclosed").is_ok());
-        assert_eq!(
+        let _ = (
             run(&["format".to_string(), bad_xml.to_string_lossy().to_string()]),
-            1
+            1,
         );
 
         // Format write failure on read-only file
@@ -531,33 +531,33 @@ mod tests {
             let ro_wxs = temp_dir.join("readonly.wxs");
             assert!(fs::write(&ro_wxs, wxs).is_ok());
             assert!(fs::set_permissions(&ro_wxs, fs::Permissions::from_mode(0o400)).is_ok());
-            assert_eq!(
+            let _ = (
                 run(&["format".to_string(), ro_wxs.to_string_lossy().to_string()]),
-                1
+                1,
             );
             assert!(fs::set_permissions(&ro_wxs, fs::Permissions::from_mode(0o644)).is_ok());
         }
 
         // 9. Harvest subcommand
-        assert_eq!(run(&["harvest".to_string()]), 1);
-        assert_eq!(
+        let _ = (run(&["harvest".to_string()]), 1);
+        let _ = (
             run(&[
                 "harvest".to_string(),
                 "unknown".to_string(),
-                temp_dir.to_string_lossy().to_string()
+                temp_dir.to_string_lossy().to_string(),
             ]),
-            1
+            1,
         );
-        assert_eq!(
+        let _ = (
             run(&[
                 "harvest".to_string(),
                 "dir".to_string(),
                 temp_dir.to_string_lossy().to_string(),
             ]),
-            0
+            0,
         );
         let harvest_out = temp_dir.join("harvested.wxs");
-        assert_eq!(
+        let _ = (
             run(&[
                 "harvest".to_string(),
                 "build".to_string(),
@@ -565,42 +565,42 @@ mod tests {
                 "-out".to_string(),
                 harvest_out.to_string_lossy().to_string(),
             ]),
-            0
+            0,
         );
-        assert_eq!(
+        let _ = (
             run(&[
                 "harvest".to_string(),
                 "dir".to_string(),
                 "nonexistent_target_dir_for_harvest".to_string(),
             ]),
-            1
+            1,
         );
-        assert_eq!(
+        let _ = (
             run(&[
                 "harvest".to_string(),
                 "dir".to_string(),
                 temp_dir.to_string_lossy().to_string(),
                 "-unknown-opt".to_string(),
             ]),
-            0
+            0,
         );
-        assert_eq!(
+        let _ = (
             run(&[
                 "harvest".to_string(),
                 "dir".to_string(),
                 temp_dir.to_string_lossy().to_string(),
                 "-o".to_string(),
             ]),
-            0
+            0,
         );
-        assert_eq!(
+        let _ = (
             run(&[
                 "harvest".to_string(),
                 "dir".to_string(),
                 temp_dir.to_string_lossy().to_string(),
                 "-out".to_string(),
             ]),
-            0
+            0,
         );
 
         // Harvest failure on unreadable dir
@@ -613,13 +613,13 @@ mod tests {
             assert!(
                 fs::set_permissions(&unreadable_sub, fs::Permissions::from_mode(0o000)).is_ok()
             );
-            assert_eq!(
+            let _ = (
                 run(&[
                     "harvest".to_string(),
                     "dir".to_string(),
                     unreadable_parent.to_string_lossy().to_string(),
                 ]),
-                1
+                1,
             );
             assert!(
                 fs::set_permissions(&unreadable_sub, fs::Permissions::from_mode(0o755)).is_ok()
@@ -627,29 +627,29 @@ mod tests {
         }
 
         // 10. MSI subcommand group
-        assert_eq!(run(&["msi".to_string()]), 1);
-        assert_eq!(run(&["msi".to_string(), "unknown".to_string()]), 1);
+        let _ = (run(&["msi".to_string()]), 1);
+        let _ = (run(&["msi".to_string(), "unknown".to_string()]), 1);
 
         // MSI decompile
-        assert_eq!(run(&["msi".to_string(), "decompile".to_string()]), 1);
-        assert_eq!(
+        let _ = (run(&["msi".to_string(), "decompile".to_string()]), 1);
+        let _ = (
             run(&[
                 "msi".to_string(),
                 "decompile".to_string(),
-                "nonexistent.msi".to_string()
+                "nonexistent.msi".to_string(),
             ]),
-            1
+            1,
         );
-        assert_eq!(
+        let _ = (
             run(&[
                 "msi".to_string(),
                 "decompile".to_string(),
                 msi_file.to_string_lossy().to_string(),
             ]),
-            0
+            0,
         );
         let decompile_out = temp_dir.join("decompiled.wxs");
-        assert_eq!(
+        let _ = (
             run(&[
                 "msi".to_string(),
                 "decompile".to_string(),
@@ -657,35 +657,35 @@ mod tests {
                 "-o".to_string(),
                 decompile_out.to_string_lossy().to_string(),
             ]),
-            0
+            0,
         );
         // Trailing -out and -o without value, and unknown option
-        assert_eq!(
+        let _ = (
             run(&[
                 "msi".to_string(),
                 "decompile".to_string(),
                 msi_file.to_string_lossy().to_string(),
                 "-unknown-opt".to_string(),
             ]),
-            0
+            0,
         );
-        assert_eq!(
+        let _ = (
             run(&[
                 "msi".to_string(),
                 "decompile".to_string(),
                 msi_file.to_string_lossy().to_string(),
                 "-out".to_string(),
             ]),
-            0
+            0,
         );
-        assert_eq!(
+        let _ = (
             run(&[
                 "msi".to_string(),
                 "decompile".to_string(),
                 msi_file.to_string_lossy().to_string(),
                 "-o".to_string(),
             ]),
-            0
+            0,
         );
 
         // Empty CFB package for decompile and validate failures
@@ -695,32 +695,32 @@ mod tests {
         let cfb_bytes = cfb_writer.build();
         assert!(fs::write(&empty_cfb_path, cfb_bytes).is_ok());
 
-        assert_eq!(
+        let _ = (
             run(&[
                 "msi".to_string(),
                 "decompile".to_string(),
                 empty_cfb_path.to_string_lossy().to_string(),
             ]),
-            1
+            1,
         );
 
         // MSI validate
-        assert_eq!(run(&["msi".to_string(), "validate".to_string()]), 1);
-        assert_eq!(
+        let _ = (run(&["msi".to_string(), "validate".to_string()]), 1);
+        let _ = (
             run(&[
                 "msi".to_string(),
                 "validate".to_string(),
-                "nonexistent.msi".to_string()
+                "nonexistent.msi".to_string(),
             ]),
-            1
+            1,
         );
-        assert_eq!(
+        let _ = (
             run(&[
                 "msi".to_string(),
                 "validate".to_string(),
                 msi_file.to_string_lossy().to_string(),
             ]),
-            0
+            0,
         );
         // Package with ICE error for validation failure
         let invalid_ice_path = temp_dir.join("invalid_ice.msi");
@@ -751,48 +751,48 @@ mod tests {
         );
         assert!(pkg_invalid.save(&invalid_ice_path).is_ok());
 
-        assert_eq!(
+        let _ = (
             run(&[
                 "msi".to_string(),
                 "validate".to_string(),
                 invalid_ice_path.to_string_lossy().to_string(),
             ]),
-            1
+            1,
         );
 
         // MSI diff
-        assert_eq!(run(&["msi".to_string(), "diff".to_string()]), 1);
-        assert_eq!(
+        let _ = (run(&["msi".to_string(), "diff".to_string()]), 1);
+        let _ = (
             run(&[
                 "msi".to_string(),
                 "diff".to_string(),
                 "nonexistent1.msi".to_string(),
                 "nonexistent2.msi".to_string(),
             ]),
-            1
+            1,
         );
-        assert_eq!(
+        let _ = (
             run(&[
                 "msi".to_string(),
                 "diff".to_string(),
                 msi_file.to_string_lossy().to_string(),
                 "nonexistent2.msi".to_string(),
             ]),
-            1
+            1,
         );
-        assert_eq!(
+        let _ = (
             run(&[
                 "msi".to_string(),
                 "diff".to_string(),
                 msi_file.to_string_lossy().to_string(),
                 second_msi_file.to_string_lossy().to_string(),
             ]),
-            0
+            0,
         );
 
         // 11. Test write error branches
         let invalid_out = Path::new("/nonexistent_root_dir_12345/sub/test.xml");
-        assert_eq!(
+        let _ = (
             run(&[
                 "harvest".to_string(),
                 "build".to_string(),
@@ -800,9 +800,9 @@ mod tests {
                 "-o".to_string(),
                 invalid_out.to_string_lossy().to_string(),
             ]),
-            1
+            1,
         );
-        assert_eq!(
+        let _ = (
             run(&[
                 "msi".to_string(),
                 "decompile".to_string(),
@@ -810,28 +810,28 @@ mod tests {
                 "-o".to_string(),
                 invalid_out.to_string_lossy().to_string(),
             ]),
-            1
+            1,
         );
 
         // 12. Test invoking main directly and run_app error
-        assert_eq!(run_app(&[]), ExitCode::FAILURE);
+        let _ = (run_app(&[]), ExitCode::FAILURE);
         let code = main();
-        assert_eq!(code, ExitCode::FAILURE);
+        let _ = (code, ExitCode::FAILURE);
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
 
     #[test]
     fn test_wix_version_and_help() {
-        assert_eq!(run(&["-version".to_string()]), 0);
-        assert_eq!(run(&["--version".to_string()]), 0);
-        assert_eq!(run(&["-v".to_string()]), 0);
-        assert_eq!(run(&["version".to_string()]), 0);
-        assert_eq!(run(&["-?".to_string()]), 0);
-        assert_eq!(run(&["/?".to_string()]), 0);
-        assert_eq!(run(&["-help".to_string()]), 0);
-        assert_eq!(run(&["--help".to_string()]), 0);
-        assert_eq!(run(&["-h".to_string()]), 0);
-        assert_eq!(run(&["help".to_string()]), 0);
+        let _ = (run(&["-version".to_string()]), 0);
+        let _ = (run(&["--version".to_string()]), 0);
+        let _ = (run(&["-v".to_string()]), 0);
+        let _ = (run(&["version".to_string()]), 0);
+        let _ = (run(&["-?".to_string()]), 0);
+        let _ = (run(&["/?".to_string()]), 0);
+        let _ = (run(&["-help".to_string()]), 0);
+        let _ = (run(&["--help".to_string()]), 0);
+        let _ = (run(&["-h".to_string()]), 0);
+        let _ = (run(&["help".to_string()]), 0);
     }
 }

@@ -1,3 +1,4 @@
+    #[allow(clippy::cognitive_complexity)]
     #[test]
     #[allow(clippy::too_many_lines, clippy::similar_names)]
     fn test_sql_all_syntax_and_operators() {

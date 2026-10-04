@@ -41,7 +41,7 @@ impl MsiDecompiler {
     pub const fn new(schema_version: WixSchemaVersion) -> Self {
         Self { schema_version }
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Decompiles an in-memory [`LinkedDatabase`] into valid `WiX` XML source string.
     ///
     /// # Arguments

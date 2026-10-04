@@ -1,3 +1,4 @@
+#![allow(clippy::redundant_pub_crate)]
 #![deny(missing_docs)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Native Python extension module `_msi` for Windows Installer package creation and inspection.
@@ -24,6 +25,7 @@ use version::PyProductVersion;
 use wix::{compile_wix_file, compile_wix_source};
 
 /// Native Python module definition for `_msi`.
+#[allow(clippy::redundant_pub_crate)]
 #[pymodule]
 #[allow(clippy::unnecessary_wraps)]
 fn _msi(m: &Bound<'_, PyModule>) -> PyResult<()> {

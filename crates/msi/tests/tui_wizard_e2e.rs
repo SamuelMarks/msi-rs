@@ -286,6 +286,7 @@ fn create_test_tui_engine() -> Result<UiEngine> {
 /// Tests the end-to-end interactive terminal wizard lifecycle.
 #[test]
 #[allow(clippy::too_many_lines)]
+#[allow(clippy::cognitive_complexity)]
 fn test_tui_wizard_e2e_full_flow() -> Result<()> {
     let engine = create_test_tui_engine()?;
     let mut wizard = TerminalWizard::new(engine);

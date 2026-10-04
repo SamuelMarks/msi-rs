@@ -170,36 +170,6 @@ pub unsafe extern "system" fn MsiGetDatabaseState(h_database: MSIHANDLE) -> i32 
 ///
 /// Pointers must be valid or null.
 #[no_mangle]
-pub unsafe extern "system" fn MsiDatabaseMergeW(
-    _h_database: MSIHANDLE,
-    _h_database_merge: MSIHANDLE,
-    _sz_table_name: *const u16,
-) -> u32 {
-    std::panic::catch_unwind(|| {
-        // Not implemented in `msi-rs` yet for direct db merging at runtime
-        MsiError::ERROR_CALL_NOT_IMPLEMENTED
-    })
-    .unwrap_or(MsiError::ERROR_INSTALL_FAILURE)
-}
-
-/// Merges two databases together (ANSI).
-///
-/// # Arguments
-///
-/// * `h_database` - Handle to the target database.
-/// * `h_database_merge` - Handle to the database being merged.
-/// * `sz_table_name` - Optional table name to merge into.
-///
-/// # Returns
-///
-/// Win32 status code (e.g., `ERROR_SUCCESS`, `ERROR_CALL_NOT_IMPLEMENTED`).
-///
-/// # Safety
-///
-/// Pointers must be valid or null.
-#[no_mangle]
-pub unsafe extern "system" fn MsiDatabaseMergeA(
-    _h_database: MSIHANDLE,
     _h_database_merge: MSIHANDLE,
     _sz_table_name: *const c_char,
 ) -> u32 {

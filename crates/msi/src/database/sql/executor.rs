@@ -55,7 +55,7 @@ pub fn execute_sql(
 
     execute_statement(db, &stmt, params)
 }
-
+#[allow(clippy::cognitive_complexity)]
 /// Executes a parsed [`Statement`] against a [`LinkedDatabase`].
 ///
 /// # Arguments
@@ -674,7 +674,7 @@ mod tests {
         );
         assert!(!db.tables.contains_key("CustomTest"));
     }
-
+    #[allow(clippy::cognitive_complexity)]
     #[test]
     #[allow(clippy::too_many_lines, clippy::similar_names)]
     fn test_executor_all_uncovered_paths() {
@@ -1047,6 +1047,7 @@ mod tests {
 
         // QueryResult derives:
         let res_mod = QueryResult::Modified(10);
+        #[allow(clippy::redundant_clone)]
         let res_mod_clone = res_mod.clone();
         assert_eq!(res_mod, res_mod_clone);
         assert_ne!(res_mod, QueryResult::SchemaChanged);

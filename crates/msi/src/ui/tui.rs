@@ -373,7 +373,7 @@ impl TerminalWizard {
     pub const fn cursor_pos(&self) -> usize {
         self.cursor_pos
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Processes keyboard input, updating control focus or triggering dialog events.
     ///
     /// # Arguments
@@ -1033,7 +1033,7 @@ mod tests {
         assert!(rendered.contains("Wizard Setup"));
         assert!(rendered.contains('│'));
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests `TerminalWizard` keyboard navigation, control types rendering, and event handling.
     #[test]
     #[allow(clippy::too_many_lines)]
@@ -1825,7 +1825,7 @@ mod tests {
             .run_event_stream(&b"\r"[..], &mut out, 80, 24)
             .is_err());
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests rich controls (`ScrollableText`, `SelectionTree`, Radio, Edit cursor, diagnostics log, summary).
     #[test]
     #[allow(clippy::too_many_lines)]

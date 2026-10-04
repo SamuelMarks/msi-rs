@@ -9,6 +9,7 @@
 //! Both engines operate strictly in-memory without host filesystem or network access,
 //! enforce fuel/step limits to prevent hangs, and provide precise line/column error reporting.
 
+pub mod dispatch;
 pub mod jscript;
 pub mod session;
 pub mod vbscript;

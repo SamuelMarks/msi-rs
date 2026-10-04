@@ -731,7 +731,7 @@ impl SqlScriptRow {
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests `SqlDatabase` schema and typed row conversions.
     #[test]
     #[allow(clippy::too_many_lines)]
@@ -924,11 +924,12 @@ mod tests {
         assert!(SqlDatabaseRow::from_record(&long_id_rec).is_err());
 
         // clone, debug, equality
+        #[allow(clippy::redundant_clone)]
         let row_cloned = row.clone();
         assert_eq!(row_cloned, row);
         assert!(format!("{row:?}").contains("OpenEdXDb"));
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests `SqlString` schema and typed row conversions.
     #[test]
     #[allow(clippy::too_many_lines)]
@@ -1082,11 +1083,12 @@ mod tests {
         assert!(SqlStringRow::from_record(&long_id_rec).is_err());
 
         // clone, debug, equality
+        #[allow(clippy::redundant_clone)]
         let row_cloned = row.clone();
         assert_eq!(row_cloned, row);
         assert!(format!("{row:?}").contains("CreateSchema"));
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests `SqlScript` schema and typed row conversions.
     #[test]
     #[allow(clippy::too_many_lines)]
@@ -1279,6 +1281,7 @@ mod tests {
         assert!(SqlScriptRow::from_record(&long_id_rec).is_err());
 
         // clone, debug, equality
+        #[allow(clippy::redundant_clone)]
         let row_cloned = row.clone();
         assert_eq!(row_cloned, row);
         assert!(format!("{row:?}").contains("InitScript"));

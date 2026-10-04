@@ -328,6 +328,7 @@ mod tests {
 
     /// Tests standard sequence table schemas.
     #[test]
+    #[allow(clippy::similar_names)]
     fn test_sequence_schemas() {
         let ies = install_execute_sequence_schema();
         assert_eq!(ies.name, "InstallExecuteSequence");

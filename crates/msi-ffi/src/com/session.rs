@@ -16,7 +16,7 @@ pub struct SessionCOM {
 impl SessionCOM {
     /// IID for WindowsInstaller.Session
     pub const IID: GUID = GUID::new(
-        0x000c109e,
+        0x000c_109e,
         0x0000,
         0x0000,
         [0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46],

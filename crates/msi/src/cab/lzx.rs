@@ -650,6 +650,7 @@ impl LzxState {
         clippy::cast_possible_truncation,
         clippy::cast_possible_wrap
     )]
+    #[allow(clippy::cognitive_complexity)]
     pub fn compress_verbatim_block(&mut self, input: &[u8]) -> Result<Vec<u8>> {
         if input.len() > 32_768 {
             return Err(MsiError::CompressionFailed {

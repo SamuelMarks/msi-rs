@@ -1364,7 +1364,7 @@ mod tests {
         runtime.apply_style_preset(WizardStyle::Minimal);
         assert_eq!(runtime.theme().style, WizardStyle::Minimal);
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests trait implementations for window types.
     #[test]
     #[allow(clippy::too_many_lines)]
@@ -1394,11 +1394,13 @@ mod tests {
         assert!(format!("{bridge:?}").contains("AccessKitBridge"));
 
         let event = GuiInputEvent::MouseClick { x: 5, y: 10 };
+        #[allow(clippy::redundant_clone)]
         let cloned_event = event.clone();
         assert_eq!(event, cloned_event);
         assert!(format!("{event:?}").contains("MouseClick"));
 
         let config = WindowConfig::default();
+        #[allow(clippy::redundant_clone)]
         let cloned_config = config.clone();
         assert_eq!(config, cloned_config);
         assert!(format!("{config:?}").contains("WindowConfig"));
@@ -1586,7 +1588,7 @@ mod tests {
         assert_eq!(lc_ev, lc_ev.clone());
         assert!(format!("{lc_ev:?}").contains("ResizeRequested"));
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests `run_event_loop` and rich interactive input events (text editing, checkboxes, radios).
     #[test]
     #[allow(clippy::too_many_lines)]

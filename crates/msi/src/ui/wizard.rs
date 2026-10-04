@@ -1503,7 +1503,7 @@ mod tests {
         assert!(lines.iter().any(|l| l.contains("Configure System Locale")));
         assert!(lines.iter().any(|l| l.contains("en_US.UTF-8")));
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests `NetworkConfigDialog` operations, input handling, validation, and rendering.
     #[test]
     #[allow(clippy::too_many_lines)]
@@ -1677,7 +1677,7 @@ mod tests {
         let err_render = dialog.render();
         assert!(err_render.iter().any(|l| l.contains("ERROR: Sample error")));
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests `UserAccountDialog` operations, input handling, validation, and rendering.
     #[test]
     #[allow(clippy::too_many_lines)]
@@ -1893,7 +1893,7 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests `BareMetalInstallationWizard` state transitions.
     #[test]
     #[allow(clippy::too_many_lines)]

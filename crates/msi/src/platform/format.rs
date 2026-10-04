@@ -827,6 +827,7 @@ mod tests {
         assert!(
             Fat32Formatter::format_filesystem(total_sectors, 512, &large_reserved_opts).is_ok()
         );
+        #[allow(clippy::redundant_clone)]
         let mut options_no_label = options.clone();
         options_no_label.volume_label = String::new();
         assert!(Fat32Formatter::format_filesystem(total_sectors, 512, &options_no_label).is_ok());

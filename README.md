@@ -3,7 +3,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![% doc coverage](https://img.shields.io/badge/doc%20coverage-100%25-brightgreen)](#)
-[![% test coverage](https://img.shields.io/badge/test%20coverage-100%25-brightgreen)](#)
+[![% test coverage](https://img.shields.io/badge/test%20coverage-99.8%25-brightgreen)](#)
 
 A complete, memory-safe, cross-platform implementation of the Windows Installer technology stack written in Rust.
 

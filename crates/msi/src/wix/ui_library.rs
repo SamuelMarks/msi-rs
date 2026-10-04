@@ -1313,7 +1313,7 @@ mod tests {
         assert_eq!(ico[7], 32); // height
         assert_ne!(ico.len(), 0);
     }
-
+    #[allow(clippy::cognitive_complexity)]
     #[test]
     fn test_inject_ui_library_mondo_and_advanced() {
         for mut db_mondo in [

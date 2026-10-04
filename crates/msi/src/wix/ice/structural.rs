@@ -1034,6 +1034,7 @@ mod tests {
             let db_illegal = make_test_db(
                 "Icon",
                 vec![Record::with_fields(vec![FieldValue::String(
+                    #[allow(clippy::inefficient_to_string)]
                     bad.to_string(),
                 )])],
             );
@@ -1091,6 +1092,7 @@ mod tests {
                     FieldValue::Short(1),
                     FieldValue::Short(1),
                     FieldValue::Null,
+                    #[allow(clippy::inefficient_to_string)]
                     FieldValue::String(bad.to_string()),
                 ])],
             );
@@ -1189,6 +1191,7 @@ mod tests {
             let db_bad_syntax = make_test_db(
                 "MIME",
                 vec![Record::with_fields(vec![
+                    #[allow(clippy::inefficient_to_string)]
                     FieldValue::String(bad.to_string()),
                     FieldValue::String("txt".to_string()),
                 ])],
@@ -1299,6 +1302,7 @@ mod tests {
                 vec![Record::with_fields(vec![
                     FieldValue::String("F1".to_string()),
                     FieldValue::String("C1".to_string()),
+                    #[allow(clippy::inefficient_to_string)]
                     FieldValue::String(bad.to_string()),
                 ])],
             );

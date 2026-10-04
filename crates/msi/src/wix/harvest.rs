@@ -1536,7 +1536,7 @@ LineWithoutEquals
         assert!(matches_pattern("nested/docs/readme.md", "docs/"));
         assert!(!matches_pattern("docs_backup/file.txt", "docs/"));
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests `generate_manifest`, `write_manifest`, and `copy_payload` edge cases.
     #[test]
     fn test_generate_manifest_and_write_manifest_edge_cases() {
@@ -1680,7 +1680,7 @@ LineWithoutEquals
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests `harvest_payload` with various combinations of optional parameters and error conditions.
     #[test]
     #[allow(clippy::too_many_lines)]
@@ -1868,7 +1868,7 @@ LineWithoutEquals
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests `LibScript` parity: RFC 4122 v5 GUID generation, default artifact exclusions, `include_msi` toggle, and deep path ID hashing.
     #[test]
     #[allow(clippy::too_many_lines)]

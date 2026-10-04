@@ -536,6 +536,7 @@ impl UiEngine {
         clippy::many_single_char_names,
         clippy::cast_sign_loss
     )]
+    #[allow(clippy::cognitive_complexity)]
     pub fn load_from_database(&mut self, db: &LinkedDatabase) -> Result<()> {
         // 1. Load Dialog table
         for rec in db.get_records("Dialog") {
@@ -1614,7 +1615,7 @@ mod tests {
         ));
         assert!(engine6.click_control("SetPropErrDlg", "ResetBtn").is_err());
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests two-way data binding, checkbox toggling, radio selection, and custom actions execution.
     #[test]
     #[allow(clippy::too_many_lines, clippy::manual_flatten)]

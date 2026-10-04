@@ -16,7 +16,7 @@ pub struct RecordCOM {
 impl RecordCOM {
     /// IID for WindowsInstaller.Record
     pub const IID: GUID = GUID::new(
-        0x000c1093,
+        0x000c_1093,
         0x0000,
         0x0000,
         [0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46],

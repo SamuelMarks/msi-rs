@@ -24,7 +24,7 @@ pub const MSI_NULL_INTEGER_32: i32 = i32::MIN;
 pub const MSI_SHORT_INT_MASK: u16 = 0x8000;
 
 /// Strongly-typed field value in an MSI database table record.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FieldValue {
     /// 16-bit integer (i2 / I2).
     Short(i16),
@@ -113,6 +113,69 @@ impl Record {
         &self.fields
     }
 
+    /// Returns a mutable slice of the fields in this record.
+    ///
+    /// # Returns
+    ///
+    /// Mutable slice of [`FieldValue`].
+    #[must_use]
+    pub fn fields_mut(&mut self) -> &mut [FieldValue] {
+        &mut self.fields
+    }
+    #[allow(clippy::missing_errors_doc)]
+    /// Deserializes a single field from binary format.
+    pub fn deserialize_field(
+        bytes: &[u8],
+        col: &ColumnDef,
+        pool: &StringPool,
+        string_index_size: usize,
+    ) -> Result<FieldValue> {
+        match col.data_type {
+            DataType::Short => {
+                let raw = u16::from_le_bytes([bytes[0], bytes[1]]);
+                if raw == 0x0000 {
+                    Ok(FieldValue::Null)
+                } else {
+                    #[allow(clippy::cast_possible_wrap)]
+                    Ok(FieldValue::Short((raw ^ MSI_SHORT_INT_MASK) as i16))
+                }
+            }
+            DataType::Long => {
+                let val = i32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+                if val == MSI_NULL_INTEGER_32 {
+                    Ok(FieldValue::Null)
+                } else {
+                    Ok(FieldValue::Long(val))
+                }
+            }
+            DataType::Stream => {
+                let raw = u16::from_le_bytes([bytes[0], bytes[1]]);
+                if raw == 0 {
+                    Ok(FieldValue::Null)
+                } else {
+                    Ok(FieldValue::Stream(StringPoolId::new(u32::from(raw))))
+                }
+            }
+            DataType::String { .. } => {
+                let raw = if string_index_size == 2 {
+                    u32::from(u16::from_le_bytes([bytes[0], bytes[1]]))
+                } else {
+                    u32::from_le_bytes([bytes[0], bytes[1], bytes[2], 0])
+                };
+                if raw == 0 {
+                    Ok(FieldValue::Null)
+                } else {
+                    let s = pool
+                        .get_string(raw)
+                        .map_err(|_| MsiError::DataIntegrityError {
+                            reason: format!("invalid string pool reference: {raw}"),
+                        })?;
+                    Ok(FieldValue::String(s.to_string()))
+                }
+            }
+        }
+    }
+
     /// Retrieves a field value by 0-based index.
     ///
     /// # Arguments
@@ -137,15 +200,6 @@ impl Record {
         if idx < self.fields.len() {
             self.fields[idx] = val;
         }
-    }
-
-    /// Retrieves a mutable reference to all field values.
-    ///
-    /// # Returns
-    ///
-    /// Mutable slice of [`FieldValue`].
-    pub fn fields_mut(&mut self) -> &mut [FieldValue] {
-        &mut self.fields
     }
 
     /// Returns the number of fields in this record.
@@ -479,7 +533,7 @@ mod tests {
         pool: &mut StringPool,
         str_bytes: usize,
     ) -> Vec<u8> {
-        let Ok(layout) = PhysicalTableLayout::new(cols) else {
+        let Ok(layout) = PhysicalTableLayout::new(cols, false) else {
             return Vec::new();
         };
         match rec.serialize(&layout, pool, str_bytes) {
@@ -507,7 +561,7 @@ mod tests {
         pool: &StringPool,
         str_bytes: usize,
     ) -> Vec<Record> {
-        let Ok(layout) = PhysicalTableLayout::new(cols) else {
+        let Ok(layout) = PhysicalTableLayout::new(cols, false) else {
             return Vec::new();
         };
         match Record::deserialize(bytes, &layout, pool, str_bytes) {
@@ -706,7 +760,7 @@ mod tests {
     fn test_record_errors() {
         let mut pool = StringPool::new(CODEPAGE_UTF8);
         let cols = vec![ColumnDef::new("Col1", DataType::Short)];
-        let layout = PhysicalTableLayout::new(&cols).unwrap();
+        let layout = PhysicalTableLayout::new(&cols, false).unwrap();
         let r = Record::new(); // 0 fields, but 1 column expected
         assert_eq!(r.fields().len(), 0);
         assert!(r.serialize(&layout, &mut pool, 2).is_err());
@@ -801,7 +855,7 @@ mod tests {
         let mut pool = StringPool::new(CODEPAGE_UTF8);
 
         let cols_short = vec![ColumnDef::new("Col1", DataType::Short)];
-        let layout_short = PhysicalTableLayout::new(&cols_short).unwrap();
+        let layout_short = PhysicalTableLayout::new(&cols_short, false).unwrap();
 
         let r_out_of_bounds = Record::with_fields(vec![FieldValue::Long(32768)]);
         let res = r_out_of_bounds.serialize(&layout_short, &mut pool, 2);
@@ -816,7 +870,7 @@ mod tests {
         assert!(matches!(res3, Err(MsiError::DataIntegrityError { .. })));
 
         let cols_long = vec![ColumnDef::new("Col1", DataType::Long)];
-        let layout_long = PhysicalTableLayout::new(&cols_long).unwrap();
+        let layout_long = PhysicalTableLayout::new(&cols_long, false).unwrap();
 
         let r_wrong_type_long = Record::with_fields(vec![FieldValue::String("NaN".to_string())]);
         let res4 = r_wrong_type_long.serialize(&layout_long, &mut pool, 2);
@@ -827,14 +881,14 @@ mod tests {
     fn test_record_extra_coverage() {
         let mut pool = StringPool::new(CODEPAGE_UTF8);
         let cols = vec![ColumnDef::new("Col1", DataType::Short)];
-        let layout = PhysicalTableLayout::new(&cols).unwrap();
+        let layout = PhysicalTableLayout::new(&cols, false).unwrap();
 
         // Line 374-375
         assert!(Record::deserialize(&[0; 0], &layout, &pool, 2).is_err());
 
         // Line 487: Stream str_id == 0 -> Null
         let cols_stream = vec![ColumnDef::new("Col1", DataType::Stream)];
-        let layout_stream = PhysicalTableLayout::new(&cols_stream).unwrap();
+        let layout_stream = PhysicalTableLayout::new(&cols_stream, false).unwrap();
         let des = Record::deserialize(&[0, 0], &layout_stream, &pool, 2).unwrap();
         assert_eq!(des.fields()[0], FieldValue::Null);
 
@@ -857,7 +911,7 @@ mod tests {
 
         // Line 300: Short to Long valid
         let cols_long = vec![ColumnDef::new("Col1", DataType::Long)];
-        let layout_long = PhysicalTableLayout::new(&cols_long).unwrap();
+        let layout_long = PhysicalTableLayout::new(&cols_long, false).unwrap();
         let r_short_to_long = Record::with_fields(vec![FieldValue::Short(123)]);
         let serialized_long = r_short_to_long
             .serialize(&layout_long, &mut pool, 2)

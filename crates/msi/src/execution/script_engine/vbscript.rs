@@ -956,6 +956,7 @@ impl VbParser {
                 let start = self.parse_expression()?;
                 self.expect(&VbTokenKind::KeywordTo, "'To' in For loop")?;
                 let end = self.parse_expression()?;
+                #[allow(clippy::if_then_some_else_none)]
                 let step = if self.match_token(&VbTokenKind::KeywordStep) {
                     Some(self.parse_expression()?)
                 } else {
@@ -2227,7 +2228,7 @@ mod tests {
             })
         );
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests `Variant` truthiness, integer, and string representations across all variants.
     #[test]
     fn test_vbscript_variant_methods() {
@@ -2336,7 +2337,7 @@ mod tests {
         ";
         assert!(engine.execute(op_script, &mut session).is_ok());
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests parser error handling and diagnostic paths.
     #[test]
     fn test_vbscript_parser_errors() {
@@ -2565,7 +2566,7 @@ mod tests {
             .execute("While True : Wend", &mut fuel_session)
             .is_err());
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests remaining edge-case branches in `VBScript` evaluation, lexing, and parsing.
     #[test]
     #[allow(clippy::too_many_lines)]

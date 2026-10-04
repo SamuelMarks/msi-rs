@@ -126,7 +126,7 @@ impl PyroOptions {
     ///
     /// Returns error string on I/O or assembly failure.
     pub fn execute(&self) -> Result<(), String> {
-        let mut writer = CfbWriter::new(CfbVersion::V3);
+        let mut writer = CfbWriter::new(CfbVersion::V4);
 
         // Author patch summary info stream
         let mut sum_info = SummaryInfo::new();

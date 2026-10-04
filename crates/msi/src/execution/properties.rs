@@ -376,7 +376,7 @@ impl EvaluationContext {
             ' ' | '\t' | '\r' | '\n' | '(' | ')' | '=' | '<' | '>' | '~'
         )
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tokenizes an expression string.
     #[allow(clippy::too_many_lines)]
     fn tokenize_expression(expr: &str) -> Vec<Token> {
@@ -984,7 +984,7 @@ mod tests {
 
         assert!(ctx.format_string("Unclosed [Prop").is_err());
     }
-
+    #[allow(clippy::cognitive_complexity)]
     #[test]
     fn test_condition_evaluation() {
         let mut ctx = EvaluationContext::new();
@@ -1065,7 +1065,7 @@ mod tests {
         assert_eq!(ctx.evaluate_condition("! 1"), Ok(false));
         assert_eq!(ctx.evaluate_condition("! 0"), Ok(true));
     }
-
+    #[allow(clippy::cognitive_complexity)]
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_condition_evaluation_extended() {

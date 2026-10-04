@@ -966,8 +966,9 @@ mod tests {
         };
         assert!(table.add_partition(inverted).is_err());
     }
-
+    #[allow(clippy::multiple_inherent_impl)]
     impl GptTable {
+        #[allow(clippy::missing_const_for_fn)]
         fn default_mock() -> Self {
             Self {
                 disk_guid: [0; 16],

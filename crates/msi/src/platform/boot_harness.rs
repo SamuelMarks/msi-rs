@@ -989,8 +989,8 @@ impl LiveMediaGenerator {
 
         // Sector 24+: Bootloader Payload
         let mut boot_payload = self.bootloader_efi.clone();
-        let pad = (sector_size - (boot_payload.len() % sector_size)) % sector_size;
-        boot_payload.extend(std::iter::repeat_n(0, pad));
+        let padding = (sector_size - (boot_payload.len() % sector_size)) % sector_size;
+        boot_payload.extend(std::iter::repeat_n(0, padding));
         image.extend_from_slice(&boot_payload);
 
         image
@@ -1100,7 +1100,7 @@ impl WinPeHarness {
         s
     }
 
-    /// Generates a PowerShell script for automating `msi-cli` injection into `boot.wim`.
+    /// Generates a `PowerShell` script for automating `msi-cli` injection into `boot.wim`.
     ///
     /// # Arguments
     ///
@@ -1110,7 +1110,7 @@ impl WinPeHarness {
     ///
     /// # Returns
     ///
-    /// Formatted PowerShell script content.
+    /// Formatted `PowerShell` script content.
     #[must_use]
     pub fn generate_wim_injection_script(
         wim_path: &str,

@@ -652,7 +652,7 @@ mod tests {
 
         Ok(())
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests FAT chain cycles, `MiniFAT` stream reading, `MiniFAT` cycles, and size mismatches.
     #[test]
     #[allow(clippy::too_many_lines, clippy::cast_possible_truncation)]

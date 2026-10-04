@@ -630,6 +630,7 @@ impl InstallScript {
                     }
                     let has_icon = data[offset] != 0;
                     offset += 1;
+                    #[allow(clippy::if_then_some_else_none)]
                     let icon_index = if has_icon {
                         Some(read_i32(data, &mut offset)?)
                     } else {

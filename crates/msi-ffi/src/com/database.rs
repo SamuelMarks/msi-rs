@@ -16,7 +16,7 @@ pub struct DatabaseCOM {
 impl DatabaseCOM {
     /// IID for WindowsInstaller.Database
     pub const IID: GUID = GUID::new(
-        0x000c109d,
+        0x000c_109d,
         0x0000,
         0x0000,
         [0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46],

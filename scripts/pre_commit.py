@@ -142,7 +142,7 @@ def hook_clippy(repo_root: Path) -> int:
             "-D",
             "clippy::pedantic",
             "-A",
-            "clippy::assert_is_empty",
+            "clippy::const_is_empty",
         ],
         cwd=repo_root,
     )
@@ -198,7 +198,7 @@ def calculate_doc_coverage(repo_root: Path, force_run: bool = True) -> float:
         env = get_augmented_env()
         env["RUSTDOCFLAGS"] = "-Z unstable-options --show-coverage --output-format json"
         run_command(
-            ["cargo", "doc", "--workspace", "--no-deps"], cwd=repo_root, env=env
+            ["cargo", "+nightly", "doc", "--workspace", "--no-deps"], cwd=repo_root, env=env
         )
         doc_json_files = list(doc_dir.glob("*.json")) if doc_dir.exists() else []
 

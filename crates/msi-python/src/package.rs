@@ -373,6 +373,7 @@ mod tests {
     }
 
     /// Helper verifying properties extraction and table names listing.
+    #[allow(clippy::redundant_clone)]
     fn check_package_properties(res: Result<PyPackage, msi::MsiError>) -> bool {
         res.is_ok_and(|py_pkg| {
             // Test Debug and Clone derives

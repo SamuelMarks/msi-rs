@@ -2391,7 +2391,7 @@ mod tests {
         let parsed_ms = ModuleSubstitutionRow::from_record(&rec_subst);
         assert_eq!(parsed_ms.as_ref().map(|m| m.value.is_none()), Ok(true));
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests invalid inputs, field type mismatches, and schema validation failures across all core tables.
     #[test]
     #[allow(clippy::too_many_lines)]
@@ -3005,7 +3005,7 @@ mod tests {
         let rec_bad_pk = Record::with_fields(vec![FieldValue::Short(1)]);
         assert!(ModuleIgnoreModularizationRow::from_record(&rec_bad_pk).is_err());
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests roundtrip serialization and schema verification for merge module system tables.
     #[test]
     #[allow(clippy::too_many_lines)]

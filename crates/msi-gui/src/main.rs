@@ -22,6 +22,8 @@
     )
 )]
 
+pub mod native_dialog;
+
 use clap::{Parser, ValueEnum};
 use msi::execution::EvaluationContext;
 use msi::ui::{

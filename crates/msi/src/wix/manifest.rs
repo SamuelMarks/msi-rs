@@ -1169,7 +1169,7 @@ mod tests {
             Ok(Some(&JsonValue::Bool(true)))
         );
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests JSON parser error cases across all syntax elements.
     #[test]
     fn test_json_parser_error_cases() {

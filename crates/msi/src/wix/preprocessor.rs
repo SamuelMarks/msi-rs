@@ -239,7 +239,7 @@ impl Preprocessor {
         let (processed_lines, _) = self.process_lines(&lines, 0, ctx, true)?;
         Ok(processed_lines.join("\n"))
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Recursively processes a slice of source lines starting at `start_idx`.
     ///
     /// Returns `(output_lines, next_line_index)`.
@@ -963,7 +963,7 @@ mod tests {
         assert!(result.contains("<Value>Alpha_1</Value>"));
         assert!(result.contains("<Unset>True</Unset>"));
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests expression evaluations with comparisons and boolean logic operators.
     #[test]
     fn test_expression_operators() {

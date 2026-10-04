@@ -724,7 +724,7 @@ mod tests {
         assert_eq!(&bundle, &bundle.clone());
         assert!(!format!("{bundle:?}").is_empty());
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests `Win32ShellLink` binary serialization, `XdgDesktopEntry` directory installation, and macOS symlinks.
     #[test]
     #[allow(clippy::too_many_lines)]

@@ -14,15 +14,20 @@ pub mod daemon;
 pub mod desktop;
 pub mod disk;
 pub mod driver;
+pub mod firewall;
+pub mod font;
 pub mod format;
 pub mod hive;
+pub mod iis;
 pub mod linux_config;
+pub mod odbc;
 pub mod partition;
 pub mod paths;
 pub mod permissions;
 pub mod registry_store;
 pub mod sysroot;
 pub mod unattend;
+pub mod users;
 
 pub use boot_harness::{
     InitScriptBuilder, InitTargetMode, KernelConfig, KernelDriverKind, LiveMediaFormat,
@@ -42,11 +47,19 @@ pub use disk::{
 pub use driver::{
     DriverInf, KernelModule, LinuxKernelModuleServicing, WindowsDriverStoreServicing,
 };
+pub use firewall::{
+    FirewallManager, FirewallRuleName, PacketFilterManager, PortNumber, Protocol, UfwManager,
+    WindowsFirewallManager,
+};
 pub use format::{
     Ext4Formatter, Fat32FormatOptions, Fat32Formatter, FileSystemKind, FileSystemVerifier,
     FormatCommandBuilder, NtfsFormatter,
 };
 pub use hive::{OfflineHiveStore, OfflineRegistryData, OfflineRegistryHive, RegistryValueType};
+pub use iis::{
+    CertificateHash, NginxGenerator, VirtualDirectoryPath, WebAppPoolName,
+    WebServerConfigGenerator, WebSitePort, WindowsIisExecutor,
+};
 pub use linux_config::{
     FstabEntry, FstabGenerator, LinuxIdentityConfig, ProvisionUserAccount, UserProvisioningEngine,
 };
@@ -67,3 +80,7 @@ pub use registry_store::{
 };
 pub use sysroot::SysrootMountGuard;
 pub use unattend::{LinuxCloudInitConfig, WindowsUnattendConfig};
+pub use users::{
+    GroupName, LocalAccountManager, PosixAccountManager, SecurityIdentifier, UserName,
+    WindowsAccountManager,
+};

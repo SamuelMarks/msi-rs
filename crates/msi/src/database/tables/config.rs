@@ -1613,7 +1613,7 @@ mod tests {
 
         Ok(())
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests `ServiceConfig` schema and typed row conversions.
     #[test]
     #[allow(clippy::too_many_lines)]

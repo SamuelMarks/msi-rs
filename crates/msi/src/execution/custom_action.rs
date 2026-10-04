@@ -1994,7 +1994,7 @@ mod tests {
         let _ = unsafe { MsiSetPropertyW(h, name_utf16.as_ptr(), val_utf16.as_ptr()) };
         ERROR_SUCCESS
     }
-
+    #[allow(clippy::missing_const_for_fn)]
     /// Mock custom action returning failure.
     unsafe extern "system-unwind" fn mock_failing_action(_h: MSIHANDLE) -> u32 {
         1603 // ERROR_INSTALL_FAILURE
@@ -2140,7 +2140,7 @@ mod tests {
             assert_eq!(executor.execute(&async_exe, &mut ctx), Ok(ERROR_SUCCESS));
         }
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests all accessors and predicate methods on `CustomActionDefinition` and related enums.
     #[test]
     fn test_custom_action_definition_accessors_and_modes() {
@@ -2204,7 +2204,7 @@ mod tests {
         );
         assert_eq!(InScriptMode::default(), InScriptMode::Immediate);
     }
-
+    #[allow(clippy::missing_const_for_fn)]
     /// Mock custom action returning reboot required.
     unsafe extern "system-unwind" fn mock_reboot_action(_h: MSIHANDLE) -> u32 {
         crate::execution::native_action::ERROR_SUCCESS_REBOOT_REQUIRED
@@ -2337,7 +2337,7 @@ mod tests {
             assert_eq!(buf[3], 0);
         }
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests extended error and edge case paths across MSI C API shims.
     #[test]
     fn test_msi_api_c_shims_extended_error_paths() {
@@ -2663,12 +2663,13 @@ mod tests {
             assert_eq!(res50, ERROR_SUCCESS);
         }
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests `CustomActionDefinition` bitmask flags, getters, builder methods, port heuristics, and `C` shims.
     #[test]
     fn test_custom_action_remaining_coverage() {
         {
             let exec_orig = CustomActionExecutor::new();
+            #[allow(clippy::redundant_clone)]
             let cloned_exec = exec_orig.clone();
             assert!(cloned_exec.execution_logs().is_empty());
             assert_eq!(exec_orig.execution_logs().len(), 0);
@@ -3301,6 +3302,7 @@ mod tests {
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let _lock = executor.execution_logs.lock().map(|_| panic!("poison"));
         }));
+        #[allow(clippy::redundant_clone)]
         let cloned = executor.clone();
         assert!(cloned.execution_logs().is_empty());
         assert!(executor.execution_logs().is_empty());

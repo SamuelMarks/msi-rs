@@ -292,6 +292,11 @@ impl CfbWriter {
         clippy::cast_possible_truncation,
         clippy::manual_div_ceil
     )]
+    #[allow(
+        clippy::too_many_lines,
+        clippy::cognitive_complexity,
+        clippy::cast_possible_truncation
+    )]
     pub fn build(self) -> Vec<u8> {
         let sector_size = self.version.sector_size();
         let mini_sector_size = 1 << CFB_MINI_SECTOR_SHIFT_STANDARD; // 64

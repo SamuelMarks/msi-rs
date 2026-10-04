@@ -432,7 +432,7 @@ impl SysrootMountGuard {
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests `SysrootMountGuard` lifecycle, mount, hierarchy creation, and unmount.
     #[test]
     fn test_sysroot_mount_guard_lifecycle() {

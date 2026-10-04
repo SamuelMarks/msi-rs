@@ -996,7 +996,7 @@ mod tests {
     fn into_vec<T>(res: Result<T>) -> Vec<T> {
         res.ok().into_iter().collect()
     }
-
+    #[allow(clippy::cognitive_complexity)]
     #[allow(clippy::never_loop)]
     #[test]
     fn test_guid_validation() {

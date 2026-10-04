@@ -156,7 +156,7 @@ pub unsafe extern "system" fn MsiRecordSetStringW(
                 }
             };
 
-            let record = hm.get_record_mut(h_record).unwrap();
+            let record = match hm.get_record_mut(h_record) { Some(r) => r, None => return MsiError::ERROR_INVALID_HANDLE, };
             if i_field < record.fields().len() {
                 record.fields_mut()[i_field] = string_val;
                 MsiError::ERROR_SUCCESS

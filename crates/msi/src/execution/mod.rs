@@ -5,6 +5,7 @@
 //! - Property scoping, formatted string expansion, and rich condition expression evaluation.
 
 pub mod appsearch;
+pub mod assembly;
 pub mod bare_metal;
 pub mod cli_parser;
 pub mod costing;
@@ -67,3 +68,9 @@ pub use worker::{
     compute_crc32, CommandSpec, EscalationMethod, InstalledFileRecord, IpcFrame, IpcSocketEndpoint,
     LiveWorkerExecutor, PrivilegeEscalator, WorkerMessage, IPC_FRAME_HEADER_SIZE, IPC_FRAME_MAGIC,
 };
+pub mod bind_image;
+pub mod com_rpc;
+pub mod ipc;
+pub mod msdelta;
+pub mod standard_actions;
+pub mod vfs;

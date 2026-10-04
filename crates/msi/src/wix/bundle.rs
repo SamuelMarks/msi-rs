@@ -577,7 +577,7 @@ impl BurnEngine {
 mod tests {
     use super::*;
     use crate::wix::xml::{XmlNode, XmlParser};
-
+    #[allow(clippy::missing_const_for_fn)]
     #[allow(clippy::unnecessary_wraps)]
     fn dummy_rollback(_rb_id: &str) -> Result<()> {
         Ok(())
@@ -875,6 +875,7 @@ mod tests {
         assert!(format!("{ba_default:?}").contains("BootstrapperApplication"));
 
         let pkg_type = ChainPackageType::RollbackBoundary;
+        #[allow(clippy::redundant_clone)]
         let pkg_type_clone = pkg_type.clone();
         assert_eq!(pkg_type, pkg_type_clone);
         assert_eq!(format!("{pkg_type:?}"), "RollbackBoundary");
@@ -920,11 +921,12 @@ mod tests {
             chain: vec![pkg],
             payload_groups: vec![pg],
         };
+        #[allow(clippy::redundant_clone)]
         let bundle_clone = bundle.clone();
         assert_eq!(bundle, bundle_clone);
         assert!(format!("{bundle:?}").contains("BurnBundle"));
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests `BurnCompiler`, `BurnLinker`, and `BurnEngine` with rollback boundaries and packaging.
     #[test]
     #[allow(clippy::too_many_lines)]

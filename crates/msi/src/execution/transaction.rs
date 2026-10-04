@@ -2444,7 +2444,7 @@ impl Transaction<Uninitialized> {
         self.sequence_table = table.to_string();
         self
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Phase 1: Walks sequence table, evaluates action conditions, performs disk costing,
     /// and compiles `.ibs` and `.rbs` scripts.
     ///
@@ -4052,7 +4052,7 @@ mod tests {
         assert_eq!(tx.install_script().len(), tx.rollback_script().len());
         assert!(tx.cost_engine().volumes().next().is_some());
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests `MultiPackageTransactionManager` lifecycle: begin, join, install, query, commit, rollback.
     #[test]
     fn test_multi_package_transaction_manager() {
@@ -5247,7 +5247,7 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests `MultiPackageTransactionManager` edge cases, child package extractions, and orchestration branches.
     #[test]
     #[allow(clippy::too_many_lines)]
@@ -5965,11 +5965,12 @@ mod tests {
         let err_19 = tx_19.prepare();
         assert!(err_19.is_err());
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests edge-case branches and paths in `transaction.rs` to achieve 100% line and branch coverage.
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_transaction_additional_branch_coverage() {
+        #[allow(clippy::missing_const_for_fn)]
         unsafe extern "system-unwind" fn mock_entry_fn(_: u32) -> u32 {
             0
         }
@@ -6744,7 +6745,7 @@ mod tests {
         let exec_std = unwrap_result(prep_std.execute(&mut std_worker));
         let _ = exec_std.commit(&mut std_worker);
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests remaining edge cases across transaction execution, extraction, rollback and error paths.
     #[test]
     #[allow(clippy::too_many_lines)]

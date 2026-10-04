@@ -994,7 +994,7 @@ pub struct SqlProvisionerResult {
     /// List of statements that were executed or synthesized.
     pub executed_statements: Vec<String>,
 }
-
+#[allow(clippy::doc_markdown)]
 /// In-process SQL provisioner capable of direct TCP MySQL protocol execution.
 #[derive(Debug)]
 pub struct SqlProvisionerClient {
@@ -1075,7 +1075,7 @@ impl SqlProvisionerClient {
             executed_statements: statements,
         })
     }
-
+    #[allow(clippy::doc_markdown)]
     /// Executes the MySQL wire protocol handshake, authentication, and SQL query batch over a stream.
     ///
     /// # Arguments
@@ -1194,17 +1194,17 @@ impl SqlProvisionerClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    #[allow(clippy::missing_const_for_fn)]
     /// Mock custom action returning `ERROR_SUCCESS`.
     unsafe extern "system-unwind" fn mock_success_action(_h: MSIHANDLE) -> u32 {
         ERROR_SUCCESS
     }
-
+    #[allow(clippy::missing_const_for_fn)]
     /// Mock custom action returning `ERROR_SUCCESS_REBOOT_REQUIRED` (3010).
     unsafe extern "system-unwind" fn mock_reboot_action(_h: MSIHANDLE) -> u32 {
         ERROR_SUCCESS_REBOOT_REQUIRED
     }
-
+    #[allow(clippy::missing_const_for_fn)]
     /// Mock custom action returning non-zero error.
     unsafe extern "system-unwind" fn mock_failure_action(_h: MSIHANDLE) -> u32 {
         1603
@@ -1214,7 +1214,7 @@ mod tests {
     unsafe extern "system-unwind" fn mock_panic_action(_h: MSIHANDLE) -> u32 {
         panic!("simulated native panic inside custom action");
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests `NativeLibraryLoader` function registration, invocation, error, and panic boundary isolation.
     #[test]
     #[allow(clippy::too_many_lines)]
@@ -1261,6 +1261,7 @@ mod tests {
         let mut loaded_loader = NativeLibraryLoader::new();
         let loaded_path = std::env::temp_dir().join("mock_lib.dll");
         loaded_loader.library_path = Some(loaded_path);
+        #[allow(clippy::redundant_clone)]
         let cloned_some = loaded_loader.clone();
         assert_eq!(cloned_some.library_path, loaded_loader.library_path);
         assert!(cloned_some.has_function("AnyOtherFunc"));
@@ -1340,6 +1341,7 @@ mod tests {
         // Test WineMode derives
         let default_wm = WineMode::default();
         assert_eq!(default_wm, WineMode::Auto);
+        #[allow(clippy::redundant_clone)]
         let clone_wm = default_wm.clone();
         assert_eq!(default_wm, clone_wm);
         assert!(format!("{default_wm:?}").contains("Auto"));
@@ -1583,7 +1585,7 @@ mod tests {
             let _ = fs::remove_dir_all(&temp_batch_dir);
         }
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests SQL provisioner config extraction, statement generation, and execution in mock and error modes.
     #[test]
     fn test_sql_provisioner_configuration_and_mock_execution() {
@@ -1725,10 +1727,11 @@ mod tests {
         assert_eq!(install_no_pwd.len(), 4);
         assert!(install_no_pwd[1].contains("IDENTIFIED BY ''"));
     }
-
+    #[allow(clippy::doc_markdown)]
     /// Simulation modes for mock MySQL server behavior.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     enum MockServerBehavior {
+        #[allow(clippy::doc_markdown)]
         /// Fully successful MySQL handshake, auth, and query processing.
         Success,
         /// Close socket immediately to simulate handshake header read error.
@@ -1739,12 +1742,14 @@ mod tests {
         FailAuthHeader,
         /// Send truncated authentication response payload.
         FailAuthPayload,
+        #[allow(clippy::doc_markdown)]
         /// Return MySQL error packet on authentication.
         AuthFailed,
         /// Close socket before sending query response header.
         FailQueryHeader,
         /// Send truncated query response payload.
         FailQueryPayload,
+        #[allow(clippy::doc_markdown)]
         /// Return MySQL error packet on query execution.
         QueryFailed,
     }
@@ -1759,7 +1764,7 @@ mod tests {
             },
         )
     }
-
+    #[allow(clippy::doc_markdown)]
     /// Spawns an in-process mock MySQL server listening on a local loopback port.
     ///
     /// # Arguments
@@ -1911,7 +1916,7 @@ mod tests {
 
         (port, handle)
     }
-
+    #[allow(clippy::doc_markdown)]
     /// Tests successful in-process MySQL wire execution against a live mock server.
     #[test]
     fn test_sql_provisioner_wire_protocol_success() {
@@ -1945,7 +1950,7 @@ mod tests {
 
         let _ = handle.join();
     }
-
+    #[allow(clippy::doc_markdown)]
     /// Tests error paths during MySQL wire execution against a mock server.
     #[test]
     fn test_sql_provisioner_wire_protocol_errors() {
@@ -2047,7 +2052,7 @@ mod tests {
             Ok(())
         }
     }
-
+    #[allow(clippy::doc_markdown)]
     /// Tests failure paths for every write call during MySQL wire session execution.
     #[test]
     fn test_sql_provisioner_wire_write_errors() {

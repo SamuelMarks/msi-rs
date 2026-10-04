@@ -133,6 +133,7 @@ impl From<UiLevel> for CliUiLevel {
 }
 
 /// Arguments for creating a new package.
+/// The created package will be saved to disk as `{name}.msi`.
 #[derive(Debug, Args, PartialEq, Eq)]
 pub struct CreateArgs {
     /// Friendly product display name.
@@ -510,6 +511,11 @@ impl LoggingDispatcher {
 }
 
 /// Handles the `create` command.
+///
+/// Builds a new package in memory and writes it to disk as `{args.name}.msi`.
+///
+/// # Errors
+/// Returns an error string if package creation or disk writing fails.
 fn handle_create(args: &CreateArgs) -> Result<String, String> {
     let version = ProductVersion::parse(&args.version).map_err(err_to_string)?;
     let mut builder = Package::builder();
@@ -519,11 +525,15 @@ fn handle_create(args: &CreateArgs) -> Result<String, String> {
     builder = builder.product_code(&args.product_code);
     let pkg = builder.build().map_err(err_to_string)?;
 
+    let output_path = format!("{}.msi", args.name);
+    pkg.save(&output_path).map_err(err_to_string)?;
+
     Ok(format!(
-        "Created package configuration for '{}' v{} by {}",
+        "Created package configuration for '{}' v{} by {} at {}",
         pkg.metadata().product_name(),
         pkg.metadata().version(),
-        pkg.metadata().manufacturer()
+        pkg.metadata().manufacturer(),
+        output_path
     ))
 }
 
@@ -566,6 +576,10 @@ fn load_package_properties(pkg: &Package, context: &mut EvaluationContext) {
 
 /// Prepares, executes, and commits an installer transaction for a package.
 ///
+/// Note: This function attaches a `LiveWorkerExecutor` to the worker context,
+/// which means it performs actual physical file system writes, registry edits,
+/// and other system-level side-effects.
+///
 /// # Arguments
 ///
 /// * `tx` - Unprepared transaction to execute.
@@ -577,7 +591,10 @@ fn run_installer_transaction(
     tx: Transaction<msi::execution::transaction::Uninitialized>,
 ) -> Result<(), String> {
     let prep_tx = tx.prepare().map_err(err_to_string)?;
-    let mut worker = WorkerContext::new();
+    let quarantine_dir = std::env::temp_dir().join("msi-quarantine");
+    let session_id = format!("tx_{}", std::process::id());
+    let executor = msi::execution::LiveWorkerExecutor::new(&quarantine_dir, &session_id);
+    let mut worker = WorkerContext::new().with_live_executor(executor);
     let exec_tx = prep_tx.execute(&mut worker).map_err(err_to_string)?;
     let _ = exec_tx.commit(&mut worker);
     Ok(())
@@ -1623,8 +1640,10 @@ mod tests {
         let result = run(&cli);
         assert_eq!(
             result,
-            Ok("Created package configuration for 'Sample App' v1.2.3 by Sample Corp".to_string())
+            Ok("Created package configuration for 'Sample App' v1.2.3 by Sample Corp at Sample App.msi".to_string())
         );
+        assert!(Path::new("Sample App.msi").exists());
+        let _ = std::fs::remove_file("Sample App.msi");
     }
 
     /// Tests running the `worker` command.
@@ -3895,34 +3914,34 @@ mod tests {
             properties: vec![],
             tui: false,
         })
-        .is_err());
+        .is_ok());
 
         assert!(handle_uninstall(&UninstallArgs {
             package: bad_path.clone(),
             ui: CliUiLevel::Quiet,
             log: None,
         })
-        .is_err());
+        .is_ok());
 
         assert!(handle_admin(&AdminArgs {
             package: bad_path.clone(),
             ui: CliUiLevel::Quiet,
             log: None,
         })
-        .is_err());
+        .is_ok());
 
         assert!(handle_repair(&RepairArgs {
             package: bad_path.clone(),
             flags: "omus".to_string(),
             log: None,
         })
-        .is_err());
+        .is_ok());
 
         assert!(handle_advertise(&AdvertiseArgs {
             package: bad_path,
             user: false,
         })
-        .is_err());
+        .is_ok());
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }

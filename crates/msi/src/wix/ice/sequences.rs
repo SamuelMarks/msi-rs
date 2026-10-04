@@ -711,7 +711,7 @@ mod tests {
         };
         assert_eq!(entry, entry.clone());
         assert!(format!("{entry:?}").contains("SequenceEntry"));
-
+        #[allow(clippy::redundant_clone)]
         let graph_clone = graph.clone();
         assert_eq!(graph.entries, graph_clone.entries);
         assert!(format!("{graph:?}").contains("SequenceGraph"));

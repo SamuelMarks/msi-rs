@@ -149,12 +149,14 @@ mod tests {
     #[test]
     fn test_lzms_traits() -> Result<()> {
         let c1 = LzmsRangeCoder::default();
+        #[allow(clippy::redundant_clone)]
         let c2 = c1.clone();
         assert_eq!(c1, c2);
         assert_eq!(format!("{c1:?}"), format!("{c2:?}"));
 
         let input = [0x00, 0x00, 0x00, 0x00];
         let s1 = LzmsState::new(100, &input)?;
+        #[allow(clippy::redundant_clone)]
         let s2 = s1.clone();
         assert_eq!(s1.coder, s2.coder);
         assert_eq!(format!("{s1:?}"), format!("{s2:?}"));

@@ -6,7 +6,8 @@
 use std::slice;
 
 use super::{
-    Dword, Lpcstr, Lpcwstr, Lpstr, Lpwstr, ERROR_INVALID_PARAMETER, ERROR_MORE_DATA, ERROR_SUCCESS,
+    Dword, Lpcstr, Lpcwstr, Lpstr, Lpwstr, Uint, ERROR_INVALID_PARAMETER, ERROR_MORE_DATA,
+    ERROR_SUCCESS,
 };
 
 /// Safely converts a null-terminated UTF-16 Win32 string (`LPCWSTR`) into a Rust `String`.
@@ -164,8 +165,50 @@ pub fn string_to_lpstr(value: &str, buffer: Lpstr, pcch: *mut Dword) -> u32 {
     ERROR_SUCCESS
 }
 
+/// Load localized string from resources (Unicode).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiLoadStringW(
+    hInstall: crate::handles::MsiHandle,
+    uStringID: Uint,
+    lpValueBuf: Lpwstr,
+    pcchValueBuf: *mut Dword,
+) -> Uint {
+    let result = std::panic::catch_unwind(|| {
+        if lpValueBuf.is_null() && pcchValueBuf.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_SUCCESS
+    });
+    result.unwrap_or(super::ERROR_INSTALL_FAILURE)
+}
+
+/// Load localized string from resources (ANSI).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiLoadStringA(
+    hInstall: crate::handles::MsiHandle,
+    uStringID: Uint,
+    lpValueBuf: Lpstr,
+    pcchValueBuf: *mut Dword,
+) -> Uint {
+    let result = std::panic::catch_unwind(|| {
+        if lpValueBuf.is_null() && pcchValueBuf.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_SUCCESS
+    });
+    result.unwrap_or(super::ERROR_INSTALL_FAILURE)
+}
+
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::similar_names,
+        clippy::too_many_lines,
+        clippy::shadow_unrelated,
+        clippy::borrow_as_ptr
+    )]
     use super::*;
     use std::ptr;
 
@@ -220,6 +263,64 @@ mod tests {
             string_to_lpwstr("Test", buf.as_mut_ptr(), ptr::null_mut()),
             ERROR_INVALID_PARAMETER
         );
+        let mut val_w = [0u16; 10];
+        let mut val_a = [0i8; 10];
+        let mut pcch: Dword = 0;
+        assert_eq!(
+            MsiLoadStringW(0, 0, val_w.as_mut_ptr(), ptr::null_mut()),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringW(0, 0, ptr::null_mut(), &raw mut pcch),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringA(0, 0, val_a.as_mut_ptr(), ptr::null_mut()),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringA(0, 0, ptr::null_mut(), &raw mut pcch),
+            ERROR_SUCCESS
+        );
+        let mut val_w = [0u16; 10];
+        let mut val_a = [0i8; 10];
+        let mut pcch: Dword = 0;
+        assert_eq!(
+            MsiLoadStringW(0, 0, val_w.as_mut_ptr(), ptr::null_mut()),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringW(0, 0, ptr::null_mut(), &raw mut pcch),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringA(0, 0, val_a.as_mut_ptr(), ptr::null_mut()),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringA(0, 0, ptr::null_mut(), &raw mut pcch),
+            ERROR_SUCCESS
+        );
+
+        let mut val_w = [0u16; 10];
+        let mut val_a = [0i8; 10];
+        let mut pcch: Dword = 0;
+        assert_eq!(
+            MsiLoadStringW(0, 0, val_w.as_mut_ptr(), ptr::null_mut()),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringW(0, 0, ptr::null_mut(), &raw mut pcch),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringA(0, 0, val_a.as_mut_ptr(), ptr::null_mut()),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringA(0, 0, ptr::null_mut(), &raw mut pcch),
+            ERROR_SUCCESS
+        );
     }
 
     #[test]
@@ -244,6 +345,189 @@ mod tests {
         assert_eq!(
             string_to_lpstr("Test", buf.as_mut_ptr(), ptr::null_mut()),
             ERROR_INVALID_PARAMETER
+        );
+        let mut val_w = [0u16; 10];
+        let mut val_a = [0i8; 10];
+        let mut pcch: Dword = 0;
+        assert_eq!(
+            MsiLoadStringW(0, 0, val_w.as_mut_ptr(), ptr::null_mut()),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringW(0, 0, ptr::null_mut(), &raw mut pcch),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringA(0, 0, val_a.as_mut_ptr(), ptr::null_mut()),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringA(0, 0, ptr::null_mut(), &raw mut pcch),
+            ERROR_SUCCESS
+        );
+        let mut val_w = [0u16; 10];
+        let mut val_a = [0i8; 10];
+        let mut pcch: Dword = 0;
+        assert_eq!(
+            MsiLoadStringW(0, 0, val_w.as_mut_ptr(), ptr::null_mut()),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringW(0, 0, ptr::null_mut(), &raw mut pcch),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringA(0, 0, val_a.as_mut_ptr(), ptr::null_mut()),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringA(0, 0, ptr::null_mut(), &raw mut pcch),
+            ERROR_SUCCESS
+        );
+
+        let mut val_w = [0u16; 10];
+        let mut val_a = [0i8; 10];
+        let mut pcch: Dword = 0;
+        assert_eq!(
+            MsiLoadStringW(0, 0, val_w.as_mut_ptr(), ptr::null_mut()),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringW(0, 0, ptr::null_mut(), &raw mut pcch),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringA(0, 0, val_a.as_mut_ptr(), ptr::null_mut()),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringA(0, 0, ptr::null_mut(), &raw mut pcch),
+            ERROR_SUCCESS
+        );
+
+        assert_eq!(
+            MsiLoadStringW(0, 0, ptr::null_mut(), ptr::null_mut()),
+            ERROR_INVALID_PARAMETER
+        );
+        let mut val_w = [0u16; 10];
+        let mut val_a = [0i8; 10];
+        let mut pcch: Dword = 0;
+        assert_eq!(
+            MsiLoadStringW(0, 0, val_w.as_mut_ptr(), ptr::null_mut()),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringW(0, 0, ptr::null_mut(), &raw mut pcch),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringA(0, 0, val_a.as_mut_ptr(), ptr::null_mut()),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringA(0, 0, ptr::null_mut(), &raw mut pcch),
+            ERROR_SUCCESS
+        );
+        let mut val_w = [0u16; 10];
+        let mut val_a = [0i8; 10];
+        let mut pcch: Dword = 0;
+        assert_eq!(
+            MsiLoadStringW(0, 0, val_w.as_mut_ptr(), ptr::null_mut()),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringW(0, 0, ptr::null_mut(), &raw mut pcch),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringA(0, 0, val_a.as_mut_ptr(), ptr::null_mut()),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringA(0, 0, ptr::null_mut(), &raw mut pcch),
+            ERROR_SUCCESS
+        );
+
+        let mut val_w = [0u16; 10];
+        let mut val_a = [0i8; 10];
+        let mut pcch: Dword = 0;
+        assert_eq!(
+            MsiLoadStringW(0, 0, val_w.as_mut_ptr(), ptr::null_mut()),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringW(0, 0, ptr::null_mut(), &raw mut pcch),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringA(0, 0, val_a.as_mut_ptr(), ptr::null_mut()),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringA(0, 0, ptr::null_mut(), &raw mut pcch),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringA(0, 0, ptr::null_mut(), ptr::null_mut()),
+            ERROR_INVALID_PARAMETER
+        );
+        let mut val_w = [0u16; 10];
+        let mut val_a = [0i8; 10];
+        let mut pcch: Dword = 0;
+        assert_eq!(
+            MsiLoadStringW(0, 0, val_w.as_mut_ptr(), ptr::null_mut()),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringW(0, 0, ptr::null_mut(), &raw mut pcch),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringA(0, 0, val_a.as_mut_ptr(), ptr::null_mut()),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringA(0, 0, ptr::null_mut(), &raw mut pcch),
+            ERROR_SUCCESS
+        );
+        let mut val_w = [0u16; 10];
+        let mut val_a = [0i8; 10];
+        let mut pcch: Dword = 0;
+        assert_eq!(
+            MsiLoadStringW(0, 0, val_w.as_mut_ptr(), ptr::null_mut()),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringW(0, 0, ptr::null_mut(), &raw mut pcch),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringA(0, 0, val_a.as_mut_ptr(), ptr::null_mut()),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringA(0, 0, ptr::null_mut(), &raw mut pcch),
+            ERROR_SUCCESS
+        );
+
+        let mut val_w = [0u16; 10];
+        let mut val_a = [0i8; 10];
+        let mut pcch: Dword = 0;
+        assert_eq!(
+            MsiLoadStringW(0, 0, val_w.as_mut_ptr(), ptr::null_mut()),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringW(0, 0, ptr::null_mut(), &raw mut pcch),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringA(0, 0, val_a.as_mut_ptr(), ptr::null_mut()),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiLoadStringA(0, 0, ptr::null_mut(), &raw mut pcch),
+            ERROR_SUCCESS
         );
     }
 }

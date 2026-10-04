@@ -552,7 +552,7 @@ impl RegistryStore {
         )
     }
 }
-
+#[allow(clippy::doc_markdown)]
 /// Relational SQLite DDL initialization script for registry emulation.
 pub const SQLITE_REGISTRY_INIT_SQL: &str = "
 PRAGMA journal_mode = WAL;
@@ -596,7 +596,7 @@ CREATE TABLE IF NOT EXISTS transaction_log (
 
 INSERT OR IGNORE INTO roots (id, name) VALUES (0, 'HKCR'), (1, 'HKCU'), (2, 'HKLM'), (3, 'HKU');
 ";
-
+#[allow(clippy::doc_markdown)]
 /// Relational transaction log entry for SQLite registry auditing and rollback.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SqliteTransactionLogEntry {
@@ -613,7 +613,7 @@ pub struct SqliteTransactionLogEntry {
     /// Previous value before modification if updating/deleting.
     pub old_value: Option<RegistryValue>,
 }
-
+#[allow(clippy::doc_markdown)]
 /// ACID relational storage driver for Windows Registry emulation backed by SQLite schema.
 #[derive(Debug, Clone)]
 pub struct SqliteRegistryDriver {
@@ -666,7 +666,7 @@ impl SqliteRegistryDriver {
         driver.initialize_schema();
         driver
     }
-
+    #[allow(clippy::doc_markdown)]
     /// Creates a new [`SqliteRegistryDriver`] configuring explicit WAL journal mode and normal synchronous flags.
     ///
     /// # Arguments
@@ -692,13 +692,13 @@ impl SqliteRegistryDriver {
     pub fn open_in_memory() -> Self {
         Self::new(PathBuf::from(":memory:"))
     }
-
+    #[allow(clippy::doc_markdown)]
     /// Returns the standard system SQLite database path (`/var/lib/msi/registry.db`).
     #[must_use]
     pub const fn system_db_path() -> &'static str {
         "/var/lib/msi/registry.db"
     }
-
+    #[allow(clippy::doc_markdown)]
     /// Returns the standard user SQLite database path (`~/.config/msi/registry.db`).
     #[must_use]
     pub const fn user_db_path() -> &'static str {
@@ -770,7 +770,7 @@ impl SqliteRegistryDriver {
         std::fs::write(&self.db_path, sql)?;
         Ok(())
     }
-
+    #[allow(clippy::doc_markdown)]
     /// Loads and parses an SQLite registry database script from disk.
     ///
     /// # Arguments
@@ -1953,7 +1953,7 @@ INSERT OR REPLACE INTO values VALUES (10, 'Fallback', 'REG_CUSTOM_TYPE', 'raw_te
         assert!(store.increment_shared_dll_ref("").is_err());
         assert!(store.decrement_shared_dll_ref("").is_err());
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests component client `ProductCode` tracking per `ComponentId` GUID on `RegistryStore`.
     #[test]
     fn test_registry_store_component_client_tracking() {

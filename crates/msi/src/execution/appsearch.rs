@@ -1298,4 +1298,21 @@ mod tests {
         let app_search = AppSearch::new(&db, host);
         let _ = app_search.execute();
     }
+
+    #[test]
+    fn test_appsearch_errors() {
+        let mut db = LinkedDatabase::new().unwrap();
+        db.add_record(
+            "DrLocator",
+            Record::with_fields(vec![
+                FieldValue::String("SigNeg".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        let host = MockHost::default();
+        let app_search = AppSearch::new(&db, host);
+        let _ = app_search.execute();
+    }
 }

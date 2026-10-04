@@ -604,7 +604,7 @@ mod tests {
     }
 
     /// Helper checking `add_directory`, `add_component`, `add_feature`, and `add_file`.
-    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn check_builder_components(res: PyResult<PyPackageBuilder>) -> bool {
         res.is_ok_and(|mut b| {
             // Directories: with parent and without parent

@@ -669,7 +669,7 @@ mod tests {
             }
         );
     }
-
+    #[allow(clippy::cognitive_complexity)]
     #[test]
     fn test_worker_message_parse_errors() {
         assert!(WorkerMessage::from_bytes(&[]).is_err());

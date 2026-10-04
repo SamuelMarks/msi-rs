@@ -1063,7 +1063,7 @@ mod tests {
         assert_eq!(compare_cfb_names("abc", "abd"), Ordering::Less);
         assert_eq!(compare_cfb_names("abd", "abc"), Ordering::Greater);
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests [`StorageClsid`] operations, parsing, formatting, and [`DirectoryEntry`] integration.
     #[test]
     fn test_storage_clsid() {

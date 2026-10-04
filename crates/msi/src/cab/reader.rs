@@ -516,6 +516,7 @@ mod tests {
         let cab_bytes = writer.build();
 
         let reader = CabinetReader::new(&cab_bytes).unwrap_or_default();
+        #[allow(clippy::redundant_clone)]
         let cloned = reader.clone();
         assert_eq!(reader.files().len(), cloned.files().len());
         assert!(format!("{reader:?}").contains("CabinetReader"));

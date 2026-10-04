@@ -186,6 +186,7 @@ impl MsiEmbeddedChainerRow {
             _ => None,
         };
 
+        println!("REC: {rec:?}");
         let source = match rec.get(3) {
             Some(FieldValue::String(s)) if !s.is_empty() => s.clone(),
             _ => {
@@ -348,6 +349,7 @@ mod tests {
         assert_eq!(parsed_non_str.command_line, None);
 
         // Test clone, debug, equality
+        #[allow(clippy::redundant_clone)]
         let row_cloned = row.clone();
         assert_eq!(row_cloned, row);
         assert!(format!("{row:?}").contains("LibScriptChainer"));

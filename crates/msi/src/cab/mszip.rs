@@ -669,7 +669,7 @@ mod tests {
             Ok(expected_dynamic)
         );
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests internal decoding helpers and edge-case error branches.
     #[test]
     fn test_mszip_internal_helpers_and_errors() {

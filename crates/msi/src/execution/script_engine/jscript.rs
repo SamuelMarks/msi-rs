@@ -837,6 +837,7 @@ impl Parser {
                         });
                     }
                 };
+                #[allow(clippy::if_then_some_else_none)]
                 let init = if self.match_token(&TokenKind::Equal) {
                     Some(self.parse_expression()?)
                 } else {
@@ -856,6 +857,7 @@ impl Parser {
                 let condition = self.parse_expression()?;
                 self.expect(&TokenKind::RightParen, "')' after if condition")?;
                 let then_branch = Box::new(self.parse_statement()?);
+                #[allow(clippy::if_then_some_else_none)]
                 let else_branch = if self.match_token(&TokenKind::KeywordElse) {
                     Some(Box::new(self.parse_statement()?))
                 } else {
@@ -1595,7 +1597,7 @@ impl JScriptEngine {
             }
         }
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Evaluates an expression.
     #[allow(clippy::too_many_lines)]
     fn eval_expression(&mut self, expr: &Expr, session: &mut ScriptSession) -> Result<JsValue> {
@@ -2242,7 +2244,7 @@ mod tests {
         let res = engine.execute(script, &mut session);
         assert_eq!(res, Ok(JsValue::Number(1.0)));
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests `JsValue` truthiness, string formatting, and numeric conversions across all variants.
     #[test]
     #[allow(clippy::float_cmp)]
@@ -2599,7 +2601,7 @@ mod tests {
             Err(MsiError::ScriptRuntimeError { .. })
         ));
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests remaining uncovered branches in property mirroring, assignments, and expressions.
     #[test]
     #[allow(clippy::too_many_lines)]

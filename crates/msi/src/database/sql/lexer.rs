@@ -296,7 +296,7 @@ impl Lexer {
         Ok(tokens)
     }
 }
-
+#[allow(clippy::cognitive_complexity)]
 /// Matches a case-insensitive word against known SQL keywords.
 fn match_keyword_or_ident(w: &str) -> Token {
     if w.eq_ignore_ascii_case("SELECT") {
@@ -529,6 +529,7 @@ mod tests {
     #[test]
     fn test_lexer_derives() {
         let token = Token::Select;
+        #[allow(clippy::redundant_clone)]
         let cloned_token = token.clone();
         assert_eq!(token, cloned_token);
         assert_ne!(token, Token::From);

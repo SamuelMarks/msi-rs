@@ -1259,6 +1259,7 @@ mod tests {
         // Install for systemd
         let res_inst = executor.install_service(&svc, SupervisorType::Systemd, Some(&temp_dir));
         assert!(res_inst.is_ok());
+        #[allow(clippy::or_fun_call)]
         let installed = res_inst.unwrap_or(InstalledService {
             name: String::new(),
             supervisor: SupervisorType::Systemd,
@@ -1547,7 +1548,7 @@ mod tests {
         assert!(res.is_ok());
         assert_eq!(executor.installed_services.len(), 0);
     }
-
+    #[allow(clippy::cognitive_complexity)]
     /// Tests `Win32ServiceManager` command synthesis, `/etc/systemd/system/` paths, launchd load/unload, and Windows SCM lifecycle dispatch.
     #[test]
     #[allow(clippy::too_many_lines)]

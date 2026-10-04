@@ -693,6 +693,176 @@ pub enum MsiError {
         /// Reason for data integrity failure.
         reason: String,
     },
+
+    /// An error occurred during system configuration mapping (Registry, Env, Ini).
+    #[display("System configuration error: {_0}")]
+    #[error(ignore)]
+    SystemConfigurationError(String),
+
+    /// An ODBC driver registration error.
+    #[display("ODBC configuration error: {_0}")]
+    #[error(ignore)]
+    OdbcError(String),
+
+    /// A GDI/Font registration error.
+    #[display("Font registration error: {_0}")]
+    #[error(ignore)]
+    FontRegistrationError(String),
+
+    /// A systemd service configuration error.
+    #[display("Systemd configuration error: {_0}")]
+    #[error(ignore)]
+    SystemdError(String),
+
+    /// A launchd service configuration error.
+    #[display("Launchd configuration error: {_0}")]
+    #[error(ignore)]
+    LaunchdError(String),
+
+    /// An SMF (Service Management Facility) configuration error.
+    #[display("SMF configuration error: {_0}")]
+    #[error(ignore)]
+    SmfError(String),
+
+    /// An rc.d service configuration error.
+    #[display("rc.d configuration error: {_0}")]
+    #[error(ignore)]
+    RcError(String),
+
+    /// IPC error during custom action execution.
+    #[display("IPC communication error: {_0}")]
+    #[error(ignore)]
+    IpcError(String),
+
+    /// A generic registry error across virtual/native hives.
+    #[display("Registry error: {_0}")]
+    #[error(ignore)]
+    RegistryError(String),
+
+    /// A standard OS-agnostic IO operation failure.
+    #[display("File/Folder operation failed: {_0}")]
+    #[error(ignore)]
+    FileOperationError(String),
+
+    /// An error occurred during ODBC mapping or configuration.
+    #[display("ODBC error: {_0}")]
+    #[error(ignore)]
+    OdbcConfigError(String),
+
+    /// A COM or RPC error occurred during communication with the legacy MSI server.
+    #[display("COM/RPC communication error: {_0}")]
+    #[error(ignore)]
+    ComRpcError(String),
+
+    /// An internal MSI Server error occurred during execution.
+    #[display("MSI Server execution error: {_0}")]
+    #[error(ignore)]
+    MsiServerError(String),
+
+    /// An error occurred parsing or processing a .NET Assembly manifest.
+    #[display("Assembly processing error: {_0}")]
+    #[error(ignore)]
+    AssemblyError(String),
+
+    /// An error occurred during `WinSxS` (Side-by-Side) operations.
+    #[display("WinSxS operation failed: {_0}")]
+    #[error(ignore)]
+    SxSError(String),
+
+    /// An error occurred rendering native Win32/USER32 controls.
+    #[display("USER32 rendering error: {_0}")]
+    #[error(ignore)]
+    User32RenderError(String),
+
+    /// An error occurred traversing an `IDispatch` COM bridge.
+    #[display("IDispatch bridge error: {_0}")]
+    #[error(ignore)]
+    DispatchBridgeError(String),
+
+    /// An error occurred during an ActiveX/COM object instantiation.
+    #[display("ActiveX error: {_0}")]
+    #[error(ignore)]
+    ActiveXError(String),
+
+    /// An error occurred applying a patch or delta to a source file.
+    #[display("Patch apply error: {_0}")]
+    #[error(ignore)]
+    PatchApplyError(String),
+
+    /// An error occurred decoding an `MSDelta` or `MSPatchA` stream.
+    #[display("Delta decode error: {_0}")]
+    #[error(ignore)]
+    DeltaDecodeError(String),
+
+    /// An action execution error occurred across the FFI boundary.
+    #[display("Action execution error: {_0}")]
+    #[error(ignore)]
+    ActionExecutionError(String),
+
+    /// An error occurred while locating a component on the filesystem.
+    #[display("Component locator error: {_0}")]
+    #[error(ignore)]
+    LocatorError(String),
+
+    /// An error occurred while resolving a .NET or `WinSxS` assembly.
+    #[display("Assembly resolution error: {_0}")]
+    #[error(ignore)]
+    AssemblyResolutionError(String),
+
+    /// An error occurred while merging MSI databases.
+    #[display("Database merge error: {_0}")]
+    #[error(ignore)]
+    DatabaseMergeError(String),
+
+    /// An error occurred while exporting an MSI database table.
+    #[display("Database export error: {_0}")]
+    #[error(ignore)]
+    DatabaseExportError(String),
+
+    /// An error occurred while resolving or managing an installation source list.
+    #[display("Source list error: {_0}")]
+    #[error(ignore)]
+    SourceListError(String),
+
+    /// An error occurred while advertising a product or script.
+    #[display("Advertisement error: {_0}")]
+    #[error(ignore)]
+    AdvertisementError(String),
+
+    /// An error occurred while applying or sequencing a patch.
+    #[display("Patch application error: {_0}")]
+    #[error(ignore)]
+    PatchApplicationError(String),
+
+    /// An error occurred while rendering or managing a UI preview dialog.
+    #[display("UI preview error: {_0}")]
+    #[error(ignore)]
+    UiPreviewError(String),
+
+    /// An error occurred within an external logging callback or sink.
+    #[display("Logging callback error: {_0}")]
+    #[error(ignore)]
+    LoggingCallbackError(String),
+
+    /// An error occurred while registering or unregistering a COM DLL.
+    #[display("COM registration error: {_0}")]
+    #[error(ignore)]
+    ComRegistrationError(String),
+
+    /// An error occurred while executing IIS configuration.
+    #[display("IIS configuration error: {_0}")]
+    #[error(ignore)]
+    IisConfigurationError(String),
+
+    /// An error occurred while configuring firewall exceptions.
+    #[display("Firewall configuration error: {_0}")]
+    #[error(ignore)]
+    FirewallConfigError(String),
+
+    /// An error occurred while managing local users and groups.
+    #[display("User management error: {_0}")]
+    #[error(ignore)]
+    UserManagementError(String),
 }
 
 impl From<std::io::Error> for MsiError {
@@ -1499,6 +1669,242 @@ mod tests {
             MsiError::DataIntegrityError {
                 reason: "value out of bounds".to_string(),
             }
+        );
+    }
+
+    #[test]
+    #[allow(
+        clippy::cognitive_complexity,
+        clippy::too_many_lines,
+        clippy::shadow_unrelated,
+        clippy::similar_names
+    )]
+    fn test_rpc_and_server_errors() {
+        let err_rpc = MsiError::ComRpcError("connection dropped".to_string());
+        assert_eq!(
+            format!("{err_rpc}"),
+            "COM/RPC communication error: connection dropped"
+        );
+        assert_eq!(
+            err_rpc,
+            MsiError::ComRpcError("connection dropped".to_string())
+        );
+
+        let err_server = MsiError::MsiServerError("engine crashed".to_string());
+        assert_eq!(
+            format!("{err_server}"),
+            "MSI Server execution error: engine crashed"
+        );
+        assert_eq!(
+            err_server,
+            MsiError::MsiServerError("engine crashed".to_string())
+        );
+
+        let err_asm = MsiError::AssemblyError("invalid token".to_string());
+        assert_eq!(
+            format!("{err_asm}"),
+            "Assembly processing error: invalid token"
+        );
+        assert_eq!(
+            err_asm,
+            MsiError::AssemblyError("invalid token".to_string())
+        );
+
+        let err_sxs = MsiError::SxSError("manifest missing".to_string());
+        assert_eq!(
+            format!("{err_sxs}"),
+            "WinSxS operation failed: manifest missing"
+        );
+        assert_eq!(err_sxs, MsiError::SxSError("manifest missing".to_string()));
+
+        let err_user32 = MsiError::User32RenderError("CreateWindow failed".to_string());
+        assert_eq!(
+            format!("{err_user32}"),
+            "USER32 rendering error: CreateWindow failed"
+        );
+        assert_eq!(
+            err_user32,
+            MsiError::User32RenderError("CreateWindow failed".to_string())
+        );
+
+        let err_dispatch = MsiError::DispatchBridgeError("Invoke failed".to_string());
+        assert_eq!(
+            format!("{err_dispatch}"),
+            "IDispatch bridge error: Invoke failed"
+        );
+        assert_eq!(
+            err_dispatch,
+            MsiError::DispatchBridgeError("Invoke failed".to_string())
+        );
+
+        let err_activex = MsiError::ActiveXError("CreateObject blocked".to_string());
+        assert_eq!(
+            format!("{err_activex}"),
+            "ActiveX error: CreateObject blocked"
+        );
+        assert_eq!(
+            err_activex,
+            MsiError::ActiveXError("CreateObject blocked".to_string())
+        );
+
+        let err_patch = MsiError::PatchApplyError("checksum mismatch".to_string());
+        assert_eq!(
+            format!("{err_patch}"),
+            "Patch apply error: checksum mismatch"
+        );
+        assert_eq!(
+            err_patch,
+            MsiError::PatchApplyError("checksum mismatch".to_string())
+        );
+
+        let err_delta = MsiError::DeltaDecodeError("invalid opcode".to_string());
+        assert_eq!(format!("{err_delta}"), "Delta decode error: invalid opcode");
+        assert_eq!(
+            err_delta,
+            MsiError::DeltaDecodeError("invalid opcode".to_string())
+        );
+
+        let err_odbc = MsiError::OdbcConfigError("bad dsn".to_string());
+        assert_eq!(format!("{err_odbc}"), "ODBC error: bad dsn");
+        assert_eq!(err_odbc, MsiError::OdbcConfigError("bad dsn".to_string()));
+
+        let err_font = MsiError::FontRegistrationError("bad ttf".to_string());
+        assert_eq!(format!("{err_font}"), "Font registration error: bad ttf");
+        assert_eq!(
+            err_font,
+            MsiError::FontRegistrationError("bad ttf".to_string())
+        );
+
+        let err_act_exec = MsiError::ActionExecutionError("failed to execute".to_string());
+
+        let err_loc = MsiError::LocatorError("component missing".to_string());
+        assert_eq!(
+            format!("{err_loc}"),
+            "Component locator error: component missing"
+        );
+        assert_eq!(
+            err_loc,
+            MsiError::LocatorError("component missing".to_string())
+        );
+
+        let err_asm = MsiError::AssemblyResolutionError("manifest unreadable".to_string());
+
+        let err_merge = MsiError::DatabaseMergeError("conflict".to_string());
+        assert_eq!(format!("{err_merge}"), "Database merge error: conflict");
+        assert_eq!(
+            err_merge,
+            MsiError::DatabaseMergeError("conflict".to_string())
+        );
+
+        let err_export = MsiError::DatabaseExportError("access denied".to_string());
+
+        let err_src = MsiError::SourceListError("network unmounted".to_string());
+        assert_eq!(format!("{err_src}"), "Source list error: network unmounted");
+        assert_eq!(
+            err_src,
+            MsiError::SourceListError("network unmounted".to_string())
+        );
+
+        let err_adv = MsiError::AdvertisementError("shortcut failed".to_string());
+        assert_eq!(format!("{err_adv}"), "Advertisement error: shortcut failed");
+        assert_eq!(
+            err_adv,
+            MsiError::AdvertisementError("shortcut failed".to_string())
+        );
+
+        let err_patch = MsiError::PatchApplicationError("invalid offset".to_string());
+        assert_eq!(
+            format!("{err_patch}"),
+            "Patch application error: invalid offset"
+        );
+        assert_eq!(
+            err_patch,
+            MsiError::PatchApplicationError("invalid offset".to_string())
+        );
+
+        let err_preview = MsiError::UiPreviewError("dialog not found".to_string());
+        assert_eq!(
+            format!("{err_preview}"),
+            "UI preview error: dialog not found"
+        );
+        assert_eq!(
+            err_preview,
+            MsiError::UiPreviewError("dialog not found".to_string())
+        );
+
+        let err_log = MsiError::LoggingCallbackError("sink disconnected".to_string());
+        assert_eq!(
+            format!("{err_log}"),
+            "Logging callback error: sink disconnected"
+        );
+        assert_eq!(
+            err_log,
+            MsiError::LoggingCallbackError("sink disconnected".to_string())
+        );
+
+        let err_com_reg = MsiError::ComRegistrationError("access denied".to_string());
+        assert_eq!(
+            format!("{err_com_reg}"),
+            "COM registration error: access denied"
+        );
+        assert_eq!(
+            err_com_reg,
+            MsiError::ComRegistrationError("access denied".to_string())
+        );
+
+        let err_iis = MsiError::IisConfigurationError("port binding conflict".to_string());
+        assert_eq!(
+            format!("{err_iis}"),
+            "IIS configuration error: port binding conflict"
+        );
+        assert_eq!(
+            err_iis,
+            MsiError::IisConfigurationError("port binding conflict".to_string())
+        );
+
+        let err_fw = MsiError::FirewallConfigError("invalid rule syntax".to_string());
+        assert_eq!(
+            format!("{err_fw}"),
+            "Firewall configuration error: invalid rule syntax"
+        );
+        assert_eq!(
+            err_fw,
+            MsiError::FirewallConfigError("invalid rule syntax".to_string())
+        );
+
+        let err_um = MsiError::UserManagementError("user already exists".to_string());
+        assert_eq!(
+            format!("{err_um}"),
+            "User management error: user already exists"
+        );
+        assert_eq!(
+            err_um,
+            MsiError::UserManagementError("user already exists".to_string())
+        );
+
+        assert_eq!(
+            format!("{err_export}"),
+            "Database export error: access denied"
+        );
+        assert_eq!(
+            err_export,
+            MsiError::DatabaseExportError("access denied".to_string())
+        );
+        assert_eq!(
+            format!("{err_asm}"),
+            "Assembly resolution error: manifest unreadable"
+        );
+        assert_eq!(
+            err_asm,
+            MsiError::AssemblyResolutionError("manifest unreadable".to_string())
+        );
+        assert_eq!(
+            format!("{err_act_exec}"),
+            "Action execution error: failed to execute"
+        );
+        assert_eq!(
+            err_act_exec,
+            MsiError::ActionExecutionError("failed to execute".to_string())
         );
     }
 }

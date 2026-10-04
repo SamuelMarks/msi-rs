@@ -15,23 +15,23 @@ pub const MSIDB_PRIMARY_KEY: u16 = 0x2000;
 /// Localizable string column flag (`0x0200`).
 pub const MSIDB_LOCALIZABLE: u16 = 0x0200;
 
-/// Stream object column flag (`0x0100`).
-pub const MSIDB_STREAM: u16 = 0x0100;
+/// Stream object column type flag (`0x0900`).
+pub const MSIDB_STREAM: u16 = 0x0900;
 
-/// 4-byte integer column type (`0x0004`).
-pub const MSIDB_LONG: u16 = 0x0004;
+/// 4-byte integer column type (`0x0104`).
+pub const MSIDB_LONG: u16 = 0x0104;
 
-/// 2-byte integer column type (`0x0002`).
-pub const MSIDB_SHORT: u16 = 0x0002;
+/// 2-byte integer column type (`0x0502`).
+pub const MSIDB_SHORT: u16 = 0x0502;
 
-/// String column base type (`0x0000`).
-pub const MSIDB_STRING: u16 = 0x0000;
+/// String column base type (`0x0D00`).
+pub const MSIDB_STRING: u16 = 0x0D00;
 
-/// Mask for valid data types (`0x003F`) per MSI SDK `msidbValidFlags`.
-pub const MSIDB_VALID_FLAGS: u16 = 0x003F;
+/// Mask for valid data types (`0x00FF` length + type flags).
+pub const MSIDB_VALID_FLAGS: u16 = 0x0FFF;
 
-/// Mask for all column attribute and data type flags (`0x3306`).
-pub const MSIDB_ALL_FLAGS: u16 = 0x3306;
+/// Mask for all column attribute and data type flags.
+pub const MSIDB_ALL_FLAGS: u16 = 0x3FFF;
 
 /// Primary data type of an MSI table column.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -154,6 +154,7 @@ impl ColumnDef {
             DataType::Long => mask |= MSIDB_LONG,
             DataType::Stream => mask |= MSIDB_STREAM,
             DataType::String { max_len } => {
+                mask |= MSIDB_STRING;
                 mask |= u16::from(max_len);
             }
         }
@@ -180,26 +181,24 @@ impl ColumnDef {
         let primary_key = (bitmask & MSIDB_PRIMARY_KEY) != 0;
         let localizable = (bitmask & MSIDB_LOCALIZABLE) != 0;
 
-        let has_short = (bitmask & MSIDB_SHORT) != 0;
-        let has_long = (bitmask & MSIDB_LONG) != 0;
-        let has_stream = (bitmask & MSIDB_STREAM) != 0;
-
-        let type_flags_count = u8::from(has_short) + u8::from(has_long) + u8::from(has_stream);
-        if type_flags_count > 1 {
-            return Err(MsiError::InvalidColumnType { raw: bitmask });
-        }
-
-        let data_type = if has_short {
+        let category = bitmask & 0x0D00;
+        let data_type = if category == (MSIDB_SHORT & 0x0D00) && (bitmask & 0xFF) == 2 {
             DataType::Short
-        } else if has_long {
+        } else if category == (MSIDB_LONG & 0x0D00) && (bitmask & 0xFF) == 4 {
             DataType::Long
-        } else if has_stream {
+        } else if category == (MSIDB_STREAM & 0x0D00) && bitmask.trailing_zeros() >= 8 {
             DataType::Stream
+        } else if category == (MSIDB_STRING & 0x0D00)
+            || category == 0x0800
+            || category == 0x0400
+            || category == 0x0000
+        {
+            DataType::String {
+                max_len: (bitmask & 0x00FF) as u8,
+            }
         } else {
-            let max_len = (bitmask & 0x00FF) as u8;
-            DataType::String { max_len }
+            return Err(MsiError::InvalidColumnType { raw: bitmask });
         };
-
         Ok(Self {
             name: name.into(),
             data_type,
@@ -242,8 +241,8 @@ mod tests {
     /// Tests column bitmask encoding and decoding roundtrips.
     #[test]
     fn test_column_def_bitmask_roundtrip() {
-        assert_eq!(MSIDB_VALID_FLAGS, 0x003F);
-        assert_eq!(MSIDB_ALL_FLAGS, 0x3306);
+        assert_eq!(MSIDB_VALID_FLAGS, 0x0FFF);
+        assert_eq!(MSIDB_ALL_FLAGS, 0x3FFF);
         assert_eq!(MSIDB_NULL, 0x0000);
 
         // Non-nullable, primary key string

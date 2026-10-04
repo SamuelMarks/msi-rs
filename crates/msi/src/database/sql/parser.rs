@@ -128,7 +128,7 @@ impl Parser {
             self.next_token();
             joins.push(self.expect_ident()?);
         }
-
+        #[allow(clippy::if_then_some_else_none)]
         let where_clause = if matches!(self.peek(), Some(Token::Where)) {
             self.next_token();
             Some(self.parse_expression()?)
@@ -234,7 +234,7 @@ impl Parser {
                 break;
             }
         }
-
+        #[allow(clippy::if_then_some_else_none)]
         let where_clause = if matches!(self.peek(), Some(Token::Where)) {
             self.next_token();
             Some(self.parse_expression()?)
@@ -254,7 +254,7 @@ impl Parser {
         self.expect(&Token::Delete)?;
         self.expect(&Token::From)?;
         let table = self.expect_ident()?;
-
+        #[allow(clippy::if_then_some_else_none)]
         let where_clause = if matches!(self.peek(), Some(Token::Where)) {
             self.next_token();
             Some(self.parse_expression()?)
@@ -634,7 +634,7 @@ mod tests {
         let sql_drop = "DROP TABLE T";
         assert!(parse_query(sql_drop).is_ok());
     }
-
+    #[allow(clippy::cognitive_complexity)]
     #[test]
     #[allow(clippy::similar_names)]
     fn test_parser_errors() {
@@ -743,6 +743,7 @@ mod tests {
         assert!(format!("{dir:?}").contains("Ascending"));
 
         let val = SqlValue::Null;
+        #[allow(clippy::redundant_clone)]
         let cloned_val = val.clone();
         assert_eq!(val, cloned_val);
         assert_ne!(val, SqlValue::Parameter);
@@ -757,6 +758,7 @@ mod tests {
             column: "Col1".to_string(),
             direction: OrderDirection::Ascending,
         };
+        #[allow(clippy::redundant_clone)]
         let cloned_term = term.clone();
         assert_eq!(term, cloned_term);
         assert!(format!("{term:?}").contains("Col1"));
@@ -769,6 +771,7 @@ mod tests {
             primary_key: true,
             localizable: false,
         };
+        #[allow(clippy::redundant_clone)]
         let cloned_col = col_def.clone();
         assert_eq!(col_def, cloned_col);
         assert!(format!("{col_def:?}").contains("Col1"));
@@ -777,6 +780,7 @@ mod tests {
             column: "Col1".to_string(),
             negated: false,
         };
+        #[allow(clippy::redundant_clone)]
         let cloned_expr = expr.clone();
         assert_eq!(expr, cloned_expr);
         assert!(format!("{expr:?}").contains("IsNull"));
@@ -784,6 +788,7 @@ mod tests {
         let stmt = Statement::DropTable {
             table: "T".to_string(),
         };
+        #[allow(clippy::redundant_clone)]
         let cloned_stmt = stmt.clone();
         assert_eq!(stmt, cloned_stmt);
         assert!(format!("{stmt:?}").contains("DropTable"));

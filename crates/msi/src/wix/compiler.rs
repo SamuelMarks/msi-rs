@@ -169,6 +169,7 @@ impl Compiler {
     }
 
     /// Compiles an individual section element (e.g. `<Product>`, `<Fragment>`).
+    #[allow(clippy::cognitive_complexity)]
     #[allow(clippy::too_many_lines)]
     fn compile_section(
         &self,
@@ -411,6 +412,7 @@ impl Compiler {
     }
 
     /// Recursively walks and compiles an XML element subtree.
+    #[allow(clippy::cognitive_complexity)]
     #[allow(clippy::too_many_lines, clippy::self_only_used_in_recursion)]
     fn compile_element_tree(
         &self,
@@ -1957,6 +1959,7 @@ impl Compiler {
             FieldValue::Long(chainer_type),
         ]);
 
+        println!("WIX COMPILED MsiEmbeddedChainer: {rec:?}");
         tables
             .entry("MsiEmbeddedChainer".to_string())
             .or_insert_with(|| IntermediateTable::new("MsiEmbeddedChainer"))
@@ -4551,6 +4554,7 @@ mod tests {
         assert!(compiler.compile(&bad_prop).is_err());
     }
 
+    #[allow(clippy::cognitive_complexity)]
     #[test]
     fn test_compiler_extended_elements() {
         let xml = r#"
@@ -4655,6 +4659,7 @@ mod tests {
         assert!(sec.tables.iter().any(|t| t.name == "PosixDesktop"));
     }
 
+    #[allow(clippy::cognitive_complexity)]
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_compiler_wix_section11_features() {
@@ -4873,6 +4878,7 @@ mod tests {
         assert!(compiler.compile(&root).is_err());
     }
 
+    #[allow(clippy::cognitive_complexity)]
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_compiler_wix_section11_extended_tags() {
@@ -5566,6 +5572,7 @@ mod tests {
     /// # Errors
     ///
     /// Returns [`crate::MsiError`] if XML parsing or compilation fails.
+    #[allow(clippy::cognitive_complexity)]
     #[test]
     #[allow(clippy::too_many_lines, clippy::similar_names)]
     fn test_compiler_libscript_parity_features() {
@@ -6179,6 +6186,7 @@ mod tests {
     }
 
     /// Tests compiling `<ServiceInstall>` and `<ServiceControl>` with full fidelity attributes.
+    #[allow(clippy::cognitive_complexity)]
     #[test]
     #[allow(clippy::too_many_lines, clippy::similar_names)]
     fn test_compiler_service_install_and_control_full_fidelity() {
@@ -6561,6 +6569,7 @@ mod tests {
     }
 
     /// Tests comprehensive error branches and invalid input handling across compiler elements.
+    #[allow(clippy::cognitive_complexity)]
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_compiler_comprehensive_error_regions() {
@@ -6568,7 +6577,7 @@ mod tests {
         let parser = XmlParser::new();
 
         // 1. Invalid XML schema xmlns (L 105)
-        let invalid_xmlns = r#"<Wix xmlns="http://invalid.uri"><Product Id="{11111111-1111-1111-1111-111111111111}" /></Wix>"#;
+        let invalid_xmlns = r#"<Wix xmlns="http://invalid.uri"><Product Id="{11111111-1111-1111-1111-111111111111}" Language="1033" /></Wix>"#;
         assert!(compiler
             .compile(&parser.parse(invalid_xmlns).unwrap_or_default())
             .is_err());
@@ -6596,23 +6605,23 @@ mod tests {
             .is_err());
 
         // 3. DirectoryId and parent error branches (L 390, 392, 415)
-        let bad_dir_id = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><Directory Id="" /></Product></Wix>"#;
+        let bad_dir_id = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}" Language="1033"><Directory Id="" /></Product></Wix>"#;
         assert!(compiler
             .compile(&parser.parse(bad_dir_id).unwrap_or_default())
             .is_err());
 
-        let bad_dir_parent = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><Directory Id="D1"><Directory Id="D2"><Component /></Directory></Directory></Product></Wix>"#;
+        let bad_dir_parent = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}" Language="1033"><Directory Id="D1"><Directory Id="D2"><Component /></Directory></Directory></Product></Wix>"#;
         assert!(compiler
             .compile(&parser.parse(bad_dir_parent).unwrap_or_default())
             .is_err());
 
         // 4. Component errors (L 423, 424, 429)
-        let bad_comp_id = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><Component Id="" /></Product></Wix>"#;
+        let bad_comp_id = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}" Language="1033"><Component Id="" /></Product></Wix>"#;
         assert!(compiler
             .compile(&parser.parse(bad_comp_id).unwrap_or_default())
             .is_err());
 
-        let bad_comp_guid = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}"><Component Id="C1" Guid="not-a-valid-guid" /></Product></Wix>"#;
+        let bad_comp_guid = r#"<Wix><Product Id="{11111111-1111-1111-1111-111111111111}" Language="1033"><Component Id="C1" Guid="not-a-valid-guid" /></Product></Wix>"#;
         assert!(compiler
             .compile(&parser.parse(bad_comp_guid).unwrap_or_default())
             .is_err());
@@ -6772,6 +6781,7 @@ mod tests {
 
     /// Tests compiling `<Shortcut>`, `<Environment>` (with Part="last" and Part="first"),
     /// nested `<RegistrySearch>` and `<FileSearch>`, and `<Condition Message="...">`.
+    #[allow(clippy::cognitive_complexity)]
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_compiler_shortcuts_environment_searches_and_launch_conditions() {

@@ -591,7 +591,7 @@ mod tests {
                 );
                 assert!(try_read_to_string(&temp_dir.join("nonexistent_read.txt")).is_empty());
                 for cab_xml_content in try_read_to_string(&cab_xml_out) {
-                    assert!(cab_xml_content.contains("Stream Name=\"#cab1.cab\""));
+                    assert!(cab_xml_content.contains("Stream Name=\"cab1.cab\""));
                 }
             }
         }

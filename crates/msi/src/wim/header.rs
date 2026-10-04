@@ -395,6 +395,7 @@ mod tests {
     fn test_header_traits() {
         let mut r1 = ResourceHeader::default();
         r1.offset = 123;
+        #[allow(clippy::redundant_clone)]
         let r2 = r1.clone();
         assert_eq!(r1, r2);
         assert_eq!(format!("{r1:?}"), format!("{r2:?}"));

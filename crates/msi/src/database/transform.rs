@@ -401,7 +401,7 @@ mod tests {
             key: row.clone(),
             updated: row,
         };
-
+        #[allow(clippy::redundant_clone)]
         let op_cloned = op_ins.clone();
         assert_eq!(op_cloned, op_ins);
         assert_ne!(op_ins, op_del);
@@ -409,6 +409,7 @@ mod tests {
         assert!(format!("{op_ins:?}").contains("Insert"));
 
         let tt_default = TableTransform::default();
+        #[allow(clippy::redundant_clone)]
         let tt_cloned = tt_default.clone();
         assert_eq!(tt_cloned, tt_default);
         assert!(format!("{tt_default:?}").contains("TableTransform"));
@@ -416,6 +417,7 @@ mod tests {
         let dt_new = DatabaseTransform::new();
         let dt_default = DatabaseTransform::default();
         assert_eq!(dt_new, dt_default);
+        #[allow(clippy::redundant_clone)]
         let dt_cloned = dt_new.clone();
         assert_eq!(dt_cloned, dt_default);
         assert!(format!("{dt_new:?}").contains("DatabaseTransform"));
@@ -519,7 +521,8 @@ mod tests {
     #[test]
     fn test_dropped_table_diff() {
         let mut db1 = LinkedDatabase::default();
-        let db2 = LinkedDatabase::default();
+        let mut db2 = LinkedDatabase::default();
+        db2.tables.remove("Property");
 
         db1.tables
             .insert("Property".to_string(), vec![Record::new()]);

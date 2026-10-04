@@ -113,7 +113,7 @@ mod tests {
         let _ = fs::remove_file(&path);
 
         // test break on short chunk
-        let mut cfbg = CfbWriter::new(CfbVersion::V3);
+        let mut cfbg = CfbWriter::new(CfbVersion::V4);
         let pool_name = encode_msi_stream_name("_StringPool", true).unwrap_or_default();
         let data_name = encode_msi_stream_name("_StringData", true).unwrap_or_default();
         // 4 bytes header, 2 bytes partial chunk (should trigger break)
@@ -126,7 +126,7 @@ mod tests {
         let _ = fs::remove_file(&path);
 
         // test out of bounds end
-        let mut cfbg2 = CfbWriter::new(CfbVersion::V3);
+        let mut cfbg2 = CfbWriter::new(CfbVersion::V4);
         // 4 bytes header, chunk says len 100 but data is 0 len
         let _ = cfbg2.add_stream(&pool_name, &[0, 0, 0, 0, 100, 0, 1, 0]);
         let _ = cfbg2.add_stream(&data_name, &[]);
@@ -137,7 +137,7 @@ mod tests {
         let _ = fs::remove_file(&path);
 
         // test null string
-        let mut cfbg3 = CfbWriter::new(CfbVersion::V3);
+        let mut cfbg3 = CfbWriter::new(CfbVersion::V4);
         let _ = cfbg3.add_stream(&pool_name, &[0, 0, 0, 0, 0, 0, 0, 0]); // 4 header, 4 null chunk
         let _ = cfbg3.add_stream(&data_name, &[]);
         let null_cfb = cfbg3.build();

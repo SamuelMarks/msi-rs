@@ -5,6 +5,7 @@
 
 use std::panic;
 
+use crate::handles::MsiHandle;
 use crate::win32::{
     Dword, Lpcstr, Lpcwstr, Lpstr, Lpwstr, Uint, ERROR_INSTALL_FAILURE, ERROR_INVALID_PARAMETER,
 };
@@ -221,9 +222,658 @@ pub extern "system" fn MsiGetProductInfoA(
     result.unwrap_or(ERROR_INSTALL_FAILURE)
 }
 
+/// Enumerates the clients for a given component (Unicode).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiEnumClientsW(
+    szComponent: Lpcwstr,
+    iProductIndex: Dword,
+    lpProductBuf: Lpwstr,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szComponent.is_null() || lpProductBuf.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_NO_MORE_ITEMS
+    });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Enumerates the clients for a given component (ANSI).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiEnumClientsA(
+    szComponent: Lpcstr,
+    iProductIndex: Dword,
+    lpProductBuf: Lpstr,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szComponent.is_null() || lpProductBuf.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_NO_MORE_ITEMS
+    });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Enumerates the clients for a given component with advanced options (Unicode).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiEnumClientsExW(
+    szComponent: Lpcwstr,
+    szUserSid: Lpcwstr,
+    dwContext: Dword,
+    dwProductIndex: Dword,
+    szProductBuf: Lpwstr,
+    pdwContext: *mut Dword,
+    szSidBuf: Lpwstr,
+    pcchSidBuf: *mut Dword,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szComponent.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_NO_MORE_ITEMS
+    });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Enumerates the clients for a given component with advanced options (ANSI).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiEnumClientsExA(
+    szComponent: Lpcstr,
+    szUserSid: Lpcstr,
+    dwContext: Dword,
+    dwProductIndex: Dword,
+    szProductBuf: Lpstr,
+    pdwContext: *mut Dword,
+    szSidBuf: Lpstr,
+    pcchSidBuf: *mut Dword,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szComponent.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_NO_MORE_ITEMS
+    });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Enumerates the qualifiers for a given component (Unicode).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiEnumComponentQualifiersW(
+    szComponent: Lpcwstr,
+    iIndex: Dword,
+    lpQualifierBuf: Lpwstr,
+    pcchQualifierBuf: *mut Dword,
+    lpApplicationDataBuf: Lpwstr,
+    pcchApplicationDataBuf: *mut Dword,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szComponent.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_NO_MORE_ITEMS
+    });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Enumerates the qualifiers for a given component (ANSI).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiEnumComponentQualifiersA(
+    szComponent: Lpcstr,
+    iIndex: Dword,
+    lpQualifierBuf: Lpstr,
+    pcchQualifierBuf: *mut Dword,
+    lpApplicationDataBuf: Lpstr,
+    pcchApplicationDataBuf: *mut Dword,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szComponent.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_NO_MORE_ITEMS
+    });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Enumerates the patches for a given product (Unicode).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiEnumPatchesW(
+    szProduct: Lpcwstr,
+    iPatchIndex: Dword,
+    lpPatchBuf: Lpwstr,
+    lpTransformsBuf: Lpwstr,
+    pcchTransformsBuf: *mut Dword,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szProduct.is_null() || lpPatchBuf.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_NO_MORE_ITEMS
+    });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Enumerates the patches for a given product (ANSI).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiEnumPatchesA(
+    szProduct: Lpcstr,
+    iPatchIndex: Dword,
+    lpPatchBuf: Lpstr,
+    lpTransformsBuf: Lpstr,
+    pcchTransformsBuf: *mut Dword,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szProduct.is_null() || lpPatchBuf.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_NO_MORE_ITEMS
+    });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Enumerates the patches with advanced options (Unicode).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiEnumPatchesExW(
+    szProductCode: Lpcwstr,
+    szUserSid: Lpcwstr,
+    dwContext: Dword,
+    dwFilter: Dword,
+    dwIndex: Dword,
+    szPatchCode: Lpwstr,
+    szTargetProductCode: Lpwstr,
+    pdwTargetProductContext: *mut Dword,
+    szTargetUserSid: Lpwstr,
+    pcchTargetUserSid: *mut Dword,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szProductCode.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_NO_MORE_ITEMS
+    });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Enumerates the patches with advanced options (ANSI).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiEnumPatchesExA(
+    szProductCode: Lpcstr,
+    szUserSid: Lpcstr,
+    dwContext: Dword,
+    dwFilter: Dword,
+    dwIndex: Dword,
+    szPatchCode: Lpstr,
+    szTargetProductCode: Lpstr,
+    pdwTargetProductContext: *mut Dword,
+    szTargetUserSid: Lpstr,
+    pcchTargetUserSid: *mut Dword,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szProductCode.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_NO_MORE_ITEMS
+    });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Enumerates the related products (Unicode).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiEnumRelatedProductsW(
+    szUpgradeCode: Lpcwstr,
+    dwReserved: Dword,
+    iProductIndex: Dword,
+    lpProductBuf: Lpwstr,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szUpgradeCode.is_null() || lpProductBuf.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_NO_MORE_ITEMS
+    });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Enumerates the related products (ANSI).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiEnumRelatedProductsA(
+    szUpgradeCode: Lpcstr,
+    dwReserved: Dword,
+    iProductIndex: Dword,
+    lpProductBuf: Lpstr,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szUpgradeCode.is_null() || lpProductBuf.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_NO_MORE_ITEMS
+    });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Enumerates the products with advanced options (Unicode).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiEnumProductsExW(
+    szProductCode: Lpcwstr,
+    szUserSid: Lpcwstr,
+    dwContext: Dword,
+    dwIndex: Dword,
+    szInstalledProductCode: Lpwstr,
+    pdwInstalledContext: *mut Dword,
+    szSid: Lpwstr,
+    pcchSid: *mut Dword,
+) -> Uint {
+    let result = panic::catch_unwind(|| ERROR_NO_MORE_ITEMS);
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Enumerates the products with advanced options (ANSI).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiEnumProductsExA(
+    szProductCode: Lpcstr,
+    szUserSid: Lpcstr,
+    dwContext: Dword,
+    dwIndex: Dword,
+    szInstalledProductCode: Lpstr,
+    pdwInstalledContext: *mut Dword,
+    szSid: Lpstr,
+    pcchSid: *mut Dword,
+) -> Uint {
+    let result = panic::catch_unwind(|| ERROR_NO_MORE_ITEMS);
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Enumerates the components with advanced options (Unicode).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiEnumComponentsExW(
+    szComponentCode: Lpcwstr,
+    dwContext: Dword,
+    dwIndex: Dword,
+    szInstalledProductCode: Lpwstr,
+    pdwInstalledContext: *mut Dword,
+    szSid: Lpwstr,
+    pcchSid: *mut Dword,
+) -> Uint {
+    let result = panic::catch_unwind(|| ERROR_NO_MORE_ITEMS);
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Enumerates the components with advanced options (ANSI).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiEnumComponentsExA(
+    szComponentCode: Lpcstr,
+    dwContext: Dword,
+    dwIndex: Dword,
+    szInstalledProductCode: Lpstr,
+    pdwInstalledContext: *mut Dword,
+    szSid: Lpstr,
+    pcchSid: *mut Dword,
+) -> Uint {
+    let result = panic::catch_unwind(|| ERROR_NO_MORE_ITEMS);
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Advanced feature state check (Unicode).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiQueryFeatureStateExW(
+    szProductCode: Lpcwstr,
+    szUserSid: Lpcwstr,
+    dwContext: Dword,
+    szFeature: Lpcwstr,
+    pdwState: *mut Dword,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szProductCode.is_null() || szFeature.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_NO_MORE_ITEMS
+    });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Advanced feature state check (ANSI).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiQueryFeatureStateExA(
+    szProductCode: Lpcstr,
+    szUserSid: Lpcstr,
+    dwContext: Dword,
+    szFeature: Lpcstr,
+    pdwState: *mut Dword,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szProductCode.is_null() || szFeature.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_NO_MORE_ITEMS
+    });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Get current and action state for component (Unicode).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiGetComponentStateW(
+    hInstall: MsiHandle,
+    szComponent: Lpcwstr,
+    piInstalled: *mut i32,
+    piAction: *mut i32,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szComponent.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_NO_MORE_ITEMS
+    });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Get current and action state for component (ANSI).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiGetComponentStateA(
+    hInstall: MsiHandle,
+    szComponent: Lpcstr,
+    piInstalled: *mut i32,
+    piAction: *mut i32,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szComponent.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_NO_MORE_ITEMS
+    });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Get current and action state for feature (Unicode).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiGetFeatureStateW(
+    hInstall: MsiHandle,
+    szFeature: Lpcwstr,
+    piInstalled: *mut i32,
+    piAction: *mut i32,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szFeature.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_NO_MORE_ITEMS
+    });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Get current and action state for feature (ANSI).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiGetFeatureStateA(
+    hInstall: MsiHandle,
+    szFeature: Lpcstr,
+    piInstalled: *mut i32,
+    piAction: *mut i32,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szFeature.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_NO_MORE_ITEMS
+    });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Locate component file path (Unicode).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiGetComponentPathExW(
+    szProductCode: Lpcwstr,
+    szComponentCode: Lpcwstr,
+    szUserSid: Lpcwstr,
+    dwContext: Dword,
+    lpOutPathBuffer: Lpwstr,
+    pcchOutPathBuffer: *mut Dword,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szProductCode.is_null() || szComponentCode.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_NO_MORE_ITEMS
+    });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Locate component file path (ANSI).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiGetComponentPathExA(
+    szProductCode: Lpcstr,
+    szComponentCode: Lpcstr,
+    szUserSid: Lpcstr,
+    dwContext: Dword,
+    lpOutPathBuffer: Lpstr,
+    pcchOutPathBuffer: *mut Dword,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szProductCode.is_null() || szComponentCode.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_NO_MORE_ITEMS
+    });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Retrieve valid installation states for feature (Unicode).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiGetFeatureValidStatesW(
+    hInstall: MsiHandle,
+    szFeature: Lpcwstr,
+    dwInstallStates: *mut Dword,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szFeature.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_NO_MORE_ITEMS
+    });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Retrieve valid installation states for feature (ANSI).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiGetFeatureValidStatesA(
+    hInstall: MsiHandle,
+    szFeature: Lpcstr,
+    dwInstallStates: *mut Dword,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szFeature.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_NO_MORE_ITEMS
+    });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Calculate feature disk cost (Unicode).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiGetFeatureCostW(
+    hInstall: MsiHandle,
+    szFeature: Lpcwstr,
+    iCostTree: i32,
+    iState: i32,
+    piCost: *mut i32,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szFeature.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_NO_MORE_ITEMS
+    });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Calculate feature disk cost (ANSI).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiGetFeatureCostA(
+    hInstall: MsiHandle,
+    szFeature: Lpcstr,
+    iCostTree: i32,
+    iState: i32,
+    piCost: *mut i32,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szFeature.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_NO_MORE_ITEMS
+    });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Enumerate drive costs for component (Unicode).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiEnumComponentCostsW(
+    hInstall: MsiHandle,
+    szComponent: Lpcwstr,
+    dwIndex: Dword,
+    iState: i32,
+    szDriveBuf: Lpwstr,
+    pcchDriveBuf: *mut Dword,
+    piCost: *mut i32,
+    piTempCost: *mut i32,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szComponent.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_NO_MORE_ITEMS
+    });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Enumerate drive costs for component (ANSI).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiEnumComponentCostsA(
+    hInstall: MsiHandle,
+    szComponent: Lpcstr,
+    dwIndex: Dword,
+    iState: i32,
+    szDriveBuf: Lpstr,
+    pcchDriveBuf: *mut Dword,
+    piCost: *mut i32,
+    piTempCost: *mut i32,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szComponent.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_NO_MORE_ITEMS
+    });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Parse MSI component descriptor (Unicode).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiDecomposeDescriptorW(
+    szDescriptor: Lpcwstr,
+    szProductCode: Lpwstr,
+    szFeatureId: Lpwstr,
+    szComponentCode: Lpwstr,
+    pdwArgsOffset: *mut Dword,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szDescriptor.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_NO_MORE_ITEMS
+    });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Parse MSI component descriptor (ANSI).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiDecomposeDescriptorA(
+    szDescriptor: Lpcstr,
+    szProductCode: Lpstr,
+    szFeatureId: Lpstr,
+    szComponentCode: Lpstr,
+    pdwArgsOffset: *mut Dword,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szDescriptor.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_NO_MORE_ITEMS
+    });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Extract PE file version (Unicode).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiGetFileVersionW(
+    szFilePath: Lpcwstr,
+    szVersionPath: Lpwstr,
+    pcchVersionPath: *mut Dword,
+    szLangPath: Lpwstr,
+    pcchLangPath: *mut Dword,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szFilePath.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_NO_MORE_ITEMS
+    });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Extract PE file version (ANSI).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiGetFileVersionA(
+    szFilePath: Lpcstr,
+    szVersionPath: Lpstr,
+    pcchVersionPath: *mut Dword,
+    szLangPath: Lpstr,
+    pcchLangPath: *mut Dword,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szFilePath.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_NO_MORE_ITEMS
+    });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::locator::{MsiGetShortcutTargetA, MsiGetShortcutTargetW};
 
     #[test]
     #[allow(clippy::too_many_lines)]
@@ -409,6 +1059,352 @@ mod tests {
                 std::ptr::null(),
                 buf_a.as_mut_ptr(),
                 &raw mut pcch
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+
+        assert_eq!(
+            MsiEnumClientsW(std::ptr::null(), 0, buf_w.as_mut_ptr()),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiEnumClientsA(std::ptr::null(), 0, buf_a.as_mut_ptr()),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiEnumClientsExW(
+                std::ptr::null(),
+                std::ptr::null(),
+                0,
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiEnumClientsExA(
+                std::ptr::null(),
+                std::ptr::null(),
+                0,
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiEnumComponentQualifiersW(
+                std::ptr::null(),
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiEnumComponentQualifiersA(
+                std::ptr::null(),
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiEnumPatchesW(
+                std::ptr::null(),
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiEnumPatchesA(
+                std::ptr::null(),
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiEnumPatchesExW(
+                std::ptr::null(),
+                std::ptr::null(),
+                0,
+                0,
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiEnumPatchesExA(
+                std::ptr::null(),
+                std::ptr::null(),
+                0,
+                0,
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiEnumRelatedProductsW(std::ptr::null(), 0, 0, buf_w.as_mut_ptr()),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiEnumRelatedProductsA(std::ptr::null(), 0, 0, buf_a.as_mut_ptr()),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiEnumProductsExW(
+                std::ptr::null(),
+                std::ptr::null(),
+                0,
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumProductsExA(
+                std::ptr::null(),
+                std::ptr::null(),
+                0,
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumComponentsExW(
+                std::ptr::null(),
+                0,
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumComponentsExA(
+                std::ptr::null(),
+                0,
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+
+        assert_eq!(
+            MsiQueryFeatureStateExW(
+                std::ptr::null(),
+                std::ptr::null(),
+                0,
+                std::ptr::null(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiQueryFeatureStateExA(
+                std::ptr::null(),
+                std::ptr::null(),
+                0,
+                std::ptr::null(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetComponentStateW(
+                0,
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetComponentStateA(
+                0,
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetFeatureStateW(
+                0,
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetFeatureStateA(
+                0,
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetComponentPathExW(
+                std::ptr::null(),
+                std::ptr::null(),
+                std::ptr::null(),
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetComponentPathExA(
+                std::ptr::null(),
+                std::ptr::null(),
+                std::ptr::null(),
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetFeatureValidStatesW(0, std::ptr::null(), std::ptr::null_mut()),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetFeatureValidStatesA(0, std::ptr::null(), std::ptr::null_mut()),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetFeatureCostW(0, std::ptr::null(), 0, 0, std::ptr::null_mut()),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetFeatureCostA(0, std::ptr::null(), 0, 0, std::ptr::null_mut()),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiEnumComponentCostsW(
+                0,
+                std::ptr::null(),
+                0,
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiEnumComponentCostsA(
+                0,
+                std::ptr::null(),
+                0,
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        unsafe {
+            assert_eq!(
+                MsiGetShortcutTargetW(
+                    std::ptr::null(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut()
+                ),
+                ERROR_INVALID_PARAMETER
+            );
+            assert_eq!(
+                MsiGetShortcutTargetA(
+                    std::ptr::null(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut()
+                ),
+                ERROR_INVALID_PARAMETER
+            );
+        }
+        assert_eq!(
+            MsiDecomposeDescriptorW(
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiDecomposeDescriptorA(
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetFileVersionW(
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetFileVersionA(
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
             ),
             ERROR_INVALID_PARAMETER
         );

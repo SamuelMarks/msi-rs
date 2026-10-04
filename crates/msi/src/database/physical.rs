@@ -36,7 +36,7 @@ impl<'a> PhysicalTableLayout<'a> {
     /// # Errors
     ///
     /// Returns `PhysicalLayoutError` if a mapping cannot be created (e.g., Stream column as Primary Key).
-    pub fn new(columns: &'a [ColumnDef]) -> Result<Self> {
+    pub fn new(columns: &'a [ColumnDef], is_system_catalog: bool) -> Result<Self> {
         let mut sorted_indices: Vec<usize> = (0..columns.len()).collect();
 
         // Check for invalid column states that prevent layout
@@ -51,16 +51,18 @@ impl<'a> PhysicalTableLayout<'a> {
             }
         }
 
-        // Stable sort to maintain original relative logical order within the same category
-        sorted_indices.sort_by(|&a, &b| {
-            let col_a = &columns[a];
-            let col_b = &columns[b];
+        if !is_system_catalog {
+            // Stable sort to maintain original relative logical order within the same category
+            sorted_indices.sort_by(|&a, &b| {
+                let col_a = &columns[a];
+                let col_b = &columns[b];
 
-            let cat_a = Self::category(col_a);
-            let cat_b = Self::category(col_b);
+                let cat_a = Self::category(col_a);
+                let cat_b = Self::category(col_b);
 
-            cat_a.cmp(&cat_b)
-        });
+                cat_a.cmp(&cat_b)
+            });
+        }
 
         let mut logical_to_physical = vec![PhysicalIndex(0); columns.len()];
         let mut physical_to_logical = vec![LogicalIndex(0); columns.len()];
@@ -155,7 +157,7 @@ mod tests {
             ColumnDef::new("Key2", DataType::Long).primary_key(),
         ];
 
-        let layout = PhysicalTableLayout::new(&cols).expect("valid layout");
+        let layout = PhysicalTableLayout::new(&cols, false).expect("valid layout");
 
         let physical_cols: Vec<_> = layout.physical_columns().map(|c| c.name.as_str()).collect();
         // PKs first (stable: Key1, Key2), then fixed (Attr), then variable (Data)
@@ -204,7 +206,7 @@ mod tests {
             ColumnDef::new("Sequence", DataType::Short).nullable(),
         ];
 
-        let layout = PhysicalTableLayout::new(&cols).expect("valid layout");
+        let layout = PhysicalTableLayout::new(&cols, false).expect("valid layout");
 
         let physical_cols: Vec<_> = layout.physical_columns().map(|c| c.name.as_str()).collect();
         // PKs (Action), Fixed (Sequence), Variable (Condition)
@@ -232,7 +234,7 @@ mod tests {
     fn test_layout_stream_primary_key_error() {
         let cols = vec![ColumnDef::new("Data", DataType::Stream).primary_key()];
 
-        let err = PhysicalTableLayout::new(&cols).unwrap_err();
+        let err = PhysicalTableLayout::new(&cols, false).unwrap_err();
         assert!(matches!(err, MsiError::PhysicalLayoutError { .. }));
     }
 
@@ -240,7 +242,7 @@ mod tests {
     #[test]
     fn test_layout_out_of_bounds() {
         let cols = vec![ColumnDef::new("Attr", DataType::Short)];
-        let layout = PhysicalTableLayout::new(&cols).expect("valid layout");
+        let layout = PhysicalTableLayout::new(&cols, false).expect("valid layout");
 
         assert_eq!(layout.physical_index(LogicalIndex(5)), None);
         assert_eq!(layout.logical_index(PhysicalIndex(5)), None);
@@ -250,7 +252,7 @@ mod tests {
     #[test]
     fn test_layout_columns_accessor() {
         let cols = vec![ColumnDef::new("Attr", DataType::Short)];
-        let layout = PhysicalTableLayout::new(&cols).expect("valid layout");
+        let layout = PhysicalTableLayout::new(&cols, false).expect("valid layout");
 
         assert_eq!(layout.columns().len(), 1);
         assert_eq!(layout.columns()[0].name, "Attr");

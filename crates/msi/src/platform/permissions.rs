@@ -353,7 +353,7 @@ pub fn translate_sddl(sddl: &str) -> Result<Vec<AclEntry>> {
         if parts.len() < 6 {
             continue;
         }
-
+        #[allow(clippy::match_on_vec_items)]
         let access = match parts[0] {
             "A" => AclAccessType::Allow,
             "D" => AclAccessType::Deny,

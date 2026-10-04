@@ -739,6 +739,7 @@ impl LinkedDatabase {
     /// # Errors
     ///
     /// Returns [`crate::MsiError`] on table schema or primary key merge collisions.
+    #[allow(clippy::cognitive_complexity)]
     #[allow(clippy::too_many_lines)]
     pub fn merge_module(
         &mut self,
@@ -2173,6 +2174,7 @@ impl Linker {
     /// # Errors
     ///
     /// Returns [`MsiError::WixLinker`] if a cyclic dependency is detected.
+    #[allow(clippy::cognitive_complexity)]
     #[allow(clippy::too_many_lines)]
     fn solve_relative_sequences(db: &mut LinkedDatabase) -> Result<()> {
         let rel_records = db.tables.remove("_WixSequenceRelative").unwrap_or_default();
@@ -2351,6 +2353,7 @@ impl Linker {
     /// # Arguments
     ///
     /// * `db` - The [`LinkedDatabase`] to update.
+    #[allow(clippy::cognitive_complexity)]
     #[allow(clippy::too_many_lines)]
     fn resolve_wix_variables(&mut self, db: &mut LinkedDatabase) {
         let wix_vars = db.tables.get("WixVariable").cloned().unwrap_or_default();
@@ -2553,11 +2556,9 @@ impl Linker {
         clippy::cast_possible_truncation,
         clippy::cast_possible_wrap
     )]
+    #[allow(clippy::cognitive_complexity)]
     fn bind_files_and_pack_cabinets(&mut self, db: &mut LinkedDatabase) -> Result<()> {
         let wix_files = db.tables.remove("WixFile").unwrap_or_default();
-        if wix_files.is_empty() {
-            return Ok(());
-        }
 
         let mut file_sources: HashMap<String, (String, i16)> = HashMap::new();
         for r in &wix_files {
@@ -2629,6 +2630,19 @@ impl Linker {
             .insert("_FileDiskId".to_string(), file_disk_records);
 
         let mut cab_writers: HashMap<String, crate::cab::writer::CabinetWriter> = HashMap::new();
+
+        println!("DEBUG: disk_to_cab: {disk_to_cab:?}");
+
+        for (disk_id, cab_name) in &disk_to_cab {
+            let comp_type = disk_compression
+                .get(disk_id)
+                .copied()
+                .unwrap_or(crate::cab::folder::CompressionType::Mszip);
+            let _ = cab_writers
+                .entry(cab_name.clone())
+                .or_insert_with(|| crate::cab::writer::CabinetWriter::new(comp_type));
+        }
+
         let mut file_hash_records: Vec<Record> = Vec::new();
         let mut font_records: Vec<Record> = Vec::new();
 
@@ -7833,6 +7847,7 @@ mod tests {
         assert!(linker5.link().is_ok());
     }
 
+    #[allow(clippy::cognitive_complexity)]
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_linker_inspection_helpers_and_ice_rules() -> Result<()> {
@@ -8104,6 +8119,7 @@ mod tests {
         }
     }
 
+    #[allow(clippy::cognitive_complexity)]
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_ice_harness_and_cub_validator() -> Result<()> {
@@ -8571,6 +8587,7 @@ mod tests {
         Ok(())
     }
 
+    #[allow(clippy::cognitive_complexity)]
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_merge_module_ingestion_and_linking() -> Result<()> {
@@ -9296,6 +9313,7 @@ mod tests {
         Ok(())
     }
 
+    #[allow(clippy::cognitive_complexity)]
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_linker_remaining_uncovered_paths() -> Result<()> {
@@ -9931,6 +9949,7 @@ mod tests {
         );
         linker.resolve_wix_variables(&mut var_db_txt);
         let ctrls_txt = var_db_txt.get_records("Control");
+        #[allow(clippy::manual_flatten)]
         for opt in [ctrls_txt[0].get(9), None] {
             if let Some(FieldValue::String(s)) = opt {
                 assert!(s.starts_with(r"{\rtf1"));
@@ -10561,6 +10580,7 @@ mod tests {
     }
 
     /// Tests extended standard action sequence injection and embedded chainer reference validation.
+    #[allow(clippy::cognitive_complexity)]
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_linker_extended_standard_actions_and_embedded_chainer() -> Result<()> {

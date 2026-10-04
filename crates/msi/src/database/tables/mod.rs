@@ -13,6 +13,8 @@ pub mod sequence;
 pub mod sql;
 pub mod types;
 pub mod ui;
+/// Validation schema
+pub mod validation;
 
 pub use chainer::*;
 pub use com::*;
@@ -25,6 +27,7 @@ pub use sequence::*;
 pub use sql::*;
 pub use types::*;
 pub use ui::*;
+pub use validation::*;
 
 use crate::database::catalogs::{DatabaseCatalog, TableSchema};
 use crate::error::Result;
@@ -128,6 +131,7 @@ pub fn all_standard_schemas() -> Vec<TableSchema> {
         sql_database_schema(),
         sql_string_schema(),
         sql_script_schema(),
+        validation_schema(),
     ]
 }
 
@@ -154,8 +158,8 @@ mod tests {
     #[test]
     fn test_all_standard_schemas_count() {
         let schemas = all_standard_schemas();
-        // 18 Core + 6 Seq + 19 Config + 6 FileMgmt + 8 COM + 16 UI + 5 POSIX + 1 Chainer + 3 SQL = 82 tables!
-        assert_eq!(schemas.len(), 82);
+        // 18 Core + 6 Seq + 19 Config + 6 FileMgmt + 8 COM + 16 UI + 5 POSIX + 1 Chainer + 3 SQL = 83 tables!
+        assert_eq!(schemas.len(), 83);
 
         let mut catalog = DatabaseCatalog::new();
         assert!(populate_standard_tables(&mut catalog).is_ok());

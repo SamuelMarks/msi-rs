@@ -437,7 +437,7 @@ mod tests {
             schema,
             rows: vec![row],
         };
-
+        #[allow(clippy::redundant_clone)]
         let cloned = table.clone();
         assert_eq!(table, cloned);
         assert!(format!("{table:?}").contains("MixedTable"));
