@@ -265,6 +265,45 @@ impl CabinetReader {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn test_cabinet_reader_file_chunk_not_found() {
+        let mut writer = CabinetWriter::new(CompressionType::None);
+        writer.add_file("test.txt", b"hello").unwrap();
+        let cab_bytes = writer.build();
+        let reader = CabinetReader::new(&cab_bytes).unwrap();
+        let err = reader.extract_file_chunk("missing").unwrap_err();
+        assert!(matches!(err, MsiError::CabinetFileNotFound { .. }));
+    }
+
+    #[test]
+    fn test_cabinet_reader_invalid_folder_index() {
+        let mut writer = CabinetWriter::new(CompressionType::None);
+        writer.add_file("test.txt", b"hello").unwrap();
+        let mut cab_bytes = writer.build();
+        // Corrupt folder index. CFFILE entries start after CFFOLDER (which is after CFHEADER).
+        // Let's just find "test.txt" in the binary and corrupt the index right before it.
+        // Or simply, we can corrupt the folder index inside the cabinet header or file entry.
+        // File entry: [uncompressed size 4][offset 4][folder index 2][date 2][time 2][attrs 2][name...]
+        // We know it's at offset 0x24 in a minimal cabinet.
+        cab_bytes[0x24] = 0xFF;
+        if let Ok(reader) = CabinetReader::new(&cab_bytes) {
+            let _ = reader.extract_file_chunk("test.txt");
+        }
+    }
+
+    #[test]
+    fn test_cabinet_reader_lzx_invalid_window() {
+        let mut writer = CabinetWriter::new(CompressionType::None);
+        writer.add_file("test.txt", b"hello").unwrap();
+        let mut cab_bytes = writer.build();
+        // Change compression type in CFFOLDER to LZX with window size 15 (invalid)
+        cab_bytes[0x2A] = 0x05; // type is at folder entry, typically offset 0x2A.
+        if let Ok(reader) = CabinetReader::new(&cab_bytes) {
+            let _ = reader.extract_file("test.txt");
+        }
+    }
+
     use super::*;
     use crate::cab::folder::CompressionType;
     use crate::cab::writer::CabinetWriter;

@@ -111,7 +111,7 @@ impl Parser {
             self.next_token();
         } else {
             loop {
-                columns.push(self.expect_ident()?);
+                columns.push(crate::database::sql::ast::ColumnName(self.expect_ident()?));
                 if matches!(self.peek(), Some(Token::Comma)) {
                     self.next_token();
                 } else {
@@ -126,7 +126,7 @@ impl Parser {
         let mut joins = Vec::new();
         while matches!(self.peek(), Some(Token::Comma)) {
             self.next_token();
-            joins.push(self.expect_ident()?);
+            joins.push(crate::database::sql::ast::TableName(self.expect_ident()?));
         }
         #[allow(clippy::if_then_some_else_none)]
         let where_clause = if matches!(self.peek(), Some(Token::Where)) {
@@ -152,7 +152,7 @@ impl Parser {
                     OrderDirection::Ascending
                 };
                 order_by.push(OrderByTerm {
-                    column: col,
+                    column: crate::database::sql::ast::ColumnName(col),
                     direction: dir,
                 });
                 if matches!(self.peek(), Some(Token::Comma)) {
@@ -166,7 +166,7 @@ impl Parser {
         Ok(Statement::Select {
             distinct,
             columns,
-            table,
+            table: crate::database::sql::ast::TableName(table),
             joins,
             where_clause,
             order_by,
@@ -183,7 +183,7 @@ impl Parser {
             self.next_token();
             let mut cols = Vec::new();
             loop {
-                cols.push(self.expect_ident()?);
+                cols.push(crate::database::sql::ast::ColumnName(self.expect_ident()?));
                 if matches!(self.peek(), Some(Token::Comma)) {
                     self.next_token();
                 } else {
@@ -210,7 +210,7 @@ impl Parser {
         self.expect(&Token::CloseParen)?;
 
         Ok(Statement::Insert {
-            table,
+            table: crate::database::sql::ast::TableName(table),
             columns,
             values,
         })
@@ -227,7 +227,7 @@ impl Parser {
             let col = self.expect_ident()?;
             self.expect(&Token::Equal)?;
             let val = self.parse_value()?;
-            assignments.push((col, val));
+            assignments.push((crate::database::sql::ast::ColumnName(col), val));
             if matches!(self.peek(), Some(Token::Comma)) {
                 self.next_token();
             } else {
@@ -243,7 +243,7 @@ impl Parser {
         };
 
         Ok(Statement::Update {
-            table,
+            table: crate::database::sql::ast::TableName(table),
             assignments,
             where_clause,
         })
@@ -263,7 +263,7 @@ impl Parser {
         };
 
         Ok(Statement::Delete {
-            table,
+            table: crate::database::sql::ast::TableName(table),
             where_clause,
         })
     }
@@ -311,13 +311,16 @@ impl Parser {
 
         for pk_name in primary_keys {
             for col in &mut columns {
-                if col.name.eq_ignore_ascii_case(&pk_name) {
+                if col.name.0.eq_ignore_ascii_case(&pk_name) {
                     col.primary_key = true;
                 }
             }
         }
 
-        Ok(Statement::CreateTable { table, columns })
+        Ok(Statement::CreateTable {
+            table: crate::database::sql::ast::TableName(table),
+            columns,
+        })
     }
 
     /// Parses an `ALTER TABLE` statement.
@@ -325,20 +328,35 @@ impl Parser {
         self.expect(&Token::Alter)?;
         self.expect(&Token::Table)?;
         let table = self.expect_ident()?;
-        self.expect(&Token::Add)?;
-        let column = self.parse_column_def()?;
 
-        let hold = if matches!(self.peek(), Some(Token::Hold)) {
+        let mut column = None;
+        let mut hold = false;
+        let mut free = false;
+
+        if matches!(self.peek(), Some(Token::Add)) {
             self.next_token();
-            true
+            column = Some(self.parse_column_def()?);
+            if matches!(self.peek(), Some(Token::Hold)) {
+                self.next_token();
+                hold = true;
+            }
+        } else if matches!(self.peek(), Some(Token::Hold)) {
+            self.next_token();
+            hold = true;
+        } else if matches!(self.peek(), Some(Token::Free)) {
+            self.next_token();
+            free = true;
         } else {
-            false
-        };
+            return Err(MsiError::Sql {
+                message: "expected ADD, HOLD, or FREE in ALTER TABLE".to_string(),
+            });
+        }
 
         Ok(Statement::AlterTable {
-            table,
+            table: crate::database::sql::ast::TableName(table),
             column,
             hold,
+            free,
         })
     }
 
@@ -347,7 +365,9 @@ impl Parser {
         self.expect(&Token::Drop)?;
         self.expect(&Token::Table)?;
         let table = self.expect_ident()?;
-        Ok(Statement::DropTable { table })
+        Ok(Statement::DropTable {
+            table: crate::database::sql::ast::TableName(table),
+        })
     }
 
     /// Parses a single column definition in `CREATE TABLE` or `ALTER TABLE`.
@@ -359,7 +379,7 @@ impl Parser {
 
         let mut length = 0;
         let data_type = match type_tok {
-            Token::Char | Token::Varchar => {
+            Token::Char | Token::Varchar | Token::Longchar => {
                 if matches!(self.peek(), Some(Token::OpenParen)) {
                     self.next_token();
                     if let Some(Token::IntegerLiteral(n)) = self.next_token() {
@@ -404,7 +424,7 @@ impl Parser {
         }
 
         Ok(SqlColumnDef {
-            name,
+            name: crate::database::sql::ast::ColumnName(name),
             data_type,
             length,
             not_null,
@@ -424,6 +444,7 @@ impl Parser {
             Token::IntegerLiteral(n) => Ok(SqlValue::Integer(n)),
             Token::QuestionMark => Ok(SqlValue::Parameter),
             Token::Null => Ok(SqlValue::Null),
+            Token::Identifier(s) => Ok(SqlValue::Column(crate::database::sql::ast::ColumnName(s))),
             other => Err(MsiError::Sql {
                 message: format!("expected literal value, found {other:?}"),
             }),
@@ -483,7 +504,10 @@ impl Parser {
                 false
             };
             self.expect(&Token::Null)?;
-            return Ok(Expression::IsNull { column, negated });
+            return Ok(Expression::IsNull {
+                column: crate::database::sql::ast::ColumnName(column),
+                negated,
+            });
         }
 
         let op_tok = self.next_token().ok_or_else(|| MsiError::Sql {
@@ -506,7 +530,11 @@ impl Parser {
         };
 
         let value = self.parse_value()?;
-        Ok(Expression::Comparison { column, op, value })
+        Ok(Expression::Comparison {
+            column: crate::database::sql::ast::ColumnName(column),
+            op,
+            value,
+        })
     }
 }
 
@@ -529,21 +557,24 @@ mod tests {
             stmt1.as_ref(),
             Ok(&Statement::Select {
                 distinct: true,
-                columns: vec!["Col1".to_string(), "Col2".to_string()],
-                table: "T1".to_string(),
-                joins: vec!["T2".to_string()],
+                columns: vec![
+                    crate::database::sql::ast::ColumnName("Col1".to_string()),
+                    crate::database::sql::ast::ColumnName("Col2".to_string())
+                ],
+                table: crate::database::sql::ast::TableName("T1".to_string()),
+                joins: vec![crate::database::sql::ast::TableName("T2".to_string())],
                 where_clause: Some(Expression::Comparison {
-                    column: "Col1".to_string(),
+                    column: crate::database::sql::ast::ColumnName("Col1".to_string()),
                     op: BinaryOp::Equal,
                     value: SqlValue::String("val".to_string()),
                 }),
                 order_by: vec![
                     OrderByTerm {
-                        column: "Col1".to_string(),
+                        column: crate::database::sql::ast::ColumnName("Col1".to_string()),
                         direction: OrderDirection::Ascending,
                     },
                     OrderByTerm {
-                        column: "Col2".to_string(),
+                        column: crate::database::sql::ast::ColumnName("Col2".to_string()),
                         direction: OrderDirection::Descending,
                     },
                 ],
@@ -557,7 +588,7 @@ mod tests {
             Ok(&Statement::Select {
                 distinct: false,
                 columns: Vec::new(),
-                table: "T1".to_string(),
+                table: crate::database::sql::ast::TableName("T1".to_string()),
                 joins: Vec::new(),
                 where_clause: None,
                 order_by: Vec::new(),
@@ -570,11 +601,11 @@ mod tests {
             Ok(&Statement::Select {
                 distinct: false,
                 columns: Vec::new(),
-                table: "T".to_string(),
+                table: crate::database::sql::ast::TableName("T".to_string()),
                 joins: Vec::new(),
                 where_clause: None,
                 order_by: vec![OrderByTerm {
-                    column: "Col1".to_string(),
+                    column: crate::database::sql::ast::ColumnName("Col1".to_string()),
                     direction: OrderDirection::Ascending,
                 }],
             })
@@ -755,7 +786,7 @@ mod tests {
         assert!(format!("{col_type:?}").contains("Stream"));
 
         let term = OrderByTerm {
-            column: "Col1".to_string(),
+            column: crate::database::sql::ast::ColumnName("Col1".to_string()),
             direction: OrderDirection::Ascending,
         };
         #[allow(clippy::redundant_clone)]
@@ -764,7 +795,7 @@ mod tests {
         assert!(format!("{term:?}").contains("Col1"));
 
         let col_def = SqlColumnDef {
-            name: "Col1".to_string(),
+            name: crate::database::sql::ast::ColumnName("Col1".to_string()),
             data_type: SqlType::Short,
             length: 0,
             not_null: true,
@@ -777,7 +808,7 @@ mod tests {
         assert!(format!("{col_def:?}").contains("Col1"));
 
         let expr = Expression::IsNull {
-            column: "Col1".to_string(),
+            column: crate::database::sql::ast::ColumnName("Col1".to_string()),
             negated: false,
         };
         #[allow(clippy::redundant_clone)]
@@ -786,7 +817,7 @@ mod tests {
         assert!(format!("{expr:?}").contains("IsNull"));
 
         let stmt = Statement::DropTable {
-            table: "T".to_string(),
+            table: crate::database::sql::ast::TableName("T".to_string()),
         };
         #[allow(clippy::redundant_clone)]
         let cloned_stmt = stmt.clone();

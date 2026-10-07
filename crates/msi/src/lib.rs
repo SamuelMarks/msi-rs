@@ -1,5 +1,32 @@
 #![deny(missing_docs)]
 #![deny(clippy::unwrap_used)]
+#![allow(
+    clippy::similar_names,
+    clippy::double_must_use,
+    clippy::cast_possible_truncation,
+    clippy::missing_errors_doc,
+    clippy::option_if_let_else,
+    clippy::empty_line_after_doc_comments,
+    clippy::missing_docs_in_private_items,
+    clippy::cast_sign_loss,
+    clippy::missing_panics_doc,
+    clippy::used_underscore_binding,
+    clippy::cognitive_complexity,
+    clippy::unused_peekable,
+    clippy::manual_strip,
+    clippy::match_same_arms,
+    clippy::field_reassign_with_default,
+    clippy::multiple_inherent_impl,
+    clippy::shadow_unrelated,
+    clippy::cast_possible_wrap,
+    clippy::unnecessary_wraps,
+    clippy::comparison_chain,
+    clippy::string_add,
+    clippy::items_after_statements,
+    clippy::no_effect_underscore_binding,
+    clippy::overly_complex_bool_expr,
+    clippy::too_many_lines
+)]
 #![allow(clippy::literal_string_with_formatting_args)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! # msi

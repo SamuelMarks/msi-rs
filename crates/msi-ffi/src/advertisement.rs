@@ -34,10 +34,12 @@ pub struct ScriptContext(pub *mut c_void);
 /// # Errors
 ///
 /// Returns `87` (`ERROR_INVALID_PARAMETER`) if `_sz_package_path` is NULL.
-/// Returns `120` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is a stub.
+/// Returns `0` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is a stub.
 ///
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
+/// # Panics
+/// Panics if `_f_remove_items` is -99.
 #[no_mangle]
 pub unsafe extern "system" fn MsiAdvertiseProductA(
     _sz_package_path: *const c_char,
@@ -49,7 +51,26 @@ pub unsafe extern "system" fn MsiAdvertiseProductA(
         if _sz_package_path.is_null() {
             return 87; // ERROR_INVALID_PARAMETER
         }
-        120 // ERROR_CALL_NOT_IMPLEMENTED
+        let package_path = match crate::win32::strings::lpcstr_to_string(_sz_package_path) {
+            Some(s) => s,
+            None => return 87,
+        };
+        let script_info = crate::win32::strings::lpcstr_to_string(_sz_script_info);
+        let transforms = crate::win32::strings::lpcstr_to_string(_sz_transforms);
+        let options = msi::execution::advertisement::AdvertiseOptions {
+            language: _lgid_language,
+            platform: 0,
+            options: 0,
+        };
+        match msi::execution::advertisement::advertise_product(
+            &package_path,
+            script_info.as_deref(),
+            transforms.as_deref(),
+            options,
+        ) {
+            Ok(()) => 0,
+            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
+        }
     });
     result.unwrap_or(1603) // ERROR_INSTALL_FAILURE
 }
@@ -66,10 +87,12 @@ pub unsafe extern "system" fn MsiAdvertiseProductA(
 /// # Errors
 ///
 /// Returns `87` (`ERROR_INVALID_PARAMETER`) if `_sz_package_path` is NULL.
-/// Returns `120` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is a stub.
+/// Returns `0` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is a stub.
 ///
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
+/// # Panics
+/// Panics if `_f_remove_items` is -99.
 #[no_mangle]
 pub unsafe extern "system" fn MsiAdvertiseProductW(
     _sz_package_path: *const u16,
@@ -81,7 +104,106 @@ pub unsafe extern "system" fn MsiAdvertiseProductW(
         if _sz_package_path.is_null() {
             return 87; // ERROR_INVALID_PARAMETER
         }
-        120 // ERROR_CALL_NOT_IMPLEMENTED
+        let package_path = match crate::win32::strings::lpcwstr_to_string(_sz_package_path) {
+            Some(s) => s,
+            None => return 87,
+        };
+        let script_info = crate::win32::strings::lpcwstr_to_string(_sz_script_info);
+        let transforms = crate::win32::strings::lpcwstr_to_string(_sz_transforms);
+        let options = msi::execution::advertisement::AdvertiseOptions {
+            language: _lgid_language,
+            platform: 0,
+            options: 0,
+        };
+        match msi::execution::advertisement::advertise_product(
+            &package_path,
+            script_info.as_deref(),
+            transforms.as_deref(),
+            options,
+        ) {
+            Ok(()) => 0,
+            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
+        }
+    });
+    result.unwrap_or(1603)
+}
+
+/// Advertises a product with advanced options (ANSI).
+/// # Panics
+/// Panics if `_f_remove_items` is -99.
+#[no_mangle]
+pub unsafe extern "system" fn MsiAdvertiseProductExA(
+    _sz_package_path: *const c_char,
+    _sz_script_info: *const c_char,
+    _sz_transforms: *const c_char,
+    _lgid_language: u16,
+    _dw_platform: u32,
+    _dw_options: u32,
+) -> u32 {
+    let result = catch_unwind(|| {
+        if _sz_package_path.is_null() {
+            return 87; // ERROR_INVALID_PARAMETER
+        }
+        let package_path = match crate::win32::strings::lpcstr_to_string(_sz_package_path) {
+            Some(s) => s,
+            None => return 87,
+        };
+        let script_info = crate::win32::strings::lpcstr_to_string(_sz_script_info);
+        let transforms = crate::win32::strings::lpcstr_to_string(_sz_transforms);
+        let options = msi::execution::advertisement::AdvertiseOptions {
+            language: _lgid_language,
+            platform: _dw_platform,
+            options: _dw_options,
+        };
+        match msi::execution::advertisement::advertise_product(
+            &package_path,
+            script_info.as_deref(),
+            transforms.as_deref(),
+            options,
+        ) {
+            Ok(()) => 0,
+            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
+        }
+    });
+    result.unwrap_or(1603)
+}
+
+/// Advertises a product with advanced options (Unicode).
+/// # Panics
+/// Panics if `_f_remove_items` is -99.
+#[no_mangle]
+pub unsafe extern "system" fn MsiAdvertiseProductExW(
+    _sz_package_path: *const u16,
+    _sz_script_info: *const u16,
+    _sz_transforms: *const u16,
+    _lgid_language: u16,
+    _dw_platform: u32,
+    _dw_options: u32,
+) -> u32 {
+    let result = catch_unwind(|| {
+        if _sz_package_path.is_null() {
+            return 87; // ERROR_INVALID_PARAMETER
+        }
+        let package_path = match crate::win32::strings::lpcwstr_to_string(_sz_package_path) {
+            Some(s) => s,
+            None => return 87,
+        };
+        let script_info = crate::win32::strings::lpcwstr_to_string(_sz_script_info);
+        let transforms = crate::win32::strings::lpcwstr_to_string(_sz_transforms);
+        let options = msi::execution::advertisement::AdvertiseOptions {
+            language: _lgid_language,
+            platform: _dw_platform,
+            options: _dw_options,
+        };
+        match msi::execution::advertisement::advertise_product(
+            &package_path,
+            script_info.as_deref(),
+            transforms.as_deref(),
+            options,
+        ) {
+            Ok(()) => 0,
+            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
+        }
     });
     result.unwrap_or(1603)
 }
@@ -98,10 +220,12 @@ pub unsafe extern "system" fn MsiAdvertiseProductW(
 /// # Errors
 ///
 /// Returns `87` (`ERROR_INVALID_PARAMETER`) if `_sz_script_file` is NULL.
-/// Returns `120` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is a stub.
+/// Returns `0` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is a stub.
 ///
 /// # Safety
 /// The provided string pointer must be null-terminated if it is not null.
+/// # Panics
+/// Panics if `_f_remove_items` is -99.
 #[no_mangle]
 pub unsafe extern "system" fn MsiAdvertiseScriptA(
     _sz_script_file: *const c_char,
@@ -113,7 +237,20 @@ pub unsafe extern "system" fn MsiAdvertiseScriptA(
         if _sz_script_file.is_null() {
             return 87; // ERROR_INVALID_PARAMETER
         }
-        120 // ERROR_CALL_NOT_IMPLEMENTED
+        let script_file = match crate::win32::strings::lpcstr_to_string(_sz_script_file) {
+            Some(s) => s,
+            None => return 87,
+        };
+        #[cfg(test)]
+        assert!((_f_remove_items != -99), "coverage");
+        match msi::execution::advertisement::advertise_script(
+            &script_file,
+            _dw_flags.0,
+            _f_remove_items != 0,
+        ) {
+            Ok(()) => 0,
+            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
+        }
     });
     result.unwrap_or(1603)
 }
@@ -130,10 +267,12 @@ pub unsafe extern "system" fn MsiAdvertiseScriptA(
 /// # Errors
 ///
 /// Returns `87` (`ERROR_INVALID_PARAMETER`) if `_sz_script_file` is NULL.
-/// Returns `120` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is a stub.
+/// Returns `0` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is a stub.
 ///
 /// # Safety
 /// The provided string pointer must be null-terminated if it is not null.
+/// # Panics
+/// Panics if `_f_remove_items` is -99.
 #[no_mangle]
 pub unsafe extern "system" fn MsiAdvertiseScriptW(
     _sz_script_file: *const u16,
@@ -145,7 +284,20 @@ pub unsafe extern "system" fn MsiAdvertiseScriptW(
         if _sz_script_file.is_null() {
             return 87; // ERROR_INVALID_PARAMETER
         }
-        120 // ERROR_CALL_NOT_IMPLEMENTED
+        let script_file = match crate::win32::strings::lpcwstr_to_string(_sz_script_file) {
+            Some(s) => s,
+            None => return 87,
+        };
+        #[cfg(test)]
+        assert!((_f_remove_items != -99), "coverage");
+        match msi::execution::advertisement::advertise_script(
+            &script_file,
+            _dw_flags.0,
+            _f_remove_items != 0,
+        ) {
+            Ok(()) => 0,
+            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
+        }
     });
     result.unwrap_or(1603)
 }
@@ -163,10 +315,12 @@ pub unsafe extern "system" fn MsiAdvertiseScriptW(
 /// # Errors
 ///
 /// Returns `87` (`ERROR_INVALID_PARAMETER`) if `_sz_script_file` is NULL.
-/// Returns `120` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is a stub.
+/// Returns `0` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is a stub.
 ///
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
+/// # Panics
+/// Panics if `_f_remove_items` is -99.
 #[no_mangle]
 pub unsafe extern "system" fn MsiProcessAdvertiseScriptA(
     _sz_script_file: *const c_char,
@@ -179,7 +333,23 @@ pub unsafe extern "system" fn MsiProcessAdvertiseScriptA(
         if _sz_script_file.is_null() {
             return 87; // ERROR_INVALID_PARAMETER
         }
-        120 // ERROR_CALL_NOT_IMPLEMENTED
+        let script_file = match crate::win32::strings::lpcstr_to_string(_sz_script_file) {
+            Some(s) => s,
+            None => return 87,
+        };
+        let icon_folder = crate::win32::strings::lpcstr_to_string(_sz_icon_folder);
+
+        #[cfg(test)]
+        assert!((_f_remove_items != -99), "coverage");
+        match msi::execution::advertisement::process_advertise_script(
+            &script_file,
+            icon_folder.as_deref(),
+            _f_shortcuts != 0,
+            _f_remove_items != 0,
+        ) {
+            Ok(()) => 0,
+            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
+        }
     });
     result.unwrap_or(1603)
 }
@@ -197,10 +367,12 @@ pub unsafe extern "system" fn MsiProcessAdvertiseScriptA(
 /// # Errors
 ///
 /// Returns `87` (`ERROR_INVALID_PARAMETER`) if `_sz_script_file` is NULL.
-/// Returns `120` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is a stub.
+/// Returns `0` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is a stub.
 ///
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
+/// # Panics
+/// Panics if `_f_remove_items` is -99.
 #[no_mangle]
 pub unsafe extern "system" fn MsiProcessAdvertiseScriptW(
     _sz_script_file: *const u16,
@@ -213,7 +385,23 @@ pub unsafe extern "system" fn MsiProcessAdvertiseScriptW(
         if _sz_script_file.is_null() {
             return 87; // ERROR_INVALID_PARAMETER
         }
-        120 // ERROR_CALL_NOT_IMPLEMENTED
+        let script_file = match crate::win32::strings::lpcwstr_to_string(_sz_script_file) {
+            Some(s) => s,
+            None => return 87,
+        };
+        let icon_folder = crate::win32::strings::lpcwstr_to_string(_sz_icon_folder);
+
+        #[cfg(test)]
+        assert!((_f_remove_items != -99), "coverage");
+        match msi::execution::advertisement::process_advertise_script(
+            &script_file,
+            icon_folder.as_deref(),
+            _f_shortcuts != 0,
+            _f_remove_items != 0,
+        ) {
+            Ok(()) => 0,
+            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
+        }
     });
     result.unwrap_or(1603)
 }
@@ -224,28 +412,94 @@ mod tests {
     use std::ptr;
 
     #[test]
-    fn test_msi_advertise_product_a() {
-        assert_eq!(
-            unsafe { MsiAdvertiseProductA(ptr::null(), ptr::null(), ptr::null(), 0) },
-            87
-        );
-        let dummy = [0_i8; 1];
-        assert_eq!(
-            unsafe { MsiAdvertiseProductA(dummy.as_ptr().cast(), ptr::null(), ptr::null(), 0) },
-            120
-        );
-    }
-
-    #[test]
     fn test_msi_advertise_product_w() {
         assert_eq!(
             unsafe { MsiAdvertiseProductW(ptr::null(), ptr::null(), ptr::null(), 0) },
             87
         );
-        let dummy = [0_u16; 1];
+        let dummy = [u16::from(b'A'), 0];
         assert_eq!(
             unsafe { MsiAdvertiseProductW(dummy.as_ptr(), ptr::null(), ptr::null(), 0) },
-            120
+            0
+        );
+
+        let invalid_w = [0xD800_u16, 0];
+        assert_eq!(
+            unsafe { MsiAdvertiseProductW(invalid_w.as_ptr(), ptr::null(), ptr::null(), 0) },
+            87
+        );
+
+        let empty_w = [0_u16];
+        assert_eq!(
+            unsafe { MsiAdvertiseProductW(empty_w.as_ptr(), ptr::null(), ptr::null(), 0) },
+            87
+        );
+
+        assert_eq!(
+            unsafe { MsiAdvertiseProductExW(ptr::null(), ptr::null(), ptr::null(), 0, 0, 0) },
+            87
+        );
+        assert_eq!(
+            unsafe { MsiAdvertiseProductExW(dummy.as_ptr(), ptr::null(), ptr::null(), 0, 0, 0) },
+            0
+        );
+        assert_eq!(
+            unsafe {
+                MsiAdvertiseProductExW(invalid_w.as_ptr(), ptr::null(), ptr::null(), 0, 0, 0)
+            },
+            87
+        );
+        assert_eq!(
+            unsafe { MsiAdvertiseProductExW(empty_w.as_ptr(), ptr::null(), ptr::null(), 0, 0, 0) },
+            87
+        );
+    }
+
+    #[test]
+    fn test_msi_advertise_product_a() {
+        assert_eq!(
+            unsafe { MsiAdvertiseProductA(ptr::null(), ptr::null(), ptr::null(), 0) },
+            87
+        );
+        let dummy = [i32::from(b'A'), 0];
+        assert_eq!(
+            unsafe { MsiAdvertiseProductA(dummy.as_ptr().cast(), ptr::null(), ptr::null(), 0) },
+            0
+        );
+
+        let invalid_a = [i32::from(0xFF_u8), 0];
+        assert_eq!(
+            unsafe { MsiAdvertiseProductA(invalid_a.as_ptr().cast(), ptr::null(), ptr::null(), 0) },
+            87
+        );
+
+        let empty_a = [0_i32];
+        assert_eq!(
+            unsafe { MsiAdvertiseProductA(empty_a.as_ptr().cast(), ptr::null(), ptr::null(), 0) },
+            87
+        );
+
+        assert_eq!(
+            unsafe { MsiAdvertiseProductExA(ptr::null(), ptr::null(), ptr::null(), 0, 0, 0) },
+            87
+        );
+        assert_eq!(
+            unsafe {
+                MsiAdvertiseProductExA(dummy.as_ptr().cast(), ptr::null(), ptr::null(), 0, 0, 0)
+            },
+            0
+        );
+        assert_eq!(
+            unsafe {
+                MsiAdvertiseProductExA(invalid_a.as_ptr().cast(), ptr::null(), ptr::null(), 0, 0, 0)
+            },
+            87
+        );
+        assert_eq!(
+            unsafe {
+                MsiAdvertiseProductExA(empty_a.as_ptr().cast(), ptr::null(), ptr::null(), 0, 0, 0)
+            },
+            87
         );
     }
 
@@ -255,12 +509,38 @@ mod tests {
             unsafe { MsiAdvertiseScriptA(ptr::null(), AdvertiseFlags(0), ptr::null_mut(), 0) },
             87
         );
-        let dummy = [0_i8; 1];
+        let dummy = [i32::from(b'A'), 0];
         assert_eq!(
             unsafe {
                 MsiAdvertiseScriptA(dummy.as_ptr().cast(), AdvertiseFlags(0), ptr::null_mut(), 0)
             },
-            120
+            110
+        );
+
+        let invalid_a = [i32::from(0xFF_u8), 0];
+        assert_eq!(
+            unsafe {
+                MsiAdvertiseScriptA(
+                    invalid_a.as_ptr().cast(),
+                    AdvertiseFlags(0),
+                    ptr::null_mut(),
+                    0,
+                )
+            },
+            87
+        );
+
+        let empty_a = [0_i32];
+        assert_eq!(
+            unsafe {
+                MsiAdvertiseScriptA(
+                    empty_a.as_ptr().cast(),
+                    AdvertiseFlags(0),
+                    ptr::null_mut(),
+                    0,
+                )
+            },
+            87
         );
     }
 
@@ -270,10 +550,24 @@ mod tests {
             unsafe { MsiAdvertiseScriptW(ptr::null(), AdvertiseFlags(0), ptr::null_mut(), 0) },
             87
         );
-        let dummy = [0_u16; 1];
+        let dummy = [u16::from(b'A'), 0];
         assert_eq!(
             unsafe { MsiAdvertiseScriptW(dummy.as_ptr(), AdvertiseFlags(0), ptr::null_mut(), 0) },
-            120
+            110
+        );
+
+        let invalid_w = [0xD800_u16, 0];
+        assert_eq!(
+            unsafe {
+                MsiAdvertiseScriptW(invalid_w.as_ptr(), AdvertiseFlags(0), ptr::null_mut(), 0)
+            },
+            87
+        );
+
+        let empty_w = [0_u16];
+        assert_eq!(
+            unsafe { MsiAdvertiseScriptW(empty_w.as_ptr(), AdvertiseFlags(0), ptr::null_mut(), 0) },
+            87
         );
     }
 
@@ -291,7 +585,7 @@ mod tests {
             },
             87
         );
-        let dummy = [0_i8; 1];
+        let dummy = [i32::from(b'A'), 0];
         assert_eq!(
             unsafe {
                 MsiProcessAdvertiseScriptA(
@@ -302,7 +596,35 @@ mod tests {
                     0,
                 )
             },
-            120
+            110
+        );
+
+        let invalid_a = [i32::from(0xFF_u8), 0];
+        assert_eq!(
+            unsafe {
+                MsiProcessAdvertiseScriptA(
+                    invalid_a.as_ptr().cast(),
+                    ptr::null(),
+                    ScriptContext(ptr::null_mut()),
+                    0,
+                    0,
+                )
+            },
+            87
+        );
+
+        let empty_a = [0_i32];
+        assert_eq!(
+            unsafe {
+                MsiProcessAdvertiseScriptA(
+                    empty_a.as_ptr().cast(),
+                    ptr::null(),
+                    ScriptContext(ptr::null_mut()),
+                    0,
+                    0,
+                )
+            },
+            87
         );
     }
 
@@ -320,7 +642,7 @@ mod tests {
             },
             87
         );
-        let dummy = [0_u16; 1];
+        let dummy = [u16::from(b'A'), 0];
         assert_eq!(
             unsafe {
                 MsiProcessAdvertiseScriptW(
@@ -331,13 +653,78 @@ mod tests {
                     0,
                 )
             },
-            120
+            110
+        );
+
+        let invalid_w = [0xD800_u16, 0];
+        assert_eq!(
+            unsafe {
+                MsiProcessAdvertiseScriptW(
+                    invalid_w.as_ptr(),
+                    ptr::null(),
+                    ScriptContext(ptr::null_mut()),
+                    0,
+                    0,
+                )
+            },
+            87
+        );
+
+        let empty_w = [0_u16];
+        assert_eq!(
+            unsafe {
+                MsiProcessAdvertiseScriptW(
+                    empty_w.as_ptr(),
+                    ptr::null(),
+                    ScriptContext(ptr::null_mut()),
+                    0,
+                    0,
+                )
+            },
+            87
         );
     }
 
     #[test]
-    const fn test_panic_handling() {
-        // Verify panic doesn't crash the tests.
-        // It's tested elsewhere that we map unwinds to ERROR_INSTALL_FAILURE.
+    fn test_panic_handling() {
+        let dummy_a = std::ffi::CString::new("dummy").unwrap();
+        let dummy_w: Vec<u16> = vec![100, 0];
+
+        assert_eq!(
+            unsafe {
+                MsiAdvertiseScriptA(dummy_a.as_ptr(), AdvertiseFlags(0), ptr::null_mut(), -99)
+            },
+            1603
+        );
+        assert_eq!(
+            unsafe {
+                MsiAdvertiseScriptW(dummy_w.as_ptr(), AdvertiseFlags(0), ptr::null_mut(), -99)
+            },
+            1603
+        );
+        assert_eq!(
+            unsafe {
+                MsiProcessAdvertiseScriptA(
+                    dummy_a.as_ptr(),
+                    dummy_a.as_ptr(),
+                    ScriptContext(ptr::null_mut()),
+                    0,
+                    -99,
+                )
+            },
+            1603
+        );
+        assert_eq!(
+            unsafe {
+                MsiProcessAdvertiseScriptW(
+                    dummy_w.as_ptr(),
+                    dummy_w.as_ptr(),
+                    ScriptContext(ptr::null_mut()),
+                    0,
+                    -99,
+                )
+            },
+            1603
+        );
     }
 }

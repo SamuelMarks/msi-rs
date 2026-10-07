@@ -3184,4 +3184,48 @@ mod tests {
         ]))
         .is_err());
     }
+
+    #[test]
+    fn test_core_fallback_rows_part3() {
+        use crate::database::tables::record::FieldValue;
+
+        let rec = Record::with_fields(vec![
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Null,
+            FieldValue::Null,
+        ]);
+
+        let _ = ComponentRow::from_record(&rec);
+        let _ = FeatureComponentsRow::from_record(&rec);
+        let _ = DirectoryRow::from_record(&rec);
+        let _ = FileRow::from_record(&rec);
+        let _ = FileHashRow::from_record(&rec);
+        let _ = MediaRow::from_record(&rec);
+        let _ = BinaryRow::from_record(&rec);
+        let _ = FontRow::from_record(&rec);
+        let _ = PatchPackageRow::from_record(&rec);
+        let _ = ModuleConfigurationRow::from_record(&rec);
+        let _ = FeatureRow::from_record(&rec);
+        let _ = ModuleSubstitutionRow::from_record(&rec);
+        let _ = ModuleIgnoreModularizationRow::from_record(&rec);
+        let _ = ModuleSignatureRow::from_record(&rec);
+        let _ = ModuleComponentsRow::from_record(&rec);
+        let _ = ModuleDependencyRow::from_record(&rec);
+        let _ = ModuleExclusionRow::from_record(&rec);
+    }
 }

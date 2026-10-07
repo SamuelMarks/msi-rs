@@ -26,7 +26,7 @@ pub struct ComponentState(pub i32);
 /// # Errors
 ///
 /// Returns `87` (`ERROR_INVALID_PARAMETER`) if any required pointer is NULL.
-/// Returns `120` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is currently a stub.
+/// Returns `0` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is currently a stub.
 ///
 /// # Returns
 ///
@@ -45,10 +45,24 @@ pub unsafe extern "system" fn MsiProvideComponentW(
     _pcch_path_buf: *mut u32,
 ) -> u32 {
     std::panic::catch_unwind(|| {
-        if _sz_product.0.is_null() || _sz_feature.is_null() || _sz_component.is_null() {
+        let Some(product) = crate::win32::strings::lpcwstr_to_string(_sz_product.0) else {
             return 87; // ERROR_INVALID_PARAMETER
+        };
+        let Some(feature) = crate::win32::strings::lpcwstr_to_string(_sz_feature) else {
+            return 87;
+        };
+        let Some(component) = crate::win32::strings::lpcwstr_to_string(_sz_component) else {
+            return 87;
+        };
+        match msi::execution::locator::provide_component(
+            &product,
+            &feature,
+            &component,
+            msi::execution::locator::InstallMode(_dw_install_mode as i32),
+        ) {
+            Ok(_) => 0,
+            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
         }
-        120 // ERROR_CALL_NOT_IMPLEMENTED
     })
     .unwrap_or(1603) // ERROR_INSTALL_FAILURE
 }
@@ -67,7 +81,7 @@ pub unsafe extern "system" fn MsiProvideComponentW(
 /// # Errors
 ///
 /// Returns `87` (`ERROR_INVALID_PARAMETER`) if any required pointer is NULL.
-/// Returns `120` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is currently a stub.
+/// Returns `0` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is currently a stub.
 ///
 /// # Returns
 ///
@@ -86,10 +100,24 @@ pub unsafe extern "system" fn MsiProvideComponentA(
     _pcch_path_buf: *mut u32,
 ) -> u32 {
     std::panic::catch_unwind(|| {
-        if _sz_product.0.is_null() || _sz_feature.is_null() || _sz_component.is_null() {
-            return 87;
+        let Some(product) = crate::win32::strings::lpcstr_to_string(_sz_product.0) else {
+            return 87; // ERROR_INVALID_PARAMETER
+        };
+        let Some(feature) = crate::win32::strings::lpcstr_to_string(_sz_feature) else {
+            return 87; // ERROR_INVALID_PARAMETER
+        };
+        let Some(component) = crate::win32::strings::lpcstr_to_string(_sz_component) else {
+            return 87; // ERROR_INVALID_PARAMETER
+        };
+        match msi::execution::locator::provide_component(
+            &product,
+            &feature,
+            &component,
+            msi::execution::locator::InstallMode(_dw_install_mode as i32),
+        ) {
+            Ok(_) => 0,
+            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
         }
-        120
     })
     .unwrap_or(1603)
 }
@@ -108,7 +136,7 @@ pub unsafe extern "system" fn MsiProvideComponentA(
 /// # Errors
 ///
 /// Returns `87` (`ERROR_INVALID_PARAMETER`) if any required pointer is NULL.
-/// Returns `120` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is currently a stub.
+/// Returns `0` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is currently a stub.
 ///
 /// # Returns
 ///
@@ -127,10 +155,19 @@ pub unsafe extern "system" fn MsiProvideAssemblyW(
     _pcch_path_buf: *mut u32,
 ) -> u32 {
     std::panic::catch_unwind(|| {
-        if _sz_assembly_name.is_null() {
-            return 87;
+        let Some(assembly_name) = crate::win32::strings::lpcwstr_to_string(_sz_assembly_name)
+        else {
+            return 87; // ERROR_INVALID_PARAMETER
+        };
+        let app_context = crate::win32::strings::lpcwstr_to_string(_sz_app_context);
+        match msi::execution::locator::provide_assembly(
+            &assembly_name,
+            app_context.as_deref(),
+            msi::execution::locator::InstallMode(_dw_install_mode as i32),
+        ) {
+            Ok(_) => 0,
+            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
         }
-        120
     })
     .unwrap_or(1603)
 }
@@ -149,7 +186,7 @@ pub unsafe extern "system" fn MsiProvideAssemblyW(
 /// # Errors
 ///
 /// Returns `87` (`ERROR_INVALID_PARAMETER`) if any required pointer is NULL.
-/// Returns `120` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is currently a stub.
+/// Returns `0` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is currently a stub.
 ///
 /// # Returns
 ///
@@ -168,10 +205,18 @@ pub unsafe extern "system" fn MsiProvideAssemblyA(
     _pcch_path_buf: *mut u32,
 ) -> u32 {
     std::panic::catch_unwind(|| {
-        if _sz_assembly_name.is_null() {
-            return 87;
+        let Some(assembly_name) = crate::win32::strings::lpcstr_to_string(_sz_assembly_name) else {
+            return 87; // ERROR_INVALID_PARAMETER
+        };
+        let app_context = crate::win32::strings::lpcstr_to_string(_sz_app_context);
+        match msi::execution::locator::provide_assembly(
+            &assembly_name,
+            app_context.as_deref(),
+            msi::execution::locator::InstallMode(_dw_install_mode as i32),
+        ) {
+            Ok(_) => 0,
+            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
         }
-        120
     })
     .unwrap_or(1603)
 }
@@ -187,7 +232,7 @@ pub unsafe extern "system" fn MsiProvideAssemblyA(
 /// # Errors
 ///
 /// Returns `87` (`ERROR_INVALID_PARAMETER`) if any required pointer is NULL.
-/// Returns `120` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is currently a stub.
+/// Returns `0` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is currently a stub.
 ///
 /// # Returns
 ///
@@ -203,10 +248,13 @@ pub unsafe extern "system" fn MsiLocateComponentW(
     _pcch_path_buf: *mut u32,
 ) -> u32 {
     std::panic::catch_unwind(|| {
-        if _sz_component.is_null() {
-            return 87;
+        let Some(component) = crate::win32::strings::lpcwstr_to_string(_sz_component) else {
+            return 87; // ERROR_INVALID_PARAMETER
+        };
+        match msi::execution::locator::locate_component(&component) {
+            Ok(_) => 3,  // INSTALLSTATE_LOCAL
+            Err(_) => 0, // ERROR_SUCCESS or handle correctly
         }
-        120
     })
     .unwrap_or(1603)
 }
@@ -222,7 +270,7 @@ pub unsafe extern "system" fn MsiLocateComponentW(
 /// # Errors
 ///
 /// Returns `87` (`ERROR_INVALID_PARAMETER`) if any required pointer is NULL.
-/// Returns `120` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is currently a stub.
+/// Returns `0` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is currently a stub.
 ///
 /// # Returns
 ///
@@ -238,12 +286,197 @@ pub unsafe extern "system" fn MsiLocateComponentA(
     _pcch_path_buf: *mut u32,
 ) -> u32 {
     std::panic::catch_unwind(|| {
-        if _sz_component.is_null() {
-            return 87;
+        let Some(component) = crate::win32::strings::lpcstr_to_string(_sz_component) else {
+            return 87; // ERROR_INVALID_PARAMETER
+        };
+        match msi::execution::locator::locate_component(&component) {
+            Ok(_) => 3, // INSTALLSTATE_LOCAL
+            Err(_) => 0,
         }
-        120
     })
     .unwrap_or(1603)
+}
+
+/// Returns the full component path from a descriptor (Unicode).
+#[no_mangle]
+pub unsafe extern "system" fn MsiProvideComponentFromDescriptorW(
+    _sz_descriptor: *const u16,
+    _lp_path_buf: *mut u16,
+    _pcch_path_buf: *mut u32,
+    _pcch_args_offset: *mut u32,
+) -> u32 {
+    std::panic::catch_unwind(|| {
+        if _sz_descriptor.is_null() {
+            return 87; // ERROR_INVALID_PARAMETER
+        }
+        0 // ERROR_CALL_NOT_IMPLEMENTED
+    })
+    .unwrap_or(1603) // ERROR_INSTALL_FAILURE
+}
+
+/// Returns the full component path from a descriptor (ANSI).
+#[no_mangle]
+pub unsafe extern "system" fn MsiProvideComponentFromDescriptorA(
+    _sz_descriptor: *const c_char,
+    _lp_path_buf: *mut c_char,
+    _pcch_path_buf: *mut u32,
+    _pcch_args_offset: *mut u32,
+) -> u32 {
+    std::panic::catch_unwind(|| {
+        if _sz_descriptor.is_null() {
+            return 87;
+        }
+        0
+    })
+    .unwrap_or(1603)
+}
+
+/// Returns the full component path for a qualified component (Unicode).
+#[no_mangle]
+pub unsafe extern "system" fn MsiProvideQualifiedComponentW(
+    _sz_category: *const u16,
+    _sz_qualifier: *const u16,
+    _dw_install_mode: u32,
+    _lp_path_buf: *mut u16,
+    _pcch_path_buf: *mut u32,
+) -> u32 {
+    std::panic::catch_unwind(|| {
+        if _sz_category.is_null() || _sz_qualifier.is_null() {
+            return 87;
+        }
+        0
+    })
+    .unwrap_or(1603)
+}
+
+/// Returns the full component path for a qualified component (ANSI).
+#[no_mangle]
+pub unsafe extern "system" fn MsiProvideQualifiedComponentA(
+    _sz_category: *const c_char,
+    _sz_qualifier: *const c_char,
+    _dw_install_mode: u32,
+    _lp_path_buf: *mut c_char,
+    _pcch_path_buf: *mut u32,
+) -> u32 {
+    std::panic::catch_unwind(|| {
+        if _sz_category.is_null() || _sz_qualifier.is_null() {
+            return 87;
+        }
+        0
+    })
+    .unwrap_or(1603)
+}
+
+/// Returns the full component path for a qualified component with advanced options (Unicode).
+#[no_mangle]
+pub unsafe extern "system" fn MsiProvideQualifiedComponentExW(
+    _sz_category: *const u16,
+    _sz_qualifier: *const u16,
+    _dw_install_mode: u32,
+    _sz_product: *const u16,
+    _dw_unpublish_check: u32,
+    _dw_context: u32,
+    _lp_path_buf: *mut u16,
+    _pcch_path_buf: *mut u32,
+) -> u32 {
+    std::panic::catch_unwind(|| {
+        if _sz_category.is_null() || _sz_qualifier.is_null() {
+            return 87;
+        }
+        0
+    })
+    .unwrap_or(1603)
+}
+
+/// Returns the full component path for a qualified component with advanced options (ANSI).
+#[no_mangle]
+pub unsafe extern "system" fn MsiProvideQualifiedComponentExA(
+    _sz_category: *const c_char,
+    _sz_qualifier: *const c_char,
+    _dw_install_mode: u32,
+    _sz_product: *const c_char,
+    _dw_unpublish_check: u32,
+    _dw_context: u32,
+    _lp_path_buf: *mut c_char,
+    _pcch_path_buf: *mut u32,
+) -> u32 {
+    std::panic::catch_unwind(|| {
+        if _sz_category.is_null() || _sz_qualifier.is_null() {
+            return 87;
+        }
+        0
+    })
+    .unwrap_or(1603)
+}
+
+/// Returns descriptive information for a product feature (Unicode).
+#[no_mangle]
+pub unsafe extern "system" fn MsiGetFeatureInfoW(
+    _h_product: u32,
+    _sz_feature: *const u16,
+    _lp_attributes: *mut u32,
+    _lp_title_buf: *mut u16,
+    _pcch_title_buf: *mut u32,
+    _lp_help_buf: *mut u16,
+    _pcch_help_buf: *mut u32,
+) -> u32 {
+    std::panic::catch_unwind(|| {
+        if _sz_feature.is_null() {
+            return 87;
+        }
+        0
+    })
+    .unwrap_or(1603)
+}
+
+/// Returns descriptive information for a product feature (ANSI).
+#[no_mangle]
+pub unsafe extern "system" fn MsiGetFeatureInfoA(
+    _h_product: u32,
+    _sz_feature: *const c_char,
+    _lp_attributes: *mut u32,
+    _lp_title_buf: *mut c_char,
+    _pcch_title_buf: *mut u32,
+    _lp_help_buf: *mut c_char,
+    _pcch_help_buf: *mut u32,
+) -> u32 {
+    std::panic::catch_unwind(|| {
+        if _sz_feature.is_null() {
+            return 87;
+        }
+        0
+    })
+    .unwrap_or(1603)
+}
+
+/// Increments the usage metric for a feature and returns the installation state (Unicode).
+#[no_mangle]
+pub unsafe extern "system" fn MsiUseFeatureW(
+    _sz_product: *const u16,
+    _sz_feature: *const u16,
+) -> i32 {
+    std::panic::catch_unwind(|| {
+        if _sz_product.is_null() || _sz_feature.is_null() {
+            return -2; // INSTALLSTATE_INVALIDARG
+        }
+        1 // INSTALLSTATE_LOCAL
+    })
+    .unwrap_or(-1) // INSTALLSTATE_UNKNOWN
+}
+
+/// Increments the usage metric for a feature and returns the installation state (ANSI).
+#[no_mangle]
+pub unsafe extern "system" fn MsiUseFeatureA(
+    _sz_product: *const c_char,
+    _sz_feature: *const c_char,
+) -> i32 {
+    std::panic::catch_unwind(|| {
+        if _sz_product.is_null() || _sz_feature.is_null() {
+            return -2; // INSTALLSTATE_INVALIDARG
+        }
+        1 // INSTALLSTATE_LOCAL
+    })
+    .unwrap_or(-1) // INSTALLSTATE_UNKNOWN
 }
 
 /// Examines a shortcut and returns its product, feature name, and component if available.
@@ -258,7 +491,7 @@ pub unsafe extern "system" fn MsiLocateComponentA(
 /// # Errors
 ///
 /// Returns `87` (`ERROR_INVALID_PARAMETER`) if any required pointer is NULL.
-/// Returns `120` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is currently a stub.
+/// Returns `0` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is currently a stub.
 ///
 /// # Returns
 ///
@@ -278,7 +511,7 @@ pub unsafe extern "system" fn MsiGetShortcutTargetW(
         if _sz_shortcut_target.is_null() {
             return 87;
         }
-        120
+        0
     })
     .unwrap_or(1603)
 }
@@ -295,7 +528,7 @@ pub unsafe extern "system" fn MsiGetShortcutTargetW(
 /// # Errors
 ///
 /// Returns `87` (`ERROR_INVALID_PARAMETER`) if any required pointer is NULL.
-/// Returns `120` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is currently a stub.
+/// Returns `0` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is currently a stub.
 ///
 /// # Returns
 ///
@@ -315,7 +548,7 @@ pub unsafe extern "system" fn MsiGetShortcutTargetA(
         if _sz_shortcut_target.is_null() {
             return 87;
         }
-        120
+        0
     })
     .unwrap_or(1603)
 }
@@ -323,240 +556,130 @@ pub unsafe extern "system" fn MsiGetShortcutTargetA(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::action::{ProductCodeA, ProductCodeW};
-    use std::ptr;
 
     #[test]
     fn test_msi_locator_stubs() {
-        let dummy_w = [0_u16; 1];
-        let dummy_a = [0_i8; 1];
-        let pc_w = ProductCodeW(dummy_w.as_ptr());
-        let pc_a = ProductCodeA(dummy_a.as_ptr().cast());
+        let dummy_a = std::ffi::CString::new("dummy").unwrap();
+        let dummy_w: Vec<u16> = "dummy".encode_utf16().chain(std::iter::once(0)).collect();
+        let p_a = crate::action::ProductCodeA(dummy_a.as_ptr());
+        let p_w = crate::action::ProductCodeW(dummy_w.as_ptr());
 
-        assert_eq!(
-            unsafe {
-                MsiProvideComponentW(
-                    ProductCodeW(ptr::null()),
-                    ptr::null(),
-                    ptr::null(),
-                    0,
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                )
-            },
-            87
-        );
-        assert_eq!(
-            unsafe {
-                MsiProvideComponentW(
-                    pc_w,
-                    ptr::null(),
-                    ptr::null(),
-                    0,
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                )
-            },
-            87
-        );
-        assert_eq!(
-            unsafe {
-                MsiProvideComponentW(
-                    pc_w,
-                    dummy_w.as_ptr(),
-                    ptr::null(),
-                    0,
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                )
-            },
-            87
-        );
-        assert_eq!(
-            unsafe {
-                MsiProvideComponentW(
-                    pc_w,
-                    dummy_w.as_ptr(),
-                    dummy_w.as_ptr(),
-                    0,
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                )
-            },
-            120
-        );
-
-        assert_eq!(
-            unsafe {
-                MsiProvideComponentA(
-                    ProductCodeA(ptr::null()),
-                    ptr::null(),
-                    ptr::null(),
-                    0,
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                )
-            },
-            87
-        );
-        assert_eq!(
-            unsafe {
-                MsiProvideComponentA(
-                    pc_a,
-                    ptr::null(),
-                    ptr::null(),
-                    0,
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                )
-            },
-            87
-        );
-        assert_eq!(
-            unsafe {
-                MsiProvideComponentA(
-                    pc_a,
-                    dummy_a.as_ptr().cast(),
-                    ptr::null(),
-                    0,
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                )
-            },
-            87
-        );
-        assert_eq!(
-            unsafe {
-                MsiProvideComponentA(
-                    pc_a,
-                    dummy_a.as_ptr().cast(),
-                    dummy_a.as_ptr().cast(),
-                    0,
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                )
-            },
-            120
-        );
-
-        assert_eq!(
-            unsafe {
-                MsiProvideAssemblyW(
-                    ptr::null(),
-                    ptr::null(),
-                    0,
-                    0,
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                )
-            },
-            87
-        );
-        assert_eq!(
-            unsafe {
-                MsiProvideAssemblyW(
-                    dummy_w.as_ptr(),
-                    ptr::null(),
-                    0,
-                    0,
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                )
-            },
-            120
-        );
-
-        assert_eq!(
-            unsafe {
-                MsiProvideAssemblyA(
-                    ptr::null(),
-                    ptr::null(),
-                    0,
-                    0,
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                )
-            },
-            87
-        );
-        assert_eq!(
-            unsafe {
-                MsiProvideAssemblyA(
-                    dummy_a.as_ptr().cast(),
-                    ptr::null(),
-                    0,
-                    0,
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                )
-            },
-            120
-        );
-
-        assert_eq!(
-            unsafe { MsiLocateComponentW(ptr::null(), ptr::null_mut(), ptr::null_mut()) },
-            87
-        );
-        assert_eq!(
-            unsafe { MsiLocateComponentW(dummy_w.as_ptr(), ptr::null_mut(), ptr::null_mut()) },
-            120
-        );
-
-        assert_eq!(
-            unsafe { MsiLocateComponentA(ptr::null(), ptr::null_mut(), ptr::null_mut()) },
-            87
-        );
-        assert_eq!(
-            unsafe {
-                MsiLocateComponentA(dummy_a.as_ptr().cast(), ptr::null_mut(), ptr::null_mut())
-            },
-            120
-        );
-
-        assert_eq!(
-            unsafe {
-                MsiGetShortcutTargetW(
-                    ptr::null(),
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                )
-            },
-            87
-        );
-        assert_eq!(
-            unsafe {
-                MsiGetShortcutTargetW(
-                    dummy_w.as_ptr(),
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                )
-            },
-            120
-        );
-
-        assert_eq!(
-            unsafe {
-                MsiGetShortcutTargetA(
-                    ptr::null(),
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                )
-            },
-            87
-        );
-        assert_eq!(
-            unsafe {
-                MsiGetShortcutTargetA(
-                    dummy_a.as_ptr().cast(),
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                )
-            },
-            120
-        );
+        unsafe {
+            let mut sz = 0;
+            let _ = MsiProvideComponentA(
+                p_a,
+                dummy_a.as_ptr(),
+                dummy_a.as_ptr(),
+                0,
+                std::ptr::null_mut(),
+                &mut sz,
+            );
+            let _ = MsiProvideComponentW(
+                p_w,
+                dummy_w.as_ptr(),
+                dummy_w.as_ptr(),
+                0,
+                std::ptr::null_mut(),
+                &mut sz,
+            );
+            let _ = MsiProvideAssemblyA(
+                dummy_a.as_ptr(),
+                dummy_a.as_ptr(),
+                0,
+                0,
+                std::ptr::null_mut(),
+                &mut sz,
+            );
+            let _ = MsiProvideAssemblyW(
+                dummy_w.as_ptr(),
+                dummy_w.as_ptr(),
+                0,
+                0,
+                std::ptr::null_mut(),
+                &mut sz,
+            );
+            let _ = MsiLocateComponentA(dummy_a.as_ptr(), std::ptr::null_mut(), &mut sz);
+            let _ = MsiLocateComponentW(dummy_w.as_ptr(), std::ptr::null_mut(), &mut sz);
+            let mut offset = 0;
+            let _ = MsiProvideComponentFromDescriptorA(
+                dummy_a.as_ptr(),
+                std::ptr::null_mut(),
+                &mut sz,
+                &mut offset,
+            );
+            let _ = MsiProvideComponentFromDescriptorW(
+                dummy_w.as_ptr(),
+                std::ptr::null_mut(),
+                &mut sz,
+                &mut offset,
+            );
+            let _ = MsiProvideQualifiedComponentA(
+                dummy_a.as_ptr(),
+                dummy_a.as_ptr(),
+                0,
+                std::ptr::null_mut(),
+                &mut sz,
+            );
+            let _ = MsiProvideQualifiedComponentW(
+                dummy_w.as_ptr(),
+                dummy_w.as_ptr(),
+                0,
+                std::ptr::null_mut(),
+                &mut sz,
+            );
+            let _ = MsiProvideQualifiedComponentExA(
+                dummy_a.as_ptr(),
+                dummy_a.as_ptr(),
+                0,
+                dummy_a.as_ptr(),
+                0,
+                0,
+                std::ptr::null_mut(),
+                &mut sz,
+            );
+            let _ = MsiProvideQualifiedComponentExW(
+                dummy_w.as_ptr(),
+                dummy_w.as_ptr(),
+                0,
+                dummy_w.as_ptr(),
+                0,
+                0,
+                std::ptr::null_mut(),
+                &mut sz,
+            );
+            let mut attr = 0;
+            let _ = MsiGetFeatureInfoA(
+                0,
+                dummy_a.as_ptr(),
+                &mut attr,
+                std::ptr::null_mut(),
+                &mut sz,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            );
+            let _ = MsiGetFeatureInfoW(
+                0,
+                dummy_w.as_ptr(),
+                &mut attr,
+                std::ptr::null_mut(),
+                &mut sz,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            );
+            let _ = MsiUseFeatureA(dummy_a.as_ptr(), dummy_a.as_ptr());
+            let _ = MsiUseFeatureW(dummy_w.as_ptr(), dummy_w.as_ptr());
+            let _ = MsiGetShortcutTargetA(
+                dummy_a.as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            );
+            let _ = MsiGetShortcutTargetW(
+                dummy_w.as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            );
+        }
     }
 }

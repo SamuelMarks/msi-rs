@@ -75,6 +75,8 @@ pub enum Token {
     Int,
     /// Keyword `LONG`
     Long,
+    /// Keyword `LONGCHAR`
+    Longchar,
     /// Keyword `OBJECT`
     Object,
 
@@ -278,7 +280,9 @@ impl Lexer {
                 _ if ch.is_alphabetic() || ch == '_' => {
                     let start = self.pos;
                     while self.pos < self.chars.len()
-                        && (self.chars[self.pos].is_alphanumeric() || self.chars[self.pos] == '_')
+                        && (self.chars[self.pos].is_alphanumeric()
+                            || self.chars[self.pos] == '_'
+                            || self.chars[self.pos] == '.')
                     {
                         self.pos += 1;
                     }
@@ -369,6 +373,8 @@ fn match_keyword_or_ident(w: &str) -> Token {
         Token::Int
     } else if w.eq_ignore_ascii_case("LONG") {
         Token::Long
+    } else if w.eq_ignore_ascii_case("LONGCHAR") {
+        Token::Longchar
     } else if w.eq_ignore_ascii_case("OBJECT") {
         Token::Object
     } else {
@@ -537,5 +543,12 @@ mod tests {
 
         let lexer = Lexer::new("SELECT 1");
         assert!(format!("{lexer:?}").contains("Lexer"));
+    }
+
+    #[test]
+    fn test_lex_longchar() {
+        let mut lexer = Lexer::new("LONGCHAR");
+        let token = lexer.tokenize().unwrap()[0].clone();
+        assert_eq!(token, Token::Longchar);
     }
 }

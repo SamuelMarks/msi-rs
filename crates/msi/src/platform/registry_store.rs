@@ -146,6 +146,59 @@ impl RegistryStore {
         key.trim_matches('\\').trim_matches('/').replace('/', "\\")
     }
 
+    /// Applies Windows Registry Reflection (`WOW6432Node` redirection).
+    ///
+    /// On a 64-bit OS, 32-bit components writing to `Software\...` are redirected to
+    /// `Software\WOW6432Node\...`, with exceptions for shared keys.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The subkey path.
+    /// * `is_64bit_os` - True if the host OS is 64-bit.
+    /// * `is_64bit_component` - True if the component being installed is 64-bit.
+    ///
+    /// # Returns
+    ///
+    /// The reflected key path.
+    #[must_use]
+    pub fn apply_wow6432node_reflection(
+        key: &str,
+        is_64bit_os: bool,
+        is_64bit_component: bool,
+    ) -> String {
+        let norm_key = Self::normalize_key(key);
+
+        // Redirection only happens on 64-bit OS for 32-bit components
+        if !is_64bit_os || is_64bit_component {
+            return norm_key;
+        }
+
+        let upper_key = norm_key.to_uppercase();
+
+        // Shared keys that bypass reflection
+        if upper_key.starts_with("SOFTWARE\\CLASSES")
+            || upper_key.starts_with("SOFTWARE\\CLIENTS")
+            || upper_key.starts_with("SOFTWARE\\MICROSOFT\\WINDOWS NT\\CURRENTVERSION")
+        {
+            return norm_key;
+        }
+
+        if upper_key.starts_with("SOFTWARE\\") && !upper_key.starts_with("SOFTWARE\\WOW6432NODE\\")
+        {
+            let remainder = &norm_key[9..];
+            if remainder.is_empty() {
+                return "SOFTWARE\\WOW6432Node".to_string();
+            }
+            return format!("SOFTWARE\\WOW6432Node\\{remainder}");
+        }
+
+        if upper_key == "SOFTWARE" {
+            return "SOFTWARE\\WOW6432Node".to_string();
+        }
+
+        norm_key
+    }
+
     /// Sets a registry value, recording the previous value in the transaction rollback journal.
     ///
     /// # Arguments
@@ -1347,6 +1400,22 @@ impl Win32RegistryApi {
 mod tests {
     use super::*;
 
+    #[test]
+    fn test_redirect_32bit_key_software() {
+        assert_eq!(
+            RegistryStore::apply_wow6432node_reflection("SOFTWARE\\", true, false),
+            "SOFTWARE\\WOW6432Node"
+        );
+        assert_eq!(
+            RegistryStore::apply_wow6432node_reflection("SOFTWARE", true, false),
+            "SOFTWARE\\WOW6432Node"
+        );
+        assert_eq!(
+            RegistryStore::apply_wow6432node_reflection("SYSTEM", true, false),
+            "SYSTEM"
+        );
+    }
+
     /// Tests `RegistryRoot` conversion and display.
     #[test]
     fn test_registry_root() {
@@ -1365,6 +1434,39 @@ mod tests {
         assert_eq!(RegistryRoot::CurrentUser.as_str(), "HKCU");
         assert_eq!(RegistryRoot::LocalMachine.as_str(), "HKLM");
         assert_eq!(RegistryRoot::Users.as_str(), "HKU");
+    }
+
+    /// Tests Registry Reflection (`WOW6432Node` logic).
+    #[test]
+    fn test_registry_reflection() {
+        // No reflection for 64-bit component
+        assert_eq!(
+            RegistryStore::apply_wow6432node_reflection(r"Software\Acme", true, true),
+            r"Software\Acme"
+        );
+        // No reflection on 32-bit OS
+        assert_eq!(
+            RegistryStore::apply_wow6432node_reflection(r"Software\Acme", false, false),
+            r"Software\Acme"
+        );
+        // Reflection applied
+        assert_eq!(
+            RegistryStore::apply_wow6432node_reflection(r"Software\Acme", true, false),
+            r"SOFTWARE\WOW6432Node\Acme"
+        );
+        assert_eq!(
+            RegistryStore::apply_wow6432node_reflection("Software", true, false),
+            r"SOFTWARE\WOW6432Node"
+        );
+        // Shared keys are NOT reflected
+        assert_eq!(
+            RegistryStore::apply_wow6432node_reflection(r"Software\Classes\htmlfile", true, false),
+            r"Software\Classes\htmlfile"
+        );
+        assert_eq!(
+            RegistryStore::apply_wow6432node_reflection(r"Software\Clients\Mail", true, false),
+            r"Software\Clients\Mail"
+        );
     }
 
     /// Tests `RegistryValue` types and getters.

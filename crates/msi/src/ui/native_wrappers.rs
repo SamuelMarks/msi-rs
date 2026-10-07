@@ -99,3 +99,64 @@ pub mod user32_stubs {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::user32_stubs::{DlgTemplateStub, WindowsUser32UI};
+    use super::{ControlDefinition, ControlEvent, DialogDefinition, MsiUserInterface};
+    use crate::execution::properties::EvaluationContext;
+    use crate::ui::controls::ControlType;
+    use crate::ui::engine::{UiEngine, DIALOG_ATTR_VISIBLE};
+
+    use crate::ui::layout::DluRect;
+
+    #[test]
+    #[allow(clippy::redundant_clone)]
+    fn test_windows_user32_ui() {
+        let mut ui = WindowsUser32UI::default();
+        assert!(format!("{ui:?}").contains("WindowsUser32UI"));
+        let engine = UiEngine::new(EvaluationContext::new());
+
+        assert!(ui.initialize(&engine).is_ok());
+
+        let dialog = DialogDefinition {
+            name: "TestDialog".to_string(),
+            h_centering: 50,
+            v_centering: 50,
+            width: 200,
+            height: 150,
+            attributes: DIALOG_ATTR_VISIBLE,
+            title: Some("Title".to_string()),
+            control_first: "C1".to_string(),
+            control_default: None,
+            control_cancel: None,
+        };
+
+        let dialog_res = ui.show_dialog(&dialog);
+        assert!(dialog_res.is_ok());
+
+        let control = ControlDefinition::new(
+            "TestDialog",
+            "C1",
+            ControlType::PushButton,
+            DluRect::new(0, 0, 10, 10),
+            3,
+        );
+
+        assert!(ui.update_control(&control).is_ok());
+
+        let event = ControlEvent::new(
+            "TestDialog",
+            "C1",
+            crate::ui::events::ControlEventType::Reset,
+            None,
+            1,
+        );
+
+        assert!(ui.handle_event(&event).is_ok());
+
+        let stub = DlgTemplateStub::new(dialog.clone());
+        let _stub_clone = stub.clone();
+        assert!(format!("{stub:?}").contains("DlgTemplateStub"));
+    }
+}

@@ -495,6 +495,21 @@ impl MultiCabinetWriter {
 #[cfg(test)]
 #[allow(clippy::manual_flatten)]
 mod tests {
+
+    #[test]
+    fn test_in_memory_media_provider_missing_cabinet() {
+        let mut provider = InMemoryMediaProvider::new();
+        let err = provider.request_cabinet("Disk 2", "disk2.cab").unwrap_err();
+        match err {
+            MsiError::InvalidCabData { reason } => {
+                assert_eq!(
+                    reason,
+                    "Media volume 'Disk 2' with cabinet file 'disk2.cab' not available"
+                );
+            }
+            _ => panic!("Expected InvalidCabData error"),
+        }
+    }
     use super::*;
 
     #[test]

@@ -143,6 +143,57 @@ pub extern "system" fn DllUnregisterServer() -> HRESULT {
     result.unwrap_or(-2_147_418_113) // E_UNEXPECTED
 }
 
+/// DLL version info structure for `DllGetVersion`.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+#[allow(non_snake_case)]
+pub struct DLLVERSIONINFO {
+    /// Size of the structure.
+    pub cbSize: u32,
+    /// Major version.
+    pub dwMajorVersion: u32,
+    /// Minor version.
+    pub dwMinorVersion: u32,
+    /// Build number.
+    pub dwBuildNumber: u32,
+    /// Platform ID.
+    pub dwPlatformID: u32,
+}
+
+/// Retrieves the version information of this DLL.
+///
+/// # Arguments
+///
+/// * `pdvi` - Pointer to a `DLLVERSIONINFO` structure.
+///
+/// # Errors
+///
+/// Returns `E_POINTER` if `pdvi` is null.
+///
+/// # Returns
+///
+/// `S_OK` on success.
+///
+/// # Safety
+///
+/// Pointer must be valid or null.
+#[no_mangle]
+#[allow(non_snake_case)]
+pub extern "system" fn DllGetVersion(pdvi: *mut DLLVERSIONINFO) -> HRESULT {
+    let result = panic::catch_unwind(|| {
+        if pdvi.is_null() {
+            return E_POINTER;
+        }
+        let pdvi_ref = unsafe { &mut *pdvi };
+        pdvi_ref.dwMajorVersion = 5;
+        pdvi_ref.dwMinorVersion = 0;
+        pdvi_ref.dwBuildNumber = 7601;
+        pdvi_ref.dwPlatformID = 2; // DLLVER_PLATFORM_WINDOWS
+        S_OK
+    });
+    result.unwrap_or(-2_147_418_113) // E_UNEXPECTED
+}
+
 impl IUnknown {
     /// Base `IUnknown` IID
     pub const IID: GUID = GUID::new(
@@ -184,6 +235,26 @@ mod tests {
             DllGetClassObject(std::ptr::null(), std::ptr::null(), std::ptr::null_mut()),
             E_POINTER
         );
+        let valid_clsid = CLSID_INSTALLER;
+        let valid_iid = IUnknown::IID;
+        let mut out: *mut c_void = std::ptr::null_mut();
+
+        assert_eq!(
+            DllGetClassObject(&valid_clsid, std::ptr::null(), std::ptr::null_mut()),
+            E_POINTER
+        );
+        assert_eq!(
+            DllGetClassObject(&valid_clsid, &valid_iid, std::ptr::null_mut()),
+            E_POINTER
+        );
+        assert_eq!(
+            DllGetClassObject(std::ptr::null(), &valid_iid, &raw mut out),
+            E_POINTER
+        );
+        assert_eq!(
+            DllGetClassObject(&valid_clsid, std::ptr::null(), &raw mut out),
+            E_POINTER
+        );
         let invalid_clsid = GUID::new(0, 0, 0, [0; 8]);
         let invalid_iid = GUID::new(0, 0, 0, [0; 8]);
         let mut out: *mut c_void = std::ptr::null_mut();
@@ -222,5 +293,21 @@ mod tests {
             DllGetClassObject(&CLSID_INSTALLER, &IID_ICLASSFACTORY, &raw mut out),
             S_OK
         );
+    }
+
+    #[test]
+    fn test_dll_get_version() {
+        assert_eq!(DllGetVersion(std::ptr::null_mut()), E_POINTER);
+
+        let mut info = DLLVERSIONINFO {
+            cbSize: size_of::<DLLVERSIONINFO>() as u32,
+            dwMajorVersion: 0,
+            dwMinorVersion: 0,
+            dwBuildNumber: 0,
+            dwPlatformID: 0,
+        };
+        assert_eq!(DllGetVersion(&raw mut info), S_OK);
+        assert_eq!(info.dwMajorVersion, 5);
+        assert_eq!(info.dwMinorVersion, 0);
     }
 }

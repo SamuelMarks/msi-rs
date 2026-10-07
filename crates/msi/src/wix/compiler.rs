@@ -7175,7 +7175,7 @@ mod tests {
         let mut ids = std::collections::HashSet::new();
         for rec in &reg_table.records {
             let id = format!("{}", rec.fields()[0]);
-            assert!(id.starts_with("'reg_"));
+            assert!(id.starts_with("reg_"));
             ids.insert(id);
         }
         assert_eq!(
@@ -7187,32 +7187,32 @@ mod tests {
         let sc_table = get_table(sec, "Shortcut");
         assert_eq!(sc_table.records.len(), 1);
         let sc_id = format!("{}", sc_table.records[0].fields()[0]);
-        assert!(sc_id.starts_with("'sc_"));
+        assert!(sc_id.starts_with("sc_"));
 
         let svc_ctrl_table = get_table(sec, "ServiceControl");
         assert_eq!(svc_ctrl_table.records.len(), 1);
         let ctrl_id = format!("{}", svc_ctrl_table.records[0].fields()[0]);
-        assert!(ctrl_id.starts_with("'svc_ctrl_"));
+        assert!(ctrl_id.starts_with("svc_ctrl_"));
 
         let reg_loc_table = get_table(sec, "RegLocator");
         assert_eq!(reg_loc_table.records.len(), 1);
         let reg_sig = format!("{}", reg_loc_table.records[0].fields()[0]);
-        assert!(reg_sig.starts_with("'reg_search_"));
+        assert!(reg_sig.starts_with("reg_search_"));
 
         let dr_loc_table = get_table(sec, "DrLocator");
         assert_eq!(dr_loc_table.records.len(), 1);
         let dr_sig = format!("{}", dr_loc_table.records[0].fields()[0]);
-        assert!(dr_sig.starts_with("'dir_search_"));
+        assert!(dr_sig.starts_with("dir_search_"));
 
         let ini_loc_table = get_table(sec, "IniLocator");
         assert_eq!(ini_loc_table.records.len(), 1);
         let ini_sig = format!("{}", ini_loc_table.records[0].fields()[0]);
-        assert!(ini_sig.starts_with("'ini_search_"));
+        assert!(ini_sig.starts_with("ini_search_"));
 
         let comp_loc_table = get_table(sec, "CompLocator");
         assert_eq!(comp_loc_table.records.len(), 1);
         let comp_sig = format!("{}", comp_loc_table.records[0].fields()[0]);
-        assert!(comp_sig.starts_with("'comp_search_"));
+        assert!(comp_sig.starts_with("comp_search_"));
 
         let sig_table = get_table(sec, "Signature");
         assert_eq!(sig_table.records.len(), 2);

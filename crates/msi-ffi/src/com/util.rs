@@ -14,7 +14,7 @@ impl ComVTableBuilder {
     /// # Safety
     /// Unsafe C FFI.
     pub unsafe extern "system" fn add_ref<T: ComObject>(this: *mut IUnknown) -> ULONG {
-        let obj = &mut *(this.cast::<T>());
+        let obj = &*(this.cast::<T>());
         obj.add_ref()
     }
 
@@ -24,7 +24,7 @@ impl ComVTableBuilder {
     /// # Safety
     /// Unsafe C FFI.
     pub unsafe extern "system" fn release<T: ComObject>(this: *mut IUnknown) -> ULONG {
-        let obj = &mut *(this.cast::<T>());
+        let obj = &*(this.cast::<T>());
         let count = obj.release();
         if count == 0 {
             let _ = Box::from_raw(this.cast::<T>());
@@ -36,16 +36,18 @@ impl ComVTableBuilder {
 /// Generic trait for object state tracking.
 pub trait ComObject {
     /// Increment reference count.
-    fn add_ref(&mut self) -> ULONG;
+    fn add_ref(&self) -> ULONG;
     /// Decrement reference count.
-    fn release(&mut self) -> ULONG;
+    fn release(&self) -> ULONG;
 }
 
 #[cfg(test)]
 mod tests {
     #[test]
     fn test_com_vtable_builder_ptr() {
-        let obj = Box::new(DummyObj { count: 1 });
+        let obj = Box::new(DummyObj {
+            count: std::sync::atomic::AtomicU32::new(1),
+        });
         let ptr = Box::into_raw(obj).cast::<IUnknown>();
         let add_ref_fn: unsafe extern "system" fn(*mut IUnknown) -> ULONG =
             ComVTableBuilder::add_ref::<DummyObj>;
@@ -62,22 +64,22 @@ mod tests {
 
     #[repr(C, align(8))]
     struct DummyObj {
-        count: ULONG,
+        count: std::sync::atomic::AtomicU32,
     }
     impl ComObject for DummyObj {
-        fn add_ref(&mut self) -> ULONG {
-            self.count += 1;
-            self.count
+        fn add_ref(&self) -> ULONG {
+            self.count.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1
         }
-        fn release(&mut self) -> ULONG {
-            self.count -= 1;
-            self.count
+        fn release(&self) -> ULONG {
+            self.count.fetch_sub(1, std::sync::atomic::Ordering::SeqCst) - 1
         }
     }
 
     #[test]
     fn test_com_vtable_builder() {
-        let obj = Box::new(DummyObj { count: 1 });
+        let obj = Box::new(DummyObj {
+            count: std::sync::atomic::AtomicU32::new(1),
+        });
         let ptr = Box::into_raw(obj).cast::<IUnknown>();
         unsafe {
             assert_eq!(ComVTableBuilder::add_ref::<DummyObj>(ptr), 2);
@@ -94,20 +96,20 @@ mod additional_tests {
     #[test]
     fn test_com_object_trait() {
         struct MockObj {
-            count: ULONG,
+            count: std::sync::atomic::AtomicU32,
         }
         impl ComObject for MockObj {
-            fn add_ref(&mut self) -> ULONG {
-                self.count += 1;
-                self.count
+            fn add_ref(&self) -> ULONG {
+                self.count.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1
             }
-            fn release(&mut self) -> ULONG {
-                self.count -= 1;
-                self.count
+            fn release(&self) -> ULONG {
+                self.count.fetch_sub(1, std::sync::atomic::Ordering::SeqCst) - 1
             }
         }
 
-        let mut obj = MockObj { count: 1 };
+        let obj = MockObj {
+            count: std::sync::atomic::AtomicU32::new(1),
+        };
         assert_eq!(obj.add_ref(), 2);
         assert_eq!(obj.release(), 1);
     }

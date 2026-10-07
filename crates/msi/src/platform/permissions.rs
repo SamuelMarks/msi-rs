@@ -919,12 +919,12 @@ mod tests {
     /// Tests SDDL translation into POSIX.1e, `NFSv4` ZFS, and macOS kauth ACL formats.
     #[test]
     fn test_sddl_translation_and_formatting() {
-        let sddl = "D:(A;;GA;;;BA)(A;;GRGX;;;BU)";
+        let sddl = "D:(A;;GA;;;BA)(A;;GRGWGX;;;BU)(A;;GR;;;WD)";
         for entries in [translate_sddl(sddl), translate_sddl("D:(unmatched")]
             .into_iter()
             .flatten()
         {
-            assert_eq!(entries.len(), 2);
+            assert_eq!(entries.len(), 3);
 
             // First ACE: Administrators Generic All -> root allow rwx
             let e1 = &entries[0];
@@ -940,16 +940,30 @@ mod tests {
                 "user:root allow read,write,execute"
             );
 
-            // Second ACE: Built-in Users Generic Read + Execute -> users allow r-x
+            // Second ACE: Built-in Users Generic Read + Write + Execute -> users allow rwx
             let e2 = &entries[1];
             assert_eq!(e2.access, AclAccessType::Allow);
             assert_eq!(e2.principal_name, "users");
             assert!(e2.read);
-            assert!(!e2.write);
+            assert!(e2.write);
             assert!(e2.execute);
-            assert_eq!(e2.to_posix_1e_string(), "g:users:r-x");
-            assert_eq!(e2.to_nfsv4_zfs_string(), "group:users:rx:allow");
-            assert_eq!(e2.to_macos_kauth_string(), "group:users allow read,execute");
+            assert_eq!(e2.to_posix_1e_string(), "g:users:rwx");
+            assert_eq!(e2.to_nfsv4_zfs_string(), "group:users:rwx:allow");
+            assert_eq!(
+                e2.to_macos_kauth_string(),
+                "group:users allow read,write,execute"
+            );
+
+            // Third ACE: Everyone Generic Read -> everyone allow r--
+            let e3 = &entries[2];
+            assert_eq!(e3.access, AclAccessType::Allow);
+            assert_eq!(e3.principal_name, "everyone");
+            assert!(e3.read);
+            assert!(!e3.write);
+            assert!(!e3.execute);
+            assert_eq!(e3.to_posix_1e_string(), "o:everyone:r--");
+            assert_eq!(e3.to_nfsv4_zfs_string(), "everyone@:everyone:r:allow");
+            assert_eq!(e3.to_macos_kauth_string(), "everyone:everyone allow read");
         }
 
         // Empty / incomplete ACE handling
@@ -1002,6 +1016,9 @@ mod tests {
             .is_ok());
         assert!(applier
             .apply_security_descriptor(&temp_file, sddl, TargetOs::FreeBsd)
+            .is_ok());
+        assert!(applier
+            .apply_security_descriptor(&temp_file, sddl, TargetOs::SunOs)
             .is_ok());
         assert!(applier
             .apply_security_descriptor(&temp_file, sddl, TargetOs::Windows)
@@ -1140,12 +1157,12 @@ mod tests {
     #[test]
     fn test_translate_sddl_variations() {
         // Short parts (< 6) skipped, unknown ACE type skipped, Deny with WD, and custom SID
-        let sddl = "D:(A;CI;GA)(X;;GA;;;BA)(D;;GA;;;WD)(A;;GA;;;S-1-5-21-999)";
+        let sddl = "D:(A;CI;GA)(X;;GA;;;BA)(D;;GA;;;WD)(A;;GA;;;S-1-5-21-999)(A;;GA;;;SY)";
         for entries in [translate_sddl(sddl), translate_sddl("D:(unmatched")]
             .into_iter()
             .flatten()
         {
-            assert_eq!(entries.len(), 2);
+            assert_eq!(entries.len(), 3);
 
             // Deny ACE for WD (Everyone / Other)
             let e0 = &entries[0];
@@ -1158,6 +1175,12 @@ mod tests {
             assert_eq!(e1.access, AclAccessType::Allow);
             assert_eq!(e1.principal_type, AclPrincipalType::User);
             assert_eq!(e1.principal_name, "S-1-5-21-999");
+
+            // Local System (SY)
+            let e2 = &entries[2];
+            assert_eq!(e2.access, AclAccessType::Allow);
+            assert_eq!(e2.principal_type, AclPrincipalType::User);
+            assert_eq!(e2.principal_name, "root");
         }
 
         // SDDL without "D:" prefix

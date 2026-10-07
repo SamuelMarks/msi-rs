@@ -291,6 +291,64 @@ impl CfbReader {
     ///
     /// Slice of all [`DirectoryEntry`] items.
     #[must_use]
+    /// Extracts a sub-storage into a new CFB container.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The sub-storage name.
+    ///
+    /// # Returns
+    ///
+    /// Extracted CFB container bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError`] if extraction fails.
+    pub fn extract_sub_storage(&self, name: &str) -> Result<Vec<u8>> {
+        use crate::cfb::header::CfbVersion;
+        use crate::cfb::writer::CfbWriter;
+        let entry = self.find_entry(name)?;
+        if entry.object_type() != ObjectType::Storage {
+            return Err(MsiError::InvalidArgument {
+                argument: "name".to_string(),
+                reason: format!("entry '{name}' is not a storage"),
+            });
+        }
+
+        let mut writer = CfbWriter::new(CfbVersion::V3).with_root_clsid(entry.storage_clsid());
+
+        let mut queue = vec![entry.child()];
+        while let Some(current_id) = queue.pop() {
+            if current_id == StreamId::NO_STREAM {
+                continue;
+            }
+            let idx = current_id.as_u32() as usize;
+            if idx >= self.directory_entries.len() {
+                return Err(MsiError::CfbCorrupted {
+                    offset: 0,
+                    reason: "Invalid directory index".into(),
+                });
+            }
+            let child_entry = &self.directory_entries[idx];
+
+            queue.push(child_entry.left_sibling());
+            queue.push(child_entry.right_sibling());
+
+            if child_entry.object_type() == ObjectType::Stream {
+                let stream_bytes = self.read_stream_from_entry(child_entry)?;
+                writer.add_stream(child_entry.name(), &stream_bytes)?;
+            }
+        }
+
+        Ok(writer.build())
+    }
+
+    /// Returns the parsed array of CFB directory entries.
+    ///
+    /// # Returns
+    ///
+    /// A slice of [`DirectoryEntry`].
+    #[must_use]
     pub fn entries(&self) -> &[DirectoryEntry] {
         &self.directory_entries
     }
@@ -385,10 +443,15 @@ impl CfbReader {
     #[allow(clippy::cast_possible_truncation)]
     pub fn read_stream(&self, name: &str) -> Result<Vec<u8>> {
         let entry = self.find_entry(name)?;
+        self.read_stream_from_entry(entry)
+    }
+
+    /// Reads the binary payload of a stream from its directory entry.
+    pub(crate) fn read_stream_from_entry(&self, entry: &DirectoryEntry) -> Result<Vec<u8>> {
         if entry.object_type() != ObjectType::Stream {
             return Err(MsiError::InvalidArgument {
-                argument: "name".to_string(),
-                reason: format!("entry '{name}' is not a stream"),
+                argument: "entry".to_string(),
+                reason: format!("entry '{}' is not a stream", entry.name()),
             });
         }
 
@@ -462,6 +525,66 @@ impl CfbReader {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_extract_sub_storage_success_and_invalid_index() {
+        use crate::cfb::header::CfbVersion;
+        use crate::cfb::writer::CfbWriter;
+        let mut builder = CfbWriter::new(CfbVersion::V3);
+        builder.add_stream("AStream", b"data").unwrap();
+        let mut bytes = builder.build();
+
+        // Find the "AStream" directory entry and change its object type to Storage (1)
+        // Directory entries start at (root_dir_sec + 1) * 512
+        let root_dir_sec = u32::from_le_bytes(bytes[48..52].try_into().unwrap()) as usize;
+        let offset = (root_dir_sec + 1) * 512;
+        // The root entry is entry 0 (offset to offset+128). "AStream" is entry 1 or 2.
+        // Let's just scan for "AStream" in UTF-16
+        // Or just blindly change all object types from 2 to 1 for all entries except root (which is 5)
+        for i in 1..4 {
+            let entry_off = offset + i * 128;
+            if entry_off + 128 <= bytes.len() && bytes[entry_off + 66] == 2 {
+                bytes[entry_off + 66] = 1; // Change Stream to Storage
+            }
+        }
+
+        let reader = CfbReader::new(&bytes).unwrap();
+        // Now "AStream" is a storage!
+        let extracted = reader.extract_sub_storage("AStream").unwrap();
+        assert!(!extracted.is_empty());
+
+        // Now test invalid child index
+        // We will set the child of "AStream" to an invalid index
+        for i in 1..4 {
+            let entry_off = offset + i * 128;
+            if entry_off + 128 <= bytes.len() && bytes[entry_off + 66] == 1 {
+                // our Storage
+                let val: u32 = 1000;
+                bytes[entry_off + 76..entry_off + 80].copy_from_slice(&val.to_le_bytes());
+            }
+        }
+        let reader2 = CfbReader::new(&bytes).unwrap();
+        let err = reader2.extract_sub_storage("AStream").unwrap_err();
+        assert!(matches!(err, MsiError::CfbCorrupted { .. }));
+    }
+
+    #[test]
+    fn test_extract_sub_storage_invalid() {
+        use crate::cfb::header::CfbVersion;
+        use crate::cfb::writer::CfbWriter;
+        let mut builder = CfbWriter::new(CfbVersion::V3);
+        builder.add_stream("AStream", b"data").unwrap();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = temp_dir.path().join("test.cfb");
+        std::fs::write(&path, builder.build()).unwrap();
+
+        let reader = CfbReader::new(&std::fs::read(&path).unwrap()).unwrap();
+
+        let err = reader.extract_sub_storage("AStream").unwrap_err();
+        assert!(matches!(err, MsiError::InvalidArgument { .. }));
+    }
+
     use crate::cfb::header::CfbVersion;
 
     /// Helper that builds a minimal valid CFB v3 binary container in memory.
@@ -866,6 +989,33 @@ mod tests {
             CfbReader::new(&minifat_cycle_cfb),
             Err(MsiError::SectorChainCycle { .. })
         ));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_extract_sub_storage() -> Result<()> {
+        use crate::cfb::directory::{DirectoryEntry, ObjectType};
+        use crate::cfb::reader::CfbReader;
+        use crate::cfb::StreamId;
+
+        let mut reader = CfbReader::default();
+
+        let mut root = DirectoryEntry::new("Root Entry", ObjectType::Root);
+        root.set_child(StreamId::new(1));
+
+        let mut sub_storage = DirectoryEntry::new("SubStorage", ObjectType::Storage);
+        sub_storage.set_child(StreamId::new(2));
+
+        let mut stream = DirectoryEntry::new("MyStream", ObjectType::Stream);
+        stream.set_stream_size(0);
+
+        reader.directory_entries = vec![root, sub_storage, stream];
+
+        let bytes = reader.extract_sub_storage("SubStorage").unwrap();
+
+        let sub_reader = CfbReader::new(&bytes)?;
+        assert!(sub_reader.entries().iter().any(|e| e.name() == "MyStream"));
 
         Ok(())
     }

@@ -182,7 +182,7 @@ pub fn custom_action_schema() -> TableSchema {
     TableSchema::new("CustomAction")
         .with_column(ColumnDef::new("Action", DataType::String { max_len: 72 }).primary_key())
         .with_column(ColumnDef::new("Type", DataType::Short))
-        .with_column(ColumnDef::new("Source", DataType::String { max_len: 72 }))
+        .with_column(ColumnDef::new("Source", DataType::String { max_len: 72 }).nullable())
         .with_column(ColumnDef::new("Target", DataType::String { max_len: 0 }).nullable())
         .with_column(ColumnDef::new("ExtendedType", DataType::Long).nullable())
 }

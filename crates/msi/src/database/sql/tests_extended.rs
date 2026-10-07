@@ -114,3 +114,85 @@
             }
         }
     }
+
+#[test]
+fn test_sql_joins() {
+    let mut db = LinkedDatabase::default();
+    
+    // Create Table T1
+    let schema1 = TableSchema::new("T1")
+        .with_column(ColumnDef::new("Id", DataType::Short).primary_key())
+        .with_column(ColumnDef::new("Name", DataType::String { max_len: 255 }));
+    db.catalog.add_table(schema1).unwrap();
+    db.tables.insert("T1".to_string(), vec![
+        Record::with_fields(vec![FieldValue::Short(1), FieldValue::String("Apple".to_string())]),
+        Record::with_fields(vec![FieldValue::Short(2), FieldValue::String("Banana".to_string())]),
+    ]);
+
+    // Create Table T2
+    let schema2 = TableSchema::new("T2")
+        .with_column(ColumnDef::new("Id", DataType::Short).primary_key())
+        .with_column(ColumnDef::new("Color", DataType::String { max_len: 255 }));
+    db.catalog.add_table(schema2).unwrap();
+    db.tables.insert("T2".to_string(), vec![
+        Record::with_fields(vec![FieldValue::Short(1), FieldValue::String("Red".to_string())]),
+        Record::with_fields(vec![FieldValue::Short(2), FieldValue::String("Yellow".to_string())]),
+    ]);
+
+    // Test JOIN
+    let res = execute_sql(&mut db, "SELECT T1.Name, T2.Color FROM T1, T2 WHERE T1.Id = T2.Id", &[]).unwrap();
+    match res {
+        QueryResult::Select { columns, rows } => {
+            assert_eq!(columns.len(), 2);
+            assert_eq!(rows.len(), 2);
+            assert_eq!(rows[0].get(0).unwrap(), &FieldValue::String("Apple".to_string()));
+            assert_eq!(rows[0].get(1).unwrap(), &FieldValue::String("Red".to_string()));
+            assert_eq!(rows[1].get(0).unwrap(), &FieldValue::String("Banana".to_string()));
+            assert_eq!(rows[1].get(1).unwrap(), &FieldValue::String("Yellow".to_string()));
+        }
+        _ => panic!("Expected Select"),
+    }
+}
+
+#[test]
+fn test_sql_alter_table_hold_free() {
+    let mut db = LinkedDatabase::default();
+    
+    // Create Table T1
+    let schema1 = TableSchema::new("T1")
+        .with_column(ColumnDef::new("Id", DataType::Short).primary_key());
+    db.catalog.add_table(schema1).unwrap();
+
+    let res = execute_sql(&mut db, "ALTER TABLE T1 HOLD", &[]).unwrap();
+    assert_eq!(res, QueryResult::SchemaChanged);
+
+    let res = execute_sql(&mut db, "ALTER TABLE T1 FREE", &[]).unwrap();
+    assert_eq!(res, QueryResult::SchemaChanged);
+}
+
+#[test]
+fn test_sql_malformed_queries() {
+    let mut db = LinkedDatabase::default();
+    let schema1 = TableSchema::new("T1")
+        .with_column(ColumnDef::new("Id", DataType::Short).primary_key());
+    db.catalog.add_table(schema1).unwrap();
+    
+    // Malformed ALTER TABLE
+    assert!(execute_sql(&mut db, "ALTER TABLE T1", &[]).is_err());
+    assert!(execute_sql(&mut db, "ALTER TABLE T1 DROP COLUMN Id", &[]).is_err());
+    
+    // Malformed JOIN condition (non-existent column)
+    assert!(execute_sql(&mut db, "SELECT * FROM T1, T2 WHERE T1.Id = T2.NonExistent", &[]).is_err());
+
+    // Ambiguous column reference
+    let schema2 = TableSchema::new("T2")
+        .with_column(ColumnDef::new("Id", DataType::Short).primary_key());
+    db.catalog.add_table(schema2).unwrap();
+    assert!(execute_sql(&mut db, "SELECT Id FROM T1, T2", &[]).is_err());
+
+    // Malformed DROP TABLE
+    assert!(execute_sql(&mut db, "DROP TABLE", &[]).is_err());
+    
+    // Missing table in FROM clause
+    assert!(execute_sql(&mut db, "SELECT * FROM NonExistentTable", &[]).is_err());
+}

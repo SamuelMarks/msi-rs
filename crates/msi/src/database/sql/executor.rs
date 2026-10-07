@@ -86,17 +86,47 @@ pub fn execute_statement(
             where_clause,
             order_by,
         } => {
-            let schema = db.catalog.get_table(table).ok_or_else(|| MsiError::Sql {
-                message: format!("table '{table}' does not exist in database"),
-            })?;
+            let mut schemas = Vec::new();
 
-            let rows = db.tables.get(table).cloned().unwrap_or_default();
+            let primary_schema =
+                db.catalog
+                    .get_table(table.as_str())
+                    .ok_or_else(|| MsiError::Sql {
+                        message: format!("table '{}' does not exist in database", table.as_str()),
+                    })?;
+            schemas.push(primary_schema);
+
+            for j in joins {
+                let s = db
+                    .catalog
+                    .get_table(j.as_str())
+                    .ok_or_else(|| MsiError::Sql {
+                        message: format!("table '{}' does not exist in database", j.as_str()),
+                    })?;
+                schemas.push(s);
+            }
+
+            // Cartesian product of all rows
+            let mut all_rows = vec![Record::new()];
+            for schema_ref in &schemas {
+                let table_rows = db.tables.get(&schema_ref.name).cloned().unwrap_or_default();
+                let mut new_rows = Vec::new();
+                for existing in &all_rows {
+                    for r in &table_rows {
+                        let mut combined = existing.fields().to_vec();
+                        combined.extend(r.fields().iter().cloned());
+                        new_rows.push(Record::with_fields(combined));
+                    }
+                }
+                all_rows = new_rows;
+            }
+
             let mut matching_rows = Vec::new();
             let mut param_idx = 0;
 
-            for r in rows {
+            for r in all_rows {
                 if let Some(ref expr) = where_clause {
-                    if eval_expression(expr, &r, schema, params, &mut param_idx)? {
+                    if eval_expression(expr, &r, &schemas, params, &mut param_idx)? {
                         matching_rows.push(r);
                     }
                 } else {
@@ -106,42 +136,40 @@ pub fn execute_statement(
 
             // Handle sorting
             if !order_by.is_empty() {
-                sort_records(&mut matching_rows, order_by, schema);
+                sort_records(&mut matching_rows, order_by, &schemas);
             }
 
             // Column projection
-            let (proj_cols, proj_rows) = if columns.is_empty() {
-                let col_names = schema.columns.iter().map(|c| c.name.clone()).collect();
-                (col_names, matching_rows)
-            } else {
-                let mut col_indices = Vec::new();
-                for col_name in columns {
-                    let idx = schema
-                        .columns
-                        .iter()
-                        .position(|c| c.name.eq_ignore_ascii_case(col_name))
-                        .ok_or_else(|| MsiError::Sql {
-                            message: format!(
-                                "column '{col_name}' does not exist in table '{table}'"
-                            ),
-                        })?;
-                    col_indices.push(idx);
-                }
-
-                let mut projected = Vec::new();
-                for r in matching_rows {
-                    let mut new_r = Record::new();
-                    for &idx in &col_indices {
-                        if let Some(val) = r.get(idx) {
-                            new_r.push(val.clone());
-                        } else {
-                            new_r.push(FieldValue::Null);
+            let (proj_cols, proj_rows): (Vec<crate::database::sql::ast::ColumnName>, _) =
+                if columns.is_empty() {
+                    let mut col_names = Vec::new();
+                    for s in &schemas {
+                        for c in &s.columns {
+                            col_names.push(crate::database::sql::ast::ColumnName(c.name.clone()));
                         }
                     }
-                    projected.push(new_r);
-                }
-                (columns.clone(), projected)
-            };
+                    (col_names, matching_rows)
+                } else {
+                    let mut col_indices = Vec::new();
+                    for col_name in columns {
+                        let idx = find_column_index(&schemas, col_name.as_str())?;
+                        col_indices.push(idx);
+                    }
+
+                    let mut projected = Vec::new();
+                    for r in matching_rows {
+                        let mut new_r = Record::new();
+                        for &idx in &col_indices {
+                            if let Some(val) = r.get(idx) {
+                                new_r.push(val.clone());
+                            } else {
+                                new_r.push(FieldValue::Null);
+                            }
+                        }
+                        projected.push(new_r);
+                    }
+                    (columns.clone(), projected)
+                };
 
             let final_rows = if *distinct {
                 let mut seen = Vec::new();
@@ -155,11 +183,8 @@ pub fn execute_statement(
                 proj_rows
             };
 
-            // Process dummy check on joins to avoid unused field warning
-            let _ = joins;
-
             Ok(QueryResult::Select {
-                columns: proj_cols,
+                columns: proj_cols.into_iter().map(|c| c.0).collect(),
                 rows: final_rows,
             })
         }
@@ -168,9 +193,12 @@ pub fn execute_statement(
             columns,
             values,
         } => {
-            let schema = db.catalog.get_table(table).ok_or_else(|| MsiError::Sql {
-                message: format!("table '{table}' does not exist in database"),
-            })?;
+            let schema = db
+                .catalog
+                .get_table(table.as_str())
+                .ok_or_else(|| MsiError::Sql {
+                    message: format!("table '{}' does not exist in database", table.as_str()),
+                })?;
 
             let mut record = Record::new();
             let mut param_idx = 0;
@@ -184,9 +212,10 @@ pub fn execute_statement(
                 for col in &schema.columns {
                     if let Some(pos) = col_names
                         .iter()
-                        .position(|c| c.eq_ignore_ascii_case(&col.name))
+                        .position(|c| c.0.eq_ignore_ascii_case(&col.name))
                     {
-                        let fv = resolve_sql_value(&values[pos], params, &mut param_idx)?;
+                        let fv =
+                            resolve_sql_value(&values[pos], params, &mut param_idx, None, None)?;
                         record.push(fv);
                     } else if col.nullable {
                         record.push(FieldValue::Null);
@@ -198,7 +227,7 @@ pub fn execute_statement(
                 }
             } else {
                 for v in values {
-                    let fv = resolve_sql_value(v, params, &mut param_idx)?;
+                    let fv = resolve_sql_value(v, params, &mut param_idx, None, None)?;
                     record.push(fv);
                 }
             }
@@ -211,13 +240,16 @@ pub fn execute_statement(
                 .filter_map(|(idx, c)| c.primary_key.then_some(idx))
                 .collect();
 
-            let rows = db.tables.entry(table.clone()).or_default();
+            let rows = db.tables.entry(table.as_str().to_string()).or_default();
             if !pk_indices.is_empty() {
                 for existing in rows.iter() {
                     let matches_pk = pk_indices.iter().all(|&i| existing.get(i) == record.get(i));
                     if matches_pk {
                         return Err(MsiError::Sql {
-                            message: format!("duplicate primary key in table '{table}'"),
+                            message: format!(
+                                "duplicate primary key in table '{table_str}'",
+                                table_str = table.as_str()
+                            ),
                         });
                     }
                 }
@@ -231,36 +263,43 @@ pub fn execute_statement(
             assignments,
             where_clause,
         } => {
-            let schema = db.catalog.get_table(table).ok_or_else(|| MsiError::Sql {
-                message: format!("table '{table}' does not exist in database"),
-            })?;
+            let schema = db
+                .catalog
+                .get_table(table.as_str())
+                .ok_or_else(|| MsiError::Sql {
+                    message: format!("table '{}' does not exist in database", table.as_str()),
+                })?;
 
             let mut assign_indices = Vec::new();
             for (col_name, val) in assignments {
                 let idx = schema
                     .columns
                     .iter()
-                    .position(|c| c.name.eq_ignore_ascii_case(col_name))
+                    .position(|c| c.name.eq_ignore_ascii_case(col_name.as_str()))
                     .ok_or_else(|| MsiError::Sql {
-                        message: format!("column '{col_name}' does not exist in table '{table}'"),
+                        message: format!(
+                            "column '{}' does not exist in table '{}'",
+                            col_name.as_str(),
+                            table.as_str()
+                        ),
                     })?;
                 assign_indices.push((idx, val));
             }
 
-            let rows = db.tables.entry(table.clone()).or_default();
+            let rows = db.tables.entry(table.as_str().to_string()).or_default();
             let mut modified_count = 0;
             let mut param_idx = 0;
 
             for r in rows.iter_mut() {
                 let matches = if let Some(ref expr) = where_clause {
-                    eval_expression(expr, r, schema, params, &mut param_idx)?
+                    eval_expression(expr, r, &[schema], params, &mut param_idx)?
                 } else {
                     true
                 };
 
                 if matches {
                     for (idx, val) in &assign_indices {
-                        let fv = resolve_sql_value(val, params, &mut param_idx)?;
+                        let fv = resolve_sql_value(val, params, &mut param_idx, None, None)?;
                         r.set(*idx, fv);
                     }
                     modified_count += 1;
@@ -273,18 +312,21 @@ pub fn execute_statement(
             table,
             where_clause,
         } => {
-            let schema = db.catalog.get_table(table).ok_or_else(|| MsiError::Sql {
-                message: format!("table '{table}' does not exist in database"),
-            })?;
+            let schema = db
+                .catalog
+                .get_table(table.as_str())
+                .ok_or_else(|| MsiError::Sql {
+                    message: format!("table '{}' does not exist in database", table.as_str()),
+                })?;
 
-            let rows = db.tables.entry(table.clone()).or_default();
+            let rows = db.tables.entry(table.as_str().to_string()).or_default();
             let initial_len = rows.len();
             let mut param_idx = 0;
 
             if let Some(ref expr) = where_clause {
                 let mut kept = Vec::new();
                 for r in rows.drain(..) {
-                    if !eval_expression(expr, &r, schema, params, &mut param_idx)? {
+                    if !eval_expression(expr, &r, &[schema], params, &mut param_idx)? {
                         kept.push(r);
                     }
                 }
@@ -297,7 +339,7 @@ pub fn execute_statement(
             Ok(QueryResult::Modified(deleted_count))
         }
         Statement::CreateTable { table, columns } => {
-            let mut table_schema = TableSchema::new(table);
+            let mut table_schema = TableSchema::new(table.as_str());
             for c in columns {
                 let dt = match c.data_type {
                     SqlType::String => DataType::String { max_len: c.length },
@@ -305,7 +347,7 @@ pub fn execute_statement(
                     SqlType::Long => DataType::Long,
                     SqlType::Stream => DataType::Stream,
                 };
-                let mut col_def = ColumnDef::new(&c.name, dt);
+                let mut col_def = ColumnDef::new(c.name.as_str(), dt);
                 if !c.not_null {
                     col_def = col_def.nullable();
                 }
@@ -319,43 +361,75 @@ pub fn execute_statement(
             }
 
             let _ = db.catalog.add_table(table_schema);
-            db.tables.insert(table.clone(), Vec::new());
+            db.tables.insert(table.as_str().to_string(), Vec::new());
 
             Ok(QueryResult::SchemaChanged)
         }
         Statement::AlterTable { table, column, .. } => {
-            let dt = match column.data_type {
-                SqlType::String => DataType::String {
-                    max_len: column.length,
-                },
-                SqlType::Short => DataType::Short,
-                SqlType::Long => DataType::Long,
-                SqlType::Stream => DataType::Stream,
-            };
-            let mut col_def = ColumnDef::new(&column.name, dt);
-            if !column.not_null {
-                col_def = col_def.nullable();
-            }
-            if column.primary_key {
-                col_def = col_def.primary_key();
-            }
-            if column.localizable {
-                col_def = col_def.localizable();
+            // Check if table exists
+            let mut schema = db
+                .catalog
+                .get_table(table.as_str())
+                .cloned()
+                .ok_or_else(|| MsiError::Sql {
+                    message: format!("table '{}' does not exist in database", table.as_str()),
+                })?;
+
+            if let Some(column) = column.as_ref() {
+                let dt = match column.data_type {
+                    SqlType::String => DataType::String {
+                        max_len: column.length,
+                    },
+                    SqlType::Short => DataType::Short,
+                    SqlType::Long => DataType::Long,
+                    SqlType::Stream => DataType::Stream,
+                };
+                let mut col_def = ColumnDef::new(column.name.as_str(), dt);
+                if !column.not_null {
+                    col_def = col_def.nullable();
+                }
+                if column.primary_key {
+                    col_def = col_def.primary_key();
+                }
+                if column.localizable {
+                    col_def = col_def.localizable();
+                }
+
+                schema = schema.with_column(col_def);
+                let _ = db.catalog.add_table(schema);
             }
 
-            if let Some(schema) = db.catalog.get_table(table).cloned() {
-                let updated_schema = schema.with_column(col_def);
-                let _ = db.catalog.add_table(updated_schema);
-            } else {
-                return Err(MsiError::Sql {
-                    message: format!("table '{table}' does not exist in database"),
-                });
-            }
+            // HOLD and FREE are memory management hints in MSI.
+            // For `msi-rs`, we don't strictly need to do anything since our catalog is always in memory,
+            // but returning SchemaChanged maintains expected behavior.
 
             Ok(QueryResult::SchemaChanged)
         }
         Statement::DropTable { table } => {
-            db.tables.remove(table);
+            let table_name = table.as_str();
+
+            // Clean up streams associated with the table if any.
+            if let Some(schema) = db.catalog.get_table(table_name) {
+                let has_stream_col = schema
+                    .columns
+                    .iter()
+                    .any(|c| matches!(c.data_type, DataType::Stream));
+                if has_stream_col {
+                    if let Some(streams) = db.tables.get_mut("_Streams") {
+                        let prefix = format!("{table_name}.");
+                        streams.retain(|r| {
+                            if let Some(FieldValue::String(name)) = r.get(0) {
+                                !name.starts_with(&prefix)
+                            } else {
+                                true
+                            }
+                        });
+                    }
+                }
+            }
+
+            db.tables.remove(table_name);
+            db.catalog.remove_table(table_name);
             Ok(QueryResult::SchemaChanged)
         }
     }
@@ -366,8 +440,23 @@ fn resolve_sql_value(
     val: &SqlValue,
     params: &[FieldValue],
     param_idx: &mut usize,
+    record: Option<&Record>,
+    schemas: Option<&[&TableSchema]>,
 ) -> Result<FieldValue> {
     match val {
+        SqlValue::Column(col_name) => {
+            if let (Some(r), Some(s)) = (record, schemas) {
+                let idx = find_column_index(s, col_name.as_str())?;
+                Ok(r.get(idx).cloned().unwrap_or(FieldValue::Null))
+            } else {
+                Err(MsiError::Sql {
+                    message: format!(
+                        "Cannot evaluate column {} in this context",
+                        col_name.as_str()
+                    ),
+                })
+            }
+        }
         SqlValue::String(s) => Ok(FieldValue::String(s.clone())),
         SqlValue::Integer(n) => Ok(FieldValue::Long(*n)),
         SqlValue::Null => Ok(FieldValue::Null),
@@ -386,36 +475,57 @@ fn resolve_sql_value(
 }
 
 /// Evaluates a SQL expression against a record row.
+
+/// Finds the index of a column in a list of schemas, handling optional table prefixes.
+fn find_column_index(schemas: &[&TableSchema], col_ref: &str) -> Result<usize> {
+    let mut match_idx = None;
+    let mut current_offset = 0;
+
+    let parts: Vec<&str> = col_ref.split('.').collect();
+    let (target_table, target_col) = if parts.len() == 2 {
+        (Some(parts[0]), parts[1])
+    } else {
+        (None, col_ref)
+    };
+
+    for schema in schemas {
+        for col in &schema.columns {
+            let table_matches = target_table.is_none_or(|t| t.eq_ignore_ascii_case(&schema.name));
+            if table_matches && col.name.eq_ignore_ascii_case(target_col) {
+                if match_idx.is_some() {
+                    return Err(MsiError::Sql {
+                        message: format!("ambiguous column reference '{col_ref}'"),
+                    });
+                }
+                match_idx = Some(current_offset);
+            }
+            current_offset += 1;
+        }
+    }
+
+    match_idx.ok_or_else(|| MsiError::Sql {
+        message: format!("column '{col_ref}' not found in any of the joined tables"),
+    })
+}
+
 fn eval_expression(
     expr: &Expression,
     record: &Record,
-    schema: &TableSchema,
+    schemas: &[&TableSchema],
     params: &[FieldValue],
     param_idx: &mut usize,
 ) -> Result<bool> {
     match expr {
         Expression::Comparison { column, op, value } => {
-            let col_idx = schema
-                .columns
-                .iter()
-                .position(|c| c.name.eq_ignore_ascii_case(column))
-                .ok_or_else(|| MsiError::Sql {
-                    message: format!("unknown column '{column}' in WHERE expression"),
-                })?;
+            let col_idx = find_column_index(schemas, column.as_str())?;
 
             let left = record.get(col_idx).unwrap_or(&FieldValue::Null);
-            let right = resolve_sql_value(value, params, param_idx)?;
+            let right = resolve_sql_value(value, params, param_idx, Some(record), Some(schemas))?;
 
             Ok(eval_binary_op(left, *op, &right))
         }
         Expression::IsNull { column, negated } => {
-            let col_idx = schema
-                .columns
-                .iter()
-                .position(|c| c.name.eq_ignore_ascii_case(column))
-                .ok_or_else(|| MsiError::Sql {
-                    message: format!("unknown column '{column}' in WHERE expression"),
-                })?;
+            let col_idx = find_column_index(schemas, column.as_str())?;
 
             let is_null = record.get(col_idx).is_none_or(FieldValue::is_null);
             if *negated {
@@ -425,17 +535,17 @@ fn eval_expression(
             }
         }
         Expression::And(left, right) => {
-            let l = eval_expression(left, record, schema, params, param_idx)?;
-            let r = eval_expression(right, record, schema, params, param_idx)?;
+            let l = eval_expression(left, record, schemas, params, param_idx)?;
+            let r = eval_expression(right, record, schemas, params, param_idx)?;
             Ok(l && r)
         }
         Expression::Or(left, right) => {
-            let l = eval_expression(left, record, schema, params, param_idx)?;
-            let r = eval_expression(right, record, schema, params, param_idx)?;
+            let l = eval_expression(left, record, schemas, params, param_idx)?;
+            let r = eval_expression(right, record, schemas, params, param_idx)?;
             Ok(l || r)
         }
         Expression::Not(inner) => {
-            let res = eval_expression(inner, record, schema, params, param_idx)?;
+            let res = eval_expression(inner, record, schemas, params, param_idx)?;
             Ok(!res)
         }
     }
@@ -515,14 +625,12 @@ fn match_like_pattern(text: &str, pattern: &str) -> bool {
 }
 
 /// Sorts records in-place by `ORDER BY` terms.
-fn sort_records(records: &mut [Record], order_by: &[OrderByTerm], schema: &TableSchema) {
+fn sort_records(records: &mut [Record], order_by: &[OrderByTerm], schemas: &[&TableSchema]) {
     let order_indices: Vec<(usize, OrderDirection)> = order_by
         .iter()
         .filter_map(|term| {
-            schema
-                .columns
-                .iter()
-                .position(|c| c.name.eq_ignore_ascii_case(&term.column))
+            find_column_index(schemas, term.column.as_str())
+                .ok()
                 .map(|idx| (idx, term.direction))
         })
         .collect();
@@ -628,7 +736,7 @@ mod tests {
                 columns: vec![
                     "Id".to_string(),
                     "Score".to_string(),
-                    "Description".to_string(),
+                    "Description".to_string()
                 ],
                 rows: vec![
                     Record::with_fields(vec![
@@ -1019,19 +1127,19 @@ mod tests {
 
         let terms_desc = vec![
             OrderByTerm {
-                column: "Txt".to_string(),
+                column: crate::database::sql::ast::ColumnName("Txt".to_string()),
                 direction: OrderDirection::Ascending,
             },
             OrderByTerm {
-                column: "S".to_string(),
+                column: crate::database::sql::ast::ColumnName("S".to_string()),
                 direction: OrderDirection::Descending,
             },
             OrderByTerm {
-                column: "L".to_string(),
+                column: crate::database::sql::ast::ColumnName("L".to_string()),
                 direction: OrderDirection::Ascending,
             },
         ];
-        sort_records(&mut sort_rows, &terms_desc, &schema);
+        sort_records(&mut sort_rows, &terms_desc, &[&schema]);
         assert_eq!(sort_rows.len(), 6);
 
         let mut diff_type_rows = vec![
@@ -1039,10 +1147,10 @@ mod tests {
             Record::with_fields(vec![FieldValue::Long(2)]),
         ];
         let term_single = vec![OrderByTerm {
-            column: "S".to_string(),
+            column: crate::database::sql::ast::ColumnName("S".to_string()),
             direction: OrderDirection::Ascending,
         }];
-        sort_records(&mut diff_type_rows, &term_single, &schema);
+        sort_records(&mut diff_type_rows, &term_single, &[&schema]);
         assert_eq!(diff_type_rows.len(), 2);
 
         // QueryResult derives:
@@ -1055,5 +1163,81 @@ mod tests {
 
         let res_sc = QueryResult::SchemaChanged;
         assert_eq!(res_sc.clone(), res_sc);
+    }
+
+    #[test]
+    fn test_execute_drop_table_with_streams() {
+        use crate::database::catalogs::TableSchema;
+        use crate::database::column::{ColumnDef, DataType};
+        use crate::database::sql::ast::{Statement, TableName};
+        use crate::database::tables::record::{FieldValue, Record};
+        use crate::wix::linker::LinkedDatabase;
+
+        let mut db = LinkedDatabase::default();
+
+        let _ = db.catalog.add_table(TableSchema {
+            name: "StreamTable".to_string(),
+            columns: vec![
+                ColumnDef {
+                    name: "Id".to_string(),
+                    data_type: DataType::Long,
+                    nullable: false,
+                    primary_key: true,
+                    localizable: false,
+                },
+                ColumnDef {
+                    name: "Data".to_string(),
+                    data_type: DataType::Stream,
+                    nullable: false,
+                    primary_key: false,
+                    localizable: false,
+                },
+            ],
+        });
+
+        db.tables.insert("StreamTable".to_string(), vec![]);
+
+        let streams = Record::with_fields(vec![
+            FieldValue::String("StreamTable.1".to_string()),
+            FieldValue::Null,
+        ]);
+        db.tables
+            .entry("_Streams".to_string())
+            .or_default()
+            .push(streams);
+
+        let streams2 = Record::with_fields(vec![
+            FieldValue::String("OtherTable.1".to_string()),
+            FieldValue::Null,
+        ]);
+        db.tables
+            .entry("_Streams".to_string())
+            .or_default()
+            .push(streams2);
+
+        let streams3 = Record::with_fields(vec![FieldValue::Null, FieldValue::Null]);
+        db.tables
+            .entry("_Streams".to_string())
+            .or_default()
+            .push(streams3);
+
+        let ast = Statement::DropTable {
+            table: TableName("StreamTable".to_string()),
+        };
+        execute_statement(&mut db, &ast, &[]).unwrap();
+
+        let s = &db.tables["_Streams"];
+        assert_eq!(s.len(), 2);
+    }
+    #[test]
+    fn test_resolve_sql_value_column_no_context() {
+        use crate::database::sql::ast::ColumnName;
+        use crate::database::sql::ast::SqlValue;
+        use crate::error::MsiError;
+
+        let val = SqlValue::Column(ColumnName("MyCol".to_string()));
+        let mut idx = 0;
+        let err = resolve_sql_value(&val, &[], &mut idx, None, None).unwrap_err();
+        assert!(matches!(err, MsiError::Sql { .. }));
     }
 }

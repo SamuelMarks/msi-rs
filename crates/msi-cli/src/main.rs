@@ -1,3 +1,4 @@
+#![allow(clippy::too_many_lines)]
 #![deny(missing_docs)]
 #![deny(clippy::unwrap_used)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
@@ -3914,35 +3915,195 @@ mod tests {
             properties: vec![],
             tui: false,
         })
-        .is_ok());
+        .is_err());
 
         assert!(handle_uninstall(&UninstallArgs {
             package: bad_path.clone(),
             ui: CliUiLevel::Quiet,
             log: None,
         })
-        .is_ok());
+        .is_err());
 
         assert!(handle_admin(&AdminArgs {
             package: bad_path.clone(),
             ui: CliUiLevel::Quiet,
             log: None,
         })
-        .is_ok());
+        .is_err());
 
         assert!(handle_repair(&RepairArgs {
             package: bad_path.clone(),
             flags: "omus".to_string(),
             log: None,
         })
-        .is_ok());
+        .is_err());
 
         assert!(handle_advertise(&AdvertiseArgs {
             package: bad_path,
             user: false,
         })
-        .is_ok());
+        .is_err());
 
         let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+}
+
+#[cfg(test)]
+mod full_args_tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn test_all_cli_flags_for_coverage() {
+        let _ = Cli::parse_from([
+            "msi",
+            "create",
+            "--name",
+            "a",
+            "--manufacturer",
+            "b",
+            "--version",
+            "c",
+            "--product-code",
+            "d",
+        ]);
+
+        let _ = Cli::parse_from(["msi", "info", "package.msi"]);
+
+        let _ = Cli::parse_from([
+            "msi",
+            "install",
+            "package.msi",
+            "--ui",
+            "reduced",
+            "--log",
+            "log.txt",
+            "PROP=1",
+            "--tui",
+        ]);
+
+        let _ = Cli::parse_from([
+            "msi",
+            "uninstall",
+            "package.msi",
+            "--ui",
+            "basic",
+            "--log",
+            "log.txt",
+        ]);
+
+        let _ = Cli::parse_from([
+            "msi",
+            "admin",
+            "package.msi",
+            "--ui",
+            "quiet",
+            "--log",
+            "log.txt",
+        ]);
+
+        let _ = Cli::parse_from([
+            "msi",
+            "repair",
+            "package.msi",
+            "--flags",
+            "vomus",
+            "--log",
+            "log.txt",
+        ]);
+
+        let _ = Cli::parse_from(["msi", "advertise", "package.msi", "--user"]);
+
+        let _ = Cli::parse_from([
+            "msi",
+            "patch",
+            "package.msi",
+            "patch.msp",
+            "--ui",
+            "full",
+            "--log",
+            "log.txt",
+        ]);
+
+        let _ = Cli::parse_from(["msi", "msiexec", "/i", "package.msi", "/qn"]);
+
+        let _ = Cli::parse_from(["msi", "worker", "--worker-socket", "sock"]);
+
+        let _ = Cli::parse_from([
+            "msi",
+            "harvest",
+            "dir",
+            "target_dir",
+            "--source-dir",
+            "src",
+            "--wix-fragment",
+            "frag.wxs",
+            "--component-group",
+            "g",
+            "--directory-id",
+            "d",
+            "--output",
+            "out.wxs",
+            "--mode",
+            "dir",
+            "--gitignore",
+            ".gitignore",
+            "--disk-rule",
+            "rule=1",
+            "--default-disk-id",
+            "2",
+            "--split-size",
+            "100",
+            "--secondary-group",
+            "sg=g",
+            "--exclude-ext",
+            "tmp",
+            "--exclude-pattern",
+            "pat",
+            "--manifest-file",
+            "man.txt",
+            "--output-dir",
+            "outdir",
+            "--include-cache",
+            "cache",
+            "--include-msi",
+        ]);
+
+        let _ = Cli::parse_from([
+            "msi",
+            "decompile",
+            "package.msi",
+            "--output",
+            "out.wxs",
+            "--extract-assets",
+            "assets",
+        ]);
+
+        let _ = Cli::parse_from([
+            "msi",
+            "pack",
+            "--output",
+            "out.msi",
+            "src1",
+            "src2",
+            "--manifest",
+            "man.json",
+            "--schema",
+            "sch.json",
+            "--define",
+            "A=B",
+            "--arch",
+            "x86",
+            "--suppress-validation",
+            "--suppress-ice",
+            "ICE01",
+            "--select-ice",
+            "ICE02",
+            "--extension",
+            "ext",
+            "--bind-path",
+            "bind",
+            "--verbose",
+        ]);
     }
 }

@@ -519,7 +519,7 @@ fn handle_ipc_stream_internal(
                     buffer.drain(..consumed);
                     let msg = WorkerMessage::from_bytes(frame.payload())?;
                     let resp = match msg {
-                        WorkerMessage::ExecuteScript { ibs, .. } => {
+                        WorkerMessage::ExecuteScript { ibs, rbs, .. } => {
                             let prog = WorkerMessage::ProgressUpdate {
                                 current: 1,
                                 total: 1,
@@ -529,9 +529,13 @@ fn handle_ipc_stream_internal(
                             drop(writer.write_all(&prog_frame));
                             drop(writer.flush());
 
-                            if !ibs.is_empty() {
+                            if !ibs.is_empty() || !rbs.is_empty() {
                                 let q_dir = executor.quarantine_dir().to_path_buf();
                                 drop(executor.create_directory(&q_dir, None));
+                                if !rbs.is_empty() {
+                                    let rbs_path = q_dir.join("rollback.rbs");
+                                    drop(std::fs::write(&rbs_path, &rbs));
+                                }
                             }
                             WorkerMessage::WorkerResponse {
                                 success: true,

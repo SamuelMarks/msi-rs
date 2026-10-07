@@ -60,6 +60,26 @@ impl VARIANT {
         v.data[0..4].copy_from_slice(&bytes);
         v
     }
+
+    /// Safe, strongly-typed wrapper mapping to Rust enums.
+    #[must_use]
+    pub fn as_i4(&self) -> Option<i32> {
+        (self.vt == VARENUM::VtI4 as u16).then(|| {
+            let mut bytes = [0u8; 4];
+            bytes.copy_from_slice(&self.data[0..4]);
+            i32::from_ne_bytes(bytes)
+        })
+    }
+
+    /// Safe, strongly-typed wrapper mapping to Rust enums.
+    #[must_use]
+    pub fn as_bstr(&self) -> Option<*mut u16> {
+        (self.vt == VARENUM::VtBstr as u16).then(|| {
+            let mut bytes = [0u8; 8];
+            bytes.copy_from_slice(&self.data[0..8]);
+            usize::from_ne_bytes(bytes) as *mut u16
+        })
+    }
 }
 
 #[cfg(test)]
@@ -73,5 +93,12 @@ mod tests {
 
         let i4 = VARIANT::new_i4(42);
         assert_eq!(i4.vt, VARENUM::VtI4 as u16);
+        assert_eq!(i4.as_i4(), Some(42));
+        assert_eq!(empty.as_i4(), None);
+
+        let mut bstr = VARIANT::new_empty();
+        bstr.vt = VARENUM::VtBstr as u16;
+        assert!(bstr.as_bstr().is_some());
+        assert!(empty.as_bstr().is_none());
     }
 }

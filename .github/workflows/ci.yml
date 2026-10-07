@@ -183,8 +183,14 @@ jobs:
       - name: Cache Cargo Dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Generate Code Coverage Report
+      - name: Generate Code Coverage Report (LCOV)
         run: cargo llvm-cov --workspace --all-targets --all-features --exclude msi-python --lcov --output-path lcov.info
+
+      - name: Generate Code Coverage Report (JSON)
+        run: cargo llvm-cov --workspace --all-targets --all-features --exclude msi-python --json --output-path rust_cov.json
+
+      - name: Enforce 100% Coverage
+        run: python check_cov.py
 
       - name: Upload Coverage Artifact
         uses: actions/upload-artifact@v7

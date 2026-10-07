@@ -263,6 +263,32 @@ mod tests {
             attributes: HashMap::new(),
         };
         assert!(mgr.register_driver(&bad_driver).is_err());
+
+        let dsn = OdbcDataSource {
+            name: OdbcDataSourceName::new("MyDSN"),
+            driver: OdbcDriverName::new("D"),
+            attributes: HashMap::new(),
+        };
+        assert!(mgr.register_data_source(&dsn).is_ok());
+
+        let bad_dsn = OdbcDataSource {
+            name: OdbcDataSourceName::new(""),
+            driver: OdbcDriverName::new("D"),
+            attributes: HashMap::new(),
+        };
+        assert!(mgr.register_data_source(&bad_dsn).is_err());
+
+        let trans = OdbcTranslator {
+            name: "MyTrans".to_string(),
+            path: "path".to_string(),
+        };
+        assert!(mgr.register_translator(&trans).is_ok());
+
+        let bad_trans = OdbcTranslator {
+            name: String::new(),
+            path: "".to_string(),
+        };
+        assert!(mgr.register_translator(&bad_trans).is_err());
     }
 
     #[cfg(not(windows))]
@@ -282,12 +308,25 @@ mod tests {
         };
         assert!(mgr.register_driver(&bad_driver).is_err());
 
+        let dsn = OdbcDataSource {
+            name: OdbcDataSourceName::new("MyDSN"),
+            driver: OdbcDriverName::new("D"),
+            attributes: HashMap::new(),
+        };
+        assert!(mgr.register_data_source(&dsn).is_ok());
+
         let bad_dsn = OdbcDataSource {
             name: OdbcDataSourceName::new(""),
             driver: OdbcDriverName::new("D"),
             attributes: HashMap::new(),
         };
         assert!(mgr.register_data_source(&bad_dsn).is_err());
+
+        let trans = OdbcTranslator {
+            name: "MyTrans".to_string(),
+            path: "path".to_string(),
+        };
+        assert!(mgr.register_translator(&trans).is_ok());
 
         let bad_trans = OdbcTranslator {
             #[allow(clippy::string_add_assign)]

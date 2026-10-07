@@ -127,6 +127,55 @@ pub extern "system" fn MsiSummaryInfoSetPropertyA(
     result.unwrap_or(ERROR_INSTALL_FAILURE)
 }
 
+/// Returns the number of existing properties in the summary information stream.
+///
+/// # Arguments
+///
+/// * `hSummaryInfo` - Handle to summary information.
+/// * `puiPropertyCount` - Pointer to a variable that receives the property count.
+///
+/// # Returns
+///
+/// `ERROR_SUCCESS` or `ERROR_INVALID_HANDLE`.
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub extern "system" fn MsiSummaryInfoGetPropertyCount(
+    hSummaryInfo: MsiHandle,
+    puiPropertyCount: *mut Uint,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if puiPropertyCount.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+
+        // Stub: we don't have a SummaryInfo handle type yet.
+        ERROR_INVALID_HANDLE
+    });
+
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Writes the summary information stream back to the storage container.
+///
+/// # Arguments
+///
+/// * `hSummaryInfo` - Handle to summary information.
+///
+/// # Returns
+///
+/// `ERROR_SUCCESS` or `ERROR_INVALID_HANDLE`.
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiSummaryInfoPersist(hSummaryInfo: MsiHandle) -> Uint {
+    let result = panic::catch_unwind(|| {
+        // Stub: we don't have a SummaryInfo handle type yet.
+        ERROR_INVALID_HANDLE
+    });
+
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
 /// Commits changes to a database.
 ///
 /// # Arguments
@@ -212,6 +261,18 @@ mod tests {
             MsiSummaryInfoSetPropertyA(0, 0, 0, 0, std::ptr::null_mut(), std::ptr::null()),
             ERROR_INVALID_HANDLE
         );
+
+        assert_eq!(
+            MsiSummaryInfoGetPropertyCount(0, std::ptr::null_mut()),
+            ERROR_INVALID_PARAMETER
+        );
+        let mut count = 0;
+        assert_eq!(
+            MsiSummaryInfoGetPropertyCount(0, &mut count),
+            ERROR_INVALID_HANDLE
+        );
+
+        assert_eq!(MsiSummaryInfoPersist(0), ERROR_INVALID_HANDLE);
 
         let db = msi::wix::linker::LinkedDatabase::new().unwrap();
         let h_db = alloc_handle(MsiObject::Database(crate::types::MsiDatabaseHandle {

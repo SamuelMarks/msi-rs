@@ -170,3 +170,16 @@ int main(void) {
     puts("All C-ABI verification tests passed successfully!");
     return 0;
 }
+
+    /* 5. Verify IStorage creation from C-ABI */
+    // TODO: Write a C test that verifies IStorage bindings
+
+    /* 5. Verify IStorage creation from C-ABI */
+    // Note: To test this meaningfully we would need a valid CFB in memory. 
+    // Since we don't have one here, we'll verify the null checks.
+    IStorage* stg = NULL;
+    res = msi_create_storage_from_memory(NULL, 0, &stg);
+    assert(res == E_POINTER);
+    
+    // We can't really pass invalid pointer to msi_create_storage_from_memory easily
+    // without risking segfault in CfbReader if it tries to read.

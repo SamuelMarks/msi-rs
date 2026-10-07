@@ -11,6 +11,8 @@
 
 pub mod console;
 pub mod controls;
+pub mod native_dialogs;
+pub use native_dialogs::*;
 pub mod engine;
 pub mod events;
 pub mod font_rasterizer;

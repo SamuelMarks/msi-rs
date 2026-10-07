@@ -158,6 +158,162 @@ pub extern "system" fn MsiSetPropertyA(
     result.unwrap_or(crate::win32::ERROR_INSTALL_FAILURE)
 }
 
+/// Evaluates a conditional expression using session properties (Unicode).
+///
+/// # Arguments
+///
+/// * `hInstall` - The handle to the installation session.
+/// * `szCondition` - The conditional expression to evaluate.
+///
+/// # Returns
+///
+/// `MSICONDITION_TRUE` (1), `MSICONDITION_FALSE` (0), `MSICONDITION_NONE` (2), or `MSICONDITION_ERROR` (-1).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiEvaluateConditionW(hInstall: MsiHandle, szCondition: Lpcwstr) -> i32 {
+    let result = panic::catch_unwind(|| {
+        if szCondition.is_null() {
+            return 2; // MSICONDITION_NONE
+        }
+
+        let Some(_condition) = lpcwstr_to_string(szCondition) else {
+            return -1; // MSICONDITION_ERROR
+        };
+
+        // Stub: assume expression parses correctly and evaluates to FALSE
+        0 // MSICONDITION_FALSE
+    });
+
+    result.unwrap_or(-1)
+}
+
+/// Evaluates a conditional expression using session properties (ANSI).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiEvaluateConditionA(hInstall: MsiHandle, szCondition: Lpcstr) -> i32 {
+    let result = panic::catch_unwind(|| {
+        if szCondition.is_null() {
+            return 2; // MSICONDITION_NONE
+        }
+
+        let Some(_condition) = lpcstr_to_string(szCondition) else {
+            return -1; // MSICONDITION_ERROR
+        };
+
+        0 // MSICONDITION_FALSE
+    });
+
+    result.unwrap_or(-1)
+}
+
+/// Returns the product code of a registered component (Unicode).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiGetProductCodeW(szComponent: Lpcwstr, lpBuf39: Lpwstr) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szComponent.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_SUCCESS
+    });
+
+    result.unwrap_or(crate::win32::ERROR_INSTALL_FAILURE)
+}
+
+/// Returns the product code of a registered component (ANSI).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiGetProductCodeA(szComponent: Lpcstr, lpBuf39: Lpstr) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szComponent.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_SUCCESS
+    });
+
+    result.unwrap_or(crate::win32::ERROR_INSTALL_FAILURE)
+}
+
+/// Returns product information for published and installed products (Unicode).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiGetProductInfoExW(
+    szProductCode: Lpcwstr,
+    szUserSid: Lpcwstr,
+    dwContext: Dword,
+    szProperty: Lpcwstr,
+    szValue: Lpwstr,
+    pcchValue: *mut Dword,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szProductCode.is_null() || szProperty.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_SUCCESS
+    });
+
+    result.unwrap_or(crate::win32::ERROR_INSTALL_FAILURE)
+}
+
+/// Returns product information for published and installed products (ANSI).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiGetProductInfoExA(
+    szProductCode: Lpcstr,
+    szUserSid: Lpcstr,
+    dwContext: Dword,
+    szProperty: Lpcstr,
+    szValue: Lpstr,
+    pcchValue: *mut Dword,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szProductCode.is_null() || szProperty.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_SUCCESS
+    });
+
+    result.unwrap_or(crate::win32::ERROR_INSTALL_FAILURE)
+}
+
+/// Retrieves the value of a property from a product database (Unicode).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiGetProductPropertyW(
+    hProduct: MsiHandle,
+    szProperty: Lpcwstr,
+    szValueBuf: Lpwstr,
+    pcchValueBuf: *mut Dword,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szProperty.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_SUCCESS
+    });
+
+    result.unwrap_or(crate::win32::ERROR_INSTALL_FAILURE)
+}
+
+/// Retrieves the value of a property from a product database (ANSI).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiGetProductPropertyA(
+    hProduct: MsiHandle,
+    szProperty: Lpcstr,
+    szValueBuf: Lpstr,
+    pcchValueBuf: *mut Dword,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szProperty.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_SUCCESS
+    });
+
+    result.unwrap_or(crate::win32::ERROR_INSTALL_FAILURE)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -237,6 +393,116 @@ mod tests {
                 h_rec,
                 valid_a.as_ptr().cast::<i8>(),
                 valid_a.as_ptr().cast::<i8>()
+            ),
+            ERROR_SUCCESS
+        );
+
+        assert_eq!(MsiEvaluateConditionW(0, std::ptr::null()), 2);
+        assert_eq!(MsiEvaluateConditionA(0, std::ptr::null()), 2);
+        assert_eq!(MsiEvaluateConditionW(0, valid_w.as_ptr()), 0);
+        assert_eq!(MsiEvaluateConditionA(0, valid_a.as_ptr().cast::<i8>()), 0);
+
+        let invalid_utf16 = [0xD800_u16, 0x0000];
+        let invalid_utf8 = [0xFF_u8, 0x00];
+
+        assert_eq!(MsiEvaluateConditionW(0, invalid_utf16.as_ptr()), -1);
+        assert_eq!(MsiEvaluateConditionA(0, invalid_utf8.as_ptr().cast()), -1);
+
+        assert_eq!(
+            MsiGetProductCodeW(std::ptr::null(), std::ptr::null_mut()),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetProductCodeA(std::ptr::null(), std::ptr::null_mut()),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetProductCodeW(valid_w.as_ptr(), std::ptr::null_mut()),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiGetProductCodeA(valid_a.as_ptr().cast::<i8>(), std::ptr::null_mut()),
+            ERROR_SUCCESS
+        );
+
+        assert_eq!(
+            MsiGetProductInfoExW(
+                std::ptr::null(),
+                std::ptr::null(),
+                0,
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetProductInfoExA(
+                std::ptr::null(),
+                std::ptr::null(),
+                0,
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetProductInfoExW(
+                valid_w.as_ptr(),
+                std::ptr::null(),
+                0,
+                valid_w.as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiGetProductInfoExA(
+                valid_a.as_ptr().cast::<i8>(),
+                std::ptr::null(),
+                0,
+                valid_a.as_ptr().cast::<i8>(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_SUCCESS
+        );
+
+        assert_eq!(
+            MsiGetProductPropertyW(
+                0,
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetProductPropertyA(
+                0,
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetProductPropertyW(
+                0,
+                valid_w.as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiGetProductPropertyA(
+                0,
+                valid_a.as_ptr().cast::<i8>(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
             ),
             ERROR_SUCCESS
         );

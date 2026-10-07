@@ -10,6 +10,42 @@ use super::{
     ERROR_SUCCESS,
 };
 
+/// A strongly-typed wrapper for a null-terminated UTF-16 Win32 string pointer (`LPCWSTR`).
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WideString(pub Lpcwstr);
+
+impl WideString {
+    /// Safely converts this `WideString` into a Rust `String`.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(String)` if successful.
+    /// * `None` if the pointer is null or string is improperly formed.
+    #[must_use]
+    pub fn to_string(&self) -> Option<String> {
+        lpcwstr_to_string(self.0)
+    }
+}
+
+/// A strongly-typed wrapper for a null-terminated ANSI Win32 string pointer (`LPCSTR`).
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AnsiString(pub Lpcstr);
+
+impl AnsiString {
+    /// Safely converts this `AnsiString` into a Rust `String`.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(String)` if successful.
+    /// * `None` if the pointer is null or string is improperly formed.
+    #[must_use]
+    pub fn to_string(&self) -> Option<String> {
+        lpcstr_to_string(self.0)
+    }
+}
+
 /// Safely converts a null-terminated UTF-16 Win32 string (`LPCWSTR`) into a Rust `String`.
 ///
 /// # Arguments
@@ -211,6 +247,22 @@ mod tests {
     )]
     use super::*;
     use std::ptr;
+
+    #[test]
+    fn test_wide_string_ansi_string_wrappers() {
+        let mut utf16: Vec<u16> = "TestW".encode_utf16().collect();
+        utf16.push(0);
+        let ws = WideString(utf16.as_ptr());
+        assert_eq!(ws.to_string().unwrap(), "TestW");
+        let ws_null = WideString(ptr::null());
+        assert_eq!(ws_null.to_string(), None);
+
+        let bytes = b"TestA\0";
+        let as_str = AnsiString(bytes.as_ptr().cast::<i8>());
+        assert_eq!(as_str.to_string().unwrap(), "TestA");
+        let as_null = AnsiString(ptr::null());
+        assert_eq!(as_null.to_string(), None);
+    }
 
     #[test]
     fn test_lpcwstr_to_string() {

@@ -1,8 +1,8 @@
 //! Live OS Filesystem Execution and Rollback Quarantine Storage.
 //!
 //! Implements real host filesystem transactions per the Windows Installer Deferred Action specification:
-//! - Physical directory creation (`std::fs::create_dir_all`) with POSIX permission octals.
-//! - Atomic file writing via temporary filenames (`.tmp.{uuid}`) and atomic `std::fs::rename`.
+//! - Physical directory creation (`fs::create_dir_all`) with POSIX permission octals.
+//! - Atomic file writing via temporary filenames (`.tmp.{uuid}`) and atomic `fs::rename`.
 //! - Physical `.rbf` rollback file quarantine preserving overwritten target files prior to replacement.
 //! - Physical rollback restoration from quarantine storage upon transaction abort.
 //! - Quarantine directory purging upon commit.
@@ -204,12 +204,16 @@ impl LiveWorkerExecutor {
     ///
     /// Returns [`crate::error::MsiError::Io`] if rollback file restoration fails.
     pub fn rollback(&mut self) -> Result<()> {
+        let mut errors = Vec::new();
+
         // Restore files in reverse
         for record in self.installed_files.values() {
             match record {
                 InstalledFileRecord::NewlyCreated(path) => {
                     if path.exists() {
-                        let _ = fs::remove_file(path);
+                        if let Err(e) = fs::remove_file(path) {
+                            errors.push(format!("remove newly created file '{path:?}': {e}"));
+                        }
                     }
                 }
                 InstalledFileRecord::Overwritten {
@@ -217,7 +221,9 @@ impl LiveWorkerExecutor {
                     quarantine_rbf,
                 } => {
                     if quarantine_rbf.exists() {
-                        let _ = fs::copy(quarantine_rbf, target_path);
+                        if let Err(e) = fs::copy(quarantine_rbf, target_path) {
+                            errors.push(format!("restore quarantined file '{target_path:?}': {e}"));
+                        }
                         let _ = fs::remove_file(quarantine_rbf);
                     }
                 }
@@ -227,18 +233,59 @@ impl LiveWorkerExecutor {
         // Remove created directories in reverse order
         for dir in self.created_directories.iter().rev() {
             if dir.exists() {
-                let _ = fs::remove_dir(dir);
+                // Only attempt to remove if empty
+                if let Ok(mut entries) = fs::read_dir(dir) {
+                    if entries.next().is_none() {
+                        if let Err(e) = fs::remove_dir(dir) {
+                            errors.push(format!("remove created directory '{dir:?}': {e}"));
+                        }
+                    }
+                }
             }
         }
 
         // Purge quarantine folder
         if self.quarantine_dir.exists() {
-            let _ = fs::remove_dir_all(&self.quarantine_dir);
+            if let Err(e) = fs::remove_dir_all(&self.quarantine_dir) {
+                errors.push(format!("purge quarantine directory: {e}"));
+            }
         }
 
         self.installed_files.clear();
         self.created_directories.clear();
+
+        if !errors.is_empty() {
+            return Err(crate::error::MsiError::RollbackFailed {
+                action: "FilesystemRollback".to_string(),
+                reason: errors.join("; "),
+            });
+        }
+
         Ok(())
+    }
+
+    /// Recovers and rolls back an interrupted installation transaction (e.g., after power loss).
+    ///
+    /// # Arguments
+    ///
+    /// * `quarantine_dir` - Path to the `.rbf` quarantine and `.rbs` script directory.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::MsiError`] if recovery fails.
+    pub fn recover_interrupted_transaction(quarantine_dir: &Path) -> Result<()> {
+        let rbs_path = quarantine_dir.join("rollback.rbs");
+        if !rbs_path.exists() {
+            return Ok(()); // Nothing to recover
+        }
+
+        let rbs_data = fs::read(&rbs_path)?;
+        let rollback_script = crate::execution::script::RollbackScript::deserialize(&rbs_data)?;
+
+        let mut dummy_context = crate::execution::transaction::WorkerContext::new();
+        let exec = Self::new(quarantine_dir, "recovery");
+        dummy_context.set_live_executor(exec);
+        dummy_context.execute_rollback(&rollback_script)
     }
 }
 
@@ -440,7 +487,9 @@ mod tests {
             .is_err());
 
         // Run rollback with these non-existent items
-        assert!(executor.rollback().is_ok());
+        let r = executor.rollback();
+        println!("ERR: {r:?}");
+        assert!(r.is_ok());
 
         // Test failure path: write_file_atomic to a target without parent or invalid destination path
         #[cfg(unix)]
@@ -452,5 +501,82 @@ mod tests {
         }
 
         let _ = fs::remove_dir_all(&temp_dir);
+    }
+}
+
+#[cfg(test)]
+mod worker_executor_additional_tests {
+    use super::*;
+
+    #[test]
+    fn test_executor_rollback_failure() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let q_dir = temp_dir.path().join("quarantine");
+        fs::create_dir_all(&q_dir).unwrap();
+        let mut exec = LiveWorkerExecutor::new(&q_dir, "test");
+
+        // 1. NewlyCreated fails (try to remove_file on a directory)
+        let dir_as_file = temp_dir.path().join("dir_as_file");
+        fs::create_dir_all(&dir_as_file).unwrap();
+        exec.installed_files.insert(
+            dir_as_file.clone(),
+            InstalledFileRecord::NewlyCreated(dir_as_file),
+        );
+
+        // 2. Overwritten restore fails (try to copy a file over an existing directory)
+        let rbf_file = q_dir.join("test.rbf");
+        fs::write(&rbf_file, "data").unwrap();
+        let dir_target = temp_dir.path().join("dir_target");
+        fs::create_dir_all(&dir_target).unwrap();
+        exec.installed_files.insert(
+            dir_target.clone(),
+            InstalledFileRecord::Overwritten {
+                target_path: dir_target,
+                quarantine_rbf: rbf_file,
+            },
+        );
+
+        // 3. remove_dir fails (try to remove_dir on a file)
+        let dir_in_q = q_dir.join("empty_dir");
+        fs::create_dir_all(&dir_in_q).unwrap();
+        exec.created_directories.push(dir_in_q);
+
+        // 4. remove_dir_all fails on quarantine_dir (make parent read-only)
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&q_dir, fs::Permissions::from_mode(0o500)).unwrap();
+        }
+
+        let res = exec.rollback();
+        assert!(res.is_err());
+        let err_msg = res.unwrap_err().to_string();
+        assert!(err_msg.contains("remove newly created file"));
+        assert!(err_msg.contains("restore quarantined file"));
+        assert!(err_msg.contains("remove created directory"));
+
+        #[cfg(unix)]
+        {
+            // Restore permissions so cleanup can happen
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&q_dir, fs::Permissions::from_mode(0o755)).unwrap();
+        }
+    }
+
+    #[test]
+    fn test_recover_interrupted_transaction() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let q_dir = temp_dir.path().join("quarantine");
+        fs::create_dir_all(&q_dir).unwrap();
+
+        // No rbs file
+        assert!(LiveWorkerExecutor::recover_interrupted_transaction(&q_dir).is_ok());
+
+        // Write empty rbs file
+        let rbs_path = q_dir.join("rollback.rbs");
+        let script = crate::execution::script::RollbackScript::new();
+        fs::write(&rbs_path, script.serialize()).unwrap();
+
+        assert!(LiveWorkerExecutor::recover_interrupted_transaction(&q_dir).is_ok());
     }
 }

@@ -236,6 +236,31 @@ impl fmt::Display for ColumnDef {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn test_column_def_bitmask_stream_and_string_cases() {
+        // Stream without trailing zeroes >= 8 shouldn't normally happen for a well-formed stream,
+        // but if it does, it might fall through. Let's test the string fallbacks.
+        // Stream is 0x0100.
+        // We want to hit the string categories 0x0800, 0x0400, 0x0000.
+        // String is 0x0C00.
+        // 0x0800
+        let col1 = ColumnDef::from_bitmask("Col1", 0x0800 | 0x0010).unwrap();
+        assert_eq!(col1.data_type, DataType::String { max_len: 16 });
+
+        // 0x0400
+        let col2 = ColumnDef::from_bitmask("Col2", 0x0400 | 0x0020).unwrap();
+        assert_eq!(col2.data_type, DataType::String { max_len: 32 });
+
+        // 0x0000
+        let col3 = ColumnDef::from_bitmask("Col3", 0x0030).unwrap();
+        assert_eq!(col3.data_type, DataType::String { max_len: 48 });
+
+        // A stream type 0x0100 where trailing zeros < 8 (e.g., bitmask & 0xFF != 0)
+        // should fall through to the Error since it doesn't match string categories either.
+        let err = ColumnDef::from_bitmask("BadStream", 0x0100 | 0x0001).unwrap_err();
+        assert!(matches!(err, MsiError::InvalidColumnType { .. }));
+    }
     use super::*;
 
     /// Tests column bitmask encoding and decoding roundtrips.

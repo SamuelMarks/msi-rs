@@ -10,6 +10,7 @@ pub mod bare_metal;
 pub mod cli_parser;
 pub mod costing;
 pub mod custom_action;
+pub mod custom_action_server;
 pub mod native_action;
 pub mod properties;
 pub mod script;
@@ -68,9 +69,42 @@ pub use worker::{
     compute_crc32, CommandSpec, EscalationMethod, InstalledFileRecord, IpcFrame, IpcSocketEndpoint,
     LiveWorkerExecutor, PrivilegeEscalator, WorkerMessage, IPC_FRAME_HEADER_SIZE, IPC_FRAME_MAGIC,
 };
+/// Assembly data types.
+pub mod assembly_types;
 pub mod bind_image;
 pub mod com_rpc;
+pub mod font;
 pub mod ipc;
+pub mod logging;
 pub mod msdelta;
+pub mod rm;
+pub use logging::*;
+pub use rm::{RestartManager, RmSessionOutcome};
+/// Patching engine capabilities.
+pub mod patching;
 pub mod standard_actions;
 pub mod vfs;
+pub use font::*;
+
+pub mod format;
+pub use format::*;
+pub mod source_resiliency;
+pub use source_resiliency::*;
+pub mod self_healing;
+pub use self_healing::*;
+pub mod media;
+pub use media::*;
+pub mod signature;
+pub use signature::*;
+pub mod advertisement;
+pub mod automation;
+pub mod locator;
+pub mod reconfiguration;
+/// Action execution dispatching logic.
+pub use automation::*;
+/// Sequence parsing and execution constants.
+pub mod dispatcher;
+
+/// Sequence types.
+pub mod sequence;
+pub mod services;

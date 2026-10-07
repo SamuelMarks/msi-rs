@@ -55,7 +55,7 @@ impl fmt::Display for FieldValue {
         match self {
             Self::Short(v) => write!(f, "{v}"),
             Self::Long(v) => write!(f, "{v}"),
-            Self::String(s) => write!(f, "'{s}'"),
+            Self::String(s) => write!(f, "{s}"),
             Self::Stream(id) => write!(f, "{id}"),
             Self::Null => write!(f, "NULL"),
         }
@@ -511,6 +511,30 @@ impl Record {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn test_field_value_deserialize_null_stream_and_string_3_byte_index() {
+        let mut pool = StringPool::new(1252);
+
+        let col_stream = ColumnDef::new("Col1", DataType::Stream);
+        let stream_null_bytes = [0x00, 0x00, 0x00, 0x00];
+        let val_stream =
+            Record::deserialize_field(&stream_null_bytes, &col_stream, &pool, 2).unwrap();
+        assert_eq!(val_stream, FieldValue::Null);
+
+        let col_string = ColumnDef::new("Col2", DataType::String { max_len: 255 });
+        let string_null_bytes = [0x00, 0x00, 0x00, 0x00];
+        let val_string =
+            Record::deserialize_field(&string_null_bytes, &col_string, &pool, 3).unwrap();
+        assert_eq!(val_string, FieldValue::Null);
+
+        pool.add_string("TestString");
+        // We know "TestString" will be ID 1 (or at least non-zero).
+        // We can just construct a 3 byte stream with value 1: 0x01, 0x00, 0x00, 0x00
+        let string_valid_bytes = [0x01, 0x00, 0x00, 0x00];
+        let val_string2 =
+            Record::deserialize_field(&string_valid_bytes, &col_string, &pool, 3).unwrap();
+        assert_eq!(val_string2, FieldValue::String("TestString".to_string()));
+    }
     use super::*;
     use crate::database::string_pool::CODEPAGE_UTF8;
 
@@ -742,10 +766,7 @@ mod tests {
     fn test_field_value_display_and_helpers() {
         assert_eq!(format!("{}", FieldValue::Short(10)), "10");
         assert_eq!(format!("{}", FieldValue::Long(20)), "20");
-        assert_eq!(
-            format!("{}", FieldValue::String("abc".to_string())),
-            "'abc'"
-        );
+        assert_eq!(format!("{}", FieldValue::String("abc".to_string())), "abc");
         assert_eq!(
             format!("{}", FieldValue::Stream(StringPoolId::new(1))),
             "StringPool#1"

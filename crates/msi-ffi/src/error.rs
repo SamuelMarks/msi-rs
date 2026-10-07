@@ -166,7 +166,9 @@ pub const fn map_msi_error(err: &msi::MsiError) -> i32 {
         | msi::MsiError::WixCompiler { .. }
         | msi::MsiError::InvalidWixObject { .. }
         | msi::MsiError::WixLinker { .. }
-        | msi::MsiError::IceValidation { .. } => MSI_ERROR_WIX,
+        | msi::MsiError::IceValidation { .. }
+        | msi::MsiError::PatchXmlParse { .. }
+        | msi::MsiError::PatchCorruptCab { .. } => MSI_ERROR_WIX,
         _ => MSI_ERROR_INVALID_ARGUMENT,
     }
 }
@@ -314,6 +316,308 @@ pub unsafe fn c_str_to_opt_str<'a>(
                 format!("Argument '{name}' is not valid UTF-8: {e}"),
             )
         })
+    }
+}
+
+/// Generic failure.
+pub const E_FAIL: i32 = -2147467259; // 0x80004005
+
+/// Invalid argument.
+pub const E_INVALIDARG: i32 = -2147024809; // 0x80070057
+
+/// File not found.
+pub const STG_E_FILENOTFOUND: i32 = -2147287038; // 0x80030002
+
+/// Read fault.
+pub const STG_E_READFAULT: i32 = -2147287010; // 0x8003001E
+
+/// Not implemented.
+pub const E_NOTIMPL: i32 = -2147467263; // 0x80004001
+
+/// COM class string error.
+pub const CO_E_CLASSSTRING: i32 = -2147221005; // 0x800401F3
+
+/// Maps an internal [`msi::MsiError`] to an FFI HRESULT error code.
+///
+/// # Arguments
+///
+/// * `err` - Reference to internal error.
+///
+/// # Returns
+///
+/// Corresponding COM HRESULT.
+#[must_use]
+pub const fn map_msi_error_to_hresult(err: &msi::MsiError) -> i32 {
+    match err {
+        msi::MsiError::Io { .. } => STG_E_READFAULT,
+        msi::MsiError::InvalidArgument { .. } => E_INVALIDARG,
+        msi::MsiError::MissingTable { .. } => STG_E_FILENOTFOUND,
+        msi::MsiError::FileNotFound { .. } => STG_E_FILENOTFOUND,
+        msi::MsiError::Validation { .. } => E_FAIL,
+        msi::MsiError::Unsupported { .. } => E_NOTIMPL,
+        msi::MsiError::Sql { .. } => E_FAIL,
+        msi::MsiError::InvalidCfbSignature { .. } => E_INVALIDARG,
+        msi::MsiError::InvalidCfbClsid { .. } => E_INVALIDARG,
+        msi::MsiError::InvalidCfbMinorVersion { .. } => E_INVALIDARG,
+        msi::MsiError::InvalidCfbMajorVersion { .. } => E_INVALIDARG,
+        msi::MsiError::InvalidCfbByteOrder { .. } => E_INVALIDARG,
+        msi::MsiError::InvalidCfbSectorShift { .. } => E_INVALIDARG,
+        msi::MsiError::InvalidCfbMiniSectorShift { .. } => E_INVALIDARG,
+        msi::MsiError::InvalidCfbReserved { .. } => E_INVALIDARG,
+        msi::MsiError::InvalidCfbDirectorySectors { .. } => E_INVALIDARG,
+        msi::MsiError::InvalidCfbMiniStreamCutoff { .. } => E_INVALIDARG,
+        msi::MsiError::InvalidSector { .. } => E_INVALIDARG,
+        msi::MsiError::SectorChainCycle { .. } => E_FAIL,
+        msi::MsiError::InvalidDirectoryEntry { .. } => E_INVALIDARG,
+        msi::MsiError::StreamNotFound { .. } => STG_E_FILENOTFOUND,
+        msi::MsiError::DuplicateDirectoryEntry { .. } => E_FAIL,
+        msi::MsiError::CfbCorrupted { .. } => E_FAIL,
+        msi::MsiError::InvalidStreamName { .. } => E_INVALIDARG,
+        msi::MsiError::StreamSizeMismatch { .. } => E_INVALIDARG,
+        msi::MsiError::InvalidCabSignature { .. } => E_INVALIDARG,
+        msi::MsiError::InvalidCabVersion { .. } => E_INVALIDARG,
+        msi::MsiError::InvalidCabChecksum { .. } => E_INVALIDARG,
+        msi::MsiError::InvalidCabData { .. } => E_INVALIDARG,
+        msi::MsiError::DecompressionFailed { .. } => E_FAIL,
+        msi::MsiError::CompressionFailed { .. } => E_FAIL,
+        msi::MsiError::CabinetFileNotFound { .. } => STG_E_FILENOTFOUND,
+        msi::MsiError::InvalidColumnType { .. } => E_INVALIDARG,
+        msi::MsiError::InvalidStringPool { .. } => E_INVALIDARG,
+        msi::MsiError::StringPoolIndexOutOfBounds { .. } => E_INVALIDARG,
+        msi::MsiError::InvalidSummaryInfo { .. } => E_INVALIDARG,
+        msi::MsiError::RecordLengthMismatch { .. } => E_INVALIDARG,
+        msi::MsiError::Preprocessor { .. } => E_FAIL,
+        msi::MsiError::XmlParse { .. } => E_FAIL,
+        msi::MsiError::WixCompiler { .. } => E_FAIL,
+        msi::MsiError::InvalidWixObject { .. } => E_INVALIDARG,
+        msi::MsiError::WixLinker { .. } => E_FAIL,
+        msi::MsiError::WixExtension { .. } => E_FAIL,
+        msi::MsiError::ExtensionXmlParse { .. } => E_FAIL,
+        msi::MsiError::LinkerPayloadError { .. } => E_FAIL,
+        msi::MsiError::CustomActionBridgeError { .. } => E_FAIL,
+        msi::MsiError::IceValidation { .. } => E_FAIL,
+        msi::MsiError::ExecutionFailed { .. } => E_FAIL,
+        msi::MsiError::RollbackFailed { .. } => E_FAIL,
+        msi::MsiError::TransactionStateMismatch { .. } => E_INVALIDARG,
+        msi::MsiError::DiskCostExceeded { .. } => E_FAIL,
+        msi::MsiError::CustomActionFailed { .. } => E_FAIL,
+        msi::MsiError::ScriptError { .. } => E_FAIL,
+        msi::MsiError::UiError { .. } => E_FAIL,
+        msi::MsiError::ScriptRuntimeError { .. } => E_FAIL,
+        msi::MsiError::WorkerIpcError { .. } => E_FAIL,
+        msi::MsiError::BootHarnessError { .. } => E_FAIL,
+        msi::MsiError::ConsoleInitError { .. } => E_FAIL,
+        msi::MsiError::UkiPackageError { .. } => E_FAIL,
+        msi::MsiError::BlockDeviceError { .. } => E_FAIL,
+        msi::MsiError::PartitionError { .. } => E_FAIL,
+        msi::MsiError::FileSystemFormatError { .. } => E_FAIL,
+        msi::MsiError::SysrootMountError { .. } => E_FAIL,
+        msi::MsiError::RegistryHiveError { .. } => E_FAIL,
+        msi::MsiError::DriverServicingError { .. } => E_FAIL,
+        msi::MsiError::BootloaderError { .. } => E_FAIL,
+        msi::MsiError::UnattendError { .. } => E_FAIL,
+        msi::MsiError::UnsupportedPlatform { .. } => E_NOTIMPL,
+        msi::MsiError::UnsupportedPlatformFeature { .. } => E_NOTIMPL,
+        msi::MsiError::GuiError { .. } => E_FAIL,
+        msi::MsiError::NetworkConfigError { .. } => E_FAIL,
+        msi::MsiError::UserProvisioningError { .. } => E_FAIL,
+        msi::MsiError::LiveMediaError { .. } => E_FAIL,
+        msi::MsiError::BurnBundleError { .. } => E_FAIL,
+        msi::MsiError::Chainer { .. } => E_FAIL,
+        msi::MsiError::SqlProvisioning { .. } => E_FAIL,
+        msi::MsiError::ServiceConfiguration { .. } => E_FAIL,
+        msi::MsiError::InvalidArchitecture { .. } => E_INVALIDARG,
+        msi::MsiError::InvalidSummaryTemplate { .. } => E_INVALIDARG,
+        msi::MsiError::InvalidStorageClsid { .. } => E_INVALIDARG,
+        msi::MsiError::WimInvalidMagic { .. } => E_INVALIDARG,
+        msi::MsiError::WimChecksumMismatch { .. } => E_INVALIDARG,
+        msi::MsiError::WimDecompressionError { .. } => E_FAIL,
+        msi::MsiError::WimXmlParseError { .. } => E_FAIL,
+        msi::MsiError::PhysicalLayoutError { .. } => E_FAIL,
+        msi::MsiError::DataIntegrityError { .. } => E_FAIL,
+        msi::MsiError::SystemConfigurationError { .. } => E_FAIL,
+        msi::MsiError::OdbcError { .. } => E_FAIL,
+        msi::MsiError::FontRegistrationError { .. } => E_FAIL,
+        msi::MsiError::SystemdError { .. } => E_FAIL,
+        msi::MsiError::LaunchdError { .. } => E_FAIL,
+        msi::MsiError::SmfError { .. } => E_FAIL,
+        msi::MsiError::RcError { .. } => E_FAIL,
+        msi::MsiError::IpcError { .. } => E_FAIL,
+        msi::MsiError::RegistryError { .. } => E_FAIL,
+        msi::MsiError::FileOperationError { .. } => STG_E_READFAULT,
+        msi::MsiError::OdbcConfigError { .. } => E_FAIL,
+        msi::MsiError::ComRpcError { .. } => CO_E_CLASSSTRING,
+        msi::MsiError::MsiServerError { .. } => E_FAIL,
+        msi::MsiError::AssemblyError { .. } => E_FAIL,
+        msi::MsiError::SxSError { .. } => E_FAIL,
+        msi::MsiError::User32RenderError { .. } => E_FAIL,
+        msi::MsiError::DispatchBridgeError { .. } => CO_E_CLASSSTRING,
+        msi::MsiError::ActiveXError { .. } => CO_E_CLASSSTRING,
+        msi::MsiError::PatchApplyError { .. } => E_FAIL,
+        msi::MsiError::DeltaDecodeError { .. } => E_FAIL,
+        msi::MsiError::ActionExecutionError { .. } => E_FAIL,
+        msi::MsiError::LocatorError { .. } => E_FAIL,
+        msi::MsiError::AssemblyResolutionError { .. } => E_FAIL,
+        msi::MsiError::DatabaseMergeError { .. } => E_FAIL,
+        msi::MsiError::DatabaseExportError { .. } => E_FAIL,
+        msi::MsiError::SourceListError { .. } => E_FAIL,
+        msi::MsiError::AdvertisementError { .. } => E_FAIL,
+        msi::MsiError::PatchApplicationError { .. } => E_FAIL,
+        msi::MsiError::UiPreviewError { .. } => E_FAIL,
+        msi::MsiError::LoggingCallbackError { .. } => E_FAIL,
+        msi::MsiError::ComRegistrationError { .. } => E_FAIL,
+        msi::MsiError::IisConfigurationError { .. } => E_FAIL,
+        msi::MsiError::FirewallConfigError { .. } => E_FAIL,
+        msi::MsiError::UserManagementError { .. } => E_FAIL,
+        msi::MsiError::TransformConflict { .. } => 1624,
+        msi::MsiError::InvalidTransform { .. } => 1624,
+        msi::MsiError::PatchSuperseded(_) => 1648,
+        msi::MsiError::WrongPatchBaseline(_) => 1642,
+        msi::MsiError::InvalidPatchSequence(_) => 1643,
+        msi::MsiError::PatchXmlParse { .. } => E_FAIL,
+        msi::MsiError::PatchCorruptCab { .. } => STG_E_READFAULT,
+    }
+}
+
+/// Maps an internal [`msi::MsiError`] to an FFI LSTATUS (Win32 Error) code.
+///
+/// # Arguments
+///
+/// * `err` - Reference to internal error.
+///
+/// # Returns
+///
+/// Corresponding Win32 LSTATUS code.
+#[must_use]
+pub const fn map_msi_error_to_lstatus(err: &msi::MsiError) -> u32 {
+    match err {
+        msi::MsiError::Io { .. } => crate::win32::ERROR_OPEN_FAILED,
+        msi::MsiError::InvalidArgument { .. } => crate::win32::ERROR_INVALID_PARAMETER,
+        msi::MsiError::MissingTable { .. } => crate::win32::ERROR_FILE_NOT_FOUND,
+        msi::MsiError::FileNotFound { .. } => crate::win32::ERROR_FILE_NOT_FOUND,
+        msi::MsiError::Validation { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::Unsupported { .. } => crate::win32::ERROR_NOT_SUPPORTED,
+        msi::MsiError::Sql { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::InvalidCfbSignature { .. } => crate::win32::ERROR_INVALID_DATA,
+        msi::MsiError::InvalidCfbClsid { .. } => crate::win32::ERROR_INVALID_DATA,
+        msi::MsiError::InvalidCfbMinorVersion { .. } => crate::win32::ERROR_INVALID_DATA,
+        msi::MsiError::InvalidCfbMajorVersion { .. } => crate::win32::ERROR_INVALID_DATA,
+        msi::MsiError::InvalidCfbByteOrder { .. } => crate::win32::ERROR_INVALID_DATA,
+        msi::MsiError::InvalidCfbSectorShift { .. } => crate::win32::ERROR_INVALID_DATA,
+        msi::MsiError::InvalidCfbMiniSectorShift { .. } => crate::win32::ERROR_INVALID_DATA,
+        msi::MsiError::InvalidCfbReserved { .. } => crate::win32::ERROR_INVALID_DATA,
+        msi::MsiError::InvalidCfbDirectorySectors { .. } => crate::win32::ERROR_INVALID_DATA,
+        msi::MsiError::InvalidCfbMiniStreamCutoff { .. } => crate::win32::ERROR_INVALID_DATA,
+        msi::MsiError::InvalidSector { .. } => crate::win32::ERROR_INVALID_DATA,
+        msi::MsiError::SectorChainCycle { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::InvalidDirectoryEntry { .. } => crate::win32::ERROR_INVALID_DATA,
+        msi::MsiError::StreamNotFound { .. } => crate::win32::ERROR_FILE_NOT_FOUND,
+        msi::MsiError::DuplicateDirectoryEntry { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::CfbCorrupted { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::InvalidStreamName { .. } => crate::win32::ERROR_INVALID_DATA,
+        msi::MsiError::StreamSizeMismatch { .. } => crate::win32::ERROR_INVALID_DATA,
+        msi::MsiError::InvalidCabSignature { .. } => crate::win32::ERROR_INVALID_DATA,
+        msi::MsiError::InvalidCabVersion { .. } => crate::win32::ERROR_INVALID_DATA,
+        msi::MsiError::InvalidCabChecksum { .. } => crate::win32::ERROR_INVALID_DATA,
+        msi::MsiError::InvalidCabData { .. } => crate::win32::ERROR_INVALID_DATA,
+        msi::MsiError::DecompressionFailed { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::CompressionFailed { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::CabinetFileNotFound { .. } => crate::win32::ERROR_FILE_NOT_FOUND,
+        msi::MsiError::InvalidColumnType { .. } => crate::win32::ERROR_INVALID_DATA,
+        msi::MsiError::InvalidStringPool { .. } => crate::win32::ERROR_INVALID_DATA,
+        msi::MsiError::StringPoolIndexOutOfBounds { .. } => crate::win32::ERROR_INVALID_DATA,
+        msi::MsiError::InvalidSummaryInfo { .. } => crate::win32::ERROR_INVALID_DATA,
+        msi::MsiError::RecordLengthMismatch { .. } => crate::win32::ERROR_INVALID_DATA,
+        msi::MsiError::Preprocessor { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::XmlParse { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::WixCompiler { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::InvalidWixObject { .. } => crate::win32::ERROR_INVALID_DATA,
+        msi::MsiError::WixLinker { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::WixExtension { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::ExtensionXmlParse { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::LinkerPayloadError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::CustomActionBridgeError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::IceValidation { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::ExecutionFailed { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::RollbackFailed { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::TransactionStateMismatch { .. } => crate::win32::ERROR_INVALID_DATA,
+        msi::MsiError::DiskCostExceeded { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::CustomActionFailed { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::ScriptError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::UiError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::ScriptRuntimeError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::WorkerIpcError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::BootHarnessError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::ConsoleInitError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::UkiPackageError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::BlockDeviceError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::PartitionError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::FileSystemFormatError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::SysrootMountError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::RegistryHiveError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::DriverServicingError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::BootloaderError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::UnattendError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::UnsupportedPlatform { .. } => crate::win32::ERROR_NOT_SUPPORTED,
+        msi::MsiError::UnsupportedPlatformFeature { .. } => crate::win32::ERROR_NOT_SUPPORTED,
+        msi::MsiError::GuiError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::NetworkConfigError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::UserProvisioningError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::LiveMediaError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::BurnBundleError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::Chainer { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::SqlProvisioning { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::ServiceConfiguration { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::InvalidArchitecture { .. } => crate::win32::ERROR_INVALID_DATA,
+        msi::MsiError::InvalidSummaryTemplate { .. } => crate::win32::ERROR_INVALID_DATA,
+        msi::MsiError::InvalidStorageClsid { .. } => crate::win32::ERROR_INVALID_DATA,
+        msi::MsiError::WimInvalidMagic { .. } => crate::win32::ERROR_INVALID_DATA,
+        msi::MsiError::WimChecksumMismatch { .. } => crate::win32::ERROR_INVALID_DATA,
+        msi::MsiError::WimDecompressionError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::WimXmlParseError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::PhysicalLayoutError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::DataIntegrityError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::SystemConfigurationError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::OdbcError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::FontRegistrationError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::SystemdError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::LaunchdError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::SmfError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::RcError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::IpcError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::RegistryError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::FileOperationError { .. } => crate::win32::ERROR_OPEN_FAILED,
+        msi::MsiError::OdbcConfigError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::ComRpcError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::MsiServerError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::AssemblyError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::SxSError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::User32RenderError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::DispatchBridgeError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::ActiveXError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::PatchApplyError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::DeltaDecodeError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::ActionExecutionError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::LocatorError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::AssemblyResolutionError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::DatabaseMergeError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::DatabaseExportError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::SourceListError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::AdvertisementError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::PatchApplicationError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::UiPreviewError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::LoggingCallbackError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::ComRegistrationError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::IisConfigurationError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::FirewallConfigError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::UserManagementError { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::TransformConflict { .. } => 1624,
+        msi::MsiError::InvalidTransform { .. } => 1624,
+        msi::MsiError::PatchSuperseded(_) => 1648,
+        msi::MsiError::WrongPatchBaseline(_) => 1642,
+        msi::MsiError::InvalidPatchSequence(_) => 1643,
+        msi::MsiError::PatchXmlParse { .. } => crate::win32::ERROR_INVALID_DATA,
+        msi::MsiError::PatchCorruptCab { .. } => crate::win32::ERROR_INVALID_DATA,
     }
 }
 
@@ -470,6 +774,390 @@ mod tests {
                 message: "err".to_string()
             }),
             MSI_ERROR_WIX
+        );
+    }
+
+    #[test]
+    fn test_map_msi_error_to_hresult_all() {
+        let errs = vec![
+            msi::MsiError::Io("io".to_string()),
+            msi::MsiError::InvalidArgument {
+                argument: String::new(),
+                reason: String::new(),
+            },
+            msi::MsiError::MissingTable {
+                name: String::new(),
+            },
+            msi::MsiError::FileNotFound {
+                path: String::new(),
+            },
+            msi::MsiError::Validation {
+                element: String::new(),
+                reason: String::new(),
+            },
+            msi::MsiError::Unsupported {
+                name: String::new(),
+            },
+            msi::MsiError::Sql {
+                message: String::new(),
+            },
+            msi::MsiError::InvalidCfbSignature { found: [0; 8] },
+            msi::MsiError::InvalidCfbClsid { found: [0; 16] },
+            msi::MsiError::InvalidCfbMinorVersion { found: 0 },
+            msi::MsiError::InvalidCfbMajorVersion { found: 0 },
+            msi::MsiError::InvalidCfbByteOrder { found: 0 },
+            msi::MsiError::InvalidCfbSectorShift {
+                major_version: 0,
+                shift: 0,
+            },
+            msi::MsiError::InvalidCfbMiniSectorShift { shift: 0 },
+            msi::MsiError::InvalidCfbReserved { found: [0; 6] },
+            msi::MsiError::InvalidCfbDirectorySectors {
+                major_version: 0,
+                count: 0,
+            },
+            msi::MsiError::InvalidCfbMiniStreamCutoff { cutoff: 0 },
+            msi::MsiError::InvalidSector {
+                sector: 0,
+                reason: String::new(),
+            },
+            msi::MsiError::SectorChainCycle { sector: 0 },
+            msi::MsiError::InvalidDirectoryEntry {
+                index: 0,
+                reason: String::new(),
+            },
+            msi::MsiError::StreamNotFound {
+                name: String::new(),
+            },
+            msi::MsiError::DuplicateDirectoryEntry {
+                name: String::new(),
+            },
+            msi::MsiError::CfbCorrupted {
+                offset: 0,
+                reason: String::new(),
+            },
+            msi::MsiError::InvalidStreamName {
+                name: String::new(),
+                reason: String::new(),
+            },
+            msi::MsiError::StreamSizeMismatch {
+                expected: 0,
+                actual: 0,
+            },
+            msi::MsiError::InvalidCabSignature { found: [0; 4] },
+            msi::MsiError::InvalidCabVersion { major: 0, minor: 0 },
+            msi::MsiError::InvalidCabChecksum {
+                expected: 0,
+                actual: 0,
+            },
+            msi::MsiError::InvalidCabData {
+                reason: String::new(),
+            },
+            msi::MsiError::DecompressionFailed {
+                method: String::new(),
+                reason: String::new(),
+            },
+            msi::MsiError::CompressionFailed {
+                method: String::new(),
+                reason: String::new(),
+            },
+            msi::MsiError::CabinetFileNotFound {
+                name: String::new(),
+            },
+            msi::MsiError::InvalidColumnType { raw: 0 },
+            msi::MsiError::InvalidStringPool {
+                reason: String::new(),
+            },
+            msi::MsiError::StringPoolIndexOutOfBounds { index: 0, max: 0 },
+            msi::MsiError::InvalidSummaryInfo {
+                reason: String::new(),
+            },
+            msi::MsiError::RecordLengthMismatch {
+                expected: 0,
+                actual: 0,
+            },
+            msi::MsiError::Preprocessor {
+                line: 0,
+                column: 0,
+                message: String::new(),
+            },
+            msi::MsiError::XmlParse {
+                line: 0,
+                column: 0,
+                message: String::new(),
+            },
+            msi::MsiError::WixCompiler {
+                element: String::new(),
+                message: String::new(),
+            },
+            msi::MsiError::InvalidWixObject {
+                reason: String::new(),
+            },
+            msi::MsiError::WixLinker {
+                message: String::new(),
+            },
+            msi::MsiError::WixExtension {
+                extension: String::new(),
+                message: String::new(),
+            },
+            msi::MsiError::ExtensionXmlParse {
+                extension: String::new(),
+                reason: String::new(),
+            },
+            msi::MsiError::LinkerPayloadError {
+                payload_id: String::new(),
+                reason: String::new(),
+            },
+            msi::MsiError::CustomActionBridgeError {
+                action: String::new(),
+                reason: String::new(),
+            },
+            msi::MsiError::IceValidation {
+                ice: String::new(),
+                message: String::new(),
+            },
+            msi::MsiError::ExecutionFailed {
+                action: String::new(),
+                return_code: 0,
+                message: String::new(),
+            },
+            msi::MsiError::RollbackFailed {
+                action: String::new(),
+                reason: String::new(),
+            },
+            msi::MsiError::TransactionStateMismatch {
+                expected: String::new(),
+                actual: String::new(),
+            },
+            msi::MsiError::DiskCostExceeded {
+                volume: String::new(),
+                required_bytes: 0,
+                available_bytes: 0,
+            },
+            msi::MsiError::CustomActionFailed {
+                action: String::new(),
+                reason: String::new(),
+            },
+            msi::MsiError::ScriptError {
+                opcode: String::new(),
+                reason: String::new(),
+            },
+            msi::MsiError::UiError {
+                dialog: String::new(),
+                control: String::new(),
+                reason: String::new(),
+            },
+            msi::MsiError::ScriptRuntimeError {
+                line: 0,
+                col: 0,
+                message: String::new(),
+            },
+            msi::MsiError::WorkerIpcError {
+                reason: String::new(),
+            },
+            msi::MsiError::BootHarnessError {
+                recipe: String::new(),
+                reason: String::new(),
+            },
+            msi::MsiError::ConsoleInitError {
+                device: String::new(),
+                reason: String::new(),
+            },
+            msi::MsiError::UkiPackageError {
+                reason: String::new(),
+            },
+            msi::MsiError::BlockDeviceError {
+                path: String::new(),
+                reason: String::new(),
+            },
+            msi::MsiError::PartitionError {
+                reason: String::new(),
+            },
+            msi::MsiError::FileSystemFormatError {
+                fs_type: String::new(),
+                reason: String::new(),
+            },
+            msi::MsiError::SysrootMountError {
+                path: String::new(),
+                reason: String::new(),
+            },
+            msi::MsiError::RegistryHiveError {
+                hive: String::new(),
+                reason: String::new(),
+            },
+            msi::MsiError::DriverServicingError {
+                inf: String::new(),
+                reason: String::new(),
+            },
+            msi::MsiError::BootloaderError {
+                target: String::new(),
+                reason: String::new(),
+            },
+            msi::MsiError::UnattendError {
+                reason: String::new(),
+            },
+            msi::MsiError::UnsupportedPlatform {
+                platform: String::new(),
+                reason: String::new(),
+            },
+            msi::MsiError::UnsupportedPlatformFeature {
+                feature: String::new(),
+                target_os: msi::platform::TargetOs::Windows,
+                reason: String::new(),
+            },
+            msi::MsiError::GuiError {
+                reason: String::new(),
+            },
+            msi::MsiError::NetworkConfigError {
+                reason: String::new(),
+            },
+            msi::MsiError::UserProvisioningError {
+                reason: String::new(),
+            },
+            msi::MsiError::LiveMediaError {
+                reason: String::new(),
+            },
+            msi::MsiError::BurnBundleError {
+                reason: String::new(),
+            },
+            msi::MsiError::Chainer(String::new()),
+            msi::MsiError::SqlProvisioning(String::new()),
+            msi::MsiError::ServiceConfiguration(String::new()),
+            msi::MsiError::InvalidArchitecture {
+                name: String::new(),
+            },
+            msi::MsiError::InvalidSummaryTemplate {
+                template: String::new(),
+                reason: String::new(),
+            },
+            msi::MsiError::InvalidStorageClsid {
+                clsid: String::new(),
+            },
+            msi::MsiError::WimInvalidMagic { magic: [0; 8] },
+            msi::MsiError::WimChecksumMismatch {
+                expected: String::new(),
+                actual: String::new(),
+            },
+            msi::MsiError::WimDecompressionError {
+                algorithm: String::new(),
+                reason: String::new(),
+            },
+            msi::MsiError::WimXmlParseError {
+                reason: String::new(),
+            },
+            msi::MsiError::PhysicalLayoutError {
+                reason: String::new(),
+            },
+            msi::MsiError::DataIntegrityError {
+                reason: String::new(),
+            },
+            msi::MsiError::SystemConfigurationError(String::new()),
+            msi::MsiError::OdbcError(String::new()),
+            msi::MsiError::FontRegistrationError(String::new()),
+            msi::MsiError::SystemdError(String::new()),
+            msi::MsiError::LaunchdError(String::new()),
+            msi::MsiError::SmfError(String::new()),
+            msi::MsiError::RcError(String::new()),
+            msi::MsiError::IpcError(String::new()),
+            msi::MsiError::RegistryError(String::new()),
+            msi::MsiError::FileOperationError(String::new()),
+            msi::MsiError::OdbcConfigError(String::new()),
+            msi::MsiError::ComRpcError(String::new()),
+            msi::MsiError::MsiServerError(String::new()),
+            msi::MsiError::AssemblyError(String::new()),
+            msi::MsiError::SxSError(String::new()),
+            msi::MsiError::User32RenderError(String::new()),
+            msi::MsiError::DispatchBridgeError(String::new()),
+            msi::MsiError::ActiveXError(String::new()),
+            msi::MsiError::PatchApplyError(String::new()),
+            msi::MsiError::DeltaDecodeError(String::new()),
+            msi::MsiError::ActionExecutionError(String::new()),
+            msi::MsiError::LocatorError(String::new()),
+            msi::MsiError::AssemblyResolutionError(String::new()),
+            msi::MsiError::DatabaseMergeError(String::new()),
+            msi::MsiError::DatabaseExportError(String::new()),
+            msi::MsiError::SourceListError(String::new()),
+            msi::MsiError::AdvertisementError(String::new()),
+            msi::MsiError::PatchApplicationError(String::new()),
+            msi::MsiError::UiPreviewError(String::new()),
+            msi::MsiError::LoggingCallbackError(String::new()),
+            msi::MsiError::ComRegistrationError(String::new()),
+            msi::MsiError::IisConfigurationError(String::new()),
+            msi::MsiError::FirewallConfigError(String::new()),
+            msi::MsiError::UserManagementError(String::new()),
+            msi::MsiError::TransformConflict {
+                reason: String::new(),
+            },
+            msi::MsiError::InvalidTransform {
+                reason: String::new(),
+            },
+            msi::MsiError::PatchSuperseded(String::new()),
+            msi::MsiError::WrongPatchBaseline(String::new()),
+            msi::MsiError::InvalidPatchSequence(String::new()),
+            msi::MsiError::PatchXmlParse {
+                reason: String::new(),
+            },
+            msi::MsiError::PatchCorruptCab {
+                reason: String::new(),
+            },
+        ];
+        for err in &errs {
+            let _ = map_msi_error_to_hresult(err);
+            let _ = map_msi_error_to_lstatus(err);
+        }
+    }
+
+    #[test]
+    fn test_map_msi_error_to_hresult() {
+        assert_eq!(
+            map_msi_error_to_hresult(&msi::MsiError::InvalidArgument {
+                argument: "test".to_string(),
+                reason: "bad".to_string()
+            }),
+            E_INVALIDARG
+        );
+        assert_eq!(
+            map_msi_error_to_hresult(&msi::MsiError::CabinetFileNotFound {
+                name: "test".to_string(),
+            }),
+            STG_E_FILENOTFOUND
+        );
+        assert_eq!(
+            map_msi_error_to_hresult(&msi::MsiError::Io("io".to_string())),
+            STG_E_READFAULT
+        );
+        assert_eq!(
+            map_msi_error_to_hresult(&msi::MsiError::Unsupported {
+                name: "test".to_string(),
+            }),
+            E_NOTIMPL
+        );
+    }
+
+    #[test]
+    fn test_map_msi_error_to_lstatus() {
+        assert_eq!(
+            map_msi_error_to_lstatus(&msi::MsiError::InvalidArgument {
+                argument: "test".to_string(),
+                reason: "bad".to_string()
+            }),
+            crate::win32::ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            map_msi_error_to_lstatus(&msi::MsiError::CabinetFileNotFound {
+                name: "test".to_string(),
+            }),
+            crate::win32::ERROR_FILE_NOT_FOUND
+        );
+        assert_eq!(
+            map_msi_error_to_lstatus(&msi::MsiError::Io("io".to_string())),
+            crate::win32::ERROR_OPEN_FAILED
+        );
+        assert_eq!(
+            map_msi_error_to_lstatus(&msi::MsiError::Unsupported {
+                name: "test".to_string(),
+            }),
+            crate::win32::ERROR_NOT_SUPPORTED
         );
     }
 }

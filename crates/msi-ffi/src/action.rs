@@ -63,14 +63,36 @@ pub struct ReinstallMode(pub u32);
 ///
 /// Pointers must point to valid null-terminated strings or be NULL.
 #[no_mangle]
-pub unsafe extern "system" fn MsiDoActionW(_h_install: MSIHANDLE, _sz_action: ActionNameW) -> u32 {
+pub unsafe extern "system" fn MsiDoActionW(h_install: MSIHANDLE, sz_action: ActionNameW) -> u32 {
     std::panic::catch_unwind(|| {
-        if _sz_action.0.is_null() {
-            return 87; // ERROR_INVALID_PARAMETER
+        if sz_action.0.is_null() {
+            return crate::win32::ERROR_INVALID_PARAMETER;
         }
-        120 // ERROR_CALL_NOT_IMPLEMENTED
+
+        let _action_name = match crate::win32::strings::lpcwstr_to_string(sz_action.0) {
+            Some(name) => name,
+            None => return crate::win32::ERROR_INVALID_PARAMETER,
+        };
+
+        crate::handles::with_handle_mut(h_install, |obj| {
+            if let crate::handles::MsiObject::Transaction(_transaction) = obj {
+                let mut txn = msi::execution::transaction::Transaction::new(
+                    msi::wix::linker::LinkedDatabase::default(),
+                    msi::execution::properties::EvaluationContext::new(),
+                    msi::execution::costing::DiskCostEngine::new(),
+                );
+                let mut dispatcher = msi::execution::dispatcher::ActionDispatcher::new(&mut txn);
+                match dispatcher.dispatch_action(&_action_name) {
+                    Ok(_) => crate::win32::ERROR_SUCCESS,
+                    Err(e) => crate::error::map_msi_error_to_lstatus(&e),
+                }
+            } else {
+                crate::win32::ERROR_INVALID_HANDLE
+            }
+        })
+        .unwrap_or(crate::win32::ERROR_INVALID_HANDLE)
     })
-    .unwrap_or(1603) // ERROR_INSTALL_FAILURE
+    .unwrap_or(crate::win32::ERROR_INSTALL_FAILURE)
 }
 
 /// Executes a built-in action, custom action, or user interface wizard sequence.
@@ -93,14 +115,36 @@ pub unsafe extern "system" fn MsiDoActionW(_h_install: MSIHANDLE, _sz_action: Ac
 ///
 /// Pointers must point to valid null-terminated strings or be NULL.
 #[no_mangle]
-pub unsafe extern "system" fn MsiDoActionA(_h_install: MSIHANDLE, _sz_action: ActionNameA) -> u32 {
+pub unsafe extern "system" fn MsiDoActionA(h_install: MSIHANDLE, sz_action: ActionNameA) -> u32 {
     std::panic::catch_unwind(|| {
-        if _sz_action.0.is_null() {
-            return 87; // ERROR_INVALID_PARAMETER
+        if sz_action.0.is_null() {
+            return crate::win32::ERROR_INVALID_PARAMETER;
         }
-        120 // ERROR_CALL_NOT_IMPLEMENTED
+
+        let _action_name = match crate::win32::strings::lpcstr_to_string(sz_action.0) {
+            Some(name) => name,
+            None => return crate::win32::ERROR_INVALID_PARAMETER,
+        };
+
+        crate::handles::with_handle_mut(h_install, |obj| {
+            if let crate::handles::MsiObject::Transaction(_transaction) = obj {
+                let mut txn = msi::execution::transaction::Transaction::new(
+                    msi::wix::linker::LinkedDatabase::default(),
+                    msi::execution::properties::EvaluationContext::new(),
+                    msi::execution::costing::DiskCostEngine::new(),
+                );
+                let mut dispatcher = msi::execution::dispatcher::ActionDispatcher::new(&mut txn);
+                match dispatcher.dispatch_action(&_action_name) {
+                    Ok(_) => crate::win32::ERROR_SUCCESS,
+                    Err(e) => crate::error::map_msi_error_to_lstatus(&e),
+                }
+            } else {
+                crate::win32::ERROR_INVALID_HANDLE
+            }
+        })
+        .unwrap_or(crate::win32::ERROR_INVALID_HANDLE)
     })
-    .unwrap_or(1603)
+    .unwrap_or(crate::win32::ERROR_INSTALL_FAILURE)
 }
 
 /// Executes another action sequence as described in the specified table.
@@ -125,17 +169,41 @@ pub unsafe extern "system" fn MsiDoActionA(_h_install: MSIHANDLE, _sz_action: Ac
 /// Pointers must be valid or null.
 #[no_mangle]
 pub unsafe extern "system" fn MsiSequenceW(
-    _h_install: MSIHANDLE,
-    _sz_table: SequenceNameW,
+    h_install: MSIHANDLE,
+    sz_table: SequenceNameW,
     _i_sequence_mode: i32,
 ) -> u32 {
     std::panic::catch_unwind(|| {
-        if _sz_table.0.is_null() {
-            return 87; // ERROR_INVALID_PARAMETER
+        if sz_table.0.is_null() {
+            return crate::win32::ERROR_INVALID_PARAMETER;
         }
-        120 // ERROR_CALL_NOT_IMPLEMENTED
+
+        let _sequence_name = match crate::win32::strings::lpcwstr_to_string(sz_table.0) {
+            Some(name) => name,
+            None => return crate::win32::ERROR_INVALID_PARAMETER,
+        };
+
+        crate::handles::with_handle_mut(h_install, |obj| {
+            if let crate::handles::MsiObject::Transaction(_transaction) = obj {
+                let mut txn = msi::execution::transaction::Transaction::new(
+                    msi::wix::linker::LinkedDatabase::default(),
+                    msi::execution::properties::EvaluationContext::new(),
+                    msi::execution::costing::DiskCostEngine::new(),
+                );
+                let mut dispatcher = msi::execution::dispatcher::ActionDispatcher::new(&mut txn);
+                match dispatcher.execute_sequence(&msi::execution::sequence::SequenceName::from(
+                    _sequence_name.as_str(),
+                )) {
+                    Ok(_) => crate::win32::ERROR_SUCCESS,
+                    Err(e) => crate::error::map_msi_error_to_lstatus(&e),
+                }
+            } else {
+                crate::win32::ERROR_INVALID_HANDLE
+            }
+        })
+        .unwrap_or(crate::win32::ERROR_INVALID_HANDLE)
     })
-    .unwrap_or(1603)
+    .unwrap_or(crate::win32::ERROR_INSTALL_FAILURE)
 }
 
 /// Executes another action sequence as described in the specified table.
@@ -160,17 +228,41 @@ pub unsafe extern "system" fn MsiSequenceW(
 /// Pointers must be valid or null.
 #[no_mangle]
 pub unsafe extern "system" fn MsiSequenceA(
-    _h_install: MSIHANDLE,
-    _sz_table: SequenceNameA,
+    h_install: MSIHANDLE,
+    sz_table: SequenceNameA,
     _i_sequence_mode: i32,
 ) -> u32 {
     std::panic::catch_unwind(|| {
-        if _sz_table.0.is_null() {
-            return 87; // ERROR_INVALID_PARAMETER
+        if sz_table.0.is_null() {
+            return crate::win32::ERROR_INVALID_PARAMETER;
         }
-        120 // ERROR_CALL_NOT_IMPLEMENTED
+
+        let _sequence_name = match crate::win32::strings::lpcstr_to_string(sz_table.0) {
+            Some(name) => name,
+            None => return crate::win32::ERROR_INVALID_PARAMETER,
+        };
+
+        crate::handles::with_handle_mut(h_install, |obj| {
+            if let crate::handles::MsiObject::Transaction(_transaction) = obj {
+                let mut txn = msi::execution::transaction::Transaction::new(
+                    msi::wix::linker::LinkedDatabase::default(),
+                    msi::execution::properties::EvaluationContext::new(),
+                    msi::execution::costing::DiskCostEngine::new(),
+                );
+                let mut dispatcher = msi::execution::dispatcher::ActionDispatcher::new(&mut txn);
+                match dispatcher.execute_sequence(&msi::execution::sequence::SequenceName::from(
+                    _sequence_name.as_str(),
+                )) {
+                    Ok(_) => crate::win32::ERROR_SUCCESS,
+                    Err(e) => crate::error::map_msi_error_to_lstatus(&e),
+                }
+            } else {
+                crate::win32::ERROR_INVALID_HANDLE
+            }
+        })
+        .unwrap_or(crate::win32::ERROR_INVALID_HANDLE)
     })
-    .unwrap_or(1603)
+    .unwrap_or(crate::win32::ERROR_INSTALL_FAILURE)
 }
 
 /// Installs or configures a product.
@@ -203,7 +295,23 @@ pub unsafe extern "system" fn MsiConfigureProductW(
         if _sz_product.0.is_null() {
             return 87; // ERROR_INVALID_PARAMETER
         }
-        120 // ERROR_CALL_NOT_IMPLEMENTED
+        let product = match crate::win32::strings::lpcwstr_to_string(_sz_product.0) {
+            Some(s) => s,
+            None => return 87,
+        };
+        let state = match _e_install_state {
+            2 => msi::execution::reconfiguration::ConfigurationState::Uninstall,
+            5 => msi::execution::reconfiguration::ConfigurationState::Install,
+            _ => msi::execution::reconfiguration::ConfigurationState::Repair, // Default
+        };
+        match msi::execution::reconfiguration::configure_product(
+            &product,
+            msi::execution::reconfiguration::InstallLevel(_i_install_level.0),
+            state,
+        ) {
+            Ok(()) => 0,
+            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
+        }
     })
     .unwrap_or(1603)
 }
@@ -238,7 +346,23 @@ pub unsafe extern "system" fn MsiConfigureProductA(
         if _sz_product.0.is_null() {
             return 87; // ERROR_INVALID_PARAMETER
         }
-        120 // ERROR_CALL_NOT_IMPLEMENTED
+        let product = match crate::win32::strings::lpcstr_to_string(_sz_product.0) {
+            Some(s) => s,
+            None => return 87,
+        };
+        let state = match _e_install_state {
+            2 => msi::execution::reconfiguration::ConfigurationState::Uninstall,
+            5 => msi::execution::reconfiguration::ConfigurationState::Install,
+            _ => msi::execution::reconfiguration::ConfigurationState::Repair, // Default
+        };
+        match msi::execution::reconfiguration::configure_product(
+            &product,
+            msi::execution::reconfiguration::InstallLevel(_i_install_level.0),
+            state,
+        ) {
+            Ok(()) => 0,
+            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
+        }
     })
     .unwrap_or(1603)
 }
@@ -271,7 +395,17 @@ pub unsafe extern "system" fn MsiReinstallProductW(
         if _sz_product.0.is_null() {
             return 87; // ERROR_INVALID_PARAMETER
         }
-        120 // ERROR_CALL_NOT_IMPLEMENTED
+        let product = match crate::win32::strings::lpcwstr_to_string(_sz_product.0) {
+            Some(s) => s,
+            None => return 87,
+        };
+        match msi::execution::reconfiguration::reinstall_product(
+            &product,
+            msi::execution::reconfiguration::ReinstallMode(_sz_reinstall_mode.0),
+        ) {
+            Ok(()) => 0,
+            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
+        }
     })
     .unwrap_or(1603)
 }
@@ -304,7 +438,17 @@ pub unsafe extern "system" fn MsiReinstallProductA(
         if _sz_product.0.is_null() {
             return 87; // ERROR_INVALID_PARAMETER
         }
-        120 // ERROR_CALL_NOT_IMPLEMENTED
+        let product = match crate::win32::strings::lpcstr_to_string(_sz_product.0) {
+            Some(s) => s,
+            None => return 87,
+        };
+        match msi::execution::reconfiguration::reinstall_product(
+            &product,
+            msi::execution::reconfiguration::ReinstallMode(_sz_reinstall_mode.0),
+        ) {
+            Ok(()) => 0,
+            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
+        }
     })
     .unwrap_or(1603)
 }
@@ -343,43 +487,213 @@ mod tests {
             87
         );
 
-        let dummy_w = [0_u16; 1];
-        let dummy_a = [0_i8; 1];
+        let dummy_w = [u16::from(b'A'), 0];
+        let dummy_a = [i32::from(b'A'), 0];
+        let invalid_w = [0xD800, 0];
+        let invalid_a = [i32::from(0xFF_u8), 0];
+
+        // Invalid strings should yield 87 (ERROR_INVALID_PARAMETER)
+        assert_eq!(
+            unsafe { MsiDoActionW(0, ActionNameW(invalid_w.as_ptr())) },
+            87
+        );
+        assert_eq!(
+            unsafe { MsiDoActionA(0, ActionNameA(invalid_a.as_ptr().cast())) },
+            87
+        );
+        assert_eq!(
+            unsafe { MsiSequenceW(0, SequenceNameW(invalid_w.as_ptr()), 0) },
+            87
+        );
+        assert_eq!(
+            unsafe { MsiSequenceA(0, SequenceNameA(invalid_a.as_ptr().cast()), 0) },
+            87
+        );
+        assert_eq!(
+            unsafe { MsiConfigureProductW(ProductCodeW(invalid_w.as_ptr()), InstallLevel(0), 0) },
+            87
+        );
+        assert_eq!(
+            unsafe {
+                MsiConfigureProductA(ProductCodeA(invalid_a.as_ptr().cast()), InstallLevel(0), 0)
+            },
+            87
+        );
+        assert_eq!(
+            unsafe { MsiReinstallProductW(ProductCodeW(invalid_w.as_ptr()), ReinstallMode(0)) },
+            87
+        );
+        assert_eq!(
+            unsafe {
+                MsiReinstallProductA(ProductCodeA(invalid_a.as_ptr().cast()), ReinstallMode(0))
+            },
+            87
+        );
+
         assert_eq!(
             unsafe { MsiDoActionW(0, ActionNameW(dummy_w.as_ptr())) },
-            120
+            6 // ERROR_INVALID_HANDLE
         );
         assert_eq!(
             unsafe { MsiDoActionA(0, ActionNameA(dummy_a.as_ptr().cast())) },
-            120
+            6 // ERROR_INVALID_HANDLE
         );
         assert_eq!(
             unsafe { MsiSequenceW(0, SequenceNameW(dummy_w.as_ptr()), 0) },
-            120
+            6 // ERROR_INVALID_HANDLE
         );
         assert_eq!(
             unsafe { MsiSequenceA(0, SequenceNameA(dummy_a.as_ptr().cast()), 0) },
-            120
+            6 // ERROR_INVALID_HANDLE
         );
+
+        // MsiConfigureProduct valid calls
         assert_eq!(
             unsafe { MsiConfigureProductW(ProductCodeW(dummy_w.as_ptr()), InstallLevel(0), 0) },
-            120
+            0
+        );
+        assert_eq!(
+            unsafe { MsiConfigureProductW(ProductCodeW(dummy_w.as_ptr()), InstallLevel(0), 2) },
+            0
+        );
+        assert_eq!(
+            unsafe { MsiConfigureProductW(ProductCodeW(dummy_w.as_ptr()), InstallLevel(0), 5) },
+            0
         );
         assert_eq!(
             unsafe {
                 MsiConfigureProductA(ProductCodeA(dummy_a.as_ptr().cast()), InstallLevel(0), 0)
             },
-            120
+            0
         );
         assert_eq!(
+            unsafe {
+                MsiConfigureProductA(ProductCodeA(dummy_a.as_ptr().cast()), InstallLevel(0), 2)
+            },
+            0
+        );
+        assert_eq!(
+            unsafe {
+                MsiConfigureProductA(ProductCodeA(dummy_a.as_ptr().cast()), InstallLevel(0), 5)
+            },
+            0
+        );
+
+        // MsiReinstallProduct valid calls
+        assert_eq!(
             unsafe { MsiReinstallProductW(ProductCodeW(dummy_w.as_ptr()), ReinstallMode(0)) },
-            120
+            0
         );
         assert_eq!(
             unsafe {
                 MsiReinstallProductA(ProductCodeA(dummy_a.as_ptr().cast()), ReinstallMode(0))
             },
-            120
+            0
         );
+
+        // empty string testing for errors propagating from configure_product / reinstall_product
+        let empty_w = [0_u16];
+        let empty_a = [0_i32];
+        assert_eq!(
+            unsafe { MsiConfigureProductW(ProductCodeW(empty_w.as_ptr()), InstallLevel(0), 0) },
+            87
+        );
+        assert_eq!(
+            unsafe {
+                MsiConfigureProductA(ProductCodeA(empty_a.as_ptr().cast()), InstallLevel(0), 0)
+            },
+            87
+        );
+        assert_eq!(
+            unsafe { MsiReinstallProductW(ProductCodeW(empty_w.as_ptr()), ReinstallMode(0)) },
+            87
+        );
+        assert_eq!(
+            unsafe {
+                MsiReinstallProductA(ProductCodeA(empty_a.as_ptr().cast()), ReinstallMode(0))
+            },
+            87
+        );
+
+        // Test with valid handle
+        let mgr =
+            msi::execution::transaction::MultiPackageTransactionManager::begin_transaction("t")
+                .unwrap();
+        let handle = crate::handles::alloc_handle(crate::handles::MsiObject::Transaction(
+            Box::new(crate::types::MsiTransactionHandle { inner: mgr }),
+        ));
+
+        assert_eq!(
+            unsafe { MsiDoActionW(handle, ActionNameW(dummy_w.as_ptr())) },
+            0
+        );
+        assert_eq!(
+            unsafe { MsiDoActionA(handle, ActionNameA(dummy_a.as_ptr().cast())) },
+            0
+        );
+        assert_eq!(
+            unsafe { MsiSequenceW(handle, SequenceNameW(dummy_w.as_ptr()), 0) },
+            1603
+        );
+        assert_eq!(
+            unsafe { MsiSequenceA(handle, SequenceNameA(dummy_a.as_ptr().cast()), 0) },
+            1603
+        );
+
+        // Test error propagation via ForceFail
+        let force_fail_w: Vec<u16> = "ForceFail"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        let force_fail_a = b"ForceFail\0";
+        assert_eq!(
+            unsafe { MsiDoActionW(handle, ActionNameW(force_fail_w.as_ptr())) },
+            1603
+        );
+        assert_eq!(
+            unsafe { MsiDoActionA(handle, ActionNameA(force_fail_a.as_ptr().cast())) },
+            1603
+        );
+
+        // Test success paths for sequences
+        let force_succ_w: Vec<u16> = "ForceSuccessSequence"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        let force_succ_a = b"ForceSuccessSequence\0";
+        assert_eq!(
+            unsafe { MsiSequenceW(handle, SequenceNameW(force_succ_w.as_ptr()), 0) },
+            0
+        );
+        assert_eq!(
+            unsafe { MsiSequenceA(handle, SequenceNameA(force_succ_a.as_ptr().cast()), 0) },
+            0
+        );
+
+        // Test with non-transaction handle
+        let record = crate::types::MsiRecordHandle {
+            inner: msi::database::tables::record::Record::new(),
+        };
+        let record_handle = crate::handles::alloc_handle(crate::handles::MsiObject::Record(record));
+
+        assert_eq!(
+            unsafe { MsiDoActionW(record_handle, ActionNameW(dummy_w.as_ptr())) },
+            6
+        ); // ERROR_INVALID_HANDLE
+        assert_eq!(
+            unsafe { MsiDoActionA(record_handle, ActionNameA(dummy_a.as_ptr().cast())) },
+            6
+        );
+        assert_eq!(
+            unsafe { MsiSequenceW(record_handle, SequenceNameW(dummy_w.as_ptr()), 0) },
+            6
+        );
+        assert_eq!(
+            unsafe { MsiSequenceA(record_handle, SequenceNameA(dummy_a.as_ptr().cast()), 0) },
+            6
+        );
+
+        let _ = crate::handles::close_handle(record_handle);
+        let _ = crate::handles::close_handle(handle);
     }
 }

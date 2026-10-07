@@ -27,6 +27,13 @@ pub enum MsiError {
         name: String,
     },
 
+    /// A required file was not found across available sources.
+    #[display("File not found: {path}")]
+    FileNotFound {
+        /// Path or identifier of the missing file.
+        path: String,
+    },
+
     /// A semantic validation rule was violated.
     #[display("Validation error on {element}: {reason}")]
     Validation {
@@ -829,10 +836,53 @@ pub enum MsiError {
     #[error(ignore)]
     AdvertisementError(String),
 
+    /// A transform conflict occurred (e.g., mismatched `ProductCode` or `UpgradeCode`).
+    #[display("Transform conflict: {reason}")]
+    TransformConflict {
+        /// Detail regarding the conflict.
+        reason: String,
+    },
+
+    /// The transform is invalid or malformed.
+    #[display("Invalid transform: {reason}")]
+    InvalidTransform {
+        /// Detail regarding the invalid transform.
+        reason: String,
+    },
+
+    /// A Patch XML parsing error occurred.
+    #[display("Patch XML parse error: {reason}")]
+    PatchXmlParse {
+        /// Reason for the XML parse failure.
+        reason: String,
+    },
+
+    /// A Patch CAB is corrupted.
+    #[display("Patch CAB corrupted: {reason}")]
+    PatchCorruptCab {
+        /// Reason for the corruption.
+        reason: String,
+    },
+
     /// An error occurred while applying or sequencing a patch.
     #[display("Patch application error: {_0}")]
     #[error(ignore)]
     PatchApplicationError(String),
+
+    /// Patch superseded by another patch in the family.
+    #[display("Patch superseded: {_0}")]
+    #[error(ignore)]
+    PatchSuperseded(String),
+
+    /// Baseline mismatch when sequencing patches.
+    #[display("Wrong patch baseline: {_0}")]
+    #[error(ignore)]
+    WrongPatchBaseline(String),
+
+    /// Missing or invalid `PatchSequence` table.
+    #[display("Invalid patch sequence: {_0}")]
+    #[error(ignore)]
+    InvalidPatchSequence(String),
 
     /// An error occurred while rendering or managing a UI preview dialog.
     #[display("UI preview error: {_0}")]
@@ -884,6 +934,7 @@ impl From<std::io::Error> for MsiError {
 pub type Result<T> = std::result::Result<T, MsiError>;
 
 #[cfg(test)]
+/// Unit tests.
 mod tests {
     use super::*;
 
@@ -1810,6 +1861,80 @@ mod tests {
         assert_eq!(
             err_adv,
             MsiError::AdvertisementError("shortcut failed".to_string())
+        );
+
+        let err_trans_conflict = MsiError::TransformConflict {
+            reason: "mismatched ProductCode".to_string(),
+        };
+        assert_eq!(
+            format!("{err_trans_conflict}"),
+            "Transform conflict: mismatched ProductCode"
+        );
+        assert_eq!(
+            err_trans_conflict,
+            MsiError::TransformConflict {
+                reason: "mismatched ProductCode".to_string(),
+            }
+        );
+
+        let err_trans_invalid = MsiError::InvalidTransform {
+            reason: "corrupted stream".to_string(),
+        };
+        assert_eq!(
+            format!("{err_trans_invalid}"),
+            "Invalid transform: corrupted stream"
+        );
+        assert_eq!(
+            err_trans_invalid,
+            MsiError::InvalidTransform {
+                reason: "corrupted stream".to_string(),
+            }
+        );
+
+        let err_superseded = MsiError::PatchSuperseded("patch1".to_string());
+        assert_eq!(format!("{err_superseded}"), "Patch superseded: patch1");
+        assert_eq!(
+            err_superseded,
+            MsiError::PatchSuperseded("patch1".to_string())
+        );
+
+        let err_baseline = MsiError::WrongPatchBaseline("base2".to_string());
+        assert_eq!(format!("{err_baseline}"), "Wrong patch baseline: base2");
+        assert_eq!(
+            err_baseline,
+            MsiError::WrongPatchBaseline("base2".to_string())
+        );
+
+        let err_seq = MsiError::InvalidPatchSequence("missing table".to_string());
+        assert_eq!(
+            format!("{err_seq}"),
+            "Invalid patch sequence: missing table"
+        );
+        assert_eq!(
+            err_seq,
+            MsiError::InvalidPatchSequence("missing table".to_string())
+        );
+
+        let err_xml = MsiError::PatchXmlParse {
+            reason: "bad tag".to_string(),
+        };
+        assert_eq!(format!("{err_xml}"), "Patch XML parse error: bad tag");
+        assert_eq!(
+            err_xml,
+            MsiError::PatchXmlParse {
+                reason: "bad tag".to_string()
+            }
+        );
+
+        let err_cab = MsiError::PatchCorruptCab {
+            reason: "bad CRC".to_string(),
+        };
+        assert_eq!(format!("{err_cab}"), "Patch CAB corrupted: bad CRC");
+        assert_eq!(
+            err_cab,
+            MsiError::PatchCorruptCab {
+                reason: "bad CRC".to_string()
+            }
         );
 
         let err_patch = MsiError::PatchApplicationError("invalid offset".to_string());

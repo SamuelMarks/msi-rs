@@ -63,4 +63,96 @@ mod tests {
         let res = engine.bind_image(&path, None);
         assert!(res.is_err());
     }
+
+    #[test]
+    fn test_bind_image_valid_pe() {
+        let engine = BindImageEngine;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("minimal.exe");
+
+        // This is a minimal 64-bit PE file that Goblin can parse.
+        // Derived from standard PE structures.
+        let mut pe_data = vec![0u8; 1024];
+
+        // MZ header
+        pe_data[0] = b'M';
+        pe_data[1] = b'Z';
+        pe_data[0x3C] = 0x80; // e_lfanew
+
+        // PE header
+        pe_data[0x80] = b'P';
+        pe_data[0x81] = b'E';
+        pe_data[0x82] = 0x00;
+        pe_data[0x83] = 0x00;
+
+        // COFF header (20 bytes)
+        // Machine = AMD64 (0x8664)
+        pe_data[0x84] = 0x64;
+        pe_data[0x85] = 0x86;
+        // SizeOfOptionalHeader = 240 for 64-bit
+        pe_data[0x94] = 240;
+        pe_data[0x95] = 0x00;
+
+        // Optional header
+        // Magic = PE32+ (0x020B) for 64-bit
+        pe_data[0x98] = 0x0B;
+        pe_data[0x99] = 0x02;
+
+        // NumberOfRvaAndSizes (16)
+        pe_data[0x104] = 16;
+        pe_data[0x105] = 0;
+        pe_data[0x106] = 0;
+        pe_data[0x107] = 0;
+
+        fs::write(&path, &pe_data).unwrap();
+
+        // bind_image should succeed
+        let res = engine.bind_image(&path, None);
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn test_bind_image_valid_pe_32() {
+        let engine = BindImageEngine;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("minimal32.exe");
+
+        let mut pe_data = vec![0u8; 1024];
+
+        // MZ header
+        pe_data[0] = b'M';
+        pe_data[1] = b'Z';
+        pe_data[0x3C] = 0x80; // e_lfanew
+
+        // PE header
+        pe_data[0x80] = b'P';
+        pe_data[0x81] = b'E';
+        pe_data[0x82] = 0x00;
+        pe_data[0x83] = 0x00;
+
+        // COFF header
+        // Machine = i386 (0x014C)
+        pe_data[0x84] = 0x4C;
+        pe_data[0x85] = 0x01;
+        // SizeOfOptionalHeader = 224 for 32-bit
+        pe_data[0x94] = 224;
+        pe_data[0x95] = 0x00;
+
+        // Optional header
+        // Magic = PE32 (0x010B)
+        pe_data[0x98] = 0x0B;
+        pe_data[0x99] = 0x01;
+
+        // NumberOfRvaAndSizes (16)
+        pe_data[0xF4] = 16;
+        pe_data[0xF5] = 0;
+        pe_data[0xF6] = 0;
+        pe_data[0xF7] = 0;
+
+        fs::write(&path, &pe_data).unwrap();
+
+        // bind_image should succeed
+        let res = engine.bind_image(&path, None);
+        assert!(res.is_ok());
+    }
 }

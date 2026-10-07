@@ -22,10 +22,14 @@ pub const MSI_NULL_HANDLE: MsiHandle = 0;
 pub enum MsiObject {
     /// A relational database.
     Database(crate::types::MsiDatabaseHandle),
+    /// A multi-package transaction manager.
+    Transaction(Box<crate::types::MsiTransactionHandle>),
     /// A relational database record.
     Record(crate::types::MsiRecordHandle),
     /// A relational database view.
     View(crate::types::MsiViewHandle),
+    /// A UI preview session.
+    UiPreview(Box<crate::types::MsiUiPreviewHandle>),
 }
 
 /// Handle table state.
@@ -136,6 +140,46 @@ where
     })
 }
 
+/// Executes a closure with mutable access to one handle and read access to another.
+/// Safely extracts and restores objects from the handle table to satisfy borrow rules.
+pub fn with_handle_mut_and_read<F, R>(
+    handle_mut: MsiHandle,
+    handle_read: MsiHandle,
+    f: F,
+) -> Option<R>
+where
+    F: FnOnce(&mut MsiObject, &MsiObject) -> R,
+{
+    if handle_mut == handle_read {
+        return None;
+    }
+
+    with_handle_table(|table| {
+        let mut map = table
+            .map
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let mut obj_mut = map.remove(&handle_mut)?;
+        let obj_read = map.remove(&handle_read);
+
+        let res = if let Some(read_val) = &obj_read {
+            f(&mut obj_mut, read_val)
+        } else {
+            // Restore immediately if read handle was invalid
+            map.insert(handle_mut, obj_mut);
+            return None;
+        };
+
+        map.insert(handle_mut, obj_mut);
+        if let Some(read_val) = obj_read {
+            map.insert(handle_read, read_val);
+        }
+
+        Some(res)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -216,7 +260,51 @@ mod tests {
             inner: rec2,
         }));
 
+        assert_ne!(h1, MSI_NULL_HANDLE);
+        assert_ne!(h2, MSI_NULL_HANDLE);
+
+        // Test with_handle_mut_and_read valid handles
+        let res = with_handle_mut_and_read(h1, h2, |mut_obj, read_obj| true);
+        assert!(res.is_some());
+
+        // Test with_handle_mut_and_read invalid read handle
+        let res = with_handle_mut_and_read(h1, MSI_NULL_HANDLE, |_, _| true);
+        assert!(res.is_none());
+
+        // Also test with_handle_mut_and_read same handle
+        let res = with_handle_mut_and_read(h1, h1, |_, _| true);
+        assert!(res.is_none());
+
         assert!(close_handle(h1));
         assert!(close_handle(h2));
+    }
+
+    #[test]
+    fn test_close_all_handles() {
+        let rec1 = msi::database::tables::record::Record::new();
+        let h1 = alloc_handle(MsiObject::Record(crate::types::MsiRecordHandle {
+            inner: rec1,
+        }));
+        let rec2 = msi::database::tables::record::Record::new();
+        let h2 = alloc_handle(MsiObject::Record(crate::types::MsiRecordHandle {
+            inner: rec2,
+        }));
+
+        assert_ne!(h1, MSI_NULL_HANDLE);
+        assert_ne!(h2, MSI_NULL_HANDLE);
+
+        close_all_handles();
+
+        let mut checked1 = false;
+        with_handle(h1, |_| {
+            checked1 = true;
+        });
+        assert!(!checked1);
+
+        let mut checked2 = false;
+        with_handle(h2, |_| {
+            checked2 = true;
+        });
+        assert!(!checked2);
     }
 }

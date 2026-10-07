@@ -300,6 +300,16 @@ mod tests {
             err_site_port,
             Err(MsiError::IisConfigurationError(_))
         ));
+
+        let site_cfg_80 = gen
+            .generate_site_config("example.com", &path, WebSitePort::new(80))
+            .unwrap_or_default();
+        assert!(site_cfg_80.contains("listen 80;"));
+
+        let site_cfg_443 = gen
+            .generate_site_config("example.com", &path, WebSitePort::new(443))
+            .unwrap_or_default();
+        assert!(site_cfg_443.contains("listen 443;"));
     }
 
     #[test]

@@ -205,6 +205,11 @@ impl WorkerContext {
         self.live_executor.as_ref()
     }
 
+    /// Sets the live executor for rollback recovery.
+    pub fn set_live_executor(&mut self, exec: super::worker::LiveWorkerExecutor) {
+        self.live_executor = Some(exec);
+    }
+
     /// Registers a cabinet archive from raw bytes for payload extraction.
     ///
     /// # Arguments
@@ -1241,7 +1246,7 @@ impl WorkerContext {
         // Clean up any remaining quarantine files and directories
         self.quarantine_files.clear();
         if let Some(ref mut exec) = self.live_executor {
-            let _ = exec.rollback();
+            exec.rollback()?;
         }
         if let Some(ref mut bm_journal) = self.bare_metal_journal {
             bm_journal.execute_rollback()?;
@@ -2130,6 +2135,20 @@ pub struct Transaction<State> {
     _state: PhantomData<State>,
 }
 
+impl<State> Transaction<State> {
+    /// Returns a reference to the evaluation context.
+    #[must_use]
+    pub const fn context(&self) -> &EvaluationContext {
+        &self.context
+    }
+
+    /// Returns a reference to the linked database.
+    #[must_use]
+    pub const fn database(&self) -> &LinkedDatabase {
+        &self.database
+    }
+}
+
 /// Helper that parses the target directory name from MSI `DefaultDir` specification.
 ///
 /// Handles target:source formats (`target:source`), short|long formats (`short|long`),
@@ -2216,10 +2235,14 @@ fn resolve_directories(
     context: &mut EvaluationContext,
 ) -> HashMap<String, PathBuf> {
     let product = context.get_property("ProductName").unwrap_or("Application");
+    let allusers = context.get_property("ALLUSERS").unwrap_or("").to_string();
+    let is_per_machine = allusers == "1" || allusers == "2";
+
     let resolver = crate::platform::paths::PathResolver::new(
         crate::platform::paths::TargetOs::host(),
         product,
-    );
+    )
+    .per_machine(is_per_machine);
 
     let mut resolved_dirs: HashMap<String, PathBuf> = HashMap::new();
 
@@ -2360,9 +2383,20 @@ impl Transaction<Uninitialized> {
     #[must_use]
     pub fn new(
         database: LinkedDatabase,
-        context: EvaluationContext,
+        mut context: EvaluationContext,
         cost_engine: DiskCostEngine,
     ) -> Self {
+        // Resolve UAC / LUA constraints on ALLUSERS property.
+        if let Some(allusers) = context.get_property("ALLUSERS") {
+            if allusers == "2" {
+                if crate::platform::users::is_elevated() {
+                    context.set_property("ALLUSERS", "1");
+                } else {
+                    context.set_property("ALLUSERS", "");
+                }
+            }
+        }
+
         Self {
             database,
             context,
@@ -2655,10 +2689,25 @@ impl Transaction<Uninitialized> {
                     }
                 }
                 "WriteRegistryValues" => {
+                    let allusers = self.context.get_property("ALLUSERS").unwrap_or_default();
+                    let is_per_machine = allusers == "1" || allusers == "2";
+
                     let reg_records = self.database.get_records("Registry");
                     for r in reg_records {
                         let root = match r.get(1) {
-                            Some(&FieldValue::Short(n)) => u32::try_from(n).unwrap_or(2),
+                            Some(&FieldValue::Short(-1)) => {
+                                if is_per_machine {
+                                    2 // msidbRegistryRootLocalMachine
+                                } else {
+                                    1 // msidbRegistryRootCurrentUser
+                                }
+                            }
+                            Some(&FieldValue::Short(n)) => {
+                                #[allow(clippy::cast_sign_loss)]
+                                {
+                                    n as u32
+                                }
+                            }
                             _ => 2,
                         };
                         let key = match r.get(2) {
@@ -2788,10 +2837,25 @@ impl Transaction<Uninitialized> {
                     }
                 }
                 "RemoveRegistryValues" => {
+                    let allusers = self.context.get_property("ALLUSERS").unwrap_or_default();
+                    let is_per_machine = allusers == "1" || allusers == "2";
+
                     let remove_reg_records = self.database.get_records("RemoveRegistry");
                     for r in remove_reg_records {
                         let root = match r.get(1) {
-                            Some(&FieldValue::Short(n)) => u32::try_from(n).unwrap_or(2),
+                            Some(&FieldValue::Short(-1)) => {
+                                if is_per_machine {
+                                    2 // msidbRegistryRootLocalMachine
+                                } else {
+                                    1 // msidbRegistryRootCurrentUser
+                                }
+                            }
+                            Some(&FieldValue::Short(n)) => {
+                                #[allow(clippy::cast_sign_loss)]
+                                {
+                                    n as u32
+                                }
+                            }
                             _ => 2,
                         };
                         let key = match r.get(2) {
@@ -2847,6 +2911,125 @@ impl Transaction<Uninitialized> {
                             name: Some(clean_name.to_string()),
                             previous_value: None,
                             existed: false,
+                        });
+                    }
+                }
+                "RegisterProgIdInfo" => {
+                    let progid_records = self.database.get_records("ProgId");
+                    for r in progid_records {
+                        let progid = match r.get(0) {
+                            Some(FieldValue::String(p)) => {
+                                self.context.format_string(p).unwrap_or_default()
+                            }
+                            _ => continue,
+                        };
+                        let desc = match r.get(3) {
+                            Some(FieldValue::String(d)) => {
+                                Some(self.context.format_string(d).unwrap_or_default())
+                            }
+                            _ => None,
+                        };
+                        let clsid = match r.get(2) {
+                            Some(FieldValue::String(c)) => {
+                                Some(self.context.format_string(c).unwrap_or_default())
+                            }
+                            _ => None,
+                        };
+
+                        self.install_script.push(ScriptOp::WriteRegistry {
+                            root: 0, // HKCR
+                            key: progid.clone(),
+                            name: None,
+                            value: desc,
+                        });
+
+                        if let Some(c) = clsid {
+                            self.install_script.push(ScriptOp::WriteRegistry {
+                                root: 0,
+                                key: format!(r"{progid}\CLSID"),
+                                name: None,
+                                value: Some(c),
+                            });
+                        }
+                    }
+                }
+                "RegisterExtensionInfo" => {
+                    let ext_records = self.database.get_records("Extension");
+                    let verb_records = self.database.get_records("Verb");
+
+                    for ext in ext_records {
+                        let ext_name = match ext.get(0) {
+                            Some(FieldValue::String(e)) => {
+                                self.context.format_string(e).unwrap_or_default()
+                            }
+                            _ => continue,
+                        };
+                        let progid = match ext.get(2) {
+                            Some(FieldValue::String(p)) => {
+                                Some(self.context.format_string(p).unwrap_or_default())
+                            }
+                            _ => None,
+                        };
+
+                        self.install_script.push(ScriptOp::WriteRegistry {
+                            root: 0, // HKCR
+                            key: format!(".{ext_name}"),
+                            name: None,
+                            value: progid.clone(),
+                        });
+
+                        if let Some(pid) = progid {
+                            for verb_rec in verb_records.iter().filter(|v| matches!(v.get(0), Some(FieldValue::String(e)) if e == &ext_name)) {
+                                let verb = match verb_rec.get(1) {
+                                    Some(FieldValue::String(v)) => self.context.format_string(v).unwrap_or_default(),
+                                    _ => continue,
+                                };
+                                let command = match verb_rec.get(3) {
+                                    Some(FieldValue::String(c)) => self.context.format_string(c).unwrap_or_default(),
+                                    _ => String::new(),
+                                };
+                                let argument = match verb_rec.get(4) {
+                                    Some(FieldValue::String(a)) => self.context.format_string(a).unwrap_or_default(),
+                                    _ => String::new(),
+                                };
+
+                                let full_cmd = if argument.is_empty() {
+                                    command
+                                } else {
+                                    format!("{command} {argument}")
+                                };
+
+                                self.install_script.push(ScriptOp::WriteRegistry {
+                                    root: 0,
+                                    key: format!(r"{pid}\shell\{verb}\command"),
+                                    name: None,
+                                    value: Some(full_cmd),
+                                });
+                            }
+                        }
+                    }
+                }
+                "RegisterMIMEInfo" => {
+                    let mime_records = self.database.get_records("MIME");
+                    for mime in mime_records {
+                        let content_type = match mime.get(0) {
+                            Some(FieldValue::String(c)) => {
+                                self.context.format_string(c).unwrap_or_default()
+                            }
+                            _ => continue,
+                        };
+                        let ext = match mime.get(1) {
+                            Some(FieldValue::String(e)) => {
+                                self.context.format_string(e).unwrap_or_default()
+                            }
+                            _ => continue,
+                        };
+
+                        self.install_script.push(ScriptOp::WriteRegistry {
+                            root: 0, // HKCR
+                            key: format!(r"MIME\Database\Content Type\{content_type}"),
+                            name: Some("Extension".to_string()),
+                            value: Some(format!(".{ext}")),
                         });
                     }
                 }
@@ -7501,5 +7684,185 @@ mod transaction_wim_tests {
         assert!(has_un_driver);
         assert!(has_un_ds);
         assert!(has_un_font);
+    }
+
+    #[test]
+    fn test_transaction_allusers_elevation_and_registry_roots() {
+        use crate::database::{FieldValue, Record};
+
+        let mut db = LinkedDatabase::new().unwrap();
+        db.add_record(
+            "Registry",
+            Record::with_fields(vec![
+                FieldValue::String("Reg1".to_string()),
+                FieldValue::Short(-1),
+                FieldValue::String(r"Software\Test".to_string()),
+                FieldValue::String("Val".to_string()),
+                FieldValue::String("1".to_string()),
+                FieldValue::String("Comp1".to_string()),
+            ]),
+        );
+        db.add_record(
+            "RemoveRegistry",
+            Record::with_fields(vec![
+                FieldValue::String("RemReg1".to_string()),
+                FieldValue::Short(-1),
+                FieldValue::String(r"Software\Test".to_string()),
+                FieldValue::String("Val".to_string()),
+                FieldValue::String("Comp1".to_string()),
+            ]),
+        );
+        db.add_record(
+            "InstallExecuteSequence",
+            Record::with_fields(vec![
+                FieldValue::String("WriteRegistryValues".to_string()),
+                FieldValue::String("1".to_string()),
+                FieldValue::Short(100),
+            ]),
+        );
+        db.add_record(
+            "InstallExecuteSequence",
+            Record::with_fields(vec![
+                FieldValue::String("RemoveRegistryValues".to_string()),
+                FieldValue::String("1".to_string()),
+                FieldValue::Short(101),
+            ]),
+        );
+
+        let mut ctx1 = EvaluationContext::new();
+        ctx1.set_property("ALLUSERS", "2");
+        let tx1 = Transaction::new(db.clone(), ctx1, DiskCostEngine::new());
+        let allusers_after = tx1.context.get_property("ALLUSERS").unwrap_or_default();
+
+        let mut ctx2 = EvaluationContext::new();
+        if allusers_after == "1" {
+            ctx2.set_property("ALLUSERS", "");
+        } else {
+            ctx2.set_property("ALLUSERS", "1");
+        }
+        let tx2 = Transaction::new(db, ctx2, DiskCostEngine::new());
+
+        let _ = tx1.prepare().unwrap();
+        let _ = tx2.prepare().unwrap();
+    }
+
+    #[test]
+    fn test_transaction_register_com_info() {
+        use crate::database::{FieldValue, Record};
+
+        let mut db = LinkedDatabase::new().unwrap();
+        db.add_record(
+            "ProgId",
+            Record::with_fields(vec![
+                FieldValue::String("Test.ProgId.1".to_string()),
+                FieldValue::String(String::new()),
+                FieldValue::String("{00000000-0000-0000-0000-000000000000}".to_string()),
+                FieldValue::String("Test ProgId Description".to_string()),
+                FieldValue::String("Icon.exe".to_string()),
+                FieldValue::Short(0),
+            ]),
+        );
+        db.add_record(
+            "Extension",
+            Record::with_fields(vec![
+                FieldValue::String("tst".to_string()),
+                FieldValue::String("Comp1".to_string()),
+                FieldValue::String("Test.ProgId.1".to_string()),
+                FieldValue::String("application/test".to_string()),
+                FieldValue::String("Comp1".to_string()),
+            ]),
+        );
+        db.add_record(
+            "Verb",
+            Record::with_fields(vec![
+                FieldValue::String("tst".to_string()),
+                FieldValue::String("open".to_string()),
+                FieldValue::Short(0),
+                FieldValue::String("mycmd".to_string()),
+                FieldValue::String("%1".to_string()),
+            ]),
+        );
+        db.add_record(
+            "MIME",
+            Record::with_fields(vec![
+                FieldValue::String("application/test".to_string()),
+                FieldValue::String("tst".to_string()),
+                FieldValue::String("{00000000-0000-0000-0000-000000000000}".to_string()),
+            ]),
+        );
+
+        db.add_record(
+            "InstallExecuteSequence",
+            Record::with_fields(vec![
+                FieldValue::String("RegisterProgIdInfo".to_string()),
+                FieldValue::String("1".to_string()),
+                FieldValue::Short(100),
+            ]),
+        );
+        db.add_record(
+            "InstallExecuteSequence",
+            Record::with_fields(vec![
+                FieldValue::String("RegisterExtensionInfo".to_string()),
+                FieldValue::String("1".to_string()),
+                FieldValue::Short(101),
+            ]),
+        );
+        db.add_record(
+            "InstallExecuteSequence",
+            Record::with_fields(vec![
+                FieldValue::String("RegisterMIMEInfo".to_string()),
+                FieldValue::String("1".to_string()),
+                FieldValue::Short(102),
+            ]),
+        );
+
+        let tx = Transaction::new(db, EvaluationContext::new(), DiskCostEngine::new());
+        let prepared = tx.prepare().unwrap();
+        let ops = prepared.install_script().operations();
+        assert!(!ops.is_empty());
+    }
+
+    #[test]
+    fn test_transaction_stop_delete_services() {
+        use crate::database::{FieldValue, Record};
+
+        let mut db = LinkedDatabase::new().unwrap();
+        db.add_record(
+            "ServiceControl",
+            Record::with_fields(vec![
+                FieldValue::String("Service1".to_string()),
+                FieldValue::String("TestService".to_string()),
+                FieldValue::Short(0x0002 | 0x0004),
+                FieldValue::String(String::new()),
+                FieldValue::String(String::new()),
+            ]),
+        );
+
+        db.add_record(
+            "InstallExecuteSequence",
+            Record::with_fields(vec![
+                FieldValue::String("StopServices".to_string()),
+                FieldValue::String("1".to_string()),
+                FieldValue::Short(100),
+            ]),
+        );
+        db.add_record(
+            "InstallExecuteSequence",
+            Record::with_fields(vec![
+                FieldValue::String("DeleteServices".to_string()),
+                FieldValue::String("1".to_string()),
+                FieldValue::Short(101),
+            ]),
+        );
+
+        let tx = Transaction::new(db, EvaluationContext::new(), DiskCostEngine::new());
+        let prepared = tx.prepare().unwrap();
+        let ops = prepared.install_script().operations();
+        assert!(ops
+            .iter()
+            .any(|op| matches!(op, ScriptOp::StopService { .. })));
+        assert!(ops
+            .iter()
+            .any(|op| matches!(op, ScriptOp::DeleteService { .. })));
     }
 }

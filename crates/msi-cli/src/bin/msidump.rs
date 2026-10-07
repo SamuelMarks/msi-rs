@@ -1,3 +1,5 @@
+#![allow(clippy::similar_names)]
+
 //! Internal utility for dumping MSI files.
 
 use std::fs;
@@ -14,9 +16,11 @@ use std::fs;
 pub fn run_dump(path: &str) -> Result<(), Box<dyn std::error::Error>> {
     let buf = fs::read(path)?;
     let reader = msi::cfb::reader::CfbReader::new(&buf)?;
-    let pool_name = msi::cfb::stream_name::encode_msi_stream_name("_StringPool", true)?;
+    let pool_name =
+        msi::cfb::stream_name::encode_msi_stream_name("_StringPool", true).unwrap_or_default();
     let pool_bytes = reader.read_stream(&pool_name)?;
-    let data_name = msi::cfb::stream_name::encode_msi_stream_name("_StringData", true)?;
+    let data_name =
+        msi::cfb::stream_name::encode_msi_stream_name("_StringData", true).unwrap_or_default();
     let data_bytes = reader.read_stream(&data_name)?;
 
     // Parse pool
@@ -35,10 +39,10 @@ pub fn run_dump(path: &str) -> Result<(), Box<dyn std::error::Error>> {
             println!("String {idx}: NULL");
             continue;
         }
-        let end = data_ofs + len;
+        let mut end = data_ofs + len;
         // avoid panic on out of bounds if string data stream is corrupt
         if end > data_bytes.len() {
-            break;
+            end = data_bytes.len();
         }
         let s = String::from_utf8_lossy(&data_bytes[data_ofs..end]);
         let idx = i + 1;
@@ -76,40 +80,63 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use msi::cfb::header::CfbVersion;
-    use msi::cfb::stream_name::encode_msi_stream_name;
-    use msi::cfb::writer::CfbWriter;
-    use msi::database::summary_info::SummaryInfo;
-    use msi::package::{Package, PackageMetadata, ProductVersion};
-    use msi::wix::linker::LinkedDatabase;
-    use std::collections::HashMap;
+
     use std::fs;
 
     #[test]
     fn test_msidump_run_all_branches() {
+        use msi::cfb::header::CfbVersion;
+        use msi::cfb::stream_name::encode_msi_stream_name;
+        use msi::cfb::writer::CfbWriter;
+
         // Run main but with empty or nonexistent file to cover some branches
         let _ = run_dump("nonexistent.msi");
 
         let path = std::env::temp_dir().join("test_msidump.msi");
 
-        // create a valid MSI package to test against
-        let meta = PackageMetadata::new(
-            "DumpTest",
-            "Mfr",
-            ProductVersion::new(1, 0, 0),
-            "{12345678-1234-1234-1234-123456789012}",
-        );
-        let pkg = Package::new(
-            meta,
-            LinkedDatabase::default(),
-            SummaryInfo::default(),
-            HashMap::new(),
-        );
-        let _ = pkg.save(path.to_str().unwrap_or(""));
+        let mut writer = CfbWriter::new(CfbVersion::V3);
+        let pool_name = encode_msi_stream_name("_StringPool", true).unwrap();
+        let data_name = encode_msi_stream_name("_StringData", true).unwrap();
+
+        let mut pool_bytes = vec![0; 4]; // codepage 0, refcount 0
+        pool_bytes.extend_from_slice(&[0, 0, 0, 0]); // String 1: len 0, ref_count 0
+        pool_bytes.extend_from_slice(&[4, 0, 1, 0]); // String 2: len 4, ref_count 1
+        pool_bytes.extend_from_slice(&[0, 0, 1, 0]); // String 3: len 0, ref_count 1
+
+        writer.add_stream(&pool_name, &pool_bytes).unwrap();
+        writer.add_stream(&data_name, b"test").unwrap();
+
+        let cfb_data = writer.build();
+        let _ = fs::write(&path, cfb_data);
 
         let res = run_dump(path.to_str().unwrap_or(""));
         assert!(res.is_ok());
 
+        let _ = fs::remove_file(&path);
+
+        // test invalid cfb
+        let _ = fs::write(&path, b"invalid cfb header data blah blah");
+
+        let res_invalid = run_dump(path.to_str().unwrap_or(""));
+        assert!(res_invalid.is_err());
+        let _ = fs::remove_file(&path);
+
+        // test missing pool stream
+        let cfbg_no_pool = CfbWriter::new(CfbVersion::V4);
+        let cfb_no_pool = cfbg_no_pool.build();
+        let _ = fs::write(&path, cfb_no_pool);
+        let res_no_pool = run_dump(path.to_str().unwrap_or(""));
+        assert!(res_no_pool.is_err());
+        let _ = fs::remove_file(&path);
+
+        // test missing data stream
+        let mut cfbg_no_data = CfbWriter::new(CfbVersion::V4);
+        let pool_name = encode_msi_stream_name("_StringPool", true).unwrap_or_default();
+        let _ = cfbg_no_data.add_stream(&pool_name, &[0, 0, 0, 0]);
+        let cfb_no_data = cfbg_no_data.build();
+        let _ = fs::write(&path, cfb_no_data);
+        let res_no_data = run_dump(path.to_str().unwrap_or(""));
+        assert!(res_no_data.is_err());
         let _ = fs::remove_file(&path);
 
         // test break on short chunk
@@ -144,6 +171,16 @@ mod tests {
         let _ = fs::write(&path, null_cfb);
         let res_null = run_dump(path.to_str().unwrap_or(""));
         assert!(res_null.is_ok());
+        let _ = fs::remove_file(&path);
+
+        // test valid string
+        let mut cfbg_valid = CfbWriter::new(CfbVersion::V4);
+        let _ = cfbg_valid.add_stream(&pool_name, &[0, 0, 0, 0, 4, 0, 1, 0]); // 4 header, len=4, ref=1
+        let _ = cfbg_valid.add_stream(&data_name, b"test");
+        let valid_cfb = cfbg_valid.build();
+        let _ = fs::write(&path, valid_cfb);
+        let res_valid = run_dump(path.to_str().unwrap_or(""));
+        assert!(res_valid.is_ok());
         let _ = fs::remove_file(&path);
 
         let args_res = run_main(&["msidump".to_string(), "empty.msi".to_string()]);

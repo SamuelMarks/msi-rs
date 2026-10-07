@@ -370,4 +370,18 @@ mod tests {
 
 /// Opaque wrapper for a relational database view.
 #[derive(Debug)]
-pub struct MsiViewHandle;
+pub struct MsiViewHandle {
+    /// The database handle this view belongs to.
+    pub database_handle: crate::handles::MsiHandle,
+    /// The original SQL query.
+    pub query: String,
+    /// Records fetched by `MsiViewExecute` but not yet retrieved by `MsiViewFetch`.
+    pub fetched_records: std::collections::VecDeque<msi::database::tables::record::Record>,
+}
+
+/// Opaque wrapper for a headless UI preview session.
+#[derive(Debug)]
+pub struct MsiUiPreviewHandle {
+    /// Inner UI engine instance.
+    pub inner: std::sync::Mutex<msi::ui::engine::UiEngine>,
+}

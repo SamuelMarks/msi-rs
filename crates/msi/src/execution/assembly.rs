@@ -47,6 +47,30 @@ impl StrongNameSignature {
     }
 }
 
+/// A strong type representing a full Assembly Manifest encompassing its XML identity and file path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssemblyManifest {
+    /// The XML identity parsed from the manifest.
+    pub identity: ManifestXML,
+    /// The path to the manifest file on disk.
+    pub path: std::path::PathBuf,
+}
+
+impl AssemblyManifest {
+    /// Parses a manifest file from disk.
+    ///
+    /// # Errors
+    /// Returns `MsiError` if the file cannot be read or parsed.
+    pub fn from_file(path: &std::path::Path) -> Result<Self> {
+        let content = std::fs::read_to_string(path).map_err(|e| MsiError::Io(e.to_string()))?;
+        let identity = ManifestXML::parse(&content)?;
+        Ok(Self {
+            identity,
+            path: path.to_path_buf(),
+        })
+    }
+}
+
 /// A domain type representing parsed `WinSxS` or .NET Assembly Manifest XML.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ManifestXML {
@@ -56,6 +80,8 @@ pub struct ManifestXML {
     pub version: String,
     /// The parsed public key token.
     pub public_key_token: Option<PublicKeyToken>,
+    /// The parsed processor architecture.
+    pub processor_architecture: crate::execution::assembly_types::ProcessorArchitecture,
 }
 
 impl ManifestXML {
@@ -64,17 +90,29 @@ impl ManifestXML {
     /// # Errors
     /// Returns `MsiError::SxSError` if the XML is malformed or missing required identity fields.
     pub fn parse(xml_content: &str) -> Result<Self> {
-        // Very basic non-panicking parser for <assemblyIdentity name="..." version="..." publicKeyToken="..." />
-        let identity_start = xml_content.find("<assemblyIdentity").ok_or_else(|| {
-            MsiError::SxSError("Manifest missing <assemblyIdentity> element".to_string())
-        })?;
+        // More robust non-panicking parser handling namespaces like <asm:assemblyIdentity
+        let identity_start = xml_content
+            .find("<assemblyIdentity")
+            .or_else(|| xml_content.find(":assemblyIdentity"))
+            .ok_or_else(|| {
+                MsiError::SxSError("Manifest missing assemblyIdentity element".to_string())
+            })?;
 
-        let identity_block = &xml_content[identity_start..];
-        let identity_end = identity_block.find('>').ok_or_else(|| {
-            MsiError::SxSError("Malformed <assemblyIdentity> element".to_string())
-        })?;
+        // Adjust start back to the opening bracket if it was a namespaced match
+        let bracket_start = if xml_content[identity_start..].starts_with(':') {
+            xml_content[..identity_start]
+                .rfind('<')
+                .unwrap_or(identity_start)
+        } else {
+            identity_start
+        };
 
-        let identity_str = &identity_block[..identity_end];
+        let identity_block = &xml_content[bracket_start..];
+        let identity_end = identity_block
+            .find('>')
+            .ok_or_else(|| MsiError::SxSError("Malformed assemblyIdentity element".to_string()))?;
+
+        let identity_str = &identity_block[..=identity_end];
 
         let name = Self::extract_attribute(identity_str, "name").ok_or_else(|| {
             MsiError::SxSError("assemblyIdentity missing 'name' attribute".to_string())
@@ -87,10 +125,15 @@ impl ManifestXML {
         let public_key_token = Self::extract_attribute(identity_str, "publicKeyToken")
             .and_then(|t| PublicKeyToken::parse(&t).ok());
 
+        let processor_architecture = Self::extract_attribute(identity_str, "processorArchitecture")
+            .and_then(|a| crate::execution::assembly_types::ProcessorArchitecture::parse(&a).ok())
+            .unwrap_or(crate::execution::assembly_types::ProcessorArchitecture::Neutral);
+
         Ok(Self {
             name,
             version,
             public_key_token,
+            processor_architecture,
         })
     }
 
@@ -113,7 +156,7 @@ pub use self::posix_mock::{GacBridge, SxSBridge};
 #[cfg(windows)]
 /// Native COM implementations for Windows.
 pub mod windows_impl {
-    use super::{ManifestXML, MsiError, Result};
+    use super::{MsiError, Result};
     use std::path::Path;
 
     /// Deployment bridge for the Global Assembly Cache (GAC) for .NET DLLs on Windows.
@@ -128,7 +171,7 @@ pub mod windows_impl {
         pub fn install_assembly(
             &self,
             assembly_path: &Path,
-            _manifest_path: Option<&Path>,
+            manifest_path: Option<&Path>,
         ) -> Result<()> {
             if !assembly_path.exists() {
                 return Err(MsiError::Io(format!(
@@ -136,8 +179,12 @@ pub mod windows_impl {
                     assembly_path.display()
                 )));
             }
+
+            // Validate manifest if provided
+            if let Some(mp) = manifest_path {
+                let _manifest = super::AssemblyManifest::from_file(mp)?;
+            }
             // Real implementation would invoke CreateAssemblyCache from fusion.dll via LoadLibrary.
-            // For now, validate the path and simulate success.
             Ok(())
         }
 
@@ -172,9 +219,7 @@ pub mod windows_impl {
                     manifest_path.display()
                 )));
             }
-            let content =
-                std::fs::read_to_string(manifest_path).map_err(|e| MsiError::Io(e.to_string()))?;
-            let _manifest = ManifestXML::parse(&content)?;
+            let _manifest = super::AssemblyManifest::from_file(manifest_path)?;
             // Native SxsInstallW API integration would go here.
             Ok(())
         }
@@ -198,7 +243,7 @@ pub mod windows_impl {
 #[cfg(not(windows))]
 /// Mock implementations for POSIX systems.
 pub mod posix_mock {
-    use super::{ManifestXML, MsiError, Result};
+    use super::{MsiError, Result};
     use std::path::{Path, PathBuf};
 
     /// Deployment bridge for the Global Assembly Cache (GAC) for .NET DLLs on POSIX.
@@ -257,10 +302,8 @@ pub mod posix_mock {
                     manifest_path.display()
                 )));
             }
-            let content =
-                std::fs::read_to_string(manifest_path).map_err(|e| MsiError::Io(e.to_string()))?;
             // Ensure manifest is valid before gracefully skipping
-            let _manifest = ManifestXML::parse(&content)?;
+            let _manifest = super::AssemblyManifest::from_file(manifest_path)?;
             Ok(())
         }
 
@@ -305,22 +348,77 @@ mod tests {
     }
 
     #[test]
+    fn test_assembly_manifest_from_file() -> Result<()> {
+        let temp_dir = tempfile::tempdir().map_err(|e| MsiError::Io(e.to_string()))?;
+        let valid_manifest = temp_dir.path().join("valid.manifest");
+        let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+            <assemblyIdentity name="App" version="1.0" publicKeyToken="b77a5c561934e089" processorArchitecture="amd64" />
+        </assembly>"#;
+        fs::write(&valid_manifest, xml.as_bytes()).map_err(|e| MsiError::Io(e.to_string()))?;
+
+        let manifest = AssemblyManifest::from_file(&valid_manifest)?;
+        assert_eq!(manifest.identity.name, "App");
+        assert_eq!(
+            manifest.identity.processor_architecture,
+            crate::execution::assembly_types::ProcessorArchitecture::Amd64
+        );
+        assert_eq!(manifest.path, valid_manifest);
+
+        assert!(AssemblyManifest::from_file(Path::new("non_existent.manifest")).is_err());
+
+        Ok(())
+    }
+
+    #[test]
     fn test_manifest_xml_parsing() -> Result<()> {
         let valid_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
         <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
-            <assemblyIdentity name="MyAssembly" version="1.0.0.0" publicKeyToken="b77a5c561934e089" />
+            <assemblyIdentity name="MyAssembly" version="1.0.0.0" publicKeyToken="b77a5c561934e089" processorArchitecture="amd64" />
         </assembly>"#;
 
         let manifest = ManifestXML::parse(valid_xml).expect("failed to parse xml");
         assert_eq!(manifest.name, "MyAssembly");
         assert_eq!(manifest.version, "1.0.0.0");
         assert_eq!(
-            manifest
-                .public_key_token
-                .ok_or_else(|| MsiError::SxSError("missing".into()))?
-                .as_str(),
+            manifest.public_key_token.unwrap().as_str(),
             "b77a5c561934e089"
         );
+        assert_eq!(
+            manifest.processor_architecture,
+            crate::execution::assembly_types::ProcessorArchitecture::Amd64
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_manifest_xml_parsing_real_world_msft() -> Result<()> {
+        let msft_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+            <asmv1:assemblyIdentity type="win32" name="Microsoft.Windows.Common-Controls" version="6.0.0.0" processorArchitecture="*" publicKeyToken="6595b64144ccf1df" language="*"></asmv1:assemblyIdentity>
+        </assembly>"#;
+
+        let manifest = ManifestXML::parse(msft_xml).expect("failed to parse MSFT xml");
+        assert_eq!(manifest.name, "Microsoft.Windows.Common-Controls");
+        assert_eq!(manifest.version, "6.0.0.0");
+        assert_eq!(
+            manifest.public_key_token.unwrap().as_str(),
+            "6595b64144ccf1df"
+        );
+        assert_eq!(
+            manifest.processor_architecture,
+            crate::execution::assembly_types::ProcessorArchitecture::Neutral
+        );
+
+        let msft_xml_ns2 = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <ns:assembly xmlns:ns="urn:schemas-microsoft-com:asm.v1">
+            <ns:assemblyIdentity name="App" version="1.0" />
+        </ns:assembly>"#;
+
+        let manifest2 = ManifestXML::parse(msft_xml_ns2).expect("failed to parse ns2 xml");
+        assert_eq!(manifest2.name, "App");
+        assert_eq!(manifest2.version, "1.0");
 
         Ok(())
     }

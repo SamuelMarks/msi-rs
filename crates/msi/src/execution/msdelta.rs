@@ -172,6 +172,23 @@ impl PatchDecoder {
     }
     #[allow(clippy::unused_self)]
     #[allow(clippy::missing_docs_in_private_items)]
+    /// Applies the patch instructions to a source file and writes the target file.
+    ///
+    /// # Errors
+    /// Returns an `MsiError` if file I/O fails or the patch fails to apply.
+    pub fn apply_to_file(
+        &self,
+        source_path: &std::path::Path,
+        target_path: &std::path::Path,
+    ) -> Result<()> {
+        let source_data = std::fs::read(source_path).map_err(|e| MsiError::Io(e.to_string()))?;
+        let target_data = self.apply(&source_data)?;
+        std::fs::write(target_path, target_data).map_err(|e| MsiError::Io(e.to_string()))?;
+        Ok(())
+    }
+
+    #[allow(clippy::unused_self)]
+    #[allow(clippy::missing_docs_in_private_items)]
     fn compute_crc32(&self, data: &[u8]) -> u32 {
         let mut crc = 0xFFFF_FFFF_u32;
         for byte in data {
@@ -189,6 +206,16 @@ impl PatchDecoder {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_patch_decoder_safety_limit() {
+        let mut patch_data = vec![0u8; 1024 * 1024 * 50 + 1];
+        patch_data[0..4].copy_from_slice(b"PA19");
+        let err = PatchDecoder::new(&patch_data).unwrap_err();
+        assert!(
+            matches!(err, MsiError::DeltaDecodeError(msg) if msg.contains("Patch exceeds safety limit"))
+        );
+    }
 
     #[test]
     fn test_source_checksum() {
@@ -234,6 +261,26 @@ mod tests {
     }
 
     #[test]
+    fn test_patch_decoder_apply_to_file() -> Result<()> {
+        let temp_dir = tempfile::tempdir().map_err(|e| MsiError::Io(e.to_string()))?;
+        let src_path = temp_dir.path().join("src.txt");
+        let tgt_path = temp_dir.path().join("tgt.txt");
+        std::fs::write(&src_path, "dummy source").map_err(|e| MsiError::Io(e.to_string()))?;
+
+        let mut data = vec![b'P', b'A', b'3', b'0'];
+        data.extend(0u32.to_le_bytes()); // Src (0 = bypass check)
+        data.extend(0u32.to_le_bytes()); // Tgt
+        data.extend(16u32.to_le_bytes()); // Size
+
+        let decoder = PatchDecoder::new(&data).expect("failed");
+        assert!(decoder.apply_to_file(&src_path, &tgt_path).is_ok());
+
+        let out = std::fs::read(&tgt_path).unwrap();
+        assert_eq!(out.len(), 16);
+        Ok(())
+    }
+
+    #[test]
     fn test_patch_decoder_checksum_mismatch() {
         let mut data = vec![b'P', b'A', b'3', b'0'];
         data.extend(0x1234_5678u32.to_le_bytes()); // Src
@@ -262,5 +309,39 @@ mod tests {
                 length: 1
             }
         );
+    }
+}
+
+#[cfg(test)]
+mod additional_msdelta_tests {
+    use super::*;
+
+    #[test]
+    fn test_patch_decoder_apply_instructions() {
+        let mut data = vec![b'P', b'A', b'3', b'0'];
+        data.extend(0u32.to_le_bytes()); // Src (0 = bypass check)
+        data.extend(0u32.to_le_bytes()); // Tgt
+        data.extend(10u32.to_le_bytes()); // Size
+
+        let mut decoder = PatchDecoder::new(&data).expect("failed");
+
+        decoder
+            .instructions
+            .push(DeltaInstruction::Add { length: 5 });
+        decoder.instructions.push(DeltaInstruction::Copy {
+            offset: 1,
+            length: 5,
+        });
+
+        let source_data = b"0123456789";
+        let result = decoder.apply(source_data).expect("failed");
+        assert_eq!(result.len(), 10);
+
+        // Out of bounds copy
+        decoder.instructions.push(DeltaInstruction::Copy {
+            offset: 8,
+            length: 5,
+        });
+        assert!(decoder.apply(source_data).is_err());
     }
 }

@@ -1963,7 +1963,7 @@ mod tests {
             tui: false,
         };
         println!("Result: {:?}", bad_cond_opts.execute());
-        assert_eq!(bad_cond_opts.execute(), Ok(MsiExitCode::Success));
+        assert!(bad_cond_opts.execute().is_err());
 
         // 15. Error during Transaction::execute (Type 19 abort action)
         let mut pkg_fail_ca = Package::builder()
@@ -2002,12 +2002,12 @@ mod tests {
             properties: HashMap::new(),
             tui: false,
         };
-        assert_eq!(fail_ca_opts.execute(), Ok(MsiExitCode::Success));
+        assert_eq!(fail_ca_opts.execute(), Ok(MsiExitCode::InstallFailure));
 
         // Test logging during prepare failure
         let mut fail_ca_log_opts = fail_ca_opts;
         fail_ca_log_opts.logging = Some(full_logging.clone());
-        assert_eq!(fail_ca_log_opts.execute(), Ok(MsiExitCode::Success));
+        assert_eq!(fail_ca_log_opts.execute(), Ok(MsiExitCode::InstallFailure));
 
         // 16. Error during Transaction::execute (Type 50 + Deferred custom action executable failure)
         #[cfg(windows)]
@@ -2058,12 +2058,15 @@ mod tests {
             properties: HashMap::new(),
             tui: false,
         };
-        assert_eq!(fail_exec_opts.execute(), Ok(MsiExitCode::Success));
+        assert_eq!(fail_exec_opts.execute(), Ok(MsiExitCode::InstallFailure));
 
         // Test logging during execute failure
         let mut fail_exec_log_opts = fail_exec_opts;
         fail_exec_log_opts.logging = Some(full_logging);
-        assert_eq!(fail_exec_log_opts.execute(), Ok(MsiExitCode::Success));
+        assert_eq!(
+            fail_exec_log_opts.execute(),
+            Ok(MsiExitCode::InstallFailure)
+        );
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }

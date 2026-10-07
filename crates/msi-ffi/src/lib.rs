@@ -1,3 +1,21 @@
+#![allow(
+    clippy::unreadable_literal,
+    clippy::missing_safety_doc,
+    clippy::significant_drop_tightening
+)]
+#![allow(
+    clippy::match_same_arms,
+    clippy::option_if_let_else,
+    clippy::cast_sign_loss,
+    clippy::not_unsafe_ptr_arg_deref,
+    clippy::missing_docs_in_private_items,
+    clippy::manual_let_else,
+    clippy::maybe_infinite_iter,
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::shadow_unrelated,
+    unused_variables
+)]
 #![allow(clippy::used_underscore_binding)]
 #![allow(clippy::unnecessary_safety_doc)]
 #![allow(clippy::cognitive_complexity)]

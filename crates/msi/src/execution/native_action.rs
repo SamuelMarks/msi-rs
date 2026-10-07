@@ -2152,3 +2152,46 @@ mod tests {
         assert!(matches!(err6, Err(MsiError::SqlProvisioning(..))));
     }
 }
+
+#[cfg(test)]
+mod native_action_additional_tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    #[allow(clippy::redundant_clone)]
+    fn test_native_library_loader_clone_and_default() {
+        let loader = NativeLibraryLoader::default();
+        let cloned = loader.clone();
+        assert_eq!(loader.library_format(), cloned.library_format());
+    }
+
+    #[test]
+    fn test_load_pe_without_wine() {
+        let mut loader = NativeLibraryLoader::new();
+        // Create a dummy PE file
+        let temp_dir = tempfile::tempdir().unwrap();
+        let pe_path = temp_dir.path().join("dummy.dll");
+        fs::write(&pe_path, b"MZ\x00\x00").unwrap();
+
+        // Temporarily clear PATH to ensure wine is not found
+        let old_path = std::env::var_os("PATH");
+        std::env::remove_var("PATH");
+
+        let res = loader.load_library(&pe_path);
+
+        if let Some(path) = old_path {
+            std::env::set_var("PATH", path);
+        }
+
+        #[cfg(not(windows))]
+        {
+            assert!(res.is_err());
+            if let Err(MsiError::UnsupportedPlatform { reason, .. }) = res {
+                assert!(reason.contains("without Wine"));
+            } else {
+                panic!("Expected UnsupportedPlatform error");
+            }
+        }
+    }
+}

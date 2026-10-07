@@ -164,6 +164,8 @@ pub struct PathResolver {
     sysroot: Option<PathBuf>,
     /// Environment variable overrides (e.g. `XDG_DATA_HOME`, `TMPDIR`).
     env_vars: HashMap<String, String>,
+    /// True if installing per-machine (`ALLUSERS=1`).
+    per_machine: bool,
 }
 
 impl PathResolver {
@@ -192,7 +194,15 @@ impl PathResolver {
             root_prefix: PathBuf::from("/"),
             sysroot: None,
             env_vars: HashMap::new(),
+            per_machine: false,
         }
+    }
+
+    /// Sets whether this is a per-machine installation.
+    #[must_use]
+    pub const fn per_machine(mut self, per_machine: bool) -> Self {
+        self.per_machine = per_machine;
+        self
     }
 
     /// Sets the vendor or manufacturer name.
@@ -286,6 +296,47 @@ impl PathResolver {
         self.env_vars.insert(key.into(), val.into());
     }
 
+    /// Applies Windows File System Reflection (`SysWOW64` redirection).
+    ///
+    /// On a 64-bit OS, 32-bit components installing to `SystemFolder` (which resolves to `System32`)
+    /// are redirected to `SysWOW64`.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The absolute target filesystem path.
+    /// * `is_64bit_os` - True if the host OS is 64-bit.
+    /// * `is_64bit_component` - True if the component being installed is 64-bit.
+    ///
+    /// # Returns
+    ///
+    /// The reflected path.
+    #[must_use]
+    pub fn apply_wow64_file_reflection(
+        path: &Path,
+        is_64bit_os: bool,
+        is_64bit_component: bool,
+    ) -> PathBuf {
+        if !is_64bit_os || is_64bit_component {
+            return path.to_path_buf();
+        }
+
+        let path_str = path.to_string_lossy();
+        let upper_path = path_str.to_uppercase();
+
+        // Very basic heuristic for System32 redirection matching Windows Installer behavior
+        if upper_path.contains(r"\WINDOWS\SYSTEM32") {
+            // Replace the last occurrence of SYSTEM32 (case insensitive) with SysWOW64
+            // Since we know it contains it, we find the index in upper string
+            if let Some(idx) = upper_path.rfind(r"\WINDOWS\SYSTEM32") {
+                let start = &path_str[..idx];
+                let end = &path_str[idx + 17..]; // len of "\WINDOWS\SYSTEM32"
+                return PathBuf::from(format!(r"{start}\Windows\SysWOW64{end}"));
+            }
+        }
+
+        path.to_path_buf()
+    }
+
     /// Resolves an MSI standard directory identifier into its target platform filesystem path.
     ///
     /// # Arguments
@@ -330,11 +381,20 @@ impl PathResolver {
             }
             (TargetOs::Windows, StandardDirectoryId::ProfilesFolder) => PathBuf::from(r"C:\Users"),
             (TargetOs::Windows | TargetOs::MacOs, StandardDirectoryId::DesktopFolder) => {
-                self.home_dir.join("Desktop")
+                if self.per_machine && self.target_os == TargetOs::Windows {
+                    PathBuf::from(r"C:\Users\Public\Desktop")
+                } else {
+                    self.home_dir.join("Desktop")
+                }
             }
-            (TargetOs::Windows, StandardDirectoryId::ProgramMenuFolder) => self
-                .home_dir
-                .join(r"AppData\Roaming\Microsoft\Windows\Start Menu\Programs"),
+            (TargetOs::Windows, StandardDirectoryId::ProgramMenuFolder) => {
+                if self.per_machine {
+                    PathBuf::from(r"C:\ProgramData\Microsoft\Windows\Start Menu\Programs")
+                } else {
+                    self.home_dir
+                        .join(r"AppData\Roaming\Microsoft\Windows\Start Menu\Programs")
+                }
+            }
             (TargetOs::MacOs, StandardDirectoryId::ProgramMenuFolder) => {
                 self.home_dir.join("Applications")
             }
@@ -473,10 +533,20 @@ impl PathResolver {
                 sysroot.join("ProgramData").join(&self.product)
             }
             (TargetOs::Windows, StandardDirectoryId::DesktopFolder) => {
-                sysroot.join("Users").join("Default").join("Desktop")
+                if self.per_machine {
+                    sysroot.join("Users").join("Public").join("Desktop")
+                } else {
+                    sysroot.join("Users").join("Default").join("Desktop")
+                }
             }
             (TargetOs::Windows, StandardDirectoryId::ProgramMenuFolder) => {
-                sysroot.join(r"ProgramData\Microsoft\Windows\Start Menu\Programs")
+                if self.per_machine {
+                    sysroot.join(r"ProgramData\Microsoft\Windows\Start Menu\Programs")
+                } else {
+                    sysroot.join(
+                        r"Users\Default\AppData\Roaming\Microsoft\Windows\Start Menu\Programs",
+                    )
+                }
             }
             (TargetOs::Windows, StandardDirectoryId::TempFolder) => {
                 sysroot.join("Windows").join("Temp")
@@ -518,6 +588,49 @@ impl PathResolver {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_windows_desktop_and_program_menu_per_machine() {
+        let resolver = PathResolver {
+            product: "MyApp".to_string(),
+            per_machine: true,
+            home_dir: PathBuf::from(r"C:\Users\User"),
+            target_os: TargetOs::Windows,
+            vendor: None,
+            root_prefix: PathBuf::new(),
+            sysroot: None,
+            env_vars: HashMap::default(),
+        };
+        let desktop = resolver.resolve(StandardDirectoryId::DesktopFolder);
+        assert_eq!(desktop, PathBuf::from(r"C:\Users\Public\Desktop"));
+        let menu = resolver.resolve(StandardDirectoryId::ProgramMenuFolder);
+        assert_eq!(
+            menu,
+            PathBuf::from(r"C:\ProgramData\Microsoft\Windows\Start Menu\Programs")
+        );
+
+        let offline_resolver = PathResolver {
+            product: "MyApp".to_string(),
+            per_machine: true,
+            target_os: TargetOs::Windows,
+            home_dir: PathBuf::from(r"C:\Users\User"),
+            vendor: None,
+            root_prefix: PathBuf::new(),
+            sysroot: Some(PathBuf::from(r"C:\offline")),
+            env_vars: HashMap::default(),
+        };
+        let sysroot = Path::new("C:\\offline");
+        let off_desktop = offline_resolver.resolve(StandardDirectoryId::DesktopFolder);
+        assert_eq!(
+            off_desktop,
+            sysroot.join("Users").join("Public").join("Desktop")
+        );
+        let off_menu = offline_resolver.resolve(StandardDirectoryId::ProgramMenuFolder);
+        assert_eq!(
+            off_menu,
+            sysroot.join(r"ProgramData\Microsoft\Windows\Start Menu\Programs")
+        );
+    }
 
     /// Tests `StandardDirectoryId` parsing and string representation.
     #[test]
@@ -892,7 +1005,7 @@ mod tests {
         );
         assert_eq!(
             win_resolver.resolve(StandardDirectoryId::ProgramMenuFolder),
-            sysroot.join(r"ProgramData\Microsoft\Windows\Start Menu\Programs")
+            sysroot.join(r"Users\Default\AppData\Roaming\Microsoft\Windows\Start Menu\Programs")
         );
         assert_eq!(
             win_resolver.resolve(StandardDirectoryId::TempFolder),
@@ -984,6 +1097,40 @@ mod tests {
         assert_eq!(
             linux_vendor_resolver.resolve(StandardDirectoryId::ProgramFiles64Folder),
             sysroot.join("opt").join("AcmeCorp")
+        );
+    }
+
+    #[test]
+    fn test_apply_wow64_file_reflection() {
+        let p1 = Path::new(r"C:\Windows\System32\drivers\etc\hosts");
+        // No reflection for 64-bit components
+        assert_eq!(
+            PathResolver::apply_wow64_file_reflection(p1, true, true),
+            PathBuf::from(r"C:\Windows\System32\drivers\etc\hosts")
+        );
+        // No reflection on 32-bit OS
+        assert_eq!(
+            PathResolver::apply_wow64_file_reflection(p1, false, false),
+            PathBuf::from(r"C:\Windows\System32\drivers\etc\hosts")
+        );
+        // Reflection for 32-bit component on 64-bit OS
+        assert_eq!(
+            PathResolver::apply_wow64_file_reflection(p1, true, false),
+            PathBuf::from(r"C:\Windows\SysWOW64\drivers\etc\hosts")
+        );
+
+        // Case insensitivity
+        let p2 = Path::new(r"c:\windows\system32\cmd.exe");
+        assert_eq!(
+            PathResolver::apply_wow64_file_reflection(p2, true, false),
+            PathBuf::from(r"c:\Windows\SysWOW64\cmd.exe")
+        );
+
+        // Does not touch unrelated paths
+        let p3 = Path::new(r"C:\Program Files\Acme");
+        assert_eq!(
+            PathResolver::apply_wow64_file_reflection(p3, true, false),
+            PathBuf::from(r"C:\Program Files\Acme")
         );
     }
 

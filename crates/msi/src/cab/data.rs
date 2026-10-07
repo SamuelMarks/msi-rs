@@ -163,6 +163,7 @@ impl CfData {
 }
 
 #[cfg(test)]
+/// Unit tests.
 mod tests {
     use super::*;
 

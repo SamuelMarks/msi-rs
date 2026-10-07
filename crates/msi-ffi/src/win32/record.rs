@@ -217,6 +217,22 @@ pub extern "system" fn MsiRecordClearData(hRecord: MsiHandle) -> Uint {
     result.unwrap_or(ERROR_INSTALL_FAILURE)
 }
 
+/// Returns the error record that was last returned for the calling thread.
+///
+/// # Returns
+///
+/// The handle to the error record, or `MSI_NULL_HANDLE` if no error record exists.
+#[no_mangle]
+#[allow(non_snake_case)]
+pub extern "system" fn MsiGetLastErrorRecord() -> MsiHandle {
+    let result = panic::catch_unwind(|| {
+        // TODO: Map to thread-local MSI error records, currently we only expose FFI text errors.
+        MSI_NULL_HANDLE
+    });
+
+    result.unwrap_or(MSI_NULL_HANDLE)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -287,5 +303,7 @@ mod tests {
             ERROR_INVALID_HANDLE
         );
         assert_eq!(MsiRecordClearData(h_db), ERROR_INVALID_HANDLE);
+
+        assert_eq!(MsiGetLastErrorRecord(), MSI_NULL_HANDLE);
     }
 }

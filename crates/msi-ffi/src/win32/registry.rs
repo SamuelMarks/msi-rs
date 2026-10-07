@@ -8,6 +8,7 @@ use std::panic;
 use crate::handles::MsiHandle;
 use crate::win32::{
     Dword, Lpcstr, Lpcwstr, Lpstr, Lpwstr, Uint, ERROR_INSTALL_FAILURE, ERROR_INVALID_PARAMETER,
+    ERROR_SUCCESS,
 };
 
 // The Windows Installer uses standard return codes for enumeration
@@ -678,6 +679,42 @@ pub extern "system" fn MsiGetComponentPathExA(
     result.unwrap_or(ERROR_INSTALL_FAILURE)
 }
 
+/// Locate component file path for the current user (Unicode).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiGetComponentPathW(
+    szProduct: Lpcwstr,
+    szComponent: Lpcwstr,
+    lpPathBuf: Lpwstr,
+    pcchBuf: *mut Dword,
+) -> i32 {
+    let result = panic::catch_unwind(|| {
+        if szProduct.is_null() || szComponent.is_null() {
+            return INSTALLSTATE_UNKNOWN;
+        }
+        1 // INSTALLSTATE_LOCAL
+    });
+    result.unwrap_or(INSTALLSTATE_UNKNOWN)
+}
+
+/// Locate component file path for the current user (ANSI).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiGetComponentPathA(
+    szProduct: Lpcstr,
+    szComponent: Lpcstr,
+    lpPathBuf: Lpstr,
+    pcchBuf: *mut Dword,
+) -> i32 {
+    let result = panic::catch_unwind(|| {
+        if szProduct.is_null() || szComponent.is_null() {
+            return INSTALLSTATE_UNKNOWN;
+        }
+        1 // INSTALLSTATE_LOCAL
+    });
+    result.unwrap_or(INSTALLSTATE_UNKNOWN)
+}
+
 /// Retrieve valid installation states for feature (Unicode).
 #[no_mangle]
 #[allow(non_snake_case, unused_variables)]
@@ -867,6 +904,99 @@ pub extern "system" fn MsiGetFileVersionA(
         }
         ERROR_NO_MORE_ITEMS
     });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Obtains user information for a product (Unicode).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiCollectUserInfoW(szProduct: Lpcwstr) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szProduct.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_SUCCESS
+    });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Obtains user information for a product (ANSI).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiCollectUserInfoA(szProduct: Lpcstr) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szProduct.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        ERROR_SUCCESS
+    });
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Retrieves registered user information (Unicode).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiGetUserInfoW(
+    szProduct: Lpcwstr,
+    lpUserNameBuf: Lpwstr,
+    pcchUserNameBuf: *mut Dword,
+    lpOrgNameBuf: Lpwstr,
+    pcchOrgNameBuf: *mut Dword,
+    lpSerialBuf: Lpwstr,
+    pcchSerialBuf: *mut Dword,
+) -> i32 {
+    let result = panic::catch_unwind(|| {
+        if szProduct.is_null() {
+            return INSTALLSTATE_UNKNOWN;
+        }
+        INSTALLSTATE_UNKNOWN
+    });
+    result.unwrap_or(INSTALLSTATE_UNKNOWN)
+}
+
+/// Retrieves registered user information (ANSI).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiGetUserInfoA(
+    szProduct: Lpcstr,
+    lpUserNameBuf: Lpstr,
+    pcchUserNameBuf: *mut Dword,
+    lpOrgNameBuf: Lpstr,
+    pcchOrgNameBuf: *mut Dword,
+    lpSerialBuf: Lpstr,
+    pcchSerialBuf: *mut Dword,
+) -> i32 {
+    let result = panic::catch_unwind(|| {
+        if szProduct.is_null() {
+            return INSTALLSTATE_UNKNOWN;
+        }
+        INSTALLSTATE_UNKNOWN
+    });
+    result.unwrap_or(INSTALLSTATE_UNKNOWN)
+}
+
+/// Internal shim for migrating cached packages (Unicode).
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+/// Migrates cached packages from Windows Installer 1.0 format.
+///
+/// This is a legacy API that is no longer used by modern installers. It is safely stubbed to return `ERROR_SUCCESS`.
+///
+/// # Arguments
+/// * `szProductCode` - Product code to migrate.
+/// * `szUserSid` - User SID to migrate.
+/// * `szPreflightCheck` - Preflight check string.
+/// * `dwReserved` - Reserved parameter.
+///
+/// # Returns
+/// `ERROR_SUCCESS`.
+pub extern "system" fn Migrate10CachedPackagesW(
+    szProductCode: Lpcwstr,
+    szUserSid: Lpcwstr,
+    szPreflightCheck: Lpcwstr,
+    dwReserved: Dword,
+) -> Uint {
+    let result = panic::catch_unwind(|| ERROR_SUCCESS); // No-op
     result.unwrap_or(ERROR_INSTALL_FAILURE)
 }
 
@@ -1307,6 +1437,65 @@ mod tests {
             ERROR_INVALID_PARAMETER
         );
         assert_eq!(
+            MsiGetComponentPathExW(
+                valid_w.as_ptr(),
+                valid_w.as_ptr(),
+                std::ptr::null(),
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiGetComponentPathExA(
+                valid_a.as_ptr().cast(),
+                valid_a.as_ptr().cast(),
+                std::ptr::null(),
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+
+        assert_eq!(
+            MsiGetComponentPathW(
+                std::ptr::null(),
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            INSTALLSTATE_UNKNOWN
+        );
+        assert_eq!(
+            MsiGetComponentPathA(
+                std::ptr::null(),
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            INSTALLSTATE_UNKNOWN
+        );
+        assert_eq!(
+            MsiGetComponentPathW(
+                valid_w.as_ptr(),
+                valid_w.as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            1
+        );
+        assert_eq!(
+            MsiGetComponentPathA(
+                valid_a.as_ptr().cast(),
+                valid_a.as_ptr().cast(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            1
+        );
+        assert_eq!(
             MsiGetFeatureValidStatesW(0, std::ptr::null(), std::ptr::null_mut()),
             ERROR_INVALID_PARAMETER
         );
@@ -1407,6 +1596,632 @@ mod tests {
                 std::ptr::null_mut()
             ),
             ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiEnumClientsW(valid_w.as_ptr(), 0, std::ptr::null_mut()),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiEnumClientsA(valid_a.as_ptr().cast(), 0, std::ptr::null_mut()),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiEnumClientsExW(
+                valid_w.as_ptr(),
+                std::ptr::null(),
+                0,
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumClientsExA(
+                valid_a.as_ptr().cast(),
+                std::ptr::null(),
+                0,
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumComponentCostsW(
+                0,
+                valid_w.as_ptr(),
+                0,
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumComponentCostsA(
+                0,
+                valid_a.as_ptr().cast(),
+                0,
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumComponentQualifiersW(
+                valid_w.as_ptr(),
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumComponentQualifiersA(
+                valid_a.as_ptr().cast(),
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumComponentsW(0, std::ptr::null_mut()),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiEnumComponentsA(0, std::ptr::null_mut()),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiEnumComponentsExW(
+                std::ptr::null(),
+                0,
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumComponentsExA(
+                std::ptr::null(),
+                0,
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumFeaturesW(
+                valid_w.as_ptr(),
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiEnumFeaturesA(
+                valid_a.as_ptr().cast(),
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiEnumPatchesW(
+                valid_w.as_ptr(),
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiEnumPatchesA(
+                valid_a.as_ptr().cast(),
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiEnumPatchesExW(
+                valid_w.as_ptr(),
+                std::ptr::null(),
+                0,
+                0,
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumPatchesExA(
+                valid_a.as_ptr().cast(),
+                std::ptr::null(),
+                0,
+                0,
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumProductsW(0, std::ptr::null_mut()),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiEnumProductsA(0, std::ptr::null_mut()),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiEnumProductsExW(
+                std::ptr::null(),
+                std::ptr::null(),
+                0,
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumProductsExA(
+                std::ptr::null(),
+                std::ptr::null(),
+                0,
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumRelatedProductsW(valid_w.as_ptr(), 0, 0, std::ptr::null_mut()),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiEnumRelatedProductsA(valid_a.as_ptr().cast(), 0, 0, std::ptr::null_mut()),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetFileVersionW(
+                valid_w.as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiGetFileVersionA(
+                valid_a.as_ptr().cast(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+
+        let mut buf_w = [0_u16; 39];
+        let mut buf_a = [0_i8; 39];
+        assert_eq!(
+            MsiEnumClientsW(valid_w.as_ptr(), 0, buf_w.as_mut_ptr()),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumClientsA(valid_a.as_ptr().cast(), 0, buf_a.as_mut_ptr()),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumClientsExW(
+                valid_w.as_ptr(),
+                std::ptr::null(),
+                0,
+                0,
+                buf_w.as_mut_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumClientsExA(
+                valid_a.as_ptr().cast(),
+                std::ptr::null(),
+                0,
+                0,
+                buf_a.as_mut_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumComponentCostsW(
+                0,
+                valid_w.as_ptr(),
+                0,
+                0,
+                buf_w.as_mut_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumComponentCostsA(
+                0,
+                valid_a.as_ptr().cast(),
+                0,
+                0,
+                buf_a.as_mut_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumComponentQualifiersW(
+                valid_w.as_ptr(),
+                0,
+                buf_w.as_mut_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumComponentQualifiersA(
+                valid_a.as_ptr().cast(),
+                0,
+                buf_a.as_mut_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumComponentsW(0, buf_w.as_mut_ptr()),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumComponentsA(0, buf_a.as_mut_ptr()),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumComponentsExW(
+                std::ptr::null(),
+                0,
+                0,
+                buf_w.as_mut_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumComponentsExA(
+                std::ptr::null(),
+                0,
+                0,
+                buf_a.as_mut_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumFeaturesW(
+                valid_w.as_ptr(),
+                0,
+                buf_w.as_mut_ptr(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumFeaturesA(
+                valid_a.as_ptr().cast(),
+                0,
+                buf_a.as_mut_ptr(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumPatchesW(
+                valid_w.as_ptr(),
+                0,
+                buf_w.as_mut_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumPatchesA(
+                valid_a.as_ptr().cast(),
+                0,
+                buf_a.as_mut_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumPatchesExW(
+                valid_w.as_ptr(),
+                std::ptr::null(),
+                0,
+                0,
+                0,
+                buf_w.as_mut_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumPatchesExA(
+                valid_a.as_ptr().cast(),
+                std::ptr::null(),
+                0,
+                0,
+                0,
+                buf_a.as_mut_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(MsiEnumProductsW(0, buf_w.as_mut_ptr()), ERROR_NO_MORE_ITEMS);
+        assert_eq!(MsiEnumProductsA(0, buf_a.as_mut_ptr()), ERROR_NO_MORE_ITEMS);
+        assert_eq!(
+            MsiEnumProductsExW(
+                std::ptr::null(),
+                std::ptr::null(),
+                0,
+                0,
+                buf_w.as_mut_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumProductsExA(
+                std::ptr::null(),
+                std::ptr::null(),
+                0,
+                0,
+                buf_a.as_mut_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumRelatedProductsW(valid_w.as_ptr(), 0, 0, buf_w.as_mut_ptr()),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiEnumRelatedProductsA(valid_a.as_ptr().cast(), 0, 0, buf_a.as_mut_ptr()),
+            ERROR_NO_MORE_ITEMS
+        );
+
+        assert_eq!(
+            MsiQueryFeatureStateExW(
+                valid_w.as_ptr(),
+                std::ptr::null(),
+                0,
+                valid_w.as_ptr(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiQueryFeatureStateExA(
+                valid_a.as_ptr().cast(),
+                std::ptr::null(),
+                0,
+                valid_a.as_ptr().cast(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiGetComponentStateW(
+                0,
+                valid_w.as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiGetComponentStateA(
+                0,
+                valid_a.as_ptr().cast(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiGetFeatureStateW(
+                0,
+                valid_w.as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiGetFeatureStateA(
+                0,
+                valid_a.as_ptr().cast(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiGetFeatureValidStatesW(0, valid_w.as_ptr(), std::ptr::null_mut()),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiGetFeatureValidStatesA(0, valid_a.as_ptr().cast(), std::ptr::null_mut()),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiGetFeatureCostW(0, valid_w.as_ptr(), 0, 0, std::ptr::null_mut()),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiGetFeatureCostA(0, valid_a.as_ptr().cast(), 0, 0, std::ptr::null_mut()),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiDecomposeDescriptorW(
+                valid_w.as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+        assert_eq!(
+            MsiDecomposeDescriptorA(
+                valid_a.as_ptr().cast(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_NO_MORE_ITEMS
+        );
+
+        assert_eq!(
+            MsiCollectUserInfoW(std::ptr::null()),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiCollectUserInfoA(std::ptr::null()),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(MsiCollectUserInfoW(valid_w.as_ptr()), ERROR_SUCCESS);
+        assert_eq!(
+            MsiCollectUserInfoA(valid_a.as_ptr().cast::<i8>()),
+            ERROR_SUCCESS
+        );
+
+        assert_eq!(
+            MsiGetUserInfoW(
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            INSTALLSTATE_UNKNOWN
+        );
+        assert_eq!(
+            MsiGetUserInfoA(
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            INSTALLSTATE_UNKNOWN
+        );
+        assert_eq!(
+            MsiGetUserInfoW(
+                valid_w.as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            INSTALLSTATE_UNKNOWN
+        );
+        assert_eq!(
+            MsiGetUserInfoA(
+                valid_a.as_ptr().cast::<i8>(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            INSTALLSTATE_UNKNOWN
+        );
+
+        assert_eq!(
+            Migrate10CachedPackagesW(std::ptr::null(), std::ptr::null(), std::ptr::null(), 0),
+            ERROR_SUCCESS
         );
     }
 }

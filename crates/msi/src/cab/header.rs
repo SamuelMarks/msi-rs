@@ -401,6 +401,7 @@ impl Default for CfHeader {
 }
 
 #[cfg(test)]
+/// Unit tests.
 mod tests {
     use super::*;
 

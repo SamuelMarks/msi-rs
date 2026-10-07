@@ -24,6 +24,7 @@ pub mod odbc;
 pub mod partition;
 pub mod paths;
 pub mod permissions;
+pub mod provider;
 pub mod registry_store;
 pub mod sysroot;
 pub mod unattend;

@@ -174,7 +174,7 @@ assert_is_empty = "allow"
 
 [workspace.dependencies]
 clap = { version = "4.6", features = ["derive"] }
-derive_more = { version = "2.1", features = ["display", "error"] }
+derive_more = { version = "2.1", features = ["display", "error", "from"] }
 libc = { version = "0.2", default-features = false }
 rayon = "1.10"
 msi = { path = "crates/msi" }

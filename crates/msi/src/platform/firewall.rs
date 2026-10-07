@@ -276,10 +276,23 @@ mod tests {
             .unwrap_or_default();
         assert_eq!(add_cmd, "ufw allow 8080/tcp comment \"MyApp\"");
 
+        let add_cmd_udp = mgr
+            .add_port_exception(&name, port, Protocol::Udp)
+            .unwrap_or_default();
+        assert_eq!(add_cmd_udp, "ufw allow 8080/udp comment \"MyApp\"");
+
         let remove_cmd = mgr
             .remove_port_exception(&name, port, Protocol::Udp)
             .unwrap_or_default();
         assert_eq!(remove_cmd, "ufw delete allow 8080/udp comment \"MyApp\"");
+
+        let remove_cmd_tcp = mgr
+            .remove_port_exception(&name, port, Protocol::Tcp)
+            .unwrap_or_default();
+        assert_eq!(
+            remove_cmd_tcp,
+            "ufw delete allow 8080/tcp comment \"MyApp\""
+        );
 
         let empty_name = FirewallRuleName::new("");
         assert!(matches!(
@@ -306,10 +319,23 @@ mod tests {
             "pass in proto tcp from any to any port 9000 # PFApp"
         );
 
+        let add_cmd_udp = mgr
+            .add_port_exception(&name, port, Protocol::Udp)
+            .unwrap_or_default();
+        assert_eq!(
+            add_cmd_udp,
+            "pass in proto udp from any to any port 9000 # PFApp"
+        );
+
         let remove_cmd = mgr
             .remove_port_exception(&name, port, Protocol::Udp)
             .unwrap_or_default();
         assert_eq!(remove_cmd, "# Remove rule 'PFApp' and reload pf anchor");
+
+        let remove_cmd_tcp = mgr
+            .remove_port_exception(&name, port, Protocol::Tcp)
+            .unwrap_or_default();
+        assert_eq!(remove_cmd_tcp, "# Remove rule 'PFApp' and reload pf anchor");
 
         let empty_name = FirewallRuleName::new("");
         assert!(matches!(
@@ -336,10 +362,22 @@ mod tests {
         assert!(add_cmd.contains(r#"protocol="TCP""#));
         assert!(add_cmd.contains(r#"action="allow""#));
 
+        let add_cmd_udp = mgr
+            .add_port_exception(&name, port, Protocol::Udp)
+            .unwrap_or_default();
+        assert!(add_cmd_udp.contains(r#"protocol="UDP""#));
+
         let remove_cmd = mgr
             .remove_port_exception(&name, port, Protocol::Udp)
             .unwrap_or_default();
         assert!(remove_cmd.contains(r#"action="remove""#));
+        assert!(remove_cmd.contains(r#"protocol="UDP""#));
+
+        let remove_cmd_tcp = mgr
+            .remove_port_exception(&name, port, Protocol::Tcp)
+            .unwrap_or_default();
+        assert!(remove_cmd_tcp.contains(r#"action="remove""#));
+        assert!(remove_cmd_tcp.contains(r#"protocol="TCP""#));
 
         let empty_name = FirewallRuleName::new("");
         assert!(matches!(

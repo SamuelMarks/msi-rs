@@ -210,6 +210,11 @@ impl DatabaseCatalog {
         self.tables.get(name)
     }
 
+    /// Removes a table schema from the catalog.
+    pub fn remove_table(&mut self, name: &str) {
+        self.tables.remove(name);
+    }
+
     /// Returns a list of all table names registered in the catalog.
     ///
     /// # Returns

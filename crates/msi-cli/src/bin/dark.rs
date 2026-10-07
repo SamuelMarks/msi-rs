@@ -322,15 +322,21 @@ mod tests {
         // 2. Execution error on non-existent package
         assert_eq!(run(&["nonexistent.msi".to_string()]), 1);
 
-        assert!(
-            msi_file.exists(),
-            "msi_file should exist before decompilation"
-        );
+        assert!(msi_file.exists());
+
         // 3. Decompile with banner and stdout
         assert_eq!(run(&[msi_file.to_string_lossy().to_string()]), 0);
 
         // 4. Decompile with all flags and embedded cabinets (valid, continued, and invalid)
         assert!(try_open_package(&temp_dir.join("nonexistent.msi")).is_empty());
+        // Force unwrapping of missing table test
+        let invalid_args = vec![
+            "dark".to_string(),
+            "--tables".to_string(),
+            "InvalidTableX".to_string(),
+            msi_file.to_string_lossy().to_string(),
+        ];
+        assert_eq!(run(&invalid_args), 0);
         for mut pkg_with_cab in try_open_package(&msi_file) {
             // Valid cabinet
             let mut cab_writer =

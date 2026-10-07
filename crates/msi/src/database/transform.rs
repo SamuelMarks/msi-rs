@@ -182,6 +182,78 @@ impl DatabaseTransform {
         Ok(transform)
     }
 
+    /// Validates the transform against a target database.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - Database to check against.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::MsiError::TransformConflict`] if validation fails.
+    pub fn validate(&self, db: &LinkedDatabase) -> Result<()> {
+        let flags = self.summary_info.word_count.unwrap_or(0) as u32;
+
+        if let Some(rev) = &self.summary_info.rev_number {
+            let parts: Vec<&str> = rev.split(';').collect();
+            if parts.is_empty() {
+                return Err(crate::error::MsiError::TransformConflict {
+                    reason: "Invalid revision format".to_string(),
+                });
+            }
+
+            let baseline_part = parts[0];
+            let baseline_product_code = if baseline_part.len() >= 38 {
+                &baseline_part[0..38]
+            } else {
+                ""
+            };
+
+            let upgrade_code = if parts.len() > 2 { parts[2] } else { "" };
+
+            let get_prop = |name: &str| -> Option<String> {
+                db.tables.get("Property").and_then(|rows| {
+                    for row in rows {
+                        if let Some(FieldValue::String(k)) = row.fields().first() {
+                            if k == name {
+                                if let Some(FieldValue::String(v)) = row.fields().get(1) {
+                                    return Some(v.clone());
+                                }
+                            }
+                        }
+                    }
+                    None
+                })
+            };
+
+            if (flags & validation_flags::MSITRANSFORM_VALIDATE_PRODUCT) != 0 {
+                if let Some(db_pc) = get_prop("ProductCode") {
+                    if !baseline_product_code.is_empty() && db_pc != baseline_product_code {
+                        return Err(crate::error::MsiError::TransformConflict {
+                            reason: format!(
+                                "Mismatched ProductCode: expected {baseline_product_code}, got {db_pc}"
+                            ),
+                        });
+                    }
+                }
+            }
+
+            if (flags & validation_flags::MSITRANSFORM_VALIDATE_UPGRADECODE) != 0 {
+                if let Some(db_uc) = get_prop("UpgradeCode") {
+                    if !upgrade_code.is_empty() && db_uc != upgrade_code {
+                        return Err(crate::error::MsiError::TransformConflict {
+                            reason: format!(
+                                "Mismatched UpgradeCode: expected {upgrade_code}, got {db_uc}"
+                            ),
+                        });
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Applies this transform to a baseline [`LinkedDatabase`], mutating it in place.
     ///
     /// # Arguments
@@ -192,6 +264,7 @@ impl DatabaseTransform {
     ///
     /// Returns [`crate::error::MsiError`] if table schemas are missing or row modifications fail.
     pub fn apply(&self, db: &mut LinkedDatabase) -> Result<()> {
+        self.validate(db)?;
         for (table_name, tt) in &self.tables {
             if tt.is_dropped {
                 db.tables.remove(table_name);
@@ -298,23 +371,26 @@ impl DatabaseTransform {
         }
 
         if let Ok(view_bytes) = reader.read_stream("_TransformView") {
-            if let Ok(view_str) = std::str::from_utf8(&view_bytes) {
-                for line in view_str.lines() {
-                    let parts: Vec<&str> = line.split('\t').collect();
-                    if parts.len() >= 2 {
-                        let table_name = parts[0].to_string();
-                        let is_added = parts[1] == "CREATE";
-                        let is_dropped = parts[1] == "DROP";
-                        transform.tables.insert(
-                            table_name.clone(),
-                            TableTransform {
-                                table_name,
-                                is_added,
-                                is_dropped,
-                                operations: Vec::new(),
-                            },
-                        );
-                    }
+            let view_str = std::str::from_utf8(&view_bytes).map_err(|_| {
+                crate::error::MsiError::InvalidTransform {
+                    reason: "_TransformView is not valid UTF-8".to_string(),
+                }
+            })?;
+            for line in view_str.lines() {
+                let parts: Vec<&str> = line.split('\t').collect();
+                if parts.len() >= 2 {
+                    let table_name = parts[0].to_string();
+                    let is_added = parts[1] == "CREATE";
+                    let is_dropped = parts[1] == "DROP";
+                    transform.tables.insert(
+                        table_name.clone(),
+                        TableTransform {
+                            table_name,
+                            is_added,
+                            is_dropped,
+                            operations: Vec::new(),
+                        },
+                    );
                 }
             }
         }
@@ -358,6 +434,56 @@ mod tests {
     use crate::error::MsiError;
 
     /// Tests validation flags constants, default implementations, and trait derives.
+
+    #[test]
+    fn test_transform_validate() {
+        let mut db = LinkedDatabase::default();
+        let mut prop_rows = Vec::new();
+        let mut r1 = Record::new();
+        r1.push(FieldValue::String("ProductCode".to_string()));
+        r1.push(FieldValue::String(
+            "{11111111-1111-1111-1111-111111111111}".to_string(),
+        ));
+        prop_rows.push(r1);
+
+        let mut r2 = Record::new();
+        r2.push(FieldValue::String("UpgradeCode".to_string()));
+        r2.push(FieldValue::String(
+            "{22222222-2222-2222-2222-222222222222}".to_string(),
+        ));
+        prop_rows.push(r2);
+
+        db.tables.insert("Property".to_string(), prop_rows);
+
+        let mut transform = DatabaseTransform::new();
+        transform.summary_info.word_count = Some(
+            (validation_flags::MSITRANSFORM_VALIDATE_PRODUCT
+                | validation_flags::MSITRANSFORM_VALIDATE_UPGRADECODE) as i32,
+        );
+        transform.summary_info.rev_number = Some("{11111111-1111-1111-1111-111111111111}1.0.0;{33333333-3333-3333-3333-333333333333}2.0.0;{22222222-2222-2222-2222-222222222222}".to_string());
+
+        assert!(transform.validate(&db).is_ok());
+
+        transform.summary_info.rev_number = Some("{44444444-4444-4444-4444-444444444444}1.0.0;{33333333-3333-3333-3333-333333333333}2.0.0;{22222222-2222-2222-2222-222222222222}".to_string());
+        match transform.validate(&db) {
+            Err(MsiError::TransformConflict { reason }) => {
+                assert!(reason.contains("Mismatched ProductCode"));
+            }
+            _ => panic!("Expected TransformConflict"),
+        }
+
+        transform.summary_info.rev_number = Some("{11111111-1111-1111-1111-111111111111}1.0.0;{33333333-3333-3333-3333-333333333333}2.0.0;{44444444-4444-4444-4444-444444444444}".to_string());
+        match transform.validate(&db) {
+            Err(MsiError::TransformConflict { reason }) => {
+                assert!(reason.contains("Mismatched UpgradeCode"));
+            }
+            _ => panic!("Expected TransformConflict"),
+        }
+
+        transform.summary_info.rev_number = Some(String::new());
+        assert!(transform.validate(&db).is_ok());
+    }
+
     #[test]
     fn test_transform_derives_and_flags() {
         assert_eq!(validation_flags::MSITRANSFORM_VALIDATE_PRODUCT, 0x0000_0001);
@@ -788,7 +914,12 @@ mod tests {
         let _ = writer2.add_stream("_TransformView", &[0xFF, 0xFE, 0xFD]);
         let cfb2 = writer2.build();
         let parsed2 = DatabaseTransform::from_bytes(&cfb2);
-        assert_eq!(parsed2.as_ref().map(|p| p.tables.is_empty()), Ok(true));
+        match parsed2 {
+            Err(MsiError::InvalidTransform { reason }) => {
+                assert!(reason.contains("not valid UTF-8"));
+            }
+            _ => panic!("Expected InvalidTransform error due to invalid UTF-8 in _TransformView"),
+        }
     }
 
     /// Tests primary key matching across schema presence, column types (Short, Long, String, Null), and composites.
@@ -957,5 +1088,36 @@ mod tests {
             &comp3_diff_first,
             Some(&schema_comp)
         ));
+    }
+
+    #[test]
+    fn test_transform_validate_missing_prop_values_and_empty_rev() {
+        let mut db = LinkedDatabase::default();
+        let _ = db
+            .catalog
+            .add_table(crate::database::tables::property_schema());
+        db.tables.insert(
+            "Property".to_string(),
+            vec![
+                Record::with_fields(vec![
+                    FieldValue::String("ProductCode".to_string()),
+                    FieldValue::Null,
+                ]),
+                Record::with_fields(vec![FieldValue::Short(1), FieldValue::Null]), // not a string key
+            ],
+        );
+
+        let mut transform = DatabaseTransform::new();
+        transform.summary_info.rev_number = Some(String::new());
+        transform.summary_info.word_count = Some(
+            (validation_flags::MSITRANSFORM_VALIDATE_PRODUCT
+                | validation_flags::MSITRANSFORM_VALIDATE_UPGRADECODE) as i32,
+        );
+
+        assert!(transform.validate(&db).is_ok());
+
+        transform.summary_info.rev_number =
+            Some("{11111111-1111-1111-1111-111111111111};".to_string());
+        assert!(transform.validate(&db).is_ok());
     }
 }

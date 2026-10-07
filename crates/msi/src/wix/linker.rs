@@ -485,6 +485,8 @@ pub struct LinkedDatabase {
     pub tables: HashMap<String, Vec<Record>>,
     /// Database catalog describing table schemas.
     pub catalog: DatabaseCatalog,
+    /// Embedded sub-storages extracted from the CFB container (e.g., embedded transforms).
+    pub embedded_storages: HashMap<String, Vec<u8>>,
 }
 
 impl Default for LinkedDatabase {
@@ -495,6 +497,7 @@ impl Default for LinkedDatabase {
         Self {
             tables: HashMap::new(),
             catalog,
+            embedded_storages: HashMap::new(),
         }
     }
 }
@@ -588,6 +591,106 @@ impl LinkedDatabase {
             records.push(record);
         }
 
+        Ok(())
+    }
+
+    /// Executes a dynamic database mutation (Insert, Update, Delete) from FFI.
+    ///
+    /// # Arguments
+    ///
+    /// * `table` - Target table name.
+    /// * `record` - Record containing values.
+    /// * `modify_mode` - FFI modify mode (e.g. `MSIMODIFY_INSERT`).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError::WixLinker`] if a primary key conflict or other invalid operation occurs.
+    pub fn execute_mutation(
+        &mut self,
+        table: &str,
+        record: Record,
+        modify_mode: i32,
+    ) -> Result<()> {
+        let records = self.tables.entry(table.to_string()).or_default();
+
+        let pk_indices = self
+            .catalog
+            .get_table(table)
+            .map(|schema| {
+                schema
+                    .columns
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, col)| col.primary_key.then_some(i))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+
+        let find_existing = |records: &mut [Record]| -> Option<usize> {
+            if pk_indices.is_empty() {
+                return None;
+            }
+            records.iter().position(|existing| {
+                pk_indices
+                    .iter()
+                    .all(|&idx| existing.get(idx) == record.get(idx))
+            })
+        };
+
+        match modify_mode {
+            1 => {
+                // MSIMODIFY_INSERT
+                if find_existing(records).is_some() {
+                    return Err(MsiError::WixLinker {
+                        message: format!(
+                            "MSIMODIFY_INSERT: primary key collision in table '{table}'"
+                        ),
+                    });
+                }
+                records.push(record);
+            }
+            2 => {
+                // MSIMODIFY_UPDATE
+                if let Some(idx) = find_existing(records) {
+                    records[idx] = record;
+                } else {
+                    return Err(MsiError::WixLinker {
+                        message: format!("MSIMODIFY_UPDATE: record not found in table '{table}'"),
+                    });
+                }
+            }
+            4 => {
+                // MSIMODIFY_REPLACE
+                if let Some(idx) = find_existing(records) {
+                    records[idx] = record;
+                } else {
+                    records.push(record);
+                }
+            }
+            5 => {
+                // MSIMODIFY_MERGE
+                if let Some(idx) = find_existing(records) {
+                    records[idx] = record;
+                } else {
+                    records.push(record);
+                }
+            }
+            6 => {
+                // MSIMODIFY_DELETE
+                if let Some(idx) = find_existing(records) {
+                    records.remove(idx);
+                } else {
+                    return Err(MsiError::WixLinker {
+                        message: format!("MSIMODIFY_DELETE: record not found in table '{table}'"),
+                    });
+                }
+            }
+            _ => {
+                return Err(MsiError::WixLinker {
+                    message: format!("Unsupported modify mode: {modify_mode}"),
+                })
+            }
+        }
         Ok(())
     }
 
@@ -759,6 +862,18 @@ impl LinkedDatabase {
             }
         }
 
+        // Parse ModuleConfiguration for parameter defaults
+        let mut final_substitutions = substitutions.clone();
+        for r in mod_db.get_records("ModuleConfiguration") {
+            if let (Some(FieldValue::String(name)), Some(FieldValue::String(default_val))) =
+                (r.get(0), r.get(4))
+            {
+                final_substitutions
+                    .entry(name.clone())
+                    .or_insert_with(|| default_val.clone());
+            }
+        }
+
         // 2. Perform parameter substitutions from ModuleSubstitution
         let subst_records: Vec<(String, String, String, Option<String>)> = mod_db
             .get_records("ModuleSubstitution")
@@ -784,7 +899,7 @@ impl LinkedDatabase {
         for (table_name, row_key, col_name, tmpl_val) in subst_records {
             if let Some(tmpl) = tmpl_val {
                 let mut replaced = tmpl;
-                for (param, val) in substitutions {
+                for (param, val) in &final_substitutions {
                     let pattern1 = format!("[={param}]");
                     let pattern2 = format!("[{param}]");
                     replaced = replaced.replace(&pattern1, val).replace(&pattern2, val);
@@ -834,15 +949,74 @@ impl LinkedDatabase {
         // 5. Modularize module tables and merge them into destination
         let mod_tables = std::mem::take(&mut mod_db.tables);
         for (table_name, rows) in mod_tables {
-            // Skip merge module system tables
-            if table_name.starts_with("Module") {
+            let is_sequence = table_name == "ModuleInstallExecuteSequence"
+                || table_name == "ModuleInstallUISequence"
+                || table_name == "ModuleAdminExecuteSequence"
+                || table_name == "ModuleAdminUISequence"
+                || table_name == "ModuleAdvtExecuteSequence"
+                || table_name == "ModuleAdvtUISequence";
+
+            let target_table_name = if is_sequence {
+                table_name
+                    .strip_prefix("Module")
+                    .unwrap_or(&table_name)
+                    .to_string()
+            } else {
+                table_name.clone()
+            };
+
+            // Skip other merge module system tables
+            if !is_sequence && table_name.starts_with("Module") {
                 continue;
             }
 
-            let dest_rows = self.tables.entry(table_name.clone()).or_default();
+            let dest_rows = self.tables.entry(target_table_name.clone()).or_default();
 
             for mut record in rows {
                 match table_name.as_str() {
+                    "ModuleInstallExecuteSequence"
+                    | "ModuleInstallUISequence"
+                    | "ModuleAdminExecuteSequence"
+                    | "ModuleAdminUISequence"
+                    | "ModuleAdvtExecuteSequence"
+                    | "ModuleAdvtUISequence" => {
+                        if let Some(FieldValue::String(ref s)) = record.get(0) {
+                            let m = modularize_identifier(s, module_guid, &ignore_set);
+                            record.set(0, FieldValue::String(m));
+                        }
+
+                        let base_action = match record.get(2) {
+                            Some(FieldValue::String(s)) => s.clone(),
+                            _ => String::new(),
+                        };
+                        let after = match record.get(3) {
+                            Some(&FieldValue::Short(a)) => a != 0,
+                            _ => false,
+                        };
+
+                        if !base_action.is_empty() {
+                            let mut base_seq = None;
+                            for dr in dest_rows.iter() {
+                                if dr.get(0) == Some(&FieldValue::String(base_action.clone())) {
+                                    if let Some(&FieldValue::Short(s)) = dr.get(2) {
+                                        // Sequence is index 2 in target
+                                        base_seq = Some(s);
+                                    }
+                                    break;
+                                }
+                            }
+                            if let Some(s) = base_seq {
+                                let new_seq = if after { s + 1 } else { s - 1 };
+                                record.set(1, FieldValue::Short(new_seq));
+                            }
+                        }
+
+                        let action = record.get(0).cloned().unwrap_or(FieldValue::Null);
+                        let condition = record.get(4).cloned().unwrap_or(FieldValue::Null);
+                        let sequence = record.get(1).cloned().unwrap_or(FieldValue::Short(1));
+
+                        record = Record::with_fields(vec![action, condition, sequence]);
+                    }
                     "Component" => {
                         if let Some(FieldValue::String(ref s)) = record.get(0) {
                             let m = modularize_identifier(s, module_guid, &ignore_set);
@@ -5600,6 +5774,7 @@ mod tests {
         let db_ice01_bad = LinkedDatabase {
             tables: HashMap::new(),
             catalog: DatabaseCatalog::default(),
+            ..Default::default()
         };
         let rep_ice01 = Linker::validate_ice01(&db_ice01_bad);
         assert_eq!(
@@ -7309,6 +7484,95 @@ mod tests {
     }
 
     /// Tests trait implementations (`Debug`, `Clone`, `PartialEq`, `Default`) for linker data structures.
+
+    #[test]
+    fn test_execute_mutation_comprehensive() {
+        use crate::database::Record;
+        let mut db = LinkedDatabase::new().unwrap();
+
+        let rec1 = Record::with_fields(vec![
+            FieldValue::String("A".to_string()),
+            FieldValue::String("Val1".to_string()),
+        ]);
+        let rec2 = Record::with_fields(vec![
+            FieldValue::String("B".to_string()),
+            FieldValue::String("Val2".to_string()),
+        ]);
+        let rec1_update = Record::with_fields(vec![
+            FieldValue::String("A".to_string()),
+            FieldValue::String("Val3".to_string()),
+        ]);
+
+        // INSERT
+        assert!(db.execute_mutation("Property", rec1.clone(), 1).is_ok());
+        // INSERT fail duplicate
+        assert!(db.execute_mutation("Property", rec1.clone(), 1).is_err());
+
+        // UPDATE
+        assert!(db.execute_mutation("Property", rec1_update, 2).is_ok());
+        // UPDATE fail missing
+        assert!(db.execute_mutation("Property", rec2.clone(), 2).is_err());
+
+        // REPLACE (exists -> updates)
+        assert!(db.execute_mutation("Property", rec1.clone(), 4).is_ok());
+        // REPLACE (missing -> inserts)
+        assert!(db.execute_mutation("Property", rec2, 4).is_ok());
+
+        let rec3 = Record::with_fields(vec![
+            FieldValue::String("C".to_string()),
+            FieldValue::String("Val3".to_string()),
+        ]);
+
+        // MERGE (exists -> updates)
+        assert!(db.execute_mutation("Property", rec1.clone(), 5).is_ok());
+        // MERGE (missing -> inserts)
+        assert!(db.execute_mutation("Property", rec3.clone(), 5).is_ok());
+
+        // DELETE
+        assert!(db.execute_mutation("Property", rec3.clone(), 6).is_ok());
+        // DELETE fail missing
+        assert!(db.execute_mutation("Property", rec3, 6).is_err());
+
+        // INVALID mode
+        assert!(db.execute_mutation("Property", rec1, 99).is_err());
+
+        // No primary keys defined (e.g. some internal table)
+        db.tables.insert("NoPKTable".to_string(), vec![]);
+        let rec_nopk = Record::with_fields(vec![FieldValue::String("X".to_string())]);
+        assert!(db
+            .execute_mutation("NoPKTable", rec_nopk.clone(), 1)
+            .is_ok());
+        assert!(db.execute_mutation("NoPKTable", rec_nopk, 2).is_err());
+    }
+
+    #[test]
+    fn test_merge_module_sequence_edge_cases() {
+        use crate::database::Record;
+        let mut db = LinkedDatabase::new().unwrap();
+        let mut module_db = LinkedDatabase::default();
+
+        module_db.tables.insert(
+            "ModuleInstallExecuteSequence".to_string(),
+            vec![Record::with_fields(vec![
+                FieldValue::String("Action1".to_string()),
+                FieldValue::String("Cond".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+            ])],
+        );
+
+        let module = MergeModule {
+            id: "Mod.Guid".to_string(),
+            language: 1033,
+            version: "1.0.0.0".to_string(),
+            database: module_db,
+        };
+
+        assert!(db
+            .merge_module(&module, "Feature1", "TARGETDIR", &HashMap::new())
+            .is_ok());
+    }
+
     #[test]
     fn test_linker_types_derives_and_display() {
         let std_dir = STANDARD_DIRECTORIES[0].clone();
@@ -8849,6 +9113,59 @@ mod tests {
             Record::with_fields(vec![
                 FieldValue::String("OTHER_PORT".to_string()),
                 FieldValue::String("DEF_OTHER".to_string()),
+            ]),
+        );
+
+        // Add a sequence mapping test
+        source_msm_db.add_record(
+            "ModuleInstallExecuteSequence",
+            Record::with_fields(vec![
+                FieldValue::String("MyModAction".to_string()),
+                FieldValue::Short(100),
+                FieldValue::String("BaseAction".to_string()),
+                FieldValue::Short(1),
+                FieldValue::String("MOD_COND".to_string()),
+            ]),
+        );
+        target_db.add_record(
+            "InstallExecuteSequence",
+            Record::with_fields(vec![
+                FieldValue::String("BaseAction".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(500),
+            ]),
+        );
+
+        // Add ModuleConfiguration
+        source_msm_db.add_record(
+            "ModuleConfiguration",
+            Record::with_fields(vec![
+                FieldValue::String("DEFAULT_PORT".to_string()),
+                FieldValue::String("Text".to_string()),
+                FieldValue::String("Integer".to_string()),
+                FieldValue::Null,
+                FieldValue::String("8080".to_string()),
+                FieldValue::Short(0),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        source_msm_db.add_record(
+            "ModuleSubstitution",
+            Record::with_fields(vec![
+                FieldValue::String("Property".to_string()),
+                FieldValue::String("DEF_PORT".to_string()),
+                FieldValue::String("Value".to_string()),
+                FieldValue::String("[=DEFAULT_PORT]".to_string()),
+            ]),
+        );
+        source_msm_db.add_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("DEF_PORT".to_string()),
+                FieldValue::String("NO_DEF".to_string()),
             ]),
         );
         source_msm_db.add_record(

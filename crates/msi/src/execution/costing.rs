@@ -269,6 +269,23 @@ impl DiskCostEngine {
         self.register_volume(vol_str, avail, Some(cluster));
     }
 
+    /// Determines the optimal `ROOTDRIVE` volume.
+    ///
+    /// According to Windows Installer specifications, if `ROOTDRIVE` is not explicitly set,
+    /// `CostInitialize` evaluates the local volumes and selects the one with the most
+    /// available free space.
+    ///
+    /// # Returns
+    ///
+    /// The string identifier for the chosen root drive, or `None` if no volumes are registered.
+    #[must_use]
+    pub fn determine_root_drive(&self) -> Option<String> {
+        self.volumes
+            .values()
+            .max_by_key(|v| v.available_bytes)
+            .map(|v| v.volume.clone())
+    }
+
     /// Standard Action: `CostInitialize`
     ///
     /// Resets all accumulated file costs while preserving volume definitions.
@@ -396,12 +413,15 @@ mod tests {
         assert!(vc.remaining_bytes() < 0);
     }
 
-    /// Tests [`DiskCostEngine`] sequence: `CostInitialize`, `FileCost`, `CostFinalize`.
+    /// Tests [`DiskCostEngine`] sequence: `CostInitialize`, `FileCost`, `CostFinalize`, and `ROOTDRIVE`.
     #[test]
     fn test_disk_cost_engine_lifecycle_success() {
         let mut engine = DiskCostEngine::default();
         engine.register_volume(r"C:\", 1_000_000, Some(4096));
         engine.register_volume("D:", 2_000_000, None);
+
+        // determine_root_drive should pick the one with most space
+        assert_eq!(engine.determine_root_drive().as_deref(), Some("D:"));
 
         // Add some dummy initial files
         engine.file_cost(r"C:\", 10_000, None);

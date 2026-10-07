@@ -187,3 +187,18 @@ mod tests_final {
     }
 }
 pub mod bstr;
+/// Storage interfaces.
+pub mod storage;
+/// Stream interfaces.
+pub mod stream;
+
+/// FeatureInfo interface.
+pub mod feature_info;
+/// Concrete implementations of COM interfaces.
+pub mod impls;
+/// RecordList interface.
+pub mod record_list;
+/// StringList interface.
+pub mod string_list;
+/// SummaryInfo interface.
+pub mod summary_info;

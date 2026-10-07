@@ -133,22 +133,27 @@ pub extern "system" fn MsiDatabaseOpenViewW(
             return ERROR_INVALID_PARAMETER;
         }
 
-        let Some(_query) = lpcwstr_to_string(szQuery) else {
+        let Some(query_str) = lpcwstr_to_string(szQuery) else {
             return ERROR_INVALID_PARAMETER;
         };
 
-        with_handle(hDatabase, |obj| {
-            if let MsiObject::Database(_db_handle) = obj {
-                // In a real implementation, we parse the SQL and create a View object.
-                // We don't have a View object yet, but let's mock it.
-                // We'd add a View variant to MsiObject.
-                // unsafe { *phView = alloc_handle(MsiObject::View(...)) };
+        {
+            let valid = with_handle(hDatabase, |obj| matches!(obj, MsiObject::Database(_)))
+                .unwrap_or(false);
+            if valid {
+                let view = crate::types::MsiViewHandle {
+                    database_handle: hDatabase,
+                    query: query_str,
+                    fetched_records: std::collections::VecDeque::new(),
+                };
+                unsafe {
+                    *phView = alloc_handle(MsiObject::View(view));
+                }
                 ERROR_SUCCESS
             } else {
                 ERROR_INVALID_HANDLE
             }
-        })
-        .unwrap_or(ERROR_INVALID_HANDLE)
+        }
     });
 
     result.unwrap_or(ERROR_INSTALL_FAILURE)
@@ -177,18 +182,27 @@ pub extern "system" fn MsiDatabaseOpenViewA(
             return ERROR_INVALID_PARAMETER;
         }
 
-        let Some(_query) = lpcstr_to_string(szQuery) else {
+        let Some(query_str) = lpcstr_to_string(szQuery) else {
             return ERROR_INVALID_PARAMETER;
         };
 
-        with_handle(hDatabase, |obj| {
-            if let MsiObject::Database(_db_handle) = obj {
+        {
+            let valid = with_handle(hDatabase, |obj| matches!(obj, MsiObject::Database(_)))
+                .unwrap_or(false);
+            if valid {
+                let view = crate::types::MsiViewHandle {
+                    database_handle: hDatabase,
+                    query: query_str,
+                    fetched_records: std::collections::VecDeque::new(),
+                };
+                unsafe {
+                    *phView = alloc_handle(MsiObject::View(view));
+                }
                 ERROR_SUCCESS
             } else {
                 ERROR_INVALID_HANDLE
             }
-        })
-        .unwrap_or(ERROR_INVALID_HANDLE)
+        }
     });
 
     result.unwrap_or(ERROR_INSTALL_FAILURE)

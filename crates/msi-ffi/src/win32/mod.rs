@@ -5,12 +5,17 @@
 //! linking against `msi.dll`.
 
 pub mod database;
+pub mod format;
 pub mod installer;
+pub mod patch;
 pub mod properties;
 pub mod record;
+pub mod record_stream;
 pub mod registry;
+pub mod state;
 pub mod strings;
 pub mod summary;
+pub mod transforms;
 pub mod ui;
 pub mod view;
 
@@ -35,6 +40,15 @@ pub type Lpstr = *mut i8;
 
 /// A Win32 `LPCSTR` (Long Pointer to Constant String).
 pub type Lpcstr = *const i8;
+
+/// A Win32 `BOOL`.
+pub type Bool = i32;
+
+/// A Win32 `TRUE` value.
+pub const TRUE: Bool = 1;
+
+/// A Win32 `FALSE` value.
+pub const FALSE: Bool = 0;
 
 // Standard MSI Error return codes (normally defined in winerror.h / msi.h)
 /// Success.
@@ -89,6 +103,18 @@ pub extern "system" fn MsiCloseAllHandles() -> Uint {
 
     result.unwrap_or(ERROR_INSTALL_FAILURE)
 }
+
+/// File not found.
+pub const ERROR_FILE_NOT_FOUND: Uint = 2;
+
+/// Access denied.
+pub const ERROR_ACCESS_DENIED: Uint = 5;
+
+/// Open failed.
+pub const ERROR_OPEN_FAILED: Uint = 110;
+
+/// Not supported.
+pub const ERROR_NOT_SUPPORTED: Uint = 50;
 
 #[cfg(test)]
 mod tests {

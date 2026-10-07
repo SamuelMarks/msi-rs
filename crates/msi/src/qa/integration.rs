@@ -111,6 +111,21 @@ impl MultiPlatformMatrixTest {
         store.commit();
     }
 
+    /// Simulates the Advertisement lifecycle phase (JIT shortcuts, registry hooks).
+    ///
+    /// # Arguments
+    ///
+    /// * `store` - Active registry store to update.
+    pub fn simulate_advertisement(&self, store: &mut RegistryStore) {
+        store.set_value(
+            RegistryRoot::LocalMachine,
+            &format!("Software/Classes/Installer/Products/{}", self.product),
+            Some("AdvertiseFlags"),
+            RegistryValue::Dword(0),
+        );
+        store.commit();
+    }
+
     /// Simulates the Repair lifecycle phase replacing a missing file.
     ///
     /// # Arguments
@@ -213,6 +228,16 @@ mod tests {
             Some(&RegistryValue::Sz("2.0.0".to_string()))
         );
 
+        matrix.simulate_advertisement(&mut store);
+        assert_eq!(
+            store.get_value(
+                RegistryRoot::LocalMachine,
+                "Software/Classes/Installer/Products/linux-app",
+                Some("AdvertiseFlags")
+            ),
+            Some(&RegistryValue::Dword(0))
+        );
+
         // 3. Repair checks
         assert!(matrix.simulate_repair(&files, 0));
         assert!(!matrix.simulate_repair(&files, 99));
@@ -259,6 +284,16 @@ mod tests {
                 Some("Version")
             ),
             Some(&RegistryValue::Sz("1.5.0".to_string()))
+        );
+
+        matrix.simulate_advertisement(&mut store);
+        assert_eq!(
+            store.get_value(
+                RegistryRoot::LocalMachine,
+                "Software/Classes/Installer/Products/mac-app",
+                Some("AdvertiseFlags")
+            ),
+            Some(&RegistryValue::Dword(0))
         );
 
         let teardown_cmds = matrix.simulate_uninstall(&mut store);
@@ -338,6 +373,16 @@ mod tests {
                 Some("Version")
             ),
             Some(&RegistryValue::Sz("1.1.0".to_string()))
+        );
+
+        matrix.simulate_advertisement(&mut store);
+        assert_eq!(
+            store.get_value(
+                RegistryRoot::LocalMachine,
+                "Software/Classes/Installer/Products/win-service",
+                Some("AdvertiseFlags")
+            ),
+            Some(&RegistryValue::Dword(0))
         );
 
         let teardown_cmds = matrix.simulate_uninstall(&mut store);

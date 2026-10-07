@@ -8,7 +8,152 @@
 //!   - **POSIX**: Privilege dropping via `setuid` / `setgid` (requires daemon to start as root).
 
 use crate::error::{MsiError, Result};
+use std::io::{Read, Write};
 use std::path::PathBuf;
+
+/// An active IPC connection for sending and receiving RPC messages.
+#[derive(Debug)]
+pub struct IpcConnection<T: Read + Write + std::fmt::Debug> {
+    stream: T,
+}
+
+impl<T: Read + Write + std::fmt::Debug> IpcConnection<T> {
+    /// Creates a new IPC connection.
+    pub const fn new(stream: T) -> Self {
+        Self { stream }
+    }
+
+    /// Sends an RPC message over the connection.
+    ///
+    /// # Errors
+    /// Returns `MsiError` if writing fails.
+    pub fn send_message(&mut self, message: &RpcMessage) -> Result<()> {
+        let data = message.to_bytes();
+        let len = data.len() as u32;
+        self.stream
+            .write_all(&len.to_le_bytes())
+            .map_err(|e| MsiError::WorkerIpcError {
+                reason: format!("Failed to write length: {e}"),
+            })?;
+        self.stream
+            .write_all(&data)
+            .map_err(|e| MsiError::WorkerIpcError {
+                reason: format!("Failed to write payload: {e}"),
+            })?;
+        self.stream.flush().map_err(|e| MsiError::WorkerIpcError {
+            reason: format!("Failed to flush stream: {e}"),
+        })?;
+        Ok(())
+    }
+
+    /// Receives an RPC message from the connection.
+    ///
+    /// # Errors
+    /// Returns `MsiError` if reading or parsing fails.
+    pub fn receive_message(&mut self) -> Result<RpcMessage> {
+        let mut len_buf = [0u8; 4];
+        self.stream
+            .read_exact(&mut len_buf)
+            .map_err(|e| MsiError::WorkerIpcError {
+                reason: format!("Failed to read length: {e}"),
+            })?;
+        let len = u32::from_le_bytes(len_buf) as usize;
+
+        if len > 1024 * 1024 {
+            return Err(MsiError::WorkerIpcError {
+                reason: "RPC payload exceeds maximum allowed size".to_string(),
+            });
+        }
+
+        let mut data = vec![0u8; len];
+        self.stream
+            .read_exact(&mut data)
+            .map_err(|e| MsiError::WorkerIpcError {
+                reason: format!("Failed to read payload: {e}"),
+            })?;
+        RpcMessage::from_bytes(&data)
+    }
+}
+
+/// Defines strongly-typed RPC messages moving between the main engine and custom action surrogate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RpcMessage {
+    /// Request to execute an action.
+    InvokeAction {
+        /// Name of the action.
+        action_name: String,
+        /// DLL entry point.
+        entry_point: String,
+    },
+    /// Response containing the execution result.
+    ActionResult {
+        /// Name of the action.
+        action_name: String,
+        /// Return code.
+        return_code: u32,
+        /// Optional error message on failure.
+        error_message: Option<String>,
+    },
+    /// Keep-alive ping.
+    Ping,
+    /// Keep-alive pong.
+    Pong,
+}
+
+impl RpcMessage {
+    /// Serializes the RPC message to a byte vector.
+    #[must_use]
+    pub fn to_bytes(&self) -> Vec<u8> {
+        match self {
+            Self::InvokeAction {
+                action_name,
+                entry_point,
+            } => format!("INVOKE\x00{action_name}\x00{entry_point}").into_bytes(),
+            Self::ActionResult {
+                action_name,
+                return_code,
+                error_message,
+            } => {
+                let err = error_message.as_deref().unwrap_or("");
+                format!("RESULT\x00{action_name}\x00{return_code}\x00{err}").into_bytes()
+            }
+            Self::Ping => b"PING\x00".to_vec(),
+            Self::Pong => b"PONG\x00".to_vec(),
+        }
+    }
+
+    /// Deserializes the RPC message from a byte slice.
+    ///
+    /// # Errors
+    /// Returns `MsiError` if parsing fails.
+    pub fn from_bytes(data: &[u8]) -> Result<Self> {
+        let text = std::str::from_utf8(data).map_err(|_| MsiError::WorkerIpcError {
+            reason: "Invalid UTF-8".to_string(),
+        })?;
+        let parts: Vec<&str> = text.split('\x00').collect();
+        let cmd = parts.first().copied().unwrap_or("");
+        match cmd {
+            "INVOKE" if parts.len() >= 3 => Ok(Self::InvokeAction {
+                action_name: parts[1].to_string(),
+                entry_point: parts[2].to_string(),
+            }),
+            "RESULT" if parts.len() >= 4 => Ok(Self::ActionResult {
+                action_name: parts[1].to_string(),
+                return_code: parts[2].parse().unwrap_or(1603),
+                error_message: if parts[3].is_empty() {
+                    None
+                } else {
+                    Some(parts[3].to_string())
+                },
+            }),
+            "PING" => Ok(Self::Ping),
+            "PONG" => Ok(Self::Pong),
+            _ => Err(MsiError::WorkerIpcError {
+                reason: "Unknown RPC payload".to_string(),
+            }),
+        }
+    }
+}
 
 /// Defines the IPC connection endpoints for Custom Action isolation.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,13 +215,9 @@ impl IpcRouter {
             // Note: A real implementation would lookup the invoking user's UID/GID.
             // This is a stub for the ABI boundary validation.
             let uid = rustix::process::getuid();
-            if !uid.is_root() {
-                // If not root, we are already running unprivileged, or we can't drop.
-                return Ok(());
+            if uid.is_root() {
+                // To actually drop, we would call setuid(target_uid).
             }
-
-            // To actually drop, we would call `setuid(target_uid)`.
-            // Err(MsiError::IpcError("Privilege dropping not fully mapped in stub".to_string()))
         }
 
         #[cfg(windows)]
@@ -115,6 +256,182 @@ impl IpcRouter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_ipc_connection_errors() {
+        use std::io::{Error, ErrorKind, Read, Write};
+        #[derive(Debug)]
+        struct BadStream;
+        impl Read for BadStream {
+            fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
+                Err(Error::new(ErrorKind::Other, "read error"))
+            }
+        }
+        impl Write for BadStream {
+            fn write(&mut self, _buf: &[u8]) -> std::io::Result<usize> {
+                Err(Error::new(ErrorKind::Other, "write error"))
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Err(Error::new(ErrorKind::Other, "flush error"))
+            }
+        }
+
+        let mut conn = IpcConnection::new(BadStream);
+        assert!(conn.send_message(&RpcMessage::Ping).is_err());
+        assert!(conn.receive_message().is_err());
+
+        #[derive(Debug)]
+        struct BadFlushStream;
+        impl Read for BadFlushStream {
+            fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
+                Ok(0)
+            }
+        }
+        impl Write for BadFlushStream {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Err(Error::new(ErrorKind::Other, "flush error"))
+            }
+        }
+        let mut conn2 = IpcConnection::new(BadFlushStream);
+        assert!(conn2.send_message(&RpcMessage::Ping).is_err());
+
+        #[derive(Debug)]
+        struct PartialReadStream;
+        impl Read for PartialReadStream {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                if buf.len() == 4 {
+                    buf.copy_from_slice(&1u32.to_le_bytes());
+                    Ok(4)
+                } else {
+                    Err(Error::new(ErrorKind::Other, "payload read error"))
+                }
+            }
+        }
+        impl Write for PartialReadStream {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let mut conn3 = IpcConnection::new(PartialReadStream);
+        assert!(conn3.receive_message().is_err());
+
+        #[derive(Debug)]
+        struct PartialWriteStream;
+        impl Read for PartialWriteStream {
+            fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
+                Ok(0)
+            }
+        }
+        impl Write for PartialWriteStream {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                if buf.len() == 4 {
+                    Ok(4)
+                } else {
+                    Err(Error::new(ErrorKind::Other, "payload write error"))
+                }
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let mut conn4 = IpcConnection::new(PartialWriteStream);
+        assert!(conn4.send_message(&RpcMessage::Ping).is_err());
+    }
+
+    #[test]
+    fn test_ipc_spawn_daemon_remove_error() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("dir_as_file");
+        std::fs::create_dir_all(&path).unwrap(); // create directory
+
+        let router = IpcRouter;
+        let err = router
+            .spawn_daemon(&IpcEndpoint::UnixSocket(path))
+            .unwrap_err();
+        assert!(matches!(err, MsiError::IpcError(msg) if msg.contains("Failed to clean socket")));
+    }
+
+    #[test]
+    fn test_ipc_connection_send_recv() {
+        use std::io::Cursor;
+        let mut buf = Cursor::new(Vec::new());
+
+        let invoke = RpcMessage::InvokeAction {
+            action_name: "Action1".to_string(),
+            entry_point: "Entry1".to_string(),
+        };
+
+        {
+            let mut conn = IpcConnection::new(&mut buf);
+            conn.send_message(&invoke).unwrap();
+        }
+
+        buf.set_position(0);
+        {
+            let mut conn = IpcConnection::new(&mut buf);
+            let received = conn.receive_message().unwrap();
+            assert_eq!(received, invoke);
+        }
+
+        // Test over size limit
+        buf.set_position(0);
+        let oversized_len = (1024 * 1024 + 1) as u32;
+        buf.write_all(&oversized_len.to_le_bytes()).unwrap();
+        buf.set_position(0);
+        let mut conn = IpcConnection::new(&mut buf);
+        assert!(conn.receive_message().is_err());
+    }
+
+    #[test]
+    fn test_rpc_message_serialization() {
+        let invoke = RpcMessage::InvokeAction {
+            action_name: "MyAction".to_string(),
+            entry_point: "DllMain".to_string(),
+        };
+        let bytes = invoke.to_bytes();
+        assert_eq!(RpcMessage::from_bytes(&bytes).unwrap(), invoke);
+
+        let result = RpcMessage::ActionResult {
+            action_name: "MyAction".to_string(),
+            return_code: 0,
+            error_message: None,
+        };
+        let bytes = result.to_bytes();
+        assert_eq!(RpcMessage::from_bytes(&bytes).unwrap(), result);
+
+        let result_err = RpcMessage::ActionResult {
+            action_name: "MyAction".to_string(),
+            return_code: 1603,
+            error_message: Some("Failed".to_string()),
+        };
+        let bytes = result_err.to_bytes();
+        assert_eq!(RpcMessage::from_bytes(&bytes).unwrap(), result_err);
+
+        assert_eq!(
+            RpcMessage::from_bytes(&RpcMessage::Ping.to_bytes()).unwrap(),
+            RpcMessage::Ping
+        );
+        assert_eq!(
+            RpcMessage::from_bytes(&RpcMessage::Pong.to_bytes()).unwrap(),
+            RpcMessage::Pong
+        );
+    }
+
+    #[test]
+    fn test_rpc_message_errors() {
+        assert!(RpcMessage::from_bytes(b"INVALID\x00").is_err());
+        assert!(RpcMessage::from_bytes(&[0xFF, 0xFE, 0xFD]).is_err());
+        assert!(RpcMessage::from_bytes(b"INVOKE\x00Name").is_err()); // Missing entry point
+        assert!(RpcMessage::from_bytes(b"RESULT\x00Name\x001603").is_err()); // Missing error field
+    }
 
     #[test]
     fn test_ipc_endpoint_coverage() {
@@ -165,5 +482,23 @@ mod tests {
         let router = IpcRouter;
         let endpoint = IpcRouter::new_endpoint("test-spawn");
         assert!(router.spawn_daemon(&endpoint).is_ok());
+    }
+}
+
+#[cfg(test)]
+mod additional_ipc_tests {
+    use super::*;
+
+    #[test]
+    fn test_spawn_daemon_remove_err() {
+        let router = IpcRouter;
+        let dir_path = PathBuf::from("test_dummy_socket_dir_err");
+        std::fs::create_dir_all(&dir_path).unwrap_or(());
+        let sock_endpoint = IpcEndpoint::UnixSocket(dir_path.clone());
+
+        let res = router.spawn_daemon(&sock_endpoint);
+        assert!(res.is_err());
+
+        std::fs::remove_dir_all(&dir_path).unwrap_or(());
     }
 }

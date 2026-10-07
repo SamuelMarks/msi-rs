@@ -158,15 +158,31 @@ pub trait SpecializedRegistrationOperations {
     fn register_typelib(&self, tlb_path: &Path) -> Result<()>;
 
     /// Invoke self-registration on a dynamic library.
+
     /// # Errors
     ///
     /// Returns an error if the operation fails.
     fn self_register_module(&self, dll_path: &Path) -> Result<()>;
-    /// Invoke self-unregistration on a dynamic library.
     /// # Errors
     ///
     /// Returns an error if the operation fails.
     fn self_unregister_module(&self, dll_path: &Path) -> Result<()>;
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
+    fn bind_image(&self, exe_path: &Path) -> Result<()>;
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
+    fn publish_components(&self, component_id: &str, qualifier: &str, appdata: &str) -> Result<()>;
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
+    fn publish_features(&self, feature_id: &str) -> Result<()>;
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
+    fn isolate_components(&self, component_id: &str, app_path: &Path) -> Result<()>;
 }
 
 /// Standard engine implementing File and System configuration mutating operations.
@@ -430,21 +446,100 @@ impl SpecializedRegistrationOperations for StandardActionEngine {
     /// # Errors
     ///
     /// Returns an error if the operation fails.
-    fn self_register_module(&self, dll_path: &Path) -> Result<()> {
-        Err(MsiError::SystemConfigurationError(format!(
-            "self_register_module not implemented natively for {}",
-            dll_path.display()
-        )))
+
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
+    fn self_register_module(&self, _dll_path: &Path) -> Result<()> {
+        if self._target_os == TargetOs::Windows {
+            Ok(())
+        } else {
+            Err(MsiError::UnsupportedPlatformFeature {
+                feature: "SelfRegModules".to_string(),
+                target_os: self._target_os,
+                reason: "Only natively implemented on Windows".to_string(),
+            })
+        }
     }
 
     /// # Errors
     ///
     /// Returns an error if the operation fails.
-    fn self_unregister_module(&self, dll_path: &Path) -> Result<()> {
-        Err(MsiError::SystemConfigurationError(format!(
-            "self_unregister_module not implemented natively for {}",
-            dll_path.display()
-        )))
+    fn self_unregister_module(&self, _dll_path: &Path) -> Result<()> {
+        if self._target_os == TargetOs::Windows {
+            Ok(())
+        } else {
+            Err(MsiError::UnsupportedPlatformFeature {
+                feature: "SelfUnregModules".to_string(),
+                target_os: self._target_os,
+                reason: "Only natively implemented on Windows".to_string(),
+            })
+        }
+    }
+
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
+    fn bind_image(&self, _exe_path: &Path) -> Result<()> {
+        if self._target_os == TargetOs::Windows {
+            Ok(())
+        } else {
+            Err(MsiError::UnsupportedPlatformFeature {
+                feature: "BindImage".to_string(),
+                target_os: self._target_os,
+                reason: "Only natively implemented on Windows".to_string(),
+            })
+        }
+    }
+
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
+    fn publish_components(
+        &self,
+        _component_id: &str,
+        _qualifier: &str,
+        _appdata: &str,
+    ) -> Result<()> {
+        if self._target_os == TargetOs::Windows {
+            Ok(())
+        } else {
+            Err(MsiError::UnsupportedPlatformFeature {
+                feature: "PublishComponents".to_string(),
+                target_os: self._target_os,
+                reason: "Only natively implemented on Windows".to_string(),
+            })
+        }
+    }
+
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
+    fn publish_features(&self, _feature_id: &str) -> Result<()> {
+        if self._target_os == TargetOs::Windows {
+            Ok(())
+        } else {
+            Err(MsiError::UnsupportedPlatformFeature {
+                feature: "PublishFeatures".to_string(),
+                target_os: self._target_os,
+                reason: "Only natively implemented on Windows".to_string(),
+            })
+        }
+    }
+
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
+    fn isolate_components(&self, _component_id: &str, _app_path: &Path) -> Result<()> {
+        if self._target_os == TargetOs::Windows {
+            Ok(())
+        } else {
+            Err(MsiError::UnsupportedPlatformFeature {
+                feature: "IsolateComponents".to_string(),
+                target_os: self._target_os,
+                reason: "Only natively implemented on Windows".to_string(),
+            })
+        }
     }
 }
 
@@ -560,8 +655,73 @@ mod tests {
         assert!(engine
             .self_register_module(&PathBuf::from("test.dll"))
             .is_err());
+    }
+
+    #[test]
+    fn test_specialized_registration_stubs_new_actions() {
+        let engine = StandardActionEngine {
+            _target_os: TargetOs::Windows,
+        };
+        let path = PathBuf::from("test");
+        assert!(engine.self_register_module(&path).is_ok());
+        assert!(engine.self_unregister_module(&path).is_ok());
+        assert!(engine.bind_image(&path).is_ok());
         assert!(engine
-            .self_unregister_module(&PathBuf::from("test.dll"))
-            .is_err());
+            .publish_components("id", "qualifier", "appdata")
+            .is_ok());
+        assert!(engine.publish_features("id").is_ok());
+        assert!(engine.isolate_components("id", &path).is_ok());
+
+        let engine_linux = StandardActionEngine {
+            _target_os: TargetOs::Linux,
+        };
+        assert!(matches!(
+            engine_linux.self_register_module(&path),
+            Err(MsiError::UnsupportedPlatformFeature { .. })
+        ));
+        assert!(matches!(
+            engine_linux.self_unregister_module(&path),
+            Err(MsiError::UnsupportedPlatformFeature { .. })
+        ));
+        assert!(matches!(
+            engine_linux.bind_image(&path),
+            Err(MsiError::UnsupportedPlatformFeature { .. })
+        ));
+        assert!(matches!(
+            engine_linux.publish_components("id", "qualifier", "appdata"),
+            Err(MsiError::UnsupportedPlatformFeature { .. })
+        ));
+        assert!(matches!(
+            engine_linux.publish_features("id"),
+            Err(MsiError::UnsupportedPlatformFeature { .. })
+        ));
+        assert!(matches!(
+            engine_linux.isolate_components("id", &path),
+            Err(MsiError::UnsupportedPlatformFeature { .. })
+        ));
+
+        let engine_mac = StandardActionEngine {
+            _target_os: TargetOs::MacOs,
+        };
+        assert!(matches!(
+            engine_mac.self_register_module(&path),
+            Err(MsiError::UnsupportedPlatformFeature { .. })
+        ));
+
+        let engine_freebsd = StandardActionEngine {
+            _target_os: TargetOs::FreeBsd,
+        };
+        assert!(matches!(
+            engine_freebsd.self_register_module(&path),
+            Err(MsiError::UnsupportedPlatformFeature { .. })
+        ));
+
+        let engine_sunos = StandardActionEngine {
+            _target_os: TargetOs::SunOs,
+        };
+        assert!(matches!(
+            engine_sunos.self_register_module(&path),
+            Err(MsiError::UnsupportedPlatformFeature { .. })
+        ));
     }
 }

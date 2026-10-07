@@ -65,7 +65,7 @@ impl TrueTypeHeader {
             ));
         }
 
-        let magic = u32::from_be_bytes(data[0..4].try_into().unwrap_or([0; 4]));
+        let magic = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
         // 0x00010000 for TTF, 'OTTO' (0x4F54544F) for OTF
         if magic != 0x0001_0000 && magic != 0x4F54_544F {
             return Err(MsiError::FontRegistrationError(format!(
@@ -73,7 +73,7 @@ impl TrueTypeHeader {
             )));
         }
 
-        let num_tables = u16::from_be_bytes(data[4..6].try_into().unwrap_or([0; 2]));
+        let num_tables = u16::from_be_bytes([data[4], data[5]]);
 
         let mut name_table_offset = 0;
         let mut pos = 12;
@@ -86,8 +86,12 @@ impl TrueTypeHeader {
             }
             let tag = &data[pos..pos + 4];
             if tag == b"name" {
-                name_table_offset =
-                    u32::from_be_bytes(data[pos + 8..pos + 12].try_into().unwrap_or([0; 4]));
+                name_table_offset = u32::from_be_bytes([
+                    data[pos + 8],
+                    data[pos + 9],
+                    data[pos + 10],
+                    data[pos + 11],
+                ]);
                 break;
             }
             pos += 16;
@@ -259,12 +263,55 @@ mod tests {
     }
 
     #[test]
+    fn test_truetype_header_parse_out_of_bounds() {
+        let mut data = vec![];
+        data.extend(0x0001_0000u32.to_be_bytes()); // magic
+        data.extend(2u16.to_be_bytes()); // num tables = 2, but we only have 1 table's data
+        data.extend(0u16.to_be_bytes()); // search range
+        data.extend(0u16.to_be_bytes()); // entry selector
+        data.extend(0u16.to_be_bytes()); // range shift
+
+        data.extend(b"test"); // tag
+        data.extend(0u32.to_be_bytes()); // checksum
+        data.extend(128u32.to_be_bytes()); // offset
+        data.extend(0u32.to_be_bytes()); // length
+                                         // Missing the second table directory entry, will trigger out of bounds error
+
+        assert!(matches!(
+            TrueTypeHeader::parse(&data),
+            Err(MsiError::FontRegistrationError(e)) if e == "Table directory out of bounds"
+        ));
+    }
+
+    #[test]
+    fn test_truetype_header_parse_missing_name_table() {
+        let mut data = vec![];
+        data.extend(0x4F54_544Fu32.to_be_bytes()); // OTTO magic
+        data.extend(1u16.to_be_bytes()); // num tables = 1
+        data.extend(0u16.to_be_bytes()); // search range
+        data.extend(0u16.to_be_bytes()); // entry selector
+        data.extend(0u16.to_be_bytes()); // range shift
+
+        // Naming table directory entry but it's NOT 'name'
+        data.extend(b"cmap"); // tag
+        data.extend(0u32.to_be_bytes()); // checksum
+        data.extend(128u32.to_be_bytes()); // offset
+        data.extend(0u32.to_be_bytes()); // length
+
+        assert!(matches!(
+            TrueTypeHeader::parse(&data),
+            Err(MsiError::FontRegistrationError(e)) if e == "Missing 'name' table in font"
+        ));
+    }
+
+    #[test]
     fn test_font_manager_lifecycle() {
         #[allow(clippy::default_constructed_unit_structs)]
         let mgr = FontManager::default();
-        let temp_dir = tempfile::tempdir().unwrap();
+        let temp_dir =
+            tempfile::tempdir().unwrap_or_else(|e| panic!("failed to create temp dir: {e}"));
         let font_path = temp_dir.path().join("dummy.ttf");
-        fs::write(&font_path, b"DUMMY").unwrap();
+        fs::write(&font_path, b"DUMMY").unwrap_or_else(|e| panic!("failed to write: {e}"));
 
         let file = FontFile::new(font_path);
         let name = FontName::new("Dummy");

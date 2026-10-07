@@ -366,7 +366,21 @@ impl EvaluationContext {
 
         let tokens = Self::tokenize_expression(trimmed);
         let mut parser = ConditionParser::new(tokens, self);
-        parser.parse_or_expr()
+        let result = parser.parse_or_expr();
+        println!("EVAL RES for {expr}: {result:?}");
+        let result = result?;
+
+        if parser.cursor < parser.tokens.len() {
+            return Err(MsiError::Validation {
+                element: "ConditionExpression".to_string(),
+                reason: format!(
+                    "unexpected trailing tokens in condition: {:?}",
+                    parser.peek()
+                ),
+            });
+        }
+
+        Ok(result)
     }
 
     /// Checks if a character terminates an unquoted word in condition syntax.
@@ -470,7 +484,7 @@ impl EvaluationContext {
                 } else {
                     tokens.push(Token::Literal("~".to_string()));
                 }
-            } else if ch == '&' || ch == '|' || ch == '!' || ch == '?' || ch == '$' {
+            } else if ch == '&' || ch == '|' || ch == '!' || ch == '?' || ch == '$' || ch == '%' {
                 // Symbols or bitwise
                 if ch == '&' {
                     if i + 1 < chars.len()
@@ -520,6 +534,14 @@ impl EvaluationContext {
                         i += 1;
                     }
                     tokens.push(Token::ComponentInstalled(name));
+                } else if ch == '%' {
+                    i += 1;
+                    let mut name = String::new();
+                    while i < chars.len() && !Self::is_word_terminator(chars[i]) {
+                        name.push(chars[i]);
+                        i += 1;
+                    }
+                    tokens.push(Token::EnvVar(name));
                 } else {
                     tokens.push(Token::BitOr);
                     i += 1;
@@ -631,6 +653,8 @@ enum Token {
     Literal(String),
     /// Identifier or numeric literal.
     Identifier(String),
+    /// `%ENV_VAR`
+    EnvVar(String),
 }
 
 /// Recursive descent parser for boolean expressions.
@@ -789,6 +813,7 @@ impl<'a> ConditionParser<'a> {
                     .unwrap_or(InstallState::Absent);
                 Ok(state.as_i32().to_string())
             }
+            Some(Token::EnvVar(var)) => Ok(std::env::var(&var).unwrap_or_default()),
             other => Err(MsiError::Validation {
                 element: "ConditionExpression".to_string(),
                 reason: format!("expected value or identifier, found {other:?}"),
@@ -1152,7 +1177,7 @@ mod tests {
 
         // Standalone ~ and unknown operator starting with ~
         assert_eq!(ctx.evaluate_condition("~"), Ok(true));
-        assert_eq!(ctx.evaluate_condition("~?"), Ok(true));
+        assert!(ctx.evaluate_condition("~?").is_err());
 
         // Trailing comparison operators at EOF (syntax errors covering EOF branch)
         assert!(ctx.evaluate_condition("1 <").is_err());
@@ -1176,5 +1201,44 @@ mod tests {
         assert!(ctx.evaluate_condition("(VersionNT = 601").is_err());
         assert!(ctx.evaluate_condition("(=").is_err());
         assert!(ctx.evaluate_condition("=").is_err());
+    }
+}
+
+#[cfg(test)]
+mod additional_properties_tests {
+    use super::*;
+
+    #[test]
+    fn test_install_state_from_i32() {
+        assert_eq!(InstallState::from_i32(2), Some(InstallState::Absent));
+        assert_eq!(InstallState::from_i32(3), Some(InstallState::Local));
+        assert_eq!(InstallState::from_i32(4), Some(InstallState::Source));
+        assert_eq!(InstallState::from_i32(5), Some(InstallState::Advertised));
+        assert_eq!(InstallState::from_i32(0), None);
+        assert_eq!(InstallState::from_i32(1), None);
+    }
+}
+
+#[cfg(test)]
+mod properties_additional_tests {
+    use super::*;
+
+    #[test]
+    fn test_missing_feature_and_component_states() {
+        let ctx = EvaluationContext::new();
+        // Evaluating missing features/components should fallback to Absent (2)
+        assert_eq!(ctx.evaluate_condition("&MissingFeature = 2"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("!MissingFeature = 2"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("$MissingComp = 2"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("?MissingComp = 2"), Ok(true));
+    }
+
+    #[test]
+    fn test_env_var_condition() {
+        let ctx = EvaluationContext::new();
+        std::env::set_var("MSI_TEST_EVAL_ENV", "1");
+        assert_eq!(ctx.evaluate_condition("%MSI_TEST_EVAL_ENV = 1"), Ok(true));
+        std::env::remove_var("MSI_TEST_EVAL_ENV");
+        assert_eq!(ctx.evaluate_condition("%MSI_TEST_EVAL_ENV"), Ok(false));
     }
 }

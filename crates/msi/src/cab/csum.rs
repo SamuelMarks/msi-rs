@@ -40,6 +40,7 @@ pub fn csum_compute(bytes: &[u8], seed: u32) -> u32 {
 }
 
 #[cfg(test)]
+/// Unit tests.
 mod tests {
     use super::*;
 
