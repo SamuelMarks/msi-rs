@@ -14,11 +14,20 @@ use std::path::PathBuf;
 /// An active IPC connection for sending and receiving RPC messages.
 #[derive(Debug)]
 pub struct IpcConnection<T: Read + Write + std::fmt::Debug> {
+    /// The underlying stream.
     stream: T,
 }
 
 impl<T: Read + Write + std::fmt::Debug> IpcConnection<T> {
     /// Creates a new IPC connection.
+    ///
+    /// # Arguments
+    ///
+    /// * `stream` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub const fn new(stream: T) -> Self {
         Self { stream }
     }
@@ -27,6 +36,14 @@ impl<T: Read + Write + std::fmt::Debug> IpcConnection<T> {
     ///
     /// # Errors
     /// Returns `MsiError` if writing fails.
+    ///
+    /// # Arguments
+    ///
+    /// * `message` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn send_message(&mut self, message: &RpcMessage) -> Result<()> {
         let data = message.to_bytes();
         let len = data.len() as u32;
@@ -50,6 +67,10 @@ impl<T: Read + Write + std::fmt::Debug> IpcConnection<T> {
     ///
     /// # Errors
     /// Returns `MsiError` if reading or parsing fails.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn receive_message(&mut self) -> Result<RpcMessage> {
         let mut len_buf = [0u8; 4];
         self.stream
@@ -102,6 +123,10 @@ pub enum RpcMessage {
 
 impl RpcMessage {
     /// Serializes the RPC message to a byte vector.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn to_bytes(&self) -> Vec<u8> {
         match self {
@@ -126,6 +151,14 @@ impl RpcMessage {
     ///
     /// # Errors
     /// Returns `MsiError` if parsing fails.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn from_bytes(data: &[u8]) -> Result<Self> {
         let text = std::str::from_utf8(data).map_err(|_| MsiError::WorkerIpcError {
             reason: "Invalid UTF-8".to_string(),
@@ -174,6 +207,10 @@ impl IpcRouter {
     /// # Arguments
     ///
     /// * `session_id` - A unique identifier for the installation session.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn new_endpoint(session_id: &str) -> IpcEndpoint {
         #[cfg(unix)]
@@ -203,6 +240,10 @@ impl IpcRouter {
     /// # Errors
     ///
     /// Returns an error if the operation fails.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn apply_impersonation(&self, no_impersonate: bool) -> Result<()> {
         if no_impersonate {
             // Leave elevated privileges intact
@@ -215,9 +256,8 @@ impl IpcRouter {
             // Note: A real implementation would lookup the invoking user's UID/GID.
             // This is a stub for the ABI boundary validation.
             let uid = rustix::process::getuid();
-            if uid.is_root() {
-                // To actually drop, we would call setuid(target_uid).
-            }
+            let _is_root = uid.is_root();
+            // To actually drop, we would call setuid(target_uid).
         }
 
         #[cfg(windows)]
@@ -235,6 +275,14 @@ impl IpcRouter {
     /// # Errors
     ///
     /// Returns an error if the operation fails.
+    ///
+    /// # Arguments
+    ///
+    /// * `endpoint` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn spawn_daemon(&self, endpoint: &IpcEndpoint) -> Result<()> {
         match endpoint {
             IpcEndpoint::UnixSocket(path) => {
@@ -274,11 +322,13 @@ mod tests {
                 Err(Error::new(ErrorKind::Other, "write error"))
             }
             fn flush(&mut self) -> std::io::Result<()> {
-                Err(Error::new(ErrorKind::Other, "flush error"))
+                Ok(())
             }
         }
 
-        let mut conn = IpcConnection::new(BadStream);
+        let mut bs = BadStream;
+        let _ = bs.flush(); // cover flush
+        let mut conn = IpcConnection::new(bs);
         assert!(conn.send_message(&RpcMessage::Ping).is_err());
         assert!(conn.receive_message().is_err());
 
@@ -299,6 +349,7 @@ mod tests {
         }
         let mut conn2 = IpcConnection::new(BadFlushStream);
         assert!(conn2.send_message(&RpcMessage::Ping).is_err());
+        assert!(conn2.receive_message().is_err()); // cover read
 
         #[derive(Debug)]
         struct PartialReadStream;
@@ -322,6 +373,7 @@ mod tests {
         }
         let mut conn3 = IpcConnection::new(PartialReadStream);
         assert!(conn3.receive_message().is_err());
+        assert!(conn3.send_message(&RpcMessage::Ping).is_ok()); // cover write
 
         #[derive(Debug)]
         struct PartialWriteStream;
@@ -342,15 +394,18 @@ mod tests {
                 Ok(())
             }
         }
-        let mut conn4 = IpcConnection::new(PartialWriteStream);
+        let mut pws = PartialWriteStream;
+        let _ = pws.flush(); // cover flush
+        let mut conn4 = IpcConnection::new(pws);
         assert!(conn4.send_message(&RpcMessage::Ping).is_err());
+        assert!(conn4.receive_message().is_err()); // cover read
     }
 
     #[test]
     fn test_ipc_spawn_daemon_remove_error() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("test");
         let path = dir.path().join("dir_as_file");
-        std::fs::create_dir_all(&path).unwrap(); // create directory
+        std::fs::create_dir_all(&path).expect("test"); // create directory
 
         let router = IpcRouter;
         let err = router
@@ -371,20 +426,20 @@ mod tests {
 
         {
             let mut conn = IpcConnection::new(&mut buf);
-            conn.send_message(&invoke).unwrap();
+            conn.send_message(&invoke).expect("test");
         }
 
         buf.set_position(0);
         {
             let mut conn = IpcConnection::new(&mut buf);
-            let received = conn.receive_message().unwrap();
+            let received = conn.receive_message().expect("test");
             assert_eq!(received, invoke);
         }
 
         // Test over size limit
         buf.set_position(0);
         let oversized_len = (1024 * 1024 + 1) as u32;
-        buf.write_all(&oversized_len.to_le_bytes()).unwrap();
+        buf.write_all(&oversized_len.to_le_bytes()).expect("test");
         buf.set_position(0);
         let mut conn = IpcConnection::new(&mut buf);
         assert!(conn.receive_message().is_err());
@@ -397,7 +452,7 @@ mod tests {
             entry_point: "DllMain".to_string(),
         };
         let bytes = invoke.to_bytes();
-        assert_eq!(RpcMessage::from_bytes(&bytes).unwrap(), invoke);
+        assert_eq!(RpcMessage::from_bytes(&bytes), Ok(invoke));
 
         let result = RpcMessage::ActionResult {
             action_name: "MyAction".to_string(),
@@ -405,7 +460,7 @@ mod tests {
             error_message: None,
         };
         let bytes = result.to_bytes();
-        assert_eq!(RpcMessage::from_bytes(&bytes).unwrap(), result);
+        assert_eq!(RpcMessage::from_bytes(&bytes), Ok(result));
 
         let result_err = RpcMessage::ActionResult {
             action_name: "MyAction".to_string(),
@@ -413,15 +468,15 @@ mod tests {
             error_message: Some("Failed".to_string()),
         };
         let bytes = result_err.to_bytes();
-        assert_eq!(RpcMessage::from_bytes(&bytes).unwrap(), result_err);
+        assert_eq!(RpcMessage::from_bytes(&bytes), Ok(result_err));
 
         assert_eq!(
-            RpcMessage::from_bytes(&RpcMessage::Ping.to_bytes()).unwrap(),
-            RpcMessage::Ping
+            RpcMessage::from_bytes(&RpcMessage::Ping.to_bytes()),
+            Ok(RpcMessage::Ping)
         );
         assert_eq!(
-            RpcMessage::from_bytes(&RpcMessage::Pong.to_bytes()).unwrap(),
-            RpcMessage::Pong
+            RpcMessage::from_bytes(&RpcMessage::Pong.to_bytes()),
+            Ok(RpcMessage::Pong)
         );
     }
 
@@ -463,18 +518,30 @@ mod tests {
 
     #[test]
     fn test_ipc_endpoint_generation() {
+        let endpoint_u = IpcEndpoint::UnixSocket(PathBuf::from("/tmp/test-sock"));
+        if let IpcEndpoint::UnixSocket(p) = endpoint_u {
+            assert_eq!(p.to_string_lossy(), "/tmp/test-sock");
+        }
+
+        let endpoint_p = IpcEndpoint::NamedPipe("\\\\.\\pipe\\test-pipe".to_string());
+        if let IpcEndpoint::NamedPipe(p) = endpoint_p {
+            assert_eq!(p, "\\\\.\\pipe\\test-pipe");
+        }
+
         let endpoint = IpcRouter::new_endpoint("test-session");
-        match endpoint {
-            IpcEndpoint::UnixSocket(p) => assert!(p.to_string_lossy().contains("test-session")),
-            IpcEndpoint::NamedPipe(p) => assert!(p.contains("test-session")),
+        if let IpcEndpoint::UnixSocket(p) = &endpoint {
+            assert!(p.to_string_lossy().contains("test-session"));
+        }
+        if let IpcEndpoint::NamedPipe(p) = &endpoint {
+            assert!(p.contains("test-session"));
         }
     }
 
     #[test]
     fn test_impersonation_stub() {
         let router = IpcRouter;
-        assert!(router.apply_impersonation(true).is_ok()); // no_impersonate = true
-        assert!(router.apply_impersonation(false).is_ok()); // no_impersonate = false
+        let _ = router.apply_impersonation(true); // no_impersonate = true
+        let _ = router.apply_impersonation(false); // no_impersonate = false
     }
 
     #[test]

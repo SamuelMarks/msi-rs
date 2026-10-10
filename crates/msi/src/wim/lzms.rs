@@ -24,6 +24,14 @@ impl LzmsRangeCoder {
     /// # Errors
     ///
     /// Returns [`MsiError::WimDecompressionError`] if the stream is truncated.
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn new(input: &[u8]) -> Result<Self> {
         if input.len() < 4 {
             return Err(MsiError::WimDecompressionError {
@@ -56,6 +64,15 @@ impl LzmsState {
     ///
     /// Returns [`MsiError::WimDecompressionError`] if the requested window size
     /// exceeds [`LZMS_MAX_WINDOW_SIZE`].
+    ///
+    /// # Arguments
+    ///
+    /// * `window_size` - TODO: Document argument.
+    /// * `input` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(unexpected_cfgs)]
     pub fn new(window_size: usize, input: &[u8]) -> Result<Self> {
         if window_size > LZMS_MAX_WINDOW_SIZE {
@@ -80,6 +97,15 @@ impl LzmsState {
     ///
     /// Currently returns an unimplemented error as the full LZMS symbol
     /// decoding tree is not yet completed.
+    ///
+    /// # Arguments
+    ///
+    /// * `_input` - TODO: Document argument.
+    /// * `_output_size` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn decompress(&mut self, _input: &[u8], _output_size: usize) -> Result<Vec<u8>> {
         Err(MsiError::WimDecompressionError {
             algorithm: "LZMS".to_string(),
@@ -93,6 +119,16 @@ impl LzmsState {
 /// # Errors
 ///
 /// Returns [`MsiError::WimDecompressionError`] on decoding failure or memory exhaustion.
+///
+/// # Arguments
+///
+/// * `input` - TODO: Document argument.
+/// * `output_size` - TODO: Document argument.
+/// * `window_size` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 pub fn decompress_lzms(input: &[u8], output_size: usize, window_size: usize) -> Result<Vec<u8>> {
     let mut state = LzmsState::new(window_size, input)?;
     state.decompress(input, output_size)

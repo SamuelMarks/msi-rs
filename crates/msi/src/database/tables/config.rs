@@ -85,6 +85,10 @@ impl RegistryRow {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 6 {
             return Err(MsiError::RecordLengthMismatch {
@@ -243,6 +247,10 @@ impl EnvironmentRow {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 4 {
             return Err(MsiError::RecordLengthMismatch {
@@ -470,6 +478,19 @@ impl MsiServiceConfigRow {
     }
 
     /// Validates concrete parameters and creates a new [`MsiServiceConfigRow`].
+    ///
+    /// # Arguments
+    ///
+    /// * `msi_service_config` - Appropriate argument value.
+    /// * `name` - Appropriate argument value.
+    /// * `event` - Appropriate argument value.
+    /// * `config_type` - Appropriate argument value.
+    /// * `argument` - Appropriate argument value.
+    /// * `component` - Appropriate argument value.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     fn new_impl(
         msi_service_config: String,
         name: String,
@@ -718,6 +739,25 @@ impl ServiceConfigRow {
     }
 
     /// Validates concrete parameters and creates a new [`ServiceConfigRow`].
+    ///
+    /// # Arguments
+    ///
+    /// * `service_name` - Appropriate argument value.
+    /// * `component` - Appropriate argument value.
+    /// * `on_install` - Appropriate argument value.
+    /// * `on_reinstall` - Appropriate argument value.
+    /// * `on_uninstall` - Appropriate argument value.
+    /// * `first_failure_action_type` - Appropriate argument value.
+    /// * `second_failure_action_type` - Appropriate argument value.
+    /// * `third_failure_action_type` - Appropriate argument value.
+    /// * `reset_period_in_days` - Appropriate argument value.
+    /// * `restart_service_delay_in_seconds` - Appropriate argument value.
+    /// * `program_command_line` - Appropriate argument value.
+    /// * `reboot_message` - Appropriate argument value.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     #[allow(clippy::too_many_arguments)]
     fn new_impl(
         service_name: String,

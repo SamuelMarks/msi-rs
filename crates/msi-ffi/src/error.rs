@@ -90,7 +90,8 @@ pub fn clear_last_error() {
 ///
 /// `buffer` must point to valid writable memory of at least `capacity` bytes if non-null.
 /// `out_written` must point to valid writable memory if non-null.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "C" fn msi_get_last_error_message(
     buffer: *mut c_char,
     capacity: usize,
@@ -121,7 +122,8 @@ pub unsafe extern "C" fn msi_get_last_error_message(
 /// # Returns
 ///
 /// Numeric error code, or [`MSI_SUCCESS`] if no error has occurred.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[must_use]
 pub extern "C" fn msi_get_last_error_code() -> i32 {
     let (code, _) = get_last_error();
@@ -129,7 +131,8 @@ pub extern "C" fn msi_get_last_error_code() -> i32 {
 }
 
 /// Resets the thread-local error state to [`MSI_SUCCESS`].
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub extern "C" fn msi_clear_last_error() {
     clear_last_error();
 }
@@ -152,8 +155,14 @@ pub const fn map_msi_error(err: &msi::MsiError) -> i32 {
         | msi::MsiError::InvalidCabVersion { .. }
         | msi::MsiError::InvalidCabChecksum { .. }
         | msi::MsiError::InvalidCabData { .. }
-        | msi::MsiError::DecompressionFailed { .. }
-        | msi::MsiError::CompressionFailed { .. }
+        | msi::MsiError::LzxDecompressionFailed { .. }
+        | msi::MsiError::InvalidMszipSignature { .. }
+        | msi::MsiError::DecompressedSizeMismatch { .. }
+        | msi::MsiError::InvalidCabinetFolderIndex { .. }
+        | msi::MsiError::CabinetDeduplicationConflict { .. }
+        | msi::MsiError::MszipDecompressionFailed { .. }
+        | msi::MsiError::LzxCompressionFailed { .. }
+        | msi::MsiError::MszipCompressionFailed { .. }
         | msi::MsiError::CabinetFileNotFound { .. } => MSI_ERROR_CABINET,
         msi::MsiError::MissingTable { .. }
         | msi::MsiError::RecordLengthMismatch { .. }
@@ -174,12 +183,29 @@ pub const fn map_msi_error(err: &msi::MsiError) -> i32 {
 }
 
 /// Handles a successful FFI operation by clearing errors and returning the success code.
+///
+/// # Arguments
+///
+/// * `code` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn handle_success(code: i32) -> i32 {
     clear_last_error();
     code
 }
 
 /// Handles an operational error by recording it in thread-local storage and returning its code.
+///
+/// # Arguments
+///
+/// * `code` - TODO: Document argument.
+/// * `msg` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn handle_error(code: i32, msg: String) -> i32 {
     set_last_error(code, msg);
     code
@@ -187,6 +213,14 @@ fn handle_error(code: i32, msg: String) -> i32 {
 
 /// Handles an uncaught panic across the FFI boundary, safely converting the panic payload
 /// into a diagnostic error message and returning [`MSI_ERROR_PANIC`].
+///
+/// # Arguments
+///
+/// * `panic_payload` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn handle_panic(panic_payload: &(dyn std::any::Any + Send + 'static)) -> i32 {
     let msg = panic_payload.downcast_ref::<&str>().map_or_else(
         || {
@@ -214,6 +248,14 @@ unsafe fn trampoline<F: FnOnce() -> Result<i32, (i32, String)>>(
 }
 
 /// Internal non-generic executor for [`ffi_boundary`] that captures panics and error states.
+///
+/// # Arguments
+///
+/// * `caller` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn ffi_boundary_impl(caller: fn(*mut ()) -> Result<i32, (i32, String)>, data: *mut ()) -> i32 {
     let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| caller(data)));
     match res {
@@ -378,8 +420,14 @@ pub const fn map_msi_error_to_hresult(err: &msi::MsiError) -> i32 {
         msi::MsiError::InvalidCabVersion { .. } => E_INVALIDARG,
         msi::MsiError::InvalidCabChecksum { .. } => E_INVALIDARG,
         msi::MsiError::InvalidCabData { .. } => E_INVALIDARG,
-        msi::MsiError::DecompressionFailed { .. } => E_FAIL,
-        msi::MsiError::CompressionFailed { .. } => E_FAIL,
+        msi::MsiError::LzxDecompressionFailed { .. }
+        | msi::MsiError::InvalidMszipSignature { .. }
+        | msi::MsiError::DecompressedSizeMismatch { .. }
+        | msi::MsiError::InvalidCabinetFolderIndex { .. }
+        | msi::MsiError::CabinetDeduplicationConflict { .. }
+        | msi::MsiError::MszipDecompressionFailed { .. } => E_FAIL,
+        msi::MsiError::LzxCompressionFailed { .. }
+        | msi::MsiError::MszipCompressionFailed { .. } => E_FAIL,
         msi::MsiError::CabinetFileNotFound { .. } => STG_E_FILENOTFOUND,
         msi::MsiError::InvalidColumnType { .. } => E_INVALIDARG,
         msi::MsiError::InvalidStringPool { .. } => E_INVALIDARG,
@@ -476,6 +524,10 @@ pub const fn map_msi_error_to_hresult(err: &msi::MsiError) -> i32 {
         msi::MsiError::InvalidPatchSequence(_) => 1643,
         msi::MsiError::PatchXmlParse { .. } => E_FAIL,
         msi::MsiError::PatchCorruptCab { .. } => STG_E_READFAULT,
+        msi::MsiError::PhysicalLayoutMismatch { .. }
+        | msi::MsiError::IntegerEncodingError { .. }
+        | msi::MsiError::StreamNameEncodingError { .. }
+        | msi::MsiError::CabinetCompressionError { .. } => E_FAIL,
     }
 }
 
@@ -520,8 +572,14 @@ pub const fn map_msi_error_to_lstatus(err: &msi::MsiError) -> u32 {
         msi::MsiError::InvalidCabVersion { .. } => crate::win32::ERROR_INVALID_DATA,
         msi::MsiError::InvalidCabChecksum { .. } => crate::win32::ERROR_INVALID_DATA,
         msi::MsiError::InvalidCabData { .. } => crate::win32::ERROR_INVALID_DATA,
-        msi::MsiError::DecompressionFailed { .. } => crate::win32::ERROR_INSTALL_FAILURE,
-        msi::MsiError::CompressionFailed { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::LzxDecompressionFailed { .. }
+        | msi::MsiError::InvalidMszipSignature { .. }
+        | msi::MsiError::DecompressedSizeMismatch { .. }
+        | msi::MsiError::InvalidCabinetFolderIndex { .. }
+        | msi::MsiError::CabinetDeduplicationConflict { .. }
+        | msi::MsiError::MszipDecompressionFailed { .. } => crate::win32::ERROR_INSTALL_FAILURE,
+        msi::MsiError::LzxCompressionFailed { .. }
+        | msi::MsiError::MszipCompressionFailed { .. } => crate::win32::ERROR_INSTALL_FAILURE,
         msi::MsiError::CabinetFileNotFound { .. } => crate::win32::ERROR_FILE_NOT_FOUND,
         msi::MsiError::InvalidColumnType { .. } => crate::win32::ERROR_INVALID_DATA,
         msi::MsiError::InvalidStringPool { .. } => crate::win32::ERROR_INVALID_DATA,
@@ -618,6 +676,10 @@ pub const fn map_msi_error_to_lstatus(err: &msi::MsiError) -> u32 {
         msi::MsiError::InvalidPatchSequence(_) => 1643,
         msi::MsiError::PatchXmlParse { .. } => crate::win32::ERROR_INVALID_DATA,
         msi::MsiError::PatchCorruptCab { .. } => crate::win32::ERROR_INVALID_DATA,
+        msi::MsiError::PhysicalLayoutMismatch { .. }
+        | msi::MsiError::IntegerEncodingError { .. }
+        | msi::MsiError::StreamNameEncodingError { .. }
+        | msi::MsiError::CabinetCompressionError { .. } => crate::win32::ERROR_INVALID_DATA,
     }
 }
 
@@ -756,7 +818,9 @@ mod tests {
             MSI_ERROR_VALIDATION
         );
         assert_eq!(
-            map_msi_error(&msi::MsiError::Io("io".to_string())),
+            map_msi_error(&msi::MsiError::Io(msi::error::IoContext::from_string(
+                "io".to_string()
+            ))),
             MSI_ERROR_IO
         );
         assert_eq!(
@@ -780,7 +844,7 @@ mod tests {
     #[test]
     fn test_map_msi_error_to_hresult_all() {
         let errs = vec![
-            msi::MsiError::Io("io".to_string()),
+            msi::MsiError::Io(msi::error::IoContext::from_string("io".to_string())),
             msi::MsiError::InvalidArgument {
                 argument: String::new(),
                 reason: String::new(),
@@ -853,12 +917,10 @@ mod tests {
             msi::MsiError::InvalidCabData {
                 reason: String::new(),
             },
-            msi::MsiError::DecompressionFailed {
-                method: String::new(),
+            msi::MsiError::MszipDecompressionFailed {
                 reason: String::new(),
             },
-            msi::MsiError::CompressionFailed {
-                method: String::new(),
+            msi::MsiError::MszipCompressionFailed {
                 reason: String::new(),
             },
             msi::MsiError::CabinetFileNotFound {
@@ -1123,7 +1185,9 @@ mod tests {
             STG_E_FILENOTFOUND
         );
         assert_eq!(
-            map_msi_error_to_hresult(&msi::MsiError::Io("io".to_string())),
+            map_msi_error_to_hresult(&msi::MsiError::Io(msi::error::IoContext::from_string(
+                "io".to_string()
+            ))),
             STG_E_READFAULT
         );
         assert_eq!(
@@ -1131,6 +1195,13 @@ mod tests {
                 name: "test".to_string(),
             }),
             E_NOTIMPL
+        );
+        assert_eq!(
+            map_msi_error_to_hresult(&msi::MsiError::CabinetCompressionError {
+                cab: "test".to_string(),
+                reason: "fail".to_string()
+            }),
+            E_FAIL
         );
     }
 
@@ -1150,7 +1221,9 @@ mod tests {
             crate::win32::ERROR_FILE_NOT_FOUND
         );
         assert_eq!(
-            map_msi_error_to_lstatus(&msi::MsiError::Io("io".to_string())),
+            map_msi_error_to_lstatus(&msi::MsiError::Io(msi::error::IoContext::from_string(
+                "io".to_string()
+            ))),
             crate::win32::ERROR_OPEN_FAILED
         );
         assert_eq!(
@@ -1158,6 +1231,13 @@ mod tests {
                 name: "test".to_string(),
             }),
             crate::win32::ERROR_NOT_SUPPORTED
+        );
+        assert_eq!(
+            map_msi_error_to_lstatus(&msi::MsiError::CabinetCompressionError {
+                cab: "test".to_string(),
+                reason: "fail".to_string()
+            }),
+            crate::win32::ERROR_INVALID_DATA
         );
     }
 }

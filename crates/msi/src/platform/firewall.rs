@@ -14,12 +14,24 @@ pub struct FirewallRuleName(String);
 
 impl FirewallRuleName {
     /// Creates a new `FirewallRuleName`.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn new(name: impl Into<String>) -> Self {
         Self(name.into())
     }
 
     /// Returns the string representation.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -38,12 +50,24 @@ pub struct PortNumber(u16);
 
 impl PortNumber {
     /// Creates a new `PortNumber`.
+    ///
+    /// # Arguments
+    ///
+    /// * `port` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn new(port: u16) -> Self {
         Self(port)
     }
 
     /// Gets the inner port value.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn value(&self) -> u16 {
         self.0
@@ -67,6 +91,10 @@ pub enum Protocol {
 
 impl Protocol {
     /// Returns the string representation of the protocol.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn as_str(&self) -> &'static str {
         match self {
@@ -88,6 +116,16 @@ pub trait FirewallManager {
     ///
     /// # Errors
     /// Returns [`MsiError::FirewallConfigError`] if rule generation fails.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - TODO: Document argument.
+    /// * `port` - TODO: Document argument.
+    /// * `protocol` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn add_port_exception(
         &self,
         name: &FirewallRuleName,
@@ -99,6 +137,16 @@ pub trait FirewallManager {
     ///
     /// # Errors
     /// Returns [`MsiError::FirewallConfigError`] if rule generation fails.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - TODO: Document argument.
+    /// * `port` - TODO: Document argument.
+    /// * `protocol` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn remove_port_exception(
         &self,
         name: &FirewallRuleName,

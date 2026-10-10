@@ -36,8 +36,8 @@ impl<'a> PhysicalTableLayout<'a> {
     /// # Errors
     ///
     /// Returns `PhysicalLayoutError` if a mapping cannot be created (e.g., Stream column as Primary Key).
-    pub fn new(columns: &'a [ColumnDef], is_system_catalog: bool) -> Result<Self> {
-        let mut sorted_indices: Vec<usize> = (0..columns.len()).collect();
+    pub fn new(columns: &'a [ColumnDef], _is_system_catalog: bool) -> Result<Self> {
+        let sorted_indices: Vec<usize> = (0..columns.len()).collect();
 
         // Check for invalid column states that prevent layout
         for col in columns {
@@ -51,18 +51,8 @@ impl<'a> PhysicalTableLayout<'a> {
             }
         }
 
-        if !is_system_catalog {
-            // Stable sort to maintain original relative logical order within the same category
-            sorted_indices.sort_by(|&a, &b| {
-                let col_a = &columns[a];
-                let col_b = &columns[b];
-
-                let cat_a = Self::category(col_a);
-                let cat_b = Self::category(col_b);
-
-                cat_a.cmp(&cat_b)
-            });
-        }
+        // We enforce a strict 1:1 mapping between logical and physical columns
+        // to match Windows Installer's `_Columns` table order.
 
         let mut logical_to_physical = vec![PhysicalIndex(0); columns.len()];
         let mut physical_to_logical = vec![LogicalIndex(0); columns.len()];
@@ -77,20 +67,6 @@ impl<'a> PhysicalTableLayout<'a> {
             logical_to_physical,
             physical_to_logical,
         })
-    }
-
-    /// Determines the physical sorting category for a column.
-    /// Category 0: Primary keys.
-    /// Category 1: Fixed-length fields (Short, Long).
-    /// Category 2: Variable-length fields (String, Stream).
-    const fn category(col: &ColumnDef) -> u8 {
-        if col.primary_key {
-            return 0;
-        }
-        match col.data_type {
-            DataType::Short | DataType::Long => 1,
-            DataType::String { .. } | DataType::Stream => 2,
-        }
     }
 
     /// Retrieves the physical index for a given logical index.
@@ -147,9 +123,9 @@ impl<'a> PhysicalTableLayout<'a> {
 mod tests {
     use super::*;
 
-    /// Tests that tables containing composite primary keys sort PKs first.
+    /// Tests that tables containing composite primary keys maintain strict 1:1 logical order.
     #[test]
-    fn test_layout_composite_primary_keys() {
+    fn test_layout_strict_one_to_one() {
         let cols = vec![
             ColumnDef::new("Attr", DataType::Short),
             ColumnDef::new("Key1", DataType::String { max_len: 72 }).primary_key(),
@@ -160,44 +136,44 @@ mod tests {
         let layout = PhysicalTableLayout::new(&cols, false).expect("valid layout");
 
         let physical_cols: Vec<_> = layout.physical_columns().map(|c| c.name.as_str()).collect();
-        // PKs first (stable: Key1, Key2), then fixed (Attr), then variable (Data)
-        assert_eq!(physical_cols, vec!["Key1", "Key2", "Attr", "Data"]);
+        // Strict 1:1 mapping mapping
+        assert_eq!(physical_cols, vec!["Attr", "Key1", "Data", "Key2"]);
 
         // Bidirectional checks
-        // Attr: logical 0, physical 2
+        // Attr: logical 0, physical 0
         assert_eq!(
             layout.physical_index(LogicalIndex(0)),
-            Some(PhysicalIndex(2))
-        );
-        assert_eq!(
-            layout.logical_index(PhysicalIndex(2)),
-            Some(LogicalIndex(0))
-        );
-
-        // Key1: logical 1, physical 0
-        assert_eq!(
-            layout.physical_index(LogicalIndex(1)),
             Some(PhysicalIndex(0))
         );
         assert_eq!(
             layout.logical_index(PhysicalIndex(0)),
-            Some(LogicalIndex(1))
+            Some(LogicalIndex(0))
         );
 
-        // Key2: logical 3, physical 1
+        // Key1: logical 1, physical 1
         assert_eq!(
-            layout.physical_index(LogicalIndex(3)),
+            layout.physical_index(LogicalIndex(1)),
             Some(PhysicalIndex(1))
         );
         assert_eq!(
             layout.logical_index(PhysicalIndex(1)),
+            Some(LogicalIndex(1))
+        );
+
+        // Key2: logical 3, physical 3
+        assert_eq!(
+            layout.physical_index(LogicalIndex(3)),
+            Some(PhysicalIndex(3))
+        );
+        assert_eq!(
+            layout.logical_index(PhysicalIndex(3)),
             Some(LogicalIndex(3))
         );
     }
 
     /// Tests with tables containing mixed length, out-of-order logical definitions (e.g., `InstallExecuteSequence`).
     #[test]
-    fn test_layout_mixed_length_out_of_order() {
+    fn test_layout_mixed_length_strict() {
         // InstallExecuteSequence:
         // Action (String) [PK], Condition (String), Sequence (Short)
         let cols = vec![
@@ -209,23 +185,23 @@ mod tests {
         let layout = PhysicalTableLayout::new(&cols, false).expect("valid layout");
 
         let physical_cols: Vec<_> = layout.physical_columns().map(|c| c.name.as_str()).collect();
-        // PKs (Action), Fixed (Sequence), Variable (Condition)
-        assert_eq!(physical_cols, vec!["Action", "Sequence", "Condition"]);
+        // Strict 1:1 mapping
+        assert_eq!(physical_cols, vec!["Action", "Condition", "Sequence"]);
 
         // Action: logical 0, physical 0
         assert_eq!(
             layout.physical_index(LogicalIndex(0)),
             Some(PhysicalIndex(0))
         );
-        // Condition: logical 1, physical 2
+        // Condition: logical 1, physical 1
         assert_eq!(
             layout.physical_index(LogicalIndex(1)),
-            Some(PhysicalIndex(2))
+            Some(PhysicalIndex(1))
         );
-        // Sequence: logical 2, physical 1
+        // Sequence: logical 2, physical 2
         assert_eq!(
             layout.physical_index(LogicalIndex(2)),
-            Some(PhysicalIndex(1))
+            Some(PhysicalIndex(2))
         );
     }
 

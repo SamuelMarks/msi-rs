@@ -63,8 +63,14 @@ pub fn to_py_err(err: &msi::MsiError) -> PyErr {
         | msi::MsiError::InvalidCabVersion { .. }
         | msi::MsiError::InvalidCabChecksum { .. }
         | msi::MsiError::InvalidCabData { .. }
-        | msi::MsiError::DecompressionFailed { .. }
-        | msi::MsiError::CompressionFailed { .. }
+        | msi::MsiError::LzxDecompressionFailed { .. }
+        | msi::MsiError::MszipDecompressionFailed { .. }
+        | msi::MsiError::InvalidMszipSignature { .. }
+        | msi::MsiError::DecompressedSizeMismatch { .. }
+        | msi::MsiError::InvalidCabinetFolderIndex { .. }
+        | msi::MsiError::CabinetDeduplicationConflict { .. }
+        | msi::MsiError::LzxCompressionFailed { .. }
+        | msi::MsiError::MszipCompressionFailed { .. }
         | msi::MsiError::CabinetFileNotFound { .. } => CabinetError::new_err(err.to_string()),
         msi::MsiError::MissingTable { .. }
         | msi::MsiError::RecordLengthMismatch { .. }
@@ -91,6 +97,10 @@ pub fn to_py_err(err: &msi::MsiError) -> PyErr {
 /// # Errors
 ///
 /// Returns [`PyErr`] if registering exception types fails.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 pub fn register_exceptions(m: &Bound<'_, PyModule>) -> PyResult<()> {
     let _ = m.add("MsiError", m.py().get_type_bound::<MsiError>());
     let _ = m.add(
@@ -109,6 +119,15 @@ mod tests {
     use super::*;
 
     /// Helper verifying exception registration on a module result.
+    ///
+    /// # Arguments
+    ///
+    /// * `res` - TODO: Document argument.
+    /// * `PyModule>>` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn check_register_exceptions(res: PyResult<Bound<'_, PyModule>>) -> bool {
         res.is_ok_and(|m| {
             let _ = register_exceptions(&m);
@@ -141,7 +160,8 @@ mod tests {
             assert!(to_py_err(&arg_err).is_instance_of::<ValidationError>(py));
 
             // Io
-            let io_err = msi::MsiError::Io("not found".to_string());
+            let io_err =
+                msi::MsiError::Io(msi::error::IoContext::from_string("not found".to_string()));
             assert!(to_py_err(&io_err).is_instance_of::<IoError>(py));
 
             // Cabinet errors

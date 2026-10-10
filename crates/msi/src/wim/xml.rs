@@ -37,6 +37,14 @@ impl WimManifest {
     ///
     /// Returns [`MsiError::WimXmlParseError`] if the XML is malformed, missing the
     /// root `<WIM>` node, or contains invalid structures.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn parse(bytes: &[u8]) -> Result<Self> {
         if bytes.is_empty() {
             return Err(MsiError::WimXmlParseError {
@@ -76,6 +84,14 @@ impl WimManifest {
 
     /// Decodes the byte payload into a Rust string, automatically detecting
     /// UTF-16LE BOM or falling back to UTF-8 / UTF-16 decoding heuristics.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn decode_payload(bytes: &[u8]) -> String {
         if bytes.len() >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE {
             // UTF-16LE with BOM
@@ -98,6 +114,14 @@ impl WimManifest {
     }
 
     /// Parses an `<IMAGE>` node into a [`WimImage`].
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_image(node: &XmlNode) -> Result<WimImage> {
         let index_str = node
             .attributes
@@ -142,6 +166,15 @@ impl WimManifest {
     }
 
     /// Retrieves the text content of a named child node, if it exists.
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - TODO: Document argument.
+    /// * `name` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn get_child_text(node: &XmlNode, name: &str) -> Option<String> {
         node.children
             .iter()
@@ -150,6 +183,15 @@ impl WimManifest {
     }
 
     /// Parses a `u64` from a named child node, if it exists and is valid.
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - TODO: Document argument.
+    /// * `name` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_child_u64(node: &XmlNode, name: &str) -> Option<u64> {
         Self::get_child_text(node, name).and_then(|text| text.parse::<u64>().ok())
     }
@@ -169,6 +211,10 @@ mod tests {
     use super::*;
 
     /// Tests WIM XML manifest parsing with UTF-16LE BOM encoding.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[test]
     fn test_wim_xml_parse_utf16le_bom() -> Result<()> {
         let xml = r#"<WIM><TOTALBYTES>12345</TOTALBYTES><IMAGE INDEX="1"><NAME>Windows 10 Pro</NAME><DESCRIPTION>Description</DESCRIPTION><WINDOWS><ARCH>9</ARCH><EDITION>Professional</EDITION><LANGUAGES><DEFAULT>en-US</DEFAULT></LANGUAGES></WINDOWS></IMAGE></WIM>"#;
@@ -194,6 +240,10 @@ mod tests {
     }
 
     /// Tests WIM XML manifest parsing with UTF-8 encoding.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[test]
     fn test_wim_xml_parse_utf8() -> Result<()> {
         let xml = r#"<WIM><TOTALBYTES>42</TOTALBYTES><IMAGE INDEX="2"><NAME>ReactOS</NAME></IMAGE></WIM>"#;
@@ -212,6 +262,10 @@ mod tests {
     }
 
     /// Tests parsing WIM XML manifest with UTF-16LE without BOM.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[test]
     fn test_wim_xml_parse_utf16le_no_bom() -> Result<()> {
         let xml = r#"<WIM><IMAGE INDEX="1"><NAME>Test</NAME></IMAGE></WIM>"#;

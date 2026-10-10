@@ -10,6 +10,16 @@ use crate::error::{MsiError, Result};
 ///
 /// # Errors
 /// Returns `MsiError` if the component cannot be found or fault-in fails.
+///
+/// # Arguments
+///
+/// * `product_code` - TODO: Document argument.
+/// * `feature_id` - TODO: Document argument.
+/// * `component_code` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 pub fn provide_component(
     product_code: &str,
     feature_id: &str,
@@ -38,6 +48,15 @@ pub fn provide_component(
 ///
 /// # Errors
 /// Returns `MsiError` if the feature is invalid.
+///
+/// # Arguments
+///
+/// * `product_code` - TODO: Document argument.
+/// * `feature_id` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 pub fn provide_feature(product_code: &str, feature_id: &str) -> Result<()> {
     if product_code.is_empty() || feature_id.is_empty() {
         return Err(MsiError::InvalidArgument {
@@ -55,6 +74,14 @@ pub fn provide_feature(product_code: &str, feature_id: &str) -> Result<()> {
 ///
 /// # Errors
 /// Returns `MsiError::ActionExecutionError` if the string is malformed.
+///
+/// # Arguments
+///
+/// * `descriptor` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 pub fn resolve_darwin_descriptor(descriptor: &str) -> Result<String> {
     if descriptor.len() < 20 {
         return Err(MsiError::ActionExecutionError(
@@ -72,10 +99,10 @@ mod tests {
 
     #[test]
     fn test_provide_component() {
-        let path = provide_component("PROD-1", "Feat", "COMP-1").unwrap();
+        let path = provide_component("PROD-1", "Feat", "COMP-1").expect("test");
         assert_eq!(path, "/path/to/installed_component.dll");
 
-        let path2 = provide_component("PROD-1", "FaultIn", "COMP-1").unwrap();
+        let path2 = provide_component("PROD-1", "FaultIn", "COMP-1").expect("test");
         assert_eq!(path2, "/path/to/faulted_in_component.dll");
 
         assert!(provide_component("", "Feat", "COMP-1").is_err());
@@ -91,7 +118,7 @@ mod tests {
 
     #[test]
     fn test_resolve_darwin_descriptor() {
-        let res = resolve_darwin_descriptor("12345678901234567890_MyDescriptor").unwrap();
+        let res = resolve_darwin_descriptor("12345678901234567890_MyDescriptor").expect("test");
         assert_eq!(res, "/path/from/darwin_descriptor.exe");
 
         let err = resolve_darwin_descriptor("short").unwrap_err();

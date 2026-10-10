@@ -91,6 +91,14 @@ impl ServiceDefinition {
     }
 
     /// Sets the display name.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn display_name(mut self, name: impl Into<String>) -> Self {
         self.display_name = name.into();
@@ -98,6 +106,14 @@ impl ServiceDefinition {
     }
 
     /// Sets the description.
+    ///
+    /// # Arguments
+    ///
+    /// * `desc` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn description(mut self, desc: impl Into<String>) -> Self {
         self.description = Some(desc.into());
@@ -105,6 +121,14 @@ impl ServiceDefinition {
     }
 
     /// Appends a command-line argument.
+    ///
+    /// # Arguments
+    ///
+    /// * `argument` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn arg(mut self, argument: impl Into<String>) -> Self {
         self.arguments.push(argument.into());
@@ -112,6 +136,14 @@ impl ServiceDefinition {
     }
 
     /// Sets the working directory.
+    ///
+    /// # Arguments
+    ///
+    /// * `dir` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn working_dir(mut self, dir: impl Into<PathBuf>) -> Self {
         self.working_directory = Some(dir.into());
@@ -119,6 +151,15 @@ impl ServiceDefinition {
     }
 
     /// Sets the user and group.
+    ///
+    /// # Arguments
+    ///
+    /// * `user` - TODO: Document argument.
+    /// * `group` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn run_as(mut self, user: impl Into<String>, group: Option<String>) -> Self {
         self.user = Some(user.into());
@@ -127,6 +168,14 @@ impl ServiceDefinition {
     }
 
     /// Sets auto-start flag.
+    ///
+    /// # Arguments
+    ///
+    /// * `auto` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn auto_start(mut self, auto: bool) -> Self {
         self.auto_start = auto;
@@ -153,12 +202,20 @@ impl ServiceDefinition {
     // --------------------------------------------------------------------------------
 
     /// Returns the standard systemd unit file installation path (e.g. `/lib/systemd/system/<name>.service`).
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn systemd_unit_path(&self) -> PathBuf {
         PathBuf::from("/lib/systemd/system").join(format!("{}.service", self.name))
     }
 
     /// Returns the systemd system unit file installation path in `/etc/systemd/system/`.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn systemd_etc_unit_path(&self) -> PathBuf {
         PathBuf::from("/etc/systemd/system").join(format!("{}.service", self.name))
@@ -280,6 +337,10 @@ impl ServiceDefinition {
     /// # Arguments
     ///
     /// * `is_system_daemon` - `true` for `/Library/LaunchDaemons`, `false` for `~/Library/LaunchAgents`.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn launchd_plist_path(&self, is_system_daemon: bool) -> PathBuf {
         let base = if is_system_daemon {
@@ -347,6 +408,10 @@ impl ServiceDefinition {
     /// # Arguments
     ///
     /// * `is_system_daemon` - System daemon or user agent.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn launchd_lifecycle_commands(&self, is_system_daemon: bool) -> Vec<String> {
         let path = self.launchd_plist_path(is_system_daemon);
@@ -409,6 +474,10 @@ impl ServiceDefinition {
     // --------------------------------------------------------------------------------
 
     /// Returns the standard FreeBSD rc.d script path (`/usr/local/etc/rc.d/<service>`).
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn freebsd_rc_script_path(&self) -> PathBuf {
         PathBuf::from("/usr/local/etc/rc.d").join(&self.name)
@@ -454,6 +523,10 @@ impl ServiceDefinition {
     }
 
     /// Returns FreeBSD `sysrc` and `service` commands to enable and start.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn freebsd_lifecycle_commands(&self) -> Vec<String> {
         let mut cmds = Vec::new();
@@ -469,6 +542,10 @@ impl ServiceDefinition {
     // --------------------------------------------------------------------------------
 
     /// Returns the SMF XML manifest path (`/lib/svc/manifest/site/<name>.xml`).
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn smf_manifest_path(&self) -> PathBuf {
         PathBuf::from("/lib/svc/manifest/site").join(format!("{}.xml", self.name))
@@ -532,6 +609,10 @@ impl ServiceDefinition {
     }
 
     /// Returns `svccfg` and `svcadm` commands for SMF service registration and lifecycle.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn smf_lifecycle_commands(&self) -> Vec<String> {
         let path = self.smf_manifest_path();
@@ -653,6 +734,10 @@ pub enum SupervisorType {
 
 impl SupervisorType {
     /// Detects the host platform service supervisor based on target OS.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn detect_host() -> Self {
         #[cfg(target_os = "windows")]
@@ -684,6 +769,10 @@ impl SupervisorType {
     }
 
     /// Returns the corresponding [`TargetOs`] for this supervisor type.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn target_os(self) -> TargetOs {
         match self {
@@ -757,12 +846,24 @@ impl Default for HostSupervisorExecutor {
 
 impl HostSupervisorExecutor {
     /// Creates a new [`HostSupervisorExecutor`] with dry-run mode enabled by default.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Sets whether dry-run simulation mode is enabled.
+    ///
+    /// # Arguments
+    ///
+    /// * `dry_run` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn with_dry_run(mut self, dry_run: bool) -> Self {
         self.dry_run = dry_run;
@@ -770,6 +871,14 @@ impl HostSupervisorExecutor {
     }
 
     /// Configures the command execution timeout in milliseconds.
+    ///
+    /// # Arguments
+    ///
+    /// * `timeout_ms` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn with_timeout_ms(mut self, timeout_ms: u64) -> Self {
         self.timeout_ms = timeout_ms;
@@ -777,24 +886,40 @@ impl HostSupervisorExecutor {
     }
 
     /// Returns whether dry-run mode is enabled.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn is_dry_run(&self) -> bool {
         self.dry_run
     }
 
     /// Returns the command timeout in milliseconds.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn timeout_ms(&self) -> u64 {
         self.timeout_ms
     }
 
     /// Returns the slice of installed service records.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn installed_services(&self) -> &[InstalledService] {
         &self.installed_services
     }
 
     /// Returns the chronological log of executed supervisor lifecycle commands.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn executed_commands(&self) -> &[String] {
         &self.executed_commands
@@ -869,18 +994,18 @@ impl HostSupervisorExecutor {
         dir.pop();
         if !dir.exists() {
             fs::create_dir_all(&dir).map_err(|e| {
-                MsiError::Io(format!(
+                MsiError::Io(crate::error::IoContext::from_string(format!(
                     "Failed to create supervisor directory {}: {e}",
                     dir.display()
-                ))
+                )))
             })?;
         }
 
         fs::write(&target_path, content.as_bytes()).map_err(|e| {
-            MsiError::Io(format!(
+            MsiError::Io(crate::error::IoContext::from_string(format!(
                 "Failed to write service unit file {}: {e}",
                 target_path.display()
-            ))
+            )))
         })?;
 
         #[cfg(unix)]
@@ -915,6 +1040,10 @@ impl HostSupervisorExecutor {
     /// # Errors
     ///
     /// Returns [`MsiError::Io`] if service is not found or supervisor rejects command.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::too_many_lines)]
     pub fn execute_control(
         &mut self,
@@ -1056,6 +1185,10 @@ impl HostSupervisorExecutor {
     /// # Errors
     ///
     /// Returns [`MsiError::Io`] if the command fails, times out, or cannot be spawned.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn run_supervisor_command(cmd_str: &str, timeout_ms: u64) -> Result<()> {
         Self::run_supervisor_command_with_shell("sh", cmd_str, timeout_ms)
     }
@@ -1071,6 +1204,10 @@ impl HostSupervisorExecutor {
     /// # Errors
     ///
     /// Returns [`MsiError::Io`] if the command fails, times out, or cannot be spawned.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn run_supervisor_command_with_shell(
         shell: &str,
         cmd_str: &str,
@@ -1084,9 +1221,9 @@ impl HostSupervisorExecutor {
         cmd.stderr(Stdio::piped());
 
         let mut child = cmd.spawn().map_err(|e| {
-            MsiError::Io(format!(
+            MsiError::Io(crate::error::IoContext::from_string(format!(
                 "Failed to spawn supervisor command '{cmd_str}': {e}"
-            ))
+            )))
         })?;
 
         let start = std::time::Instant::now();
@@ -1103,15 +1240,15 @@ impl HostSupervisorExecutor {
                     .as_mut()
                     .map(|err| err.read_to_end(&mut stderr_bytes));
                 let stderr = String::from_utf8_lossy(&stderr_bytes);
-                return Err(MsiError::Io(format!(
+                return Err(MsiError::Io(crate::error::IoContext::from_string(format!(
                     "Supervisor command '{cmd_str}' failed with status {status}: {stderr}"
-                )));
+                ))));
             }
             if start.elapsed() > timeout {
                 let _ = child.kill();
-                return Err(MsiError::Io(format!(
+                return Err(MsiError::Io(crate::error::IoContext::from_string(format!(
                     "Supervisor command '{cmd_str}' timed out after {timeout_ms}ms"
-                )));
+                ))));
             }
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
@@ -1122,6 +1259,10 @@ impl HostSupervisorExecutor {
     /// # Errors
     ///
     /// Returns [`MsiError::Io`] on filesystem deletion failure.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn rollback(&mut self) -> Result<()> {
         let services_to_rollback = std::mem::take(&mut self.installed_services);
         for svc in services_to_rollback.into_iter().rev() {

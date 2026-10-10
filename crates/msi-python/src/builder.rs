@@ -42,6 +42,10 @@ impl PyPackageBuilder {
     /// # Errors
     ///
     /// Returns [`crate::error::ValidationError`] on invalid arguments.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[new]
     #[pyo3(signature = (product_name, manufacturer, version, product_code = None, upgrade_code = None))]
     pub fn new(
@@ -72,11 +76,19 @@ impl PyPackageBuilder {
     }
 
     /// Sets the product name.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - TODO: Document argument.
     pub fn set_product_name(&mut self, name: String) {
         self.inner = std::mem::take(&mut self.inner).product_name(name);
     }
 
     /// Sets the manufacturer name.
+    ///
+    /// # Arguments
+    ///
+    /// * `mfr` - TODO: Document argument.
     pub fn set_manufacturer(&mut self, mfr: String) {
         self.inner = std::mem::take(&mut self.inner).manufacturer(mfr);
     }
@@ -86,6 +98,15 @@ impl PyPackageBuilder {
     /// # Errors
     ///
     /// Returns [`crate::error::ValidationError`] on invalid version.
+    ///
+    /// # Arguments
+    ///
+    /// * `version` - TODO: Document argument.
+    /// * `PyAny>` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn set_version(&mut self, version: &Bound<'_, PyAny>) -> PyResult<()> {
         let ver = extract_product_version(version)?;
         self.inner = std::mem::take(&mut self.inner).version(ver);
@@ -93,16 +114,29 @@ impl PyPackageBuilder {
     }
 
     /// Sets the `ProductCode` GUID.
+    ///
+    /// # Arguments
+    ///
+    /// * `code` - TODO: Document argument.
     pub fn set_product_code(&mut self, code: String) {
         self.inner = std::mem::take(&mut self.inner).product_code(code);
     }
 
     /// Sets the `UpgradeCode` GUID.
+    ///
+    /// # Arguments
+    ///
+    /// * `code` - TODO: Document argument.
     pub fn set_upgrade_code(&mut self, code: String) {
         self.inner = std::mem::take(&mut self.inner).upgrade_code(code);
     }
 
     /// Adds a property entry to the `Property` table.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - TODO: Document argument.
+    /// * `value` - TODO: Document argument.
     pub fn add_property(&mut self, name: String, value: String) {
         self.inner = std::mem::take(&mut self.inner).add_property(name, value);
     }
@@ -118,6 +152,10 @@ impl PyPackageBuilder {
     /// # Errors
     ///
     /// Returns [`crate::error::ValidationError`] on invalid directory identifier.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[pyo3(signature = (dir_id, parent_id = None, default_dir = ".".to_string()))]
     pub fn add_directory(
         &mut self,
@@ -154,6 +192,10 @@ impl PyPackageBuilder {
     /// # Errors
     ///
     /// Returns [`crate::error::ValidationError`] on invalid parameters.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[pyo3(signature = (comp_id, dir_id, comp_guid = None, attributes = None, condition = None, keypath = None))]
     pub fn add_component(
         &mut self,
@@ -199,6 +241,10 @@ impl PyPackageBuilder {
     /// # Errors
     ///
     /// Returns [`crate::error::ValidationError`] on invalid parameters.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::too_many_arguments)]
     #[pyo3(signature = (feat_id, parent_id = None, title = None, description = None, display = None, level = None, dir_id = None, attributes = None))]
     pub fn add_feature(
@@ -246,6 +292,10 @@ impl PyPackageBuilder {
     /// # Errors
     ///
     /// Returns [`crate::error::ValidationError`] on invalid identifiers.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn add_feature_component(&mut self, feat_id: String, comp_id: String) -> PyResult<()> {
         let feature = FeatureName::new(feat_id).map_err(|e| to_py_err(&e))?;
         let component = ComponentName::new(comp_id).map_err(|e| to_py_err(&e))?;
@@ -271,6 +321,10 @@ impl PyPackageBuilder {
     /// # Errors
     ///
     /// Returns [`crate::error::ValidationError`] on invalid parameters.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::too_many_arguments)]
     #[pyo3(signature = (file_id, comp_id, file_name, file_size, version = None, language = None, attributes = None, sequence = None))]
     pub fn add_file(
@@ -374,7 +428,11 @@ impl PyPackageBuilder {
         file_id: Option<String>,
     ) -> PyResult<String> {
         let path = Path::new(source_path);
-        let data = fs::read(path).map_err(|e| to_py_err(&msi::MsiError::Io(e.to_string())))?;
+        let data = fs::read(path).map_err(|e| {
+            to_py_err(&msi::MsiError::Io(msi::error::IoContext::from_string(
+                e.to_string(),
+            )))
+        })?;
 
         let file_name_os = path
             .file_name()
@@ -432,6 +490,14 @@ impl PyPackageBuilder {
     /// # Errors
     ///
     /// Returns [`crate::error::ValidationError`] on validation failure.
+    ///
+    /// # Arguments
+    ///
+    /// * `py` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn build(&self, py: Python<'_>) -> PyResult<PyPackage> {
         let builder = self.finalize_builder().map_err(|e| to_py_err(&e))?;
         let pkg = py
@@ -449,6 +515,10 @@ impl PyPackageBuilder {
     /// # Errors
     ///
     /// Returns [`crate::error::IoError`] or [`crate::error::ValidationError`] on failure.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn build_to_file(&self, py: Python<'_>, path: String) -> PyResult<()> {
         let builder = self.finalize_builder().map_err(|e| to_py_err(&e))?;
         py.allow_threads(move || {
@@ -463,6 +533,14 @@ impl PyPackageBuilder {
     /// # Errors
     ///
     /// Returns [`crate::error::ValidationError`] on failure.
+    ///
+    /// # Arguments
+    ///
+    /// * `py` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn build_to_bytes(&self, py: Python<'_>) -> PyResult<Vec<u8>> {
         let builder = self.finalize_builder().map_err(|e| to_py_err(&e))?;
         let bytes = py.allow_threads(move || {
@@ -473,11 +551,33 @@ impl PyPackageBuilder {
     }
 
     /// Context manager enter implementation returning self.
+    ///
+    /// # Arguments
+    ///
+    /// * `slf` - TODO: Document argument.
+    /// * `Self>` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     const fn __enter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf
     }
 
     /// Context manager exit implementation.
+    ///
+    /// # Arguments
+    ///
+    /// * `_exc_type` - TODO: Document argument.
+    /// * `PyAny>>` - TODO: Document argument.
+    /// * `_exc_val` - TODO: Document argument.
+    /// * `PyAny>>` - TODO: Document argument.
+    /// * `_exc_tb` - TODO: Document argument.
+    /// * `PyAny>>` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::unused_self)]
     #[pyo3(signature = (_exc_type=None, _exc_val=None, _exc_tb=None))]
     const fn __exit__(
@@ -493,6 +593,10 @@ impl PyPackageBuilder {
 #[allow(clippy::multiple_inherent_impl)]
 impl PyPackageBuilder {
     /// Finalizes staged file packaging into an embedded cabinet archive.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn finalize_builder(&self) -> Result<PackageBuilder, msi::MsiError> {
         let mut builder = self.inner.clone();
         if !self.staged_files.is_empty() {
@@ -509,6 +613,14 @@ impl PyPackageBuilder {
 }
 
 /// Helper converting an arbitrary string into a valid MSI identifier (`[a-zA-Z_][a-zA-Z0-9_.]*`).
+///
+/// # Arguments
+///
+/// * `input` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn sanitize_id(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     for (i, c) in input.chars().enumerate() {
@@ -543,6 +655,14 @@ mod tests {
     use std::fs;
 
     /// Helper checking constructor, setters, and derives on a `PackageBuilder` Result.
+    ///
+    /// # Arguments
+    ///
+    /// * `res` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn check_builder_new_and_setters(res: PyResult<PyPackageBuilder>) -> bool {
         res.is_ok_and(|mut b| {
             Python::with_gil(|py| {
@@ -604,6 +724,14 @@ mod tests {
     }
 
     /// Helper checking `add_directory`, `add_component`, `add_feature`, and `add_file`.
+    ///
+    /// # Arguments
+    ///
+    /// * `res` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn check_builder_components(res: PyResult<PyPackageBuilder>) -> bool {
         res.is_ok_and(|mut b| {
@@ -840,6 +968,14 @@ mod tests {
     }
 
     /// Helper checking `add_file_from_disk` operations and error paths.
+    ///
+    /// # Arguments
+    ///
+    /// * `res` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn check_add_file_from_disk(res: PyResult<PyPackageBuilder>) -> bool {
         res.is_ok_and(|mut b| {
             assert!(b
@@ -965,6 +1101,14 @@ mod tests {
     }
 
     /// Helper checking package build operations and error paths.
+    ///
+    /// # Arguments
+    ///
+    /// * `res` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn check_builder_build(res: PyResult<PyPackageBuilder>) -> bool {
         res.is_ok_and(|mut b| {
             Python::with_gil(|py| {
@@ -1082,6 +1226,15 @@ mod tests {
     }
 
     /// Helper running a Python script against a module result, checking both Ok and Err module creations.
+    ///
+    /// # Arguments
+    ///
+    /// * `res` - TODO: Document argument.
+    /// * `PyModule>>` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn run_builder_script(res: PyResult<Bound<'_, PyModule>>) -> bool {
         res.is_ok_and(|m| {
             let py = m.py();

@@ -102,6 +102,10 @@ impl Compiler {
     /// # Arguments
     ///
     /// * `registry` - The extension registry to use.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn with_extensions(registry: ExtensionRegistry) -> Self {
         Self {
@@ -169,6 +173,15 @@ impl Compiler {
     }
 
     /// Compiles an individual section element (e.g. `<Product>`, `<Fragment>`).
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - TODO: Document argument.
+    /// * `sec_type` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::cognitive_complexity)]
     #[allow(clippy::too_many_lines)]
     fn compile_section(
@@ -412,6 +425,18 @@ impl Compiler {
     }
 
     /// Recursively walks and compiles an XML element subtree.
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::cognitive_complexity)]
     #[allow(clippy::too_many_lines, clippy::self_only_used_in_recursion)]
     fn compile_element_tree(
@@ -1616,6 +1641,16 @@ impl Compiler {
     }
 
     /// Compiles a `<RegistryValue>` element.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `inherited_root` - TODO: Document argument.
+    /// * `inherited_key` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_registry_value(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -1671,6 +1706,14 @@ impl Compiler {
     }
 
     /// Compiles a `<Shortcut>` element.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_shortcut(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -1748,6 +1791,14 @@ impl Compiler {
     }
 
     /// Compiles a `<ServiceInstall>` element.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_service_install(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -1827,6 +1878,14 @@ impl Compiler {
     }
 
     /// Compiles a `<ServiceControl>` element.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_service_control(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -1901,6 +1960,17 @@ impl Compiler {
     }
 
     /// Compiles an `<EmbeddedChainer>` element into `MsiEmbeddedChainer` table.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn compile_embedded_chainer(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -1969,6 +2039,18 @@ impl Compiler {
     }
 
     /// Compiles a `<SqlDatabase>` or `<sql:SqlDatabase>` element.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn compile_sql_database(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -2025,6 +2107,18 @@ impl Compiler {
     }
 
     /// Compiles a `<SqlString>` or `<sql:SqlString>` element.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn compile_sql_string(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -2099,6 +2193,18 @@ impl Compiler {
     }
 
     /// Compiles a `<SqlScript>` or `<sql:SqlScript>` element.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn compile_sql_script(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -2163,6 +2269,17 @@ impl Compiler {
     }
 
     /// Compiles a `<CustomAction>` element.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::option_if_let_else)]
     fn compile_custom_action(
         child: &XmlNode,
@@ -2256,6 +2373,17 @@ impl Compiler {
     }
 
     /// Compiles a `<Dialog>` element.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn compile_dialog(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -2323,6 +2451,18 @@ impl Compiler {
     }
 
     /// Compiles a `<Control>` element.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::too_many_lines)]
     fn compile_control(
         child: &XmlNode,
@@ -2616,6 +2756,13 @@ impl Compiler {
     }
 
     /// Compiles a `<TextStyle>` element.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_text_style(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -2644,6 +2791,13 @@ impl Compiler {
     }
 
     /// Compiles an `<Upgrade>` element.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_upgrade(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -2710,6 +2864,12 @@ impl Compiler {
     }
 
     /// Compiles a `<MajorUpgrade>` syntactic macro.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_major_upgrade(child: &XmlNode, tables: &mut HashMap<String, IntermediateTable>) {
         let downgrade_err = child.attribute("DowngradeErrorMessage");
         let schedule = child
@@ -2793,6 +2953,14 @@ impl Compiler {
     }
 
     /// Compiles cross-platform POSIX extension elements.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_posix_element(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -2820,6 +2988,13 @@ impl Compiler {
     }
 
     /// Compiles `<posix:File>` element.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_posix_file(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -2846,6 +3021,14 @@ impl Compiler {
     }
 
     /// Compiles `<posix:Symlink>` element.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_posix_symlink(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -2875,6 +3058,13 @@ impl Compiler {
     }
 
     /// Compiles `<posix:Daemon>` element.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_posix_daemon(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -2911,6 +3101,13 @@ impl Compiler {
     }
 
     /// Compiles `<posix:Acl>` element.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_posix_acl(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -2942,6 +3139,13 @@ impl Compiler {
     }
 
     /// Compiles `<posix:Desktop>` element.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_posix_desktop(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -2972,6 +3176,12 @@ impl Compiler {
     }
 
     /// Compiles a `<Configuration>` element in a Merge Module.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_module_configuration(
         child: &XmlNode,
         tables: &mut HashMap<String, IntermediateTable>,
@@ -2999,6 +3209,12 @@ impl Compiler {
     }
 
     /// Compiles a `<Substitution>` element in a Merge Module.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_module_substitution(
         child: &XmlNode,
         tables: &mut HashMap<String, IntermediateTable>,
@@ -3020,6 +3236,12 @@ impl Compiler {
     }
 
     /// Compiles an `<IgnoreModularization>` element in a Merge Module.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_module_ignore_modularization(
         child: &XmlNode,
         tables: &mut HashMap<String, IntermediateTable>,
@@ -3037,6 +3259,12 @@ impl Compiler {
     }
 
     /// Compiles a `<Dependency>` or `<ModuleDependency>` element in a Merge Module.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_module_dependency(child: &XmlNode, tables: &mut HashMap<String, IntermediateTable>) {
         let req_id = child
             .attribute("RequiredId")
@@ -3071,6 +3299,12 @@ impl Compiler {
     }
 
     /// Compiles an `<Exclusion>` or `<ModuleExclusion>` element in a Merge Module.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_module_exclusion(child: &XmlNode, tables: &mut HashMap<String, IntermediateTable>) {
         let excl_id = child
             .attribute("ExcludedId")
@@ -3110,6 +3344,14 @@ impl Compiler {
     }
 
     /// Compiles a `<CopyFile>` element into `DuplicateFile` or `MoveFile` table.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_copy_file(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -3169,6 +3411,14 @@ impl Compiler {
     }
 
     /// Compiles a `<MoveFile>` element into `MoveFile` table.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_move_file(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -3201,6 +3451,14 @@ impl Compiler {
     }
 
     /// Compiles a `<RemoveFile>` element into `RemoveFile` table.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_remove_file(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -3242,6 +3500,18 @@ impl Compiler {
     }
 
     /// Compiles a `<SymbolicLink>` or `<Hardlink>` element into `PosixSymlink` table.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn compile_symlink(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -3282,6 +3552,12 @@ impl Compiler {
     }
 
     /// Compiles a `<MediaTemplate>` element into a synthesized `Media` table entry.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_media_template(child: &XmlNode, tables: &mut HashMap<String, IntermediateTable>) {
         let cab_template = child.attribute("CabinetTemplate").unwrap_or("cab1.cab");
         let cab_name = cab_template.replace("{0}", "1");
@@ -3301,6 +3577,14 @@ impl Compiler {
     }
 
     /// Compiles `<RemoveRegistryKey>` or `<RemoveRegistryValue>` into `RemoveRegistry` table.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_remove_registry(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -3331,6 +3615,14 @@ impl Compiler {
     }
 
     /// Compiles an `<IniFile>` element into `IniFile` table.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_ini_file(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -3373,6 +3665,14 @@ impl Compiler {
     }
 
     /// Compiles a `<RemoveIniFile>` element into `RemoveIniFile` table.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_remove_ini_file(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -3407,6 +3707,13 @@ impl Compiler {
     }
 
     /// Compiles an `<Icon>` element into `Icon` table.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_icon(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -3425,6 +3732,14 @@ impl Compiler {
     }
 
     /// Compiles a `<ProgId>` element into `ProgId` table.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_prog_id(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -3454,6 +3769,14 @@ impl Compiler {
     }
 
     /// Compiles an `<Extension>` element into `Extension` and `Verb` tables.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_extension(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -3505,6 +3828,13 @@ impl Compiler {
     }
 
     /// Compiles a `<MIME>` element into `MIME` table.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_mime(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -3535,6 +3865,14 @@ impl Compiler {
     }
 
     /// Compiles a `<Class>` element into `Class` table.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_class(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -3574,6 +3912,14 @@ impl Compiler {
     }
 
     /// Compiles a `<TypeLib>` element into `TypeLib` table.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_type_lib(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -3611,6 +3957,13 @@ impl Compiler {
     }
 
     /// Compiles an `<AppId>` element into `AppId` table.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_app_id(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -3640,6 +3993,17 @@ impl Compiler {
     }
 
     /// Compiles a `<SetProperty>` element (syntactic sugar for Type 51 custom action).
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn compile_set_property(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -3684,6 +4048,13 @@ impl Compiler {
     }
 
     /// Compiles `<AppSearch>` element into `AppSearch` table.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_app_search(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -3703,6 +4074,14 @@ impl Compiler {
     }
 
     /// Compiles `<RegistrySearch>` element into `RegLocator` table.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_registry_search(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -3804,6 +4183,14 @@ impl Compiler {
     }
 
     /// Compiles `<DirectorySearch>` element into `DrLocator` table.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_directory_search(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -3836,6 +4223,14 @@ impl Compiler {
     }
 
     /// Compiles `<FileSearch>` element into `FileSearch` and `Signature` tables.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_file_search(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -3884,6 +4279,14 @@ impl Compiler {
     }
 
     /// Compiles `<IniFileSearch>` element into `IniLocator` table.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_ini_file_search(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -3940,6 +4343,14 @@ impl Compiler {
     }
 
     /// Compiles `<ComponentSearch>` element into `CompLocator` table.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_component_search(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -3983,6 +4394,12 @@ impl Compiler {
     }
 
     /// Compiles a `<Launch>` or top-level `<Condition>` element into `LaunchCondition` table.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     #[allow(clippy::option_if_let_else)]
     fn compile_launch_condition(child: &XmlNode, tables: &mut HashMap<String, IntermediateTable>) {
         let message = child
@@ -4006,6 +4423,17 @@ impl Compiler {
     }
 
     /// Compiles a sequence table container (e.g. `<InstallExecuteSequence>`, `<InstallUISequence>`).
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn compile_sequence_table(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -4080,6 +4508,13 @@ impl Compiler {
     }
 
     /// Compiles patch-related authoring elements.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_patch_element(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -4098,6 +4533,13 @@ impl Compiler {
     }
 
     /// Compiles a `<UIRef>` element, adding a reference to the target UI dialog set.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `_tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_ui_ref(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -4108,6 +4550,13 @@ impl Compiler {
     }
 
     /// Compiles `<ControlEvent>` or `<Publish>` element into `ControlEvent` table.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_control_event(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -4152,6 +4601,13 @@ impl Compiler {
     }
 
     /// Compiles `<ControlCondition>` into `ControlCondition` table.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_control_condition(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -4186,6 +4642,13 @@ impl Compiler {
     }
 
     /// Compiles `<Subscribe>` element into `EventMapping` table.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_subscribe(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -4211,6 +4674,13 @@ impl Compiler {
     }
 
     /// Compiles a `<Binary>` element into `Binary` table.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_binary(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -4239,6 +4709,13 @@ impl Compiler {
     }
 
     /// Compiles `<Billboard>` and `<BillboardAction>` elements.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_billboard(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -4264,6 +4741,12 @@ impl Compiler {
     }
 
     /// Compiles a `<ProgressText>` element into `ActionText` table.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_progress_text(child: &XmlNode, tables: &mut HashMap<String, IntermediateTable>) {
         let action = child.attribute("Action").unwrap_or("InstallFiles");
         let template = child.attribute("Template").map(ToString::to_string);
@@ -4284,6 +4767,12 @@ impl Compiler {
     }
 
     /// Compiles an `<Error>` element into `Error` table.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_error(child: &XmlNode, tables: &mut HashMap<String, IntermediateTable>) {
         let id: i16 = child
             .attribute("Id")
@@ -4310,6 +4799,14 @@ impl Compiler {
     }
 
     /// Compiles common `WiX` extension elements (e.g. `util:*`, `netfx:*`, `firewall:*`, `sql:*`, `iis:*`, `dep:*`, `bal:*`, `http:*`).
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
     fn compile_extension_element(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -4343,6 +4840,14 @@ impl Compiler {
 }
 
 /// Helper to parse registry root strings to standard integers (`0` HKCR, `1` HKCU, `2` HKLM, `3` HKU).
+///
+/// # Arguments
+///
+/// * `root_str` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn parse_registry_root(root_str: &str) -> i16 {
     match root_str.to_ascii_uppercase().as_str() {
         "HKCR" | "HKEY_CLASSES_ROOT" => 0,

@@ -20,6 +20,10 @@ use std::fs;
 /// # Errors
 ///
 /// Returns [`crate::error::WixError`] or [`crate::error::IoError`] on failure.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 #[pyfunction]
 pub fn compile_wix_source(py: Python<'_>, source: String, output_path: String) -> PyResult<()> {
     py.allow_threads(move || {
@@ -70,10 +74,17 @@ pub fn compile_wix_source(py: Python<'_>, source: String, output_path: String) -
 /// # Errors
 ///
 /// Returns [`crate::error::WixError`] or [`crate::error::IoError`] on failure.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 #[pyfunction]
 pub fn compile_wix_file(py: Python<'_>, wxs_path: &str, output_path: String) -> PyResult<()> {
-    let source =
-        fs::read_to_string(wxs_path).map_err(|e| to_py_err(&msi::MsiError::Io(e.to_string())))?;
+    let source = fs::read_to_string(wxs_path).map_err(|e| {
+        to_py_err(&msi::MsiError::Io(msi::error::IoContext::from_string(
+            e.to_string(),
+        )))
+    })?;
     compile_wix_source(py, source, output_path)
 }
 

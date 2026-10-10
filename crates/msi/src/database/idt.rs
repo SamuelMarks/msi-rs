@@ -190,6 +190,16 @@ impl IdtTable {
 }
 
 /// Parses an IDT column definition string into a [`ColumnDef`].
+///
+/// # Arguments
+///
+/// * `name` - TODO: Document argument.
+/// * `type_str` - TODO: Document argument.
+/// * `is_pk` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn parse_idt_column(name: &str, type_str: &str, is_pk: bool) -> Result<ColumnDef> {
     if type_str.is_empty() {
         return Err(MsiError::Validation {
@@ -231,6 +241,14 @@ fn parse_idt_column(name: &str, type_str: &str, is_pk: bool) -> Result<ColumnDef
 }
 
 /// Formats a [`ColumnDef`] into its IDT type code.
+///
+/// # Arguments
+///
+/// * `col` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn format_idt_column_type(col: &ColumnDef) -> String {
     let mut prefix = match col.data_type {
         DataType::Short => "i2".to_string(),
@@ -246,6 +264,14 @@ fn format_idt_column_type(col: &ColumnDef) -> String {
 }
 
 /// Escapes special characters for IDT format (`\t`, `\r`, `\n`, `\\`).
+///
+/// # Arguments
+///
+/// * `s` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn escape_idt_value(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
@@ -261,6 +287,14 @@ fn escape_idt_value(s: &str) -> String {
 }
 
 /// Unescapes IDT formatted text.
+///
+/// # Arguments
+///
+/// * `s` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn unescape_idt_value(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars();

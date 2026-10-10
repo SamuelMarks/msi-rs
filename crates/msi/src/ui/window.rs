@@ -66,6 +66,10 @@ pub enum GuiHardwareBackend {
 
 impl GuiHardwareBackend {
     /// Returns the descriptive name of this backend.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -125,6 +129,10 @@ pub struct AccessKitBridge {
 
 impl AccessKitBridge {
     /// Creates a new [`AccessKitBridge`].
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -301,6 +309,10 @@ impl BackgroundTransactionWorker {
     /// # Errors
     ///
     /// Returns [`crate::MsiError`] if command dispatch fails.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn request_cancel(&mut self) -> Result<()> {
         self.cancelled = true;
         self.command_tx
@@ -311,18 +323,30 @@ impl BackgroundTransactionWorker {
     }
 
     /// Checks whether cancellation was requested.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn is_cancelled(&self) -> bool {
         self.cancelled
     }
 
     /// Returns the current progress percentage.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn current_percent(&self) -> u32 {
         self.current_percent
     }
 
     /// Returns the current `ActionText` ticker string.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn current_action_text(&self) -> &str {
         &self.current_action_text
@@ -527,23 +551,39 @@ impl GuiDesktopRuntime {
     }
 
     /// Returns a reference to the active window configuration.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn window_config(&self) -> &WindowConfig {
         &self.window_config
     }
 
     /// Returns a mutable reference to the active window configuration.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub const fn window_config_mut(&mut self) -> &mut WindowConfig {
         &mut self.window_config
     }
 
     /// Returns the active hardware acceleration backend.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn hardware_backend(&self) -> GuiHardwareBackend {
         self.hardware_backend
     }
 
     /// Returns a reference to the active wizard theme.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn theme(&self) -> &WizardTheme {
         &self.theme
@@ -566,17 +606,29 @@ impl GuiDesktopRuntime {
     }
 
     /// Returns a reference to the inner [`UiEngine`].
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn engine(&self) -> &UiEngine {
         &self.engine
     }
 
     /// Returns a mutable reference to the inner [`UiEngine`].
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub const fn engine_mut(&mut self) -> &mut UiEngine {
         &mut self.engine
     }
 
     /// Returns a reference to the screen reader [`AccessKitBridge`].
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn access_bridge(&self) -> &AccessKitBridge {
         &self.access_bridge
@@ -953,6 +1005,14 @@ impl GuiDesktopRuntime {
     }
 
     /// Counts the interactive enabled controls eligible for tab stops in the active dialog.
+    ///
+    /// # Arguments
+    ///
+    /// * `dialog` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn get_interactive_control_count(&self, dialog: &str) -> usize {
         let mut count = 0;
         for ctrl in self.engine.get_dialog_controls(dialog) {
@@ -976,6 +1036,15 @@ impl GuiDesktopRuntime {
     }
 
     /// Returns the interactive control definition at the specified tab stop index.
+    ///
+    /// # Arguments
+    ///
+    /// * `dialog` - TODO: Document argument.
+    /// * `target_idx` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn get_interactive_control_at_index(
         &self,
         dialog: &str,
@@ -1013,6 +1082,10 @@ mod tests {
     use crate::ui::engine::DialogDefinition;
 
     /// Helper creating a populated test [`UiEngine`] with a Welcome dialog.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn create_test_engine() -> UiEngine {
         let context = crate::execution::properties::EvaluationContext::new();
         let mut engine = UiEngine::new(context);

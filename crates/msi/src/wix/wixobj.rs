@@ -31,6 +31,10 @@ pub enum SectionType {
 
 impl SectionType {
     /// Converts section type to a 1-byte numeric identifier for binary serialization.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn to_u8(self) -> u8 {
         match self {
@@ -47,6 +51,14 @@ impl SectionType {
     /// # Errors
     ///
     /// Returns [`MsiError::InvalidWixObject`] if `val` is unrecognized.
+    ///
+    /// # Arguments
+    ///
+    /// * `val` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn from_u8(val: u8) -> Result<Self> {
         match val {
             1 => Ok(Self::Product),
@@ -330,6 +342,10 @@ impl IntermediateTable {
     /// # Arguments
     ///
     /// * `name` - Table name.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn new(name: impl Into<String>) -> Self {
         Self {
@@ -370,6 +386,10 @@ impl IntermediateSection {
     ///
     /// * `section_type` - Section type.
     /// * `id` - Optional section identifier.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn new(section_type: SectionType, id: Option<String>) -> Self {
         Self {
@@ -420,6 +440,10 @@ impl IntermediateSection {
     }
 
     /// Adds an intermediate table to this section.
+    ///
+    /// # Arguments
+    ///
+    /// * `table` - TODO: Document argument.
     pub fn add_table(&mut self, table: IntermediateTable) {
         self.tables.push(table);
     }
@@ -434,6 +458,10 @@ pub struct WixObject {
 
 impl WixObject {
     /// Creates a new empty [`WixObject`].
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn new() -> Self {
         Self {
@@ -442,6 +470,10 @@ impl WixObject {
     }
 
     /// Adds a section to this object.
+    ///
+    /// # Arguments
+    ///
+    /// * `section` - TODO: Document argument.
     pub fn add_section(&mut self, section: IntermediateSection) {
         self.sections.push(section);
     }
@@ -797,6 +829,11 @@ impl WixObject {
     }
 
     /// Writes a length-prefixed UTF-8 string to the output buffer.
+    ///
+    /// # Arguments
+    ///
+    /// * `out` - TODO: Document argument.
+    /// * `s` - TODO: Document argument.
     #[allow(clippy::cast_possible_truncation)]
     fn write_string(out: &mut Vec<u8>, s: &str) {
         let bytes = s.as_bytes();
@@ -805,6 +842,11 @@ impl WixObject {
     }
 
     /// Writes an optional length-prefixed string (prefixed by 1 if present, 0 if None).
+    ///
+    /// # Arguments
+    ///
+    /// * `out` - TODO: Document argument.
+    /// * `s` - TODO: Document argument.
     fn write_opt_string(out: &mut Vec<u8>, s: Option<&str>) {
         match s {
             Some(val) => {
@@ -818,6 +860,15 @@ impl WixObject {
     }
 
     /// Reads a length-prefixed string starting at `cursor`.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes` - TODO: Document argument.
+    /// * `cursor` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn read_string(bytes: &[u8], cursor: usize) -> Result<(String, usize)> {
         if cursor + 4 > bytes.len() {
             return Err(MsiError::InvalidWixObject {
@@ -842,6 +893,15 @@ impl WixObject {
     }
 
     /// Reads an optional length-prefixed string starting at `cursor`.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes` - TODO: Document argument.
+    /// * `cursor` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn read_opt_string(bytes: &[u8], cursor: usize) -> Result<(Option<String>, usize)> {
         if cursor >= bytes.len() {
             return Err(MsiError::InvalidWixObject {
@@ -1048,7 +1108,12 @@ mod tests {
         v1_bytes.extend_from_slice(&0u32.to_le_bytes()); // 0 tables
         let v1_obj = WixObject::deserialize(&v1_bytes);
         assert!(v1_obj.is_ok());
-        for res in [v1_obj, Err(MsiError::Io("fail".into()))] {
+        for res in [
+            v1_obj,
+            Err(MsiError::Io(crate::error::IoContext::from_string(
+                "fail".to_string(),
+            ))),
+        ] {
             if let Ok(deser_v1) = res {
                 assert_eq!(deser_v1.sections[0].symbols[0].id, "C1");
                 assert_eq!(deser_v1.sections[0].symbols[0].span, None);

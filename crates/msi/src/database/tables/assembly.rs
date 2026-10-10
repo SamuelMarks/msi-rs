@@ -10,6 +10,10 @@ use crate::error::{MsiError, Result};
 /// Returns the schema for the `MsiAssembly` table.
 ///
 /// Specifies Windows Installer settings for side-by-side (WinSxS) and .NET Global Assembly Cache (GAC) assemblies.
+///
+/// # Returns
+///
+/// An instance of this struct, or an appropriate return type.
 #[must_use]
 pub fn msi_assembly_schema() -> TableSchema {
     TableSchema::new("MsiAssembly")
@@ -45,6 +49,10 @@ impl MsiAssemblyRow {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] if fields are missing or wrongly typed.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn from_record(record: &Record) -> Result<Self> {
         if record.len() < 5 {
             return Err(MsiError::Validation {
@@ -109,6 +117,10 @@ impl MsiAssemblyRow {
 /// Returns the schema for the `MsiAssemblyName` table.
 ///
 /// Specifies the elements of a strong assembly name.
+///
+/// # Returns
+///
+/// An instance of this struct, or an appropriate return type.
 #[must_use]
 pub fn msi_assembly_name_schema() -> TableSchema {
     TableSchema::new("MsiAssemblyName")
@@ -138,6 +150,10 @@ impl MsiAssemblyNameRow {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] if fields are missing or wrongly typed.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn from_record(record: &Record) -> Result<Self> {
         if record.len() < 3 {
             return Err(MsiError::Validation {
@@ -203,7 +219,7 @@ mod tests {
         record.push(FieldValue::String("App1".to_string()));
         record.push(FieldValue::Short(1));
 
-        let row = MsiAssemblyRow::from_record(&record).unwrap();
+        let row = MsiAssemblyRow::from_record(&record).expect("test");
         assert_eq!(row.component, "Comp1");
         assert_eq!(row.feature, "Feat1");
         assert_eq!(row.file_manifest, Some("Manifest1".to_string()));
@@ -217,7 +233,7 @@ mod tests {
         record_null.push(FieldValue::Null);
         record_null.push(FieldValue::Null);
 
-        let row_null = MsiAssemblyRow::from_record(&record_null).unwrap();
+        let row_null = MsiAssemblyRow::from_record(&record_null).expect("test");
         assert_eq!(row_null.file_manifest, None);
         assert_eq!(row_null.file_application, None);
         assert_eq!(row_null.attributes, None);
@@ -285,7 +301,7 @@ mod tests {
         record.push(FieldValue::String("version".to_string()));
         record.push(FieldValue::String("1.0.0.0".to_string()));
 
-        let row = MsiAssemblyNameRow::from_record(&record).unwrap();
+        let row = MsiAssemblyNameRow::from_record(&record).expect("test");
         assert_eq!(row.component, "Comp1");
         assert_eq!(row.name, "version");
         assert_eq!(row.value, "1.0.0.0");

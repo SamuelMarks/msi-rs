@@ -22,9 +22,11 @@ use crate::win32::{
 /// # Returns
 ///
 /// `ERROR_SUCCESS` or `ERROR_INVALID_PARAMETER`.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiOpenPackageW(szPackagePath: Lpcwstr, hProduct: *mut MsiHandle) -> Uint {
     let result = panic::catch_unwind(|| {
         if hProduct.is_null() {
@@ -39,7 +41,10 @@ pub extern "system" fn MsiOpenPackageW(szPackagePath: Lpcwstr, hProduct: *mut Ms
         // load the database, and create a handle.
         // For now, we return a mock database object to complete the ABI surface.
         let mock_db = msi::wix::linker::LinkedDatabase::default();
-        let obj = MsiObject::Database(MsiDatabaseHandle { inner: mock_db });
+        let obj = MsiObject::Database(MsiDatabaseHandle {
+            inner: mock_db,
+            state: 0,
+        });
 
         // SAFETY: We verified `hProduct` is not null.
         unsafe {
@@ -53,9 +58,11 @@ pub extern "system" fn MsiOpenPackageW(szPackagePath: Lpcwstr, hProduct: *mut Ms
 }
 
 /// Opens a Windows Installer package with advanced options (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiOpenPackageExW(
     szPackagePath: Lpcwstr,
     dwOptions: Dword,
@@ -71,7 +78,10 @@ pub extern "system" fn MsiOpenPackageExW(
         };
 
         let mock_db = msi::wix::linker::LinkedDatabase::default();
-        let obj = MsiObject::Database(MsiDatabaseHandle { inner: mock_db });
+        let obj = MsiObject::Database(MsiDatabaseHandle {
+            inner: mock_db,
+            state: 0,
+        });
 
         unsafe {
             *hProduct = alloc_handle(obj);
@@ -93,9 +103,11 @@ pub extern "system" fn MsiOpenPackageExW(
 /// # Returns
 ///
 /// `ERROR_SUCCESS` or `ERROR_INVALID_PARAMETER`.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiOpenPackageA(szPackagePath: Lpcstr, hProduct: *mut MsiHandle) -> Uint {
     let result = panic::catch_unwind(|| {
         if hProduct.is_null() {
@@ -107,7 +119,10 @@ pub extern "system" fn MsiOpenPackageA(szPackagePath: Lpcstr, hProduct: *mut Msi
         };
 
         let mock_db = msi::wix::linker::LinkedDatabase::default();
-        let obj = MsiObject::Database(MsiDatabaseHandle { inner: mock_db });
+        let obj = MsiObject::Database(MsiDatabaseHandle {
+            inner: mock_db,
+            state: 0,
+        });
 
         // SAFETY: We verified `hProduct` is not null.
         unsafe {
@@ -121,9 +136,11 @@ pub extern "system" fn MsiOpenPackageA(szPackagePath: Lpcstr, hProduct: *mut Msi
 }
 
 /// Opens a Windows Installer package with advanced options (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiOpenPackageExA(
     szPackagePath: Lpcstr,
     dwOptions: Dword,
@@ -139,7 +156,10 @@ pub extern "system" fn MsiOpenPackageExA(
         };
 
         let mock_db = msi::wix::linker::LinkedDatabase::default();
-        let obj = MsiObject::Database(MsiDatabaseHandle { inner: mock_db });
+        let obj = MsiObject::Database(MsiDatabaseHandle {
+            inner: mock_db,
+            state: 0,
+        });
 
         unsafe {
             *hProduct = alloc_handle(obj);
@@ -161,9 +181,11 @@ pub extern "system" fn MsiOpenPackageExA(
 /// # Returns
 ///
 /// `ERROR_SUCCESS` or `ERROR_INVALID_PARAMETER`.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiOpenProductW(szProduct: Lpcwstr, hProduct: *mut MsiHandle) -> Uint {
     let result = panic::catch_unwind(|| {
         if hProduct.is_null() {
@@ -176,7 +198,10 @@ pub extern "system" fn MsiOpenProductW(szProduct: Lpcwstr, hProduct: *mut MsiHan
 
         // Needs platform translation layer registry lookup to find cached package
         let mock_db = msi::wix::linker::LinkedDatabase::default();
-        let obj = MsiObject::Database(MsiDatabaseHandle { inner: mock_db });
+        let obj = MsiObject::Database(MsiDatabaseHandle {
+            inner: mock_db,
+            state: 0,
+        });
 
         // SAFETY: We verified `hProduct` is not null.
         unsafe {
@@ -199,9 +224,11 @@ pub extern "system" fn MsiOpenProductW(szProduct: Lpcwstr, hProduct: *mut MsiHan
 /// # Returns
 ///
 /// `ERROR_SUCCESS` or `ERROR_INVALID_PARAMETER`.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiOpenProductA(szProduct: Lpcstr, hProduct: *mut MsiHandle) -> Uint {
     let result = panic::catch_unwind(|| {
         if hProduct.is_null() {
@@ -214,7 +241,10 @@ pub extern "system" fn MsiOpenProductA(szProduct: Lpcstr, hProduct: *mut MsiHand
 
         // Needs platform translation layer registry lookup to find cached package
         let mock_db = msi::wix::linker::LinkedDatabase::default();
-        let obj = MsiObject::Database(MsiDatabaseHandle { inner: mock_db });
+        let obj = MsiObject::Database(MsiDatabaseHandle {
+            inner: mock_db,
+            state: 0,
+        });
 
         // SAFETY: We verified `hProduct` is not null.
         unsafe {
@@ -228,9 +258,11 @@ pub extern "system" fn MsiOpenProductA(szProduct: Lpcstr, hProduct: *mut MsiHand
 }
 
 /// Begins a transaction (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiBeginTransactionW(
     szName: Lpcwstr,
     dwTransactionAttributes: Dword,
@@ -269,9 +301,11 @@ pub extern "system" fn MsiBeginTransactionW(
 }
 
 /// Begins a transaction (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiBeginTransactionA(
     szName: Lpcstr,
     dwTransactionAttributes: Dword,
@@ -310,9 +344,11 @@ pub extern "system" fn MsiBeginTransactionA(
 }
 
 /// Joins a transaction.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiJoinTransaction(
     hTransactionHandle: MsiHandle,
     dwTransactionAttributes: Dword,
@@ -339,8 +375,10 @@ pub extern "system" fn MsiJoinTransaction(
 }
 
 /// Ends a transaction.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiEndTransaction(dwTransactionState: Dword) -> Uint {
     let result = panic::catch_unwind(|| {
         // Mocking end transaction globally or for current process
@@ -358,8 +396,10 @@ pub extern "system" fn MsiEndTransaction(dwTransactionState: Dword) -> Uint {
 /// # Returns
 ///
 /// A language ID (`LANGID`), or 0 on error.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetLanguage(hInstall: MsiHandle) -> u16 {
     let result = panic::catch_unwind(|| {
         // Return a mock LANGID (e.g., 1033 for en-US)
@@ -377,8 +417,10 @@ pub extern "system" fn MsiGetLanguage(hInstall: MsiHandle) -> u16 {
 /// # Returns
 ///
 /// `ERROR_SUCCESS` or an error code.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiCreateAndVerifyInstallerDirectory(dwArchitecture: Dword) -> Uint {
     let result = panic::catch_unwind(|| {
         // Mock success for cross-platform
@@ -405,9 +447,11 @@ pub struct MsiFileHashInfo {
 /// * `szFilePath` - Path to the file.
 /// * `dwOptions` - Reserved, must be 0.
 /// * `pHash` - Pointer to receive the hash info.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetFileHashW(
     szFilePath: Lpcwstr,
     dwOptions: Dword,
@@ -433,9 +477,11 @@ pub extern "system" fn MsiGetFileHashW(
 }
 
 /// Returns the 128-bit MD5 hash of a file (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetFileHashA(
     szFilePath: Lpcstr,
     dwOptions: Dword,
@@ -461,9 +507,11 @@ pub extern "system" fn MsiGetFileHashA(
 }
 
 /// Extracts a digital signature and related information from a file (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetFileSignatureInformationW(
     szSignedObjectPath: Lpcwstr,
     dwFlags: Dword,
@@ -488,9 +536,11 @@ pub extern "system" fn MsiGetFileSignatureInformationW(
 }
 
 /// Extracts a digital signature and related information from a file (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetFileSignatureInformationA(
     szSignedObjectPath: Lpcstr,
     dwFlags: Dword,
@@ -515,9 +565,11 @@ pub extern "system" fn MsiGetFileSignatureInformationA(
 }
 
 /// Validates a package against the original install package (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiVerifyPackageW(szPackagePath: Lpcwstr) -> Uint {
     let result = panic::catch_unwind(|| {
         if szPackagePath.is_null() {
@@ -536,9 +588,11 @@ pub extern "system" fn MsiVerifyPackageW(szPackagePath: Lpcwstr) -> Uint {
 }
 
 /// Validates a package against the original install package (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiVerifyPackageA(szPackagePath: Lpcstr) -> Uint {
     let result = panic::catch_unwind(|| {
         if szPackagePath.is_null() {
@@ -557,6 +611,11 @@ pub extern "system" fn MsiVerifyPackageA(szPackagePath: Lpcstr) -> Uint {
 }
 
 /// Helper to parse simple space-separated `PROPERTY="Value"` strings.
+///
+/// # Arguments
+///
+/// * `cmd` - TODO: Document argument.
+/// * `context` - TODO: Document argument.
 fn parse_command_line(cmd: &str, context: &mut msi::execution::EvaluationContext) {
     let mut current_key = String::new();
     let mut current_val = String::new();
@@ -632,8 +691,10 @@ fn execute_install(path_str: &str, cmd_str: Option<&str>) -> Uint {
 }
 
 /// Installs or uninstalls a product (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiInstallProductW(szPackagePath: Lpcwstr, szCommandLine: Lpcwstr) -> Uint {
     let result = panic::catch_unwind(|| {
         if szPackagePath.is_null() {
@@ -659,8 +720,10 @@ pub extern "system" fn MsiInstallProductW(szPackagePath: Lpcwstr, szCommandLine:
 }
 
 /// Installs or uninstalls a product (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiInstallProductA(szPackagePath: Lpcstr, szCommandLine: Lpcstr) -> Uint {
     let result = panic::catch_unwind(|| {
         if szPackagePath.is_null() {
@@ -686,8 +749,10 @@ pub extern "system" fn MsiInstallProductA(szPackagePath: Lpcstr, szCommandLine: 
 }
 
 /// Installs or uninstalls a product with advanced options (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiConfigureProductExW(
     szProduct: Lpcwstr,
     iInstallLevel: i32,
@@ -721,8 +786,10 @@ pub extern "system" fn MsiConfigureProductExW(
 }
 
 /// Installs or uninstalls a product with advanced options (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiConfigureProductExA(
     szProduct: Lpcstr,
     iInstallLevel: i32,
@@ -756,8 +823,10 @@ pub extern "system" fn MsiConfigureProductExA(
 }
 
 /// Retrieves the full source path for a folder in the Directory table (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetSourcePathW(
     hInstall: MsiHandle,
     szFolder: Lpcwstr,
@@ -775,8 +844,10 @@ pub extern "system" fn MsiGetSourcePathW(
 }
 
 /// Retrieves the full source path for a folder in the Directory table (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetSourcePathA(
     hInstall: MsiHandle,
     szFolder: Lpcstr,
@@ -794,8 +865,10 @@ pub extern "system" fn MsiGetSourcePathA(
 }
 
 /// Retrieves the full target path for a folder in the Directory table (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetTargetPathW(
     hInstall: MsiHandle,
     szFolder: Lpcwstr,
@@ -813,8 +886,10 @@ pub extern "system" fn MsiGetTargetPathW(
 }
 
 /// Retrieves the full target path for a folder in the Directory table (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetTargetPathA(
     hInstall: MsiHandle,
     szFolder: Lpcstr,
@@ -832,8 +907,10 @@ pub extern "system" fn MsiGetTargetPathA(
 }
 
 /// Sets the full target path for a folder in the Directory table (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiSetTargetPathW(
     hInstall: MsiHandle,
     szFolder: Lpcwstr,
@@ -850,8 +927,10 @@ pub extern "system" fn MsiSetTargetPathW(
 }
 
 /// Sets the full target path for a folder in the Directory table (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiSetTargetPathA(
     hInstall: MsiHandle,
     szFolder: Lpcstr,
@@ -1066,7 +1145,10 @@ mod tests {
             crate::win32::ERROR_INVALID_HANDLE
         );
         let mock_db = msi::wix::linker::LinkedDatabase::default();
-        let db_handle = alloc_handle(MsiObject::Database(MsiDatabaseHandle { inner: mock_db }));
+        let db_handle = alloc_handle(MsiObject::Database(MsiDatabaseHandle {
+            inner: mock_db,
+            state: 0,
+        }));
         assert_eq!(
             MsiJoinTransaction(db_handle, 0, &raw mut ptr_handle),
             crate::win32::ERROR_INVALID_HANDLE
@@ -1620,6 +1702,361 @@ mod tests {
         assert_eq!(
             MsiSetTargetPathA(0, valid_a_ptr, valid_a_ptr),
             ERROR_SUCCESS
+        );
+    }
+}
+
+/// Deletes user data (ANSI). This is an unimplemented stub.
+///
+/// # Arguments
+///
+/// * `_szProductCode` - Pointer to a string specifying the product code.
+/// * `_szUserName` - Pointer to a string specifying the user name.
+/// * `_dwReserved` - Reserved.
+///
+/// # Returns
+///
+/// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
+#[allow(non_snake_case)]
+#[allow(clippy::missing_const_for_fn)]
+pub extern "system" fn MsiDeleteUserDataA(
+    _szProductCode: Lpcstr,
+    _szUserName: Lpcstr,
+    _dwReserved: Dword,
+) -> Uint {
+    1605 // ERROR_UNKNOWN_PRODUCT
+}
+
+/// Deletes user data (Unicode). This is an unimplemented stub.
+///
+/// # Arguments
+///
+/// * `_szProductCode` - Pointer to a string specifying the product code.
+/// * `_szUserName` - Pointer to a string specifying the user name.
+/// * `_dwReserved` - Reserved.
+///
+/// # Returns
+///
+/// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
+#[allow(non_snake_case)]
+#[allow(clippy::missing_const_for_fn)]
+pub extern "system" fn MsiDeleteUserDataW(
+    _szProductCode: Lpcwstr,
+    _szUserName: Lpcwstr,
+    _dwReserved: Dword,
+) -> Uint {
+    1605 // ERROR_UNKNOWN_PRODUCT
+}
+
+/// Gets the product code from a package code (ANSI). This is an unimplemented stub.
+///
+/// # Arguments
+///
+/// * `_szPackagePath` - Pointer to a string specifying the package path.
+/// * `_szProductCode` - Pointer to a buffer to receive the product code.
+///
+/// # Returns
+///
+/// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
+#[allow(non_snake_case)]
+#[allow(clippy::missing_const_for_fn)]
+pub extern "system" fn MsiGetProductCodeFromPackageCodeA(
+    _szPackagePath: Lpcstr,
+    _szProductCode: Lpstr,
+) -> Uint {
+    1605 // ERROR_UNKNOWN_PRODUCT
+}
+
+/// Gets the product code from a package code (Unicode). This is an unimplemented stub.
+///
+/// # Arguments
+///
+/// * `_szPackagePath` - Pointer to a string specifying the package path.
+/// * `_szProductCode` - Pointer to a buffer to receive the product code.
+///
+/// # Returns
+///
+/// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
+#[allow(non_snake_case)]
+#[allow(clippy::missing_const_for_fn)]
+pub extern "system" fn MsiGetProductCodeFromPackageCodeW(
+    _szPackagePath: Lpcwstr,
+    _szProductCode: Lpwstr,
+) -> Uint {
+    1605 // ERROR_UNKNOWN_PRODUCT
+}
+
+/// Gets product information from a script (ANSI). This is an unimplemented stub.
+///
+/// # Arguments
+///
+/// * `_szScriptFile` - Path to the script file.
+/// * `_lpProductBuf39` - Buffer for the product code.
+/// * `_plgidLanguage` - Buffer for the language ID.
+/// * `_pdwVersion` - Buffer for the version.
+/// * `_lpNameBuf` - Buffer for the product name.
+/// * `_pcchNameBuf` - Size of the name buffer.
+/// * `_lpPackageBuf` - Buffer for the package code.
+/// * `_pcchPackageBuf` - Size of the package buffer.
+///
+/// # Returns
+///
+/// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
+#[allow(non_snake_case)]
+#[allow(clippy::missing_const_for_fn)]
+pub extern "system" fn MsiGetProductInfoFromScriptA(
+    _szScriptFile: Lpcstr,
+    _lpProductBuf39: Lpstr,
+    _plgidLanguage: *mut u16,
+    _pdwVersion: *mut Dword,
+    _lpNameBuf: Lpstr,
+    _pcchNameBuf: *mut Dword,
+    _lpPackageBuf: Lpstr,
+    _pcchPackageBuf: *mut Dword,
+) -> Uint {
+    1605 // ERROR_UNKNOWN_PRODUCT
+}
+
+/// Gets product information from a script (Unicode). This is an unimplemented stub.
+///
+/// # Arguments
+///
+/// * `_szScriptFile` - Path to the script file.
+/// * `_lpProductBuf39` - Buffer for the product code.
+/// * `_plgidLanguage` - Buffer for the language ID.
+/// * `_pdwVersion` - Buffer for the version.
+/// * `_lpNameBuf` - Buffer for the product name.
+/// * `_pcchNameBuf` - Size of the name buffer.
+/// * `_lpPackageBuf` - Buffer for the package code.
+/// * `_pcchPackageBuf` - Size of the package buffer.
+///
+/// # Returns
+///
+/// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
+#[allow(non_snake_case)]
+#[allow(clippy::missing_const_for_fn)]
+pub extern "system" fn MsiGetProductInfoFromScriptW(
+    _szScriptFile: Lpcwstr,
+    _lpProductBuf39: Lpwstr,
+    _plgidLanguage: *mut u16,
+    _pdwVersion: *mut Dword,
+    _lpNameBuf: Lpwstr,
+    _pcchNameBuf: *mut Dword,
+    _lpPackageBuf: Lpwstr,
+    _pcchPackageBuf: *mut Dword,
+) -> Uint {
+    1605 // ERROR_UNKNOWN_PRODUCT
+}
+
+/// Installs a missing file (ANSI). This is an unimplemented stub.
+///
+/// # Arguments
+///
+/// * `_szProduct` - Product code.
+/// * `_szFile` - File to install.
+///
+/// # Returns
+///
+/// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
+#[allow(non_snake_case)]
+#[allow(clippy::missing_const_for_fn)]
+pub extern "system" fn MsiInstallMissingFileA(_szProduct: Lpcstr, _szFile: Lpcstr) -> Uint {
+    1605 // ERROR_UNKNOWN_PRODUCT
+}
+
+/// Installs a missing file (Unicode). This is an unimplemented stub.
+///
+/// # Arguments
+///
+/// * `_szProduct` - Product code.
+/// * `_szFile` - File to install.
+///
+/// # Returns
+///
+/// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
+#[allow(non_snake_case)]
+#[allow(clippy::missing_const_for_fn)]
+pub extern "system" fn MsiInstallMissingFileW(_szProduct: Lpcwstr, _szFile: Lpcwstr) -> Uint {
+    1605 // ERROR_UNKNOWN_PRODUCT
+}
+
+/// Notifies SID change (ANSI). This is an unimplemented stub.
+///
+/// # Arguments
+///
+/// * `_pOldSid` - Pointer to a string specifying the old SID.
+/// * `_pNewSid` - Pointer to a string specifying the new SID.
+///
+/// # Returns
+///
+/// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
+#[allow(non_snake_case)]
+#[allow(clippy::missing_const_for_fn)]
+pub extern "system" fn MsiNotifySidChangeA(_pOldSid: Lpcstr, _pNewSid: Lpcstr) -> Uint {
+    1605 // ERROR_UNKNOWN_PRODUCT
+}
+
+/// Notifies SID change (Unicode). This is an unimplemented stub.
+///
+/// # Arguments
+///
+/// * `_pOldSid` - Pointer to a string specifying the old SID.
+/// * `_pNewSid` - Pointer to a string specifying the new SID.
+///
+/// # Returns
+///
+/// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
+#[allow(non_snake_case)]
+#[allow(clippy::missing_const_for_fn)]
+pub extern "system" fn MsiNotifySidChangeW(_pOldSid: Lpcwstr, _pNewSid: Lpcwstr) -> Uint {
+    1605 // ERROR_UNKNOWN_PRODUCT
+}
+
+/// Sets the offline context (Unicode). This is an unimplemented stub.
+///
+/// # Arguments
+///
+/// * `_dwFlags` - Context flags.
+/// * `_szDirectory` - Offline directory path.
+///
+/// # Returns
+///
+/// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
+#[allow(non_snake_case)]
+#[allow(clippy::missing_const_for_fn)]
+pub extern "system" fn MsiSetOfflineContextW(_dwFlags: Dword, _szDirectory: Lpcwstr) -> Uint {
+    1605 // ERROR_UNKNOWN_PRODUCT
+}
+
+/// Verifies sufficient disk space. This is an unimplemented stub.
+///
+/// # Arguments
+///
+/// * `_hInstall` - Installer handle.
+///
+/// # Returns
+///
+/// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
+#[allow(non_snake_case)]
+#[allow(clippy::missing_const_for_fn)]
+pub extern "system" fn MsiVerifyDiskSpace(_hInstall: MsiHandle) -> Uint {
+    1605 // ERROR_UNKNOWN_PRODUCT
+}
+
+/// Queries the instance count of a multi-instance package. This is an unimplemented stub.
+///
+/// # Arguments
+///
+/// * `_szProductCode` - Product code.
+/// * `_pdwInstanceCount` - Pointer to receive the count.
+///
+/// # Returns
+///
+/// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
+#[allow(non_snake_case)]
+#[allow(clippy::missing_const_for_fn)]
+pub extern "system" fn QueryInstanceCount(
+    _szProductCode: Lpcwstr,
+    _pdwInstanceCount: *mut Dword,
+) -> Uint {
+    1605 // ERROR_UNKNOWN_PRODUCT
+}
+
+#[cfg(test)]
+mod additional_stubs_tests {
+    use super::*;
+
+    #[test]
+    fn test_stubs_impl() {
+        assert_eq!(
+            MsiDeleteUserDataA(std::ptr::null(), std::ptr::null(), 0),
+            1605
+        );
+        assert_eq!(
+            MsiDeleteUserDataW(std::ptr::null(), std::ptr::null(), 0),
+            1605
+        );
+        assert_eq!(
+            MsiGetProductCodeFromPackageCodeA(std::ptr::null(), std::ptr::null_mut()),
+            1605
+        );
+        assert_eq!(
+            MsiGetProductCodeFromPackageCodeW(std::ptr::null(), std::ptr::null_mut()),
+            1605
+        );
+        assert_eq!(
+            MsiGetProductInfoFromScriptA(
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            1605
+        );
+        assert_eq!(
+            MsiGetProductInfoFromScriptW(
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            1605
+        );
+        assert_eq!(
+            MsiInstallMissingFileA(std::ptr::null(), std::ptr::null()),
+            1605
+        );
+        assert_eq!(
+            MsiInstallMissingFileW(std::ptr::null(), std::ptr::null()),
+            1605
+        );
+        assert_eq!(
+            MsiNotifySidChangeA(std::ptr::null(), std::ptr::null()),
+            1605
+        );
+        assert_eq!(
+            MsiNotifySidChangeW(std::ptr::null(), std::ptr::null()),
+            1605
+        );
+        assert_eq!(MsiSetOfflineContextW(0, std::ptr::null()), 1605);
+        assert_eq!(MsiVerifyDiskSpace(0), 1605);
+        assert_eq!(
+            QueryInstanceCount(std::ptr::null(), std::ptr::null_mut()),
+            1605
         );
     }
 }

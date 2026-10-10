@@ -2,6 +2,27 @@
 
 use crate::cab::csum::csum_compute;
 use crate::error::{MsiError, Result};
+use std::fmt;
+
+/// Strongly typed index for CFDATA blocks within a cabinet folder.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct CabinetBlockIndex(pub u16);
+
+impl fmt::Display for CabinetBlockIndex {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Block({})", self.0)
+    }
+}
+
+/// Strongly typed byte offset within a cabinet folder's uncompressed stream.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct DataOffset(pub u32);
+
+impl fmt::Display for DataOffset {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Offset(0x{:08X})", self.0)
+    }
+}
 
 /// Maximum uncompressed or compressed payload size per `CFDATA` block (32,768 bytes).
 pub const CAB_BLOCK_MAX_SIZE: usize = 32_768;
@@ -168,6 +189,14 @@ mod tests {
     use super::*;
 
     /// Helper to extract [`CfData`].
+    ///
+    /// # Arguments
+    ///
+    /// * `res` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn unwrap_data(res: Result<CfData>) -> CfData {
         res.unwrap_or_default()
     }

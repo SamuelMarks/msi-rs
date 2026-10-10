@@ -60,6 +60,10 @@ pub struct DialogDefinition {
 
 impl DialogDefinition {
     /// Returns the dialog bounding rect in dialog units (DLUs).
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn rect(&self) -> DluRect {
         DluRect::new(0, 0, self.width, self.height)
@@ -92,6 +96,10 @@ impl DialogDefinition {
     }
 
     /// Returns true if dialog has modal attribute set.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn is_modal(&self) -> bool {
         self.attributes & DIALOG_ATTR_MODAL != 0
@@ -171,11 +179,19 @@ impl UiEngine {
     }
 
     /// Registers a dialog definition.
+    ///
+    /// # Arguments
+    ///
+    /// * `dialog` - TODO: Document argument.
     pub fn add_dialog(&mut self, dialog: DialogDefinition) {
         self.dialogs.insert(dialog.name.clone(), dialog);
     }
 
     /// Registers a control definition and initializes its runtime state.
+    ///
+    /// # Arguments
+    ///
+    /// * `def` - TODO: Document argument.
     pub fn add_control(&mut self, def: ControlDefinition) {
         let state = ControlRuntimeState::from_definition(&def);
         let key = (def.dialog().to_string(), def.control().to_string());
@@ -187,21 +203,37 @@ impl UiEngine {
     }
 
     /// Registers a control condition.
+    ///
+    /// # Arguments
+    ///
+    /// * `condition` - TODO: Document argument.
     pub fn add_condition(&mut self, condition: ControlCondition) {
         self.conditions.push(condition);
     }
 
     /// Registers a control event trigger.
+    ///
+    /// # Arguments
+    ///
+    /// * `event` - TODO: Document argument.
     pub fn add_event(&mut self, event: ControlEvent) {
         self.events.push(event);
     }
 
     /// Registers an event mapping.
+    ///
+    /// # Arguments
+    ///
+    /// * `mapping` - TODO: Document argument.
     pub fn add_event_mapping(&mut self, mapping: EventMapping) {
         self.event_mappings.push(mapping);
     }
 
     /// Returns the currently active dialog definition, if any.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn active_dialog(&self) -> Option<&DialogDefinition> {
         self.active_dialog
@@ -218,6 +250,10 @@ impl UiEngine {
     /// # Errors
     ///
     /// Returns [`MsiError::UiError`] if dialog is not registered.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn set_active_dialog(&mut self, dialog_name: &str) -> Result<()> {
         if !self.dialogs.contains_key(dialog_name) {
             return Err(MsiError::UiError {
@@ -233,17 +269,34 @@ impl UiEngine {
     }
 
     /// Returns a reference to the active property evaluation context.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn context(&self) -> &EvaluationContext {
         &self.context
     }
 
     /// Returns a mutable reference to the property evaluation context.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub const fn context_mut(&mut self) -> &mut EvaluationContext {
         &mut self.context
     }
 
     /// Returns runtime state of a control if present.
+    ///
+    /// # Arguments
+    ///
+    /// * `dialog` - TODO: Document argument.
+    /// * `control` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn get_control_state(&self, dialog: &str, control: &str) -> Option<&ControlRuntimeState> {
         self.control_states
@@ -251,6 +304,15 @@ impl UiEngine {
     }
 
     /// Returns a mutable reference to the runtime state of a control.
+    ///
+    /// # Arguments
+    ///
+    /// * `dialog` - TODO: Document argument.
+    /// * `control` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn get_control_state_mut(
         &mut self,
         dialog: &str,
@@ -266,6 +328,14 @@ impl UiEngine {
     }
 
     /// Returns the list of control definitions for a dialog.
+    ///
+    /// # Arguments
+    ///
+    /// * `dialog` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn get_dialog_controls(&self, dialog: &str) -> &[ControlDefinition] {
         self.controls.get(dialog).map_or(&[], Vec::as_slice)
@@ -276,6 +346,10 @@ impl UiEngine {
     /// # Errors
     ///
     /// Returns [`crate::MsiError`] if condition syntax is invalid.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn evaluate_conditions_and_formatting(&mut self) -> Result<()> {
         let Some(active_dlg) = self.active_dialog.clone() else {
             return Ok(());
@@ -405,6 +479,17 @@ impl UiEngine {
                         }
                     }
                 }
+                ControlEventType::SetTargetPath(path) => {
+                    self.action_log.push(format!("SetTargetPath({path})"));
+                    // Stubs path evaluation updates
+                    let current = self
+                        .context
+                        .get_property(path)
+                        .unwrap_or_default()
+                        .to_string();
+                    self.context.set_property(path, current);
+                    self.evaluate_conditions_and_formatting()?;
+                }
             }
         }
 
@@ -462,6 +547,10 @@ impl UiEngine {
     /// # Errors
     ///
     /// Returns [`crate::MsiError`] if property condition evaluation fails.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn update_control_value(&mut self, dialog: &str, control: &str, value: &str) -> Result<()> {
         let key = (dialog.to_string(), control.to_string());
         if let Some(state) = self.control_states.get_mut(&key) {
@@ -494,6 +583,10 @@ impl UiEngine {
     /// # Errors
     ///
     /// Returns [`crate::MsiError`] if condition evaluation fails.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn toggle_checkbox(&mut self, dialog: &str, control: &str) -> Result<()> {
         let key = (dialog.to_string(), control.to_string());
         let cur_val = self
@@ -516,6 +609,10 @@ impl UiEngine {
     /// # Errors
     ///
     /// Returns [`crate::MsiError`] if condition evaluation fails.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn select_radio_button(&mut self, dialog: &str, control: &str, value: &str) -> Result<()> {
         self.update_control_value(dialog, control, value)
     }
@@ -815,6 +912,10 @@ impl UiEngine {
     }
 
     /// Returns action log records.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn action_log(&self) -> &[String] {
         &self.action_log
@@ -836,6 +937,10 @@ mod tests {
     use crate::ui::controls::ControlType;
 
     /// Helper to set up a standard Welcome -> License -> `InstallDir` dialog wizard workflow.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::too_many_lines)]
     fn setup_test_wizard() -> UiEngine {
         let mut context = EvaluationContext::new();
@@ -1062,6 +1167,40 @@ mod tests {
     }
 
     /// Tests `SetProperty`, `Reset`, and `DoAction` event handling.
+    #[test]
+    fn test_process_control_event_set_target_path() {
+        let mut engine = UiEngine::new(EvaluationContext::new());
+        // Set up dialog and control
+        let dialog = DialogDefinition {
+            name: "TestDialog".to_string(),
+            h_centering: 0,
+            v_centering: 0,
+            width: 0,
+            height: 0,
+            attributes: 0,
+            title: Some(String::new()),
+            control_first: String::new(),
+            control_default: Some(String::new()),
+            control_cancel: Some(String::new()),
+        };
+        engine.dialogs.insert("TestDialog".to_string(), dialog);
+        engine.active_dialog = Some("TestDialog".to_string());
+
+        let event = ControlEvent::new(
+            "TestDialog",
+            "TestControl",
+            ControlEventType::SetTargetPath("TARGETDIR".to_string()),
+            None,
+            0,
+        );
+        engine.events.push(event);
+
+        let _ = engine.click_control("TestDialog", "TestControl");
+        assert!(engine
+            .action_log
+            .contains(&"SetTargetPath(TARGETDIR)".to_string()));
+    }
+
     #[test]
     fn test_ui_engine_events_variety() {
         let mut context = EvaluationContext::new();

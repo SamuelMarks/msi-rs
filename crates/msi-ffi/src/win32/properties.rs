@@ -27,7 +27,8 @@ use crate::win32::{
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_MORE_DATA`, `ERROR_INVALID_HANDLE`, or `ERROR_INVALID_PARAMETER`.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiGetPropertyW(
     hInstall: MsiHandle,
@@ -67,7 +68,8 @@ pub extern "system" fn MsiGetPropertyW(
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_MORE_DATA`, `ERROR_INVALID_HANDLE`, or `ERROR_INVALID_PARAMETER`.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiGetPropertyA(
     hInstall: MsiHandle,
@@ -101,7 +103,8 @@ pub extern "system" fn MsiGetPropertyA(
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_HANDLE`, or `ERROR_INVALID_PARAMETER`.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiSetPropertyW(
     hInstall: MsiHandle,
@@ -135,7 +138,8 @@ pub extern "system" fn MsiSetPropertyW(
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_HANDLE`, or `ERROR_INVALID_PARAMETER`.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiSetPropertyA(
     hInstall: MsiHandle,
@@ -168,7 +172,8 @@ pub extern "system" fn MsiSetPropertyA(
 /// # Returns
 ///
 /// `MSICONDITION_TRUE` (1), `MSICONDITION_FALSE` (0), `MSICONDITION_NONE` (2), or `MSICONDITION_ERROR` (-1).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiEvaluateConditionW(hInstall: MsiHandle, szCondition: Lpcwstr) -> i32 {
     let result = panic::catch_unwind(|| {
@@ -188,7 +193,8 @@ pub extern "system" fn MsiEvaluateConditionW(hInstall: MsiHandle, szCondition: L
 }
 
 /// Evaluates a conditional expression using session properties (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiEvaluateConditionA(hInstall: MsiHandle, szCondition: Lpcstr) -> i32 {
     let result = panic::catch_unwind(|| {
@@ -207,7 +213,8 @@ pub extern "system" fn MsiEvaluateConditionA(hInstall: MsiHandle, szCondition: L
 }
 
 /// Returns the product code of a registered component (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiGetProductCodeW(szComponent: Lpcwstr, lpBuf39: Lpwstr) -> Uint {
     let result = panic::catch_unwind(|| {
@@ -221,7 +228,8 @@ pub extern "system" fn MsiGetProductCodeW(szComponent: Lpcwstr, lpBuf39: Lpwstr)
 }
 
 /// Returns the product code of a registered component (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiGetProductCodeA(szComponent: Lpcstr, lpBuf39: Lpstr) -> Uint {
     let result = panic::catch_unwind(|| {
@@ -235,7 +243,8 @@ pub extern "system" fn MsiGetProductCodeA(szComponent: Lpcstr, lpBuf39: Lpstr) -
 }
 
 /// Returns product information for published and installed products (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiGetProductInfoExW(
     szProductCode: Lpcwstr,
@@ -256,7 +265,8 @@ pub extern "system" fn MsiGetProductInfoExW(
 }
 
 /// Returns product information for published and installed products (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiGetProductInfoExA(
     szProductCode: Lpcstr,
@@ -277,7 +287,8 @@ pub extern "system" fn MsiGetProductInfoExA(
 }
 
 /// Retrieves the value of a property from a product database (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiGetProductPropertyW(
     hProduct: MsiHandle,
@@ -296,7 +307,8 @@ pub extern "system" fn MsiGetProductPropertyW(
 }
 
 /// Retrieves the value of a property from a product database (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiGetProductPropertyA(
     hProduct: MsiHandle,

@@ -21,6 +21,9 @@ impl LinkedDatabase {
     /// # Returns
     ///
     /// Returns `Ok(())` on success.
+    ///
+    /// # Errors
+    ///
     /// Returns `MsiError::DatabaseMergeError` if a schema mismatch or a primary key collision occurs.
     pub fn merge(&mut self, other: &Self, config: &MergeConfig) -> Result<()> {
         let tables_to_merge = match &config.table_name {
@@ -123,7 +126,10 @@ mod tests {
         let mut target = LinkedDatabase::default();
         let mut source = LinkedDatabase::default();
 
-        source.catalog.add_table(make_schema("TestTable")).unwrap();
+        source
+            .catalog
+            .add_table(make_schema("TestTable"))
+            .expect("test");
         let record = Record::with_fields(vec![
             FieldValue::String("1".to_string()),
             FieldValue::String("A".to_string()),
@@ -133,7 +139,7 @@ mod tests {
         let config = MergeConfig {
             table_name: Some("TestTable".to_string()),
         };
-        target.merge(&source, &config).unwrap();
+        target.merge(&source, &config).expect("test");
 
         assert!(target.catalog.get_table("TestTable").is_some());
         assert_eq!(target.tables["TestTable"].len(), 1);
@@ -144,8 +150,14 @@ mod tests {
         let mut target = LinkedDatabase::default();
         let mut source = LinkedDatabase::default();
 
-        target.catalog.add_table(make_schema("TestTable")).unwrap();
-        source.catalog.add_table(make_schema("TestTable")).unwrap();
+        target
+            .catalog
+            .add_table(make_schema("TestTable"))
+            .expect("test");
+        source
+            .catalog
+            .add_table(make_schema("TestTable"))
+            .expect("test");
 
         let record = Record::with_fields(vec![
             FieldValue::String("1".to_string()),
@@ -158,7 +170,7 @@ mod tests {
         let config = MergeConfig {
             table_name: Some("TestTable".to_string()),
         };
-        target.merge(&source, &config).unwrap();
+        target.merge(&source, &config).expect("test");
 
         assert_eq!(target.tables["TestTable"].len(), 1);
     }
@@ -168,8 +180,14 @@ mod tests {
         let mut target = LinkedDatabase::default();
         let mut source = LinkedDatabase::default();
 
-        target.catalog.add_table(make_schema("TestTable")).unwrap();
-        source.catalog.add_table(make_schema("TestTable")).unwrap();
+        target
+            .catalog
+            .add_table(make_schema("TestTable"))
+            .expect("test");
+        source
+            .catalog
+            .add_table(make_schema("TestTable"))
+            .expect("test");
 
         let record1 = Record::with_fields(vec![
             FieldValue::String("1".to_string()),
@@ -187,7 +205,7 @@ mod tests {
         let config = MergeConfig {
             table_name: Some("TestTable".to_string()),
         };
-        target.merge(&source, &config).unwrap();
+        target.merge(&source, &config).expect("test");
 
         assert_eq!(target.tables["TestTable"].len(), 2);
     }
@@ -197,8 +215,14 @@ mod tests {
         let mut target = LinkedDatabase::default();
         let mut source = LinkedDatabase::default();
 
-        target.catalog.add_table(make_schema("TestTable")).unwrap();
-        source.catalog.add_table(make_schema("TestTable")).unwrap();
+        target
+            .catalog
+            .add_table(make_schema("TestTable"))
+            .expect("test");
+        source
+            .catalog
+            .add_table(make_schema("TestTable"))
+            .expect("test");
 
         let record1 = Record::with_fields(vec![
             FieldValue::String("1".to_string()),
@@ -228,11 +252,14 @@ mod tests {
         let mut target = LinkedDatabase::default();
         let mut source = LinkedDatabase::default();
 
-        target.catalog.add_table(make_schema("TestTable")).unwrap();
+        target
+            .catalog
+            .add_table(make_schema("TestTable"))
+            .expect("test");
 
         let schema2 = TableSchema::new("TestTable")
             .with_column(ColumnDef::new("Id", DataType::String { max_len: 72 }).primary_key()); // missing 'Value' column
-        source.catalog.add_table(schema2).unwrap();
+        source.catalog.add_table(schema2).expect("test");
 
         let config = MergeConfig {
             table_name: Some("TestTable".to_string()),
@@ -264,11 +291,17 @@ mod tests {
         let mut target = LinkedDatabase::default();
         let mut source = LinkedDatabase::default();
 
-        source.catalog.add_table(make_schema("TestTable1")).unwrap();
-        source.catalog.add_table(make_schema("TestTable2")).unwrap();
+        source
+            .catalog
+            .add_table(make_schema("TestTable1"))
+            .expect("test");
+        source
+            .catalog
+            .add_table(make_schema("TestTable2"))
+            .expect("test");
 
         let config = MergeConfig::default();
-        target.merge(&source, &config).unwrap();
+        target.merge(&source, &config).expect("test");
 
         assert!(target.catalog.get_table("TestTable1").is_some());
         assert!(target.catalog.get_table("TestTable2").is_some());

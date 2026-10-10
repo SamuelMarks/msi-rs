@@ -51,7 +51,8 @@ pub const MSIMODIFY_VALIDATE_DELETE: i32 = 11;
 /// # Returns
 ///
 /// An `MSIDBERROR` enum value. `MSIDBERROR_NOERROR` (0) on success, or negative on failure.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiViewGetErrorW(
     hView: MsiHandle,
@@ -62,16 +63,29 @@ pub extern "system" fn MsiViewGetErrorW(
         if hView == 0 {
             return -3; // MSIDBERROR_INVALIDARG
         }
-        // TODO: Return actual validation errors
-        let _ = string_to_lpwstr("", szColumnNameBuffer, pcchBuf);
-        0 // MSIDBERROR_NOERROR
+
+        crate::handles::with_handle(hView, |obj| {
+            if let crate::handles::MsiObject::View(view) = obj {
+                if let Some(col_name) = &view.last_error_column {
+                    let _ = string_to_lpwstr(col_name, szColumnNameBuffer, pcchBuf);
+                    -1 // MSIDBERROR_FUNCTIONERROR (or specific validation error if we had it)
+                } else {
+                    let _ = string_to_lpwstr("", szColumnNameBuffer, pcchBuf);
+                    0 // MSIDBERROR_NOERROR
+                }
+            } else {
+                -3 // MSIDBERROR_INVALIDARG
+            }
+        })
+        .unwrap_or(-3)
     });
 
     result.unwrap_or(-1) // MSIDBERROR_ERROR
 }
 
 /// Validates a view execution and returns any error that occurred (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiViewGetErrorA(
     hView: MsiHandle,
@@ -82,9 +96,21 @@ pub extern "system" fn MsiViewGetErrorA(
         if hView == 0 {
             return -3; // MSIDBERROR_INVALIDARG
         }
-        // TODO: Return actual validation errors
-        let _ = string_to_lpstr("", szColumnNameBuffer, pcchBuf);
-        0 // MSIDBERROR_NOERROR
+
+        crate::handles::with_handle(hView, |obj| {
+            if let crate::handles::MsiObject::View(view) = obj {
+                if let Some(col_name) = &view.last_error_column {
+                    let _ = string_to_lpstr(col_name, szColumnNameBuffer, pcchBuf);
+                    -1 // MSIDBERROR_FUNCTIONERROR
+                } else {
+                    let _ = string_to_lpstr("", szColumnNameBuffer, pcchBuf);
+                    0 // MSIDBERROR_NOERROR
+                }
+            } else {
+                -3 // MSIDBERROR_INVALIDARG
+            }
+        })
+        .unwrap_or(-3)
     });
 
     result.unwrap_or(-1) // MSIDBERROR_ERROR
@@ -100,7 +126,8 @@ pub extern "system" fn MsiViewGetErrorA(
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_HANDLE`
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiViewExecute(
     hView: MsiHandle,
@@ -125,7 +152,8 @@ pub extern "system" fn MsiViewExecute(
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_HANDLE`, `ERROR_NO_MORE_ITEMS`
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiViewFetch(hView: MsiHandle, phRecord: *mut MsiHandle) -> Uint {
     let result = panic::catch_unwind(|| {
@@ -149,7 +177,8 @@ pub extern "system" fn MsiViewFetch(hView: MsiHandle, phRecord: *mut MsiHandle) 
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_HANDLE`
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiViewModify(
     hView: MsiHandle,
@@ -196,7 +225,7 @@ pub extern "system" fn MsiViewModify(
             return ERROR_INVALID_HANDLE;
         }
 
-        let record = record_copy.unwrap_or_default();
+        let mut record = record_copy.unwrap_or_default();
 
         let table_name = {
             use msi::database::sql::ast::Statement;
@@ -215,17 +244,49 @@ pub extern "system" fn MsiViewModify(
             }
         };
 
+        let mut res_status = ERROR_SUCCESS;
+        let mut err_msg = None;
+
         crate::handles::with_handle_mut(db_handle, |obj| {
             if let crate::handles::MsiObject::Database(db) = obj {
-                match db.inner.execute_mutation(&table_name, record, eModifyMode) {
-                    Ok(()) => ERROR_SUCCESS,
-                    Err(_) => 1627, // ERROR_FUNCTION_FAILED
+                match db
+                    .inner
+                    .execute_mutation(&table_name, &mut record, eModifyMode)
+                {
+                    Ok(()) => {
+                        res_status = ERROR_SUCCESS;
+                    }
+                    Err(e) => {
+                        res_status = 1627; // ERROR_FUNCTION_FAILED
+                        err_msg = Some(e.to_string());
+                    }
                 }
             } else {
-                ERROR_INVALID_HANDLE
+                res_status = ERROR_INVALID_HANDLE;
             }
-        })
-        .unwrap_or(ERROR_INVALID_HANDLE)
+        });
+
+        if res_status == ERROR_SUCCESS {
+            crate::handles::with_handle_mut(hView, |obj| {
+                if let crate::handles::MsiObject::View(view) = obj {
+                    view.last_error_column = None;
+                }
+            });
+            // Update the record with any changes (e.g., from MSIMODIFY_SEEK or MSIMODIFY_REFRESH)
+            crate::handles::with_handle_mut(hRecord, |obj| {
+                if let crate::handles::MsiObject::Record(r) = obj {
+                    r.inner = record;
+                }
+            });
+        } else {
+            crate::handles::with_handle_mut(hView, |obj| {
+                if let crate::handles::MsiObject::View(view) = obj {
+                    view.last_error_column = err_msg;
+                }
+            });
+        }
+
+        res_status
     });
 
     result.unwrap_or(ERROR_INSTALL_FAILURE)
@@ -240,7 +301,8 @@ pub extern "system" fn MsiViewModify(
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_HANDLE`
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiViewClose(hView: MsiHandle) -> Uint {
     let result = panic::catch_unwind(|| ERROR_INVALID_HANDLE);
@@ -259,7 +321,8 @@ pub extern "system" fn MsiViewClose(hView: MsiHandle) -> Uint {
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_HANDLE`, `ERROR_INVALID_PARAMETER`
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiViewGetColumnInfo(
     hView: MsiHandle,
@@ -306,12 +369,68 @@ mod tests {
         );
         assert_eq!(
             MsiViewGetErrorW(1, std::ptr::null_mut(), std::ptr::null_mut()),
-            0
+            -3
         );
         assert_eq!(
             MsiViewGetErrorA(1, std::ptr::null_mut(), std::ptr::null_mut()),
+            -3
+        );
+
+        let view = crate::types::MsiViewHandle {
+            database_handle: 0,
+            query: String::new(),
+            fetched_records: std::collections::VecDeque::new(),
+            last_error_column: Some("ErrorCol".to_string()),
+        };
+        let h_view = crate::handles::alloc_handle(crate::handles::MsiObject::View(view));
+
+        assert_eq!(
+            MsiViewGetErrorW(h_view, std::ptr::null_mut(), std::ptr::null_mut()),
+            -1 // Because it has an error column
+        );
+
+        let view_no_err = crate::types::MsiViewHandle {
+            database_handle: 0,
+            query: String::new(),
+            fetched_records: std::collections::VecDeque::new(),
+            last_error_column: None,
+        };
+        let h_view2 = crate::handles::alloc_handle(crate::handles::MsiObject::View(view_no_err));
+
+        assert_eq!(
+            MsiViewGetErrorA(h_view2, std::ptr::null_mut(), std::ptr::null_mut()),
             0
         );
+
+        // Hit None branch for W
+        assert_eq!(
+            MsiViewGetErrorW(h_view2, std::ptr::null_mut(), std::ptr::null_mut()),
+            0
+        );
+        // Hit Some branch for A
+        assert_eq!(
+            MsiViewGetErrorA(h_view, std::ptr::null_mut(), std::ptr::null_mut()),
+            -1
+        );
+
+        // Hit wrong object type
+        let h_rec = crate::handles::alloc_handle(crate::handles::MsiObject::Record(
+            crate::types::MsiRecordHandle {
+                inner: msi::database::tables::record::Record::new(),
+            },
+        ));
+        assert_eq!(
+            MsiViewGetErrorW(h_rec, std::ptr::null_mut(), std::ptr::null_mut()),
+            -3
+        );
+        assert_eq!(
+            MsiViewGetErrorA(h_rec, std::ptr::null_mut(), std::ptr::null_mut()),
+            -3
+        );
+        assert!(crate::handles::close_handle(h_rec));
+
+        assert!(crate::handles::close_handle(h_view));
+        assert!(crate::handles::close_handle(h_view2));
 
         assert_eq!(MsiViewModify(0, 0, 0), ERROR_INVALID_HANDLE);
     }
@@ -324,13 +443,17 @@ mod tests {
 
         let db = LinkedDatabase::new().unwrap();
         let db_handle = crate::handles::alloc_handle(crate::handles::MsiObject::Database(
-            crate::types::MsiDatabaseHandle { inner: db },
+            crate::types::MsiDatabaseHandle {
+                inner: db,
+                state: 0,
+            },
         ));
 
         let view = crate::types::MsiViewHandle {
             database_handle: db_handle,
             query: "SELECT `Property`, `Value` FROM `Property`".to_string(),
             fetched_records: std::collections::VecDeque::new(),
+            last_error_column: None,
         };
         let view_handle = crate::handles::alloc_handle(crate::handles::MsiObject::View(view));
 
@@ -363,6 +486,7 @@ mod tests {
             database_handle: db_handle,
             query: "INVALID".to_string(),
             fetched_records: std::collections::VecDeque::new(),
+            last_error_column: None,
         };
         let bad_view_handle =
             crate::handles::alloc_handle(crate::handles::MsiObject::View(bad_view));
@@ -384,6 +508,7 @@ mod tests {
             database_handle: 0,
             query: "SELECT `Property`, `Value` FROM `Property`".to_string(),
             fetched_records: std::collections::VecDeque::new(),
+            last_error_column: None,
         };
         let zero_db_view_handle =
             crate::handles::alloc_handle(crate::handles::MsiObject::View(zero_db_view));
@@ -396,6 +521,7 @@ mod tests {
             database_handle: rec_handle,
             query: "SELECT `Property`, `Value` FROM `Property`".to_string(),
             fetched_records: std::collections::VecDeque::new(),
+            last_error_column: None,
         };
         let rec_db_view_handle =
             crate::handles::alloc_handle(crate::handles::MsiObject::View(rec_db_view));
@@ -408,6 +534,7 @@ mod tests {
             database_handle: db_handle,
             query: "SELECT `Property`, `Value` FROM `MissingTable`".to_string(),
             fetched_records: std::collections::VecDeque::new(),
+            last_error_column: None,
         };
         let bad_mut_view_handle =
             crate::handles::alloc_handle(crate::handles::MsiObject::View(bad_mut_view));
@@ -424,6 +551,7 @@ mod tests {
             database_handle: db_handle,
             query: "SELECT `Unclosed".to_string(),
             fetched_records: std::collections::VecDeque::new(),
+            last_error_column: None,
         };
         let bad_lex_view_handle =
             crate::handles::alloc_handle(crate::handles::MsiObject::View(bad_lex_view));

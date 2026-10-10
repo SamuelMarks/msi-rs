@@ -99,6 +99,16 @@ impl VolumeCost {
     }
 
     /// Internal non-generic constructor for [`VolumeCost`].
+    ///
+    /// # Arguments
+    ///
+    /// * `volume` - TODO: Document argument.
+    /// * `cluster_size` - TODO: Document argument.
+    /// * `available_bytes` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     const fn new_inner(volume: String, cluster_size: u64, available_bytes: u64) -> Self {
         let cluster = if cluster_size == 0 {
             DEFAULT_CLUSTER_SIZE
@@ -115,30 +125,50 @@ impl VolumeCost {
     }
 
     /// Returns the volume identifier.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn volume(&self) -> &str {
         &self.volume
     }
 
     /// Returns the cluster allocation size.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn cluster_size(&self) -> u64 {
         self.cluster_size
     }
 
     /// Returns the initial available bytes.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn available_bytes(&self) -> u64 {
         self.available_bytes
     }
 
     /// Returns the net cost change in bytes.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn cost_bytes(&self) -> i64 {
         self.cost_bytes
     }
 
     /// Returns the number of files allocated on this volume.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn file_count(&self) -> u32 {
         self.file_count

@@ -322,6 +322,15 @@ impl LoggingOptions {
     }
 
     /// Internal non-generic logging options parser.
+    ///
+    /// # Arguments
+    ///
+    /// * `flags` - TODO: Document argument.
+    /// * `log_file` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_impl(flags: &str, log_file: String) -> Result<Self> {
         let mut opts = Self {
             log_file,
@@ -409,6 +418,14 @@ impl MsiExecOptions {
     }
 
     /// Internal parser operating on concrete string slice.
+    ///
+    /// # Arguments
+    ///
+    /// * `arg_list` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::too_many_lines)]
     fn parse_strings(arg_list: &[String]) -> Result<Self> {
         if arg_list.is_empty() {
@@ -556,6 +573,17 @@ impl MsiExecOptions {
     }
 
     /// Helper to extract option parameter either attached or in the next argument.
+    ///
+    /// # Arguments
+    ///
+    /// * `opt` - TODO: Document argument.
+    /// * `prefix` - TODO: Document argument.
+    /// * `arg_list` - TODO: Document argument.
+    /// * `i` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn extract_param(
         opt: &str,
         prefix: &str,
@@ -634,9 +662,9 @@ impl MsiExecOptions {
             if package_path.starts_with('{') {
                 return Ok(MsiExitCode::UnknownProduct);
             }
-            return Err(MsiError::Io(format!(
+            return Err(MsiError::Io(crate::error::IoContext::from_string(format!(
                 "Package file not found: '{package_path}'"
-            )));
+            ))));
         }
 
         let pkg = Package::open(path)?;

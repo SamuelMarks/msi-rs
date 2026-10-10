@@ -27,6 +27,10 @@ pub enum DisplayBackendType {
 
 impl DisplayBackendType {
     /// Returns the display backend identifier name.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -579,11 +583,20 @@ impl SoftwareBuffer {
     }
 
     /// Clears the entire buffer with a solid background color.
+    ///
+    /// # Arguments
+    ///
+    /// * `color` - TODO: Document argument.
     pub fn clear(&mut self, color: Color32) {
         self.pixels.fill(color);
     }
 
     /// Fills a rectangular region with solid color with clipping boundaries.
+    ///
+    /// # Arguments
+    ///
+    /// * `rect` - TODO: Document argument.
+    /// * `color` - TODO: Document argument.
     #[allow(clippy::cast_sign_loss)]
     pub fn fill_rect(&mut self, rect: PixelRect, color: Color32) {
         let x0 = rect.x.max(0) as u32;
@@ -600,6 +613,11 @@ impl SoftwareBuffer {
     }
 
     /// Draws an outline rectangle.
+    ///
+    /// # Arguments
+    ///
+    /// * `rect` - TODO: Document argument.
+    /// * `color` - TODO: Document argument.
     pub fn stroke_rect(&mut self, rect: PixelRect, color: Color32) {
         let top = PixelRect::new(rect.x, rect.y, rect.width, 1);
         let bottom = PixelRect::new(rect.x, rect.y + rect.height - 1, rect.width, 1);
@@ -613,6 +631,15 @@ impl SoftwareBuffer {
     }
 
     /// Returns the pixel color at coordinates (x, y) if within bounds.
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - TODO: Document argument.
+    /// * `y` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn get_pixel(&self, x: u32, y: u32) -> Option<Color32> {
         if x < self.width && y < self.height {
@@ -624,6 +651,10 @@ impl SoftwareBuffer {
     }
 
     /// Renders a list of [`DrawCommand`] instructions into the software buffer.
+    ///
+    /// # Arguments
+    ///
+    /// * `commands` - TODO: Document argument.
     pub fn render_commands(&mut self, commands: &[DrawCommand]) {
         for cmd in commands {
             match cmd {
@@ -809,6 +840,10 @@ mod tests {
     }
 
     /// Tests mapping all control types (`CheckBox`, `Edit`, `ProgressBar`, `Line`, `Bitmap`, `Text`, and invisible controls).
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[test]
     #[allow(clippy::too_many_lines, clippy::unnecessary_wraps)]
     fn test_layout_mapper_all_control_variants() -> crate::error::Result<()> {

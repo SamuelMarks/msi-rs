@@ -5,7 +5,8 @@ use crate::win32::strings::{string_to_lpstr, string_to_lpwstr};
 use crate::win32::{Dword, Lpstr, Lpwstr, Uint, ERROR_INSTALL_FAILURE, ERROR_INVALID_HANDLE};
 
 /// Formats a record using a format string (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiFormatRecordW(
     hInstall: MsiHandle,
@@ -41,7 +42,8 @@ pub extern "system" fn MsiFormatRecordW(
 }
 
 /// Formats a record using a format string (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiFormatRecordA(
     hInstall: MsiHandle,
@@ -108,6 +110,7 @@ mod tests {
         let db_handle =
             crate::handles::alloc_handle(MsiObject::Database(crate::types::MsiDatabaseHandle {
                 inner: db,
+                state: 0,
             }));
 
         assert_eq!(

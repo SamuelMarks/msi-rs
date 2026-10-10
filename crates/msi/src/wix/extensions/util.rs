@@ -19,6 +19,10 @@ pub struct UtilExtension;
 
 impl UtilExtension {
     /// Creates a new `UtilExtension` instance.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn new() -> Self {
         Self
@@ -33,6 +37,17 @@ impl UtilExtension {
     ///
     /// # Errors
     /// Returns [`MsiError::WixCompiler`] if required attributes are missing.
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn compile_group(
         node: &XmlNode,
         parent_id: Option<&str>,
@@ -76,6 +91,17 @@ impl UtilExtension {
     ///
     /// # Errors
     /// Returns [`MsiError::WixCompiler`] if required attributes are missing.
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn compile_file_share(
         node: &XmlNode,
         parent_id: Option<&str>,
@@ -119,6 +145,17 @@ impl UtilExtension {
     ///
     /// # Errors
     /// Returns [`MsiError::WixCompiler`] if required attributes are missing.
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn compile_xml_file(
         node: &XmlNode,
         parent_id: Option<&str>,
@@ -178,6 +215,10 @@ impl UtilExtension {
     /// # Errors
     ///
     /// Returns [`MsiError::WixCompiler`] on missing ID or Name.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn compile_user(
         node: &XmlNode,
         parent_id: Option<&str>,

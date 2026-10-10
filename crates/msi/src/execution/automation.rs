@@ -37,21 +37,51 @@ pub trait AutomationObject: Debug + Send + Sync + 'static {
     ///
     /// # Errors
     /// Returns `MsiError::ActionExecutionError` if the method does not exist or fails.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - TODO: Document argument.
+    /// * `args` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn invoke(&self, name: &str, args: &[Variant]) -> Result<Variant>;
 
     /// Retrieves a property from the automation object.
     ///
     /// # Errors
     /// Returns `MsiError::ActionExecutionError` if the property does not exist or fails to read.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn get_property(&self, name: &str) -> Result<Variant>;
 
     /// Sets a property on the automation object.
     ///
     /// # Errors
     /// Returns `MsiError::ActionExecutionError` if the property does not exist or fails to write.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - TODO: Document argument.
+    /// * `value` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn set_property(&mut self, name: &str, value: Variant) -> Result<()>;
 
     /// Clones this automation object into a new boxed trait object.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn clone_box(&self) -> Box<dyn AutomationObject>;
 }
 
@@ -72,11 +102,16 @@ impl Clone for Box<dyn AutomationObject> {
 /// Installer automation object.
 #[derive(Debug, Clone, Default)]
 pub struct Installer {
+    /// Version.
     version: String,
 }
 
 impl Installer {
     /// Creates a new `Installer` object.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -118,11 +153,16 @@ impl AutomationObject for Installer {
 /// Session automation object.
 #[derive(Debug, Clone, Default)]
 pub struct Session {
+    /// Language ID.
     language: i32,
 }
 
 impl Session {
     /// Creates a new `Session` object.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn new() -> Self {
         Self { language: 1033 }
@@ -174,11 +214,20 @@ impl AutomationObject for Session {
 /// Record automation object.
 #[derive(Debug, Clone, Default)]
 pub struct Record {
+    /// Fields.
     fields: Vec<Variant>,
 }
 
 impl Record {
     /// Creates a new `Record` object with the given field count.
+    ///
+    /// # Arguments
+    ///
+    /// * `count` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn new(count: usize) -> Self {
         Self {
@@ -220,17 +269,26 @@ impl AutomationObject for Record {
 /// Represents a COM `StringList` object.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StringList {
+    /// Items.
     items: Vec<String>,
 }
 
 impl StringList {
     /// Creates a new, empty `StringList`.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn new() -> Self {
         Self { items: Vec::new() }
     }
 
     /// Appends a string to the list.
+    ///
+    /// # Arguments
+    ///
+    /// * `item` - TODO: Document argument.
     pub fn add(&mut self, item: String) {
         self.items.push(item);
     }
@@ -239,6 +297,14 @@ impl StringList {
     ///
     /// # Errors
     /// Returns `MsiError::ActionExecutionError` if the index is out of bounds.
+    ///
+    /// # Arguments
+    ///
+    /// * `index` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn item(&self, index: usize) -> Result<String> {
         if index == 0 || index > self.items.len() {
             return Err(MsiError::ActionExecutionError(
@@ -249,6 +315,10 @@ impl StringList {
     }
 
     /// Returns the number of items.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn count(&self) -> usize {
         self.items.len()
@@ -276,11 +346,16 @@ pub struct FeatureInfo {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecordList {
     // For simplicity, we just use dummy integer records
+    /// Records.
     records: Vec<u32>,
 }
 
 impl RecordList {
     /// Creates a new, empty `RecordList`.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn new() -> Self {
         Self {
@@ -289,6 +364,10 @@ impl RecordList {
     }
 
     /// Appends a record to the list.
+    ///
+    /// # Arguments
+    ///
+    /// * `record` - TODO: Document argument.
     pub fn add(&mut self, record: u32) {
         self.records.push(record);
     }
@@ -297,6 +376,14 @@ impl RecordList {
     ///
     /// # Errors
     /// Returns `MsiError::ActionExecutionError` if index is out of bounds.
+    ///
+    /// # Arguments
+    ///
+    /// * `index` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn item(&self, index: usize) -> Result<u32> {
         if index == 0 || index > self.records.len() {
             return Err(MsiError::ActionExecutionError(
@@ -307,6 +394,10 @@ impl RecordList {
     }
 
     /// Returns the number of records.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn count(&self) -> usize {
         self.records.len()
@@ -328,6 +419,14 @@ pub struct UiPreview {
 
 impl UiPreview {
     /// Creates a new `UiPreview` instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `database_path` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn new(database_path: String) -> Self {
         Self { database_path }
@@ -337,6 +436,14 @@ impl UiPreview {
     ///
     /// # Errors
     /// Returns `MsiError::ActionExecutionError` if the dialog is invalid.
+    ///
+    /// # Arguments
+    ///
+    /// * `dialog` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn view_dialog(&self, dialog: &str) -> Result<()> {
         if dialog.is_empty() {
             return Err(MsiError::ActionExecutionError(
@@ -368,6 +475,15 @@ impl SummaryInfoExt {
     ///
     /// # Errors
     /// Returns `MsiError` if translation fails.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - TODO: Document argument.
+    /// * `is_ansi` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn translate_dictionary(data: &[u8], is_ansi: bool) -> Result<String> {
         if data.is_empty() {
             return Err(MsiError::ActionExecutionError(
@@ -463,11 +579,11 @@ mod tests {
         assert!(err_set.is_err());
 
         let invoke_res = inst.invoke("OpenPackage", &[])?;
+        assert!(matches!(invoke_res, Variant::Object(_)));
         if let Variant::Object(session_obj) = invoke_res {
-            assert_eq!(session_obj.get_property("Language")?, Variant::I32(1033));
-        } else {
-            return Err(MsiError::ActionExecutionError(
-                "Expected Object".to_string(),
+            assert!(matches!(
+                session_obj.get_property("Language")?,
+                Variant::I32(1033)
             ));
         }
 

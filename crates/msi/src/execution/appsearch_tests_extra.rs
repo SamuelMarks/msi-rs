@@ -1,6 +1,6 @@
     #[test]
     fn test_appsearch_extra_coverage() {
-        let mut db = LinkedDatabase::new().unwrap();
+        let mut db = LinkedDatabase::new().expect("test");
         // 1) AppSearch empty prop/sig
         db.add_record("AppSearch", Record::with_fields(vec![FieldValue::String("".to_string()), FieldValue::String("SigEmpty".to_string())]));
         db.add_record("AppSearch", Record::with_fields(vec![FieldValue::String("PROP".to_string()), FieldValue::String("".to_string())]));
@@ -120,11 +120,11 @@
         host.signatures.insert("C:\\Found\\found_bad_sig.exe".to_string(), false);
 
         let app_search = AppSearch::new(&db, host);
-        let res = app_search.execute().unwrap();
+        let res = app_search.execute().expect("test");
         
-        assert_eq!(res.get("MYINIFILE").unwrap(), "C:\\IniFile");
-        assert_eq!(res.get("MYDIRPARENT").unwrap(), "C:\\Parent");
-        assert_eq!(res.get("MYDIRBOTH").unwrap(), "C:\\Parent\\Child");
+        assert_eq!(res.get("MYINIFILE"), Ok("C:\\IniFile"));
+        assert_eq!(res.get("MYDIRPARENT"), Ok("C:\\Parent"));
+        assert_eq!(res.get("MYDIRBOTH"), Ok("C:\\Parent\\Child"));
         
         // These should not be in the results
         assert!(!res.contains_key("PROP_UNRES"));

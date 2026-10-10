@@ -4,7 +4,9 @@
 //! - Polls active disk space natively across OSes.
 //! - Used for evaluating `CostInitialize`, `FileCost`, and `OutOfDiskSpace` conditions.
 
-use crate::error::{MsiError, Result};
+#[cfg(unix)]
+use crate::error::MsiError;
+use crate::error::Result;
 use std::path::Path;
 
 /// Cross-platform structure representing available disk metrics for costing.
@@ -22,6 +24,14 @@ pub trait VolumeCostOperations {
     /// # Errors
     ///
     /// Returns an error if the operation fails.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn get_disk_free_space(&self, path: &Path) -> Result<DiskCostMetrics>;
 }
 
@@ -33,11 +43,23 @@ impl VolumeCostOperations for StandardCostEngine {
     /// # Errors
     ///
     /// Returns an error if the operation fails.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn get_disk_free_space(&self, path: &Path) -> Result<DiskCostMetrics> {
         #[cfg(unix)]
         {
             use rustix::fs::statvfs;
-            let stat = statvfs(path).map_err(|e| MsiError::Io(format!("statvfs failed: {e}")))?;
+            let stat = statvfs(path).map_err(|e| {
+                MsiError::Io(crate::error::IoContext::from_string(format!(
+                    "statvfs failed: {e}"
+                )))
+            })?;
             let block_size = stat.f_frsize;
             Ok(DiskCostMetrics {
                 total_bytes: stat.f_blocks.saturating_mul(block_size),
@@ -47,6 +69,7 @@ impl VolumeCostOperations for StandardCostEngine {
 
         #[cfg(windows)]
         {
+            let _ = path;
             // Simplified fallback for testing on non-Windows host since libc/rustix doesn't map directly
             // In a real Windows build, this would call GetDiskFreeSpaceExW via windows-sys.
             Ok(DiskCostMetrics {
@@ -73,5 +96,19 @@ mod tests {
         let engine = StandardCostEngine;
         let metrics = engine.get_disk_free_space(Path::new("."));
         assert!(metrics.is_ok() || metrics.is_err()); // Depends on test environment, just ensure it compiles and runs without unwrap
+    }
+
+    #[test]
+    fn test_disk_cost_metrics_derives() {
+        let m1 = DiskCostMetrics {
+            total_bytes: 100,
+            free_bytes: 50,
+        };
+        let m2 = m1;
+        assert_eq!(m1, m2);
+        assert_eq!(
+            format!("{m1:?}"),
+            "DiskCostMetrics { total_bytes: 100, free_bytes: 50 }"
+        );
     }
 }

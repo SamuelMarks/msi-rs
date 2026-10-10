@@ -240,6 +240,10 @@ impl Harvester {
     /// # Errors
     ///
     /// Returns [`crate::error::MsiError::Validation`] if parsing fails.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn set_root_namespace_guid_str(&mut self, guid_str: &str) -> Result<()> {
         let clean = guid_str
             .trim_matches('{')
@@ -328,6 +332,10 @@ impl Harvester {
     /// # Errors
     ///
     /// Returns [`crate::error::MsiError::Io`] if reading the file fails.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn load_gitignore(&mut self, gitignore_path: &Path) -> Result<()> {
         let content = fs::read_to_string(gitignore_path)?;
         for line in content.lines() {
@@ -641,6 +649,10 @@ impl Harvester {
     /// # Errors
     ///
     /// Returns [`crate::error::MsiError::Io`] on directory traversal failure.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn collect_manifest_recursive(
         &self,
         root_path: &Path,
@@ -1316,7 +1328,9 @@ LineWithoutEquals
 
         for xml in [
             harvester.harvest_directory(&temp_dir, "MainComponents", "INSTALLFOLDER"),
-            Err(MsiError::Io("simulated".to_string())),
+            Err(MsiError::Io(crate::error::IoContext::from_string(
+                "simulated".to_string(),
+            ))),
         ]
         .into_iter()
         .flatten()

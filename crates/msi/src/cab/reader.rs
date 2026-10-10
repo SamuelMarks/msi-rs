@@ -5,7 +5,7 @@ use crate::cab::file::{CfFile, FolderIndex};
 use crate::cab::folder::{CfFolder, CompressionType};
 use crate::cab::header::CfHeader;
 use crate::cab::lzx::LzxState;
-use crate::cab::mszip::MszipEngine;
+use crate::cab::mszip::MszipDecompressor;
 use crate::error::{MsiError, Result};
 
 /// Reader for inspecting and extracting files from a Microsoft Cabinet (`.cab`) file.
@@ -27,7 +27,7 @@ enum FolderDecompressor {
     /// Uncompressed raw payload pass-through.
     None,
     /// MSZIP Deflate decompressor.
-    Mszip(MszipEngine),
+    Mszip(MszipDecompressor),
     /// LZX history-window decompressor.
     Lzx(LzxState),
     /// Quantum arithmetic decompressor.
@@ -209,7 +209,7 @@ impl CabinetReader {
         let target_len = (file.folder_offset + file.file_size) as usize;
         let mut decompressor = match folder.compression_type {
             CompressionType::None => FolderDecompressor::None,
-            CompressionType::Mszip => FolderDecompressor::Mszip(MszipEngine),
+            CompressionType::Mszip => FolderDecompressor::Mszip(MszipDecompressor::new()),
             CompressionType::Lzx { window_bits } => {
                 let state = LzxState::new(window_bits)?;
                 FolderDecompressor::Lzx(state)
@@ -236,9 +236,8 @@ impl CabinetReader {
             let block_uncomp =
                 match &mut decompressor {
                     FolderDecompressor::None => cf_data.payload,
-                    FolderDecompressor::Mszip(mszip) => {
-                        mszip.decompress(&cf_data.payload, cf_data.uncompressed_size as usize)?
-                    }
+                    FolderDecompressor::Mszip(mszip) => mszip
+                        .decompress_block(&cf_data.payload, cf_data.uncompressed_size as usize)?,
                     FolderDecompressor::Lzx(state) => state
                         .decompress_block(&cf_data.payload, cf_data.uncompressed_size as usize)?,
                     FolderDecompressor::Quantum(state) => state
@@ -269,9 +268,9 @@ mod tests {
     #[test]
     fn test_cabinet_reader_file_chunk_not_found() {
         let mut writer = CabinetWriter::new(CompressionType::None);
-        writer.add_file("test.txt", b"hello").unwrap();
+        writer.add_file("test.txt", b"hello").expect("test");
         let cab_bytes = writer.build();
-        let reader = CabinetReader::new(&cab_bytes).unwrap();
+        let reader = CabinetReader::new(&cab_bytes).expect("test");
         let err = reader.extract_file_chunk("missing").unwrap_err();
         assert!(matches!(err, MsiError::CabinetFileNotFound { .. }));
     }
@@ -279,7 +278,7 @@ mod tests {
     #[test]
     fn test_cabinet_reader_invalid_folder_index() {
         let mut writer = CabinetWriter::new(CompressionType::None);
-        writer.add_file("test.txt", b"hello").unwrap();
+        writer.add_file("test.txt", b"hello").expect("test");
         let mut cab_bytes = writer.build();
         // Corrupt folder index. CFFILE entries start after CFFOLDER (which is after CFHEADER).
         // Let's just find "test.txt" in the binary and corrupt the index right before it.
@@ -295,13 +294,13 @@ mod tests {
     #[test]
     fn test_cabinet_reader_lzx_invalid_window() {
         let mut writer = CabinetWriter::new(CompressionType::None);
-        writer.add_file("test.txt", b"hello").unwrap();
+        writer.add_file("test.txt", b"hello").expect("test");
         let mut cab_bytes = writer.build();
-        // Change compression type in CFFOLDER to LZX with window size 15 (invalid)
-        cab_bytes[0x2A] = 0x05; // type is at folder entry, typically offset 0x2A.
-        if let Ok(reader) = CabinetReader::new(&cab_bytes) {
-            let _ = reader.extract_file("test.txt");
-        }
+        cab_bytes[0x2A] = 0x03;
+        cab_bytes[0x2B] = 0x0F;
+        let reader = CabinetReader::new(&cab_bytes).expect("test");
+        let err = reader.extract_file("test.txt").unwrap_err();
+        assert!(matches!(err, MsiError::LzxDecompressionFailed { .. }));
     }
 
     use super::*;

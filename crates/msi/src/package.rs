@@ -586,10 +586,20 @@ impl Package {
                 table_streams.push((decoded_name, entry_name.to_string()));
             } else if entry.object_type() == crate::cfb::directory::ObjectType::Storage {
                 let st_data = reader.extract_sub_storage(entry_name)?;
-                embedded_storages.insert(entry_name.to_string(), st_data);
+                let key = if decoded_name.is_empty() {
+                    entry_name.to_string()
+                } else {
+                    decoded_name.clone()
+                };
+                embedded_storages.insert(key, st_data);
             } else {
                 let st_data = reader.read_stream(entry_name)?;
-                embedded_cabinets.insert(entry_name.to_string(), st_data);
+                let key = if decoded_name.is_empty() {
+                    entry_name.to_string()
+                } else {
+                    decoded_name.clone()
+                };
+                embedded_cabinets.insert(key, st_data);
             }
         }
 
@@ -876,20 +886,11 @@ impl Package {
                 });
 
                 let mut tbl_bytes = Vec::new();
-                for physical_idx in 0..schema.columns.len() {
-                    let logical_idx = layout
-                        .logical_index(crate::database::physical::PhysicalIndex(physical_idx))
-                        .unwrap_or(LogicalIndex(0))
-                        .0;
-                    let col = &schema.columns[logical_idx];
+                // 1.1 Sequential Column Stream Ordering
+                for (col_idx, col) in schema.columns.iter().enumerate() {
                     let field_size = col.data_type.record_field_size(2);
                     let mut offset = 0;
-                    for i in 0..physical_idx {
-                        let prev_logical = layout
-                            .logical_index(crate::database::physical::PhysicalIndex(i))
-                            .unwrap_or(LogicalIndex(0))
-                            .0;
-                        let prev_col = &schema.columns[prev_logical];
+                    for prev_col in &schema.columns[..col_idx] {
                         offset += prev_col.data_type.record_field_size(2);
                     }
                     for rb in &row_byte_arrays {
@@ -924,7 +925,9 @@ impl Package {
 
         for (cab_name, cab_data) in &self.embedded_cabinets {
             let actual_name = cab_name.strip_prefix('#').unwrap_or(cab_name);
-            cfb_writer.add_stream(actual_name, cab_data)?;
+            let enc_name = encode_msi_stream_name(actual_name, false)
+                .unwrap_or_else(|_| actual_name.to_string());
+            cfb_writer.add_stream(&enc_name, cab_data)?;
         }
 
         Ok(cfb_writer.build())
@@ -939,6 +942,10 @@ impl Package {
     /// # Errors
     ///
     /// Returns [`crate::MsiError`] on serialization or filesystem write failure.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn save(&self, path: impl AsRef<Path>) -> Result<()> {
         let bytes = self.to_bytes()?;
         fs::write(path, bytes)?;
@@ -948,6 +955,10 @@ impl Package {
 
 impl Default for Package {
     /// Creates a default empty [`Package`].
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn default() -> Self {
         Self::from_database(LinkedDatabase::default(), HashMap::new())
     }
@@ -1376,10 +1387,10 @@ mod tests {
         use crate::cfb::header::CfbVersion;
         use crate::cfb::writer::CfbWriter;
         let mut builder = CfbWriter::new(CfbVersion::V3);
-        builder.add_stream("SubStorage", b"dummy").unwrap();
+        builder.add_stream("SubStorage", b"dummy").expect("test");
         let mut bytes = builder.build();
 
-        let root_dir_sec = u32::from_le_bytes(bytes[48..52].try_into().unwrap()) as usize;
+        let root_dir_sec = u32::from_le_bytes(bytes[48..52].try_into().expect("test")) as usize;
         let offset = (root_dir_sec + 1) * 512;
         for i in 1..4 {
             let entry_off = offset + i * 128;
@@ -1388,9 +1399,9 @@ mod tests {
             }
         }
 
-        let temp_dir = tempfile::tempdir().unwrap();
+        let temp_dir = tempfile::tempdir().expect("test");
         let path = temp_dir.path().join("substorage.msi");
-        fs::write(&path, &bytes).unwrap();
+        fs::write(&path, &bytes).expect("test");
 
         // Let's ignore the error, just make sure it executes line 588
         let _ = Package::open(&path);
@@ -1409,9 +1420,9 @@ mod tests {
         ])];
         pkg.database.tables.insert("_Columns".to_string(), rows);
 
-        let temp_dir = tempfile::tempdir().unwrap();
+        let temp_dir = tempfile::tempdir().expect("test");
         let path = temp_dir.path().join("test.msi");
-        fs::write(&path, pkg.to_bytes().unwrap()).unwrap();
+        fs::write(&path, pkg.to_bytes().expect("test")).expect("test");
 
         let err = Package::open(&path).unwrap_err();
         assert!(matches!(err, MsiError::CfbCorrupted { .. }));
@@ -1853,7 +1864,7 @@ mod tests {
 
         // Assert cabinets were captured
         assert_eq!(
-            pkg.get_embedded_cabinet(&misc_msi_stream),
+            pkg.get_embedded_cabinet("MiscCab"),
             Some(&b"cab-data-1"[..])
         );
         assert_eq!(
@@ -1892,10 +1903,12 @@ mod tests {
         let cols_stream = encode_msi_stream_name(COLUMN_CATALOG_NAME, true).unwrap_or_default();
         let prop_stream = encode_msi_stream_name("Property", true).unwrap_or_default();
 
+        let cab1_stream = encode_msi_stream_name("cab1.cab", false).unwrap_or_default();
+
         for name in [
             &pool_stream,
             &data_stream,
-            "cab1.cab",
+            &cab1_stream,
             &cols_stream,
             &prop_stream,
         ] {
@@ -2651,6 +2664,70 @@ mod tests {
         assert_eq!(
             pkg_prop_single_lang.summary_info().template.as_deref(),
             Some("Intel;1041")
+        );
+    }
+
+    /// Verifies that system catalog streams and table streams use exact MS-CFB naming matching `WiX`.
+    #[test]
+    fn test_package_table_stream_name_parity() {
+        let pkg = Package::builder()
+            .product_name("Test App")
+            .manufacturer("Vendor")
+            .version(ProductVersion::new(1, 0, 0))
+            .product_code("{12345678-1234-1234-1234-123456789012}")
+            .add_embedded_cabinet("#payload.cab", vec![0xCA, 0xFE])
+            .build()
+            .expect("Valid minimal package");
+
+        let bytes = pkg.to_bytes().expect("Failed to serialize package");
+        let reader = CfbReader::new(&bytes).expect("Failed to parse CFB");
+
+        let mut all_stream_names: Vec<String> = reader
+            .entries()
+            .iter()
+            .filter(|e| {
+                e.object_type() != crate::cfb::directory::ObjectType::Storage
+                    && !e.name().is_empty()
+            })
+            .map(|e| e.name().to_string())
+            .collect();
+        all_stream_names.sort();
+
+        let pool_name = encode_msi_stream_name("_StringPool", true).expect("test");
+        let data_name = encode_msi_stream_name("_StringData", true).expect("test");
+        let tables_name = encode_msi_stream_name("_Tables", true).expect("test");
+        let columns_name = encode_msi_stream_name("_Columns", true).expect("test");
+        let property_name = encode_msi_stream_name("Property", true).expect("test");
+        let cab_name = encode_msi_stream_name("payload.cab", false).expect("test");
+        let summary_name = SUMMARY_INFORMATION_STREAM.to_string();
+
+        assert!(
+            all_stream_names.contains(&pool_name),
+            "_StringPool missing or bad name"
+        );
+        assert!(
+            all_stream_names.contains(&data_name),
+            "_StringData missing or bad name"
+        );
+        assert!(
+            all_stream_names.contains(&tables_name),
+            "_Tables missing or bad name"
+        );
+        assert!(
+            all_stream_names.contains(&columns_name),
+            "_Columns missing or bad name"
+        );
+        assert!(
+            all_stream_names.contains(&property_name),
+            "Property missing or bad name"
+        );
+        assert!(
+            all_stream_names.contains(&cab_name),
+            "payload.cab missing or bad name"
+        );
+        assert!(
+            all_stream_names.contains(&summary_name),
+            "SummaryInformation missing or bad name"
         );
     }
 

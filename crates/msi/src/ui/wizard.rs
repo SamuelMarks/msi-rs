@@ -330,12 +330,20 @@ impl LocaleKeyboardDialog {
     }
 
     /// Returns selected locale string.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn current_locale(&self) -> &str {
         &self.locales[self.selected_locale]
     }
 
     /// Returns selected keyboard layout string.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn current_keymap(&self) -> &str {
         &self.keymaps[self.selected_keymap]
@@ -1077,12 +1085,17 @@ impl DiagnosticsLogConsole {
     /// # Errors
     ///
     /// Returns [`MsiError::Io`] if file write fails.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn export_to_file(&self, dest_path: &Path) -> Result<()> {
         let mut out = String::new();
         for line in &self.logs {
             let _ = writeln!(out, "{line}");
         }
-        std::fs::write(dest_path, out).map_err(|e| MsiError::Io(e.to_string()))
+        std::fs::write(dest_path, out)
+            .map_err(|e| MsiError::Io(crate::error::IoContext::from_string(e.to_string())))
     }
 }
 

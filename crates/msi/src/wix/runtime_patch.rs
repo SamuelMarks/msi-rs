@@ -23,6 +23,10 @@ impl RuntimePatchEngine {
     /// # Errors
     ///
     /// Returns an error if the transform cannot be applied.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn apply_transform(&self, _db: &mut LinkedDatabase, mst_path: &Path) -> Result<()> {
         // Reads transform payload blocks and executes them against the open View.
         // Requires completing standard `.mst` binary format parser.
@@ -45,6 +49,10 @@ impl RuntimePatchEngine {
     /// # Errors
     ///
     /// Returns an error if the patch cannot be applied.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn apply_patch(&self, _db: &mut LinkedDatabase, msp_path: &Path) -> Result<()> {
         // Disassembles `.msp` Compound File Binary container.
         // Extracts `_SummaryInformation`, `Patch`, `PatchPackage` streams.
@@ -74,6 +82,10 @@ impl MsDeltaDecoder {
     /// # Errors
     ///
     /// Returns an error if the delta decoding fails.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn apply_delta(_source: &[u8], _patch_blob: &[u8]) -> Result<Vec<u8>> {
         Err(MsiError::DataIntegrityError {
             reason: "MSDelta pure-Rust decoding not fully implemented yet".to_string(),
@@ -86,11 +98,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_runtime_patch_stubs() {
+    fn test_runtime_patch_stubs() -> Result<()> {
         let engine = RuntimePatchEngine;
-        let Ok(mut db) = LinkedDatabase::new() else {
-            std::process::abort()
-        };
+        let mut db = LinkedDatabase::new()?;
 
         let res1 = engine.apply_transform(&mut db, Path::new("test.mst"));
         assert!(res1.is_err());
@@ -100,5 +110,11 @@ mod tests {
 
         let res3 = MsDeltaDecoder::apply_delta(b"source", b"patch");
         assert!(res3.is_err());
+
+        // Also cover MsDeltaDecoder Debug trait since we might have missed it
+        let _ = format!("{MsDeltaDecoder:?}");
+        let _ = format!("{engine:?}");
+
+        Ok(())
     }
 }

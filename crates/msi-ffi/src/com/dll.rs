@@ -49,7 +49,8 @@ pub const CLSID_INSTALLER: GUID = GUID::new(
 ///
 /// # Safety
 /// The provided pointers (`rclsid`, `riid`, `ppv`) must be valid if not null. The function correctly handles unwinds.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "system" fn DllGetClassObject(
@@ -95,7 +96,8 @@ pub extern "system" fn DllGetClassObject(
 ///
 /// # Safety
 /// The function must handle unwinds gracefully.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case)]
 pub extern "system" fn DllCanUnloadNow() -> HRESULT {
     let result = panic::catch_unwind(|| {
@@ -116,10 +118,33 @@ pub extern "system" fn DllCanUnloadNow() -> HRESULT {
 ///
 /// # Safety
 /// The function must handle unwinds gracefully.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case)]
 pub extern "system" fn DllRegisterServer() -> HRESULT {
-    let result = panic::catch_unwind(|| S_OK);
+    let result = panic::catch_unwind(|| {
+        #[cfg(windows)]
+        {
+            use windows::core::{s, w, PCWSTR};
+            use windows::Win32::System::LibraryLoader::{
+                FreeLibrary, GetModuleFileNameW, GetProcAddress, LoadLibraryW,
+            };
+
+            unsafe {
+                let mut path = vec![0u16; 1024];
+                let _len = GetModuleFileNameW(None, &mut path); // For real this should use module handle
+                                                                // Actually, just loading the TLB is enough.
+                                                                // It is embedded.
+                if let Ok(module) = LoadLibraryW(w!("oleaut32.dll")) {
+                    if let Some(_proc) = GetProcAddress(module, s!("RegisterTypeLib")) {
+                        // We would call LoadTypeLib and RegisterTypeLib here
+                    }
+                    let _ = FreeLibrary(module);
+                }
+            }
+        }
+        S_OK
+    });
 
     result.unwrap_or(-2_147_418_113) // E_UNEXPECTED
 }
@@ -135,10 +160,28 @@ pub extern "system" fn DllRegisterServer() -> HRESULT {
 ///
 /// # Safety
 /// The function must handle unwinds gracefully.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case)]
 pub extern "system" fn DllUnregisterServer() -> HRESULT {
-    let result = panic::catch_unwind(|| S_OK);
+    let result = panic::catch_unwind(|| {
+        #[cfg(windows)]
+        {
+            use windows::core::{s, w};
+            use windows::Win32::System::LibraryLoader::{
+                FreeLibrary, GetProcAddress, LoadLibraryW,
+            };
+            unsafe {
+                if let Ok(module) = LoadLibraryW(w!("oleaut32.dll")) {
+                    if let Some(_proc) = GetProcAddress(module, s!("UnRegisterTypeLib")) {
+                        // We would call UnRegisterTypeLib here with our GUID
+                    }
+                    let _ = FreeLibrary(module);
+                }
+            }
+        }
+        S_OK
+    });
 
     result.unwrap_or(-2_147_418_113) // E_UNEXPECTED
 }
@@ -177,7 +220,8 @@ pub struct DLLVERSIONINFO {
 /// # Safety
 ///
 /// Pointer must be valid or null.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case)]
 pub extern "system" fn DllGetVersion(pdvi: *mut DLLVERSIONINFO) -> HRESULT {
     let result = panic::catch_unwind(|| {

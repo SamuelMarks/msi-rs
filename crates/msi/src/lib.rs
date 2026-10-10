@@ -1,15 +1,13 @@
 #![deny(missing_docs)]
+#![deny(clippy::missing_docs_in_private_items)]
 #![deny(clippy::unwrap_used)]
 #![allow(
     clippy::similar_names,
     clippy::double_must_use,
     clippy::cast_possible_truncation,
-    clippy::missing_errors_doc,
     clippy::option_if_let_else,
     clippy::empty_line_after_doc_comments,
-    clippy::missing_docs_in_private_items,
     clippy::cast_sign_loss,
-    clippy::missing_panics_doc,
     clippy::used_underscore_binding,
     clippy::cognitive_complexity,
     clippy::unused_peekable,

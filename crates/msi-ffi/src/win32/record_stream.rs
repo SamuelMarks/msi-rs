@@ -6,7 +6,8 @@ use crate::win32::{
 };
 
 /// Gets the number of fields in a record.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiRecordGetFieldCount(hRecord: MsiHandle) -> Uint {
     let result = std::panic::catch_unwind(|| {
@@ -24,7 +25,8 @@ pub extern "system" fn MsiRecordGetFieldCount(hRecord: MsiHandle) -> Uint {
 }
 
 /// Checks if a field in a record is null.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiRecordIsNull(hRecord: MsiHandle, iField: Uint) -> std::ffi::c_int {
     let result = std::panic::catch_unwind(|| {
@@ -42,7 +44,8 @@ pub extern "system" fn MsiRecordIsNull(hRecord: MsiHandle, iField: Uint) -> std:
 }
 
 /// Reads a stream from a record.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "system" fn MsiRecordReadStream(
@@ -73,7 +76,8 @@ pub extern "system" fn MsiRecordReadStream(
 }
 
 /// Sets a stream in a record (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiRecordSetStreamW(
     hRecord: MsiHandle,
@@ -99,7 +103,8 @@ pub extern "system" fn MsiRecordSetStreamW(
 }
 
 /// Sets a stream in a record (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiRecordSetStreamA(
     hRecord: MsiHandle,
@@ -185,6 +190,7 @@ mod more_record_tests {
         let db_handle =
             crate::handles::alloc_handle(MsiObject::Database(crate::types::MsiDatabaseHandle {
                 inner: mock_db,
+                state: 0,
             }));
         assert_eq!(MsiRecordGetFieldCount(db_handle), u32::MAX);
         assert_eq!(MsiRecordIsNull(db_handle, 1), crate::win32::FALSE);

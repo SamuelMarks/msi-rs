@@ -26,6 +26,10 @@ pub enum TargetOs {
 
 impl TargetOs {
     /// Returns the active host operating system.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn host() -> Self {
         #[cfg(target_os = "macos")]
@@ -126,6 +130,10 @@ impl StandardDirectoryId {
     }
 
     /// Returns the standard MSI identifier name.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -199,6 +207,14 @@ impl PathResolver {
     }
 
     /// Sets whether this is a per-machine installation.
+    ///
+    /// # Arguments
+    ///
+    /// * `per_machine` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn per_machine(mut self, per_machine: bool) -> Self {
         self.per_machine = per_machine;
@@ -206,6 +222,14 @@ impl PathResolver {
     }
 
     /// Sets the vendor or manufacturer name.
+    ///
+    /// # Arguments
+    ///
+    /// * `vendor` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn vendor(mut self, vendor: impl Into<String>) -> Self {
         self.vendor = Some(vendor.into());
@@ -213,6 +237,14 @@ impl PathResolver {
     }
 
     /// Sets the home directory path.
+    ///
+    /// # Arguments
+    ///
+    /// * `home` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn home_dir(mut self, home: impl Into<PathBuf>) -> Self {
         self.home_dir = home.into();
@@ -220,6 +252,14 @@ impl PathResolver {
     }
 
     /// Sets the root prefix path.
+    ///
+    /// # Arguments
+    ///
+    /// * `prefix` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn root_prefix(mut self, prefix: impl Into<PathBuf>) -> Self {
         self.root_prefix = prefix.into();
@@ -292,6 +332,11 @@ impl PathResolver {
     }
 
     /// Sets an environment variable override for testing or custom environments.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - TODO: Document argument.
+    /// * `val` - TODO: Document argument.
     pub fn set_env(&mut self, key: impl Into<String>, val: impl Into<String>) {
         self.env_vars.insert(key.into(), val.into());
     }
@@ -508,6 +553,15 @@ impl PathResolver {
     }
 
     /// Resolves directories relative to an explicit offline sysroot.
+    ///
+    /// # Arguments
+    ///
+    /// * `dir_id` - TODO: Document argument.
+    /// * `sysroot` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn resolve_offline_sysroot(&self, dir_id: StandardDirectoryId, sysroot: &Path) -> PathBuf {
         match (self.target_os, dir_id) {
             (_, StandardDirectoryId::TargetDir) => sysroot.to_path_buf(),

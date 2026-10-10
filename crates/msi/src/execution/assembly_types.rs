@@ -25,6 +25,14 @@ impl ProcessorArchitecture {
     ///
     /// # Errors
     /// Returns `MsiError::SxSError` if architecture string is invalid.
+    ///
+    /// # Arguments
+    ///
+    /// * `arch` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn parse(arch: &str) -> Result<Self> {
         match arch.to_lowercase().as_str() {
             "x86" => Ok(Self::X86),
@@ -63,36 +71,36 @@ mod tests {
     #[test]
     fn test_processor_architecture_parsing() {
         assert_eq!(
-            ProcessorArchitecture::parse("x86").unwrap(),
-            ProcessorArchitecture::X86
+            ProcessorArchitecture::parse("x86"),
+            Ok(ProcessorArchitecture::X86)
         );
         assert_eq!(
-            ProcessorArchitecture::parse("amd64").unwrap(),
-            ProcessorArchitecture::Amd64
+            ProcessorArchitecture::parse("amd64"),
+            Ok(ProcessorArchitecture::Amd64)
         );
         assert_eq!(
-            ProcessorArchitecture::parse("arm").unwrap(),
-            ProcessorArchitecture::Arm
+            ProcessorArchitecture::parse("arm"),
+            Ok(ProcessorArchitecture::Arm)
         );
         assert_eq!(
-            ProcessorArchitecture::parse("arm64").unwrap(),
-            ProcessorArchitecture::Arm64
+            ProcessorArchitecture::parse("arm64"),
+            Ok(ProcessorArchitecture::Arm64)
         );
         assert_eq!(
-            ProcessorArchitecture::parse("ia64").unwrap(),
-            ProcessorArchitecture::Ia64
+            ProcessorArchitecture::parse("ia64"),
+            Ok(ProcessorArchitecture::Ia64)
         );
         assert_eq!(
-            ProcessorArchitecture::parse("msil").unwrap(),
-            ProcessorArchitecture::Msil
+            ProcessorArchitecture::parse("msil"),
+            Ok(ProcessorArchitecture::Msil)
         );
         assert_eq!(
-            ProcessorArchitecture::parse("neutral").unwrap(),
-            ProcessorArchitecture::Neutral
+            ProcessorArchitecture::parse("neutral"),
+            Ok(ProcessorArchitecture::Neutral)
         );
         assert_eq!(
-            ProcessorArchitecture::parse("").unwrap(),
-            ProcessorArchitecture::Neutral
+            ProcessorArchitecture::parse(""),
+            Ok(ProcessorArchitecture::Neutral)
         );
 
         assert!(ProcessorArchitecture::parse("invalid").is_err());

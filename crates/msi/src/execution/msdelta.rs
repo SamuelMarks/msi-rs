@@ -12,12 +12,24 @@ pub struct SourceChecksum(u32);
 
 impl SourceChecksum {
     /// Creates a new `SourceChecksum`.
+    ///
+    /// # Arguments
+    ///
+    /// * `checksum` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn new(checksum: u32) -> Self {
         Self(checksum)
     }
 
     /// Returns the underlying checksum value.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn as_u32(self) -> u32 {
         self.0
@@ -48,6 +60,14 @@ impl PatchHeader {
     ///
     /// # Errors
     /// Returns `DeltaDecodeError` if the header is too short or the magic is invalid.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn parse(data: &[u8]) -> Result<Self> {
         if data.len() < 16 {
             return Err(MsiError::DeltaDecodeError("Header too short".to_string()));
@@ -104,6 +124,14 @@ impl PatchDecoder {
     ///
     /// # Errors
     /// Returns `DeltaDecodeError` if the stream is invalid.
+    ///
+    /// # Arguments
+    ///
+    /// * `patch_data` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn new(patch_data: &[u8]) -> Result<Self> {
         let header = PatchHeader::parse(patch_data)?;
 
@@ -123,6 +151,10 @@ impl PatchDecoder {
     }
 
     /// Returns the parsed patch header.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn header(&self) -> &PatchHeader {
         &self.header
@@ -132,6 +164,14 @@ impl PatchDecoder {
     ///
     /// # Errors
     /// Returns `PatchApplyError` if the source checksum mismatches or instructions are invalid.
+    ///
+    /// # Arguments
+    ///
+    /// * `source_data` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn apply(&self, source_data: &[u8]) -> Result<Vec<u8>> {
         // Compute checksum of source_data (simulated here for tests)
         let actual_src_checksum = self.compute_crc32(source_data);
@@ -176,14 +216,25 @@ impl PatchDecoder {
     ///
     /// # Errors
     /// Returns an `MsiError` if file I/O fails or the patch fails to apply.
+    ///
+    /// # Arguments
+    ///
+    /// * `source_path` - TODO: Document argument.
+    /// * `target_path` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn apply_to_file(
         &self,
         source_path: &std::path::Path,
         target_path: &std::path::Path,
     ) -> Result<()> {
-        let source_data = std::fs::read(source_path).map_err(|e| MsiError::Io(e.to_string()))?;
+        let source_data = std::fs::read(source_path)
+            .map_err(|e| MsiError::Io(crate::error::IoContext::from_string(e.to_string())))?;
         let target_data = self.apply(&source_data)?;
-        std::fs::write(target_path, target_data).map_err(|e| MsiError::Io(e.to_string()))?;
+        std::fs::write(target_path, target_data)
+            .map_err(|e| MsiError::Io(crate::error::IoContext::from_string(e.to_string())))?;
         Ok(())
     }
 
@@ -262,10 +313,12 @@ mod tests {
 
     #[test]
     fn test_patch_decoder_apply_to_file() -> Result<()> {
-        let temp_dir = tempfile::tempdir().map_err(|e| MsiError::Io(e.to_string()))?;
+        let temp_dir = tempfile::tempdir()
+            .map_err(|e| MsiError::Io(crate::error::IoContext::from_string(e.to_string())))?;
         let src_path = temp_dir.path().join("src.txt");
         let tgt_path = temp_dir.path().join("tgt.txt");
-        std::fs::write(&src_path, "dummy source").map_err(|e| MsiError::Io(e.to_string()))?;
+        std::fs::write(&src_path, "dummy source")
+            .map_err(|e| MsiError::Io(crate::error::IoContext::from_string(e.to_string())))?;
 
         let mut data = vec![b'P', b'A', b'3', b'0'];
         data.extend(0u32.to_le_bytes()); // Src (0 = bypass check)
@@ -275,7 +328,7 @@ mod tests {
         let decoder = PatchDecoder::new(&data).expect("failed");
         assert!(decoder.apply_to_file(&src_path, &tgt_path).is_ok());
 
-        let out = std::fs::read(&tgt_path).unwrap();
+        let out = std::fs::read(&tgt_path).expect("test");
         assert_eq!(out.len(), 16);
         Ok(())
     }

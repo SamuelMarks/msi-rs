@@ -191,14 +191,13 @@ impl HuffmanTree {
     ///
     /// # Errors
     ///
-    /// Returns [`MsiError::DecompressionFailed`] if the code lengths represent an oversubscribed or invalid tree.
+    /// Returns [`MsiError::LzxDecompressionFailed`] if the code lengths represent an oversubscribed or invalid tree.
     #[allow(clippy::cast_possible_truncation)]
     pub fn from_lengths(lengths: &[u8]) -> Result<Self> {
         let mut count = [0u32; 17];
         for &len in lengths {
             if len > 16 {
-                return Err(MsiError::DecompressionFailed {
-                    method: "LZX".to_string(),
+                return Err(MsiError::LzxDecompressionFailed {
                     reason: format!("Huffman code length {len} exceeds 16 bits"),
                 });
             }
@@ -213,8 +212,7 @@ impl HuffmanTree {
             kraft_sum = kraft_sum.saturating_add(cnt.saturating_mul(1u32 << (16 - l)));
         }
         if kraft_sum > (1u32 << 16) {
-            return Err(MsiError::DecompressionFailed {
-                method: "LZX".to_string(),
+            return Err(MsiError::LzxDecompressionFailed {
                 reason: "oversubscribed Huffman tree".to_string(),
             });
         }
@@ -270,11 +268,10 @@ impl HuffmanTree {
     ///
     /// # Errors
     ///
-    /// Returns [`MsiError::DecompressionFailed`] on invalid bit sequences or corrupted tree states.
+    /// Returns [`MsiError::LzxDecompressionFailed`] on invalid bit sequences or corrupted tree states.
     pub fn decode_symbol(&self, reader: &mut LzxBitReader<'_>) -> Result<u16> {
         if self.nodes.is_empty() {
-            return Err(MsiError::DecompressionFailed {
-                method: "LZX".to_string(),
+            return Err(MsiError::LzxDecompressionFailed {
                 reason: "empty Huffman tree".to_string(),
             });
         }
@@ -284,8 +281,7 @@ impl HuffmanTree {
             let bit = reader.read_bit()? as usize;
             let next = self.nodes[curr][bit];
             if next == 0 {
-                return Err(MsiError::DecompressionFailed {
-                    method: "LZX".to_string(),
+                return Err(MsiError::LzxDecompressionFailed {
                     reason: "invalid Huffman code in bitstream".to_string(),
                 });
             }
@@ -294,8 +290,7 @@ impl HuffmanTree {
             }
             curr = next as usize;
             if curr >= self.nodes.len() {
-                return Err(MsiError::DecompressionFailed {
-                    method: "LZX".to_string(),
+                return Err(MsiError::LzxDecompressionFailed {
                     reason: "corrupted Huffman tree index".to_string(),
                 });
             }
@@ -303,12 +298,20 @@ impl HuffmanTree {
     }
 
     /// Returns the symbol code lengths.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn code_lengths(&self) -> &[u8] {
         &self.code_lengths
     }
 
     /// Computes canonical `(code, length)` tuples for each symbol.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     #[allow(clippy::cast_possible_truncation)]
     pub fn canonical_codes(&self) -> Vec<(u16, u8)> {
@@ -353,7 +356,11 @@ impl HuffmanTree {
 ///
 /// # Errors
 ///
-/// Returns [`MsiError::DecompressionFailed`] on invalid bitstream symbols.
+/// Returns [`MsiError::LzxDecompressionFailed`] on invalid bitstream symbols.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 #[allow(clippy::cast_possible_truncation)]
 pub fn decode_tree_lengths(
     reader: &mut LzxBitReader<'_>,
@@ -586,12 +593,11 @@ impl LzxState {
     ///
     /// # Errors
     ///
-    /// Returns [`MsiError::CompressionFailed`] if input exceeds 32,768 bytes.
+    /// Returns [`MsiError::LzxCompressionFailed`] if input exceeds 32,768 bytes.
     #[allow(clippy::cast_possible_truncation)]
     pub fn compress_uncompressed_block(&mut self, input: &[u8]) -> Result<Vec<u8>> {
         if input.len() > 32_768 {
-            return Err(MsiError::CompressionFailed {
-                method: "LZX".to_string(),
+            return Err(MsiError::LzxCompressionFailed {
                 reason: "block length exceeds 32KB".to_string(),
             });
         }
@@ -644,7 +650,7 @@ impl LzxState {
     ///
     /// # Errors
     ///
-    /// Returns [`MsiError::CompressionFailed`] if input exceeds 32,768 bytes.
+    /// Returns [`MsiError::LzxCompressionFailed`] if input exceeds 32,768 bytes.
     #[allow(
         clippy::too_many_lines,
         clippy::cast_possible_truncation,
@@ -653,8 +659,7 @@ impl LzxState {
     #[allow(clippy::cognitive_complexity)]
     pub fn compress_verbatim_block(&mut self, input: &[u8]) -> Result<Vec<u8>> {
         if input.len() > 32_768 {
-            return Err(MsiError::CompressionFailed {
-                method: "LZX".to_string(),
+            return Err(MsiError::LzxCompressionFailed {
                 reason: "block length exceeds 32KB".to_string(),
             });
         }
@@ -951,7 +956,7 @@ impl LzxState {
     ///
     /// # Errors
     ///
-    /// Returns [`MsiError::CompressionFailed`] if input exceeds 32,768 bytes.
+    /// Returns [`MsiError::LzxCompressionFailed`] if input exceeds 32,768 bytes.
     pub fn compress_block(&mut self, input: &[u8]) -> Result<Vec<u8>> {
         let mut test_state = self.clone();
         if let Ok(comp_v) = test_state.compress_verbatim_block(input) {
@@ -978,7 +983,7 @@ impl LzxState {
     ///
     /// # Errors
     ///
-    /// Returns [`MsiError::DecompressionFailed`] if bitstream or block format is invalid.
+    /// Returns [`MsiError::LzxDecompressionFailed`] if bitstream or block format is invalid.
     #[allow(
         clippy::too_many_lines,
         clippy::cast_possible_truncation,
@@ -1000,8 +1005,7 @@ impl LzxState {
                 let len = (usize::from(len_high) << 16) | usize::from(len_low);
 
                 if len != expected_uncomp_len {
-                    return Err(MsiError::DecompressionFailed {
-                        method: "LZX".to_string(),
+                    return Err(MsiError::LzxDecompressionFailed {
                         reason: format!(
                             "uncompressed block length {len} != expected {expected_uncomp_len}"
                         ),
@@ -1033,8 +1037,7 @@ impl LzxState {
                 let uncomp_len = (usize::from(len_high) << 16) | usize::from(len_low);
 
                 if uncomp_len != expected_uncomp_len {
-                    return Err(MsiError::DecompressionFailed {
-                        method: "LZX".to_string(),
+                    return Err(MsiError::LzxDecompressionFailed {
                         reason: format!(
                             "block length {uncomp_len} != expected {expected_uncomp_len}"
                         ),
@@ -1133,8 +1136,7 @@ impl LzxState {
                         };
 
                         if offset == 0 || offset > self.window_size {
-                            return Err(MsiError::DecompressionFailed {
-                                method: "LZX".to_string(),
+                            return Err(MsiError::LzxDecompressionFailed {
                                 reason: format!("invalid match offset {offset}"),
                             });
                         }
@@ -1155,8 +1157,7 @@ impl LzxState {
                 decomp_bytes
             }
             _ => {
-                return Err(MsiError::DecompressionFailed {
-                    method: "LZX".to_string(),
+                return Err(MsiError::LzxDecompressionFailed {
                     reason: format!("unsupported LZX block type {block_type}"),
                 });
             }
@@ -1198,6 +1199,14 @@ pub struct LzxBitReader<'a> {
 
 impl<'a> LzxBitReader<'a> {
     /// Creates a new [`LzxBitReader`].
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn new(bytes: &'a [u8]) -> Self {
         Self {
@@ -1212,7 +1221,11 @@ impl<'a> LzxBitReader<'a> {
     ///
     /// # Errors
     ///
-    /// Returns [`MsiError::DecompressionFailed`] if bitstream ends prematurely.
+    /// Returns [`MsiError::LzxDecompressionFailed`] if bitstream ends prematurely.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::cast_possible_truncation)]
     pub fn read_bit(&mut self) -> Result<u8> {
         self.read_bits(1).map(|v| v as u8)
@@ -1222,7 +1235,15 @@ impl<'a> LzxBitReader<'a> {
     ///
     /// # Errors
     ///
-    /// Returns [`MsiError::DecompressionFailed`] if bitstream ends prematurely.
+    /// Returns [`MsiError::LzxDecompressionFailed`] if bitstream ends prematurely.
+    ///
+    /// # Arguments
+    ///
+    /// * `n` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::cast_possible_truncation)]
     pub fn read_bits(&mut self, n: u8) -> Result<u16> {
         while self.bits_count < n {
@@ -1233,8 +1254,7 @@ impl<'a> LzxBitReader<'a> {
                     self.bit_buffer |= u32::from(byte) << self.bits_count;
                     self.bits_count += 8;
                 } else {
-                    return Err(MsiError::DecompressionFailed {
-                        method: "LZX".to_string(),
+                    return Err(MsiError::LzxDecompressionFailed {
                         reason: "unexpected end of LZX bitstream".to_string(),
                     });
                 }
@@ -1248,8 +1268,7 @@ impl<'a> LzxBitReader<'a> {
         }
 
         if self.bits_count < n {
-            return Err(MsiError::DecompressionFailed {
-                method: "LZX".to_string(),
+            return Err(MsiError::LzxDecompressionFailed {
                 reason: "insufficient bits in LZX bitstream".to_string(),
             });
         }
@@ -1272,15 +1291,22 @@ impl<'a> LzxBitReader<'a> {
     ///
     /// # Errors
     ///
-    /// Returns [`MsiError::DecompressionFailed`] if literal stream is truncated.
+    /// Returns [`MsiError::LzxDecompressionFailed`] if literal stream is truncated.
+    ///
+    /// # Arguments
+    ///
+    /// * `len` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn read_bytes(&mut self, len: usize) -> Result<&'a [u8]> {
         self.align_to_16();
         let words_in_buf = (self.bits_count / 8) as usize;
         let start = self.cursor - words_in_buf;
         let end = start + len;
         if end > self.bytes.len() {
-            return Err(MsiError::DecompressionFailed {
-                method: "LZX".to_string(),
+            return Err(MsiError::LzxDecompressionFailed {
                 reason: "unexpected end of LZX literal byte stream".to_string(),
             });
         }
@@ -1307,12 +1333,21 @@ pub struct LzxBitWriter {
 
 impl LzxBitWriter {
     /// Creates a new [`LzxBitWriter`].
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Writes `n` bits to the word-aligned stream (LSB first).
+    ///
+    /// # Arguments
+    ///
+    /// * `val` - TODO: Document argument.
+    /// * `n` - TODO: Document argument.
     #[allow(clippy::cast_possible_truncation)]
     pub fn write_bits(&mut self, val: u16, n: u8) {
         self.bit_buffer |= u32::from(val) << self.bits_count;
@@ -1327,6 +1362,11 @@ impl LzxBitWriter {
     }
 
     /// Writes a Huffman code MSB-first into the bitstream.
+    ///
+    /// # Arguments
+    ///
+    /// * `val` - TODO: Document argument.
+    /// * `n` - TODO: Document argument.
     pub fn write_bits_msb(&mut self, val: u16, n: u8) {
         for bit_idx in (0..n).rev() {
             let b = (val >> bit_idx) & 1;
@@ -1346,6 +1386,10 @@ impl LzxBitWriter {
     }
 
     /// Consumes the writer and returns the output bytes aligned to 16 bits.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn into_bytes(mut self) -> Vec<u8> {
         self.align_to_16();
@@ -1434,6 +1478,10 @@ mod tests {
     }
 
     /// Tests canonical Huffman tree construction and decoding.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[test]
     fn test_huffman_tree_roundtrip() -> Result<()> {
         let lengths = [2, 1, 3, 3]; // Alphabet of 4 symbols
@@ -1468,6 +1516,10 @@ mod tests {
     }
 
     /// Tests LZX Type 1 (Verbatim) compression and decompression roundtrip.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[test]
     fn test_lzx_verbatim_roundtrip() -> Result<()> {
         let mut state = LzxState::new(16)?;
@@ -1484,6 +1536,10 @@ mod tests {
     }
 
     /// Tests LZX Type 2 (Aligned) block decompression with long match lengths (>= 9) and repeat offsets.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[test]
     fn test_lzx_aligned_and_secondary_lengths() -> Result<()> {
         let mut state = LzxState::new(16)?;
@@ -1535,6 +1591,10 @@ mod tests {
     }
 
     /// Tests LZX Type 3 (Uncompressed) compression and decompression roundtrip.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[test]
     fn test_lzx_uncompressed_roundtrip() -> Result<()> {
         let mut state = LzxState::new(16)?;
@@ -1551,6 +1611,10 @@ mod tests {
     }
 
     /// Tests LZX adaptive block compression selecting verbatim vs uncompressed.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[test]
     fn test_lzx_adaptive_roundtrip() -> Result<()> {
         let mut state = LzxState::new(15)?;
@@ -1573,6 +1637,10 @@ mod tests {
     }
 
     /// Tests LZX error handling and bit reader edge cases.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[test]
     fn test_lzx_errors() -> Result<()> {
         let mut state = LzxState::new(15)?;
@@ -1761,6 +1829,10 @@ mod tests {
     }
 
     /// Tests RLE decoding symbols (17, 18, 19) in `decode_tree_lengths`.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[test]
     fn test_decode_tree_lengths_rle() -> Result<()> {
         let mut pre_lengths = [0u8; LZX_PRE_TREE_NUM_SYMBOLS];
@@ -1814,6 +1886,10 @@ mod tests {
     }
 
     /// Tests LZX repeat offset matches (R1 and R2), consecutive block compression, and fallback.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[test]
     fn test_lzx_repeat_offsets_and_consecutive_blocks() -> Result<()> {
         let mut state = LzxState::new(15)?;
@@ -1867,6 +1943,10 @@ mod tests {
     }
 
     /// Tests backward search match reaching [`LZX_MAX_MATCH`].
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[test]
     fn test_lzx_backward_match_max_length() -> Result<()> {
         let mut state = LzxState::new(15)?;
@@ -1898,6 +1978,10 @@ mod tests {
     }
 
     /// Tests Type 2 (Aligned) block decoding and match offset validation.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[test]
     fn test_lzx_type2_aligned_decoding_and_invalid_offsets() -> Result<()> {
         let mut writer = LzxBitWriter::new();
@@ -1992,6 +2076,10 @@ mod tests {
     }
 
     /// Tests decompressing truncated LZX Type 3 (Uncompressed) blocks to exercise bitstream exhaustion error branches.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[test]
     fn test_decompress_uncompressed_block_truncated_headers() -> Result<()> {
         let mut state = LzxState::new(15)?;
@@ -2026,6 +2114,10 @@ mod tests {
     }
 
     /// Tests `decode_tree_lengths` with truncated input streams during RLE symbol decoding.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[test]
     fn test_decode_tree_lengths_truncated_rle() -> Result<()> {
         let mut pre_lengths = [0u8; LZX_PRE_TREE_NUM_SYMBOLS];
@@ -2043,6 +2135,10 @@ mod tests {
     }
 
     /// Tests remaining LZX branches: window bits bounds, block size limits, E8 translation edges, and repeat offset swaps.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[test]
     fn test_lzx_remaining_uncovered_branches() -> Result<()> {
         // 1. Invalid window bits

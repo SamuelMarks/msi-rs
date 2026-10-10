@@ -20,6 +20,14 @@ pub const IPC_FRAME_MAGIC: [u8; 6] = [b'M', b'S', b'I', b'P', b'C', 0x01];
 pub const IPC_FRAME_HEADER_SIZE: usize = 14;
 
 /// Computes the standard IEEE 802.3 CRC32 checksum over the given byte slice.
+///
+/// # Arguments
+///
+/// * `bytes` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 #[must_use]
 pub fn compute_crc32(bytes: &[u8]) -> u32 {
     let mut crc = 0xFFFF_FFFF_u32;
@@ -212,6 +220,10 @@ pub enum WorkerMessage {
 
 impl Default for WorkerMessage {
     /// Constructs a default [`WorkerMessage`].
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn default() -> Self {
         Self::ProgressUpdate {
             current: 0,
@@ -399,6 +411,15 @@ impl WorkerMessage {
 }
 
 /// Helper reading a 32-bit big-endian unsigned integer from slice.
+///
+/// # Arguments
+///
+/// * `bytes` - TODO: Document argument.
+/// * `offset` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn read_u32(bytes: &[u8], offset: &mut usize) -> Result<u32> {
     if *offset + 4 > bytes.len() {
         return Err(MsiError::WorkerIpcError {
@@ -412,6 +433,15 @@ fn read_u32(bytes: &[u8], offset: &mut usize) -> Result<u32> {
 }
 
 /// Helper reading a 32-bit big-endian signed integer from slice.
+///
+/// # Arguments
+///
+/// * `bytes` - TODO: Document argument.
+/// * `offset` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn read_i32(bytes: &[u8], offset: &mut usize) -> Result<i32> {
     if *offset + 4 > bytes.len() {
         return Err(MsiError::WorkerIpcError {
@@ -425,6 +455,16 @@ fn read_i32(bytes: &[u8], offset: &mut usize) -> Result<i32> {
 }
 
 /// Helper reading a subslice of bytes.
+///
+/// # Arguments
+///
+/// * `bytes` - TODO: Document argument.
+/// * `offset` - TODO: Document argument.
+/// * `len` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn read_slice(bytes: &[u8], offset: &mut usize, len: usize) -> Result<Vec<u8>> {
     if *offset + len > bytes.len() {
         return Err(MsiError::WorkerIpcError {
@@ -462,6 +502,15 @@ impl IpcSocketEndpoint {
     }
 
     /// Internal helper allowing testing of both Windows named pipe and Unix domain socket formats.
+    ///
+    /// # Arguments
+    ///
+    /// * `guid` - TODO: Document argument.
+    /// * `is_windows` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn socket_path_for(guid: &str, is_windows: bool) -> String {
         if is_windows {
@@ -496,6 +545,16 @@ pub fn handle_ipc_stream<R: Read, W: Write>(
 }
 
 /// Internal non-generic IPC stream handler.
+///
+/// # Arguments
+///
+/// * `reader` - TODO: Document argument.
+/// * `writer` - TODO: Document argument.
+/// * `executor` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn handle_ipc_stream_internal(
     reader: &mut dyn Read,
     writer: &mut dyn Write,
@@ -509,7 +568,11 @@ fn handle_ipc_stream_internal(
             Ok(0) => break,
             Ok(n) => n,
             Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(e) => return Err(MsiError::Io(format!("Worker socket read error: {e}"))),
+            Err(e) => {
+                return Err(MsiError::Io(crate::error::IoContext::from_string(format!(
+                    "Worker socket read error: {e}"
+                ))))
+            }
         };
         buffer.extend_from_slice(&chunk[..bytes_read]);
 

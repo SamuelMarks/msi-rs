@@ -103,6 +103,20 @@ impl SqlDatabaseRow {
     }
 
     /// Validates concrete parameters and creates a new [`SqlDatabaseRow`].
+    ///
+    /// # Arguments
+    ///
+    /// * `sql_database` - Appropriate argument value.
+    /// * `server` - Appropriate argument value.
+    /// * `instance` - Appropriate argument value.
+    /// * `database` - Appropriate argument value.
+    /// * `component` - Appropriate argument value.
+    /// * `user` - Appropriate argument value.
+    /// * `attributes` - Appropriate argument value.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     fn new_impl(
         sql_database: String,
         server: String,
@@ -344,6 +358,19 @@ impl SqlStringRow {
     }
 
     /// Validates concrete parameters and creates a new [`SqlStringRow`].
+    ///
+    /// # Arguments
+    ///
+    /// * `sql_string` - Appropriate argument value.
+    /// * `sql_database` - Appropriate argument value.
+    /// * `sql` - Appropriate argument value.
+    /// * `user` - Appropriate argument value.
+    /// * `attributes` - Appropriate argument value.
+    /// * `sequence` - Appropriate argument value.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     fn new_impl(
         sql_string: String,
         sql_database: String,
@@ -573,6 +600,20 @@ impl SqlScriptRow {
     }
 
     /// Validates concrete parameters and creates a new [`SqlScriptRow`].
+    ///
+    /// # Arguments
+    ///
+    /// * `sql_script` - Appropriate argument value.
+    /// * `sql_database` - Appropriate argument value.
+    /// * `component` - Appropriate argument value.
+    /// * `script_file` - Appropriate argument value.
+    /// * `user` - Appropriate argument value.
+    /// * `attributes` - Appropriate argument value.
+    /// * `sequence` - Appropriate argument value.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     fn new_impl(
         sql_script: String,
         sql_database: String,

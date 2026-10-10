@@ -82,7 +82,7 @@ mod tests {
     #[test]
     fn test_create_shortcut() {
         let provider = FreeBsdProvider;
-        let temp_dir = tempfile::tempdir().unwrap();
+        let temp_dir = tempfile::tempdir().expect("test");
         let target = temp_dir.path().join("target");
         let shortcut = temp_dir.path().join("shortcut.desktop");
 

@@ -23,6 +23,8 @@ pub struct MsiPackageHandle {
 pub struct MsiDatabaseHandle {
     /// Inner linked database instance.
     pub inner: msi::wix::linker::LinkedDatabase,
+    /// Persistence state (e.g. `MSIDBSTATE_READ`, `MSIDBSTATE_WRITE`).
+    pub state: i32,
 }
 
 /// Opaque wrapper for a relational database record.
@@ -68,6 +70,7 @@ pub struct MsiBufferHandle {
 ///
 /// `handle` must be a valid pointer obtained from `msi_package_builder_create`, or NULL.
 #[no_mangle]
+#[inline(always)]
 pub unsafe extern "C" fn msi_package_builder_destroy(handle: *mut MsiPackageBuilderHandle) {
     unsafe {
         if !handle.is_null() {
@@ -88,6 +91,7 @@ pub unsafe extern "C" fn msi_package_builder_destroy(handle: *mut MsiPackageBuil
 ///
 /// `handle` must be a valid pointer obtained from `msi_package_builder_build` or `msi_package_open`, or NULL.
 #[no_mangle]
+#[inline(always)]
 pub unsafe extern "C" fn msi_package_destroy(handle: *mut MsiPackageHandle) {
     unsafe {
         if !handle.is_null() {
@@ -108,6 +112,7 @@ pub unsafe extern "C" fn msi_package_destroy(handle: *mut MsiPackageHandle) {
 ///
 /// `handle` must be a valid pointer obtained from the library, or NULL.
 #[no_mangle]
+#[inline(always)]
 pub unsafe extern "C" fn msi_database_destroy(handle: *mut MsiDatabaseHandle) {
     unsafe {
         if !handle.is_null() {
@@ -128,6 +133,7 @@ pub unsafe extern "C" fn msi_database_destroy(handle: *mut MsiDatabaseHandle) {
 ///
 /// `handle` must be a valid pointer obtained from the library, or NULL.
 #[no_mangle]
+#[inline(always)]
 pub unsafe extern "C" fn msi_record_destroy(handle: *mut MsiRecordHandle) {
     unsafe {
         if !handle.is_null() {
@@ -148,6 +154,7 @@ pub unsafe extern "C" fn msi_record_destroy(handle: *mut MsiRecordHandle) {
 ///
 /// `handle` must be a valid pointer obtained from the library, or NULL.
 #[no_mangle]
+#[inline(always)]
 pub unsafe extern "C" fn msi_summary_info_destroy(handle: *mut MsiSummaryInfoHandle) {
     unsafe {
         if !handle.is_null() {
@@ -168,6 +175,7 @@ pub unsafe extern "C" fn msi_summary_info_destroy(handle: *mut MsiSummaryInfoHan
 ///
 /// `handle` must be a valid pointer obtained from `msi_begin_transaction`, or NULL.
 #[no_mangle]
+#[inline(always)]
 pub unsafe extern "C" fn msi_transaction_destroy(handle: *mut MsiTransactionHandle) {
     unsafe {
         if !handle.is_null() {
@@ -188,6 +196,7 @@ pub unsafe extern "C" fn msi_transaction_destroy(handle: *mut MsiTransactionHand
 ///
 /// `ptr` must be a pointer allocated by `CString::into_raw` or NULL.
 #[no_mangle]
+#[inline(always)]
 pub unsafe extern "C" fn msi_string_free(ptr: *mut c_char) {
     unsafe {
         if !ptr.is_null() {
@@ -209,6 +218,7 @@ pub unsafe extern "C" fn msi_string_free(ptr: *mut c_char) {
 ///
 /// `ptr` must be a buffer allocated via `Vec::into_raw_parts` or `Box::into_raw` of a slice of length `len`.
 #[no_mangle]
+#[inline(always)]
 pub unsafe extern "C" fn msi_buffer_free(ptr: *mut u8, len: usize) {
     unsafe {
         if !ptr.is_null() && len > 0 {
@@ -270,6 +280,7 @@ mod tests {
 
         let db = Box::into_raw(Box::new(MsiDatabaseHandle {
             inner: msi::wix::linker::LinkedDatabase::default(),
+            state: 0,
         }));
         // SAFETY: db is a valid heap allocation from Box::into_raw.
         unsafe {
@@ -338,6 +349,7 @@ mod tests {
 
         let db = MsiDatabaseHandle {
             inner: msi::wix::linker::LinkedDatabase::default(),
+            state: 0,
         };
         assert_ne!(format!("{db:?}"), "");
 
@@ -377,6 +389,8 @@ pub struct MsiViewHandle {
     pub query: String,
     /// Records fetched by `MsiViewExecute` but not yet retrieved by `MsiViewFetch`.
     pub fetched_records: std::collections::VecDeque<msi::database::tables::record::Record>,
+    /// The name of the column that caused the last validation error.
+    pub last_error_column: Option<String>,
 }
 
 /// Opaque wrapper for a headless UI preview session.

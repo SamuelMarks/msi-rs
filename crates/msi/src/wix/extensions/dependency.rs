@@ -23,6 +23,10 @@ pub struct DependencyExtension;
 
 impl DependencyExtension {
     /// Creates a new `DependencyExtension` instance.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn new() -> Self {
         Self
@@ -33,6 +37,17 @@ impl DependencyExtension {
     /// # Errors
     ///
     /// Returns [`MsiError::WixCompiler`] if required attributes are missing.
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn compile_provides(
         node: &XmlNode,
         parent_id: Option<&str>,
@@ -67,6 +82,17 @@ impl DependencyExtension {
     /// # Errors
     ///
     /// Returns [`MsiError::WixCompiler`] if required attributes are missing.
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn compile_requires(
         node: &XmlNode,
         parent_id: Option<&str>,

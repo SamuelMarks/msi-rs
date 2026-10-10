@@ -301,6 +301,10 @@ pub struct BurnCompiler;
 
 impl BurnCompiler {
     /// Creates a new [`BurnCompiler`].
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn new() -> Self {
         Self
@@ -349,6 +353,10 @@ pub struct BurnLinker;
 
 impl BurnLinker {
     /// Creates a new [`BurnLinker`].
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn new() -> Self {
         Self
@@ -484,6 +492,10 @@ pub struct BurnEngine;
 
 impl BurnEngine {
     /// Creates a new [`BurnEngine`].
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn new() -> Self {
         Self

@@ -19,8 +19,10 @@ const ERROR_NO_MORE_ITEMS: Uint = 259;
 const INSTALLSTATE_UNKNOWN: i32 = -1;
 
 /// Enumerates through all the products currently advertised or installed (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiEnumProductsW(
     iProductIndex: Dword,
     lpProductBuf: Lpwstr, // 39 characters for GUID
@@ -38,8 +40,10 @@ pub extern "system" fn MsiEnumProductsW(
 }
 
 /// Enumerates through all the products currently advertised or installed (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiEnumProductsA(
     iProductIndex: Dword,
     lpProductBuf: Lpstr, // 39 characters for GUID
@@ -57,8 +61,10 @@ pub extern "system" fn MsiEnumProductsA(
 }
 
 /// Enumerates the published features for a given product (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiEnumFeaturesW(
     szProduct: Lpcwstr,
     iFeatureIndex: Dword,
@@ -76,8 +82,10 @@ pub extern "system" fn MsiEnumFeaturesW(
 }
 
 /// Enumerates the published features for a given product (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiEnumFeaturesA(
     szProduct: Lpcstr,
     iFeatureIndex: Dword,
@@ -95,8 +103,10 @@ pub extern "system" fn MsiEnumFeaturesA(
 }
 
 /// Enumerates the installed components (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiEnumComponentsW(
     iComponentIndex: Dword,
     lpComponentBuf: Lpwstr, // 39 chars GUID
@@ -112,8 +122,10 @@ pub extern "system" fn MsiEnumComponentsW(
 }
 
 /// Enumerates the installed components (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiEnumComponentsA(
     iComponentIndex: Dword,
     lpComponentBuf: Lpstr, // 39 chars GUID
@@ -129,8 +141,10 @@ pub extern "system" fn MsiEnumComponentsA(
 }
 
 /// Returns the installed state for a product (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiQueryProductStateW(szProduct: Lpcwstr) -> i32 {
     let result = panic::catch_unwind(|| {
         if szProduct.is_null() {
@@ -143,8 +157,10 @@ pub extern "system" fn MsiQueryProductStateW(szProduct: Lpcwstr) -> i32 {
 }
 
 /// Returns the installed state for a product (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiQueryProductStateA(szProduct: Lpcstr) -> i32 {
     let result = panic::catch_unwind(|| {
         if szProduct.is_null() {
@@ -157,8 +173,10 @@ pub extern "system" fn MsiQueryProductStateA(szProduct: Lpcstr) -> i32 {
 }
 
 /// Returns the installed state for a product feature (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiQueryFeatureStateW(szProduct: Lpcwstr, szFeature: Lpcwstr) -> i32 {
     let result = panic::catch_unwind(|| {
         if szProduct.is_null() || szFeature.is_null() {
@@ -171,8 +189,10 @@ pub extern "system" fn MsiQueryFeatureStateW(szProduct: Lpcwstr, szFeature: Lpcw
 }
 
 /// Returns the installed state for a product feature (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiQueryFeatureStateA(szProduct: Lpcstr, szFeature: Lpcstr) -> i32 {
     let result = panic::catch_unwind(|| {
         if szProduct.is_null() || szFeature.is_null() {
@@ -185,8 +205,10 @@ pub extern "system" fn MsiQueryFeatureStateA(szProduct: Lpcstr, szFeature: Lpcst
 }
 
 /// Returns product information (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetProductInfoW(
     szProduct: Lpcwstr,
     szAttribute: Lpcwstr,
@@ -205,8 +227,10 @@ pub extern "system" fn MsiGetProductInfoW(
 }
 
 /// Returns product information (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetProductInfoA(
     szProduct: Lpcstr,
     szAttribute: Lpcstr,
@@ -224,8 +248,10 @@ pub extern "system" fn MsiGetProductInfoA(
 }
 
 /// Enumerates the clients for a given component (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiEnumClientsW(
     szComponent: Lpcwstr,
     iProductIndex: Dword,
@@ -241,8 +267,10 @@ pub extern "system" fn MsiEnumClientsW(
 }
 
 /// Enumerates the clients for a given component (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiEnumClientsA(
     szComponent: Lpcstr,
     iProductIndex: Dword,
@@ -258,8 +286,10 @@ pub extern "system" fn MsiEnumClientsA(
 }
 
 /// Enumerates the clients for a given component with advanced options (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiEnumClientsExW(
     szComponent: Lpcwstr,
     szUserSid: Lpcwstr,
@@ -280,8 +310,10 @@ pub extern "system" fn MsiEnumClientsExW(
 }
 
 /// Enumerates the clients for a given component with advanced options (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiEnumClientsExA(
     szComponent: Lpcstr,
     szUserSid: Lpcstr,
@@ -302,8 +334,10 @@ pub extern "system" fn MsiEnumClientsExA(
 }
 
 /// Enumerates the qualifiers for a given component (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiEnumComponentQualifiersW(
     szComponent: Lpcwstr,
     iIndex: Dword,
@@ -322,8 +356,10 @@ pub extern "system" fn MsiEnumComponentQualifiersW(
 }
 
 /// Enumerates the qualifiers for a given component (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiEnumComponentQualifiersA(
     szComponent: Lpcstr,
     iIndex: Dword,
@@ -342,8 +378,10 @@ pub extern "system" fn MsiEnumComponentQualifiersA(
 }
 
 /// Enumerates the patches for a given product (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiEnumPatchesW(
     szProduct: Lpcwstr,
     iPatchIndex: Dword,
@@ -361,8 +399,10 @@ pub extern "system" fn MsiEnumPatchesW(
 }
 
 /// Enumerates the patches for a given product (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiEnumPatchesA(
     szProduct: Lpcstr,
     iPatchIndex: Dword,
@@ -380,8 +420,10 @@ pub extern "system" fn MsiEnumPatchesA(
 }
 
 /// Enumerates the patches with advanced options (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiEnumPatchesExW(
     szProductCode: Lpcwstr,
     szUserSid: Lpcwstr,
@@ -404,8 +446,10 @@ pub extern "system" fn MsiEnumPatchesExW(
 }
 
 /// Enumerates the patches with advanced options (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiEnumPatchesExA(
     szProductCode: Lpcstr,
     szUserSid: Lpcstr,
@@ -428,8 +472,10 @@ pub extern "system" fn MsiEnumPatchesExA(
 }
 
 /// Enumerates the related products (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiEnumRelatedProductsW(
     szUpgradeCode: Lpcwstr,
     dwReserved: Dword,
@@ -446,8 +492,10 @@ pub extern "system" fn MsiEnumRelatedProductsW(
 }
 
 /// Enumerates the related products (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiEnumRelatedProductsA(
     szUpgradeCode: Lpcstr,
     dwReserved: Dword,
@@ -464,8 +512,10 @@ pub extern "system" fn MsiEnumRelatedProductsA(
 }
 
 /// Enumerates the products with advanced options (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiEnumProductsExW(
     szProductCode: Lpcwstr,
     szUserSid: Lpcwstr,
@@ -481,8 +531,10 @@ pub extern "system" fn MsiEnumProductsExW(
 }
 
 /// Enumerates the products with advanced options (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiEnumProductsExA(
     szProductCode: Lpcstr,
     szUserSid: Lpcstr,
@@ -498,8 +550,10 @@ pub extern "system" fn MsiEnumProductsExA(
 }
 
 /// Enumerates the components with advanced options (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiEnumComponentsExW(
     szComponentCode: Lpcwstr,
     dwContext: Dword,
@@ -514,8 +568,10 @@ pub extern "system" fn MsiEnumComponentsExW(
 }
 
 /// Enumerates the components with advanced options (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiEnumComponentsExA(
     szComponentCode: Lpcstr,
     dwContext: Dword,
@@ -530,8 +586,10 @@ pub extern "system" fn MsiEnumComponentsExA(
 }
 
 /// Advanced feature state check (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiQueryFeatureStateExW(
     szProductCode: Lpcwstr,
     szUserSid: Lpcwstr,
@@ -549,8 +607,10 @@ pub extern "system" fn MsiQueryFeatureStateExW(
 }
 
 /// Advanced feature state check (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiQueryFeatureStateExA(
     szProductCode: Lpcstr,
     szUserSid: Lpcstr,
@@ -568,8 +628,10 @@ pub extern "system" fn MsiQueryFeatureStateExA(
 }
 
 /// Get current and action state for component (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetComponentStateW(
     hInstall: MsiHandle,
     szComponent: Lpcwstr,
@@ -586,8 +648,10 @@ pub extern "system" fn MsiGetComponentStateW(
 }
 
 /// Get current and action state for component (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetComponentStateA(
     hInstall: MsiHandle,
     szComponent: Lpcstr,
@@ -604,8 +668,10 @@ pub extern "system" fn MsiGetComponentStateA(
 }
 
 /// Get current and action state for feature (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetFeatureStateW(
     hInstall: MsiHandle,
     szFeature: Lpcwstr,
@@ -622,8 +688,10 @@ pub extern "system" fn MsiGetFeatureStateW(
 }
 
 /// Get current and action state for feature (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetFeatureStateA(
     hInstall: MsiHandle,
     szFeature: Lpcstr,
@@ -640,8 +708,10 @@ pub extern "system" fn MsiGetFeatureStateA(
 }
 
 /// Locate component file path (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetComponentPathExW(
     szProductCode: Lpcwstr,
     szComponentCode: Lpcwstr,
@@ -660,8 +730,10 @@ pub extern "system" fn MsiGetComponentPathExW(
 }
 
 /// Locate component file path (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetComponentPathExA(
     szProductCode: Lpcstr,
     szComponentCode: Lpcstr,
@@ -680,8 +752,10 @@ pub extern "system" fn MsiGetComponentPathExA(
 }
 
 /// Locate component file path for the current user (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetComponentPathW(
     szProduct: Lpcwstr,
     szComponent: Lpcwstr,
@@ -698,8 +772,10 @@ pub extern "system" fn MsiGetComponentPathW(
 }
 
 /// Locate component file path for the current user (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetComponentPathA(
     szProduct: Lpcstr,
     szComponent: Lpcstr,
@@ -716,8 +792,10 @@ pub extern "system" fn MsiGetComponentPathA(
 }
 
 /// Retrieve valid installation states for feature (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetFeatureValidStatesW(
     hInstall: MsiHandle,
     szFeature: Lpcwstr,
@@ -733,8 +811,10 @@ pub extern "system" fn MsiGetFeatureValidStatesW(
 }
 
 /// Retrieve valid installation states for feature (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetFeatureValidStatesA(
     hInstall: MsiHandle,
     szFeature: Lpcstr,
@@ -750,8 +830,10 @@ pub extern "system" fn MsiGetFeatureValidStatesA(
 }
 
 /// Calculate feature disk cost (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetFeatureCostW(
     hInstall: MsiHandle,
     szFeature: Lpcwstr,
@@ -769,8 +851,10 @@ pub extern "system" fn MsiGetFeatureCostW(
 }
 
 /// Calculate feature disk cost (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetFeatureCostA(
     hInstall: MsiHandle,
     szFeature: Lpcstr,
@@ -788,8 +872,10 @@ pub extern "system" fn MsiGetFeatureCostA(
 }
 
 /// Enumerate drive costs for component (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiEnumComponentCostsW(
     hInstall: MsiHandle,
     szComponent: Lpcwstr,
@@ -810,8 +896,10 @@ pub extern "system" fn MsiEnumComponentCostsW(
 }
 
 /// Enumerate drive costs for component (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiEnumComponentCostsA(
     hInstall: MsiHandle,
     szComponent: Lpcstr,
@@ -832,8 +920,10 @@ pub extern "system" fn MsiEnumComponentCostsA(
 }
 
 /// Parse MSI component descriptor (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiDecomposeDescriptorW(
     szDescriptor: Lpcwstr,
     szProductCode: Lpwstr,
@@ -851,8 +941,10 @@ pub extern "system" fn MsiDecomposeDescriptorW(
 }
 
 /// Parse MSI component descriptor (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiDecomposeDescriptorA(
     szDescriptor: Lpcstr,
     szProductCode: Lpstr,
@@ -870,8 +962,10 @@ pub extern "system" fn MsiDecomposeDescriptorA(
 }
 
 /// Extract PE file version (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetFileVersionW(
     szFilePath: Lpcwstr,
     szVersionPath: Lpwstr,
@@ -889,8 +983,10 @@ pub extern "system" fn MsiGetFileVersionW(
 }
 
 /// Extract PE file version (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetFileVersionA(
     szFilePath: Lpcstr,
     szVersionPath: Lpstr,
@@ -908,8 +1004,10 @@ pub extern "system" fn MsiGetFileVersionA(
 }
 
 /// Obtains user information for a product (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiCollectUserInfoW(szProduct: Lpcwstr) -> Uint {
     let result = panic::catch_unwind(|| {
         if szProduct.is_null() {
@@ -921,8 +1019,10 @@ pub extern "system" fn MsiCollectUserInfoW(szProduct: Lpcwstr) -> Uint {
 }
 
 /// Obtains user information for a product (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiCollectUserInfoA(szProduct: Lpcstr) -> Uint {
     let result = panic::catch_unwind(|| {
         if szProduct.is_null() {
@@ -934,8 +1034,10 @@ pub extern "system" fn MsiCollectUserInfoA(szProduct: Lpcstr) -> Uint {
 }
 
 /// Retrieves registered user information (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetUserInfoW(
     szProduct: Lpcwstr,
     lpUserNameBuf: Lpwstr,
@@ -955,8 +1057,10 @@ pub extern "system" fn MsiGetUserInfoW(
 }
 
 /// Retrieves registered user information (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetUserInfoA(
     szProduct: Lpcstr,
     lpUserNameBuf: Lpstr,
@@ -976,7 +1080,8 @@ pub extern "system" fn MsiGetUserInfoA(
 }
 
 /// Internal shim for migrating cached packages (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 /// Migrates cached packages from Windows Installer 1.0 format.
 ///
@@ -990,6 +1095,7 @@ pub extern "system" fn MsiGetUserInfoA(
 ///
 /// # Returns
 /// `ERROR_SUCCESS`.
+#[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn Migrate10CachedPackagesW(
     szProductCode: Lpcwstr,
     szUserSid: Lpcwstr,
@@ -2222,6 +2328,44 @@ mod tests {
         assert_eq!(
             Migrate10CachedPackagesW(std::ptr::null(), std::ptr::null(), std::ptr::null(), 0),
             ERROR_SUCCESS
+        );
+    }
+}
+
+/// (Stub) Legacy cached packages migration.
+///
+/// # Arguments
+///
+/// * `_szProductCode` - Pointer to a string specifying the product code.
+/// * `_szUserSid` - Pointer to a string specifying the user name.
+/// * `_szPreflightCheck` - Reserved.
+/// * `_dwReserved` - Reserved.
+///
+/// # Returns
+///
+/// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
+#[allow(non_snake_case)]
+#[allow(clippy::missing_const_for_fn)]
+pub extern "system" fn Migrate10CachedPackagesA(
+    _szProductCode: Lpcstr,
+    _szUserSid: Lpcstr,
+    _szPreflightCheck: Lpcstr,
+    _dwReserved: Dword,
+) -> Uint {
+    1605 // ERROR_UNKNOWN_PRODUCT
+}
+
+#[cfg(test)]
+mod additional_stubs_tests {
+    use super::*;
+
+    #[test]
+    fn test_stubs_impl() {
+        assert_eq!(
+            Migrate10CachedPackagesA(std::ptr::null(), std::ptr::null(), std::ptr::null(), 0),
+            1605
         );
     }
 }

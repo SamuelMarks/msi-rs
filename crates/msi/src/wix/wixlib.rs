@@ -259,6 +259,10 @@ impl WixLibrary {
     /// # Errors
     ///
     /// Returns [`MsiError::Io`] on filesystem write failure.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn save(&self, path: &Path) -> Result<()> {
         let bytes = self.to_bytes();
         fs::write(path, bytes)?;

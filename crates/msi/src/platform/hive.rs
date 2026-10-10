@@ -286,6 +286,11 @@ impl OfflineRegistryHive {
     }
 
     /// Internal cell scanner searching for `nk` (key) and `vk` (value) records.
+    ///
+    /// # Arguments
+    ///
+    /// * `bin_data` - TODO: Document argument.
+    /// * `hive` - TODO: Document argument.
     fn parse_bin_cells(bin_data: &[u8], hive: &mut Self) {
         let mut pos = 0;
         while pos + 8 <= bin_data.len() {
@@ -403,6 +408,10 @@ impl OfflineRegistryHive {
     /// # Errors
     ///
     /// Returns [`MsiError::RegistryHiveError`] if writing fails.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn save_to_file(&self, destination: &Path) -> Result<()> {
         if let Some(parent) = destination.parent() {
             std::fs::create_dir_all(parent).map_err(|e| MsiError::RegistryHiveError {
@@ -471,6 +480,10 @@ impl OfflineHiveStore {
     /// # Errors
     ///
     /// Returns [`MsiError::RegistryHiveError`] if saving any hive fails.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn flush_all(&self) -> Result<()> {
         if let Some(ref path) = self.system_hive.path {
             self.system_hive.save_to_file(path)?;

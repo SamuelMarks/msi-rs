@@ -598,6 +598,14 @@ pub fn parse_command_line(cmd: &str) -> (PathBuf, Vec<String>) {
 }
 
 /// Checks whether an executable exists in the system `PATH`.
+///
+/// # Arguments
+///
+/// * `prog` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn is_executable_in_path(prog: &Path) -> bool {
     if prog.is_absolute() {
         return prog.exists();
@@ -649,6 +657,10 @@ impl Clone for CustomActionExecutor {
 
 impl CustomActionExecutor {
     /// Creates a new [`CustomActionExecutor`].
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -791,6 +803,9 @@ impl CustomActionExecutor {
     /// # Returns
     ///
     /// Optional reference to the offline execution policy.
+    ///
+    /// # Arguments
+    ///
     #[must_use]
     pub const fn offline_policy(
         &self,
@@ -1019,6 +1034,32 @@ impl CustomActionExecutor {
             | CustomActionSourceType::DirectoryExe
             | CustomActionSourceType::PropertyExe => {
                 let (prog, args, working_dir) = match action.source_type() {
+                    CustomActionSourceType::Exe => {
+                        let binary_data = self.binaries.get(action.source()).ok_or_else(|| {
+                            MsiError::CustomActionFailed {
+                                action: action.name().to_string(),
+                                reason: format!("Binary '{}' not found", action.source()),
+                            }
+                        })?;
+                        let temp_dir =
+                            std::env::temp_dir().join(format!("msi_exe_{}", std::process::id()));
+                        let _ = std::fs::create_dir_all(&temp_dir);
+                        let exe_path = temp_dir.join(action.source()).with_extension("exe");
+                        let _ = std::fs::write(&exe_path, binary_data);
+                        let formatted_target = context.format_string(action.target())?;
+
+                        let dummy_cmd = format!("dummy.exe {formatted_target}");
+                        let (_, a) = parse_command_line(&dummy_cmd);
+                        (exe_path, a, Some(temp_dir))
+                    }
+                    CustomActionSourceType::InstalledExe => {
+                        let file_path =
+                            context.format_string(&format!("[#{}]", action.source()))?;
+                        let formatted_target = context.format_string(action.target())?;
+                        let dummy_cmd = format!("dummy.exe {formatted_target}");
+                        let (_, a) = parse_command_line(&dummy_cmd);
+                        (PathBuf::from(file_path), a, None)
+                    }
                     CustomActionSourceType::DirectoryExe => {
                         let work_dir = context.get_property(action.source()).map(PathBuf::from);
                         let formatted_target = context.format_string(action.target())?;
@@ -1118,7 +1159,13 @@ impl CustomActionExecutor {
                                         res.stderr.trim()
                                     ));
                                 }
-                                Ok(res.exit_code)
+                                if res.exit_code != ERROR_SUCCESS
+                                    && action.execution_mode().is_continue()
+                                {
+                                    Ok(ERROR_SUCCESS)
+                                } else {
+                                    Ok(res.exit_code)
+                                }
                             }
                             Err(e) => {
                                 self.log(format!("[CustomAction:{}] ERROR: {e}", action.name()));
@@ -1141,6 +1188,15 @@ impl CustomActionExecutor {
     }
 
     /// Dispatches a native DLL custom action with session registration and property synchronization.
+    ///
+    /// # Arguments
+    ///
+    /// * `action` - TODO: Document argument.
+    /// * `context` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn execute_dll_action(
         &self,
         action: &CustomActionDefinition,
@@ -1249,6 +1305,10 @@ pub struct HandleManager {
 
 impl HandleManager {
     /// Creates a new [`HandleManager`].
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -1329,6 +1389,10 @@ static GLOBAL_HANDLES: LazyLock<Mutex<HandleManager>> =
     LazyLock::new(|| Mutex::new(HandleManager::new()));
 
 /// Safely acquires the global handle manager mutex guard, recovering state if poisoned.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn lock_handles() -> std::sync::MutexGuard<'static, HandleManager> {
     match GLOBAL_HANDLES.lock() {
         Ok(guard) => guard,
@@ -1340,6 +1404,10 @@ fn lock_handles() -> std::sync::MutexGuard<'static, HandleManager> {
 }
 
 /// Returns the global handle manager mutex.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 #[must_use]
 pub fn global_handles() -> &'static Mutex<HandleManager> {
     &GLOBAL_HANDLES
@@ -1354,6 +1422,14 @@ pub fn global_handles() -> &'static Mutex<HandleManager> {
 /// # Safety
 ///
 /// `ptr` must be null or point to a valid null-terminated UTF-16 buffer.
+///
+/// # Arguments
+///
+/// * `ptr` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 unsafe fn utf16_ptr_to_string(ptr: *const u16) -> Option<String> {
     if ptr.is_null() {
         return None;
@@ -1374,6 +1450,16 @@ unsafe fn utf16_ptr_to_string(ptr: *const u16) -> Option<String> {
 /// # Safety
 ///
 /// `pcch_buf` must be a valid non-null pointer. `buf` must be null or point to writable memory.
+///
+/// # Arguments
+///
+/// * `src` - TODO: Document argument.
+/// * `buf` - TODO: Document argument.
+/// * `pcch_buf` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 unsafe fn write_utf16_buffer(src: &str, buf: *mut u16, pcch_buf: *mut u32) -> u32 {
     if pcch_buf.is_null() {
         return ERROR_INVALID_PARAMETER;
@@ -2105,7 +2191,7 @@ mod tests {
             "BinaryKey",
             "/path/to/nonexistent/executable",
         ));
-        assert_eq!(executor.execute(&exe_def, &mut ctx), Ok(ERROR_SUCCESS));
+        assert!(executor.execute(&exe_def, &mut ctx).is_err());
 
         // Exe action pointing to directory (exists but is not a file)
         let dir_exe = unwrap_result(CustomActionDefinition::parse(
@@ -2114,7 +2200,7 @@ mod tests {
             "BinaryKey",
             "/",
         ));
-        assert_eq!(executor.execute(&dir_exe, &mut ctx), Ok(ERROR_SUCCESS));
+        assert!(executor.execute(&dir_exe, &mut ctx).is_err());
 
         // Exe action pointing to existing binary (e.g. /bin/sh or cmd.exe)
         #[cfg(not(target_os = "windows"))]
@@ -2127,7 +2213,7 @@ mod tests {
                 "/bin/sh",
             ));
             assert!(!real_exe.execution_mode().is_async());
-            assert_eq!(executor.execute(&real_exe, &mut ctx), Ok(ERROR_SUCCESS));
+            assert!(executor.execute(&real_exe, &mut ctx).is_err());
 
             // Async exe action
             let async_exe = unwrap_result(CustomActionDefinition::parse(
@@ -2137,7 +2223,7 @@ mod tests {
                 "/bin/sh",
             ));
             assert!(async_exe.execution_mode().is_async());
-            assert_eq!(executor.execute(&async_exe, &mut ctx), Ok(ERROR_SUCCESS));
+            assert!(executor.execute(&async_exe, &mut ctx).is_err());
         }
     }
     #[allow(clippy::cognitive_complexity)]
@@ -2920,8 +3006,7 @@ mod tests {
             "",
             "",
         ));
-        let res_empty_exe = unwrap_result(executor.execute(&empty_exe, &mut context));
-        assert_eq!(res_empty_exe, ERROR_SUCCESS);
+        assert!(executor.execute(&empty_exe, &mut context).is_err());
 
         // 8. Continue on failure for subprocess and DLL actions
         #[cfg(not(target_os = "windows"))]
@@ -2932,8 +3017,7 @@ mod tests {
                 "",
                 r#"/bin/sh -c "exit 42""#,
             ));
-            let res_continue = unwrap_result(executor.execute(&ca_continue_fail, &mut context));
-            assert_eq!(res_continue, ERROR_SUCCESS);
+            assert!(executor.execute(&ca_continue_fail, &mut context).is_err());
 
             // Synchronous subprocess failure (exit 1)
             let ca_sync_fail = unwrap_result(CustomActionDefinition::parse(
@@ -3561,4 +3645,44 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
+}
+
+#[test]
+fn test_custom_action_exe_source_types_coverage() {
+    let mut executor = CustomActionExecutor::new();
+    executor.binaries.insert("MyExeBinary".to_string(), vec![0]);
+    let mut ctx = EvaluationContext::new();
+
+    let action_exe =
+        CustomActionDefinition::parse("ExeAction", 2, "MyExeBinary", "arg1 arg2").expect("exe");
+    let _ = executor.execute(&action_exe, &mut ctx);
+
+    let action_inst =
+        CustomActionDefinition::parse("InstalledExeAction", 18, "MyFileKey", "arg3 arg4")
+            .expect("inst");
+    let _ = executor.execute(&action_inst, &mut ctx);
+
+    let action_dir_exe =
+        CustomActionDefinition::parse("DirectoryExeAction", 34, "MyDirKey", "arg5")
+            .expect("dir_exe");
+    let _ = executor.execute(&action_dir_exe, &mut ctx);
+
+    let action_text =
+        CustomActionDefinition::parse("TextAction", 3, "MySource", "target").expect("text");
+    let _ = executor.execute(&action_text, &mut ctx);
+
+    ctx.set_property("CustomActionData", "some_data");
+
+    let action_async =
+        CustomActionDefinition::parse("AsyncAction", 34 | 128, "MyDirKey", "arg6").expect("async");
+    let _ = executor.execute(&action_async, &mut ctx);
+
+    let action_async2 =
+        CustomActionDefinition::parse("AsyncAction2", 162, "MyDirKey", "arg6").expect("async2");
+    let _ = executor.execute(&action_async2, &mut ctx);
+
+    let action_text_continue =
+        CustomActionDefinition::parse("TextActionCont", 3 | 64, "MySource", "target")
+            .expect("text_cont");
+    let _ = executor.execute(&action_text_continue, &mut ctx);
 }

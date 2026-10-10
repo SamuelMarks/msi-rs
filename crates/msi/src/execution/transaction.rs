@@ -37,6 +37,14 @@ pub const ERROR_SUCCESS: u32 = 0;
 pub const ERROR_INSTALL_FAILURE: u32 = 1603;
 
 /// Returns whether the path string represents an executable or script file.
+///
+/// # Arguments
+///
+/// * `path_str` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn is_executable_file(path_str: &str) -> bool {
     Path::new(path_str).extension().is_some_and(|ext| {
         ext.eq_ignore_ascii_case("sh")
@@ -168,6 +176,10 @@ impl WorkerContext {
     /// # Arguments
     ///
     /// * `executor` - Configured live worker executor.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn with_live_executor(mut self, executor: super::worker::LiveWorkerExecutor) -> Self {
         self.live_executor = Some(executor);
@@ -193,6 +205,13 @@ impl WorkerContext {
     }
 
     /// Returns a mutable reference to the attached [`crate::execution::bare_metal::BareMetalRollbackJournal`], if present.
+    ///
+    /// # Arguments
+    ///
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub const fn bare_metal_journal_mut(
         &mut self,
     ) -> Option<&mut crate::execution::bare_metal::BareMetalRollbackJournal> {
@@ -200,12 +219,20 @@ impl WorkerContext {
     }
 
     /// Returns an optional reference to the attached [`super::worker::LiveWorkerExecutor`].
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn live_executor(&self) -> Option<&super::worker::LiveWorkerExecutor> {
         self.live_executor.as_ref()
     }
 
     /// Sets the live executor for rollback recovery.
+    ///
+    /// # Arguments
+    ///
+    /// * `exec` - TODO: Document argument.
     pub fn set_live_executor(&mut self, exec: super::worker::LiveWorkerExecutor) {
         self.live_executor = Some(exec);
     }
@@ -220,6 +247,10 @@ impl WorkerContext {
     /// # Errors
     ///
     /// Returns [`crate::MsiError`] if the cabinet header or files cannot be parsed.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn add_cabinet_bytes(&mut self, name: &str, bytes: &[u8]) -> Result<()> {
         let reader = crate::cab::reader::CabinetReader::new(bytes)?;
         self.cabinet_readers.insert(name.to_string(), reader);
@@ -246,6 +277,10 @@ impl WorkerContext {
     /// # Errors
     ///
     /// Returns [`crate::MsiError`] if parsing fails.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn with_cabinet_bytes(mut self, name: &str, bytes: &[u8]) -> Result<Self> {
         self.add_cabinet_bytes(name, bytes)?;
         Ok(self)
@@ -363,12 +398,23 @@ impl WorkerContext {
     }
 
     /// Returns a reference to the internal [`super::custom_action::CustomActionExecutor`].
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn custom_action_executor(&self) -> &super::custom_action::CustomActionExecutor {
         &self.custom_action_executor
     }
 
     /// Returns a mutable reference to the internal [`super::custom_action::CustomActionExecutor`].
+    ///
+    /// # Arguments
+    ///
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub const fn custom_action_executor_mut(
         &mut self,
     ) -> &mut super::custom_action::CustomActionExecutor {
@@ -376,12 +422,20 @@ impl WorkerContext {
     }
 
     /// Returns a reference to the active [`EvaluationContext`].
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn evaluation_context(&self) -> &EvaluationContext {
         &self.evaluation_context
     }
 
     /// Returns a mutable reference to the active [`EvaluationContext`].
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub const fn evaluation_context_mut(&mut self) -> &mut EvaluationContext {
         &mut self.evaluation_context
     }
@@ -421,12 +475,20 @@ impl WorkerContext {
     }
 
     /// Returns a reference to all stored binary table payloads.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn binaries(&self) -> &HashMap<String, Vec<u8>> {
         &self.binaries
     }
 
     /// Returns the recorded list of executed action log descriptions.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn executed_actions(&self) -> &[String] {
         &self.executed_actions
@@ -601,6 +663,12 @@ impl WorkerContext {
     }
 
     /// Installs a component file with concrete path string.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - TODO: Document argument.
+    /// * `content` - TODO: Document argument.
+    /// * `shared_dll_ref_count` - TODO: Document argument.
     fn install_component_file_impl(
         &mut self,
         path: String,
@@ -955,6 +1023,10 @@ impl WorkerContext {
     /// # Errors
     ///
     /// Returns [`MsiError::ExecutionFailed`] if any operation fails.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::too_many_lines)]
     pub fn execute_script(&mut self, script: &InstallScript) -> Result<()> {
         for op in script.operations() {
@@ -1179,6 +1251,10 @@ impl WorkerContext {
     /// # Errors
     ///
     /// Returns [`MsiError::RollbackFailed`] if any rollback command encounters an issue.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn execute_rollback(&mut self, script: &RollbackScript) -> Result<()> {
         for op in script.operations().iter().rev() {
             match op {
@@ -1259,6 +1335,10 @@ impl WorkerContext {
     /// # Errors
     ///
     /// Returns [`crate::MsiError`] on failure.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn commit(&mut self) -> Result<()> {
         self.quarantine_files.clear();
         self.executed_actions.push("CommitSuccess".to_string());
@@ -1295,6 +1375,10 @@ pub enum InstallState {
 
 impl InstallState {
     /// Returns the standard integer code for this installation state.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn to_i32(self) -> i32 {
         self as i32
@@ -1401,6 +1485,10 @@ impl MultiPackageTransactionManager {
     /// # Errors
     ///
     /// Returns [`MsiError::Chainer`] if transaction is not in the active state.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn join_transaction(&mut self, session_id: &str) -> Result<()> {
         if self.state != Some(TransactionState::Active) {
             return Err(MsiError::Chainer(
@@ -1743,6 +1831,15 @@ impl MultiPackageTransactionManager {
     }
 
     /// Internal implementation of nested product installation with concrete path string.
+    ///
+    /// # Arguments
+    ///
+    /// * `package_path` - TODO: Document argument.
+    /// * `command_line` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn install_product_nested_impl(
         &mut self,
         package_path: String,
@@ -2085,30 +2182,50 @@ impl MultiPackageTransactionManager {
     }
 
     /// Returns the name of the transaction.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn transaction_name(&self) -> &str {
         &self.transaction_name
     }
 
     /// Returns the current lifecycle state of the transaction.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn state(&self) -> Option<TransactionState> {
         self.state
     }
 
     /// Returns the list of chained package records.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn chained_packages(&self) -> &[ChainedPackage] {
         &self.chained_packages
     }
 
     /// Returns a reference to the shared execution worker context.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn worker(&self) -> &WorkerContext {
         &self.worker
     }
 
     /// Returns a mutable reference to the shared execution worker context.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub const fn worker_mut(&mut self) -> &mut WorkerContext {
         &mut self.worker
     }
@@ -2137,12 +2254,20 @@ pub struct Transaction<State> {
 
 impl<State> Transaction<State> {
     /// Returns a reference to the evaluation context.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn context(&self) -> &EvaluationContext {
         &self.context
     }
 
     /// Returns a reference to the linked database.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn database(&self) -> &LinkedDatabase {
         &self.database
@@ -3294,18 +3419,30 @@ impl Transaction<Uninitialized> {
 
 impl Transaction<Prepared> {
     /// Returns the compiled installation script (`.ibs`).
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn install_script(&self) -> &InstallScript {
         &self.install_script
     }
 
     /// Returns the compiled rollback script (`.rbs`).
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn rollback_script(&self) -> &RollbackScript {
         &self.rollback_script
     }
 
     /// Returns a reference to the disk costing engine.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn cost_engine(&self) -> &DiskCostEngine {
         &self.cost_engine
@@ -3450,6 +3587,10 @@ impl Transaction<Executed> {
 
 impl Transaction<Committed> {
     /// Returns return code `ERROR_SUCCESS` (`0`).
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn return_code(&self) -> u32 {
         ERROR_SUCCESS
@@ -3458,6 +3599,10 @@ impl Transaction<Committed> {
 
 impl Transaction<RolledBack> {
     /// Returns fatal installation failure return code `ERROR_INSTALL_FAILURE` (`1603`).
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn return_code(&self) -> u32 {
         ERROR_INSTALL_FAILURE
@@ -3477,6 +3622,10 @@ mod tests {
     }
 
     /// Helper creating a minimal test database with sequence and file records.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::too_many_lines, clippy::unnecessary_wraps)]
     fn create_test_database() -> Result<LinkedDatabase> {
         let mut db = unwrap_result(LinkedDatabase::new());
@@ -7492,7 +7641,7 @@ mod tests {
         let context = EvaluationContext::new();
         let cost_engine = DiskCostEngine::new();
         let tx_init = Transaction::new(db, context, cost_engine);
-        let tx_prep = tx_init.prepare().unwrap();
+        let tx_prep = tx_init.prepare().expect("test");
 
         let ops = tx_prep.install_script().operations();
         let has_odbc = ops.iter().any(|op| matches!(op, ScriptOp::CustomAction { action, .. } if action == "@@InstallODBCDriver"));
@@ -7586,7 +7735,7 @@ mod transaction_wim_tests {
     #[test]
     fn test_odbc_and_font_script_generation() {
         use crate::database::Record;
-        let mut db = LinkedDatabase::new().unwrap();
+        let mut db = LinkedDatabase::new().expect("test");
         db.add_record(
             "ODBCDriver",
             Record::with_fields(vec![
@@ -7662,7 +7811,7 @@ mod transaction_wim_tests {
             );
         }
 
-        let prepared = tx.prepare().unwrap();
+        let prepared = tx.prepare().expect("test");
 
         let iscript = prepared.install_script().operations();
         let rscript = prepared.rollback_script().operations();
@@ -7690,7 +7839,7 @@ mod transaction_wim_tests {
     fn test_transaction_allusers_elevation_and_registry_roots() {
         use crate::database::{FieldValue, Record};
 
-        let mut db = LinkedDatabase::new().unwrap();
+        let mut db = LinkedDatabase::new().expect("test");
         db.add_record(
             "Registry",
             Record::with_fields(vec![
@@ -7742,15 +7891,15 @@ mod transaction_wim_tests {
         }
         let tx2 = Transaction::new(db, ctx2, DiskCostEngine::new());
 
-        let _ = tx1.prepare().unwrap();
-        let _ = tx2.prepare().unwrap();
+        let _ = tx1.prepare().expect("test");
+        let _ = tx2.prepare().expect("test");
     }
 
     #[test]
     fn test_transaction_register_com_info() {
         use crate::database::{FieldValue, Record};
 
-        let mut db = LinkedDatabase::new().unwrap();
+        let mut db = LinkedDatabase::new().expect("test");
         db.add_record(
             "ProgId",
             Record::with_fields(vec![
@@ -7817,7 +7966,7 @@ mod transaction_wim_tests {
         );
 
         let tx = Transaction::new(db, EvaluationContext::new(), DiskCostEngine::new());
-        let prepared = tx.prepare().unwrap();
+        let prepared = tx.prepare().expect("test");
         let ops = prepared.install_script().operations();
         assert!(!ops.is_empty());
     }
@@ -7826,7 +7975,7 @@ mod transaction_wim_tests {
     fn test_transaction_stop_delete_services() {
         use crate::database::{FieldValue, Record};
 
-        let mut db = LinkedDatabase::new().unwrap();
+        let mut db = LinkedDatabase::new().expect("test");
         db.add_record(
             "ServiceControl",
             Record::with_fields(vec![
@@ -7856,7 +8005,7 @@ mod transaction_wim_tests {
         );
 
         let tx = Transaction::new(db, EvaluationContext::new(), DiskCostEngine::new());
-        let prepared = tx.prepare().unwrap();
+        let prepared = tx.prepare().expect("test");
         let ops = prepared.install_script().operations();
         assert!(ops
             .iter()

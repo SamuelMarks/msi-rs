@@ -295,6 +295,10 @@ impl LinuxKernelModuleServicing {
     /// # Errors
     ///
     /// Returns [`MsiError::DriverServicingError`] if staging operations fail.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn stage_modules(
         sysroot: &Path,
         kernel_version: &str,

@@ -103,6 +103,17 @@ impl SysrootMountGuard {
     }
 
     /// Performs live mount syscall on Linux or simulated mount on other platforms.
+    ///
+    /// # Arguments
+    ///
+    /// * `source` - TODO: Document argument.
+    /// * `target` - TODO: Document argument.
+    /// * `fstype` - TODO: Document argument.
+    /// * `flags` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::unnecessary_wraps, clippy::missing_const_for_fn)]
     fn perform_mount(source: &Path, target: &Path, fstype: Option<&str>, flags: u64) -> Result<()> {
         #[cfg(target_os = "linux")]
@@ -158,6 +169,15 @@ impl SysrootMountGuard {
     }
 
     /// Performs live unmount syscall with lazy unmount fallback.
+    ///
+    /// # Arguments
+    ///
+    /// * `target` - TODO: Document argument.
+    /// * `lazy` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::unnecessary_wraps, clippy::missing_const_for_fn)]
     fn perform_unmount(target: &Path, lazy: bool) -> Result<()> {
         #[cfg(target_os = "linux")]
@@ -199,6 +219,10 @@ impl SysrootMountGuard {
     /// # Errors
     ///
     /// Returns [`MsiError::SysrootMountError`] if creating scratch directories or mounting fails.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn mount_active(&mut self) -> Result<()> {
         std::fs::create_dir_all(&self.scratch_dir).map_err(|e| MsiError::SysrootMountError {
             path: self.scratch_dir.display().to_string(),
@@ -256,6 +280,10 @@ impl SysrootMountGuard {
     /// # Errors
     ///
     /// Returns [`MsiError::SysrootMountError`] if creating mountpoints fails.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn mount_pseudofs(&mut self) -> Result<()> {
         let pseudofs = [
             ("dev", "/dev"),
@@ -289,6 +317,10 @@ impl SysrootMountGuard {
     /// # Errors
     ///
     /// Returns [`MsiError::SysrootMountError`] if unmount operations fail.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn unmount_all(&mut self) -> Result<()> {
         if !self.is_mounted {
             return Ok(());
@@ -344,6 +376,10 @@ impl SysrootMountGuard {
     /// # Errors
     ///
     /// Returns [`MsiError::SysrootMountError`] if directory creation fails.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn create_essential_hierarchy(&self, target_os: TargetOs) -> Result<()> {
         if !self.is_mounted {
             return Err(MsiError::SysrootMountError {

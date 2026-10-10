@@ -64,6 +64,10 @@ impl LiveWorkerExecutor {
     }
 
     /// Returns the quarantine directory path.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn quarantine_dir(&self) -> &Path {
         &self.quarantine_dir
@@ -79,6 +83,10 @@ impl LiveWorkerExecutor {
     /// # Errors
     ///
     /// Returns [`crate::error::MsiError::Io`] on filesystem failure.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn create_directory(&mut self, path: &Path, mode_octal: Option<u32>) -> Result<()> {
         if !path.exists() {
             fs::create_dir_all(path)?;
@@ -113,6 +121,10 @@ impl LiveWorkerExecutor {
     /// # Errors
     ///
     /// Returns [`crate::error::MsiError::Io`] on write or quarantine failure.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn write_file_atomic(
         &mut self,
         target_path: &Path,
@@ -185,6 +197,10 @@ impl LiveWorkerExecutor {
     /// # Errors
     ///
     /// Returns [`crate::error::MsiError::Io`] on failure to remove quarantine storage.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn commit(&mut self) -> Result<()> {
         if self.quarantine_dir.exists() {
             fs::remove_dir_all(&self.quarantine_dir)?;
@@ -203,6 +219,10 @@ impl LiveWorkerExecutor {
     /// # Errors
     ///
     /// Returns [`crate::error::MsiError::Io`] if rollback file restoration fails.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn rollback(&mut self) -> Result<()> {
         let mut errors = Vec::new();
 
@@ -273,6 +293,10 @@ impl LiveWorkerExecutor {
     /// # Errors
     ///
     /// Returns [`crate::error::MsiError`] if recovery fails.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn recover_interrupted_transaction(quarantine_dir: &Path) -> Result<()> {
         let rbs_path = quarantine_dir.join("rollback.rbs");
         if !rbs_path.exists() {
@@ -510,14 +534,14 @@ mod worker_executor_additional_tests {
 
     #[test]
     fn test_executor_rollback_failure() {
-        let temp_dir = tempfile::tempdir().unwrap();
+        let temp_dir = tempfile::tempdir().expect("test");
         let q_dir = temp_dir.path().join("quarantine");
-        fs::create_dir_all(&q_dir).unwrap();
+        fs::create_dir_all(&q_dir).expect("test");
         let mut exec = LiveWorkerExecutor::new(&q_dir, "test");
 
         // 1. NewlyCreated fails (try to remove_file on a directory)
         let dir_as_file = temp_dir.path().join("dir_as_file");
-        fs::create_dir_all(&dir_as_file).unwrap();
+        fs::create_dir_all(&dir_as_file).expect("test");
         exec.installed_files.insert(
             dir_as_file.clone(),
             InstalledFileRecord::NewlyCreated(dir_as_file),
@@ -525,9 +549,9 @@ mod worker_executor_additional_tests {
 
         // 2. Overwritten restore fails (try to copy a file over an existing directory)
         let rbf_file = q_dir.join("test.rbf");
-        fs::write(&rbf_file, "data").unwrap();
+        fs::write(&rbf_file, "data").expect("test");
         let dir_target = temp_dir.path().join("dir_target");
-        fs::create_dir_all(&dir_target).unwrap();
+        fs::create_dir_all(&dir_target).expect("test");
         exec.installed_files.insert(
             dir_target.clone(),
             InstalledFileRecord::Overwritten {
@@ -538,14 +562,14 @@ mod worker_executor_additional_tests {
 
         // 3. remove_dir fails (try to remove_dir on a file)
         let dir_in_q = q_dir.join("empty_dir");
-        fs::create_dir_all(&dir_in_q).unwrap();
+        fs::create_dir_all(&dir_in_q).expect("test");
         exec.created_directories.push(dir_in_q);
 
         // 4. remove_dir_all fails on quarantine_dir (make parent read-only)
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&q_dir, fs::Permissions::from_mode(0o500)).unwrap();
+            fs::set_permissions(&q_dir, fs::Permissions::from_mode(0o500)).expect("test");
         }
 
         let res = exec.rollback();
@@ -559,15 +583,15 @@ mod worker_executor_additional_tests {
         {
             // Restore permissions so cleanup can happen
             use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&q_dir, fs::Permissions::from_mode(0o755)).unwrap();
+            fs::set_permissions(&q_dir, fs::Permissions::from_mode(0o755)).expect("test");
         }
     }
 
     #[test]
     fn test_recover_interrupted_transaction() {
-        let temp_dir = tempfile::tempdir().unwrap();
+        let temp_dir = tempfile::tempdir().expect("test");
         let q_dir = temp_dir.path().join("quarantine");
-        fs::create_dir_all(&q_dir).unwrap();
+        fs::create_dir_all(&q_dir).expect("test");
 
         // No rbs file
         assert!(LiveWorkerExecutor::recover_interrupted_transaction(&q_dir).is_ok());
@@ -575,7 +599,7 @@ mod worker_executor_additional_tests {
         // Write empty rbs file
         let rbs_path = q_dir.join("rollback.rbs");
         let script = crate::execution::script::RollbackScript::new();
-        fs::write(&rbs_path, script.serialize()).unwrap();
+        fs::write(&rbs_path, script.serialize()).expect("test");
 
         assert!(LiveWorkerExecutor::recover_interrupted_transaction(&q_dir).is_ok());
     }

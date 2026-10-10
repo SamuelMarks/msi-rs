@@ -134,6 +134,10 @@ impl ComponentRow {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 6 {
             return Err(MsiError::RecordLengthMismatch {
@@ -270,6 +274,10 @@ impl FeatureRow {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 8 {
             return Err(MsiError::RecordLengthMismatch {
@@ -394,6 +402,10 @@ impl FeatureComponentsRow {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 2 {
             return Err(MsiError::RecordLengthMismatch {
@@ -477,6 +489,10 @@ impl DirectoryRow {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 3 {
             return Err(MsiError::RecordLengthMismatch {
@@ -582,6 +598,10 @@ impl FileRow {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 8 {
             return Err(MsiError::RecordLengthMismatch {
@@ -723,6 +743,10 @@ impl FileHashRow {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 6 {
             return Err(MsiError::RecordLengthMismatch {
@@ -845,6 +869,10 @@ impl MediaRow {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 6 {
             return Err(MsiError::RecordLengthMismatch {
@@ -951,6 +979,10 @@ impl PropertyRow {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 2 {
             return Err(MsiError::RecordLengthMismatch {
@@ -1022,6 +1054,10 @@ impl BinaryRow {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 2 {
             return Err(MsiError::RecordLengthMismatch {
@@ -1095,6 +1131,10 @@ impl FontRow {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 2 {
             return Err(MsiError::RecordLengthMismatch {
@@ -1166,6 +1206,10 @@ impl PatchPackageRow {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 2 {
             return Err(MsiError::RecordLengthMismatch {
@@ -1270,6 +1314,10 @@ impl ModuleConfigurationRow {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 2 {
             return Err(MsiError::RecordLengthMismatch {
@@ -1409,6 +1457,10 @@ impl ModuleSubstitutionRow {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 3 {
             return Err(MsiError::RecordLengthMismatch {
@@ -1507,6 +1559,10 @@ impl ModuleIgnoreModularizationRow {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.is_empty() {
             return Err(MsiError::RecordLengthMismatch {
@@ -1581,6 +1637,10 @@ impl ModuleSignatureRow {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 3 {
             return Err(MsiError::RecordLengthMismatch {
@@ -1675,6 +1735,10 @@ impl ModuleComponentsRow {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 3 {
             return Err(MsiError::RecordLengthMismatch {
@@ -1777,6 +1841,10 @@ impl ModuleDependencyRow {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 4 {
             return Err(MsiError::RecordLengthMismatch {
@@ -1903,6 +1971,10 @@ impl ModuleExclusionRow {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 4 {
             return Err(MsiError::RecordLengthMismatch {

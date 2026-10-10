@@ -54,6 +54,14 @@ impl XdgDesktopEntry {
     }
 
     /// Sets the icon name or path.
+    ///
+    /// # Arguments
+    ///
+    /// * `icon` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn icon(mut self, icon: &str) -> Self {
         self.icon = Some(icon.to_string());
@@ -61,6 +69,14 @@ impl XdgDesktopEntry {
     }
 
     /// Sets whether the application runs in a terminal.
+    ///
+    /// # Arguments
+    ///
+    /// * `terminal` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn terminal(mut self, terminal: bool) -> Self {
         self.terminal = terminal;
@@ -68,6 +84,14 @@ impl XdgDesktopEntry {
     }
 
     /// Adds a desktop menu category.
+    ///
+    /// # Arguments
+    ///
+    /// * `cat` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn category(mut self, cat: &str) -> Self {
         self.categories.push(cat.to_string());
@@ -75,6 +99,14 @@ impl XdgDesktopEntry {
     }
 
     /// Adds a supported MIME type.
+    ///
+    /// # Arguments
+    ///
+    /// * `mime` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn mime_type(mut self, mime: &str) -> Self {
         self.mime_types.push(mime.to_string());
@@ -82,6 +114,14 @@ impl XdgDesktopEntry {
     }
 
     /// Sets the description comment.
+    ///
+    /// # Arguments
+    ///
+    /// * `comment` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn comment(mut self, comment: &str) -> Self {
         self.comment = Some(comment.to_string());
@@ -93,6 +133,10 @@ impl XdgDesktopEntry {
     /// # Arguments
     ///
     /// * `is_system` - `true` for `/usr/share/applications`, `false` for `~/.local/share/applications`.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn destination_path(&self, is_system: bool) -> PathBuf {
         let slug = self.name.to_ascii_lowercase().replace(' ', "-");
@@ -169,12 +213,20 @@ impl XdgDesktopEntry {
     }
 
     /// Returns the system applications directory (`/usr/share/applications`).
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn system_applications_dir() -> PathBuf {
         PathBuf::from("/usr/share/applications")
     }
 
     /// Returns the user applications directory (`~/.local/share/applications`).
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn user_applications_dir() -> PathBuf {
         PathBuf::from("~/.local/share/applications")
@@ -255,6 +307,14 @@ impl MacOsAppBundle {
     }
 
     /// Sets the icon filename.
+    ///
+    /// # Arguments
+    ///
+    /// * `icon` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn icon_file(mut self, icon: &str) -> Self {
         self.icon_file = Some(icon.to_string());
@@ -262,6 +322,10 @@ impl MacOsAppBundle {
     }
 
     /// Returns the bundle root directory name (e.g. `<Product>.app`).
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn bundle_dir_name(&self) -> String {
         format!("{}.app", self.product_name)
@@ -615,6 +679,10 @@ impl Win32ShellLink {
     /// # Errors
     ///
     /// Returns [`MsiError::Io`] on write failure.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn save_to_disk(&self, dest: &Path) -> Result<()> {
         let path = dest;
         if let Some(parent) = path.parent() {
@@ -625,6 +693,11 @@ impl Win32ShellLink {
     }
 
     /// Helper encoding a string into UTF-16LE prefixed with its character length.
+    ///
+    /// # Arguments
+    ///
+    /// * `s` - TODO: Document argument.
+    /// * `buf` - TODO: Document argument.
     fn encode_string_data(s: &str, buf: &mut Vec<u8>) {
         let utf16: Vec<u16> = s.encode_utf16().collect();
         let len = u16::try_from(utf16.len()).unwrap_or(u16::MAX);

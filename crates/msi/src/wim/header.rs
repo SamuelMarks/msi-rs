@@ -39,18 +39,38 @@ impl WimFlags {
     pub const COMPRESS_LZMS: Self = Self(0x0008_0000);
 
     /// Creates a new flags value from raw bits.
+    ///
+    /// # Arguments
+    ///
+    /// * `val` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn from_bits_truncate(val: u32) -> Self {
         Self(val)
     }
 
     /// Returns the raw bits of the flags.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn bits(self) -> u32 {
         self.0
     }
 
     /// Returns true if the flags contain the specified other flags.
+    ///
+    /// # Arguments
+    ///
+    /// * `other` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn contains(self, other: Self) -> bool {
         (self.0 & other.0) == other.0
@@ -79,18 +99,38 @@ impl ResourceFlags {
     pub const SPANNED: Self = Self(0x08);
 
     /// Creates a new resource flags value from raw bits.
+    ///
+    /// # Arguments
+    ///
+    /// * `val` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn from_bits_truncate(val: u8) -> Self {
         Self(val)
     }
 
     /// Returns the raw bits of the flags.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn bits(self) -> u8 {
         self.0
     }
 
     /// Returns true if the flags contain the specified other flags.
+    ///
+    /// # Arguments
+    ///
+    /// * `other` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn contains(self, other: Self) -> bool {
         (self.0 & other.0) == other.0
@@ -265,6 +305,10 @@ mod tests {
     use std::io::Cursor;
 
     /// Tests the successful parsing of a valid WIM header.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[test]
     fn test_wim_header_read_success() -> Result<()> {
         let mut data = vec![];
@@ -378,6 +422,10 @@ mod tests {
     }
 
     /// Tests that the ESD magic signature is correctly recognized.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[test]
     fn test_esd_header_magic() -> Result<()> {
         let mut data = vec![];

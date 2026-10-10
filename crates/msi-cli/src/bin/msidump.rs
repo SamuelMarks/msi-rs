@@ -12,8 +12,12 @@ use std::fs;
 ///
 /// # Errors
 ///
-/// Returns a `Box<dyn std::error::Error>` on IO or parsing failure.
-pub fn run_dump(path: &str) -> Result<(), Box<dyn std::error::Error>> {
+/// Returns an `msi::error::MsiError` on IO or parsing failure.
+///
+/// # Returns
+///
+/// TODO: Document return value.
+pub fn run_dump(path: &str) -> Result<(), msi::error::MsiError> {
     let buf = fs::read(path)?;
     let reader = msi::cfb::reader::CfbReader::new(&buf)?;
     let pool_name =
@@ -58,7 +62,15 @@ pub fn run_dump(path: &str) -> Result<(), Box<dyn std::error::Error>> {
 /// # Errors
 ///
 /// Returns an error if the MSI file cannot be read or parsed.
-fn run_main(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+///
+/// # Arguments
+///
+/// * `args` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
+fn run_main(args: &[String]) -> Result<(), msi::error::MsiError> {
     let path = if args.len() > 1 {
         &args[1]
     } else {
@@ -72,7 +84,11 @@ fn run_main(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
 /// # Errors
 ///
 /// Returns an error if the MSI file cannot be read or parsed.
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+///
+/// # Returns
+///
+/// TODO: Document return value.
+fn main() -> Result<(), msi::error::MsiError> {
     let args: Vec<String> = std::env::args().collect();
     run_main(&args)
 }

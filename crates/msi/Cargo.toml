@@ -15,8 +15,10 @@ workspace = true
 
 [dependencies]
 derive_more = { workspace = true }
+dirs = "7.0.0"
 goblin = "0.10.7"
 libc = { workspace = true }
+miniz_oxide = "0.9.1"
 rayon = { workspace = true }
 rustix = { version = "1.1.5", features = ["fs", "process"] }
 
@@ -24,4 +26,4 @@ rustix = { version = "1.1.5", features = ["fs", "process"] }
 tempfile = "3.27.0"
 
 [target."cfg(windows)".dependencies]
-windows = { version = "0.62.2", features = ["Win32_System_Com", "Win32_Foundation", "Win32_System_Rpc", "Win32_UI_Shell"] }
+windows = { version = "0.62.2", features = ["Win32_System_Com", "Win32_Foundation", "Win32_System_Rpc", "Win32_UI_Shell", "Win32_System_Registry", "Win32_System_ApplicationInstallationAndServicing", "Win32_System_LibraryLoader"] }

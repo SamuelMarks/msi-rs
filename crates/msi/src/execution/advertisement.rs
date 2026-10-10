@@ -43,6 +43,14 @@ impl AasParser {
     /// # Errors
     ///
     /// Returns `MsiError::InvalidData` if the signature is missing or the format is corrupt.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn parse(data: &[u8]) -> Result<Self, MsiError> {
         if data.len() < 4 || &data[0..4] != b"AAS\0" {
             return Err(MsiError::AdvertisementError(
@@ -97,6 +105,10 @@ impl AasParser {
 /// # Errors
 ///
 /// Returns `MsiError::InvalidArgument { argument: "path".to_string(), reason: "empty".to_string() }` if `package_path` is empty.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 pub fn advertise_product(
     package_path: &str,
     _script_info: Option<&str>,
@@ -124,6 +136,10 @@ pub fn advertise_product(
 /// # Errors
 ///
 /// Returns `MsiError::InvalidArgument { argument: "path".to_string(), reason: "empty".to_string() }` if `script_file` is empty.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 pub fn advertise_script(
     script_file: &str,
     _flags: u32,
@@ -135,7 +151,8 @@ pub fn advertise_script(
             reason: "empty".to_string(),
         });
     }
-    let data = fs::read(script_file).map_err(|e| MsiError::Io(e.to_string()))?;
+    let data = fs::read(script_file)
+        .map_err(|e| MsiError::Io(crate::error::IoContext::from_string(e.to_string())))?;
     let parser = AasParser::parse(&data)?;
 
     for op in parser.opcodes {
@@ -158,6 +175,10 @@ pub fn advertise_script(
 /// # Errors
 ///
 /// Returns `MsiError::InvalidArgument { argument: "path".to_string(), reason: "empty".to_string() }` if `script_file` is empty.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 pub fn process_advertise_script(
     script_file: &str,
     _icon_folder: Option<&str>,
@@ -170,7 +191,8 @@ pub fn process_advertise_script(
             reason: "empty".to_string(),
         });
     }
-    let data = fs::read(script_file).map_err(|e| MsiError::Io(e.to_string()))?;
+    let data = fs::read(script_file)
+        .map_err(|e| MsiError::Io(crate::error::IoContext::from_string(e.to_string())))?;
     let parser = AasParser::parse(&data)?;
 
     for op in parser.opcodes {
@@ -207,7 +229,7 @@ mod tests {
         data.push(1);
         data.extend_from_slice(b"x");
 
-        let parser = AasParser::parse(&data).unwrap();
+        let parser = AasParser::parse(&data).expect("test");
         assert_eq!(parser.opcodes.len(), 2);
         assert_eq!(parser.opcodes[0], AasOpcode::Class("test".to_string()));
         assert_eq!(parser.opcodes[1], AasOpcode::Shortcut("lnk".to_string()));
@@ -245,9 +267,9 @@ mod tests {
     fn test_advertise_script() {
         assert!(advertise_script("", 0, false).is_err());
 
-        let mut file = NamedTempFile::new().unwrap();
-        file.write_all(b"AAS\0\x01\x04test").unwrap();
-        assert!(advertise_script(file.path().to_str().unwrap(), 0, false).is_ok());
+        let mut file = NamedTempFile::new().expect("test");
+        file.write_all(b"AAS\0\x01\x04test").expect("test");
+        assert!(advertise_script(file.path().to_str().expect("test"), 0, false).is_ok());
 
         assert!(advertise_script("nonexistent.aas", 0, false).is_err());
     }
@@ -256,10 +278,11 @@ mod tests {
     fn test_process_advertise_script() {
         assert!(process_advertise_script("", None, false, false).is_err());
 
-        let mut file = NamedTempFile::new().unwrap();
-        file.write_all(b"AAS\0\x02\x03ext").unwrap();
+        let mut file = NamedTempFile::new().expect("test");
+        file.write_all(b"AAS\0\x02\x03ext").expect("test");
         assert!(
-            process_advertise_script(file.path().to_str().unwrap(), None, false, false).is_ok()
+            process_advertise_script(file.path().to_str().expect("test"), None, false, false)
+                .is_ok()
         );
 
         assert!(process_advertise_script("nonexistent.aas", None, false, false).is_err());

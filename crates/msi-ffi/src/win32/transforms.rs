@@ -20,7 +20,8 @@ use crate::win32::{
 /// # Returns
 ///
 /// `ERROR_SUCCESS` or `ERROR_INVALID_PARAMETER`.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiDatabaseGenerateTransformW(
     hDatabase: MsiHandle,
@@ -80,7 +81,8 @@ pub extern "system" fn MsiDatabaseGenerateTransformW(
 }
 
 /// Generates a transform between two databases (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiDatabaseGenerateTransformA(
     hDatabase: MsiHandle,
@@ -140,7 +142,8 @@ pub extern "system" fn MsiDatabaseGenerateTransformA(
 }
 
 /// Creates summary information for a transform file.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiCreateTransformSummaryInfoW(
     hDatabase: MsiHandle,
@@ -165,7 +168,8 @@ pub extern "system" fn MsiCreateTransformSummaryInfoW(
 }
 
 /// Creates summary information for a transform file (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiCreateTransformSummaryInfoA(
     hDatabase: MsiHandle,
@@ -190,7 +194,8 @@ pub extern "system" fn MsiCreateTransformSummaryInfoA(
 }
 
 /// Gets the primary keys of a table.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "system" fn MsiDatabaseGetPrimaryKeysW(
@@ -226,7 +231,8 @@ pub extern "system" fn MsiDatabaseGetPrimaryKeysW(
 }
 
 /// Gets the primary keys of a table (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "system" fn MsiDatabaseGetPrimaryKeysA(
@@ -262,7 +268,8 @@ pub extern "system" fn MsiDatabaseGetPrimaryKeysA(
 }
 
 /// Returns the persistent state of a table.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiDatabaseIsTablePersistentW(
     hDatabase: MsiHandle,
@@ -291,7 +298,8 @@ pub extern "system" fn MsiDatabaseIsTablePersistentW(
 }
 
 /// Returns the persistent state of a table (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiDatabaseIsTablePersistentA(
     hDatabase: MsiHandle,
@@ -320,12 +328,16 @@ pub extern "system" fn MsiDatabaseIsTablePersistentA(
 }
 
 /// Retrieves a handle to the active database for the installation.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiGetActiveDatabase(hInstall: MsiHandle) -> MsiHandle {
     let result = std::panic::catch_unwind(|| {
         let mock_db = msi::wix::linker::LinkedDatabase::default();
-        let new_obj = MsiObject::Database(crate::types::MsiDatabaseHandle { inner: mock_db });
+        let new_obj = MsiObject::Database(crate::types::MsiDatabaseHandle {
+            inner: mock_db,
+            state: 0,
+        });
         alloc_handle(new_obj)
     });
 
@@ -346,8 +358,14 @@ mod transform_and_record_tests {
         let db1 = LinkedDatabase::default();
         let db2 = LinkedDatabase::default();
 
-        let h1 = alloc_handle(MsiObject::Database(MsiDatabaseHandle { inner: db1 }));
-        let h2 = alloc_handle(MsiObject::Database(MsiDatabaseHandle { inner: db2 }));
+        let h1 = alloc_handle(MsiObject::Database(MsiDatabaseHandle {
+            inner: db1,
+            state: 0,
+        }));
+        let h2 = alloc_handle(MsiObject::Database(MsiDatabaseHandle {
+            inner: db2,
+            state: 0,
+        }));
 
         let temp_dir = std::env::temp_dir();
         let mst_path = temp_dir.join("test_generate.mst");
@@ -424,11 +442,13 @@ mod transform_and_record_tests {
         let mock_db = msi::wix::linker::LinkedDatabase::default();
         let db_handle = alloc_handle(MsiObject::Database(crate::types::MsiDatabaseHandle {
             inner: mock_db,
+            state: 0,
         }));
 
         let mock_db2 = msi::wix::linker::LinkedDatabase::default();
         let db_handle2 = alloc_handle(MsiObject::Database(crate::types::MsiDatabaseHandle {
             inner: mock_db2,
+            state: 0,
         }));
 
         assert_eq!(
@@ -522,6 +542,7 @@ mod transform_and_record_tests {
         let mock_db = msi::wix::linker::LinkedDatabase::default();
         let db_handle = alloc_handle(MsiObject::Database(crate::types::MsiDatabaseHandle {
             inner: mock_db,
+            state: 0,
         }));
 
         let mock_rec = msi::database::tables::record::Record::new();
@@ -592,9 +613,11 @@ mod transform_and_record_tests {
         let db2 = msi::wix::linker::LinkedDatabase::default();
         let h1 = alloc_handle(MsiObject::Database(crate::types::MsiDatabaseHandle {
             inner: db1,
+            state: 0,
         }));
         let h2 = alloc_handle(MsiObject::Database(crate::types::MsiDatabaseHandle {
             inner: db2,
+            state: 0,
         }));
 
         let valid_path = std::env::temp_dir().join("test_msi_ffi_transforms.mst");

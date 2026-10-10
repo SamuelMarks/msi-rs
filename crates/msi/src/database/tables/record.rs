@@ -3,7 +3,7 @@
 //! Conforms directly to the Windows Installer SDK physical table stream layout.
 
 use crate::database::column::{ColumnDef, DataType};
-use crate::database::physical::{PhysicalIndex, PhysicalTableLayout};
+use crate::database::physical::PhysicalTableLayout;
 use crate::database::string_pool::StringPool;
 use crate::database::tables::types::StringPoolId;
 use crate::error::{MsiError, Result};
@@ -22,6 +22,15 @@ pub const MSI_NULL_INTEGER_32: i32 = i32::MIN;
 /// is reserved explicitly to represent a `NULL` short integer, meaning the valid
 /// physical range for values shifts. This avoids collisions with the `NULL` sentinel.
 pub const MSI_SHORT_INT_MASK: u16 = 0x8000;
+
+/// Mask used to serialize and deserialize MSI long integers.
+///
+/// According to the Windows Installer specification, valid long integers (32-bit)
+/// are transformed by applying an XOR mask of `0x8000_0000`.
+pub const MSI_LONG_INT_MASK: u32 = 0x8000_0000;
+
+/// Physical value representing a `NULL` long integer.
+pub const MSI_LONG_NULL_RAW: u32 = 0x0000_0000;
 
 /// Strongly-typed field value in an MSI database table record.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -122,8 +131,28 @@ impl Record {
     pub fn fields_mut(&mut self) -> &mut [FieldValue] {
         &mut self.fields
     }
+
+    /// Appends a new field to the record.
+    ///
+    /// # Arguments
+    ///
+    /// * `field` - The [`FieldValue`] to append.
+    pub fn push_field(&mut self, field: FieldValue) {
+        self.fields.push(field);
+    }
     #[allow(clippy::missing_errors_doc)]
     /// Deserializes a single field from binary format.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes` - Appropriate argument value.
+    /// * `col` - Appropriate argument value.
+    /// * `pool` - Appropriate argument value.
+    /// * `string_index_size` - Appropriate argument value.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn deserialize_field(
         bytes: &[u8],
         col: &ColumnDef,
@@ -141,11 +170,12 @@ impl Record {
                 }
             }
             DataType::Long => {
-                let val = i32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
-                if val == MSI_NULL_INTEGER_32 {
+                let raw = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+                if raw == MSI_LONG_NULL_RAW {
                     Ok(FieldValue::Null)
                 } else {
-                    Ok(FieldValue::Long(val))
+                    #[allow(clippy::cast_possible_wrap)]
+                    Ok(FieldValue::Long((raw ^ MSI_LONG_INT_MASK) as i32))
                 }
             }
             DataType::Stream => {
@@ -238,6 +268,10 @@ impl Record {
     /// # Errors
     ///
     /// Returns [`MsiError::RecordLengthMismatch`] or [`MsiError::Validation`] on violation.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn validate(&self, table_name: &str, columns: &[ColumnDef]) -> Result<()> {
         if self.fields.len() != columns.len() {
             return Err(MsiError::RecordLengthMismatch {
@@ -319,12 +353,9 @@ impl Record {
 
         let mut out = Vec::new();
 
-        for physical_idx in 0..columns.len() {
-            let logical_idx = layout
-                .logical_index(PhysicalIndex(physical_idx))
-                .unwrap_or(crate::database::physical::LogicalIndex(0));
-            let col = &columns[logical_idx.0];
-            let field = &self.fields[logical_idx.0];
+        // 1.1 Sequential Column Stream Ordering
+        for (i, col) in columns.iter().enumerate() {
+            let field = &self.fields[i];
 
             match col.data_type {
                 DataType::Short => {
@@ -349,16 +380,16 @@ impl Record {
                 }
                 DataType::Long => {
                     let val = match field {
-                        FieldValue::Long(l) => *l,
-                        FieldValue::Null => MSI_NULL_INTEGER_32,
-                        FieldValue::Short(s) => i32::from(*s),
+                        FieldValue::Long(l) => (*l as u32) ^ MSI_LONG_INT_MASK,
+                        FieldValue::Null => MSI_LONG_NULL_RAW,
+                        FieldValue::Short(s) => (i32::from(*s) as u32) ^ MSI_LONG_INT_MASK,
                         _ => {
                             return Err(MsiError::DataIntegrityError {
                                 reason: format!("expected long integer, got {field:?}"),
                             });
                         }
                     };
-                    out.extend_from_slice(&(val as u32).to_le_bytes());
+                    out.extend_from_slice(&val.to_le_bytes());
                 }
                 DataType::String { .. } | DataType::Stream => {
                     let str_id = match field {
@@ -419,12 +450,8 @@ impl Record {
         let mut logical_fields = vec![FieldValue::Null; columns.len()];
         let mut cursor = 0;
 
-        for physical_idx in 0..columns.len() {
-            let logical_idx = layout
-                .logical_index(PhysicalIndex(physical_idx))
-                .unwrap_or(crate::database::physical::LogicalIndex(0));
-            let col = &columns[logical_idx.0];
-
+        // 1.1 Sequential Column Stream Ordering
+        for (i, col) in columns.iter().enumerate() {
             let field_val = match col.data_type {
                 DataType::Short => {
                     let raw = u16::from_le_bytes([bytes[cursor], bytes[cursor + 1]]);
@@ -436,17 +463,17 @@ impl Record {
                     }
                 }
                 DataType::Long => {
-                    let val = i32::from_le_bytes([
+                    let raw = u32::from_le_bytes([
                         bytes[cursor],
                         bytes[cursor + 1],
                         bytes[cursor + 2],
                         bytes[cursor + 3],
                     ]);
                     cursor += 4;
-                    if col.nullable && val == MSI_NULL_INTEGER_32 {
+                    if raw == MSI_LONG_NULL_RAW {
                         FieldValue::Null
                     } else {
-                        FieldValue::Long(val)
+                        FieldValue::Long((raw ^ MSI_LONG_INT_MASK) as i32)
                     }
                 }
                 DataType::String { .. } => {
@@ -500,7 +527,7 @@ impl Record {
                 }
             };
 
-            logical_fields[logical_idx.0] = field_val;
+            logical_fields[i] = field_val;
         }
 
         Ok(Self {
@@ -518,13 +545,13 @@ mod tests {
         let col_stream = ColumnDef::new("Col1", DataType::Stream);
         let stream_null_bytes = [0x00, 0x00, 0x00, 0x00];
         let val_stream =
-            Record::deserialize_field(&stream_null_bytes, &col_stream, &pool, 2).unwrap();
+            Record::deserialize_field(&stream_null_bytes, &col_stream, &pool, 2).expect("test");
         assert_eq!(val_stream, FieldValue::Null);
 
         let col_string = ColumnDef::new("Col2", DataType::String { max_len: 255 });
         let string_null_bytes = [0x00, 0x00, 0x00, 0x00];
         let val_string =
-            Record::deserialize_field(&string_null_bytes, &col_string, &pool, 3).unwrap();
+            Record::deserialize_field(&string_null_bytes, &col_string, &pool, 3).expect("test");
         assert_eq!(val_string, FieldValue::Null);
 
         pool.add_string("TestString");
@@ -532,7 +559,7 @@ mod tests {
         // We can just construct a 3 byte stream with value 1: 0x01, 0x00, 0x00, 0x00
         let string_valid_bytes = [0x01, 0x00, 0x00, 0x00];
         let val_string2 =
-            Record::deserialize_field(&string_valid_bytes, &col_string, &pool, 3).unwrap();
+            Record::deserialize_field(&string_valid_bytes, &col_string, &pool, 3).expect("test");
         assert_eq!(val_string2, FieldValue::String("TestString".to_string()));
     }
     use super::*;
@@ -594,26 +621,16 @@ mod tests {
         }
     }
 
-    /// Tests serialization and deserialization using divergent physical and logical layout.
+    /// Tests serialization and deserialization with sequential logic (no reordering anymore).
     #[test]
     fn test_record_layout_reordering() {
         let mut pool = StringPool::new(CODEPAGE_UTF8);
 
-        // Example schema where physical != logical:
-        // Logically:
-        // 0: Value (String)
-        // 1: Name (String) [PK]
-        // 2: Id (Short)
         let cols = vec![
             ColumnDef::new("Value", DataType::String { max_len: 255 }).nullable(),
             ColumnDef::new("Name", DataType::String { max_len: 72 }).primary_key(),
             ColumnDef::new("Id", DataType::Short),
         ];
-
-        // Physically:
-        // 0: Name (String) [PK] -> Logical 1
-        // 1: Id (Short) -> Logical 2
-        // 2: Value (String) -> Logical 0
 
         let rec = Record::with_fields(vec![
             FieldValue::String("MyValue".to_string()), // Logical 0
@@ -623,15 +640,15 @@ mod tests {
 
         let bytes = try_serialize(&rec, &cols, &mut pool, 2);
 
-        // Calculate expected bytes:
-        // Name string id = 1 (inserted first because physical iteration hits it first)
+        // Expected bytes sequentially:
+        // Value string id = 1
+        // Name string id = 2
         // Id short = 123 ^ 0x8000 = 0x807B -> 7B 80
-        // Value string id = 2
 
         let expected_bytes = vec![
-            0x01, 0x00, // Name (str id = 1)
+            0x01, 0x00, // Value (str id = 1)
+            0x02, 0x00, // Name (str id = 2)
             0x7B, 0x80, // Id (short = 123)
-            0x02, 0x00, // Value (str id = 2)
         ];
 
         assert_eq!(bytes, expected_bytes);
@@ -639,7 +656,6 @@ mod tests {
         let des_rec = try_deserialize(&bytes, &cols, &pool, 2);
         assert_eq!(des_rec.len(), 1);
 
-        // Fields should be back in LOGICAL order!
         assert_eq!(
             des_rec[0].fields()[0],
             FieldValue::String("MyValue".to_string())
@@ -763,6 +779,16 @@ mod tests {
 
     /// Tests [`FieldValue`] display formatting and helper methods.
     #[test]
+    fn test_record_push_field() {
+        let mut r = Record::new();
+        r.push_field(FieldValue::Short(5));
+        assert_eq!(r.fields.len(), 1);
+        if let FieldValue::Short(s) = r.fields[0] {
+            assert_eq!(s, 5);
+        }
+    }
+
+    #[test]
     fn test_field_value_display_and_helpers() {
         assert_eq!(format!("{}", FieldValue::Short(10)), "10");
         assert_eq!(format!("{}", FieldValue::Long(20)), "20");
@@ -781,7 +807,7 @@ mod tests {
     fn test_record_errors() {
         let mut pool = StringPool::new(CODEPAGE_UTF8);
         let cols = vec![ColumnDef::new("Col1", DataType::Short)];
-        let layout = PhysicalTableLayout::new(&cols, false).unwrap();
+        let layout = PhysicalTableLayout::new(&cols, false).expect("test");
         let r = Record::new(); // 0 fields, but 1 column expected
         assert_eq!(r.fields().len(), 0);
         assert!(r.serialize(&layout, &mut pool, 2).is_err());
@@ -855,10 +881,52 @@ mod tests {
 
             let des_res = try_deserialize(&bytes, &cols, &pool, 2);
             assert_eq!(des_res.len(), 1);
-            let des_field = des_res[0].get(0).unwrap();
+            let des_field = des_res[0].get(0).expect("test");
 
             // i16::MIN and Null both deserialize back to Null
             let expected_des = if field_val == FieldValue::Short(i16::MIN) {
+                FieldValue::Null
+            } else {
+                field_val.clone()
+            };
+            assert_eq!(
+                des_field, &expected_des,
+                "Deserialization failed for {field_val:?}",
+            );
+        }
+    }
+
+    /// Tests long integer serialization boundaries and hex output.
+    #[test]
+    fn test_long_integer_serialization_exhaustive() {
+        let mut pool = StringPool::new(CODEPAGE_UTF8);
+        let cols = vec![ColumnDef::new("Col1", DataType::Long)];
+
+        let cases = vec![
+            (FieldValue::Long(0), vec![0x00, 0x00, 0x00, 0x80]), // 0 -> 0x8000_0000
+            (FieldValue::Long(1), vec![0x01, 0x00, 0x00, 0x80]),
+            (FieldValue::Long(1963), vec![0xAB, 0x07, 0x00, 0x80]),
+            (FieldValue::Long(69_707_928), vec![0x98, 0xA8, 0x27, 0x84]), // 69_707_928 ^ 0x80000000 = 0x8427A898
+            (FieldValue::Long(-1), vec![0xFF, 0xFF, 0xFF, 0x7F]),
+            (FieldValue::Long(i32::MIN + 1), vec![0x01, 0x00, 0x00, 0x00]), // -2147483647
+            (FieldValue::Long(i32::MIN), vec![0x00, 0x00, 0x00, 0x00]),     // -2147483648 -> NULL
+            (FieldValue::Null, vec![0x00, 0x00, 0x00, 0x00]),               // MSI_LONG_NULL_RAW
+        ];
+
+        for (field_val, expected_bytes) in cases {
+            let r = Record::with_fields(vec![field_val.clone()]);
+            let bytes = try_serialize(&r, &cols, &mut pool, 2);
+            assert_eq!(
+                bytes, expected_bytes,
+                "Serialization failed for {field_val:?}",
+            );
+
+            let des_res = try_deserialize(&bytes, &cols, &pool, 2);
+            assert_eq!(des_res.len(), 1);
+            let des_field = des_res[0].get(0).expect("test");
+
+            // i32::MIN and Null both deserialize back to Null
+            let expected_des = if field_val == FieldValue::Long(i32::MIN) {
                 FieldValue::Null
             } else {
                 field_val.clone()
@@ -876,7 +944,7 @@ mod tests {
         let mut pool = StringPool::new(CODEPAGE_UTF8);
 
         let cols_short = vec![ColumnDef::new("Col1", DataType::Short)];
-        let layout_short = PhysicalTableLayout::new(&cols_short, false).unwrap();
+        let layout_short = PhysicalTableLayout::new(&cols_short, false).expect("test");
 
         let r_out_of_bounds = Record::with_fields(vec![FieldValue::Long(32768)]);
         let res = r_out_of_bounds.serialize(&layout_short, &mut pool, 2);
@@ -891,7 +959,7 @@ mod tests {
         assert!(matches!(res3, Err(MsiError::DataIntegrityError { .. })));
 
         let cols_long = vec![ColumnDef::new("Col1", DataType::Long)];
-        let layout_long = PhysicalTableLayout::new(&cols_long, false).unwrap();
+        let layout_long = PhysicalTableLayout::new(&cols_long, false).expect("test");
 
         let r_wrong_type_long = Record::with_fields(vec![FieldValue::String("NaN".to_string())]);
         let res4 = r_wrong_type_long.serialize(&layout_long, &mut pool, 2);
@@ -902,15 +970,15 @@ mod tests {
     fn test_record_extra_coverage() {
         let mut pool = StringPool::new(CODEPAGE_UTF8);
         let cols = vec![ColumnDef::new("Col1", DataType::Short)];
-        let layout = PhysicalTableLayout::new(&cols, false).unwrap();
+        let layout = PhysicalTableLayout::new(&cols, false).expect("test");
 
         // Line 374-375
         assert!(Record::deserialize(&[0; 0], &layout, &pool, 2).is_err());
 
         // Line 487: Stream str_id == 0 -> Null
         let cols_stream = vec![ColumnDef::new("Col1", DataType::Stream)];
-        let layout_stream = PhysicalTableLayout::new(&cols_stream, false).unwrap();
-        let des = Record::deserialize(&[0, 0], &layout_stream, &pool, 2).unwrap();
+        let layout_stream = PhysicalTableLayout::new(&cols_stream, false).expect("test");
+        let des = Record::deserialize(&[0, 0], &layout_stream, &pool, 2).expect("test");
         assert_eq!(des.fields()[0], FieldValue::Null);
 
         // try_serialize fail
@@ -927,17 +995,19 @@ mod tests {
 
         // Lines 285-286: Long to Short valid
         let r_long_to_short = Record::with_fields(vec![FieldValue::Long(123)]);
-        let serialized_short = r_long_to_short.serialize(&layout, &mut pool, 2).unwrap();
+        let serialized_short = r_long_to_short
+            .serialize(&layout, &mut pool, 2)
+            .expect("test");
         assert_eq!(serialized_short, vec![0x7B, 0x80]);
 
         // Line 300: Short to Long valid
         let cols_long = vec![ColumnDef::new("Col1", DataType::Long)];
-        let layout_long = PhysicalTableLayout::new(&cols_long, false).unwrap();
+        let layout_long = PhysicalTableLayout::new(&cols_long, false).expect("test");
         let r_short_to_long = Record::with_fields(vec![FieldValue::Short(123)]);
         let serialized_long = r_short_to_long
             .serialize(&layout_long, &mut pool, 2)
-            .unwrap();
-        assert_eq!(serialized_long, vec![123, 0, 0, 0]);
+            .expect("test");
+        assert_eq!(serialized_long, vec![123, 0, 0, 128]);
 
         // Lines 483 and 511: try_serialize and try_deserialize with invalid cols
         let bad_cols = vec![ColumnDef::new("BadCol", DataType::Stream).primary_key()];

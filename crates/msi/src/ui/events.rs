@@ -57,6 +57,10 @@ impl DialogReturnCode {
     }
 
     /// Returns the standard MSI argument string.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -90,6 +94,8 @@ pub enum ControlEventType {
     Reset,
     /// Executes an immediate or custom action.
     DoAction(String),
+    /// Sets a target path property from user input.
+    SetTargetPath(String),
 }
 
 impl ControlEventType {
@@ -129,6 +135,7 @@ impl ControlEventType {
             }
             "Reset" => Ok(Self::Reset),
             "DoAction" => Ok(Self::DoAction(argument.to_string())),
+            "SetTargetPath" => Ok(Self::SetTargetPath(argument.to_string())),
             other => Err(MsiError::InvalidArgument {
                 argument: "ControlEvent.Event".to_string(),
                 reason: format!("Unrecognized ControlEvent type '{other}'"),
@@ -184,30 +191,50 @@ impl ControlEvent {
     }
 
     /// Returns the dialog name.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn dialog(&self) -> &str {
         &self.dialog
     }
 
     /// Returns the control name.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn control(&self) -> &str {
         &self.control
     }
 
     /// Returns the event type.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn event_type(&self) -> &ControlEventType {
         &self.event_type
     }
 
     /// Returns the condition expression if any.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn condition(&self) -> Option<&str> {
         self.condition.as_deref()
     }
 
     /// Returns the execution order.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn ordering(&self) -> i16 {
         self.ordering
@@ -375,6 +402,11 @@ mod tests {
         assert_eq!(
             ControlEventType::parse("DoAction", "ValidateAction"),
             Ok(ControlEventType::DoAction("ValidateAction".to_string()))
+        );
+
+        assert_eq!(
+            ControlEventType::parse("SetTargetPath", "TARGETDIR"),
+            Ok(ControlEventType::SetTargetPath("TARGETDIR".to_string()))
         );
 
         assert!(ControlEventType::parse("UnknownEvent", "").is_err());

@@ -186,6 +186,10 @@ impl Fat32Formatter {
     /// # Errors
     ///
     /// Returns [`MsiError::FileSystemFormatError`] if cluster indices are invalid (< 2).
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn allocate_cluster_chain(
         image: &mut [u8],
         reserved_sectors: u16,
@@ -230,6 +234,16 @@ impl Fat32Formatter {
     }
 
     /// Synthesizes the 512-byte FAT32 Boot Parameter Block (BPB).
+    ///
+    /// # Arguments
+    ///
+    /// * `total_sectors` - TODO: Document argument.
+    /// * `fat_size_sectors` - TODO: Document argument.
+    /// * `options` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn generate_bpb(
         total_sectors: u32,
         fat_size_sectors: u32,
@@ -294,6 +308,14 @@ impl Fat32Formatter {
     }
 
     /// Synthesizes the 512-byte FAT32 `FSInfo` sector.
+    ///
+    /// # Arguments
+    ///
+    /// * `free_clusters` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn generate_fsinfo(free_clusters: u32) -> [u8; 512] {
         let mut fsinfo = [0u8; 512];
         // Lead signature: 0x41615252 ("RRaA")
@@ -410,6 +432,15 @@ impl NtfsFormatter {
     }
 
     /// Synthesizes a 1024-byte NTFS FILE record.
+    ///
+    /// # Arguments
+    ///
+    /// * `record_idx` - TODO: Document argument.
+    /// * `volume_label` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn generate_file_record(record_idx: u32, volume_label: &str) -> [u8; 1024] {
         let mut rec = [0u8; 1024];
         // "FILE" magic
@@ -560,6 +591,10 @@ impl Ext4Formatter {
     }
 
     /// Synthesizes 64-byte ext4 64-bit block group descriptor.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn generate_group_descriptor() -> [u8; 64] {
         let mut desc = [0u8; 64];
         desc[0..4].copy_from_slice(&2u32.to_le_bytes()); // Block bitmap block LBA
@@ -637,6 +672,10 @@ impl FileSystemVerifier {
     /// # Errors
     ///
     /// Returns [`MsiError::FileSystemFormatError`] if validation signatures or headers are corrupt.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn verify(fs: FileSystemKind, buffer: &[u8]) -> Result<()> {
         match fs {
             FileSystemKind::Fat32 => Self::verify_fat32(buffer),
@@ -648,6 +687,14 @@ impl FileSystemVerifier {
     }
 
     /// Verifies FAT32 BPB signatures, OEM ID, and `FSInfo` magic numbers.
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn verify_fat32(buffer: &[u8]) -> Result<()> {
         if buffer.len() < 1024 {
             return Err(MsiError::FileSystemFormatError {
@@ -684,6 +731,14 @@ impl FileSystemVerifier {
     }
 
     /// Verifies NTFS OEM signature and boot sector ending.
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn verify_ntfs(buffer: &[u8]) -> Result<()> {
         if buffer.len() < 512 {
             return Err(MsiError::FileSystemFormatError {
@@ -721,6 +776,14 @@ impl FileSystemVerifier {
     }
 
     /// Verifies ext4 superblock magic number (0xEF53).
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn verify_ext4(buffer: &[u8]) -> Result<()> {
         // Superblock starts at byte 1024 (offset 0x400)
         let sb_offset = 1024;
@@ -755,6 +818,14 @@ impl FileSystemVerifier {
     }
 
     /// Verifies Btrfs superblock signature (`_BHRfS_M` at offset 65536).
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn verify_btrfs(buffer: &[u8]) -> Result<()> {
         let sb_offset = 65_536;
         if buffer.len() < sb_offset + 64 {
@@ -776,6 +847,14 @@ impl FileSystemVerifier {
     }
 
     /// Verifies XFS superblock magic number (`XFSB` at offset 0).
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn verify_xfs(buffer: &[u8]) -> Result<()> {
         if buffer.len() < 512 {
             return Err(MsiError::FileSystemFormatError {

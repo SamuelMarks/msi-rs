@@ -1,12 +1,15 @@
 //! Microsoft Cabinet File Writer (`CabinetWriter`).
 
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+
 use crate::cab::csum::csum_compute;
 use crate::cab::data::{CfData, CAB_BLOCK_MAX_SIZE};
 use crate::cab::file::{CfFile, FileAttributes, FolderIndex, ATTR_ARCHIVE, ATTR_NAME_IS_UTF};
 use crate::cab::folder::{CfFolder, CompressionType};
 use crate::cab::header::CfHeader;
 use crate::cab::lzx::LzxState;
-use crate::cab::mszip::MszipEngine;
+use crate::cab::mszip::MszipCompressor;
 use crate::error::{MsiError, Result};
 
 /// Staged file entry to be packaged into a Cabinet archive.
@@ -14,10 +17,19 @@ use crate::error::{MsiError, Result};
 struct StagedFile {
     /// Internal filename in archive.
     filename: String,
-    /// Uncompressed file payload.
-    data: Vec<u8>,
+    /// Uncompressed file size.
+    file_size: u32,
     /// Folder index or continuation indicator flag.
     folder_index: FolderIndex,
+    /// Offset within the uncompressed folder stream.
+    folder_offset: u32,
+}
+
+/// A cabinet folder during the building process.
+#[derive(Debug, Clone)]
+struct CabinetFolderBuilder {
+    /// The uncompressed payload bytes for this folder.
+    payload: Vec<u8>,
 }
 
 /// Cabinet archive builder and compressor.
@@ -27,6 +39,10 @@ pub struct CabinetWriter {
     compression_type: CompressionType,
     /// Staged file entries.
     files: Vec<StagedFile>,
+    /// Folder payloads.
+    folders: Vec<CabinetFolderBuilder>,
+    /// Deduplication cache tracking `(hash, data, folder_index, folder_offset)`.
+    dedup_cache: Vec<(u64, Vec<u8>, u16, u32)>,
     /// Cabinet set identifier.
     set_id: u16,
     /// Cabinet index within multi-cabinet set.
@@ -56,6 +72,8 @@ impl CabinetWriter {
         Self {
             compression_type,
             files: Vec::new(),
+            folders: Vec::new(),
+            dedup_cache: Vec::new(),
             set_id: 0,
             cabinet_index: 0,
             prev_cabinet: None,
@@ -123,6 +141,10 @@ impl CabinetWriter {
     /// # Errors
     ///
     /// Returns [`MsiError::InvalidArgument`] if filename already exists.
+    ///
+    /// # Returns
+    ///
+    /// Success if the file was added successfully.
     pub fn add_file(&mut self, filename: &str, data: &[u8]) -> Result<()> {
         self.add_file_with_folder_index(filename, data, FolderIndex::Index(0))
     }
@@ -138,6 +160,10 @@ impl CabinetWriter {
     /// # Errors
     ///
     /// Returns [`MsiError::InvalidArgument`] if filename already exists in this cabinet.
+    ///
+    /// # Returns
+    ///
+    /// Success if the file was added successfully.
     pub fn add_file_with_folder_index(
         &mut self,
         filename: &str,
@@ -153,10 +179,62 @@ impl CabinetWriter {
             }
         }
 
+        let mut hasher = DefaultHasher::new();
+        data.hash(&mut hasher);
+        let hash = hasher.finish();
+
+        let is_regular_folder = matches!(folder_index, FolderIndex::Index(_));
+
+        if is_regular_folder {
+            // Check for deduplication
+            for (cached_hash, cached_data, cached_folder_idx, cached_offset) in &self.dedup_cache {
+                if *cached_hash == hash && cached_data == data {
+                    self.files.push(StagedFile {
+                        filename: filename.to_string(),
+                        file_size: data.len() as u32,
+                        folder_index: FolderIndex::Index(*cached_folder_idx),
+                        folder_offset: *cached_offset,
+                    });
+                    return Ok(());
+                }
+            }
+        }
+
+        let (final_folder_index, folder_offset) = if let FolderIndex::Index(idx) = folder_index {
+            let idx_usize = idx as usize;
+            if idx_usize >= self.folders.len() {
+                self.folders.resize(
+                    idx_usize + 1,
+                    CabinetFolderBuilder {
+                        payload: Vec::new(),
+                    },
+                );
+            }
+            let offset = self.folders[idx_usize].payload.len() as u32;
+            self.folders[idx_usize].payload.extend_from_slice(data);
+
+            self.dedup_cache.push((hash, data.to_vec(), idx, offset));
+
+            (folder_index, offset)
+        } else {
+            // Continuation folders (ContinuedToNext, ContinuedFromPrev, SpansBoth).
+            // They must be placed in a physical folder (usually index 0 since multi-cab splitters make 1-folder cabs).
+            if self.folders.is_empty() {
+                self.folders.push(CabinetFolderBuilder {
+                    payload: Vec::new(),
+                });
+            }
+            let offset = self.folders[0].payload.len() as u32;
+            self.folders[0].payload.extend_from_slice(data);
+
+            (folder_index, offset)
+        };
+
         self.files.push(StagedFile {
             filename: filename.to_string(),
-            data: data.to_vec(),
-            folder_index,
+            file_size: data.len() as u32,
+            folder_index: final_folder_index,
+            folder_offset,
         });
 
         Ok(())
@@ -170,52 +248,50 @@ impl CabinetWriter {
     #[must_use]
     #[allow(clippy::too_many_lines, clippy::cast_possible_truncation)]
     pub fn build(self) -> Vec<u8> {
-        // 1. Prepare uncompressed folder stream and CFFILE entries
-        let mut folder_payload = Vec::new();
         let mut cf_files = Vec::with_capacity(self.files.len());
 
         for staged in &self.files {
-            let folder_offset = folder_payload.len() as u32;
-            let file_size = staged.data.len() as u32;
-
             cf_files.push(CfFile {
-                file_size,
-                folder_offset,
+                file_size: staged.file_size,
+                folder_offset: staged.folder_offset,
                 folder_index: staged.folder_index,
                 date: 0x5D32, // 2026-09-18
                 time: 0x6000, // 12:00:00
                 attributes: FileAttributes::from_bits(ATTR_ARCHIVE | ATTR_NAME_IS_UTF),
                 filename: staged.filename.clone(),
             });
-
-            folder_payload.extend_from_slice(&staged.data);
         }
 
-        // 2. Compress folder payload into CFDATA blocks (up to 32KB each)
-        let mut cf_data_blocks = Vec::new();
-        let mszip = MszipEngine;
-        let mut lzx_state = match self.compression_type {
-            CompressionType::Lzx { window_bits } => LzxState::new(window_bits).ok(),
-            CompressionType::None | CompressionType::Mszip | CompressionType::Quantum => None,
-        };
+        let mut cf_data_blocks_per_folder: Vec<Vec<CfData>> =
+            Vec::with_capacity(self.folders.len());
+
         let quantum_comp = crate::cab::quantum::QuantumCompressor::default();
 
-        if folder_payload.is_empty() {
-            // An empty folder has 0 CFDATA blocks
-        } else {
+        for folder in &self.folders {
+            let mut cf_data_blocks = Vec::new();
+            let mut mszip = MszipCompressor::new();
+            let mut lzx_state = match self.compression_type {
+                CompressionType::Lzx { window_bits } => LzxState::new(window_bits).ok(),
+                CompressionType::None | CompressionType::Mszip | CompressionType::Quantum => None,
+            };
+
             let mut offset = 0;
-            while offset < folder_payload.len() {
-                let end = (offset + CAB_BLOCK_MAX_SIZE).min(folder_payload.len());
-                let uncompressed_chunk = &folder_payload[offset..end];
+            while offset < folder.payload.len() {
+                let end = (offset + CAB_BLOCK_MAX_SIZE).min(folder.payload.len());
+                let uncompressed_chunk = &folder.payload[offset..end];
                 let uncompressed_size = uncompressed_chunk.len() as u16;
 
                 let compressed_payload = match self.compression_type {
-                    CompressionType::Mszip => {
-                        mszip.compress(uncompressed_chunk).unwrap_or_default()
-                    }
+                    CompressionType::Mszip => mszip
+                        .compress(uncompressed_chunk)
+                        .unwrap_or_else(|_| uncompressed_chunk.to_vec()),
                     CompressionType::Lzx { .. } => lzx_state.as_mut().map_or_else(
                         || uncompressed_chunk.to_vec(),
-                        |state| state.compress_block(uncompressed_chunk).unwrap_or_default(),
+                        |state| {
+                            state
+                                .compress_block(uncompressed_chunk)
+                                .unwrap_or_else(|_| uncompressed_chunk.to_vec())
+                        },
                     ),
                     CompressionType::Quantum => quantum_comp.compress(uncompressed_chunk),
                     CompressionType::None => uncompressed_chunk.to_vec(),
@@ -238,9 +314,10 @@ impl CabinetWriter {
 
                 offset = end;
             }
+            cf_data_blocks_per_folder.push(cf_data_blocks);
         }
 
-        // 3. Layout calculation
+        // Layout calculation
         let mut cf_header = CfHeader::new();
         cf_header.set_id = self.set_id;
         cf_header.cabinet_index = self.cabinet_index;
@@ -258,9 +335,7 @@ impl CabinetWriter {
         cf_header.flags = crate::cab::header::HeaderFlags::from_bits(flags);
         let header_len = cf_header.to_bytes().len();
 
-        // Folder: 8 bytes (1 folder)
-        let folder_len = if self.files.is_empty() { 0 } else { 8 };
-        // Files offset starts immediately after folders
+        let folder_len = self.folders.len() * 8;
         let files_offset = (header_len + folder_len) as u32;
 
         let mut files_len = 0;
@@ -268,37 +343,30 @@ impl CabinetWriter {
             files_len += 16 + f.filename.len() + 1;
         }
 
-        // Data blocks start after files
-        let data_start_offset = files_offset + files_len as u32;
+        let mut current_data_offset = files_offset + files_len as u32;
+        let mut cf_folders = Vec::with_capacity(self.folders.len());
 
-        // Construct CFFOLDER
-        let cf_folder = if self.files.is_empty() {
-            None
-        } else {
-            Some(CfFolder {
-                data_offset: data_start_offset,
-                data_count: cf_data_blocks.len() as u16,
+        for blocks in &cf_data_blocks_per_folder {
+            cf_folders.push(CfFolder {
+                data_offset: current_data_offset,
+                data_count: blocks.len() as u16,
                 compression_type: self.compression_type,
                 reserve_data: Vec::new(),
-            })
-        };
-
-        // Calculate total cabinet size
-        let mut total_size = data_start_offset as usize;
-        for d in &cf_data_blocks {
-            total_size += 8 + d.payload.len();
+            });
+            for block in blocks {
+                current_data_offset += 8 + block.payload.len() as u32;
+            }
         }
 
-        cf_header.cabinet_size = total_size as u32;
+        cf_header.cabinet_size = current_data_offset;
         cf_header.files_offset = files_offset;
-        cf_header.folder_count = u16::from(cf_folder.is_some());
+        cf_header.folder_count = cf_folders.len() as u16;
         cf_header.file_count = cf_files.len() as u16;
 
-        // 4. Assemble output buffer
-        let mut output = Vec::with_capacity(total_size);
+        let mut output = Vec::with_capacity(current_data_offset as usize);
         output.extend_from_slice(&cf_header.to_bytes());
 
-        if let Some(folder) = cf_folder {
+        for folder in &cf_folders {
             output.extend_from_slice(&folder.to_bytes());
         }
 
@@ -306,8 +374,10 @@ impl CabinetWriter {
             output.extend_from_slice(&file.to_bytes());
         }
 
-        for block in &cf_data_blocks {
-            output.extend_from_slice(&block.to_bytes());
+        for blocks in &cf_data_blocks_per_folder {
+            for block in blocks {
+                output.extend_from_slice(&block.to_bytes());
+            }
         }
 
         output
@@ -352,6 +422,69 @@ mod tests {
                 assert!(reader.extract_file("nonexistent.txt").is_err());
             }
         }
+    }
+
+    /// Tests deduplication of payload contents.
+    #[test]
+    fn test_cabinet_writer_deduplication() {
+        let mut writer = CabinetWriter::new(CompressionType::Mszip);
+        let payload = vec![0x42u8; 10 * 1024 * 1024]; // 10 MB file
+
+        assert!(writer
+            .add_file_with_folder_index("file1.bin", &payload, FolderIndex::Index(0))
+            .is_ok());
+        // Add a duplicate payload, but request folder 1. Due to deduplication, it should map back to folder 0!
+        assert!(writer
+            .add_file_with_folder_index("file2.bin", &payload, FolderIndex::Index(1))
+            .is_ok());
+
+        let cab_bytes = writer.build();
+
+        // Size should be close to 10MB compressed (or essentially very small if fully uniform, but definitely not 20MB)
+        // Let's assert it's less than 15MB which means only one copy is compressed.
+        assert!(cab_bytes.len() < 15 * 1024 * 1024);
+
+        let reader = CabinetReader::new(&cab_bytes).expect("test");
+        assert_eq!(reader.files().len(), 2);
+        let f1 = reader
+            .files()
+            .iter()
+            .find(|f| f.filename == "file1.bin")
+            .expect("test");
+        let f2 = reader
+            .files()
+            .iter()
+            .find(|f| f.filename == "file2.bin")
+            .expect("test");
+
+        assert_eq!(f1.folder_index, f2.folder_index);
+        assert_eq!(f1.folder_offset, f2.folder_offset);
+
+        assert_eq!(reader.extract_file("file1.bin"), Ok(payload.clone()));
+        assert_eq!(reader.extract_file("file2.bin"), Ok(payload));
+    }
+
+    /// Tests building and extracting files with multiple folders.
+    #[test]
+    fn test_cabinet_writer_multi_folder() {
+        let mut writer = CabinetWriter::new(CompressionType::None);
+        assert!(writer
+            .add_file_with_folder_index("f0_1.txt", b"F0", FolderIndex::Index(0))
+            .is_ok());
+        assert!(writer
+            .add_file_with_folder_index("f1_1.txt", b"F1", FolderIndex::Index(1))
+            .is_ok());
+        assert!(writer
+            .add_file_with_folder_index("f2_1.txt", b"F2", FolderIndex::Index(2))
+            .is_ok());
+
+        let cab_bytes = writer.build();
+        let reader = CabinetReader::new(&cab_bytes).expect("test");
+
+        assert_eq!(reader.folders().len(), 3);
+        assert_eq!(reader.extract_file("f0_1.txt"), Ok(b"F0".to_vec()));
+        assert_eq!(reader.extract_file("f1_1.txt"), Ok(b"F1".to_vec()));
+        assert_eq!(reader.extract_file("f2_1.txt"), Ok(b"F2".to_vec()));
     }
 
     /// Tests building and extracting files with LZX compression.
@@ -448,6 +581,30 @@ mod tests {
         }
     }
 
+    /// Tests compressing a 50 MB synthetic buffer and verifying compressed size is < 15 MB.
+    #[test]
+    fn test_cabinet_writer_large_compression() {
+        let mut writer = CabinetWriter::new(CompressionType::Mszip);
+        let mut large_payload = vec![0xABu8; 50 * 1024 * 1024]; // 50 MB
+        for i in 0..10_000 {
+            large_payload[i * 100] = (i % 255) as u8;
+        }
+
+        assert!(writer.add_file("huge.dat", &large_payload).is_ok());
+        let cab_bytes = writer.build();
+
+        // Assert compressed size is less than 15 MB
+        assert!(
+            cab_bytes.len() < 15 * 1024 * 1024,
+            "Cabinet size {} is not < 15MB",
+            cab_bytes.len()
+        );
+
+        let reader = CabinetReader::new(&cab_bytes).expect("Valid cabinet");
+        let extracted = reader.extract_file("huge.dat").expect("Extracted");
+        assert_eq!(extracted, large_payload);
+    }
+
     /// Tests empty cabinet archive.
     #[test]
     fn test_cabinet_writer_empty() {
@@ -465,6 +622,50 @@ mod tests {
                 assert_eq!(reader.files().len(), 0);
                 assert_eq!(reader.folders().len(), 0);
             }
+        }
+    }
+
+    /// Roundtrip test extracting compressed cabinet using external `cabextract` or `expand.exe`.
+    #[test]
+    fn test_cabinet_external_extraction_roundtrip() {
+        let mut writer = CabinetWriter::new(CompressionType::Mszip);
+        let payload = b"Data to extract using external tool.";
+        assert!(writer.add_file("ext.txt", payload).is_ok());
+        let cab_bytes = writer.build();
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let cab_path = dir.path().join("test.cab");
+        std::fs::write(&cab_path, &cab_bytes).expect("write cab");
+
+        // Try expand.exe (Windows) or cabextract (Unix)
+        let mut success = false;
+        if let Ok(status) = std::process::Command::new("expand")
+            .arg(&cab_path)
+            .arg("-F:*")
+            .arg(dir.path())
+            .status()
+        {
+            if status.success() {
+                success = true;
+            }
+        } else if let Ok(status) = std::process::Command::new("cabextract")
+            .arg("-d")
+            .arg(dir.path())
+            .arg(&cab_path)
+            .status()
+        {
+            if status.success() {
+                success = true;
+            }
+        }
+
+        if success {
+            let extracted = std::fs::read(dir.path().join("ext.txt")).expect("read extracted");
+            assert_eq!(extracted, payload);
+        } else {
+            println!(
+                "Skipped external extraction test: neither `expand` nor `cabextract` available"
+            );
         }
     }
 

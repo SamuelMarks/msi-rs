@@ -14,7 +14,8 @@ use crate::win32::{
 // We don't have a SummaryInfo handle type yet, but we stub the endpoints.
 
 /// Obtains a handle for the _`SummaryInformation` stream for a Windows Installer database (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "system" fn MsiGetSummaryInformationW(
@@ -38,7 +39,8 @@ pub extern "system" fn MsiGetSummaryInformationW(
 }
 
 /// Obtains a handle for the _`SummaryInformation` stream for a Windows Installer database (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "system" fn MsiGetSummaryInformationA(
@@ -62,7 +64,8 @@ pub extern "system" fn MsiGetSummaryInformationA(
 }
 
 /// Gets a single property from the summary information stream (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiSummaryInfoGetPropertyW(
     hSummaryInfo: MsiHandle,
@@ -79,7 +82,8 @@ pub extern "system" fn MsiSummaryInfoGetPropertyW(
 }
 
 /// Gets a single property from the summary information stream (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiSummaryInfoGetPropertyA(
     hSummaryInfo: MsiHandle,
@@ -96,7 +100,8 @@ pub extern "system" fn MsiSummaryInfoGetPropertyA(
 }
 
 /// Sets a single property in the summary information stream (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiSummaryInfoSetPropertyW(
     hSummaryInfo: MsiHandle,
@@ -112,7 +117,8 @@ pub extern "system" fn MsiSummaryInfoSetPropertyW(
 }
 
 /// Sets a single property in the summary information stream (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiSummaryInfoSetPropertyA(
     hSummaryInfo: MsiHandle,
@@ -137,7 +143,8 @@ pub extern "system" fn MsiSummaryInfoSetPropertyA(
 /// # Returns
 ///
 /// `ERROR_SUCCESS` or `ERROR_INVALID_HANDLE`.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "system" fn MsiSummaryInfoGetPropertyCount(
@@ -165,7 +172,8 @@ pub extern "system" fn MsiSummaryInfoGetPropertyCount(
 /// # Returns
 ///
 /// `ERROR_SUCCESS` or `ERROR_INVALID_HANDLE`.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiSummaryInfoPersist(hSummaryInfo: MsiHandle) -> Uint {
     let result = panic::catch_unwind(|| {
@@ -185,7 +193,8 @@ pub extern "system" fn MsiSummaryInfoPersist(hSummaryInfo: MsiHandle) -> Uint {
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_HANDLE`
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiDatabaseCommit(hDatabase: MsiHandle) -> Uint {
     let result = panic::catch_unwind(|| {
@@ -277,6 +286,7 @@ mod tests {
         let db = msi::wix::linker::LinkedDatabase::new().unwrap();
         let h_db = alloc_handle(MsiObject::Database(crate::types::MsiDatabaseHandle {
             inner: db,
+            state: 0,
         }));
         assert_eq!(MsiDatabaseCommit(h_db), ERROR_SUCCESS);
 

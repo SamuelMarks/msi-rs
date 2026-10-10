@@ -110,7 +110,7 @@ pub struct CfFolder {
 
 impl Default for CfFolder {
     fn default() -> Self {
-        Self::new(CompressionType::None)
+        Self::new(CompressionType::Mszip)
     }
 }
 

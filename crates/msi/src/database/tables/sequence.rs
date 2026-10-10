@@ -35,6 +35,10 @@ impl SequenceRow {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] if action name is empty or exceeds 72 characters.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn new(
         action: impl Into<String>,
         condition: Option<String>,
@@ -82,6 +86,10 @@ impl SequenceRow {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`] on invalid record.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 3 {
             return Err(MsiError::RecordLengthMismatch {
@@ -115,6 +123,14 @@ impl SequenceRow {
 }
 
 /// Helper to generate a [`TableSchema`] for standard action sequence tables.
+///
+/// # Arguments
+///
+/// * `name` - Appropriate argument value.
+///
+/// # Returns
+///
+/// An instance of this struct, or an appropriate return type.
 fn create_sequence_schema(name: &'static str) -> TableSchema {
     TableSchema::new(name)
         .with_column(ColumnDef::new("Action", DataType::String { max_len: 72 }).primary_key())

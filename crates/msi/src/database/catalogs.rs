@@ -185,6 +185,10 @@ impl DatabaseCatalog {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] if a table with this name already exists.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn add_table(&mut self, schema: TableSchema) -> Result<()> {
         if self.tables.contains_key(&schema.name) {
             return Err(MsiError::Validation {
@@ -211,6 +215,10 @@ impl DatabaseCatalog {
     }
 
     /// Removes a table schema from the catalog.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - TODO: Document argument.
     pub fn remove_table(&mut self, name: &str) {
         self.tables.remove(name);
     }

@@ -26,11 +26,19 @@ impl SignatureValidator {
     ///
     /// # Errors
     /// Returns `MsiError::ActionExecutionError` if the file does not exist or fails validation.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn validate_file(path: &Path) -> Result<bool> {
         if !path.exists() {
-            return Err(MsiError::Io(
+            return Err(MsiError::Io(crate::error::IoContext::from_string(
                 "File not found for signature validation".to_string(),
-            ));
+            )));
         }
 
         let file_name = path.file_name().unwrap_or_default().to_string_lossy();
@@ -49,6 +57,14 @@ impl SignatureValidator {
     ///
     /// # Errors
     /// Returns `MsiError` if the certificate cannot be extracted.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn get_file_signature_information(path: &Path) -> Result<SignatureInfo> {
         let is_valid = Self::validate_file(path)?;
 
@@ -74,18 +90,18 @@ mod tests {
 
     #[test]
     fn test_validate_file() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("test");
 
         let valid = dir.path().join("valid_signed.msi");
-        File::create(&valid).unwrap();
-        assert!(SignatureValidator::validate_file(&valid).unwrap());
+        File::create(&valid).expect("test");
+        assert_eq!(SignatureValidator::validate_file(&valid), Ok(true));
 
         let unsigned = dir.path().join("unsigned_test.cab");
-        File::create(&unsigned).unwrap();
+        File::create(&unsigned).expect("test");
         assert!(!SignatureValidator::validate_file(&unsigned).unwrap());
 
         let invalid = dir.path().join("invalid_sig.msi");
-        File::create(&invalid).unwrap();
+        File::create(&invalid).expect("test");
         assert!(SignatureValidator::validate_file(&invalid).is_err());
 
         assert!(SignatureValidator::validate_file(Path::new("missing.msi")).is_err());
@@ -93,16 +109,16 @@ mod tests {
 
     #[test]
     fn test_get_file_signature_information() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("test");
 
         let valid = dir.path().join("valid_signed.msi");
-        File::create(&valid).unwrap();
-        let sig = SignatureValidator::get_file_signature_information(&valid).unwrap();
+        File::create(&valid).expect("test");
+        let sig = SignatureValidator::get_file_signature_information(&valid).expect("test");
         assert_eq!(sig.subject, "O=Example, CN=Test");
         assert_eq!(sig.cert_data, vec![0x30, 0x82, 0x01, 0x01]);
 
         let unsigned = dir.path().join("unsigned_test.cab");
-        File::create(&unsigned).unwrap();
+        File::create(&unsigned).expect("test");
         assert!(SignatureValidator::get_file_signature_information(&unsigned).is_err());
     }
 }

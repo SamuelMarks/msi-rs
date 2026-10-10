@@ -22,6 +22,10 @@ pub struct SqlExtension;
 
 impl SqlExtension {
     /// Creates a new `SqlExtension` instance.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn new() -> Self {
         Self
@@ -31,6 +35,17 @@ impl SqlExtension {
     ///
     /// # Errors
     /// Returns [`MsiError::WixCompiler`] if required attributes are missing.
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn compile_sql_database(
         node: &XmlNode,
         parent_id: Option<&str>,
@@ -71,6 +86,17 @@ impl SqlExtension {
     ///
     /// # Errors
     /// Returns [`MsiError::WixCompiler`] if required attributes are missing.
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn compile_sql_script(
         node: &XmlNode,
         parent_id: Option<&str>,

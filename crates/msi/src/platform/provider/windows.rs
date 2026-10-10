@@ -60,9 +60,8 @@ impl PlatformProvider for WindowsProvider {
                 link.SetPath(PCWSTR(target_w.as_ptr()))
                     .map_err(|e| MsiError::ComRpcError(e.message().to_string()))?;
 
-                let persist: IPersistFile = link
-                    .cast()
-                    .map_err(|e| MsiError::ComRpcError(e.message().to_string()))?;
+                let persist: IPersistFile = windows::core::Interface::cast(&link)
+                    .map_err(|e| MsiError::ComRpcError(e.to_string()))?;
 
                 let mut shortcut_w: Vec<u16> =
                     shortcut_path.to_string_lossy().encode_utf16().collect();

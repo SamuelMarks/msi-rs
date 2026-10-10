@@ -22,6 +22,10 @@ pub struct NetFxExtension;
 
 impl NetFxExtension {
     /// Creates a new `NetFxExtension` instance.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn new() -> Self {
         Self
@@ -32,6 +36,17 @@ impl NetFxExtension {
     /// # Errors
     ///
     /// Returns [`MsiError::WixCompiler`] if required attributes are missing.
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn compile_native_image(
         node: &XmlNode,
         parent_id: Option<&str>,

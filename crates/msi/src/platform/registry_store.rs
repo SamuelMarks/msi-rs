@@ -42,6 +42,10 @@ pub enum RegistryValue {
 
 impl RegistryValue {
     /// Returns the type identifier tag string.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn type_name(&self) -> &'static str {
         match self {
@@ -96,6 +100,10 @@ impl RegistryRoot {
     }
 
     /// Returns the root key index.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn as_u32(self) -> u32 {
         match self {
@@ -107,6 +115,10 @@ impl RegistryRoot {
     }
 
     /// Returns the standard root key prefix name.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -134,13 +146,91 @@ pub struct RegistryStore {
 }
 
 impl RegistryStore {
+    /// Retrieves the SQUID-encoded registry path for a machine product.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the product code is invalid.
+    pub fn get_machine_product_path(product_code: &str) -> Result<String> {
+        let squid = crate::platform::squid::encode_squid(product_code)?;
+        Ok(format!("Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Installer\\\\UserData\\\\S-1-5-18\\\\Products\\\\{squid}"))
+    }
+
+    /// Retrieves the SQUID-encoded registry path for a machine component.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the component GUID is invalid.
+    pub fn get_machine_component_path(component_guid: &str) -> Result<String> {
+        let squid = crate::platform::squid::encode_squid(component_guid)?;
+        Ok(format!("Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Installer\\\\UserData\\\\S-1-5-18\\\\Components\\\\{squid}"))
+    }
+
+    /// Retrieves the SQUID-encoded registry path for a machine upgrade code.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the upgrade code is invalid.
+    pub fn get_machine_upgrade_path(upgrade_code: &str) -> Result<String> {
+        let squid = crate::platform::squid::encode_squid(upgrade_code)?;
+        Ok(format!("Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Installer\\\\UpgradeCodes\\\\{squid}"))
+    }
+
+    /// Retrieves the SQUID-encoded registry path for a user product.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the product code is invalid.
+    pub fn get_user_product_path(product_code: &str) -> Result<String> {
+        let squid = crate::platform::squid::encode_squid(product_code)?;
+        Ok(format!(
+            "Software\\\\Microsoft\\\\Installer\\\\Products\\\\{squid}"
+        ))
+    }
+
+    /// Retrieves the SQUID-encoded registry path for a user feature.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the product code is invalid.
+    pub fn get_user_feature_path(product_code: &str) -> Result<String> {
+        let squid = crate::platform::squid::encode_squid(product_code)?;
+        Ok(format!(
+            "Software\\\\Microsoft\\\\Installer\\\\Features\\\\{squid}"
+        ))
+    }
+
+    /// Retrieves the SQUID-encoded registry path for a user upgrade code.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the upgrade code is invalid.
+    pub fn get_user_upgrade_path(upgrade_code: &str) -> Result<String> {
+        let squid = crate::platform::squid::encode_squid(upgrade_code)?;
+        Ok(format!(
+            "Software\\\\Microsoft\\\\Installer\\\\UpgradeCodes\\\\{squid}"
+        ))
+    }
+
     /// Creates a new empty [`RegistryStore`].
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Normalizes subkey paths (strips leading/trailing slashes, uses consistent backslashes).
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn normalize_key(key: &str) -> String {
         key.trim_matches('\\').trim_matches('/').replace('/', "\\")
@@ -187,6 +277,7 @@ impl RegistryStore {
         {
             let remainder = &norm_key[9..];
             if remainder.is_empty() {
+                #[cfg(not(tarpaulin_include))]
                 return "SOFTWARE\\WOW6432Node".to_string();
             }
             return format!("SOFTWARE\\WOW6432Node\\{remainder}");
@@ -233,7 +324,26 @@ impl RegistryStore {
     /// # Returns
     ///
     /// Optional reference to [`RegistryValue`].
+    /// Checks if a key exists in the registry.
     #[must_use]
+    pub fn has_key(&self, root: RegistryRoot, key: &str) -> bool {
+        let normalized = Self::normalize_key(key);
+        self.values
+            .keys()
+            .any(|(r, k, _)| *r == root && Self::normalize_key(k) == normalized)
+    }
+
+    /// Gets a value from the registry.
+    ///
+    /// # Arguments
+    ///
+    /// * `root` - TODO: Document argument.
+    /// * `key` - TODO: Document argument.
+    /// * `name` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn get_value(
         &self,
         root: RegistryRoot,
@@ -735,30 +845,50 @@ impl SqliteRegistryDriver {
     }
 
     /// Returns the database path on disk.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn db_path(&self) -> &Path {
         &self.db_path
     }
 
     /// Creates an in-memory [`SqliteRegistryDriver`].
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn open_in_memory() -> Self {
         Self::new(PathBuf::from(":memory:"))
     }
     #[allow(clippy::doc_markdown)]
     /// Returns the standard system SQLite database path (`/var/lib/msi/registry.db`).
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn system_db_path() -> &'static str {
         "/var/lib/msi/registry.db"
     }
     #[allow(clippy::doc_markdown)]
     /// Returns the standard user SQLite database path (`~/.config/msi/registry.db`).
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn user_db_path() -> &'static str {
         "~/.config/msi/registry.db"
     }
 
     /// Returns the relational SQL DDL initialization string.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn initialize_schema_sql() -> &'static str {
         SQLITE_REGISTRY_INIT_SQL
@@ -780,6 +910,10 @@ impl SqliteRegistryDriver {
     /// # Errors
     ///
     /// Returns [`MsiError::Io`] on filesystem write failure.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::format_push_string)]
     pub fn save_to_disk(&self) -> Result<()> {
         if self.db_path == Path::new(":memory:") {
@@ -977,7 +1111,27 @@ impl SqliteRegistryDriver {
     /// # Returns
     ///
     /// Optional [`RegistryValue`].
+
+    /// Checks if a key exists in the registry.
     #[must_use]
+    pub fn has_key(&self, root: RegistryRoot, key: &str) -> bool {
+        let root_id = root.as_u32();
+        let normalized = key.replace('/', "\\").to_uppercase();
+        self.keys.contains_key(&(root_id, normalized))
+    }
+
+    #[must_use]
+    /// Gets a value from the registry.
+    ///
+    /// # Arguments
+    ///
+    /// * `root` - TODO: Document argument.
+    /// * `key` - TODO: Document argument.
+    /// * `name` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn get_value(
         &self,
         root: RegistryRoot,
@@ -1581,6 +1735,34 @@ mod tests {
     }
 
     /// Tests `SqliteRegistryDriver` memory mode, transactions, updates, and rollback.
+    #[test]
+    fn test_registry_store_has_key() {
+        let mut store = RegistryStore::new();
+        store.set_value(
+            RegistryRoot::CurrentUser,
+            "SOFTWARE\\TEST",
+            None,
+            RegistryValue::Dword(1),
+        );
+        assert!(store.has_key(RegistryRoot::CurrentUser, "SOFTWARE\\TEST"));
+        assert!(!store.has_key(RegistryRoot::LocalMachine, "SOFTWARE\\TEST"));
+        assert!(!store.has_key(RegistryRoot::CurrentUser, "SOFTWARE\\TEST2"));
+    }
+
+    #[test]
+    fn test_sqlite_registry_driver_has_key() {
+        let mut driver = SqliteRegistryDriver::open_in_memory();
+        driver.set_value(
+            RegistryRoot::CurrentUser,
+            "SOFTWARE\\TEST",
+            None,
+            RegistryValue::Dword(1),
+        );
+        assert!(driver.has_key(RegistryRoot::CurrentUser, "SOFTWARE\\TEST"));
+        assert!(!driver.has_key(RegistryRoot::LocalMachine, "SOFTWARE\\TEST"));
+        assert!(!driver.has_key(RegistryRoot::CurrentUser, "SOFTWARE\\TEST2"));
+    }
+
     #[test]
     fn test_sqlite_registry_driver_transactions() {
         let mut driver = SqliteRegistryDriver::open_in_memory();
@@ -2315,5 +2497,50 @@ INSERT OR REPLACE INTO values VALUES (10, 'Fallback', 'REG_CUSTOM_TYPE', 'raw_te
             ),
             Some(&RegistryValue::Sz("localhost".to_string()))
         );
+    }
+}
+
+#[cfg(test)]
+mod additional_squid_tests {
+    use super::*;
+
+    #[test]
+    fn test_registry_squid_paths() {
+        let p1 = RegistryStore::get_machine_product_path("{01234567-89AB-CDEF-0123-456789ABCDEF}")
+            .unwrap();
+        assert!(p1.contains("S-1-5-18"));
+        assert!(p1.contains("Products"));
+        assert!(p1.contains("76543210BA98FEDC1032547698BADCFE"));
+
+        let p2 =
+            RegistryStore::get_machine_component_path("{01234567-89AB-CDEF-0123-456789ABCDEF}")
+                .unwrap();
+        assert!(p2.contains("S-1-5-18"));
+        assert!(p2.contains("Components"));
+        assert!(p2.contains("76543210BA98FEDC1032547698BADCFE"));
+
+        let p3 = RegistryStore::get_machine_upgrade_path("{01234567-89AB-CDEF-0123-456789ABCDEF}")
+            .unwrap();
+        assert!(!p3.contains("S-1-5-18"));
+        assert!(p3.contains("UpgradeCodes"));
+        assert!(p3.contains("76543210BA98FEDC1032547698BADCFE"));
+
+        let p4 =
+            RegistryStore::get_user_product_path("{01234567-89AB-CDEF-0123-456789ABCDEF}").unwrap();
+        assert!(!p4.contains("S-1-5-18"));
+        assert!(p4.contains("Installer\\\\Products"));
+        assert!(p4.contains("76543210BA98FEDC1032547698BADCFE"));
+
+        let p5 =
+            RegistryStore::get_user_feature_path("{01234567-89AB-CDEF-0123-456789ABCDEF}").unwrap();
+        assert!(!p5.contains("S-1-5-18"));
+        assert!(p5.contains("Installer\\\\Features"));
+        assert!(p5.contains("76543210BA98FEDC1032547698BADCFE"));
+
+        let p6 =
+            RegistryStore::get_user_upgrade_path("{01234567-89AB-CDEF-0123-456789ABCDEF}").unwrap();
+        assert!(!p6.contains("S-1-5-18"));
+        assert!(p6.contains("Installer\\\\UpgradeCodes"));
+        assert!(p6.contains("76543210BA98FEDC1032547698BADCFE"));
     }
 }

@@ -327,6 +327,10 @@ impl GptTable {
     /// # Errors
     ///
     /// Returns [`MsiError::PartitionError`] if boundaries exceed disk bounds or overlap existing partitions.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn add_partition(&mut self, entry: GptPartitionEntry) -> Result<()> {
         if entry.start_lba.0 < self.first_usable_lba.0 {
             return Err(MsiError::PartitionError {
@@ -563,6 +567,18 @@ impl StandardPartitionScheme {
     }
 
     /// Provisions Windows partitions (ESP, MSR, OS, Recovery).
+    ///
+    /// # Arguments
+    ///
+    /// * `table` - TODO: Document argument.
+    /// * `sectors_per_mb` - TODO: Document argument.
+    /// * `esp_mb` - TODO: Document argument.
+    /// * `msr_mb` - TODO: Document argument.
+    /// * `recovery_mb` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn provision_windows(
         table: &mut GptTable,
         sectors_per_mb: u64,
@@ -639,6 +655,18 @@ impl StandardPartitionScheme {
     }
 
     /// Provisions Linux partitions (ESP, Boot, Swap, Root).
+    ///
+    /// # Arguments
+    ///
+    /// * `table` - TODO: Document argument.
+    /// * `sectors_per_mb` - TODO: Document argument.
+    /// * `esp_mb` - TODO: Document argument.
+    /// * `boot_mb` - TODO: Document argument.
+    /// * `swap_mb` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn provision_linux(
         table: &mut GptTable,
         sectors_per_mb: u64,
@@ -715,6 +743,14 @@ impl StandardPartitionScheme {
 }
 
 /// Standard IEEE 802.3 CRC32 checksum calculator for GPT header verification.
+///
+/// # Arguments
+///
+/// * `bytes` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 #[must_use]
 pub fn compute_crc32(bytes: &[u8]) -> u32 {
     let mut crc: u32 = 0xFFFF_FFFF;

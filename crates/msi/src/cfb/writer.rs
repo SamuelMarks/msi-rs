@@ -95,6 +95,10 @@ impl CfbWriter {
     /// # Errors
     ///
     /// Returns [`MsiError::DuplicateDirectoryEntry`] if a stream with this name has already been added.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn add_stream(&mut self, name: &str, data: &[u8]) -> Result<()> {
         for s in &self.streams {
             if compare_cfb_names(&s.name, name) == Ordering::Equal {
@@ -111,6 +115,17 @@ impl CfbWriter {
     }
 
     /// Inserts a node into a Red-Black Tree maintaining [MS-CFB] 2.6.3 invariants.
+    ///
+    /// # Arguments
+    ///
+    /// * `root` - TODO: Document argument.
+    /// * `new_id` - TODO: Document argument.
+    /// * `entries` - TODO: Document argument.
+    /// * `parents` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn rb_insert(
         root: StreamId,
         new_id: StreamId,
@@ -206,6 +221,17 @@ impl CfbWriter {
     }
 
     /// Performs left tree rotation around `x`.
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - TODO: Document argument.
+    /// * `root` - TODO: Document argument.
+    /// * `entries` - TODO: Document argument.
+    /// * `parents` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn rotate_left(
         x: StreamId,
         root: StreamId,
@@ -244,6 +270,17 @@ impl CfbWriter {
     }
 
     /// Performs right tree rotation around `y`.
+    ///
+    /// # Arguments
+    ///
+    /// * `y` - TODO: Document argument.
+    /// * `root` - TODO: Document argument.
+    /// * `entries` - TODO: Document argument.
+    /// * `parents` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn rotate_right(
         y: StreamId,
         root: StreamId,

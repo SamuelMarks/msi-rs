@@ -12,11 +12,13 @@ pub mod properties;
 pub mod record;
 pub mod record_stream;
 pub mod registry;
+pub(crate) mod registry_backend;
 pub mod state;
 pub mod strings;
 pub mod summary;
 pub mod transforms;
 pub mod ui;
+pub use ui::*;
 pub mod view;
 
 use std::panic;
@@ -63,6 +65,10 @@ pub const ERROR_MORE_DATA: Uint = 234;
 pub const ERROR_INVALID_HANDLE: Uint = 6;
 /// General installation failure.
 pub const ERROR_INSTALL_FAILURE: Uint = 1603;
+/// `ERROR_UNKNOWN_PRODUCT`
+pub const ERROR_UNKNOWN_PRODUCT: Uint = 1605;
+/// `ERROR_UNKNOWN_PATCH`
+pub const ERROR_UNKNOWN_PATCH: Uint = 1647;
 
 /// Closes an open installation handle.
 ///
@@ -73,7 +79,8 @@ pub const ERROR_INSTALL_FAILURE: Uint = 1603;
 /// # Returns
 ///
 /// `ERROR_SUCCESS` if successful, `ERROR_INVALID_HANDLE` if the handle was invalid.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub extern "system" fn MsiCloseHandle(handle: MsiHandle) -> Uint {
     let result = panic::catch_unwind(|| {
         if handle == MSI_NULL_HANDLE {
@@ -94,7 +101,8 @@ pub extern "system" fn MsiCloseHandle(handle: MsiHandle) -> Uint {
 /// # Returns
 ///
 /// `ERROR_SUCCESS`.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub extern "system" fn MsiCloseAllHandles() -> Uint {
     let result = panic::catch_unwind(|| {
         close_all_handles();

@@ -222,6 +222,10 @@ pub struct SerialConsoleConfig {
 
 impl Default for SerialConsoleConfig {
     /// Default serial configuration: 115200 8N1 on `/dev/ttyS0`.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn default() -> Self {
         Self {
             port_name: "/dev/ttyS0".to_string(),
@@ -357,6 +361,10 @@ impl UefiGopFramebuffer {
     /// # Errors
     ///
     /// Returns [`MsiError::ConsoleInitError`] if pixel is out of screen bounds or buffer is truncated.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn put_pixel(&self, x: u32, y: u32, color: Color32, buffer: &mut [u8]) -> Result<()> {
         if x >= self.width || y >= self.height {
             return Err(MsiError::ConsoleInitError {
@@ -421,6 +429,10 @@ impl UefiGopFramebuffer {
     /// # Errors
     ///
     /// Returns [`MsiError::ConsoleInitError`] if buffer length is inadequate.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn clear(&self, color: Color32, buffer: &mut [u8]) -> Result<()> {
         let total_bytes = (self.height * self.stride * 4) as usize;
         if buffer.len() < total_bytes {

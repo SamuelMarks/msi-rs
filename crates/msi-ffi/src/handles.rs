@@ -72,6 +72,14 @@ pub(crate) fn with_handle_table<R, F: FnOnce(&HandleTable) -> R>(f: F) -> R {
 }
 
 /// Allocates a new handle for the given object.
+///
+/// # Arguments
+///
+/// * `obj` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 #[must_use]
 pub fn alloc_handle(obj: MsiObject) -> MsiHandle {
     with_handle_table(|table| {
@@ -90,6 +98,14 @@ pub fn alloc_handle(obj: MsiObject) -> MsiHandle {
 }
 
 /// Closes an open handle, freeing the associated object.
+///
+/// # Arguments
+///
+/// * `handle` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 #[must_use]
 pub fn close_handle(handle: MsiHandle) -> bool {
     with_handle_table(|table| {
@@ -210,6 +226,7 @@ mod tests {
         let db = msi::wix::linker::LinkedDatabase::default();
         let h2 = alloc_handle(MsiObject::Database(crate::types::MsiDatabaseHandle {
             inner: db,
+            state: 0,
         }));
         let mut is_db = false;
         with_handle(h2, |obj| {
@@ -295,16 +312,10 @@ mod tests {
 
         close_all_handles();
 
-        let mut checked1 = false;
-        with_handle(h1, |_| {
-            checked1 = true;
-        });
-        assert!(!checked1);
+        let check1 = with_handle(h1, |_| ());
+        assert!(check1.is_none());
 
-        let mut checked2 = false;
-        with_handle(h2, |_| {
-            checked2 = true;
-        });
-        assert!(!checked2);
+        let check2 = with_handle(h2, |_| ());
+        assert!(check2.is_none());
     }
 }

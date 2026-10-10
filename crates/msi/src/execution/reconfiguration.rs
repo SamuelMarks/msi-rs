@@ -33,6 +33,10 @@ pub struct ReinstallMode(pub u32);
 /// # Errors
 ///
 /// Returns `MsiError::InvalidArgument` if `product_code` is empty.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 pub fn configure_product(
     product_code: &str,
     _level: InstallLevel,
@@ -46,7 +50,9 @@ pub fn configure_product(
     }
     let package_path = std::path::PathBuf::from(product_code);
     if product_code == "FAIL" {
-        return Err(MsiError::Io("FAIL".into()));
+        return Err(MsiError::Io(crate::error::IoContext::from_string(
+            "FAIL".to_string(),
+        )));
     }
     if !package_path.exists() || package_path.to_string_lossy() == "mock.msi" {
         return Ok(());
@@ -93,6 +99,10 @@ pub fn configure_product(
 /// # Errors
 ///
 /// Returns `MsiError::InvalidArgument` if `product_code` is empty.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 pub fn reinstall_product(product_code: &str, _mode: ReinstallMode) -> Result<(), MsiError> {
     if product_code.is_empty() {
         return Err(MsiError::InvalidArgument {
@@ -102,7 +112,9 @@ pub fn reinstall_product(product_code: &str, _mode: ReinstallMode) -> Result<(),
     }
     let package_path = std::path::PathBuf::from(product_code);
     if product_code == "FAIL" {
-        return Err(MsiError::Io("FAIL".into()));
+        return Err(MsiError::Io(crate::error::IoContext::from_string(
+            "FAIL".to_string(),
+        )));
     }
     if !package_path.exists() || package_path.to_string_lossy() == "mock.msi" {
         return Ok(());
@@ -137,19 +149,10 @@ mod tests {
     #[test]
     fn test_reconfiguration_full_execution() {
         let path_str = "../../crates/msi-cli/Sample App.msi";
-        assert!(
-            configure_product(path_str, InstallLevel(1), ConfigurationState::Install).is_ok()
-                || true
-        );
-        assert!(
-            configure_product(path_str, InstallLevel(1), ConfigurationState::Uninstall).is_ok()
-                || true
-        );
-        assert!(
-            configure_product(path_str, InstallLevel(1), ConfigurationState::Repair).is_ok()
-                || true
-        );
-        assert!(reinstall_product(path_str, ReinstallMode(1)).is_ok() || true);
+        let _ = configure_product(path_str, InstallLevel(1), ConfigurationState::Install);
+        let _ = configure_product(path_str, InstallLevel(1), ConfigurationState::Uninstall);
+        let _ = configure_product(path_str, InstallLevel(1), ConfigurationState::Repair);
+        let _ = reinstall_product(path_str, ReinstallMode(1));
         assert!(configure_product("FAIL", InstallLevel(1), ConfigurationState::Install).is_err());
         assert!(reinstall_product("FAIL", ReinstallMode(1)).is_err());
     }

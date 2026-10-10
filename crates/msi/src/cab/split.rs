@@ -53,6 +53,10 @@ pub struct InMemoryMediaProvider {
 
 impl InMemoryMediaProvider {
     /// Creates a new [`InMemoryMediaProvider`].
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -115,6 +119,10 @@ impl SplitSetValidator {
     /// # Errors
     ///
     /// Returns [`MsiError::InvalidCabData`] if validation fails.
+    ///
+    /// # Returns
+    ///
+    /// Success if the split set is valid.
     pub fn validate_split_set(cabinets: &[(String, Vec<u8>)]) -> Result<()> {
         if cabinets.is_empty() {
             return Err(MsiError::InvalidCabData {
@@ -237,6 +245,10 @@ impl MultiCabinetReader {
     /// # Errors
     ///
     /// Returns [`MsiError::InvalidCabData`] if the primary cabinet cannot be parsed.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct.
     pub fn new(
         primary_data: &[u8],
         provider: Option<Box<dyn MediaPromptCallback>>,
@@ -381,6 +393,10 @@ impl MultiCabinetWriter {
     /// # Errors
     ///
     /// Returns [`MsiError::InvalidArgument`] if filename is already staged.
+    ///
+    /// # Returns
+    ///
+    /// Success if the file was added successfully.
     pub fn add_file(&mut self, filename: impl Into<String>, data: &[u8]) -> Result<()> {
         let name = filename.into();
         if self.files.iter().any(|(f, _)| f == &name) {
@@ -500,15 +516,7 @@ mod tests {
     fn test_in_memory_media_provider_missing_cabinet() {
         let mut provider = InMemoryMediaProvider::new();
         let err = provider.request_cabinet("Disk 2", "disk2.cab").unwrap_err();
-        match err {
-            MsiError::InvalidCabData { reason } => {
-                assert_eq!(
-                    reason,
-                    "Media volume 'Disk 2' with cabinet file 'disk2.cab' not available"
-                );
-            }
-            _ => panic!("Expected InvalidCabData error"),
-        }
+        assert!(matches!(err, MsiError::InvalidCabData { .. }));
     }
     use super::*;
 

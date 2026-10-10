@@ -207,6 +207,12 @@ impl TerminalBuffer {
     }
 
     /// Sets a character at grid coordinates `(x, y)` if within boundaries.
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - TODO: Document argument.
+    /// * `y` - TODO: Document argument.
+    /// * `ch` - TODO: Document argument.
     pub fn set_char(&mut self, x: u16, y: u16, ch: char) {
         if x < self.width && y < self.height {
             let idx = (y as usize) * (self.width as usize) + (x as usize);
@@ -215,6 +221,12 @@ impl TerminalBuffer {
     }
 
     /// Writes a horizontal string at `(x, y)`.
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - TODO: Document argument.
+    /// * `y` - TODO: Document argument.
+    /// * `text` - TODO: Document argument.
     pub fn draw_string(&mut self, x: u16, y: u16, text: &str) {
         for (i, ch) in text.chars().enumerate() {
             let col = x.saturating_add(u16::try_from(i).unwrap_or(u16::MAX));
@@ -223,6 +235,14 @@ impl TerminalBuffer {
     }
 
     /// Draws an outlined box using Unicode box-drawing characters.
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - TODO: Document argument.
+    /// * `y` - TODO: Document argument.
+    /// * `w` - TODO: Document argument.
+    /// * `h` - TODO: Document argument.
+    /// * `title` - TODO: Document argument.
     pub fn draw_box(&mut self, x: u16, y: u16, w: u16, h: u16, title: Option<&str>) {
         if w < 2 || h < 2 {
             return;
@@ -256,6 +276,10 @@ impl TerminalBuffer {
     }
 
     /// Converts the character buffer into a multiline formatted string for terminal output.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn render_to_string(&self) -> String {
         let mut out = String::with_capacity((self.width as usize + 1) * self.height as usize);
@@ -317,17 +341,29 @@ impl TerminalWizard {
     }
 
     /// Returns a reference to the underlying [`UiEngine`].
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn engine(&self) -> &UiEngine {
         &self.engine
     }
 
     /// Returns a mutable reference to the underlying [`UiEngine`].
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub const fn engine_mut(&mut self) -> &mut UiEngine {
         &mut self.engine
     }
 
     /// Returns whether the diagnostics log view is toggled open.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn is_diagnostics_log_open(&self) -> bool {
         self.diagnostics_log_open
@@ -348,12 +384,20 @@ impl TerminalWizard {
     }
 
     /// Returns the current real-time action description text, if set.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn action_text(&self) -> Option<&str> {
         self.action_text.as_deref()
     }
 
     /// Returns the active vertical scroll offset.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn scroll_offset(&self) -> usize {
         self.scroll_offset
@@ -369,6 +413,10 @@ impl TerminalWizard {
     }
 
     /// Returns the current text cursor position within the active edit control.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn cursor_pos(&self) -> usize {
         self.cursor_pos

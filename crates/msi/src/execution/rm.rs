@@ -28,6 +28,14 @@ impl RestartManager {
     ///
     /// # Errors
     /// Returns an `MsiError` if detection fails system-wide.
+    ///
+    /// # Arguments
+    ///
+    /// * `_target_files` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub const fn detect_locking_processes(_target_files: &[&Path]) -> Result<Vec<String>> {
         #[cfg(windows)]
         {
@@ -46,6 +54,15 @@ impl RestartManager {
     ///
     /// # Errors
     /// Returns `MsiError` if displaying the dialog fails (e.g., headless error without unattended flag).
+    ///
+    /// # Arguments
+    ///
+    /// * `locking_processes` - TODO: Document argument.
+    /// * `unattended` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn prompt_files_in_use(
         &self,
         locking_processes: &[String],
@@ -88,7 +105,7 @@ mod tests {
     #[test]
     fn test_detect_locking_processes_empty() {
         let files: [&Path; 0] = [];
-        let processes = RestartManager::detect_locking_processes(&files).unwrap();
+        let processes = RestartManager::detect_locking_processes(&files).expect("test");
         assert!(processes.is_empty());
     }
 
@@ -96,27 +113,27 @@ mod tests {
     fn test_prompt_files_in_use() {
         let rm = RestartManager;
 
-        let outcome_empty = rm.prompt_files_in_use(&[], false).unwrap();
+        let outcome_empty = rm.prompt_files_in_use(&[], false).expect("test");
         assert_eq!(outcome_empty, RmSessionOutcome::Ignore);
 
         let outcome_unattended = rm
             .prompt_files_in_use(&["app.exe".to_string()], true)
-            .unwrap();
+            .expect("test");
         assert_eq!(outcome_unattended, RmSessionOutcome::Ignore);
 
         let outcome_exit = rm
             .prompt_files_in_use(&["critical_system_daemon".to_string()], false)
-            .unwrap();
+            .expect("test");
         assert_eq!(outcome_exit, RmSessionOutcome::Exit);
 
         let outcome_retry = rm
             .prompt_files_in_use(&["retry_trigger_app".to_string()], false)
-            .unwrap();
+            .expect("test");
         assert_eq!(outcome_retry, RmSessionOutcome::Retry);
 
         let outcome_default_ignore = rm
             .prompt_files_in_use(&["some_other_app".to_string()], false)
-            .unwrap();
+            .expect("test");
         assert_eq!(outcome_default_ignore, RmSessionOutcome::Ignore);
     }
 }

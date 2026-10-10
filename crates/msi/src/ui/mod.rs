@@ -64,4 +64,5 @@ pub use wizard::{
     InstallationCompleteDialog, InstallationProgressDialog, LocaleFocusField, LocaleKeyboardDialog,
     PartitionConfirmationDialog, WizardStep,
 };
+pub mod native_controls;
 pub mod native_wrappers;

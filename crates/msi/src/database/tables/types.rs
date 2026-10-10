@@ -6,6 +6,14 @@ use crate::error::{MsiError, Result};
 use std::fmt;
 
 /// Normalizes a GUID string by wrapping raw 36-character UUIDs with curly braces.
+///
+/// # Arguments
+///
+/// * `s` - Appropriate argument value.
+///
+/// # Returns
+///
+/// An instance of this struct, or an appropriate return type.
 fn normalize_guid(s: &str) -> String {
     if s.len() == 36 && !s.starts_with('{') && !s.ends_with('}') {
         format!("{{{s}}}")
@@ -15,6 +23,15 @@ fn normalize_guid(s: &str) -> String {
 }
 
 /// Validate whether a string conforms to the Windows Installer GUID format `{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}`.
+///
+/// # Arguments
+///
+/// * `s` - Appropriate argument value.
+/// * `field_name` - Appropriate argument value.
+///
+/// # Returns
+///
+/// An instance of this struct, or an appropriate return type.
 fn validate_guid(s: &str, field_name: &'static str) -> Result<()> {
     if s.len() != 38 {
         return Err(MsiError::Validation {
@@ -160,6 +177,10 @@ impl ComponentGuid {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] if the GUID format is invalid.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn parse(guid: impl Into<String>) -> Result<Self> {
         let s = normalize_guid(&guid.into());
         validate_guid(&s, "ComponentGuid")?;
@@ -287,6 +308,10 @@ impl ProductCode {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] if the GUID format is invalid.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn parse(code: impl Into<String>) -> Result<Self> {
         let s = normalize_guid(&code.into());
         validate_guid(&s, "ProductCode")?;
@@ -326,6 +351,10 @@ impl UpgradeCode {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] if the GUID format is invalid.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn parse(code: impl Into<String>) -> Result<Self> {
         let s = normalize_guid(&code.into());
         validate_guid(&s, "UpgradeCode")?;
@@ -363,11 +392,23 @@ impl TableId {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] if `name` is empty or exceeds 64 characters.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn new(name: impl Into<String>) -> Result<Self> {
         Self::new_inner(name.into())
     }
 
     /// Validates and constructs a [`TableId`] from an owned string.
+    ///
+    /// # Arguments
+    ///
+    /// * `s` - Appropriate argument value.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     fn new_inner(s: String) -> Result<Self> {
         if s.is_empty() || s.len() > 64 {
             return Err(MsiError::Validation {
@@ -412,6 +453,10 @@ impl ColumnIndex {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] if index is 0.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn new(index: u16) -> Result<Self> {
         if index == 0 {
             return Err(MsiError::Validation {
@@ -631,11 +676,23 @@ impl FileKey {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] if `key` is empty.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn new(key: impl Into<String>) -> Result<Self> {
         Self::new_inner(key.into())
     }
 
     /// Validates and constructs a [`FileKey`] from an owned string.
+    ///
+    /// # Arguments
+    ///
+    /// * `s` - Appropriate argument value.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     fn new_inner(s: String) -> Result<Self> {
         if s.is_empty() {
             return Err(MsiError::Validation {
@@ -706,11 +763,23 @@ impl FeatureName {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] if `name` is empty or exceeds 38 characters.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn new(name: impl Into<String>) -> Result<Self> {
         Self::new_inner(name.into())
     }
 
     /// Validates and constructs a [`FeatureName`] from an owned string.
+    ///
+    /// # Arguments
+    ///
+    /// * `s` - Appropriate argument value.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     fn new_inner(s: String) -> Result<Self> {
         if s.is_empty() || s.len() > 38 {
             return Err(MsiError::Validation {
@@ -786,11 +855,23 @@ impl ComponentName {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] if `name` is empty.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn new(name: impl Into<String>) -> Result<Self> {
         Self::new_inner(name.into())
     }
 
     /// Validates and constructs a [`ComponentName`] from an owned string.
+    ///
+    /// # Arguments
+    ///
+    /// * `s` - Appropriate argument value.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     fn new_inner(s: String) -> Result<Self> {
         if s.is_empty() {
             return Err(MsiError::Validation {
@@ -864,11 +945,23 @@ impl DirectoryId {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] if `id` is empty.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn new(id: impl Into<String>) -> Result<Self> {
         Self::new_inner(id.into())
     }
 
     /// Validates and constructs a [`DirectoryId`] from an owned string.
+    ///
+    /// # Arguments
+    ///
+    /// * `s` - Appropriate argument value.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     fn new_inner(s: String) -> Result<Self> {
         if s.is_empty() {
             return Err(MsiError::Validation {
@@ -939,11 +1032,23 @@ impl PropertyName {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] if `name` is empty or exceeds 72 characters.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn new(name: impl Into<String>) -> Result<Self> {
         Self::new_inner(name.into())
     }
 
     /// Validates and constructs a [`PropertyName`] from an owned string.
+    ///
+    /// # Arguments
+    ///
+    /// * `s` - Appropriate argument value.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     fn new_inner(s: String) -> Result<Self> {
         if s.is_empty() || s.len() > 72 {
             return Err(MsiError::Validation {
@@ -1256,5 +1361,77 @@ mod tests {
         // Test empty input sha1 coverage
         let empty_guid = ComponentGuid::generate_deterministic("", "");
         assert_eq!(empty_guid.as_str().len(), 38);
+    }
+}
+
+/// Strongly-typed integer Sequence Id (`SequenceId`), representing 32-bit bounds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SequenceId(pub u32);
+
+impl SequenceId {
+    /// Creates a new [`SequenceId`].
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - Numeric sequence id.
+    ///
+    /// # Returns
+    ///
+    /// A new [`SequenceId`].
+    #[must_use]
+    pub const fn new(id: u32) -> Self {
+        Self(id)
+    }
+
+    /// Returns the sequence value.
+    ///
+    /// # Returns
+    ///
+    /// Integer sequence id.
+    #[must_use]
+    pub const fn get(self) -> u32 {
+        self.0
+    }
+}
+
+impl fmt::Display for SequenceId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+/// Strongly-typed Disk identifier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct DiskId(pub u16);
+
+impl DiskId {
+    /// Creates a new [`DiskId`].
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - Numeric disk id.
+    ///
+    /// # Returns
+    ///
+    /// A new [`DiskId`].
+    #[must_use]
+    pub const fn new(id: u16) -> Self {
+        Self(id)
+    }
+
+    /// Returns the disk value.
+    ///
+    /// # Returns
+    ///
+    /// Integer disk id.
+    #[must_use]
+    pub const fn get(self) -> u16 {
+        self.0
+    }
+}
+
+impl fmt::Display for DiskId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }

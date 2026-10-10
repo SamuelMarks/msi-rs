@@ -26,7 +26,9 @@ use std::fs;
 /// # Safety
 ///
 /// `wxs_content` and `output_msi_path` must be valid null-terminated C strings.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub unsafe extern "C" fn msi_compile_wix_source(
     wxs_content: *const c_char,
     output_msi_path: *const c_char,
@@ -95,7 +97,9 @@ pub unsafe extern "C" fn msi_compile_wix_source(
 /// # Safety
 ///
 /// `wxs_path` and `output_msi_path` must be valid null-terminated C strings.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub unsafe extern "C" fn msi_compile_wix_file(
     wxs_path: *const c_char,
     output_msi_path: *const c_char,
@@ -105,7 +109,9 @@ pub unsafe extern "C" fn msi_compile_wix_file(
             let in_path = c_str_to_str(wxs_path, "wxs_path")?;
             let source = fs::read_to_string(in_path).map_err(|e| {
                 (
-                    map_msi_error(&msi::MsiError::Io(e.to_string())),
+                    map_msi_error(&msi::MsiError::Io(msi::error::IoContext::from_string(
+                        e.to_string(),
+                    ))),
                     format!("Failed reading WiX source file '{in_path}'"),
                 )
             })?;

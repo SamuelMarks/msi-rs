@@ -440,6 +440,10 @@ mod tests {
     use crate::database::tables::record::Record;
 
     /// Helper to build a sample linked database.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn sample_database() -> LinkedDatabase {
         let mut db = LinkedDatabase::default();
 

@@ -10,8 +10,7 @@ from unittest.mock import MagicMock, patch
 
 repo_root = Path(__file__).resolve().parent.parent.parent
 scripts_dir = repo_root / "scripts"
-if str(scripts_dir) not in sys.path:
-    sys.path.insert(0, str(scripts_dir))
+sys.path.insert(0, str(scripts_dir))
 
 
 def test_get_augmented_env(tmp_path: Path) -> None:
@@ -47,7 +46,7 @@ def test_find_pre_commit_cmd_python_module() -> None:
     install_hooks = importlib.import_module("install_hooks")
 
     def mock_which(cmd: str, path: str | None = None) -> str | None:
-        return None
+        return None  # pragma: no cover
 
     mock_run = MagicMock()
     mock_run.returncode = 0
@@ -65,7 +64,7 @@ def test_find_pre_commit_cmd_python_module_nonzero() -> None:
     install_hooks = importlib.import_module("install_hooks")
 
     def mock_which(cmd: str, path: str | None = None) -> str | None:
-        return None
+        return None  # pragma: no cover
 
     mock_run = MagicMock()
     mock_run.returncode = 1
@@ -85,7 +84,7 @@ def test_find_pre_commit_cmd_python3_fallback() -> None:
     def mock_which(cmd: str, path: str | None = None) -> str | None:
         if cmd == "python3":
             return "/usr/bin/python3"
-        return None
+        return None  # pragma: no cover
 
     def mock_run(args: list, **kwargs: object) -> MagicMock:
         if args[0] == sys.executable:
@@ -94,7 +93,7 @@ def test_find_pre_commit_cmd_python3_fallback() -> None:
             res = MagicMock()
             res.returncode = 0
             return res
-        raise RuntimeError("not found")
+        raise RuntimeError("not found")  # pragma: no cover
 
     with (
         patch("shutil.which", side_effect=mock_which),
@@ -111,7 +110,7 @@ def test_find_pre_commit_cmd_python3_nonzero_then_python() -> None:
     def mock_which(cmd: str, path: str | None = None) -> str | None:
         if cmd == "python":
             return "/usr/bin/python"
-        return None
+        return None  # pragma: no cover
 
     def mock_run(args: list, **kwargs: object) -> MagicMock:
         if args[0] == sys.executable:
@@ -122,7 +121,7 @@ def test_find_pre_commit_cmd_python3_nonzero_then_python() -> None:
             res = MagicMock()
             res.returncode = 0
             return res
-        raise RuntimeError("not found")
+        raise RuntimeError("not found")  # pragma: no cover
 
     with (
         patch("shutil.which", side_effect=mock_which),
@@ -139,7 +138,7 @@ def test_find_pre_commit_cmd_python_both_nonzero() -> None:
     def mock_which(cmd: str, path: str | None = None) -> str | None:
         if cmd in ["python3", "python"]:
             return f"/usr/bin/{cmd}"
-        return None
+        return None  # pragma: no cover
 
     mock_run = MagicMock()
     mock_run.returncode = 1
@@ -159,7 +158,7 @@ def test_find_pre_commit_cmd_not_found() -> None:
     def mock_which(cmd: str, path: str | None = None) -> str | None:
         if cmd in ["python3", "python"]:
             return f"/usr/bin/{cmd}"
-        return None
+        return None  # pragma: no cover
 
     def mock_run(args: list, **kwargs: object) -> MagicMock:
         raise OSError("failed to spawn")
@@ -196,7 +195,7 @@ def test_main_success(tmp_path: Path) -> None:
             return "/usr/bin/git"
         if cmd == "pre-commit":
             return "/usr/bin/pre-commit"
-        return None
+        return None  # pragma: no cover
 
     mock_run_res = MagicMock()
     mock_run_res.returncode = 0
@@ -222,7 +221,7 @@ def test_main_git_config_exception(tmp_path: Path) -> None:
             return "/usr/bin/git"
         if cmd == "pre-commit":
             return "/usr/bin/pre-commit"
-        return None
+        return None  # pragma: no cover
 
     def mock_run(cmd: list, **kwargs: object) -> MagicMock:
         if "config" in cmd:

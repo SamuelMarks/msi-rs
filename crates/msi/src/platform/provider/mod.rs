@@ -18,6 +18,10 @@ use std::path::Path;
 /// Linux, macOS, FreeBSD, and `SunOS`.
 pub trait PlatformProvider: Send + Sync {
     /// Gets the name of the operating system.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn os_name(&self) -> &'static str;
 
     /// Reads a string from the registry or equivalent configuration store.
@@ -96,6 +100,10 @@ pub trait PlatformProvider: Send + Sync {
     ///
     /// # Errors
     /// Returns `MsiError` on failure.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn register_file_association(
         &self,
         extension: &str,
@@ -113,6 +121,10 @@ pub trait PlatformProvider: Send + Sync {
     ///
     /// # Errors
     /// Returns `MsiError` on failure.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn register_com_class(
         &self,
         clsid: &str,

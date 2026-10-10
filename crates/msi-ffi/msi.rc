@@ -1,0 +1,15 @@
+#include "windef.h"
+#include "winbase.h"
+#include "winuser.h"
+#include "winver.h"
+
+#define WINE_FILEDESCRIPTION_STR "Wine MSI Engine (Rust)"
+#define WINE_FILENAME_STR "msi.dll"
+#define WINE_FILEVERSION 5,0,7601,17514
+#define WINE_FILEVERSION_STR "5.0.7601.17514"
+#define WINE_PRODUCTVERSION 5,0,7601,17514
+#define WINE_PRODUCTVERSION_STR "5.0.7601.17514"
+
+/* #include "wine/wine_common_ver.rc" */
+
+1 TYPELIB "msi.tlb"

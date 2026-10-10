@@ -37,6 +37,7 @@ non_ascii_idents = "deny"
 noop_method_call = "deny"
 unused_lifetimes = "deny"
 unused_macro_rules = "deny"
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(tarpaulin_include)'] }
 unknown_lints = "allow"
 
 [workspace.lints.clippy]

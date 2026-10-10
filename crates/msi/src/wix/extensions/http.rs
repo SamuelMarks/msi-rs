@@ -22,6 +22,10 @@ pub struct HttpExtension;
 
 impl HttpExtension {
     /// Creates a new `HttpExtension` instance.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn new() -> Self {
         Self
@@ -32,6 +36,17 @@ impl HttpExtension {
     /// # Errors
     ///
     /// Returns [`MsiError::WixCompiler`] if required attributes are missing.
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn compile_url_reservation(
         node: &XmlNode,
         parent_id: Option<&str>,
@@ -81,6 +96,17 @@ impl HttpExtension {
     /// # Errors
     ///
     /// Returns [`MsiError::WixCompiler`] if required attributes are missing.
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn compile_certificate_ref(
         node: &XmlNode,
         parent_id: Option<&str>,

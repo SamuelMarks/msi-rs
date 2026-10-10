@@ -432,6 +432,10 @@ impl ScriptSession {
     /// # Errors
     ///
     /// Returns [`MsiError::ScriptRuntimeError`] if fuel is exhausted.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn consume_fuel(&mut self, line: usize, col: usize) -> Result<()> {
         if self.fuel == 0 {
             let stack_trace = if self.call_stack.is_empty() {

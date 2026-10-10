@@ -121,6 +121,10 @@ impl ControlType {
     }
 
     /// Returns the standard MSI table type string.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -212,6 +216,14 @@ impl SelectionTreeNode {
     }
 
     /// Sets the description text.
+    ///
+    /// # Arguments
+    ///
+    /// * `desc` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn description(mut self, desc: impl Into<String>) -> Self {
         self.description = Some(desc.into());
@@ -219,6 +231,10 @@ impl SelectionTreeNode {
     }
 
     /// Adds a child feature node.
+    ///
+    /// # Arguments
+    ///
+    /// * `child` - TODO: Document argument.
     pub fn add_child(&mut self, child: Self) {
         self.children.push(child);
     }
@@ -283,6 +299,14 @@ impl ControlDefinition {
     }
 
     /// Sets the bound property name.
+    ///
+    /// # Arguments
+    ///
+    /// * `prop` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn property(mut self, prop: impl Into<String>) -> Self {
         self.property = Some(prop.into());
@@ -290,6 +314,14 @@ impl ControlDefinition {
     }
 
     /// Sets the text or formatted template.
+    ///
+    /// # Arguments
+    ///
+    /// * `text` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn text(mut self, text: impl Into<String>) -> Self {
         self.text = Some(text.into());
@@ -297,6 +329,14 @@ impl ControlDefinition {
     }
 
     /// Sets the next control identifier in tab order.
+    ///
+    /// # Arguments
+    ///
+    /// * `next` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn control_next(mut self, next: impl Into<String>) -> Self {
         self.control_next = Some(next.into());
@@ -304,6 +344,14 @@ impl ControlDefinition {
     }
 
     /// Sets the help/tooltip text.
+    ///
+    /// # Arguments
+    ///
+    /// * `help` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn help(mut self, help: impl Into<String>) -> Self {
         self.help = Some(help.into());
@@ -311,78 +359,130 @@ impl ControlDefinition {
     }
 
     /// Returns the enclosing dialog name.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn dialog(&self) -> &str {
         &self.dialog
     }
 
     /// Returns the control name.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn control(&self) -> &str {
         &self.control
     }
 
     /// Returns the control type.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn control_type(&self) -> ControlType {
         self.control_type
     }
 
     /// Returns the geometry rectangle in DLUs.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn rect(&self) -> DluRect {
         self.rect
     }
 
     /// Returns the raw attributes bitmask.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn attributes(&self) -> u32 {
         self.attributes
     }
 
     /// Returns the bound property name if any.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn property_name(&self) -> Option<&str> {
         self.property.as_deref()
     }
 
     /// Returns the template text if any.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn text_template(&self) -> Option<&str> {
         self.text.as_deref()
     }
 
     /// Returns the next control in tab order if any.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn next_control(&self) -> Option<&str> {
         self.control_next.as_deref()
     }
 
     /// Returns the help text if any.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn help_text(&self) -> Option<&str> {
         self.help.as_deref()
     }
 
     /// Returns true if initially visible.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn is_visible_by_default(&self) -> bool {
         self.attributes & CONTROL_ATTR_VISIBLE != 0
     }
 
     /// Returns true if initially enabled.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn is_enabled_by_default(&self) -> bool {
         self.attributes & CONTROL_ATTR_ENABLED != 0
     }
 
     /// Returns true if password input masking is configured.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn is_password_input(&self) -> bool {
         self.attributes & CONTROL_ATTR_PASSWORD_INPUT != 0
     }
 
     /// Returns true if integer-only digits restriction is enabled.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn is_integer_only(&self) -> bool {
         self.attributes & CONTROL_ATTR_INTEGER != 0

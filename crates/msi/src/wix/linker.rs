@@ -325,6 +325,11 @@ pub const STANDARD_INSTALL_EXECUTE_ACTIONS: &[StandardActionOrder] = &[
         condition: Some("Installed"),
     },
     StandardActionOrder {
+        name: "UnpublishFeatures",
+        sequence: 1800,
+        condition: Some("Installed"),
+    },
+    StandardActionOrder {
         name: "StopServices",
         sequence: 1900,
         condition: Some("VersionNT"),
@@ -388,6 +393,11 @@ pub const STANDARD_INSTALL_EXECUTE_ACTIONS: &[StandardActionOrder] = &[
         name: "StartServices",
         sequence: 5900,
         condition: Some("VersionNT"),
+    },
+    StandardActionOrder {
+        name: "RegisterUser",
+        sequence: 6000,
+        condition: None,
     },
     StandardActionOrder {
         name: "RegisterProduct",
@@ -491,6 +501,10 @@ pub struct LinkedDatabase {
 
 impl Default for LinkedDatabase {
     /// Creates a default empty [`LinkedDatabase`] with all standard schemas pre-populated.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn default() -> Self {
         let mut catalog = DatabaseCatalog::new();
         let _ = crate::database::tables::populate_standard_tables(&mut catalog);
@@ -540,6 +554,10 @@ impl LinkedDatabase {
     /// # Errors
     ///
     /// Returns [`MsiError::WixLinker`] on conflicting primary key duplicate records.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn add_or_merge_record(&mut self, table: &str, record: Record) -> Result<()> {
         let records = self.tables.entry(table.to_string()).or_default();
 
@@ -605,10 +623,14 @@ impl LinkedDatabase {
     /// # Errors
     ///
     /// Returns [`MsiError::WixLinker`] if a primary key conflict or other invalid operation occurs.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn execute_mutation(
         &mut self,
         table: &str,
-        record: Record,
+        record: &mut Record,
         modify_mode: i32,
     ) -> Result<()> {
         let records = self.tables.entry(table.to_string()).or_default();
@@ -638,8 +660,18 @@ impl LinkedDatabase {
         };
 
         match modify_mode {
-            1 => {
-                // MSIMODIFY_INSERT
+            -1 | 0 => {
+                // MSIMODIFY_SEEK | MSIMODIFY_REFRESH
+                if let Some(idx) = find_existing(records) {
+                    *record = records[idx].clone();
+                } else {
+                    return Err(MsiError::WixLinker {
+                        message: format!("MSIMODIFY_REFRESH: record not found in table '{table}'"),
+                    });
+                }
+            }
+            1 | 7 => {
+                // MSIMODIFY_INSERT | MSIMODIFY_INSERT_TEMPORARY
                 if find_existing(records).is_some() {
                     return Err(MsiError::WixLinker {
                         message: format!(
@@ -647,32 +679,36 @@ impl LinkedDatabase {
                         ),
                     });
                 }
-                records.push(record);
+                records.push(record.clone());
             }
             2 => {
                 // MSIMODIFY_UPDATE
                 if let Some(idx) = find_existing(records) {
-                    records[idx] = record;
+                    records[idx] = record.clone();
                 } else {
                     return Err(MsiError::WixLinker {
                         message: format!("MSIMODIFY_UPDATE: record not found in table '{table}'"),
                     });
                 }
             }
-            4 => {
-                // MSIMODIFY_REPLACE
+            3 | 4 => {
+                // MSIMODIFY_ASSIGN | MSIMODIFY_REPLACE
                 if let Some(idx) = find_existing(records) {
-                    records[idx] = record;
+                    records[idx] = record.clone();
                 } else {
-                    records.push(record);
+                    records.push(record.clone());
                 }
             }
             5 => {
                 // MSIMODIFY_MERGE
                 if let Some(idx) = find_existing(records) {
-                    records[idx] = record;
+                    if records[idx] != *record {
+                        return Err(MsiError::WixLinker {
+                            message: format!("MSIMODIFY_MERGE: record mismatch in table '{table}'"),
+                        });
+                    }
                 } else {
-                    records.push(record);
+                    records.push(record.clone());
                 }
             }
             6 => {
@@ -684,6 +720,10 @@ impl LinkedDatabase {
                         message: format!("MSIMODIFY_DELETE: record not found in table '{table}'"),
                     });
                 }
+            }
+            8..=11 => {
+                // MSIMODIFY_VALIDATE | MSIMODIFY_VALIDATE_NEW | MSIMODIFY_VALIDATE_FIELD | MSIMODIFY_VALIDATE_DELETE
+                // Validation not fully implemented; returning OK
             }
             _ => {
                 return Err(MsiError::WixLinker {
@@ -842,6 +882,10 @@ impl LinkedDatabase {
     /// # Errors
     ///
     /// Returns [`crate::MsiError`] on table schema or primary key merge collisions.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::cognitive_complexity)]
     #[allow(clippy::too_many_lines)]
     pub fn merge_module(
@@ -1218,6 +1262,14 @@ impl MergeModule {
     }
 
     /// Internal non-generic helper for opening a merge module from a path.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn open_path(path: &Path) -> Result<Self> {
         let pkg = Package::open(path)?;
         Ok(Self::from_database(pkg.database().clone()))
@@ -1240,6 +1292,10 @@ impl MergeModule {
 
 impl Default for MergeModule {
     /// Creates a default empty [`MergeModule`].
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn default() -> Self {
         Self::from_database(LinkedDatabase::default())
     }
@@ -1390,9 +1446,17 @@ impl From<IceDiagnostic> for IceReport {
 /// Trait representing an Internal Consistency Evaluator (ICE) validation rule.
 pub trait IceRule: Send + Sync {
     /// Returns the unique rule name (e.g. "ICE01", "ICE03").
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn name(&self) -> &str;
 
     /// Returns a short description of what this ICE rule validates.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn description(&self) -> &str;
 
     /// Executes the validation check on the given [`LinkedDatabase`].
@@ -1746,6 +1810,14 @@ impl CubValidator {
     }
 
     /// Internal non-generic helper for opening a CUB validator from a path.
+    ///
+    /// # Arguments
+    ///
+    /// * `p` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn open_path(p: &Path) -> Result<Self> {
         let name = p.file_stem().map_or_else(
             || "cub".to_string(),
@@ -1922,6 +1994,10 @@ impl CubValidator {
 
 impl Default for CubValidator {
     /// Creates a default empty [`CubValidator`].
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn default() -> Self {
         Self::from_database("default", LinkedDatabase::default())
     }
@@ -1974,6 +2050,10 @@ pub struct Linker {
 ///
 /// * `rf` - Symbol reference to test.
 /// * `defined_symbols` - Map of currently defined symbols.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn is_special_reference(rf: &Reference, defined_symbols: &HashMap<Symbol, Vec<usize>>) -> bool {
     match rf.namespace.as_str() {
         "Directory" => STANDARD_DIRECTORIES.iter().any(|d| d.id == rf.id),
@@ -2040,6 +2120,10 @@ impl Linker {
     /// # Arguments
     ///
     /// * `registry` - The extension registry.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn with_extensions(registry: ExtensionRegistry) -> Self {
         Self {
@@ -2313,6 +2397,9 @@ impl Linker {
         // 7. Layout and sequence media files
         Self::layout_media_and_files(&mut db);
 
+        // 7.5. Generate standard validation table
+        Self::generate_validation_table(&mut db);
+
         // 8. Run comprehensive ICE validation
         self.run_filtered_ice_validations(&db)?;
 
@@ -2320,6 +2407,14 @@ impl Linker {
     }
 
     /// Expands `!(loc.StringId)` tokens in all string fields across all database tables.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn expand_localization_tokens(&self, db: &mut LinkedDatabase) -> Result<()> {
         for records in db.tables.values_mut() {
             for rec in records {
@@ -2690,6 +2785,14 @@ impl Linker {
     }
 
     /// Resolves a source file path against configured base directories and bind paths.
+    ///
+    /// # Arguments
+    ///
+    /// * `src_path` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn resolve_source_path(&self, src_path: &str) -> Option<PathBuf> {
         let p = Path::new(src_path);
         if p.is_absolute() && p.exists() {
@@ -2837,6 +2940,7 @@ impl Linker {
             });
 
             let mut max_seq_per_disk: HashMap<i16, i32> = HashMap::new();
+            let mut disk_cab_folders: HashMap<i16, HashMap<String, u16>> = HashMap::new();
 
             for (idx, r) in file_records.iter_mut().enumerate() {
                 let file_id = match r.get(0) {
@@ -2932,7 +3036,15 @@ impl Linker {
 
                 let file_name_in_cab = &file_id;
 
-                writer.add_file(file_name_in_cab, &data)?;
+                let disk_folders = disk_cab_folders.entry(disk_id).or_default();
+                let next_idx = disk_folders.len() as u16;
+                let folder_idx = *disk_folders.entry(comp_id.clone()).or_insert(next_idx);
+
+                writer.add_file_with_folder_index(
+                    file_name_in_cab,
+                    &data,
+                    crate::cab::file::FolderIndex::Index(folder_idx),
+                )?;
             }
 
             // Update Media table LastSequence per disk
@@ -2987,6 +3099,14 @@ impl Linker {
     }
 
     /// Evaluates ICE validation rules according to suppression and selection settings.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn run_filtered_ice_validations(&self, db: &LinkedDatabase) -> Result<()> {
         if self.suppress_ice {
             return Ok(());
@@ -3046,6 +3166,10 @@ impl Linker {
 
     /// Solves the symbol graph: identifies the single entry point (`Product` or `Module`),
     /// detects duplicate symbols, and resolves all required references across sections.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::too_many_lines)]
     fn solve_symbol_graph(&self) -> Result<Vec<IntermediateSection>> {
         let mut all_sections: Vec<&IntermediateSection> = Vec::new();
@@ -3195,6 +3319,14 @@ impl Linker {
     }
 
     /// Resolves multi-level nested `ComponentGroupRef` hierarchies and links components to features.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn resolve_component_groups(db: &mut LinkedDatabase) -> Result<()> {
         let members = db.get_records("_ComponentGroupMember").to_vec();
         let nested = db.get_records("_ComponentGroupNested").to_vec();
@@ -3259,6 +3391,19 @@ impl Linker {
     }
 
     /// Recursively collects all transitive component IDs from a component group graph.
+    ///
+    /// # Arguments
+    ///
+    /// * `group` - TODO: Document argument.
+    /// * `group_to_components` - TODO: Document argument.
+    /// * `HashSet<String>>` - TODO: Document argument.
+    /// * `group_to_children` - TODO: Document argument.
+    /// * `HashSet<String>>` - TODO: Document argument.
+    /// * `visited` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn collect_transitive_components(
         group: &str,
         group_to_components: &HashMap<String, HashSet<String>>,
@@ -3284,6 +3429,10 @@ impl Linker {
     }
 
     /// Resolves standard directory hierarchy rooted at `TARGETDIR`.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
     fn resolve_standard_directories(db: &mut LinkedDatabase) {
         let existing_dirs: HashSet<String> = db
             .get_records("Directory")
@@ -3335,6 +3484,10 @@ impl Linker {
     }
 
     /// Injects standard action sequences into `InstallExecuteSequence`.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
     fn sequence_standard_actions(db: &mut LinkedDatabase) {
         let existing_actions: HashSet<String> = db
             .get_records("InstallExecuteSequence")
@@ -3383,6 +3536,62 @@ impl Linker {
         }
     }
 
+    /// Generates the standard `_Validation` table for all core MSI SDK tables.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - The linked database.
+    fn generate_validation_table(db: &mut LinkedDatabase) {
+        let core_tables = [
+            "ActionText",
+            "AdminExecuteSequence",
+            "AdminUISequence",
+            "AdvtExecuteSequence",
+            "Component",
+            "CreateFolder",
+            "CustomAction",
+            "Directory",
+            "Feature",
+            "FeatureComponents",
+            "File",
+            "InstallExecuteSequence",
+            "InstallUISequence",
+            "LaunchCondition",
+            "Media",
+            "MsiFileHash",
+            "Property",
+            "Registry",
+            "Upgrade",
+        ];
+
+        let mut validation_records = Vec::new();
+
+        for tbl in &core_tables {
+            if let Some(schema) = db.catalog.get_table(tbl) {
+                for col in schema.columns() {
+                    let nullable = if col.nullable { "Y" } else { "N" };
+                    let rec = Record::with_fields(vec![
+                        FieldValue::String((*tbl).to_string()),
+                        FieldValue::String(col.name.clone()),
+                        FieldValue::String(nullable.to_string()),
+                        FieldValue::Null, // MinValue
+                        FieldValue::Null, // MaxValue
+                        FieldValue::Null, // KeyTable
+                        FieldValue::Null, // KeyColumn
+                        FieldValue::Null, // Category
+                        FieldValue::Null, // Set
+                        FieldValue::Null, // Description
+                    ]);
+                    validation_records.push(rec);
+                }
+            }
+        }
+
+        for rec in validation_records {
+            db.add_record("_Validation", rec);
+        }
+    }
+
     /// Binds physical binary payloads from disk into embedded streams.
     ///
     /// # Arguments
@@ -3392,6 +3601,10 @@ impl Linker {
     /// # Errors
     ///
     /// Returns [`crate::MsiError`] on filesystem read errors.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn bind_binaries(&mut self, db: &mut LinkedDatabase) -> Result<()> {
         let wix_binaries = db.tables.remove("WixBinary").unwrap_or_default();
         for r in &wix_binaries {
@@ -3416,6 +3629,10 @@ impl Linker {
     /// # Errors
     ///
     /// Returns [`MsiError::WixLinker`] if a referenced `Binary` or `File` stream cannot be resolved.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn validate_embedded_chainers(db: &LinkedDatabase) -> Result<()> {
         let chainers = db.get_records("MsiEmbeddedChainer");
         if chainers.is_empty() {
@@ -3498,6 +3715,10 @@ impl Linker {
     }
 
     /// Sequences file numbers and aligns media last sequence across partitioned disks.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
     #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
     fn layout_media_and_files(db: &mut LinkedDatabase) {
         let file_disk_mapping = db.tables.remove("_FileDiskId").unwrap_or_default();
@@ -3768,6 +3989,14 @@ impl Linker {
     }
 
     /// ICE01: Verifies that required system and packaging tables exist in the database catalog.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn validate_ice01(db: &LinkedDatabase) -> Option<IceReport> {
         let required_tables = ["Property", "Directory", "Component", "Feature"];
         for tbl in required_tables {
@@ -3783,6 +4012,14 @@ impl Linker {
     }
 
     /// ICE02: Verifies Feature-to-Feature circular dependencies.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn validate_ice02(db: &LinkedDatabase) -> Option<IceReport> {
         let mut parent_map: HashMap<String, String> = HashMap::new();
         for r in db.get_records("Feature") {
@@ -3819,6 +4056,14 @@ impl Linker {
     }
 
     /// ICE03: Comprehensive table data validation (nullability, string lengths, types).
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn validate_ice03(db: &LinkedDatabase) -> Option<IceReport> {
         for (tbl_name, records) in &db.tables {
             if let Some(schema) = db.catalog.get_table(tbl_name) {
@@ -3839,6 +4084,14 @@ impl Linker {
     }
 
     /// ICE04: Verifies contiguous sequence numbers in the File table.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
     fn validate_ice04(db: &LinkedDatabase) -> Option<IceReport> {
         let files = db.get_records("File");
@@ -3868,6 +4121,14 @@ impl Linker {
     }
 
     /// ICE05: Verifies sequence ranges in Media table cover File table sequences.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
     fn validate_ice05(db: &LinkedDatabase) -> Option<IceReport> {
         let files = db.get_records("File");
@@ -3908,6 +4169,14 @@ impl Linker {
     }
 
     /// ICE06: Verifies that unversioned files in File table have appropriate attributes or keypaths.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn validate_ice06(db: &LinkedDatabase) -> Option<IceReport> {
         for r in db.get_records("File") {
             let ver = r.get(4);
@@ -3929,6 +4198,14 @@ impl Linker {
     }
 
     /// ICE07: Verifies font file registrations.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn validate_ice07(db: &LinkedDatabase) -> Option<IceReport> {
         for r in db.get_records("File") {
             if let Some(FieldValue::String(name)) = r.get(2) {
@@ -3948,6 +4225,14 @@ impl Linker {
     }
 
     /// ICE08: Verifies that duplicate GUIDs are not assigned to different components.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn validate_ice08(db: &LinkedDatabase) -> Option<IceReport> {
         let mut guid_to_comp: HashMap<String, String> = HashMap::new();
         for r in db.get_records("Component") {
@@ -3974,6 +4259,14 @@ impl Linker {
     }
 
     /// ICE09: Verifies that keypaths are valid files or registry keys.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn validate_ice09(db: &LinkedDatabase) -> Option<IceReport> {
         let file_keys: HashSet<String> = db
             .get_records("File")
@@ -4039,6 +4332,14 @@ impl Linker {
     }
 
     /// ICE18: Verifies that keypaths for keypath files match component directory.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn validate_ice18(db: &LinkedDatabase) -> Option<IceReport> {
         let mut file_components: HashMap<String, String> = HashMap::new();
         for r in db.get_records("File") {
@@ -4073,6 +4374,14 @@ impl Linker {
     }
 
     /// ICE20: Verifies standard action execution order in sequence tables.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn validate_ice20(db: &LinkedDatabase) -> Option<IceReport> {
         let seq_records = db.get_records("InstallExecuteSequence");
         let mut action_orders: HashMap<&str, i16> = HashMap::new();
@@ -4121,6 +4430,14 @@ impl Linker {
     }
 
     /// ICE30: Validates cross-component file name collisions in same target directory.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn validate_ice30(db: &LinkedDatabase) -> Option<IceReport> {
         let comp_to_dir: HashMap<String, String> = db
             .get_records("Component")
@@ -4171,6 +4488,14 @@ impl Linker {
     }
 
     /// ICE33: Validates Registry table entries for COM class and `ProgID` registration.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn validate_ice33(db: &LinkedDatabase) -> Option<IceReport> {
         for r in db.get_records("Class") {
             if let Some(FieldValue::String(clsid)) = r.get(0) {
@@ -4206,6 +4531,14 @@ impl Linker {
     }
 
     /// ICE38: Validates components installed to user profiles use HKCU keypaths.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn validate_ice38(db: &LinkedDatabase) -> Option<IceReport> {
         let reg_roots: HashMap<String, i16> = db
             .get_records("Registry")
@@ -4253,6 +4586,14 @@ impl Linker {
     }
 
     /// ICE61: Validates Upgrade table version ranges against current `ProductVersion`.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn validate_ice61(db: &LinkedDatabase) -> Option<IceReport> {
         let product_version_str =
             db.get_records("Property")
@@ -4290,6 +4631,14 @@ impl Linker {
     }
 
     /// ICE80: Validates mixing 32-bit and 64-bit components in packages.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn validate_ice80(db: &LinkedDatabase) -> Option<IceReport> {
         let mut has_32bit = false;
         let mut has_64bit = false;
@@ -4313,6 +4662,14 @@ impl Linker {
     }
 
     /// ICE99: Validates Directory table has no circular references.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn validate_ice99(db: &LinkedDatabase) -> Option<IceReport> {
         let mut dir_parents: HashMap<String, String> = HashMap::new();
         for r in db.get_records("Directory") {
@@ -4349,6 +4706,14 @@ impl Linker {
     }
 
     /// ICE101: Validates that files in File table have proper sequence references.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn validate_ice101(db: &LinkedDatabase) -> Option<IceReport> {
         for r in db.get_records("File") {
             if let Some(FieldValue::Short(seq)) = r.get(7) {
@@ -4365,6 +4730,14 @@ impl Linker {
     }
 
     /// ICE103: Validates that shortcut icon indices are non-negative.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn validate_ice103(db: &LinkedDatabase) -> Option<IceReport> {
         for r in db.get_records("Shortcut") {
             if let Some(FieldValue::Short(idx)) = r.get(9) {
@@ -4381,6 +4754,14 @@ impl Linker {
     }
 
     /// Converts a modular ICE report to a linker [`IceReport`].
+    ///
+    /// # Arguments
+    ///
+    /// * `rep` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::single_option_map)]
     fn convert_ice(rep: Option<crate::wix::ice::types::IceReport>) -> Option<IceReport> {
         rep.map(|r| IceReport {
@@ -4391,516 +4772,1204 @@ impl Linker {
     }
 
     /// ICE10: Advertised shortcuts point to valid feature components.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice10(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::components::validate_ice10(db))
     }
 
     /// ICE11: Nested installer execution contexts.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice11(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::sequences::validate_ice11(db))
     }
 
     /// ICE12: Custom action types 17, 18, 19, 21, 22 targets.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice12(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::sequences::validate_ice12(db))
     }
 
     /// ICE13: Dialog size and screen bounds.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice13(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::ui::validate_ice13(db))
     }
 
     /// ICE14: Root volume installation checks.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice14(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::components::validate_ice14(db))
     }
 
     /// ICE15: MIME and Extension circular mappings.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice15(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::system::validate_ice15(db))
     }
 
     /// ICE16: `ProductName` in Summary Information.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice16(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice16(db))
     }
 
     /// ICE17: `ConfigSearch` table syntax and signatures.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice17(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::system::validate_ice17(db))
     }
 
     /// ICE19: Advertised shortcuts keypath validation.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice19(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::components::validate_ice19(db))
     }
 
     /// ICE21: Component-to-Feature mapping integrity.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice21(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::components::validate_ice21(db))
     }
 
     /// ICE22: Feature install levels and conditions.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice22(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::components::validate_ice22(db))
     }
 
     /// ICE23: Dialog tab stops and tab loops.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice23(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::ui::validate_ice23(db))
     }
 
     /// ICE24: Properties in conditions defined.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice24(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::ui::validate_ice24(db))
     }
 
     /// ICE25: Merge module dependencies and exclusions.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice25(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::advanced::validate_ice25(db))
     }
 
     /// ICE26: Execution elevation sequence requirements.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice26(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::sequences::validate_ice26(db))
     }
 
     /// ICE27: Cross-sequence continuity.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice27(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::sequences::validate_ice27(db))
     }
 
     /// ICE28: `ForceReboot` action placement and conditions.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice28(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::sequences::validate_ice28(db))
     }
 
     /// ICE29: Stream name lengths and characters.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice29(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice29(db))
     }
 
     /// ICE31: TrueType font files in `FontsFolder`.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice31(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::files::validate_ice31(db))
     }
 
     /// ICE32: Universal foreign key integrity.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice32(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::system::validate_ice32(db))
     }
 
     /// ICE34: `RadioButtonGroup` values and defaults.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice34(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::ui::validate_ice34(db))
     }
 
     /// ICE35: Cabinet file naming conventions.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice35(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice35(db))
     }
 
     /// ICE36: Icon table references.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice36(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::system::validate_ice36(db))
     }
 
     /// ICE37: Standard directory property overrides.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice37(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice37(db))
     }
 
     /// ICE39: Summary Information required fields.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice39(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice39(db))
     }
 
     /// ICE40: MIME Content-Type syntax.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice40(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice40(db))
     }
 
     /// ICE41: Component GUID formatting.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice41(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice41(db))
     }
 
     /// ICE42: In-script custom action session property access.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice42(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::sequences::validate_ice42(db))
     }
 
     /// ICE43: Non-advertised shortcuts keypath.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice43(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::components::validate_ice43(db))
     }
 
     /// ICE44: Dialog Help button events.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice44(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::ui::validate_ice44(db))
     }
 
     /// ICE45: Win32 filename restrictions.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice45(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice45(db))
     }
 
     /// ICE46: Property identifier naming conventions.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice46(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice46(db))
     }
 
     /// ICE47: Feature component ownership hierarchy.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice47(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::components::validate_ice47(db))
     }
 
     /// ICE48: Hardcoded drive letters.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice48(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice48(db))
     }
 
     /// ICE49: Registry value types and prefixes.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice49(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::system::validate_ice49(db))
     }
 
     /// ICE50: Shortcut icon format.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice50(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::system::validate_ice50(db))
     }
 
     /// ICE51: Font title syntax.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice51(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice51(db))
     }
 
     /// ICE52: `AppSearch` locator validation.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice52(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::system::validate_ice52(db))
     }
 
     /// ICE53: Registry key path syntax.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice53(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice53(db))
     }
 
     /// ICE54: Companion file version cycles.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice54(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::files::validate_ice54(db))
     }
 
     /// ICE55: `LockPermissions` table validation.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice55(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::system::validate_ice55(db))
     }
 
     /// ICE56: Standard system directory rooting.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice56(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::system::validate_ice56(db))
     }
 
     /// ICE57: Mixed per-user and per-machine components.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice57(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::components::validate_ice57(db))
     }
 
     /// ICE58: Media `DiskId` sequencing.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice58(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice58(db))
     }
 
     /// ICE59: Advertised shortcuts targeting parent features.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice59(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::components::validate_ice59(db))
     }
 
     /// ICE60: Versioned files without language.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice60(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::files::validate_ice60(db))
     }
 
     /// ICE62: Isolated component references.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice62(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::advanced::validate_ice62(db))
     }
 
     /// ICE63: Sequence table mutually exclusive conditions.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice63(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::sequences::validate_ice63(db))
     }
 
     /// ICE64: Roaming folder user profile paths.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice64(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::components::validate_ice64(db))
     }
 
     /// ICE65: Environment variable prefix syntax.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice65(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::system::validate_ice65(db))
     }
 
     /// ICE66: Schema version requirement consistency.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice66(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::advanced::validate_ice66(db))
     }
 
     /// ICE67: Non-standard custom action scheduling.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice67(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::sequences::validate_ice67(db))
     }
 
     /// ICE68: Custom action execution flags.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice68(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::sequences::validate_ice68(db))
     }
 
     /// ICE69: Verb and Extension cross-component crossing.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice69(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::components::validate_ice69(db))
     }
 
     /// ICE70: Shortcut argument formatting.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice70(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice70(db))
     }
 
     /// ICE71: Cabinet compression attributes.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice71(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice71(db))
     }
 
     /// ICE72: Custom action source type consistency.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice72(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::sequences::validate_ice72(db))
     }
 
     /// ICE73: Package code formatting.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice73(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice73(db))
     }
 
     /// ICE74: FASTOEM property usage.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice74(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice74(db))
     }
 
     /// ICE75: System state modification in sequence.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice75(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::sequences::validate_ice75(db))
     }
 
     /// ICE76: Side-by-side assembly manifest attributes.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice76(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::advanced::validate_ice76(db))
     }
 
     /// ICE77: Deferred custom actions in installation script.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice77(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::sequences::validate_ice77(db))
     }
 
     /// ICE78: Advertise sequence table restrictions.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice78(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::sequences::validate_ice78(db))
     }
 
     /// ICE79: Feature-to-Component duplicate mappings.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice79(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::components::validate_ice79(db))
     }
 
     /// ICE81: Digital signatures and certificate table validation.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice81(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::advanced::validate_ice81(db))
     }
 
     /// ICE82: Duplicate sequence numbers in sequence tables.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice82(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice82(db))
     }
 
     /// ICE83: `MsiAssembly` foreign key references.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice83(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::advanced::validate_ice83(db))
     }
 
     /// ICE84: `ActionText` descriptions and templates.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice84(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice84(db))
     }
 
     /// ICE85: `CCPSearch` and `CompLocator` compliance.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice85(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::system::validate_ice85(db))
     }
 
     /// ICE86: `ComboBox` and `ListBox` property references.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice86(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::ui::validate_ice86(db))
     }
 
     /// ICE87: File attribute bitmask validity.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice87(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice87(db))
     }
 
     /// ICE88: `DrLocator` directory search depth bounds.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice88(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::system::validate_ice88(db))
     }
 
     /// ICE89: `ProgId` and Class registration relationships.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice89(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::components::validate_ice89(db))
     }
 
     /// ICE90: Shortcuts to uninstalled directories.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice90(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::components::validate_ice90(db))
     }
 
     /// ICE91: Per-user vs per-machine target directories.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice91(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::components::validate_ice91(db))
     }
 
     /// ICE92: Component Directory_ reference in Directory table.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice92(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice92(db))
     }
 
     /// ICE93: Global GUID format consistency.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice93(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice93(db))
     }
 
     /// ICE94: Script and DLL custom action calling conventions.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice94(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::advanced::validate_ice94(db))
     }
 
     /// ICE95: Font table attribute bitmask.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice95(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice95(db))
     }
 
     /// ICE96: `RemoveFile` table install mode flags.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice96(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::files::validate_ice96(db))
     }
 
     /// ICE97: COM+ application registration.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice97(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::advanced::validate_ice97(db))
     }
 
     /// ICE98: ODBC data sources and drivers.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice98(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::advanced::validate_ice98(db))
     }
 
     /// ICE100: `ServiceInstall` and `ServiceControl` validation.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice100(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::system::validate_ice100(db))
     }
 
     /// ICE102: Feature condition syntax evaluation.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice102(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::ui::validate_ice102(db))
     }
 
     /// ICE104: `ControlEvent` and `EventMapping` validation.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice104(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::ui::validate_ice104(db))
     }
 
     /// ICE105: Patch transform stream delta validation.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn validate_ice105(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::advanced::validate_ice105(db))
@@ -4908,6 +5977,14 @@ impl Linker {
 }
 
 /// Inspects executable file binary data to extract Windows PE version and language.
+///
+/// # Arguments
+///
+/// * `data` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 #[allow(clippy::cast_possible_truncation, clippy::too_many_lines)]
 fn inspect_pe_version(data: &[u8]) -> Option<(String, String)> {
     if data.len() < 64 || data.get(0..2) != Some(b"MZ") {
@@ -5043,6 +6120,14 @@ fn inspect_pe_version(data: &[u8]) -> Option<(String, String)> {
 }
 
 /// Inspects font file binary data (`.ttf`, `.otf`) to extract font title.
+///
+/// # Arguments
+///
+/// * `data` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn inspect_font_title(data: &[u8]) -> Option<String> {
     if data.len() < 12 {
         return None;
@@ -5111,6 +6196,14 @@ fn inspect_font_title(data: &[u8]) -> Option<String> {
 }
 
 /// Computes the 128-bit MD5 digest of an arbitrary byte slice per RFC 1321.
+///
+/// # Arguments
+///
+/// * `input` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 #[must_use]
 #[allow(clippy::many_single_char_names, clippy::too_many_lines)]
 fn compute_md5(input: &[u8]) -> [u8; 16] {
@@ -5278,6 +6371,63 @@ mod tests {
     use crate::wix::wixlib::WixLibrary;
     use crate::wix::wixobj::{IntermediateTable, Reference};
     use crate::wix::xml::XmlNode;
+
+    #[test]
+    fn test_linker_validation_table_generation() -> Result<()> {
+        let mut obj = WixObject::new();
+        let mut sec = IntermediateSection::new(
+            SectionType::Product,
+            Some("{11111111-1111-1111-1111-111111111111}".to_string()),
+        );
+        sec.add_symbol(Symbol::new(
+            "Product",
+            "{11111111-1111-1111-1111-111111111111}",
+        ));
+        let mut comp_tbl = IntermediateTable::new("Component");
+        comp_tbl.push_record(Record::with_fields(vec![
+            FieldValue::String("Comp1".to_string()),
+            FieldValue::String("{22222222-2222-2222-2222-222222222222}".to_string()),
+            FieldValue::String("TARGETDIR".to_string()),
+            FieldValue::Short(0),
+            FieldValue::Null,
+            FieldValue::Null,
+        ]));
+        sec.add_table(comp_tbl);
+        obj.sections.push(sec);
+
+        let mut linker = Linker::new();
+        linker.add_object(obj);
+        let db = linker.link()?;
+
+        // Verify _Validation table is present
+        let val_records = db.get_records("_Validation");
+        assert!(
+            !val_records.is_empty(),
+            "_Validation table should be populated"
+        );
+
+        let has_component = val_records.iter().any(|r| {
+            r.get(0) == Some(&FieldValue::String("Component".to_string()))
+                && r.get(1) == Some(&FieldValue::String("Component".to_string()))
+                && r.get(2) == Some(&FieldValue::String("N".to_string()))
+        });
+        assert!(
+            has_component,
+            "Component column Component must be present and not nullable"
+        );
+
+        let has_component_guid = val_records.iter().any(|r| {
+            r.get(0) == Some(&FieldValue::String("Component".to_string()))
+                && r.get(1) == Some(&FieldValue::String("ComponentId".to_string()))
+                && r.get(2) == Some(&FieldValue::String("Y".to_string()))
+        });
+        assert!(
+            has_component_guid,
+            "Component column ComponentId must be present and nullable"
+        );
+
+        Ok(())
+    }
 
     #[test]
     fn test_linker_basic() -> Result<()> {
@@ -6119,6 +7269,10 @@ mod tests {
     }
 
     /// Tests linking with `WixLibrary`, Module sections, unreferenced fragments, and duplicate section queues.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[test]
     fn test_linker_add_library_and_module_and_unreferenced_fragments() -> Result<()> {
         let mut obj = WixObject::new();
@@ -6170,6 +7324,10 @@ mod tests {
     }
 
     /// Tests component group hierarchy resolution edge cases including empty sets, malformed records, and cycles.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[test]
     fn test_linker_component_groups_edge_cases() -> Result<()> {
         let mut db_empty = LinkedDatabase::default();
@@ -6251,6 +7409,10 @@ mod tests {
     }
 
     /// Tests directory resolution and action sequence edge cases.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[test]
     fn test_linker_directories_and_actions_edge_cases() -> Result<()> {
         let mut db = LinkedDatabase::default();
@@ -6328,6 +7490,10 @@ mod tests {
     }
 
     /// Tests media layout and file sequencing edge cases.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[test]
     fn test_linker_media_layout_edge_cases() -> Result<()> {
         let mut db_empty_files = LinkedDatabase::default();
@@ -6427,6 +7593,10 @@ mod tests {
     }
 
     /// Tests validation runner and ICE01 through ICE05 edge cases.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_ice01_to_ice05_comprehensive() -> Result<()> {
@@ -6608,6 +7778,10 @@ mod tests {
     }
 
     /// Tests ICE06 through ICE09 edge cases.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_ice06_to_ice09_comprehensive() -> Result<()> {
@@ -6897,6 +8071,10 @@ mod tests {
     }
 
     /// Tests ICE18 through ICE33 edge cases.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_ice18_to_ice33_comprehensive() -> Result<()> {
@@ -7220,6 +8398,10 @@ mod tests {
     }
 
     /// Tests ICE38 through ICE103 edge cases.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_ice38_to_ice103_comprehensive() -> Result<()> {
@@ -7486,69 +8668,124 @@ mod tests {
     /// Tests trait implementations (`Debug`, `Clone`, `PartialEq`, `Default`) for linker data structures.
 
     #[test]
+    fn test_execute_mutation_error_branches_2() {
+        let mut db = LinkedDatabase::new().expect("test");
+        db.tables.insert(
+            "Feature".to_string(),
+            vec![Record::with_fields(vec![
+                FieldValue::String("PK".to_string()),
+                FieldValue::String("Val1".to_string()),
+            ])],
+        );
+        let mut rec1 = Record::with_fields(vec![
+            FieldValue::String("PK2".to_string()),
+            FieldValue::String("Val2".to_string()),
+        ]);
+        let _ = db.execute_mutation("Feature", &mut rec1, 0);
+
+        let mut rec2 = Record::with_fields(vec![
+            FieldValue::String("PK".to_string()),
+            FieldValue::String("Val2".to_string()),
+        ]);
+        let _ = db.execute_mutation("Feature", &mut rec2, 5);
+    }
+
+    #[test]
+    fn test_execute_mutation_refresh_found() {
+        let mut db = LinkedDatabase::new().expect("test");
+        db.tables.insert(
+            "Feature".to_string(),
+            vec![Record::with_fields(vec![
+                FieldValue::String("PK".to_string()),
+                FieldValue::String("Val1".to_string()),
+            ])],
+        );
+        let mut rec1 = Record::with_fields(vec![
+            FieldValue::String("PK".to_string()),
+            FieldValue::String("Val2".to_string()),
+        ]);
+        let _ = db.execute_mutation("Feature", &mut rec1, 0);
+        assert_eq!(rec1.get(1), Some(&FieldValue::String("Val1".to_string())));
+    }
+
+    #[test]
     fn test_execute_mutation_comprehensive() {
         use crate::database::Record;
-        let mut db = LinkedDatabase::new().unwrap();
+        let mut db = LinkedDatabase::new().expect("test");
 
-        let rec1 = Record::with_fields(vec![
+        let mut rec1 = Record::with_fields(vec![
             FieldValue::String("A".to_string()),
             FieldValue::String("Val1".to_string()),
         ]);
-        let rec2 = Record::with_fields(vec![
+        let mut rec2 = Record::with_fields(vec![
             FieldValue::String("B".to_string()),
             FieldValue::String("Val2".to_string()),
         ]);
-        let rec1_update = Record::with_fields(vec![
+        let mut rec1_update = Record::with_fields(vec![
             FieldValue::String("A".to_string()),
             FieldValue::String("Val3".to_string()),
         ]);
 
         // INSERT
-        assert!(db.execute_mutation("Property", rec1.clone(), 1).is_ok());
+        assert!(db
+            .execute_mutation("Property", &mut rec1.clone(), 1)
+            .is_ok());
         // INSERT fail duplicate
-        assert!(db.execute_mutation("Property", rec1.clone(), 1).is_err());
+        assert!(db
+            .execute_mutation("Property", &mut rec1.clone(), 1)
+            .is_err());
 
         // UPDATE
-        assert!(db.execute_mutation("Property", rec1_update, 2).is_ok());
+        assert!(db.execute_mutation("Property", &mut rec1_update, 2).is_ok());
         // UPDATE fail missing
-        assert!(db.execute_mutation("Property", rec2.clone(), 2).is_err());
+        assert!(db
+            .execute_mutation("Property", &mut rec2.clone(), 2)
+            .is_err());
 
         // REPLACE (exists -> updates)
-        assert!(db.execute_mutation("Property", rec1.clone(), 4).is_ok());
+        assert!(db
+            .execute_mutation("Property", &mut rec1.clone(), 4)
+            .is_ok());
         // REPLACE (missing -> inserts)
-        assert!(db.execute_mutation("Property", rec2, 4).is_ok());
+        assert!(db.execute_mutation("Property", &mut rec2, 4).is_ok());
 
-        let rec3 = Record::with_fields(vec![
+        let mut rec3 = Record::with_fields(vec![
             FieldValue::String("C".to_string()),
             FieldValue::String("Val3".to_string()),
         ]);
 
         // MERGE (exists -> updates)
-        assert!(db.execute_mutation("Property", rec1.clone(), 5).is_ok());
+        assert!(db
+            .execute_mutation("Property", &mut rec1.clone(), 5)
+            .is_ok());
         // MERGE (missing -> inserts)
-        assert!(db.execute_mutation("Property", rec3.clone(), 5).is_ok());
+        assert!(db
+            .execute_mutation("Property", &mut rec3.clone(), 5)
+            .is_ok());
 
         // DELETE
-        assert!(db.execute_mutation("Property", rec3.clone(), 6).is_ok());
+        assert!(db
+            .execute_mutation("Property", &mut rec3.clone(), 6)
+            .is_ok());
         // DELETE fail missing
-        assert!(db.execute_mutation("Property", rec3, 6).is_err());
+        assert!(db.execute_mutation("Property", &mut rec3, 6).is_err());
 
         // INVALID mode
-        assert!(db.execute_mutation("Property", rec1, 99).is_err());
+        assert!(db.execute_mutation("Property", &mut rec1, 99).is_err());
 
         // No primary keys defined (e.g. some internal table)
         db.tables.insert("NoPKTable".to_string(), vec![]);
-        let rec_nopk = Record::with_fields(vec![FieldValue::String("X".to_string())]);
+        let mut rec_nopk = Record::with_fields(vec![FieldValue::String("X".to_string())]);
         assert!(db
-            .execute_mutation("NoPKTable", rec_nopk.clone(), 1)
+            .execute_mutation("NoPKTable", &mut rec_nopk.clone(), 1)
             .is_ok());
-        assert!(db.execute_mutation("NoPKTable", rec_nopk, 2).is_err());
+        assert!(db.execute_mutation("NoPKTable", &mut rec_nopk, 2).is_err());
     }
 
     #[test]
     fn test_merge_module_sequence_edge_cases() {
         use crate::database::Record;
-        let mut db = LinkedDatabase::new().unwrap();
+        let mut db = LinkedDatabase::new().expect("test");
         let mut module_db = LinkedDatabase::default();
 
         module_db.tables.insert(
@@ -10858,6 +12095,10 @@ mod tests {
     }
 
     /// Tests `run_ice_validations_filtered` with rule selection and suppression.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[test]
     fn test_run_ice_validations_filtered_whitelist_and_suppression() -> Result<()> {
         let mut db = LinkedDatabase::default();
@@ -10896,7 +12137,45 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn test_linker_install_execute_sequence_ordering() -> Result<()> {
+        let mut db = LinkedDatabase::default();
+        Linker::sequence_standard_actions(&mut db);
+
+        let ies = db.get_records("InstallExecuteSequence");
+        let get_seq = |name: &str| -> Option<i16> {
+            for r in ies {
+                if r.get(0) == Some(&FieldValue::String(name.to_string())) {
+                    if let Some(FieldValue::Short(s)) = r.get(2) {
+                        return Some(*s);
+                    }
+                }
+            }
+            None
+        };
+
+        // Phase 4.2 Standard Action Sequence Ordering audit assertions
+        assert_eq!(get_seq("CostInitialize"), Some(800));
+        assert_eq!(get_seq("FileCost"), Some(900));
+        assert_eq!(get_seq("CostFinalize"), Some(1000));
+        assert_eq!(get_seq("InstallValidate"), Some(1400));
+        assert_eq!(get_seq("InstallInitialize"), Some(1500));
+        assert_eq!(get_seq("ProcessComponents"), Some(1600));
+        assert_eq!(get_seq("UnpublishFeatures"), Some(1800));
+        assert_eq!(get_seq("InstallFiles"), Some(4000));
+        assert_eq!(get_seq("RegisterUser"), Some(6000));
+        assert_eq!(get_seq("PublishFeatures"), Some(6300));
+        assert_eq!(get_seq("PublishProduct"), Some(6400));
+        assert_eq!(get_seq("InstallFinalize"), Some(6600));
+
+        Ok(())
+    }
+
     /// Tests extended standard action sequence injection and embedded chainer reference validation.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::cognitive_complexity)]
     #[test]
     #[allow(clippy::too_many_lines)]
@@ -11183,6 +12462,10 @@ mod tests {
     }
 
     /// Tests `LinkedDatabase` `add_or_merge_record` edge cases, `bind_binaries`, and `CubValidator::open` with root path.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[test]
     fn test_linker_add_or_merge_and_bind_binaries_edge_cases() -> Result<()> {
         let mut db = LinkedDatabase::default();

@@ -14,12 +14,24 @@ pub struct ComponentId(String);
 
 impl ComponentId {
     /// Creates a new `ComponentId`.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn new(id: &str) -> Self {
         Self(id.to_string())
     }
 
     /// Returns the string representation.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -38,6 +50,10 @@ impl ComponentId {
 /// # Errors
 ///
 /// Returns `MsiError::InvalidParameter` if parameters are invalid.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 pub fn provide_component(
     product_code: &str,
     feature_id: &str,
@@ -63,6 +79,10 @@ pub fn provide_component(
 /// # Errors
 ///
 /// Returns `MsiError::InvalidParameter` if descriptor is empty.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 pub fn provide_component_from_descriptor(descriptor: &str) -> Result<String, MsiError> {
     if descriptor.is_empty() {
         return Err(MsiError::InvalidArgument {
@@ -83,6 +103,10 @@ pub fn provide_component_from_descriptor(descriptor: &str) -> Result<String, Msi
 /// # Errors
 ///
 /// Returns `MsiError::InvalidParameter` if `component_id` is empty.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 pub fn locate_component(component_id: &str) -> Result<(String, i32), MsiError> {
     if component_id.is_empty() {
         return Err(MsiError::InvalidArgument {
@@ -105,6 +129,10 @@ pub fn locate_component(component_id: &str) -> Result<(String, i32), MsiError> {
 /// # Errors
 ///
 /// Returns `MsiError::InvalidParameter` if `assembly_name` is empty.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 pub fn provide_assembly(
     assembly_name: &str,
     _app_context: Option<&str>,
@@ -131,6 +159,10 @@ pub fn provide_assembly(
 /// # Errors
 ///
 /// Returns `MsiError::InvalidParameter` if strings are empty.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 pub fn use_feature(
     product_code: &str,
     feature_id: &str,
@@ -155,6 +187,10 @@ pub fn use_feature(
 /// # Errors
 ///
 /// Returns `MsiError::InvalidParameter` if `shortcut_path` is empty.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 pub fn get_shortcut_target(shortcut_path: &str) -> Result<(String, String, String), MsiError> {
     if shortcut_path.is_empty() {
         return Err(MsiError::InvalidArgument {
@@ -204,7 +240,7 @@ mod tests {
     #[test]
     fn test_locate_component() {
         assert!(locate_component("").is_err());
-        let res = locate_component("comp").unwrap();
+        let res = locate_component("comp").expect("test");
         assert_eq!(res.0, "");
         assert_eq!(res.1, 3);
     }
@@ -219,13 +255,16 @@ mod tests {
     fn test_use_feature() {
         assert!(use_feature("", "f", InstallMode::default()).is_err());
         assert!(use_feature("p", "", InstallMode::default()).is_err());
-        assert_eq!(use_feature("p", "f", InstallMode::default()).unwrap(), 3);
+        assert_eq!(
+            use_feature("p", "f", InstallMode::default()).expect("test"),
+            3
+        );
     }
 
     #[test]
     fn test_get_shortcut_target() {
         assert!(get_shortcut_target("").is_err());
-        let res = get_shortcut_target("path").unwrap();
+        let res = get_shortcut_target("path").expect("test");
         assert_eq!(res.0, "");
         assert_eq!(res.1, "");
         assert_eq!(res.2, "");

@@ -1,7 +1,12 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 #![allow(
     clippy::unreadable_literal,
     clippy::missing_safety_doc,
-    clippy::significant_drop_tightening
+    clippy::significant_drop_tightening,
+    clippy::missing_const_for_fn,
+    clippy::inline_always,
+    clippy::missing_panics_doc,
+    clippy::manual_assert
 )]
 #![allow(
     clippy::match_same_arms,
@@ -22,6 +27,7 @@
 #![allow(clippy::too_many_lines)]
 #![allow(clippy::unnecessary_wraps)]
 #![deny(missing_docs)]
+//#![deny(clippy::missing_docs_in_private_items)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! # msi-ffi
 //!

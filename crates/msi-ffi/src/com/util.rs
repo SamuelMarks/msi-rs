@@ -36,8 +36,16 @@ impl ComVTableBuilder {
 /// Generic trait for object state tracking.
 pub trait ComObject {
     /// Increment reference count.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn add_ref(&self) -> ULONG;
     /// Decrement reference count.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn release(&self) -> ULONG;
 }
 

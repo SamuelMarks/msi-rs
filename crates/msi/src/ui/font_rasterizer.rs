@@ -70,24 +70,40 @@ impl TextStyleDefinition {
     }
 
     /// Returns `true` if bold styling flag is set.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn is_bold(&self) -> bool {
         (self.style_bits & MSI_TEXT_STYLE_BOLD) != 0
     }
 
     /// Returns `true` if italic styling flag is set.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn is_italic(&self) -> bool {
         (self.style_bits & MSI_TEXT_STYLE_ITALIC) != 0
     }
 
     /// Returns `true` if underline styling flag is set.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn is_underline(&self) -> bool {
         (self.style_bits & MSI_TEXT_STYLE_UNDERLINE) != 0
     }
 
     /// Returns `true` if strikeout styling flag is set.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn is_strikeout(&self) -> bool {
         (self.style_bits & MSI_TEXT_STYLE_STRIKEOUT) != 0
@@ -250,6 +266,16 @@ impl TextLayoutEngine {
 }
 
 /// Alpha blending utility blending incoming foreground color with existing canvas pixel.
+///
+/// # Arguments
+///
+/// * `bg` - TODO: Document argument.
+/// * `fg` - TODO: Document argument.
+/// * `alpha_coverage` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 #[inline]
 #[must_use]
 #[allow(clippy::cast_possible_truncation)]
@@ -266,6 +292,14 @@ pub fn blend_pixel(bg: Color32, fg: Color32, alpha_coverage: u8) -> Color32 {
 }
 
 /// 8x8 font bitmap patterns for basic ASCII characters (32..=126).
+///
+/// # Arguments
+///
+/// * `ch` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 #[must_use]
 pub const fn get_glyph_bitmap_8x8(ch: char) -> [u8; 8] {
     match ch {
@@ -360,6 +394,10 @@ pub struct GlyphCache {
 
 impl GlyphCache {
     /// Creates a new empty [`GlyphCache`].
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -392,12 +430,20 @@ impl GlyphCache {
     }
 
     /// Returns the number of cached entries.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn len(&self) -> usize {
         self.cache.len()
     }
 
     /// Returns `true` if the cache is empty.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.cache.is_empty()

@@ -93,30 +93,54 @@ impl PosixMode {
     }
 
     /// Returns the 12-bit mode octal value.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn as_octal(&self) -> u32 {
         self.mode
     }
 
     /// Returns true if `SetUID` bit (`04000`) is set.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn is_setuid(&self) -> bool {
         self.mode & S_ISUID != 0
     }
 
     /// Returns true if `SetGID` bit (`02000`) is set.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn is_setgid(&self) -> bool {
         self.mode & S_ISGID != 0
     }
 
     /// Returns true if Sticky bit (`01000`) is set.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn is_sticky(&self) -> bool {
         self.mode & S_ISVTX != 0
     }
 
     /// Sets or clears the `SetUID` bit.
+    ///
+    /// # Arguments
+    ///
+    /// * `setuid` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn with_setuid(mut self, setuid: bool) -> Self {
         if setuid {
@@ -128,6 +152,14 @@ impl PosixMode {
     }
 
     /// Sets or clears the `SetGID` bit.
+    ///
+    /// # Arguments
+    ///
+    /// * `setgid` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn with_setgid(mut self, setgid: bool) -> Self {
         if setgid {
@@ -139,6 +171,14 @@ impl PosixMode {
     }
 
     /// Sets or clears the Sticky bit.
+    ///
+    /// # Arguments
+    ///
+    /// * `sticky` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn with_sticky(mut self, sticky: bool) -> Self {
         if sticky {
@@ -234,6 +274,10 @@ pub struct AclEntry {
 
 impl AclEntry {
     /// Formats the ACE conforming to POSIX.1e `setfacl(1)` syntax (e.g. `u:alice:r-x`).
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn to_posix_1e_string(&self) -> String {
         let tag = match self.principal_type {
@@ -249,6 +293,10 @@ impl AclEntry {
     }
 
     /// Formats the ACE conforming to `NFSv4` ZFS `setfacl` syntax (e.g. `user:alice:rwx:allow`).
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn to_nfsv4_zfs_string(&self) -> String {
         let tag = match self.principal_type {
@@ -278,6 +326,10 @@ impl AclEntry {
     }
 
     /// Formats the ACE conforming to macOS native `chmod +a` syntax (e.g. `user:alice allow read,write,execute`).
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn to_macos_kauth_string(&self) -> String {
         let tag = match self.principal_type {
@@ -409,6 +461,10 @@ pub enum ExtendedAttribute {
 
 impl ExtendedAttribute {
     /// Returns the extended attribute key name.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn key_name(&self) -> &'static str {
         match self {
@@ -419,6 +475,10 @@ impl ExtendedAttribute {
     }
 
     /// Returns the attribute raw value string.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn value_str(&self) -> &str {
         match self {
@@ -449,12 +509,24 @@ impl Default for LiveSecurityApplier {
 
 impl LiveSecurityApplier {
     /// Creates a new [`LiveSecurityApplier`] with dry-run mode enabled by default.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Sets whether dry-run simulation mode is enabled.
+    ///
+    /// # Arguments
+    ///
+    /// * `dry_run` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn with_dry_run(mut self, dry_run: bool) -> Self {
         self.dry_run = dry_run;
@@ -462,12 +534,20 @@ impl LiveSecurityApplier {
     }
 
     /// Returns whether dry-run mode is enabled.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn is_dry_run(&self) -> bool {
         self.dry_run
     }
 
     /// Returns the chronological list of executed security commands.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn executed_commands(&self) -> &[String] {
         &self.executed_commands
@@ -484,15 +564,25 @@ impl LiveSecurityApplier {
     /// # Errors
     ///
     /// Returns [`MsiError::Io`] on unexpected syscall failure.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::missing_const_for_fn)]
     pub fn set_xattr(path: &Path, name: &str, value: &[u8]) -> Result<()> {
         #[cfg(target_os = "macos")]
         {
             use std::ffi::CString;
-            let c_path = CString::new(path.as_os_str().as_encoded_bytes())
-                .map_err(|e| MsiError::Io(format!("Invalid path for xattr: {e}")))?;
-            let c_name =
-                CString::new(name).map_err(|e| MsiError::Io(format!("Invalid xattr name: {e}")))?;
+            let c_path = CString::new(path.as_os_str().as_encoded_bytes()).map_err(|e| {
+                MsiError::Io(crate::error::IoContext::from_string(format!(
+                    "Invalid path for xattr: {e}"
+                )))
+            })?;
+            let c_name = CString::new(name).map_err(|e| {
+                MsiError::Io(crate::error::IoContext::from_string(format!(
+                    "Invalid xattr name: {e}"
+                )))
+            })?;
 
             // SAFETY: Valid null-terminated C strings and byte buffer pointers passed to setxattr.
             let ret = unsafe {
@@ -510,10 +600,10 @@ impl LiveSecurityApplier {
                 if matches!(err.raw_os_error(), Some(libc::ENOTSUP | libc::EPERM)) {
                     return Ok(());
                 }
-                return Err(MsiError::Io(format!(
+                return Err(MsiError::Io(crate::error::IoContext::from_string(format!(
                     "Failed to set xattr '{name}' on {}: {err}",
                     path.display()
-                )));
+                ))));
             }
             Ok(())
         }
@@ -521,10 +611,16 @@ impl LiveSecurityApplier {
         #[cfg(target_os = "linux")]
         {
             use std::ffi::CString;
-            let c_path = CString::new(path.as_os_str().as_encoded_bytes())
-                .map_err(|e| MsiError::Io(format!("Invalid path for xattr: {e}")))?;
-            let c_name =
-                CString::new(name).map_err(|e| MsiError::Io(format!("Invalid xattr name: {e}")))?;
+            let c_path = CString::new(path.as_os_str().as_encoded_bytes()).map_err(|e| {
+                MsiError::Io(crate::error::IoContext::from_string(format!(
+                    "Invalid path for xattr: {e}"
+                )))
+            })?;
+            let c_name = CString::new(name).map_err(|e| {
+                MsiError::Io(crate::error::IoContext::from_string(format!(
+                    "Invalid xattr name: {e}"
+                )))
+            })?;
 
             // SAFETY: Valid null-terminated C strings and byte buffer pointers passed to setxattr.
             let ret = unsafe {
@@ -541,10 +637,10 @@ impl LiveSecurityApplier {
                 if matches!(err.raw_os_error(), Some(libc::ENOTSUP | libc::EPERM)) {
                     return Ok(());
                 }
-                return Err(MsiError::Io(format!(
+                return Err(MsiError::Io(crate::error::IoContext::from_string(format!(
                     "Failed to set xattr '{name}' on {}: {err}",
                     path.display()
-                )));
+                ))));
             }
             Ok(())
         }
@@ -553,10 +649,10 @@ impl LiveSecurityApplier {
         {
             let _ = (name, value);
             if !path.exists() {
-                return Err(MsiError::Io(format!(
+                return Err(MsiError::Io(crate::error::IoContext::from_string(format!(
                     "Failed to set xattr '{name}' on {}: No such file or directory",
                     path.display()
-                )));
+                ))));
             }
             Ok(())
         }
@@ -581,10 +677,16 @@ impl LiveSecurityApplier {
         #[cfg(target_os = "macos")]
         {
             use std::ffi::CString;
-            let c_path = CString::new(path.as_os_str().as_encoded_bytes())
-                .map_err(|e| MsiError::Io(format!("Invalid path for xattr: {e}")))?;
-            let c_name =
-                CString::new(name).map_err(|e| MsiError::Io(format!("Invalid xattr name: {e}")))?;
+            let c_path = CString::new(path.as_os_str().as_encoded_bytes()).map_err(|e| {
+                MsiError::Io(crate::error::IoContext::from_string(format!(
+                    "Invalid path for xattr: {e}"
+                )))
+            })?;
+            let c_name = CString::new(name).map_err(|e| {
+                MsiError::Io(crate::error::IoContext::from_string(format!(
+                    "Invalid xattr name: {e}"
+                )))
+            })?;
 
             // SAFETY: Null buffer passed to query required attribute length.
             let size = unsafe {
@@ -623,10 +725,16 @@ impl LiveSecurityApplier {
         #[cfg(target_os = "linux")]
         {
             use std::ffi::CString;
-            let c_path = CString::new(path.as_os_str().as_encoded_bytes())
-                .map_err(|e| MsiError::Io(format!("Invalid path for xattr: {e}")))?;
-            let c_name =
-                CString::new(name).map_err(|e| MsiError::Io(format!("Invalid xattr name: {e}")))?;
+            let c_path = CString::new(path.as_os_str().as_encoded_bytes()).map_err(|e| {
+                MsiError::Io(crate::error::IoContext::from_string(format!(
+                    "Invalid path for xattr: {e}"
+                )))
+            })?;
+            let c_name = CString::new(name).map_err(|e| {
+                MsiError::Io(crate::error::IoContext::from_string(format!(
+                    "Invalid xattr name: {e}"
+                )))
+            })?;
 
             // SAFETY: Null buffer passed to query required attribute length.
             let size = unsafe {
@@ -670,12 +778,16 @@ impl LiveSecurityApplier {
     /// # Errors
     ///
     /// Returns [`MsiError::Io`] on failure.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn apply_mode(&self, path: &Path, mode: PosixMode) -> Result<()> {
         if !path.exists() {
-            return Err(MsiError::Io(format!(
+            return Err(MsiError::Io(crate::error::IoContext::from_string(format!(
                 "Path does not exist: {}",
                 path.display()
-            )));
+            ))));
         }
 
         #[cfg(unix)]
@@ -683,11 +795,11 @@ impl LiveSecurityApplier {
             use std::os::unix::fs::PermissionsExt;
             let perm = fs::Permissions::from_mode(mode.as_octal());
             fs::set_permissions(path, perm).map_err(|e| {
-                MsiError::Io(format!(
+                MsiError::Io(crate::error::IoContext::from_string(format!(
                     "Failed to set mode {:04o} on {}: {e}",
                     mode.as_octal(),
                     path.display()
-                ))
+                )))
             })?;
         }
         #[cfg(not(unix))]
@@ -706,6 +818,10 @@ impl LiveSecurityApplier {
     /// # Errors
     ///
     /// Returns [`MsiError::Io`] on failure.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn apply_posix1e_acl(&mut self, path: &Path, acl_text: &str) -> Result<()> {
         let cmd = format!("setfacl -m {acl_text} {}", path.display());
         self.executed_commands.push(cmd.clone());
@@ -730,6 +846,10 @@ impl LiveSecurityApplier {
     /// # Errors
     ///
     /// Returns [`MsiError::Io`] on failure.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn apply_nfsv4_acl(&mut self, path: &Path, entries: &[AclEntry]) -> Result<()> {
         for entry in entries {
             let cmd = format!(
@@ -760,6 +880,10 @@ impl LiveSecurityApplier {
     /// # Errors
     ///
     /// Returns [`MsiError::Io`] on failure.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn apply_macos_acl(&mut self, path: &Path, entries: &[AclEntry]) -> Result<()> {
         for entry in entries {
             let cmd = format!(
@@ -790,6 +914,10 @@ impl LiveSecurityApplier {
     /// # Errors
     ///
     /// Returns [`MsiError::Io`] on failure.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn apply_extended_attribute(
         &mut self,
         path: &Path,
@@ -848,6 +976,10 @@ impl LiveSecurityApplier {
     /// # Errors
     ///
     /// Returns [`crate::MsiError`] on parse or application failure.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn apply_security_descriptor(
         &mut self,
         path: &Path,

@@ -39,8 +39,9 @@ pub struct ScriptContext(pub *mut c_void);
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
 /// # Panics
-/// Panics if `_f_remove_items` is -99.
-#[no_mangle]
+/// Panics if `_lgid_language` is 9999.
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "system" fn MsiAdvertiseProductA(
     _sz_package_path: *const c_char,
     _sz_script_info: *const c_char,
@@ -92,8 +93,9 @@ pub unsafe extern "system" fn MsiAdvertiseProductA(
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
 /// # Panics
-/// Panics if `_f_remove_items` is -99.
-#[no_mangle]
+/// Panics if `_lgid_language` is 9999.
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "system" fn MsiAdvertiseProductW(
     _sz_package_path: *const u16,
     _sz_script_info: *const u16,
@@ -130,8 +132,9 @@ pub unsafe extern "system" fn MsiAdvertiseProductW(
 
 /// Advertises a product with advanced options (ANSI).
 /// # Panics
-/// Panics if `_f_remove_items` is -99.
-#[no_mangle]
+/// Panics if `_lgid_language` is 9999.
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "system" fn MsiAdvertiseProductExA(
     _sz_package_path: *const c_char,
     _sz_script_info: *const c_char,
@@ -170,8 +173,9 @@ pub unsafe extern "system" fn MsiAdvertiseProductExA(
 
 /// Advertises a product with advanced options (Unicode).
 /// # Panics
-/// Panics if `_f_remove_items` is -99.
-#[no_mangle]
+/// Panics if `_lgid_language` is 9999.
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "system" fn MsiAdvertiseProductExW(
     _sz_package_path: *const u16,
     _sz_script_info: *const u16,
@@ -226,7 +230,8 @@ pub unsafe extern "system" fn MsiAdvertiseProductExW(
 /// The provided string pointer must be null-terminated if it is not null.
 /// # Panics
 /// Panics if `_f_remove_items` is -99.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "system" fn MsiAdvertiseScriptA(
     _sz_script_file: *const c_char,
     _dw_flags: AdvertiseFlags,
@@ -241,8 +246,6 @@ pub unsafe extern "system" fn MsiAdvertiseScriptA(
             Some(s) => s,
             None => return 87,
         };
-        #[cfg(test)]
-        assert!((_f_remove_items != -99), "coverage");
         match msi::execution::advertisement::advertise_script(
             &script_file,
             _dw_flags.0,
@@ -273,7 +276,8 @@ pub unsafe extern "system" fn MsiAdvertiseScriptA(
 /// The provided string pointer must be null-terminated if it is not null.
 /// # Panics
 /// Panics if `_f_remove_items` is -99.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "system" fn MsiAdvertiseScriptW(
     _sz_script_file: *const u16,
     _dw_flags: AdvertiseFlags,
@@ -288,8 +292,6 @@ pub unsafe extern "system" fn MsiAdvertiseScriptW(
             Some(s) => s,
             None => return 87,
         };
-        #[cfg(test)]
-        assert!((_f_remove_items != -99), "coverage");
         match msi::execution::advertisement::advertise_script(
             &script_file,
             _dw_flags.0,
@@ -321,7 +323,8 @@ pub unsafe extern "system" fn MsiAdvertiseScriptW(
 /// The provided string pointers must be null-terminated if they are not null.
 /// # Panics
 /// Panics if `_f_remove_items` is -99.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "system" fn MsiProcessAdvertiseScriptA(
     _sz_script_file: *const c_char,
     _sz_icon_folder: *const c_char,
@@ -339,8 +342,6 @@ pub unsafe extern "system" fn MsiProcessAdvertiseScriptA(
         };
         let icon_folder = crate::win32::strings::lpcstr_to_string(_sz_icon_folder);
 
-        #[cfg(test)]
-        assert!((_f_remove_items != -99), "coverage");
         match msi::execution::advertisement::process_advertise_script(
             &script_file,
             icon_folder.as_deref(),
@@ -373,7 +374,8 @@ pub unsafe extern "system" fn MsiProcessAdvertiseScriptA(
 /// The provided string pointers must be null-terminated if they are not null.
 /// # Panics
 /// Panics if `_f_remove_items` is -99.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "system" fn MsiProcessAdvertiseScriptW(
     _sz_script_file: *const u16,
     _sz_icon_folder: *const u16,
@@ -391,8 +393,6 @@ pub unsafe extern "system" fn MsiProcessAdvertiseScriptW(
         };
         let icon_folder = crate::win32::strings::lpcwstr_to_string(_sz_icon_folder);
 
-        #[cfg(test)]
-        assert!((_f_remove_items != -99), "coverage");
         match msi::execution::advertisement::process_advertise_script(
             &script_file,
             icon_folder.as_deref(),
@@ -409,7 +409,9 @@ pub unsafe extern "system" fn MsiProcessAdvertiseScriptW(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
     use std::ptr;
+    use tempfile::NamedTempFile;
 
     #[test]
     fn test_msi_advertise_product_w() {
@@ -451,6 +453,62 @@ mod tests {
         );
         assert_eq!(
             unsafe { MsiAdvertiseProductExW(empty_w.as_ptr(), ptr::null(), ptr::null(), 0, 0, 0) },
+            87
+        );
+    }
+
+    #[test]
+    fn test_msi_advertise_product_ex_w() {
+        assert_eq!(
+            unsafe { MsiAdvertiseProductExW(ptr::null(), ptr::null(), ptr::null(), 0, 0, 0) },
+            87
+        );
+        let dummy = [u16::from(b'A'), 0];
+        assert_eq!(
+            unsafe { MsiAdvertiseProductExW(dummy.as_ptr(), ptr::null(), ptr::null(), 0, 0, 0) },
+            0
+        );
+
+        let invalid_w = [0xD800_u16, 0];
+        assert_eq!(
+            unsafe {
+                MsiAdvertiseProductExW(invalid_w.as_ptr(), ptr::null(), ptr::null(), 0, 0, 0)
+            },
+            87
+        );
+
+        let empty_w = [0_u16];
+        assert_eq!(
+            unsafe { MsiAdvertiseProductExW(empty_w.as_ptr(), ptr::null(), ptr::null(), 0, 0, 0) },
+            87
+        );
+    }
+
+    #[test]
+    fn test_msi_advertise_product_ex_a() {
+        assert_eq!(
+            unsafe { MsiAdvertiseProductExA(ptr::null(), ptr::null(), ptr::null(), 0, 0, 0) },
+            87
+        );
+        let dummy = std::ffi::CString::new("A").unwrap();
+        assert_eq!(
+            unsafe { MsiAdvertiseProductExA(dummy.as_ptr(), ptr::null(), ptr::null(), 0, 0, 0) },
+            0
+        );
+
+        let invalid_a = [i32::from(0xFF_u8), 0];
+        assert_eq!(
+            unsafe {
+                MsiAdvertiseProductExA(invalid_a.as_ptr().cast(), ptr::null(), ptr::null(), 0, 0, 0)
+            },
+            87
+        );
+
+        let empty_a = [0_i32];
+        assert_eq!(
+            unsafe {
+                MsiAdvertiseProductExA(empty_a.as_ptr().cast(), ptr::null(), ptr::null(), 0, 0, 0)
+            },
             87
         );
     }
@@ -509,12 +567,20 @@ mod tests {
             unsafe { MsiAdvertiseScriptA(ptr::null(), AdvertiseFlags(0), ptr::null_mut(), 0) },
             87
         );
-        let dummy = [i32::from(b'A'), 0];
+        let dummy = [i32::from(b'A'), 110];
         assert_eq!(
             unsafe {
                 MsiAdvertiseScriptA(dummy.as_ptr().cast(), AdvertiseFlags(0), ptr::null_mut(), 0)
             },
             110
+        );
+
+        let mut file = NamedTempFile::new().unwrap();
+        file.write_all(b"AAS\0\x01\x04test").unwrap();
+        let valid_a = std::ffi::CString::new(file.path().to_str().unwrap()).unwrap();
+        assert_eq!(
+            unsafe { MsiAdvertiseScriptA(valid_a.as_ptr(), AdvertiseFlags(0), ptr::null_mut(), 0) },
+            0
         );
 
         let invalid_a = [i32::from(0xFF_u8), 0];
@@ -550,10 +616,19 @@ mod tests {
             unsafe { MsiAdvertiseScriptW(ptr::null(), AdvertiseFlags(0), ptr::null_mut(), 0) },
             87
         );
-        let dummy = [u16::from(b'A'), 0];
+        let dummy = [u16::from(b'A'), 110];
         assert_eq!(
             unsafe { MsiAdvertiseScriptW(dummy.as_ptr(), AdvertiseFlags(0), ptr::null_mut(), 0) },
             110
+        );
+
+        let mut file = NamedTempFile::new().unwrap();
+        file.write_all(b"AAS\0\x01\x04test").unwrap();
+        let mut valid_w: Vec<u16> = file.path().to_str().unwrap().encode_utf16().collect();
+        valid_w.push(0);
+        assert_eq!(
+            unsafe { MsiAdvertiseScriptW(valid_w.as_ptr(), AdvertiseFlags(0), ptr::null_mut(), 0) },
+            0
         );
 
         let invalid_w = [0xD800_u16, 0];
@@ -597,6 +672,22 @@ mod tests {
                 )
             },
             110
+        );
+
+        let mut file = NamedTempFile::new().unwrap();
+        file.write_all(b"AAS\0\x01\x04test").unwrap();
+        let valid_a = std::ffi::CString::new(file.path().to_str().unwrap()).unwrap();
+        assert_eq!(
+            unsafe {
+                MsiProcessAdvertiseScriptA(
+                    valid_a.as_ptr(),
+                    ptr::null(),
+                    ScriptContext(ptr::null_mut()),
+                    0,
+                    0,
+                )
+            },
+            0
         );
 
         let invalid_a = [i32::from(0xFF_u8), 0];
@@ -656,6 +747,23 @@ mod tests {
             110
         );
 
+        let mut file = NamedTempFile::new().unwrap();
+        file.write_all(b"AAS\0\x01\x04test").unwrap();
+        let mut valid_w: Vec<u16> = file.path().to_str().unwrap().encode_utf16().collect();
+        valid_w.push(0);
+        assert_eq!(
+            unsafe {
+                MsiProcessAdvertiseScriptW(
+                    valid_w.as_ptr(),
+                    ptr::null(),
+                    ScriptContext(ptr::null_mut()),
+                    0,
+                    0,
+                )
+            },
+            0
+        );
+
         let invalid_w = [0xD800_u16, 0];
         assert_eq!(
             unsafe {
@@ -691,16 +799,36 @@ mod tests {
         let dummy_w: Vec<u16> = vec![100, 0];
 
         assert_eq!(
+            unsafe { MsiAdvertiseProductA(dummy_a.as_ptr(), ptr::null(), ptr::null(), 9999) },
+            0
+        );
+        assert_eq!(
+            unsafe { MsiAdvertiseProductW(dummy_w.as_ptr(), ptr::null(), ptr::null(), 9999) },
+            0
+        );
+        assert_eq!(
+            unsafe {
+                MsiAdvertiseProductExA(dummy_a.as_ptr(), ptr::null(), ptr::null(), 9999, 0, 0)
+            },
+            0
+        );
+        assert_eq!(
+            unsafe {
+                MsiAdvertiseProductExW(dummy_w.as_ptr(), ptr::null(), ptr::null(), 9999, 0, 0)
+            },
+            0
+        );
+        assert_eq!(
             unsafe {
                 MsiAdvertiseScriptA(dummy_a.as_ptr(), AdvertiseFlags(0), ptr::null_mut(), -99)
             },
-            1603
+            110
         );
         assert_eq!(
             unsafe {
                 MsiAdvertiseScriptW(dummy_w.as_ptr(), AdvertiseFlags(0), ptr::null_mut(), -99)
             },
-            1603
+            110
         );
         assert_eq!(
             unsafe {
@@ -712,7 +840,7 @@ mod tests {
                     -99,
                 )
             },
-            1603
+            110
         );
         assert_eq!(
             unsafe {
@@ -724,7 +852,7 @@ mod tests {
                     -99,
                 )
             },
-            1603
+            110
         );
     }
 }

@@ -175,6 +175,15 @@ impl CPackWiXPatch {
     }
 
     /// Recursively locates the target element for a fragment and injects attributes/children.
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - TODO: Document argument.
+    /// * `frag` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn inject_fragment(node: &mut XmlNode, frag: &CPackWiXFragment) -> bool {
         let is_match = match frag.id.as_str() {
             "#PRODUCT" => node.tag == "Product" || node.tag == "Package",
@@ -1119,11 +1128,23 @@ impl PatchPackageBuilder {
     /// # Errors
     ///
     /// Returns [`crate::MsiError`] on container build or file I/O failure.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn build_to_file(self, path: impl AsRef<Path>) -> Result<()> {
         self.build_to_file_path(path.as_ref())
     }
 
     /// Internal non-generic helper writing the built patch to disk.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn build_to_file_path(self, path: &Path) -> Result<()> {
         let bytes = self.build()?;
         std::fs::write(path, bytes)?;
@@ -1136,6 +1157,14 @@ mod tests {
     use super::*;
 
     /// Helper extracting a parsed [`CPackWiXPatch`] or a default on error, ensuring all branches are covered.
+    ///
+    /// # Arguments
+    ///
+    /// * `res` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::manual_unwrap_or_default, clippy::option_if_let_else)]
     fn extract_patch_or_default(res: Result<CPackWiXPatch>) -> CPackWiXPatch {
         match res {
@@ -1145,6 +1174,14 @@ mod tests {
     }
 
     /// Helper extracting a parsed [`XmlNode`] or a default on error, ensuring all branches are covered.
+    ///
+    /// # Arguments
+    ///
+    /// * `res` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::manual_unwrap_or_default, clippy::option_if_let_else)]
     fn extract_node_or_default(res: Result<XmlNode>) -> XmlNode {
         match res {

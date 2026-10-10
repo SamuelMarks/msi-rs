@@ -22,6 +22,17 @@ pub struct GUID {
 
 impl GUID {
     /// Creates a new `GUID`.
+    ///
+    /// # Arguments
+    ///
+    /// * `d1` - TODO: Document argument.
+    /// * `d2` - TODO: Document argument.
+    /// * `d3` - TODO: Document argument.
+    /// * `d4` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn new(d1: u32, d2: u16, d3: u16, d4: [u8; 8]) -> Self {
         Self {

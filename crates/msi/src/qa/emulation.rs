@@ -112,6 +112,10 @@ impl MockBlockDevice {
     /// # Errors
     ///
     /// Returns [`MsiError::BlockDeviceError`] if device is read-only or range exceeds capacity.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn write_sectors(&mut self, start_lba: u64, data: &[u8]) -> Result<()> {
         if self.read_only {
             return Err(MsiError::BlockDeviceError {

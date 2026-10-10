@@ -191,17 +191,15 @@ impl DatabaseTransform {
     /// # Errors
     ///
     /// Returns [`crate::error::MsiError::TransformConflict`] if validation fails.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn validate(&self, db: &LinkedDatabase) -> Result<()> {
         let flags = self.summary_info.word_count.unwrap_or(0) as u32;
 
         if let Some(rev) = &self.summary_info.rev_number {
             let parts: Vec<&str> = rev.split(';').collect();
-            if parts.is_empty() {
-                return Err(crate::error::MsiError::TransformConflict {
-                    reason: "Invalid revision format".to_string(),
-                });
-            }
-
             let baseline_part = parts[0];
             let baseline_product_code = if baseline_part.len() >= 38 {
                 &baseline_part[0..38]
@@ -263,6 +261,10 @@ impl DatabaseTransform {
     /// # Errors
     ///
     /// Returns [`crate::error::MsiError`] if table schemas are missing or row modifications fail.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn apply(&self, db: &mut LinkedDatabase) -> Result<()> {
         self.validate(db)?;
         for (table_name, tt) in &self.tables {
@@ -400,6 +402,16 @@ impl DatabaseTransform {
 }
 
 /// Helper comparing two records by primary key columns if available, or full equality.
+///
+/// # Arguments
+///
+/// * `r1` - TODO: Document argument.
+/// * `r2` - TODO: Document argument.
+/// * `schema` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn rows_primary_keys_match(
     r1: &Record,
     r2: &Record,
@@ -453,7 +465,7 @@ mod tests {
         ));
         prop_rows.push(r2);
 
-        db.tables.insert("Property".to_string(), prop_rows);
+        db.tables.insert("Property".to_string(), prop_rows.clone());
 
         let mut transform = DatabaseTransform::new();
         transform.summary_info.word_count = Some(
@@ -465,22 +477,36 @@ mod tests {
         assert!(transform.validate(&db).is_ok());
 
         transform.summary_info.rev_number = Some("{44444444-4444-4444-4444-444444444444}1.0.0;{33333333-3333-3333-3333-333333333333}2.0.0;{22222222-2222-2222-2222-222222222222}".to_string());
-        match transform.validate(&db) {
-            Err(MsiError::TransformConflict { reason }) => {
-                assert!(reason.contains("Mismatched ProductCode"));
-            }
-            _ => panic!("Expected TransformConflict"),
-        }
+        let err = transform
+            .validate(&db)
+            .expect_err("Expected TransformConflict");
+        assert!(err.to_string().contains("Mismatched ProductCode"));
 
         transform.summary_info.rev_number = Some("{11111111-1111-1111-1111-111111111111}1.0.0;{33333333-3333-3333-3333-333333333333}2.0.0;{44444444-4444-4444-4444-444444444444}".to_string());
-        match transform.validate(&db) {
-            Err(MsiError::TransformConflict { reason }) => {
-                assert!(reason.contains("Mismatched UpgradeCode"));
-            }
-            _ => panic!("Expected TransformConflict"),
-        }
+        let err = transform
+            .validate(&db)
+            .expect_err("Expected TransformConflict");
+        assert!(err.to_string().contains("Mismatched UpgradeCode"));
 
+        transform.summary_info.rev_number =
+            Some("SHORT;NONE;{22222222-2222-2222-2222-222222222222}".to_string());
+        assert!(transform.validate(&db).is_ok());
+
+        // Cover the case where validation is requested, but property is missing in DB
+        db.tables.remove("Property");
+        transform.summary_info.rev_number = Some("{11111111-1111-1111-1111-111111111111}1.0.0;{33333333-3333-3333-3333-333333333333}2.0.0;{22222222-2222-2222-2222-222222222222}".to_string());
+        assert!(transform.validate(&db).is_ok()); // Should pass if property is simply absent
+
+        // Cover the case where validation is requested, but baseline string is empty
+        db.tables.insert("Property".to_string(), prop_rows.clone()); // restore
+        transform.summary_info.rev_number = Some("1.0.0;2.0.0;".to_string());
+        assert!(transform.validate(&db).is_ok()); // Should pass if baseline is empty
         transform.summary_info.rev_number = Some(String::new());
+        assert!(transform.validate(&db).is_ok());
+
+        // Cover the case where validation flags are 0
+        transform.summary_info.word_count = Some(0);
+        transform.summary_info.rev_number = Some("1.0.0;2.0.0;".to_string());
         assert!(transform.validate(&db).is_ok());
     }
 
@@ -914,12 +940,9 @@ mod tests {
         let _ = writer2.add_stream("_TransformView", &[0xFF, 0xFE, 0xFD]);
         let cfb2 = writer2.build();
         let parsed2 = DatabaseTransform::from_bytes(&cfb2);
-        match parsed2 {
-            Err(MsiError::InvalidTransform { reason }) => {
-                assert!(reason.contains("not valid UTF-8"));
-            }
-            _ => panic!("Expected InvalidTransform error due to invalid UTF-8 in _TransformView"),
-        }
+        let err = parsed2
+            .expect_err("Expected InvalidTransform error due to invalid UTF-8 in _TransformView");
+        assert!(err.to_string().contains("not valid UTF-8"));
     }
 
     /// Tests primary key matching across schema presence, column types (Short, Long, String, Null), and composites.

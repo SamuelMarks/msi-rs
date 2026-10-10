@@ -123,7 +123,7 @@ fn test_sql_joins() {
     let schema1 = TableSchema::new("T1")
         .with_column(ColumnDef::new("Id", DataType::Short).primary_key())
         .with_column(ColumnDef::new("Name", DataType::String { max_len: 255 }));
-    db.catalog.add_table(schema1).unwrap();
+    db.catalog.add_table(schema1).expect("test");
     db.tables.insert("T1".to_string(), vec![
         Record::with_fields(vec![FieldValue::Short(1), FieldValue::String("Apple".to_string())]),
         Record::with_fields(vec![FieldValue::Short(2), FieldValue::String("Banana".to_string())]),
@@ -133,25 +133,22 @@ fn test_sql_joins() {
     let schema2 = TableSchema::new("T2")
         .with_column(ColumnDef::new("Id", DataType::Short).primary_key())
         .with_column(ColumnDef::new("Color", DataType::String { max_len: 255 }));
-    db.catalog.add_table(schema2).unwrap();
+    db.catalog.add_table(schema2).expect("test");
     db.tables.insert("T2".to_string(), vec![
         Record::with_fields(vec![FieldValue::Short(1), FieldValue::String("Red".to_string())]),
         Record::with_fields(vec![FieldValue::Short(2), FieldValue::String("Yellow".to_string())]),
     ]);
 
     // Test JOIN
-    let res = execute_sql(&mut db, "SELECT T1.Name, T2.Color FROM T1, T2 WHERE T1.Id = T2.Id", &[]).unwrap();
-    match res {
-        QueryResult::Select { columns, rows } => {
-            assert_eq!(columns.len(), 2);
-            assert_eq!(rows.len(), 2);
-            assert_eq!(rows[0].get(0).unwrap(), &FieldValue::String("Apple".to_string()));
-            assert_eq!(rows[0].get(1).unwrap(), &FieldValue::String("Red".to_string()));
-            assert_eq!(rows[1].get(0).unwrap(), &FieldValue::String("Banana".to_string()));
-            assert_eq!(rows[1].get(1).unwrap(), &FieldValue::String("Yellow".to_string()));
-        }
-        _ => panic!("Expected Select"),
-    }
+    let res = execute_sql(&mut db, "SELECT T1.Name, T2.Color FROM T1, T2 WHERE T1.Id = T2.Id", &[]).expect("Failed to execute select");
+    let expected = QueryResult::Select {
+        columns: vec!["T1.Name".to_string(), "T2.Color".to_string()],
+        rows: vec![
+            Record::with_fields(vec![FieldValue::String("Apple".to_string()), FieldValue::String("Red".to_string())]),
+            Record::with_fields(vec![FieldValue::String("Banana".to_string()), FieldValue::String("Yellow".to_string())]),
+        ],
+    };
+    assert_eq!(res, expected);
 }
 
 #[test]
@@ -161,12 +158,12 @@ fn test_sql_alter_table_hold_free() {
     // Create Table T1
     let schema1 = TableSchema::new("T1")
         .with_column(ColumnDef::new("Id", DataType::Short).primary_key());
-    db.catalog.add_table(schema1).unwrap();
+    db.catalog.add_table(schema1).expect("test");
 
-    let res = execute_sql(&mut db, "ALTER TABLE T1 HOLD", &[]).unwrap();
+    let res = execute_sql(&mut db, "ALTER TABLE T1 HOLD", &[]).expect("test");
     assert_eq!(res, QueryResult::SchemaChanged);
 
-    let res = execute_sql(&mut db, "ALTER TABLE T1 FREE", &[]).unwrap();
+    let res = execute_sql(&mut db, "ALTER TABLE T1 FREE", &[]).expect("test");
     assert_eq!(res, QueryResult::SchemaChanged);
 }
 
@@ -175,7 +172,7 @@ fn test_sql_malformed_queries() {
     let mut db = LinkedDatabase::default();
     let schema1 = TableSchema::new("T1")
         .with_column(ColumnDef::new("Id", DataType::Short).primary_key());
-    db.catalog.add_table(schema1).unwrap();
+    db.catalog.add_table(schema1).expect("test");
     
     // Malformed ALTER TABLE
     assert!(execute_sql(&mut db, "ALTER TABLE T1", &[]).is_err());
@@ -187,7 +184,7 @@ fn test_sql_malformed_queries() {
     // Ambiguous column reference
     let schema2 = TableSchema::new("T2")
         .with_column(ColumnDef::new("Id", DataType::Short).primary_key());
-    db.catalog.add_table(schema2).unwrap();
+    db.catalog.add_table(schema2).expect("test");
     assert!(execute_sql(&mut db, "SELECT Id FROM T1, T2", &[]).is_err());
 
     // Malformed DROP TABLE

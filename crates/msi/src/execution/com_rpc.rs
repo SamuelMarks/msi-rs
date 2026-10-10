@@ -33,12 +33,20 @@ impl ComInterfacePointer {
     /// # Arguments
     ///
     /// * `ptr` - The raw pointer address.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn new(ptr: usize) -> Self {
         Self(ptr)
     }
 
     /// Returns the underlying raw address.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn as_raw(&self) -> usize {
         self.0
@@ -52,6 +60,10 @@ pub trait MsiServerInterface {
     /// # Errors
     ///
     /// Returns an `MsiError::ComRpcError` if the server cannot be reached or the RPC binds fail.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn connect(&mut self) -> Result<()>;
 
     /// Disconnects from the server process cleanly.
@@ -59,6 +71,10 @@ pub trait MsiServerInterface {
     /// # Errors
     ///
     /// Returns an `MsiError::ComRpcError` if the disconnect signal fails to transmit.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn disconnect(&mut self) -> Result<()>;
 
     /// Executes a sequence of database operations within a transaction.
@@ -70,9 +86,17 @@ pub trait MsiServerInterface {
     /// # Errors
     ///
     /// Returns an `MsiError::MsiServerError` if the internal engine fails to process the transaction.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn execute_transaction(&self, transaction_id: u32) -> Result<()>;
 
     /// Gets the current connection state.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn get_state(&self) -> RpcConnectionState;
 }
 
@@ -86,7 +110,7 @@ pub use self::posix_mock::MockMsiServer;
 /// Native COM implementations for Windows.
 pub mod windows_impl {
     use super::{MsiError, MsiServerInterface, Result, RpcConnectionState};
-    use windows::core::{implement, IUnknown, Interface, Result as WinResult, GUID, HRESULT};
+    use windows::core::GUID;
     use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED};
 
     /// `IMsiServer` IID: {000C101C-0000-0000-C000-000000000046}
@@ -101,6 +125,10 @@ pub mod windows_impl {
 
     impl NativeMsiServer {
         /// Creates a new uninitialized native server instance.
+        ///
+        /// # Returns
+        ///
+        /// TODO: Document return value.
         #[must_use]
         pub const fn new() -> Self {
             Self {
@@ -119,16 +147,11 @@ pub mod windows_impl {
         fn connect(&mut self) -> Result<()> {
             // SAFETY: Thread-safe COM initialization.
             unsafe {
-                match CoInitializeEx(None, COINIT_MULTITHREADED) {
-                    Ok(()) => {}
-                    Err(e) => {
-                        // S_FALSE means already initialized for this thread, which is fine.
-                        if e.code() != windows::core::HRESULT(0x00000001) {
-                            return Err(MsiError::ComRpcError(format!(
-                                "CoInitializeEx failed: {e}"
-                            )));
-                        }
-                    }
+                let hr = CoInitializeEx(None, COINIT_MULTITHREADED);
+                if hr.is_err() && hr != windows::core::HRESULT(0x00000001) {
+                    return Err(MsiError::ComRpcError(format!(
+                        "CoInitializeEx failed: {hr:?}"
+                    )));
                 }
             }
             self.state = RpcConnectionState::Connected;
@@ -179,6 +202,10 @@ pub mod posix_mock {
 
     impl MockMsiServer {
         /// Creates a new uninitialized mock server instance.
+        ///
+        /// # Returns
+        ///
+        /// TODO: Document return value.
         #[must_use]
         pub const fn new() -> Self {
             Self {

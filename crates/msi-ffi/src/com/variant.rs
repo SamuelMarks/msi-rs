@@ -40,6 +40,10 @@ pub struct VARIANT {
 
 impl VARIANT {
     /// Creates a new empty `VARIANT`.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn new_empty() -> Self {
         Self {
@@ -52,6 +56,14 @@ impl VARIANT {
     }
 
     /// Creates a new `VARIANT` containing a 32-bit integer.
+    ///
+    /// # Arguments
+    ///
+    /// * `val` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn new_i4(val: i32) -> Self {
         let mut v = Self::new_empty();
@@ -62,6 +74,10 @@ impl VARIANT {
     }
 
     /// Safe, strongly-typed wrapper mapping to Rust enums.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn as_i4(&self) -> Option<i32> {
         (self.vt == VARENUM::VtI4 as u16).then(|| {
@@ -72,6 +88,10 @@ impl VARIANT {
     }
 
     /// Safe, strongly-typed wrapper mapping to Rust enums.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn as_bstr(&self) -> Option<*mut u16> {
         (self.vt == VARENUM::VtBstr as u16).then(|| {

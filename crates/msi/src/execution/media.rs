@@ -23,6 +23,7 @@ pub enum ExtractionSource {
 /// Advanced media extraction and path handling.
 #[derive(Debug)]
 pub struct MediaManager {
+    /// Callback invoked when a disk prompt is required.
     prompt_cb: Option<MediaPromptCallback>,
 }
 
@@ -34,6 +35,14 @@ impl Default for MediaManager {
 
 impl MediaManager {
     /// Creates a new `MediaManager` with an optional UI prompt callback.
+    ///
+    /// # Arguments
+    ///
+    /// * `prompt_cb` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn new(prompt_cb: Option<MediaPromptCallback>) -> Self {
         Self { prompt_cb }
@@ -44,10 +53,20 @@ impl MediaManager {
     ///
     /// # Errors
     /// Returns `MsiError::Io` if the path is invalid.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn sanitize_target_path(path: &Path) -> Result<PathBuf> {
         let path_str = path.to_string_lossy();
         if path_str.is_empty() {
-            return Err(MsiError::Io("Empty path".to_string()));
+            return Err(MsiError::Io(crate::error::IoContext::from_string(
+                "Empty path".to_string(),
+            )));
         }
 
         // On Windows, if we are emulating strict Win32 compat without extended paths:
@@ -64,6 +83,15 @@ impl MediaManager {
     ///
     /// # Errors
     /// Returns `MsiError::ActionExecutionError` if the user cancels or the callback is missing.
+    ///
+    /// # Arguments
+    ///
+    /// * `disk_id` - TODO: Document argument.
+    /// * `prompt_msg` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn prompt_for_disk(&self, disk_id: i32, prompt_msg: &str) -> Result<()> {
         if let Some(cb) = self.prompt_cb {
             if cb(disk_id, prompt_msg) {
@@ -84,6 +112,16 @@ impl MediaManager {
     ///
     /// # Errors
     /// Returns `MsiError` if the file record cannot be found.
+    ///
+    /// # Arguments
+    ///
+    /// * `_file_key` - TODO: Document argument.
+    /// * `is_compressed` - TODO: Document argument.
+    /// * `cab_name` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn determine_extraction_source(
         _file_key: &str,
         is_compressed: bool,
@@ -100,9 +138,9 @@ impl MediaManager {
                 Ok(ExtractionSource::ExternalCabinet(cab.to_string()))
             }
         } else {
-            Err(MsiError::Io(
+            Err(MsiError::Io(crate::error::IoContext::from_string(
                 "Compressed file missing cabinet reference".to_string(),
-            ))
+            )))
         }
     }
 
@@ -111,11 +149,19 @@ impl MediaManager {
     ///
     /// # Errors
     /// Returns `MsiError` for corrupted data or unsupported compression.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn decompress_stream(data: &[u8]) -> Result<Vec<u8>> {
         if data.is_empty() {
-            return Err(MsiError::Io(
+            return Err(MsiError::Io(crate::error::IoContext::from_string(
                 "Corrupted or empty compression stream".to_string(),
-            ));
+            )));
         }
 
         // Simulate reading magic bytes
@@ -123,9 +169,9 @@ impl MediaManager {
             b"MS" => Ok(vec![0x01, 0x02]), // MSZIP
             b"LX" => Ok(vec![0x03, 0x04]), // LZX
             b"QU" => Ok(vec![0x05, 0x06]), // Quantum
-            _ => Err(MsiError::Io(
+            _ => Err(MsiError::Io(crate::error::IoContext::from_string(
                 "Unsupported or corrupted compression type".to_string(),
-            )),
+            ))),
         }
     }
 }
@@ -139,7 +185,7 @@ mod tests {
     fn test_sanitize_target_path_windows_long() {
         let long_path_str = "C:\\" + "a".repeat(260);
         let long_path = std::path::Path::new(&long_path_str);
-        let sanitized = MediaManager::sanitize_target_path(long_path).unwrap();
+        let sanitized = MediaManager::sanitize_target_path(long_path).expect("test");
         assert!(sanitized.to_string_lossy().starts_with(r"\\?\"));
     }
 
@@ -154,12 +200,11 @@ mod tests {
         // Test very long path
         let long_str = "C:\\".to_string() + &"a".repeat(300);
         let long = Path::new(&long_str);
-        let sanitized = MediaManager::sanitize_target_path(long).unwrap();
-        if cfg!(windows) {
-            assert!(sanitized.to_string_lossy().starts_with(r"\\?\"));
-        } else {
-            assert_eq!(sanitized, long);
-        }
+        let sanitized = MediaManager::sanitize_target_path(long).expect("test");
+        #[cfg(windows)]
+        assert!(sanitized.to_string_lossy().starts_with(r"\\?\"));
+        #[cfg(not(windows))]
+        assert_eq!(sanitized, long);
     }
 
     #[test]
@@ -183,17 +228,18 @@ mod tests {
     #[test]
     fn test_determine_extraction_source() {
         assert_eq!(
-            MediaManager::determine_extraction_source("file1", false, None).unwrap(),
+            MediaManager::determine_extraction_source("file1", false, None).expect("test"),
             ExtractionSource::UncompressedExternal
         );
 
         assert_eq!(
-            MediaManager::determine_extraction_source("file2", true, Some("#cab1")).unwrap(),
+            MediaManager::determine_extraction_source("file2", true, Some("#cab1")).expect("test"),
             ExtractionSource::EmbeddedCabinet("#cab1".to_string())
         );
 
         assert_eq!(
-            MediaManager::determine_extraction_source("file3", true, Some("ext.cab")).unwrap(),
+            MediaManager::determine_extraction_source("file3", true, Some("ext.cab"))
+                .expect("test"),
             ExtractionSource::ExternalCabinet("ext.cab".to_string())
         );
 
@@ -203,16 +249,16 @@ mod tests {
     #[test]
     fn test_decompress_stream() {
         assert_eq!(
-            MediaManager::decompress_stream(b"MSzip data").unwrap(),
-            vec![0x01, 0x02]
+            MediaManager::decompress_stream(b"MSzip data"),
+            Ok(vec![0x01, 0x02])
         );
         assert_eq!(
-            MediaManager::decompress_stream(b"LXz data").unwrap(),
-            vec![0x03, 0x04]
+            MediaManager::decompress_stream(b"LXz data"),
+            Ok(vec![0x03, 0x04])
         );
         assert_eq!(
-            MediaManager::decompress_stream(b"QUantum data").unwrap(),
-            vec![0x05, 0x06]
+            MediaManager::decompress_stream(b"QUantum data"),
+            Ok(vec![0x05, 0x06])
         );
         assert!(MediaManager::decompress_stream(b"Unknown").is_err());
         assert!(MediaManager::decompress_stream(b"").is_err());

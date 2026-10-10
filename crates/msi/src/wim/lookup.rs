@@ -52,6 +52,10 @@ impl LookupEntry {
     /// # Errors
     ///
     /// Returns an error if the offset and size calculations cause an integer overflow.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn end_offset(&self) -> Result<u64> {
         self.resource
             .offset
@@ -76,6 +80,14 @@ impl LookupTable {
     /// # Errors
     ///
     /// Returns [`MsiError::Io`] if an entry is truncated.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn parse(bytes: &[u8]) -> Result<Self> {
         let mut entries = Vec::new();
         let mut cursor = bytes;

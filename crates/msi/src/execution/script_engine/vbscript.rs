@@ -33,6 +33,10 @@ pub enum Variant {
 
 impl Variant {
     /// Evaluates whether the variant is truthy in a boolean condition.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn is_truthy(&self) -> bool {
         match self {
@@ -45,6 +49,10 @@ impl Variant {
     }
 
     /// Converts the variant to an integer.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn to_integer(&self) -> i64 {
         match self {
@@ -62,6 +70,10 @@ impl Variant {
     }
 
     /// Converts the variant to a string representation.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn to_string_value(&self) -> String {
         match self {
@@ -225,6 +237,14 @@ struct VbLexer<'a> {
 
 impl<'a> VbLexer<'a> {
     /// Creates a new [`VbLexer`].
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn new(input: &'a str) -> Self {
         Self {
             chars: input.chars().collect(),
@@ -236,11 +256,19 @@ impl<'a> VbLexer<'a> {
     }
 
     /// Peeks at the current character without advancing.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn peek(&self) -> Option<char> {
         self.chars.get(self.pos).copied()
     }
 
     /// Advances by one character.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn advance(&mut self) -> Option<char> {
         let ch = self.chars.get(self.pos).copied()?;
         self.pos += 1;
@@ -276,6 +304,15 @@ impl<'a> VbLexer<'a> {
     }
 
     /// Reads a string literal bounded by quotes.
+    ///
+    /// # Arguments
+    ///
+    /// * `start_line` - TODO: Document argument.
+    /// * `start_col` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn read_string(&mut self, start_line: usize, start_col: usize) -> Result<VbToken> {
         let mut text = String::new();
         while let Some(ch) = self.advance() {
@@ -302,6 +339,10 @@ impl<'a> VbLexer<'a> {
     }
 
     /// Scans the next token.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::too_many_lines)]
     fn next_token(&mut self) -> Result<VbToken> {
         self.skip_whitespace_inline();
@@ -470,6 +511,10 @@ impl<'a> VbLexer<'a> {
     }
 
     /// Tokenizes the entire input.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn tokenize_all(&mut self) -> Result<Vec<VbToken>> {
         let mut tokens = Vec::new();
         loop {
@@ -700,11 +745,23 @@ struct VbParser {
 
 impl VbParser {
     /// Creates a new [`VbParser`].
+    ///
+    /// # Arguments
+    ///
+    /// * `tokens` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     const fn new(tokens: Vec<VbToken>) -> Self {
         Self { tokens, pos: 0 }
     }
 
     /// Peeks at current token.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn peek(&self) -> &VbToken {
         self.tokens.get(self.pos).unwrap_or(&VbToken {
             kind: VbTokenKind::Eof,
@@ -714,6 +771,10 @@ impl VbParser {
     }
 
     /// Advances and returns the current token.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn advance(&mut self) -> VbToken {
         let tok = self.peek().clone();
         if self.pos < self.tokens.len() {
@@ -723,6 +784,14 @@ impl VbParser {
     }
 
     /// Checks and consumes token kind if matching.
+    ///
+    /// # Arguments
+    ///
+    /// * `kind` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn match_token(&mut self, kind: &VbTokenKind) -> bool {
         if &self.peek().kind == kind {
             self.advance();
@@ -740,6 +809,15 @@ impl VbParser {
     }
 
     /// Expects specific token kind or returns parse error.
+    ///
+    /// # Arguments
+    ///
+    /// * `kind` - TODO: Document argument.
+    /// * `msg` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn expect(&mut self, kind: &VbTokenKind, msg: &str) -> Result<VbToken> {
         let tok = self.peek().clone();
         if &tok.kind == kind {
@@ -754,6 +832,10 @@ impl VbParser {
     }
 
     /// Parses the entire program into statements.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_program(&mut self) -> Result<Vec<VbStmt>> {
         let mut stmts = Vec::new();
         self.skip_newlines();
@@ -765,6 +847,10 @@ impl VbParser {
     }
 
     /// Parses a single statement.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::too_many_lines)]
     fn parse_statement(&mut self) -> Result<VbStmt> {
         self.skip_newlines();
@@ -1054,6 +1140,10 @@ impl VbParser {
     }
 
     /// Parses parameter list for Sub or Function.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_parameter_list(&mut self) -> Result<Vec<String>> {
         let mut params = Vec::new();
         if self.match_token(&VbTokenKind::LeftParen) {
@@ -1074,6 +1164,10 @@ impl VbParser {
     }
 
     /// Checks if current token sequence is `End Sub`.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn is_end_sub(&self) -> bool {
         self.peek().kind == VbTokenKind::KeywordEnd
             && self
@@ -1083,6 +1177,10 @@ impl VbParser {
     }
 
     /// Consumes `End Sub`.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn expect_end_sub(&mut self) -> Result<()> {
         self.expect(&VbTokenKind::KeywordEnd, "'End'")?;
         self.advance();
@@ -1090,6 +1188,10 @@ impl VbParser {
     }
 
     /// Checks if current token sequence is `End Function`.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn is_end_function(&self) -> bool {
         self.peek().kind == VbTokenKind::KeywordEnd
             && self
@@ -1099,6 +1201,10 @@ impl VbParser {
     }
 
     /// Consumes `End Function`.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn expect_end_function(&mut self) -> Result<()> {
         self.expect(&VbTokenKind::KeywordEnd, "'End'")?;
         self.advance();
@@ -1106,6 +1212,10 @@ impl VbParser {
     }
 
     /// Checks whether an If block boundary is reached.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn is_if_boundary(&self) -> bool {
         match self.peek().kind {
             VbTokenKind::KeywordElseIf | VbTokenKind::KeywordElse => true,
@@ -1114,6 +1224,10 @@ impl VbParser {
     }
 
     /// Checks whether current token sequence is `End If`.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn is_end_if(&self) -> bool {
         self.peek().kind == VbTokenKind::KeywordEnd
             && self
@@ -1123,6 +1237,10 @@ impl VbParser {
     }
 
     /// Consumes `End If`.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn expect_end_if(&mut self) -> Result<()> {
         self.expect(&VbTokenKind::KeywordEnd, "'End'")?;
         self.advance();
@@ -1130,11 +1248,19 @@ impl VbParser {
     }
 
     /// Parses expression.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_expression(&mut self) -> Result<VbExpr> {
         self.parse_logical_or()
     }
 
     /// Parses logical OR and XOR operators.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_logical_or(&mut self) -> Result<VbExpr> {
         let mut left = self.parse_logical_and()?;
         loop {
@@ -1158,6 +1284,10 @@ impl VbParser {
     }
 
     /// Parses logical AND operator.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_logical_and(&mut self) -> Result<VbExpr> {
         let mut left = self.parse_equality()?;
         while self.match_token(&VbTokenKind::KeywordAnd) {
@@ -1174,6 +1304,10 @@ impl VbParser {
     }
 
     /// Parses relational equality and comparison operators.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_equality(&mut self) -> Result<VbExpr> {
         let mut left = self.parse_addition()?;
         loop {
@@ -1201,6 +1335,10 @@ impl VbParser {
     }
 
     /// Parses addition, subtraction, string concatenation `+`, `-`, `&`.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_addition(&mut self) -> Result<VbExpr> {
         let mut left = self.parse_multiplication()?;
         loop {
@@ -1225,6 +1363,10 @@ impl VbParser {
     }
 
     /// Parses multiplication, division, modulo `*`, `/`, `Mod`.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_multiplication(&mut self) -> Result<VbExpr> {
         let mut left = self.parse_unary()?;
         loop {
@@ -1249,6 +1391,10 @@ impl VbParser {
     }
 
     /// Parses unary prefix operators `-`, `Not`.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_unary(&mut self) -> Result<VbExpr> {
         let tok = self.peek().clone();
         match tok.kind {
@@ -1277,6 +1423,10 @@ impl VbParser {
     }
 
     /// Parses postfix operations (calls and member access).
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_postfix(&mut self) -> Result<VbExpr> {
         let mut expr = self.parse_primary()?;
         loop {
@@ -1328,6 +1478,10 @@ impl VbParser {
     }
 
     /// Parses primary tokens (literals, identifiers, parentheses).
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_primary(&mut self) -> Result<VbExpr> {
         let tok = self.advance();
         match tok.kind {
@@ -1405,6 +1559,10 @@ pub struct VBScriptEngine {
 
 impl VBScriptEngine {
     /// Creates a new [`VBScriptEngine`].
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -1440,6 +1598,15 @@ impl VBScriptEngine {
     }
 
     /// Retrieves variable value from local scope or session properties.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - TODO: Document argument.
+    /// * `session` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn get_var(&self, name: &str, session: &ScriptSession) -> Variant {
         let lower = name.to_ascii_lowercase();
         if lower == "session" {
@@ -1459,6 +1626,12 @@ impl VBScriptEngine {
     }
 
     /// Assigns variable value in local scope and session property if public uppercase identifier.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - TODO: Document argument.
+    /// * `val` - TODO: Document argument.
+    /// * `session` - TODO: Document argument.
     fn set_var(&mut self, name: &str, val: &Variant, session: &mut ScriptSession) {
         let lower = name.to_ascii_lowercase();
         self.variables.insert(lower, val.clone());
@@ -1471,6 +1644,15 @@ impl VBScriptEngine {
     }
 
     /// Evaluates a single statement.
+    ///
+    /// # Arguments
+    ///
+    /// * `stmt` - TODO: Document argument.
+    /// * `session` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::too_many_lines)]
     fn eval_statement(
         &mut self,
@@ -1682,6 +1864,15 @@ impl VBScriptEngine {
     }
 
     /// Evaluates an expression.
+    ///
+    /// # Arguments
+    ///
+    /// * `expr` - TODO: Document argument.
+    /// * `session` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::too_many_lines)]
     fn eval_expression(&mut self, expr: &VbExpr, session: &mut ScriptSession) -> Result<Variant> {
         match expr {
@@ -1855,6 +2046,19 @@ impl VBScriptEngine {
     }
 
     /// Invokes a method on an automation object.
+    ///
+    /// # Arguments
+    ///
+    /// * `target` - TODO: Document argument.
+    /// * `method` - TODO: Document argument.
+    /// * `arguments` - TODO: Document argument.
+    /// * `line` - TODO: Document argument.
+    /// * `col` - TODO: Document argument.
+    /// * `session` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn call_method(
         &mut self,
         target: Variant,
@@ -1952,6 +2156,18 @@ impl VBScriptEngine {
     }
 
     /// Invokes a built-in or user-defined function.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - TODO: Document argument.
+    /// * `arguments` - TODO: Document argument.
+    /// * `line` - TODO: Document argument.
+    /// * `col` - TODO: Document argument.
+    /// * `session` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn call_function(
         &mut self,
         name: &str,
@@ -2056,6 +2272,16 @@ impl VBScriptEngine {
     }
 
     /// Raises an error adhering to active On Error Resume Next status.
+    ///
+    /// # Arguments
+    ///
+    /// * `line` - TODO: Document argument.
+    /// * `col` - TODO: Document argument.
+    /// * `msg` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn raise_error(&mut self, line: usize, col: usize, msg: &str) -> Result<()> {
         self.err.number = 5;
         self.err.description = msg.to_string();

@@ -243,6 +243,17 @@ impl Preprocessor {
     /// Recursively processes a slice of source lines starting at `start_idx`.
     ///
     /// Returns `(output_lines, next_line_index)`.
+    ///
+    /// # Arguments
+    ///
+    /// * `lines` - TODO: Document argument.
+    /// * `idx` - TODO: Document argument.
+    /// * `ctx` - TODO: Document argument.
+    /// * `is_active` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::too_many_lines)]
     fn process_lines(
         &self,
@@ -465,6 +476,16 @@ impl Preprocessor {
     }
 
     /// Resolves and reads an included file path.
+    ///
+    /// # Arguments
+    ///
+    /// * `raw_path` - TODO: Document argument.
+    /// * `ctx` - TODO: Document argument.
+    /// * `line` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::unused_self)]
     fn resolve_include(
         &self,
@@ -517,6 +538,16 @@ impl Preprocessor {
     }
 
     /// Compares two operand strings with the specified comparison operator.
+    ///
+    /// # Arguments
+    ///
+    /// * `left` - TODO: Document argument.
+    /// * `op` - TODO: Document argument.
+    /// * `right` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn eval_comparison(left: &str, op: &str, right: &str) -> bool {
         let l_clean = left.trim().trim_matches('"');
         let r_clean = right.trim().trim_matches('"');
@@ -713,6 +744,14 @@ impl Preprocessor {
     }
 
     /// Resolves advanced preprocessor functions (`$(fun.NAME(...))`).
+    ///
+    /// # Arguments
+    ///
+    /// * `expr` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn resolve_fun_macro(expr: &str) -> Result<String> {
         let Some(paren_open) = expr.find('(') else {
             return Err(MsiError::Preprocessor {
@@ -787,6 +826,15 @@ impl Preprocessor {
     }
 
     /// Resolves an individual macro expression (e.g. `var.NAME`, `env.VAR`, `sys.CURRENTDIR`).
+    ///
+    /// # Arguments
+    ///
+    /// * `macro_expr` - TODO: Document argument.
+    /// * `ctx` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::unused_self)]
     fn resolve_macro(&self, macro_expr: &str, ctx: &PreprocessorContext) -> Result<String> {
         if let Some(rest) = macro_expr.strip_prefix("fun.") {

@@ -11,6 +11,15 @@ use crate::error::{MsiError, Result};
 ///
 /// Returns [`MsiError::WimDecompressionError`] if the data is corrupted,
 /// truncated, or if an out-of-bounds LZ77 match is detected.
+///
+/// # Arguments
+///
+/// * `input` - TODO: Document argument.
+/// * `output_size` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 pub fn decompress_xpress(input: &[u8], output_size: usize) -> Result<Vec<u8>> {
     let mut out = Vec::with_capacity(output_size);
     let mut in_pos = 0;
@@ -117,6 +126,15 @@ pub fn decompress_xpress(input: &[u8], output_size: usize) -> Result<Vec<u8>> {
 /// # Errors
 ///
 /// Returns [`MsiError::WimDecompressionError`] as this algorithm is not yet fully implemented.
+///
+/// # Arguments
+///
+/// * `_input` - TODO: Document argument.
+/// * `_output_size` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 pub fn decompress_xpress_huffman(_input: &[u8], _output_size: usize) -> Result<Vec<u8>> {
     Err(MsiError::WimDecompressionError {
         algorithm: "XPRESS Huffman".to_string(),

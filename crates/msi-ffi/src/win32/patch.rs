@@ -2,8 +2,7 @@
 
 use crate::win32::strings::{lpcstr_to_string, lpcwstr_to_string};
 use crate::win32::{
-    Dword, Lpcstr, Lpcwstr, Lpstr, Lpwstr, Uint, ERROR_INSTALL_FAILURE, ERROR_INVALID_PARAMETER,
-    ERROR_SUCCESS,
+    Dword, Lpcstr, Lpcwstr, Uint, ERROR_INSTALL_FAILURE, ERROR_INVALID_PARAMETER, ERROR_SUCCESS,
 };
 use std::panic;
 
@@ -18,7 +17,8 @@ use std::panic;
 /// # Returns
 ///
 /// `ERROR_SUCCESS` or `ERROR_INVALID_PARAMETER`.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiApplyMultiplePatchesW(
     szPatchPackages: Lpcwstr,
@@ -42,7 +42,8 @@ pub extern "system" fn MsiApplyMultiplePatchesW(
 }
 
 /// Applies one or more patches to products that are eligible to receive the patch.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiApplyMultiplePatchesA(
     szPatchPackages: Lpcstr,
@@ -65,7 +66,8 @@ pub extern "system" fn MsiApplyMultiplePatchesA(
 }
 
 /// Determines whether a set of patches apply to a product.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiDetermineApplicablePatchesW(
     szProductPackagePath: Lpcwstr,
@@ -88,7 +90,8 @@ pub extern "system" fn MsiDetermineApplicablePatchesW(
 }
 
 /// Determines whether a set of patches apply to a product.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiDetermineApplicablePatchesA(
     szProductPackagePath: Lpcstr,
@@ -110,90 +113,9 @@ pub extern "system" fn MsiDetermineApplicablePatchesA(
     result.unwrap_or(ERROR_INSTALL_FAILURE)
 }
 
-/// Retrieves information about a patch (Unicode).
-#[no_mangle]
-#[allow(non_snake_case, unused_variables)]
-pub extern "system" fn MsiGetPatchInfoW(
-    szPatch: Lpcwstr,
-    szAttribute: Lpcwstr,
-    lpValueBuf: Lpwstr,
-    pcchValueBuf: *mut Dword,
-) -> Uint {
-    let result = panic::catch_unwind(|| {
-        if szPatch.is_null() || szAttribute.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
-        ERROR_SUCCESS
-    });
-
-    result.unwrap_or(ERROR_INSTALL_FAILURE)
-}
-
-/// Retrieves information about a patch (ANSI).
-#[no_mangle]
-#[allow(non_snake_case, unused_variables)]
-pub extern "system" fn MsiGetPatchInfoA(
-    szPatch: Lpcstr,
-    szAttribute: Lpcstr,
-    lpValueBuf: Lpstr,
-    pcchValueBuf: *mut Dword,
-) -> Uint {
-    let result = panic::catch_unwind(|| {
-        if szPatch.is_null() || szAttribute.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
-        ERROR_SUCCESS
-    });
-
-    result.unwrap_or(ERROR_INSTALL_FAILURE)
-}
-
-/// Queries for information about the application of a patch to a specific instance of a product (Unicode).
-#[no_mangle]
-#[allow(non_snake_case, unused_variables)]
-pub extern "system" fn MsiGetPatchInfoExW(
-    szPatchCode: Lpcwstr,
-    szProductCode: Lpcwstr,
-    szUserSid: Lpcwstr,
-    dwContext: Dword,
-    szProperty: Lpcwstr,
-    lpValue: Lpwstr,
-    pcchValue: *mut Dword,
-) -> Uint {
-    let result = panic::catch_unwind(|| {
-        if szPatchCode.is_null() || szProductCode.is_null() || szProperty.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
-        ERROR_SUCCESS
-    });
-
-    result.unwrap_or(ERROR_INSTALL_FAILURE)
-}
-
-/// Queries for information about the application of a patch to a specific instance of a product (ANSI).
-#[no_mangle]
-#[allow(non_snake_case, unused_variables)]
-pub extern "system" fn MsiGetPatchInfoExA(
-    szPatchCode: Lpcstr,
-    szProductCode: Lpcstr,
-    szUserSid: Lpcstr,
-    dwContext: Dword,
-    szProperty: Lpcstr,
-    lpValue: Lpstr,
-    pcchValue: *mut Dword,
-) -> Uint {
-    let result = panic::catch_unwind(|| {
-        if szPatchCode.is_null() || szProductCode.is_null() || szProperty.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
-        ERROR_SUCCESS
-    });
-
-    result.unwrap_or(ERROR_INSTALL_FAILURE)
-}
-
 /// Provides a list of the files updated by a list of patches (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiGetPatchFileListW(
     szProductCode: Lpcwstr,
@@ -216,7 +138,8 @@ pub extern "system" fn MsiGetPatchFileListW(
 }
 
 /// Provides a list of the files updated by a list of patches (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiGetPatchFileListA(
     szProductCode: Lpcstr,
@@ -233,6 +156,92 @@ pub extern "system" fn MsiGetPatchFileListA(
             return ERROR_INVALID_PARAMETER;
         }
         ERROR_SUCCESS
+    });
+
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Returns information about a patch (Unicode).
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiGetPatchInfoW(
+    szPatch: Lpcwstr,
+    szAttribute: Lpcwstr,
+    lpValueBuf: crate::win32::Lpwstr,
+    pcchValueBuf: *mut Dword,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szPatch.is_null() || szAttribute.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        crate::win32::ERROR_UNKNOWN_PATCH
+    });
+
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Returns information about a patch (ANSI).
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiGetPatchInfoA(
+    szPatch: Lpcstr,
+    szAttribute: Lpcstr,
+    lpValueBuf: crate::win32::Lpstr,
+    pcchValueBuf: *mut Dword,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szPatch.is_null() || szAttribute.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        crate::win32::ERROR_UNKNOWN_PATCH
+    });
+
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Retrieves information about the application of a patch to a specified instance of a product (Unicode).
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiGetPatchInfoExW(
+    szPatchCode: Lpcwstr,
+    szProductCode: Lpcwstr,
+    szUserSid: Lpcwstr,
+    dwContext: Dword,
+    szProperty: Lpcwstr,
+    lpValueBuf: crate::win32::Lpwstr,
+    pcchValueBuf: *mut Dword,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szPatchCode.is_null() || szProductCode.is_null() || szProperty.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        crate::win32::ERROR_UNKNOWN_PATCH
+    });
+
+    result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Retrieves information about the application of a patch to a specified instance of a product (ANSI).
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiGetPatchInfoExA(
+    szPatchCode: Lpcstr,
+    szProductCode: Lpcstr,
+    szUserSid: Lpcstr,
+    dwContext: Dword,
+    szProperty: Lpcstr,
+    lpValueBuf: crate::win32::Lpstr,
+    pcchValueBuf: *mut Dword,
+) -> Uint {
+    let result = panic::catch_unwind(|| {
+        if szPatchCode.is_null() || szProductCode.is_null() || szProperty.is_null() {
+            return ERROR_INVALID_PARAMETER;
+        }
+        crate::win32::ERROR_UNKNOWN_PATCH
     });
 
     result.unwrap_or(ERROR_INSTALL_FAILURE)
@@ -332,93 +341,16 @@ mod tests {
         );
 
         assert_eq!(
-            MsiGetPatchInfoW(
+            MsiGetPatchFileListA(
                 std::ptr::null(),
                 std::ptr::null(),
                 std::ptr::null_mut(),
                 std::ptr::null_mut()
             ),
             ERROR_INVALID_PARAMETER
-        );
-        assert_eq!(
-            MsiGetPatchInfoA(
-                std::ptr::null(),
-                std::ptr::null(),
-                std::ptr::null_mut(),
-                std::ptr::null_mut()
-            ),
-            ERROR_INVALID_PARAMETER
-        );
-        assert_eq!(
-            MsiGetPatchInfoW(
-                valid_w.as_ptr(),
-                valid_w.as_ptr(),
-                std::ptr::null_mut(),
-                std::ptr::null_mut()
-            ),
-            ERROR_SUCCESS
-        );
-        assert_eq!(
-            MsiGetPatchInfoA(
-                valid_a.as_ptr().cast::<i8>(),
-                valid_a.as_ptr().cast::<i8>(),
-                std::ptr::null_mut(),
-                std::ptr::null_mut()
-            ),
-            ERROR_SUCCESS
         );
 
-        assert_eq!(
-            MsiGetPatchInfoExW(
-                std::ptr::null(),
-                std::ptr::null(),
-                std::ptr::null(),
-                0,
-                std::ptr::null(),
-                std::ptr::null_mut(),
-                std::ptr::null_mut()
-            ),
-            ERROR_INVALID_PARAMETER
-        );
-        assert_eq!(
-            MsiGetPatchInfoExA(
-                std::ptr::null(),
-                std::ptr::null(),
-                std::ptr::null(),
-                0,
-                std::ptr::null(),
-                std::ptr::null_mut(),
-                std::ptr::null_mut()
-            ),
-            ERROR_INVALID_PARAMETER
-        );
-        assert_eq!(
-            MsiGetPatchInfoExW(
-                valid_w.as_ptr(),
-                valid_w.as_ptr(),
-                std::ptr::null(),
-                0,
-                valid_w.as_ptr(),
-                std::ptr::null_mut(),
-                std::ptr::null_mut()
-            ),
-            ERROR_SUCCESS
-        );
-        assert_eq!(
-            MsiGetPatchInfoExA(
-                valid_a.as_ptr().cast::<i8>(),
-                valid_a.as_ptr().cast::<i8>(),
-                std::ptr::null(),
-                0,
-                valid_a.as_ptr().cast::<i8>(),
-                std::ptr::null_mut(),
-                std::ptr::null_mut()
-            ),
-            ERROR_SUCCESS
-        );
-
-        let mut pc = 0;
-        let mut handle_ptr: *mut crate::handles::MsiHandle = std::ptr::null_mut();
+        // MsiGetPatchFileListW null checks
         assert_eq!(
             MsiGetPatchFileListW(
                 std::ptr::null(),
@@ -428,15 +360,8 @@ mod tests {
             ),
             ERROR_INVALID_PARAMETER
         );
-        assert_eq!(
-            MsiGetPatchFileListA(
-                std::ptr::null(),
-                std::ptr::null(),
-                std::ptr::null_mut(),
-                std::ptr::null_mut()
-            ),
-            ERROR_INVALID_PARAMETER
-        );
+        let mut pc = 0;
+        let mut handle_ptr: *mut crate::handles::MsiHandle = std::ptr::null_mut();
         assert_eq!(
             MsiGetPatchFileListW(valid_w.as_ptr(), valid_w.as_ptr(), &mut pc, &mut handle_ptr),
             ERROR_SUCCESS
@@ -449,6 +374,102 @@ mod tests {
                 &mut handle_ptr
             ),
             ERROR_SUCCESS
+        );
+    }
+
+    #[test]
+    fn test_get_patch_info() {
+        assert_eq!(
+            MsiGetPatchInfoW(
+                std::ptr::null(),
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetPatchInfoA(
+                std::ptr::null(),
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+
+        let valid_w: Vec<u16> = "patch1.msp"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        let valid_a = b"patch1.msp\0";
+        assert_eq!(
+            MsiGetPatchInfoW(
+                valid_w.as_ptr(),
+                valid_w.as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            crate::win32::ERROR_UNKNOWN_PATCH
+        );
+        assert_eq!(
+            MsiGetPatchInfoA(
+                valid_a.as_ptr().cast::<i8>(),
+                valid_a.as_ptr().cast::<i8>(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            crate::win32::ERROR_UNKNOWN_PATCH
+        );
+
+        assert_eq!(
+            MsiGetPatchInfoExW(
+                std::ptr::null(),
+                std::ptr::null(),
+                std::ptr::null(),
+                0,
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetPatchInfoExA(
+                std::ptr::null(),
+                std::ptr::null(),
+                std::ptr::null(),
+                0,
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+
+        assert_eq!(
+            MsiGetPatchInfoExW(
+                valid_w.as_ptr(),
+                valid_w.as_ptr(),
+                std::ptr::null(),
+                0,
+                valid_w.as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            crate::win32::ERROR_UNKNOWN_PATCH
+        );
+        assert_eq!(
+            MsiGetPatchInfoExA(
+                valid_a.as_ptr().cast::<i8>(),
+                valid_a.as_ptr().cast::<i8>(),
+                std::ptr::null(),
+                0,
+                valid_a.as_ptr().cast::<i8>(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            crate::win32::ERROR_UNKNOWN_PATCH
         );
     }
 }

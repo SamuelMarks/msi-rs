@@ -177,6 +177,10 @@ pub enum ScriptOp {
 
 impl ScriptOp {
     /// Returns the opcode byte identifier for serialization.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn opcode_id(&self) -> u8 {
         match self {
@@ -284,6 +288,10 @@ pub enum RollbackOp {
 
 impl RollbackOp {
     /// Returns the opcode byte identifier for serialization.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn opcode_id(&self) -> u8 {
         match self {
@@ -697,7 +705,9 @@ impl InstallScript {
                 17 => {
                     let wim_source = read_string(data, &mut offset)?;
                     if offset + 4 > data.len() {
-                        return Err(MsiError::Io("truncated wim index".to_string()));
+                        return Err(MsiError::Io(crate::error::IoContext::from_string(
+                            "truncated wim index".to_string(),
+                        )));
                     }
                     let mut idx_bytes = [0u8; 4];
                     idx_bytes.copy_from_slice(&data[offset..offset + 4]);
@@ -1088,6 +1098,11 @@ impl fmt::Display for RollbackOp {
 }
 
 /// Helper function to write a 4-byte length prefixed UTF-8 string.
+///
+/// # Arguments
+///
+/// * `out` - TODO: Document argument.
+/// * `s` - TODO: Document argument.
 fn write_string(out: &mut Vec<u8>, s: &str) {
     let bytes = s.as_bytes();
     let len = u32::try_from(bytes.len()).unwrap_or(u32::MAX);
@@ -1096,6 +1111,11 @@ fn write_string(out: &mut Vec<u8>, s: &str) {
 }
 
 /// Helper function to write an optional UTF-8 string with presence byte.
+///
+/// # Arguments
+///
+/// * `out` - TODO: Document argument.
+/// * `s` - TODO: Document argument.
 fn write_opt_string(out: &mut Vec<u8>, s: Option<&str>) {
     if let Some(val) = s {
         out.push(1);
@@ -1106,6 +1126,11 @@ fn write_opt_string(out: &mut Vec<u8>, s: Option<&str>) {
 }
 
 /// Helper function to write a 4-byte length prefixed byte slice.
+///
+/// # Arguments
+///
+/// * `out` - TODO: Document argument.
+/// * `bytes` - TODO: Document argument.
 fn write_bytes(out: &mut Vec<u8>, bytes: &[u8]) {
     let len = u32::try_from(bytes.len()).unwrap_or(u32::MAX);
     out.extend_from_slice(&len.to_le_bytes());
@@ -1113,6 +1138,15 @@ fn write_bytes(out: &mut Vec<u8>, bytes: &[u8]) {
 }
 
 /// Helper function to read a `u32` integer from byte slice.
+///
+/// # Arguments
+///
+/// * `data` - TODO: Document argument.
+/// * `offset` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn read_u32(data: &[u8], offset: &mut usize) -> Result<u32> {
     if *offset + 4 > data.len() {
         return Err(MsiError::ScriptError {
@@ -1127,6 +1161,15 @@ fn read_u32(data: &[u8], offset: &mut usize) -> Result<u32> {
 }
 
 /// Helper function to read an `i32` integer from byte slice.
+///
+/// # Arguments
+///
+/// * `data` - TODO: Document argument.
+/// * `offset` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn read_i32(data: &[u8], offset: &mut usize) -> Result<i32> {
     if *offset + 4 > data.len() {
         return Err(MsiError::ScriptError {
@@ -1141,6 +1184,15 @@ fn read_i32(data: &[u8], offset: &mut usize) -> Result<i32> {
 }
 
 /// Helper function to read a 4-byte length prefixed UTF-8 string.
+///
+/// # Arguments
+///
+/// * `data` - TODO: Document argument.
+/// * `offset` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn read_string(data: &[u8], offset: &mut usize) -> Result<String> {
     let len = read_u32(data, offset)? as usize;
     if *offset + len > data.len() {
@@ -1160,6 +1212,15 @@ fn read_string(data: &[u8], offset: &mut usize) -> Result<String> {
 }
 
 /// Helper function to read an optional string with presence flag byte.
+///
+/// # Arguments
+///
+/// * `data` - TODO: Document argument.
+/// * `offset` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn read_opt_string(data: &[u8], offset: &mut usize) -> Result<Option<String>> {
     if *offset >= data.len() {
         return Err(MsiError::ScriptError {
@@ -1177,6 +1238,15 @@ fn read_opt_string(data: &[u8], offset: &mut usize) -> Result<Option<String>> {
 }
 
 /// Helper function to read a 4-byte length prefixed byte slice.
+///
+/// # Arguments
+///
+/// * `data` - TODO: Document argument.
+/// * `offset` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn read_bytes(data: &[u8], offset: &mut usize) -> Result<Vec<u8>> {
     let len = read_u32(data, offset)? as usize;
     if *offset + len > data.len() {
@@ -1700,7 +1770,7 @@ fn test_script_extra_opcodes() {
         iscript.push(op);
     }
     let serialized = iscript.serialize();
-    let deserialized = InstallScript::deserialize(&serialized).unwrap();
+    let deserialized = InstallScript::deserialize(&serialized).expect("test");
     assert_eq!(iscript.operations, deserialized.operations);
 
     let rops = vec![
@@ -1720,7 +1790,7 @@ fn test_script_extra_opcodes() {
         rscript.push(rop);
     }
     let r_serialized = rscript.serialize();
-    let r_deserialized = RollbackScript::deserialize(&r_serialized).unwrap();
+    let r_deserialized = RollbackScript::deserialize(&r_serialized).expect("test");
     assert_eq!(rscript.operations, r_deserialized.operations);
 }
 

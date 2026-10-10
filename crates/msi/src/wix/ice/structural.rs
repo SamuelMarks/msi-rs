@@ -11,6 +11,14 @@ use crate::wix::linker::LinkedDatabase;
 use std::collections::HashSet;
 
 /// Checks whether a string conforms to a valid uppercase GUID format `{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}`.
+///
+/// # Arguments
+///
+/// * `s` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn is_valid_uppercase_guid(s: &str) -> bool {
     let bytes = s.as_bytes();
     if bytes.len() != 38 {

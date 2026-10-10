@@ -35,7 +35,8 @@ pub const MSIDBOPEN_CREATEDIRECT: Lpcwstr = 4 as Lpcwstr;
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_PARAMETER`
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "system" fn MsiOpenDatabaseW(
@@ -52,9 +53,23 @@ pub extern "system" fn MsiOpenDatabaseW(
             return ERROR_INVALID_PARAMETER;
         };
 
+        let persist = szPersist as usize;
+        let state = if persist == MSIDBOPEN_TRANSACT as usize
+            || persist == MSIDBOPEN_DIRECT as usize
+            || persist == MSIDBOPEN_CREATE as usize
+            || persist == MSIDBOPEN_CREATEDIRECT as usize
+        {
+            MSIDBSTATE_WRITE
+        } else {
+            MSIDBSTATE_READ
+        };
+
         let mock_db = msi::wix::linker::LinkedDatabase::default();
 
-        let obj = MsiObject::Database(MsiDatabaseHandle { inner: mock_db });
+        let obj = MsiObject::Database(MsiDatabaseHandle {
+            inner: mock_db,
+            state,
+        });
 
         // SAFETY: We verified `phDatabase` is not null.
         unsafe {
@@ -78,7 +93,8 @@ pub extern "system" fn MsiOpenDatabaseW(
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_PARAMETER`
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "system" fn MsiOpenDatabaseA(
@@ -95,9 +111,23 @@ pub extern "system" fn MsiOpenDatabaseA(
             return ERROR_INVALID_PARAMETER;
         };
 
+        let persist = szPersist as usize;
+        let state = if persist == MSIDBOPEN_TRANSACT as usize
+            || persist == MSIDBOPEN_DIRECT as usize
+            || persist == MSIDBOPEN_CREATE as usize
+            || persist == MSIDBOPEN_CREATEDIRECT as usize
+        {
+            MSIDBSTATE_WRITE
+        } else {
+            MSIDBSTATE_READ
+        };
+
         let mock_db = msi::wix::linker::LinkedDatabase::default();
 
-        let obj = MsiObject::Database(MsiDatabaseHandle { inner: mock_db });
+        let obj = MsiObject::Database(MsiDatabaseHandle {
+            inner: mock_db,
+            state,
+        });
 
         // SAFETY: We verified `phDatabase` is not null.
         unsafe {
@@ -121,7 +151,8 @@ pub extern "system" fn MsiOpenDatabaseA(
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_HANDLE`, `ERROR_INVALID_PARAMETER`
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiDatabaseOpenViewW(
     hDatabase: MsiHandle,
@@ -145,6 +176,7 @@ pub extern "system" fn MsiDatabaseOpenViewW(
                     database_handle: hDatabase,
                     query: query_str,
                     fetched_records: std::collections::VecDeque::new(),
+                    last_error_column: None,
                 };
                 unsafe {
                     *phView = alloc_handle(MsiObject::View(view));
@@ -170,7 +202,8 @@ pub extern "system" fn MsiDatabaseOpenViewW(
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_HANDLE`, `ERROR_INVALID_PARAMETER`
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiDatabaseOpenViewA(
     hDatabase: MsiHandle,
@@ -194,6 +227,7 @@ pub extern "system" fn MsiDatabaseOpenViewA(
                     database_handle: hDatabase,
                     query: query_str,
                     fetched_records: std::collections::VecDeque::new(),
+                    last_error_column: None,
                 };
                 unsafe {
                     *phView = alloc_handle(MsiObject::View(view));
@@ -206,6 +240,45 @@ pub extern "system" fn MsiDatabaseOpenViewA(
     });
 
     result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// The database state.
+pub type Msidbstate = i32;
+
+/// An invalid handle was passed to the function.
+pub const MSIDBSTATE_ERROR: Msidbstate = -1;
+/// The database is open read-only.
+pub const MSIDBSTATE_READ: Msidbstate = 0;
+/// The database is open read/write.
+pub const MSIDBSTATE_WRITE: Msidbstate = 1;
+
+/// Returns the state of the database.
+///
+/// # Arguments
+///
+/// * `hDatabase` - The database handle.
+///
+/// # Returns
+///
+/// The database state as `MSIDBSTATE_READ` or `MSIDBSTATE_WRITE`, or `MSIDBSTATE_ERROR` on failure.
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
+#[allow(non_snake_case, unused_variables)]
+pub extern "system" fn MsiGetDatabaseState(hDatabase: MsiHandle) -> Msidbstate {
+    let result = panic::catch_unwind(|| {
+        let state = with_handle(hDatabase, |obj| {
+            if let MsiObject::Database(db) = obj {
+                Some(db.state)
+            } else {
+                None
+            }
+        })
+        .flatten();
+
+        state.unwrap_or(MSIDBSTATE_ERROR)
+    });
+
+    result.unwrap_or(MSIDBSTATE_ERROR)
 }
 
 #[cfg(test)]
@@ -308,7 +381,18 @@ mod tests {
             MsiDatabaseOpenViewA(h_db4, valid_a.as_ptr().cast::<i8>(), &raw mut handle),
             ERROR_SUCCESS
         );
+        assert_eq!(MsiGetDatabaseState(0), MSIDBSTATE_ERROR);
+        assert_eq!(MsiGetDatabaseState(h_db4), MSIDBSTATE_READ);
         assert!(crate::handles::close_handle(h_db4));
+
+        assert_eq!(
+            MsiOpenDatabaseW(valid_w.as_ptr(), MSIDBOPEN_TRANSACT, &raw mut handle),
+            ERROR_SUCCESS
+        );
+        let h_db5 = handle;
+        assert_eq!(MsiGetDatabaseState(h_db5), MSIDBSTATE_WRITE);
+        assert!(crate::handles::close_handle(h_db5));
+
         let rec = msi::database::tables::record::Record::new();
         let h_rec = alloc_handle(MsiObject::Record(crate::types::MsiRecordHandle {
             inner: rec,
@@ -321,5 +405,69 @@ mod tests {
             MsiDatabaseOpenViewA(h_rec, valid_a.as_ptr().cast::<i8>(), &raw mut handle),
             ERROR_INVALID_HANDLE
         );
+
+        // Test MsiGetDatabaseState with non-database handle
+        assert_eq!(MsiGetDatabaseState(h_rec), MSIDBSTATE_ERROR);
+
+        // Test MSIDBOPEN_CREATE and MSIDBOPEN_CREATEDIRECT to hit MSIDBSTATE_WRITE branches
+        let mut h_db_create = 0;
+        let create_path_w: Vec<u16> = "create_test.msi"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        assert_eq!(
+            MsiOpenDatabaseW(
+                create_path_w.as_ptr(),
+                MSIDBOPEN_CREATE,
+                &raw mut h_db_create
+            ),
+            ERROR_SUCCESS
+        );
+        assert_eq!(MsiGetDatabaseState(h_db_create), MSIDBSTATE_WRITE);
+        assert!(crate::handles::close_handle(h_db_create));
+
+        let mut h_db_direct = 0;
+        let direct_path_w: Vec<u16> = "direct_test.msi"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        assert_eq!(
+            MsiOpenDatabaseW(
+                direct_path_w.as_ptr(),
+                MSIDBOPEN_CREATEDIRECT,
+                &raw mut h_db_direct
+            ),
+            ERROR_SUCCESS
+        );
+        assert_eq!(MsiGetDatabaseState(h_db_direct), MSIDBSTATE_WRITE);
+        assert!(crate::handles::close_handle(h_db_direct));
+
+        let mut h_db_create_a = 0;
+        let create_path_a = std::ffi::CString::new("create_test.msi").unwrap();
+        assert_eq!(
+            MsiOpenDatabaseA(
+                create_path_a.as_ptr(),
+                MSIDBOPEN_CREATE.cast::<i8>(),
+                &raw mut h_db_create_a
+            ),
+            ERROR_SUCCESS
+        );
+        assert!(crate::handles::close_handle(h_db_create_a));
+
+        let mut h_db_direct_a = 0;
+        let direct_path_a = std::ffi::CString::new("direct_test.msi").unwrap();
+        assert_eq!(
+            MsiOpenDatabaseA(
+                direct_path_a.as_ptr(),
+                MSIDBOPEN_CREATEDIRECT.cast::<i8>(),
+                &raw mut h_db_direct_a
+            ),
+            ERROR_SUCCESS
+        );
+        assert!(crate::handles::close_handle(h_db_direct_a));
+
+        // Clean up created files
+        let _ = std::fs::remove_file("create_test.msi");
+        let _ = std::fs::remove_file("direct_test.msi");
     }
 }

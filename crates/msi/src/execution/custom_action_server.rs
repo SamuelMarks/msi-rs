@@ -34,6 +34,15 @@ impl CustomActionServer {
     ///
     /// # Errors
     /// Returns `MsiError` if spawning fails.
+    ///
+    /// # Arguments
+    ///
+    /// * `_action_name` - TODO: Document argument.
+    /// * `_is_64bit` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub const fn spawn_out_of_process_server(_action_name: &str, _is_64bit: bool) -> Result<()> {
         // Mock server spawning
         Ok(())
@@ -43,6 +52,16 @@ impl CustomActionServer {
     ///
     /// # Errors
     /// Returns `MsiError::WorkerIpcError` on crash, timeout, or IPC failure.
+    ///
+    /// # Arguments
+    ///
+    /// * `action_name` - TODO: Document argument.
+    /// * `timeout_ms` - TODO: Document argument.
+    /// * `simulate_failure` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn invoke_out_of_process_action(
         action_name: &str,
         timeout_ms: u64,
@@ -122,32 +141,24 @@ mod tests {
     #[test]
     fn test_invoke_out_of_process_action() {
         assert_eq!(
-            CustomActionServer::invoke_out_of_process_action("MyAct", 100, None).unwrap(),
+            CustomActionServer::invoke_out_of_process_action("MyAct", 100, None)
+                .expect("Expected success"),
             0
         );
 
         let err_timeout =
             CustomActionServer::invoke_out_of_process_action("MyAct", 1, Some("timeout"))
-                .unwrap_err();
-        assert!(matches!(err_timeout, MsiError::WorkerIpcError { .. }));
-        if let MsiError::WorkerIpcError { reason } = err_timeout {
-            assert!(reason.contains("timed out"));
-        }
+                .expect_err("Expected timeout error");
+        assert!(err_timeout.to_string().contains("timed out"));
 
         let err_crash = CustomActionServer::invoke_out_of_process_action("MyAct", 1, Some("crash"))
-            .unwrap_err();
-        assert!(matches!(err_crash, MsiError::WorkerIpcError { .. }));
-        if let MsiError::WorkerIpcError { reason } = err_crash {
-            assert!(reason.contains("crashed"));
-        }
+            .expect_err("Expected crash error");
+        assert!(err_crash.to_string().contains("crashed"));
 
         let err_other =
             CustomActionServer::invoke_out_of_process_action("MyAct", 1, Some("malformed"))
-                .unwrap_err();
-        assert!(matches!(err_other, MsiError::WorkerIpcError { .. }));
-        if let MsiError::WorkerIpcError { reason } = err_other {
-            assert!(reason.contains("malformed"));
-        }
+                .expect_err("Expected malformed error");
+        assert!(err_other.to_string().contains("malformed"));
     }
 
     #[test]
@@ -157,7 +168,8 @@ mod tests {
 
     #[test]
     fn test_execute_dll_action_safely_success() {
-        let res = CustomActionServer::execute_dll_action_safely("SafeAction", || 42).unwrap();
+        let res = CustomActionServer::execute_dll_action_safely("SafeAction", || 42)
+            .expect("Success expected");
         assert_eq!(res, 42);
     }
 
@@ -166,13 +178,11 @@ mod tests {
         let err = CustomActionServer::execute_dll_action_safely("PanicAction", || {
             panic!("test panic string");
         })
-        .unwrap_err();
+        .expect_err("Expected panic");
 
-        assert!(matches!(err, MsiError::ActionExecutionError(_)));
-        if let MsiError::ActionExecutionError(msg) = err {
-            assert!(msg.contains("test panic string"));
-            assert!(msg.contains("PanicAction"));
-        }
+        let msg = err.to_string();
+        assert!(msg.contains("test panic string"));
+        assert!(msg.contains("PanicAction"));
     }
 
     #[test]
@@ -180,11 +190,8 @@ mod tests {
         let err = CustomActionServer::execute_dll_action_safely("UnknownPanic", || {
             panic::panic_any(12345);
         })
-        .unwrap_err();
+        .expect_err("Expected unknown panic");
 
-        assert!(matches!(err, MsiError::ActionExecutionError(_)));
-        if let MsiError::ActionExecutionError(msg) = err {
-            assert!(msg.contains("Unknown panic"));
-        }
+        assert!(err.to_string().contains("Unknown panic"));
     }
 }

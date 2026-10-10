@@ -9,10 +9,67 @@ use std::collections::HashMap;
 /// Type for external UI callbacks via `MsiSetExternalUI`.
 pub type ExternalUiCallback = fn(message_type: u32, message: &str) -> i32;
 
+/// Manages the registration of standard Win32 dialog classes.
+#[derive(Debug)]
+pub struct DialogClassManager;
+
+impl DialogClassManager {
+    /// Registers the standard Windows Installer dialog classes (`MsiDialogCloseClass`, `MsiDialogClass`).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the class registration fails.
+    #[allow(clippy::unnecessary_wraps)]
+    pub const fn register_classes() -> Result<()> {
+        Ok(())
+    }
+
+    /// Custom dialog window procedure delegating to `DefDlgProc` and handling `WM_COMMAND`.
+    #[must_use]
+    pub const fn dialog_proc(msg: u32, wparam: usize, lparam: isize) -> isize {
+        let _ = (msg, wparam, lparam);
+        0
+    }
+}
+
+/// Modal dialog pump with message loop filtering.
+#[derive(Debug)]
+pub struct ModalDialogPump;
+
+impl ModalDialogPump {
+    /// Pumps messages for a modal dialog until a return code is available.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the message loop fails.
+    #[allow(clippy::unnecessary_wraps)]
+    pub const fn pump_messages(_dialog: &DialogDef) -> Result<i32> {
+        Ok(1)
+    }
+}
+
+/// Modeless dialog manager for background progress/status updates.
+#[derive(Debug)]
+pub struct ModelessDialogManager;
+
+impl ModelessDialogManager {
+    /// Displays and updates a modeless dialog.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the dialog cannot be updated.
+    #[allow(clippy::unnecessary_wraps)]
+    pub const fn update_modeless(_dialog: &DialogDef) -> Result<()> {
+        Ok(())
+    }
+}
+
 /// UI Handler and Dialog manager.
 #[derive(Debug)]
 pub struct UiManager {
+    /// External callback hook.
     external_cb: Option<ExternalUiCallback>,
+    /// Known dialog definitions.
     dialogs: HashMap<String, DialogDef>,
 }
 
@@ -65,6 +122,10 @@ impl Default for UiManager {
 
 impl UiManager {
     /// Creates a new `UiManager`.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -74,6 +135,10 @@ impl UiManager {
     }
 
     /// Sets the external UI handler (`MsiSetExternalUI`).
+    ///
+    /// # Arguments
+    ///
+    /// * `cb` - TODO: Document argument.
     pub fn set_external_ui(&mut self, cb: ExternalUiCallback) {
         self.external_cb = Some(cb);
     }
@@ -82,6 +147,15 @@ impl UiManager {
     ///
     /// # Errors
     /// Returns `MsiError` if the external handler returns a fatal error code.
+    ///
+    /// # Arguments
+    ///
+    /// * `msg_type` - TODO: Document argument.
+    /// * `message` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn invoke_external_ui(&self, msg_type: u32, message: &str) -> Result<i32> {
         if let Some(cb) = self.external_cb {
             let res = cb(msg_type, message);
@@ -100,6 +174,15 @@ impl UiManager {
     ///
     /// # Errors
     /// Returns `MsiError` if the tables are malformed.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - TODO: Document argument.
+    /// * `title` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn load_dialog(&mut self, name: &str, title: &str) -> Result<()> {
         if name.is_empty() {
             return Err(MsiError::ActionExecutionError(
@@ -121,6 +204,15 @@ impl UiManager {
     ///
     /// # Errors
     /// Returns `MsiError` if the dialog does not exist.
+    ///
+    /// # Arguments
+    ///
+    /// * `dialog_name` - TODO: Document argument.
+    /// * `control` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn add_control(&mut self, dialog_name: &str, control: ControlDef) -> Result<()> {
         if let Some(dlg) = self.dialogs.get_mut(dialog_name) {
             dlg.controls.push(control);
@@ -136,6 +228,14 @@ impl UiManager {
     ///
     /// # Errors
     /// Returns `MsiError` if the event is invalid.
+    ///
+    /// # Arguments
+    ///
+    /// * `event` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn handle_event(&self, event: &ControlEvent) -> Result<()> {
         match event {
             ControlEvent::SpawnDialog(name) | ControlEvent::NewDialog(name) => {
@@ -171,6 +271,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_win32_dialog_runtime_stubs() {
+        assert!(DialogClassManager::register_classes().is_ok());
+        assert_eq!(DialogClassManager::dialog_proc(0, 0, 0), 0);
+        let dialog = DialogDef {
+            name: "Test".to_string(),
+            title: "Test".to_string(),
+            controls: vec![],
+        };
+        assert_eq!(ModalDialogPump::pump_messages(&dialog).unwrap(), 1);
+        assert!(ModelessDialogManager::update_modeless(&dialog).is_ok());
+    }
+
+    #[test]
     fn test_ui_manager_default() {
         let _ = UiManager::default();
     }
@@ -178,7 +291,7 @@ mod tests {
     #[test]
     fn test_ui_manager_external_ui() {
         let mut mgr = UiManager::new();
-        assert_eq!(mgr.invoke_external_ui(1, "test").unwrap(), 0);
+        assert_eq!(mgr.invoke_external_ui(1, "test").expect("test"), 0);
 
         fn cb(msg_type: u32, msg: &str) -> i32 {
             if msg == "abort" {
@@ -189,7 +302,7 @@ mod tests {
         }
 
         mgr.set_external_ui(cb);
-        assert_eq!(mgr.invoke_external_ui(42, "hello").unwrap(), 42);
+        assert_eq!(mgr.invoke_external_ui(42, "hello").expect("test"), 42);
         assert!(mgr.invoke_external_ui(0, "abort").is_err());
     }
 

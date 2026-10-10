@@ -58,7 +58,8 @@ pub struct TransformErrorCondition(pub i32);
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "system" fn MsiDatabaseMergeW(
     h_database: MSIHANDLE,
     h_database_merge: MSIHANDLE,
@@ -122,7 +123,8 @@ pub unsafe extern "system" fn MsiDatabaseMergeW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "system" fn MsiDatabaseMergeA(
     h_database: MSIHANDLE,
     h_database_merge: MSIHANDLE,
@@ -185,19 +187,17 @@ pub unsafe extern "system" fn MsiDatabaseMergeA(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "system" fn MsiDatabaseImportW(
     _h_database: MSIHANDLE,
     _sz_folder_path: ExportDirectoryW,
     _sz_file_name: FilePathW,
 ) -> u32 {
-    std::panic::catch_unwind(|| {
-        if _h_database == 0 || _sz_folder_path.0.is_null() || _sz_file_name.0.is_null() {
-            return 87;
-        }
-        0 // ERROR_SUCCESS
-    })
-    .unwrap_or(1603)
+    if _h_database == 0 || _sz_folder_path.0.is_null() || _sz_file_name.0.is_null() {
+        return 87;
+    }
+    0 // ERROR_SUCCESS
 }
 
 /// Imports an Installer Database Text (IDT) file into a database.
@@ -219,19 +219,17 @@ pub unsafe extern "system" fn MsiDatabaseImportW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "system" fn MsiDatabaseImportA(
     _h_database: MSIHANDLE,
     _sz_folder_path: ExportDirectoryA,
     _sz_file_name: FilePathA,
 ) -> u32 {
-    std::panic::catch_unwind(|| {
-        if _h_database == 0 || _sz_folder_path.0.is_null() || _sz_file_name.0.is_null() {
-            return 87;
-        }
-        0 // ERROR_SUCCESS
-    })
-    .unwrap_or(1603)
+    if _h_database == 0 || _sz_folder_path.0.is_null() || _sz_file_name.0.is_null() {
+        return 87;
+    }
+    0 // ERROR_SUCCESS
 }
 
 /// Exports an Installer table to an IDT file.
@@ -255,7 +253,8 @@ pub unsafe extern "system" fn MsiDatabaseImportA(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "system" fn MsiDatabaseExportW(
     _h_database: MSIHANDLE,
     _sz_table_name: TableNameW,
@@ -327,7 +326,8 @@ pub unsafe extern "system" fn MsiDatabaseExportW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "system" fn MsiDatabaseExportA(
     _h_database: MSIHANDLE,
     _sz_table_name: TableNameA,
@@ -398,7 +398,8 @@ pub unsafe extern "system" fn MsiDatabaseExportA(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "system" fn MsiDatabaseApplyTransformW(
     h_database: MSIHANDLE,
     sz_transform_file: FilePathW,
@@ -411,6 +412,11 @@ pub unsafe extern "system" fn MsiDatabaseApplyTransformW(
         let Some(path) = crate::win32::strings::lpcwstr_to_string(sz_transform_file.0) else {
             return crate::win32::ERROR_INVALID_PARAMETER;
         };
+
+        #[cfg(test)]
+        if path == "PANIC_TEST" {
+            panic!("Test panic");
+        }
 
         crate::handles::with_handle_mut(h_database, |obj| {
             let crate::handles::MsiObject::Database(db_handle) = obj else {
@@ -464,7 +470,8 @@ pub unsafe extern "system" fn MsiDatabaseApplyTransformW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "system" fn MsiDatabaseApplyTransformA(
     h_database: MSIHANDLE,
     sz_transform_file: FilePathA,
@@ -477,6 +484,11 @@ pub unsafe extern "system" fn MsiDatabaseApplyTransformA(
         let Some(path) = crate::win32::strings::lpcstr_to_string(sz_transform_file.0) else {
             return crate::win32::ERROR_INVALID_PARAMETER;
         };
+
+        #[cfg(test)]
+        if path == "PANIC_TEST" {
+            panic!("Test panic");
+        }
 
         crate::handles::with_handle_mut(h_database, |obj| {
             let crate::handles::MsiObject::Database(db_handle) = obj else {
@@ -518,11 +530,44 @@ mod tests {
         let dummy_a = std::ffi::CString::new("dummy").unwrap();
         let dummy_w: Vec<u16> = "dummy".encode_utf16().chain(std::iter::once(0)).collect();
         let invalid_w: Vec<u16> = vec![0xD800, 0];
+        let invalid_a = [i32::from(0xFF_u8), 0];
 
         let db = msi::wix::linker::LinkedDatabase::default();
         let h_db = crate::handles::alloc_handle(crate::MsiObject::Database(
-            crate::types::MsiDatabaseHandle { inner: db },
+            crate::types::MsiDatabaseHandle {
+                inner: db,
+                state: 0,
+            },
         ));
+
+        let h_not_db =
+            crate::handles::alloc_handle(crate::MsiObject::Record(crate::types::MsiRecordHandle {
+                inner: msi::database::tables::record::Record::new(),
+            }));
+
+        // Export non-database handle
+        assert_eq!(
+            unsafe {
+                MsiDatabaseExportW(
+                    h_not_db,
+                    TableNameW(dummy_w.as_ptr()),
+                    ExportDirectoryW(dummy_w.as_ptr()),
+                    FilePathW(dummy_w.as_ptr()),
+                )
+            },
+            0
+        );
+        assert_eq!(
+            unsafe {
+                MsiDatabaseExportA(
+                    h_not_db,
+                    TableNameA(dummy_a.as_ptr()),
+                    ExportDirectoryA(dummy_a.as_ptr()),
+                    FilePathA(dummy_a.as_ptr()),
+                )
+            },
+            0
+        );
 
         // Export W
         assert_eq!(
@@ -634,6 +679,64 @@ mod tests {
             0
         );
 
+        // Export W valid table
+        let prop_w: Vec<u16> = "Property"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        let temp_dir_w: Vec<u16> = temp_dir
+            .to_str()
+            .unwrap()
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        assert_eq!(
+            unsafe {
+                MsiDatabaseExportW(
+                    h_db,
+                    TableNameW(prop_w.as_ptr()),
+                    ExportDirectoryW(temp_dir_w.as_ptr()),
+                    FilePathW(dummy_w.as_ptr()),
+                )
+            },
+            0
+        );
+
+        // MsiDatabaseExportA invalid string
+        assert_eq!(
+            unsafe {
+                MsiDatabaseExportA(
+                    h_db,
+                    TableNameA(invalid_a.as_ptr().cast()),
+                    ExportDirectoryA(dummy_a.as_ptr().cast()),
+                    FilePathA(dummy_a.as_ptr().cast()),
+                )
+            },
+            0
+        );
+        assert_eq!(
+            unsafe {
+                MsiDatabaseExportA(
+                    h_db,
+                    TableNameA(dummy_a.as_ptr().cast()),
+                    ExportDirectoryA(invalid_a.as_ptr().cast()),
+                    FilePathA(dummy_a.as_ptr().cast()),
+                )
+            },
+            0
+        );
+        assert_eq!(
+            unsafe {
+                MsiDatabaseExportA(
+                    h_db,
+                    TableNameA(dummy_a.as_ptr().cast()),
+                    ExportDirectoryA(dummy_a.as_ptr().cast()),
+                    FilePathA(invalid_a.as_ptr().cast()),
+                )
+            },
+            0
+        );
+
         let _ = crate::handles::close_handle(h_db);
     }
 
@@ -651,7 +754,10 @@ mod tests {
             .insert("1033".to_string(), transform_bytes.clone());
 
         let g_handle = crate::handles::alloc_handle(crate::handles::MsiObject::Database(
-            crate::types::MsiDatabaseHandle { inner: db },
+            crate::types::MsiDatabaseHandle {
+                inner: db,
+                state: 0,
+            },
         ));
 
         let path = ":1033";
@@ -694,6 +800,31 @@ mod tests {
                 TransformErrorCondition(0),
             );
             assert_eq!(res_bad_a, crate::win32::ERROR_FILE_NOT_FOUND);
+
+            // Test panic handler
+            let panic_path = "PANIC_TEST";
+            let mut panic_w: Vec<u16> = panic_path.encode_utf16().collect();
+            panic_w.push(0);
+            let mut panic_a: Vec<i8> = panic_path.as_bytes().iter().map(|&b| b as i8).collect();
+            panic_a.push(0);
+
+            assert_eq!(
+                MsiDatabaseApplyTransformW(
+                    g_handle,
+                    FilePathW(panic_w.as_ptr()),
+                    TransformErrorCondition(0),
+                ),
+                crate::win32::ERROR_INSTALL_FAILURE
+            );
+
+            assert_eq!(
+                MsiDatabaseApplyTransformA(
+                    g_handle,
+                    FilePathA(panic_a.as_ptr()),
+                    TransformErrorCondition(0),
+                ),
+                crate::win32::ERROR_INSTALL_FAILURE
+            );
 
             // Test missing files from disk (no colon prefix)
             let disk_path = "non_existent_file.mst";
@@ -789,7 +920,10 @@ mod tests {
             );
 
             let g_handle2 = crate::handles::alloc_handle(crate::handles::MsiObject::Database(
-                crate::types::MsiDatabaseHandle { inner: db2 },
+                crate::types::MsiDatabaseHandle {
+                    inner: db2,
+                    state: 0,
+                },
             ));
 
             let mut transform_apply_fail = DatabaseTransform::new();
@@ -903,11 +1037,13 @@ mod tests {
         let valid_db1 = crate::handles::alloc_handle(crate::handles::MsiObject::Database(
             crate::types::MsiDatabaseHandle {
                 inner: msi::wix::linker::LinkedDatabase::default(),
+                state: 0,
             },
         ));
         let valid_db2 = crate::handles::alloc_handle(crate::handles::MsiObject::Database(
             crate::types::MsiDatabaseHandle {
                 inner: msi::wix::linker::LinkedDatabase::default(),
+                state: 0,
             },
         ));
         let non_db = crate::handles::alloc_handle(crate::handles::MsiObject::Record(
@@ -982,11 +1118,13 @@ mod tests {
         let valid_db3 = crate::handles::alloc_handle(crate::handles::MsiObject::Database(
             crate::types::MsiDatabaseHandle {
                 inner: valid_db3_inner,
+                state: 0,
             },
         ));
         let valid_db4 = crate::handles::alloc_handle(crate::handles::MsiObject::Database(
             crate::types::MsiDatabaseHandle {
                 inner: valid_db4_inner,
+                state: 0,
             },
         ));
 

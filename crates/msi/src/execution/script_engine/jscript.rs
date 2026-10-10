@@ -42,6 +42,10 @@ pub enum JsValue {
 
 impl JsValue {
     /// Determines whether the value is truthy according to JavaScript semantics.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn is_truthy(&self) -> bool {
         match self {
@@ -54,6 +58,10 @@ impl JsValue {
     }
 
     /// Converts the JavaScript value to a string representation.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn to_string_value(&self) -> String {
         match self {
@@ -76,6 +84,10 @@ impl JsValue {
     }
 
     /// Converts the JavaScript value to a number.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn to_number(&self) -> f64 {
         match self {
@@ -225,6 +237,14 @@ struct Lexer<'a> {
 
 impl<'a> Lexer<'a> {
     /// Creates a new [`Lexer`] instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn new(input: &'a str) -> Self {
         Self {
             chars: input.chars().collect(),
@@ -236,11 +256,19 @@ impl<'a> Lexer<'a> {
     }
 
     /// Peeks at the current character without consuming it.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn peek(&self) -> Option<char> {
         self.chars.get(self.pos).copied()
     }
 
     /// Consumes and returns the current character, advancing position.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn advance(&mut self) -> Option<char> {
         let ch = self.chars.get(self.pos).copied()?;
         self.pos += 1;
@@ -282,6 +310,16 @@ impl<'a> Lexer<'a> {
     }
 
     /// Reads a string literal bounded by the given quote character.
+    ///
+    /// # Arguments
+    ///
+    /// * `quote` - TODO: Document argument.
+    /// * `start_line` - TODO: Document argument.
+    /// * `start_col` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn read_string(&mut self, quote: char, start_line: usize, start_col: usize) -> Result<Token> {
         let mut text = String::new();
         while let Some(ch) = self.advance() {
@@ -321,6 +359,10 @@ impl<'a> Lexer<'a> {
     }
 
     /// Scans the next token from input.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::too_many_lines)]
     fn next_token(&mut self) -> Result<Token> {
         self.skip_whitespace_and_comments();
@@ -517,6 +559,10 @@ impl<'a> Lexer<'a> {
     }
 
     /// Tokenizes the entire input into a list of tokens.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn tokenize_all(&mut self) -> Result<Vec<Token>> {
         let mut tokens = Vec::new();
         loop {
@@ -764,11 +810,23 @@ struct Parser {
 
 impl Parser {
     /// Creates a new [`Parser`].
+    ///
+    /// # Arguments
+    ///
+    /// * `tokens` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     const fn new(tokens: Vec<Token>) -> Self {
         Self { tokens, pos: 0 }
     }
 
     /// Peeks at current token.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn peek(&self) -> &Token {
         self.tokens.get(self.pos).unwrap_or(&Token {
             kind: TokenKind::Eof,
@@ -778,6 +836,10 @@ impl Parser {
     }
 
     /// Advances and returns the current token.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn advance(&mut self) -> Token {
         let tok = self.peek().clone();
         if self.pos < self.tokens.len() {
@@ -787,6 +849,14 @@ impl Parser {
     }
 
     /// Matches and consumes the expected token kind if present.
+    ///
+    /// # Arguments
+    ///
+    /// * `kind` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn match_token(&mut self, kind: &TokenKind) -> bool {
         if &self.peek().kind == kind {
             self.advance();
@@ -797,6 +867,15 @@ impl Parser {
     }
 
     /// Expects a specific token kind or returns a descriptive parse error.
+    ///
+    /// # Arguments
+    ///
+    /// * `kind` - TODO: Document argument.
+    /// * `msg` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn expect(&mut self, kind: &TokenKind, msg: &str) -> Result<Token> {
         let tok = self.peek().clone();
         if &tok.kind == kind {
@@ -811,6 +890,10 @@ impl Parser {
     }
 
     /// Parses the entire token stream as a list of statements.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_program(&mut self) -> Result<Vec<Stmt>> {
         let mut statements = Vec::new();
         while self.peek().kind != TokenKind::Eof {
@@ -820,6 +903,10 @@ impl Parser {
     }
 
     /// Parses a single statement.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::too_many_lines)]
     fn parse_statement(&mut self) -> Result<Stmt> {
         let tok = self.peek().clone();
@@ -992,11 +1079,19 @@ impl Parser {
     }
 
     /// Parses an expression.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_expression(&mut self) -> Result<Expr> {
         self.parse_assignment()
     }
 
     /// Parses an assignment expression.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_assignment(&mut self) -> Result<Expr> {
         let expr = self.parse_ternary()?;
         if self.match_token(&TokenKind::Equal) {
@@ -1048,6 +1143,10 @@ impl Parser {
     }
 
     /// Parses ternary conditional operator `? :`.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_ternary(&mut self) -> Result<Expr> {
         let mut expr = self.parse_logical_or()?;
         if self.match_token(&TokenKind::Question) {
@@ -1066,6 +1165,10 @@ impl Parser {
     }
 
     /// Parses logical OR `||`.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_logical_or(&mut self) -> Result<Expr> {
         let mut left = self.parse_logical_and()?;
         while self.match_token(&TokenKind::PipePipe) {
@@ -1082,6 +1185,10 @@ impl Parser {
     }
 
     /// Parses logical AND `&&`.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_logical_and(&mut self) -> Result<Expr> {
         let mut left = self.parse_equality()?;
         while self.match_token(&TokenKind::AmpAmp) {
@@ -1098,6 +1205,10 @@ impl Parser {
     }
 
     /// Parses equality operators `==`, `!=`, `===`, `!==`.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_equality(&mut self) -> Result<Expr> {
         let mut left = self.parse_comparison()?;
         loop {
@@ -1123,6 +1234,10 @@ impl Parser {
     }
 
     /// Parses relational comparison operators `<`, `<=`, `>`, `>=`.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_comparison(&mut self) -> Result<Expr> {
         let mut left = self.parse_addition()?;
         loop {
@@ -1148,6 +1263,10 @@ impl Parser {
     }
 
     /// Parses addition and subtraction `+`, `-`.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_addition(&mut self) -> Result<Expr> {
         let mut left = self.parse_multiplication()?;
         loop {
@@ -1171,6 +1290,10 @@ impl Parser {
     }
 
     /// Parses multiplication, division, modulo `*`, `/`, `%`.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_multiplication(&mut self) -> Result<Expr> {
         let mut left = self.parse_unary()?;
         loop {
@@ -1195,6 +1318,10 @@ impl Parser {
     }
 
     /// Parses unary prefix operators `-`, `!`, `++`, `--`.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_unary(&mut self) -> Result<Expr> {
         let tok = self.peek().clone();
         match tok.kind {
@@ -1243,6 +1370,10 @@ impl Parser {
     }
 
     /// Parses postfix operations (calls, index access, member access, `++`, `--`).
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_postfix(&mut self) -> Result<Expr> {
         let mut expr = self.parse_primary()?;
         loop {
@@ -1323,6 +1454,10 @@ impl Parser {
     }
 
     /// Parses primary tokens (literals, identifiers, parentheses).
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_primary(&mut self) -> Result<Expr> {
         let tok = self.advance();
         match tok.kind {
@@ -1376,6 +1511,10 @@ pub struct JScriptEngine {
 
 impl JScriptEngine {
     /// Creates a new [`JScriptEngine`].
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn new() -> Self {
         let mut engine = Self {
@@ -1415,6 +1554,15 @@ impl JScriptEngine {
     }
 
     /// Looks up variable by name in current scope chain.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - TODO: Document argument.
+    /// * `session` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn lookup_var(&self, name: &str, session: &ScriptSession) -> Option<JsValue> {
         if name == "Session" {
             return Some(JsValue::SessionObject);
@@ -1436,6 +1584,12 @@ impl JScriptEngine {
     }
 
     /// Sets variable in current scope chain.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - TODO: Document argument.
+    /// * `value` - TODO: Document argument.
+    /// * `session` - TODO: Document argument.
     fn set_var(&mut self, name: &str, value: &JsValue, session: &mut ScriptSession) {
         // Check local frames first
         for frame in self.env_stack.iter_mut().rev() {
@@ -1464,6 +1618,15 @@ impl JScriptEngine {
     }
 
     /// Evaluates a statement.
+    ///
+    /// # Arguments
+    ///
+    /// * `stmt` - TODO: Document argument.
+    /// * `session` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::too_many_lines)]
     fn eval_statement(
         &mut self,
@@ -1599,6 +1762,15 @@ impl JScriptEngine {
     }
     #[allow(clippy::cognitive_complexity)]
     /// Evaluates an expression.
+    ///
+    /// # Arguments
+    ///
+    /// * `expr` - TODO: Document argument.
+    /// * `session` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::too_many_lines)]
     fn eval_expression(&mut self, expr: &Expr, session: &mut ScriptSession) -> Result<JsValue> {
         match expr {
@@ -1903,6 +2075,19 @@ impl JScriptEngine {
     }
 
     /// Invokes a method on a built-in or automation object.
+    ///
+    /// # Arguments
+    ///
+    /// * `target` - TODO: Document argument.
+    /// * `method` - TODO: Document argument.
+    /// * `arguments` - TODO: Document argument.
+    /// * `line` - TODO: Document argument.
+    /// * `col` - TODO: Document argument.
+    /// * `session` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::too_many_lines)]
     fn call_method(
         &mut self,
@@ -2026,6 +2211,18 @@ impl JScriptEngine {
     }
 
     /// Invokes a global function or user-defined function.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - TODO: Document argument.
+    /// * `args` - TODO: Document argument.
+    /// * `line` - TODO: Document argument.
+    /// * `col` - TODO: Document argument.
+    /// * `session` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn call_function(
         &mut self,
         name: &str,

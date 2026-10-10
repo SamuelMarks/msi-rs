@@ -23,6 +23,10 @@ pub struct ComPlusExtension;
 
 impl ComPlusExtension {
     /// Creates a new `ComPlusExtension` instance.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn new() -> Self {
         Self
@@ -32,6 +36,17 @@ impl ComPlusExtension {
     ///
     /// # Errors
     /// Returns [`MsiError::WixCompiler`] if required attributes are missing.
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn compile_complus_application(
         node: &XmlNode,
         parent_id: Option<&str>,
@@ -68,6 +83,17 @@ impl ComPlusExtension {
     ///
     /// # Errors
     /// Returns [`MsiError::WixCompiler`] if required attributes are missing.
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn compile_complus_assembly(
         node: &XmlNode,
         parent_id: Option<&str>,

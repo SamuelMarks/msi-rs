@@ -112,6 +112,10 @@ pub struct MsiControlDefinition {
 
 impl MsiControlDefinition {
     /// Converts the abstract MSI definition into a Win32 class name.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn to_win32_class(&self) -> &'static str {
         match self.control_type {
@@ -147,33 +151,176 @@ pub struct NativeWindowHandle(usize);
 
 impl NativeWindowHandle {
     /// Creates a new `NativeWindowHandle` from a raw address.
+    ///
+    /// # Arguments
+    ///
+    /// * `ptr` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn new(ptr: usize) -> Self {
         Self(ptr)
     }
 
     /// Returns the underlying raw address.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn as_raw(&self) -> usize {
         self.0
     }
 }
 
+/// Native Window Class definitions for Win32.
+pub mod window_classes {
+    /// The main wizard dialog window class.
+    pub const MSI_DIALOG_CLOSE_CLASS: &str = "MsiDialogCloseClass";
+    /// The billboard window class.
+    pub const MSI_BILLBOARD_CLASS: &str = "MsiBillboard";
+    /// The selection tree window class.
+    pub const MSI_SELECTION_TREE_CLASS: &str = "MsiSelectionTree";
+    /// The volume cost list window class.
+    pub const MSI_VOLUME_COST_LIST_CLASS: &str = "MsiVolumeCostList";
+}
+
+/// Dialog Unit to Pixel coordinate converter.
+#[derive(Debug, Clone)]
+pub struct DialogUnitConverter {
+    /// Base horizontal font metric in pixels.
+    base_x: u32,
+    /// Base vertical font metric in pixels.
+    base_y: u32,
+}
+
+impl DialogUnitConverter {
+    /// Creates a new `DialogUnitConverter` with base font metrics.
+    ///
+    /// On Windows, these metrics are typically obtained via `GetTextMetricsW`.
+    ///
+    /// # Arguments
+    ///
+    /// * `base_x` - TODO: Document argument.
+    /// * `base_y` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
+    #[must_use]
+    pub const fn new(base_x: u32, base_y: u32) -> Self {
+        Self { base_x, base_y }
+    }
+
+    /// Converts an X coordinate from Dialog Units to Pixels.
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
+    #[must_use]
+    pub const fn x_to_pixels(&self, x: u32) -> u32 {
+        (x * self.base_x) / 4
+    }
+
+    /// Converts a Y coordinate from Dialog Units to Pixels.
+    ///
+    /// # Arguments
+    ///
+    /// * `y` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
+    #[must_use]
+    pub const fn y_to_pixels(&self, y: u32) -> u32 {
+        (y * self.base_y) / 8
+    }
+}
+
+/// Message types for the dialog message loop.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowMessage {
+    /// Sent when a window is created (`WM_CREATE`).
+    Create,
+    /// Sent when a user interacts with a control (`WM_COMMAND`).
+    Command(u32),
+    /// Sent when a control notifies its parent (`WM_NOTIFY`).
+    Notify(u32),
+    /// Sent when a window needs repainting (`WM_PAINT`).
+    Paint,
+    /// Sent when a timer expires (`WM_TIMER`).
+    Timer(u32),
+    /// Sent when a window is being destroyed (`WM_DESTROY`).
+    Destroy,
+    /// Sent when a navigation key is pressed.
+    Navigation(NavigationKey),
+}
+
+/// Keyboard navigation keys for dialogs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NavigationKey {
+    /// The Tab key.
+    Tab,
+    /// The Shift+Tab key.
+    ShiftTab,
+    /// The Enter key.
+    Enter,
+    /// The Escape key.
+    Escape,
+    /// A mnemonic hotkey.
+    Mnemonic(char),
+}
+
+/// Processes a single message from the message loop.
+///
+/// # Returns
+/// Returns `true` if the loop should continue, or `false` if `WM_DESTROY` was received.
+///
+/// # Arguments
+///
+/// * `msg` - TODO: Document argument.
+#[must_use]
+pub const fn process_message(msg: WindowMessage) -> bool {
+    !matches!(msg, WindowMessage::Destroy)
+}
+
 /// Abstract trait representing a rendered control.
 pub trait Control {
     /// Returns the window handle associated with this control.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn handle(&self) -> NativeWindowHandle;
 }
 
 /// Abstract trait representing a rendered dialog window.
 pub trait Window {
     /// Returns the window handle associated with this dialog.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn handle(&self) -> NativeWindowHandle;
 
     /// Adds a control to the window.
     ///
     /// # Errors
     /// Returns `MsiError::User32RenderError` if the control cannot be added.
+    ///
+    /// # Arguments
+    ///
+    /// * `def` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn add_control(&mut self, def: &MsiControlDefinition) -> Result<Box<dyn Control>, MsiError>;
 }
 
@@ -183,6 +330,16 @@ pub trait Renderer {
     ///
     /// # Errors
     /// Returns `MsiError::User32RenderError` if the window creation fails.
+    ///
+    /// # Arguments
+    ///
+    /// * `title` - TODO: Document argument.
+    /// * `width` - TODO: Document argument.
+    /// * `height` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn create_window(
         &mut self,
         title: &str,
@@ -195,6 +352,10 @@ pub trait Renderer {
 static NEXT_HWND: AtomicUsize = AtomicUsize::new(0x1000);
 
 /// Allocates a new simulated HWND.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 #[must_use]
 pub fn allocate_simulated_hwnd() -> NativeWindowHandle {
     NativeWindowHandle::new(NEXT_HWND.fetch_add(1, Ordering::SeqCst))
@@ -253,6 +414,10 @@ pub mod windows_impl {
 
     impl WindowsRenderer {
         /// Creates a new `WindowsRenderer`.
+        ///
+        /// # Returns
+        ///
+        /// TODO: Document return value.
         #[must_use]
         pub const fn new() -> Self {
             Self
@@ -337,6 +502,10 @@ pub mod posix_impl {
 
     impl PosixRenderer {
         /// Creates a new `PosixRenderer`.
+        ///
+        /// # Returns
+        ///
+        /// TODO: Document return value.
         #[must_use]
         pub const fn new() -> Self {
             Self
@@ -382,7 +551,7 @@ mod tests {
     use std::str::FromStr;
 
     #[test]
-    fn test_native_control_type_parsing() -> Result<(), MsiError> {
+    fn test_native_control_type_parsing() {
         let types = vec![
             ("Billboard", NativeControlType::Billboard),
             ("Bitmap", NativeControlType::Bitmap),
@@ -409,15 +578,13 @@ mod tests {
         ];
 
         for (s, expected) in types {
-            assert_eq!(NativeControlType::from_str(s)?, expected);
+            assert_eq!(NativeControlType::from_str(s).unwrap(), expected);
         }
 
-        let err = match NativeControlType::from_str("UnknownType") {
-            Ok(_) => return Err(MsiError::User32RenderError("Expected error".to_string())),
-            Err(e) => e,
-        };
-        assert!(matches!(err, MsiError::User32RenderError(_)));
-        Ok(())
+        assert!(matches!(
+            NativeControlType::from_str("UnknownType"),
+            Err(MsiError::User32RenderError(_))
+        ));
     }
 
     #[test]
@@ -497,6 +664,38 @@ mod tests {
     }
 
     #[test]
+    fn test_dialog_unit_converter() {
+        let converter = DialogUnitConverter::new(8, 16);
+        assert_eq!(converter.x_to_pixels(10), 20);
+        assert_eq!(converter.y_to_pixels(10), 20);
+    }
+
+    #[test]
+    fn test_process_message() {
+        assert!(process_message(WindowMessage::Create));
+        assert!(process_message(WindowMessage::Command(1)));
+        assert!(process_message(WindowMessage::Notify(2)));
+        assert!(process_message(WindowMessage::Paint));
+        assert!(process_message(WindowMessage::Timer(3)));
+        assert!(process_message(WindowMessage::Navigation(
+            NavigationKey::Tab
+        )));
+        assert!(process_message(WindowMessage::Navigation(
+            NavigationKey::ShiftTab
+        )));
+        assert!(process_message(WindowMessage::Navigation(
+            NavigationKey::Enter
+        )));
+        assert!(process_message(WindowMessage::Navigation(
+            NavigationKey::Escape
+        )));
+        assert!(process_message(WindowMessage::Navigation(
+            NavigationKey::Mnemonic('A')
+        )));
+        assert!(!process_message(WindowMessage::Destroy));
+    }
+
+    #[test]
     fn test_native_window_handle() {
         let handle = NativeWindowHandle::new(0x1234_5678);
         assert_eq!(handle.as_raw(), 0x1234_5678);
@@ -523,31 +722,27 @@ mod tests {
         };
 
         let mut renderer = windows_impl::WindowsRenderer::default();
-        let mut win = renderer.create_window("Test", 800, 600)?;
+        let mut win = renderer.create_window("Test", 800, 600).unwrap();
         assert!(win.handle().as_raw() > 0);
 
-        let ctl = win.add_control(&def)?;
+        let ctl = win.add_control(&def).unwrap();
         assert!(ctl.handle().as_raw() > 0);
 
         def.width = 0;
-        let err = match win.add_control(&def) {
-            Ok(_) => return Err(MsiError::User32RenderError("Expected error".to_string())),
-            Err(e) => e,
-        };
-        assert!(matches!(err, MsiError::User32RenderError(_)));
+        assert!(matches!(
+            win.add_control(&def),
+            Err(MsiError::User32RenderError(_))
+        ));
 
-        let err_win = match renderer.create_window("Test", 0, 600) {
-            Ok(_) => return Err(MsiError::User32RenderError("Expected error".to_string())),
-            Err(e) => e,
-        };
-        assert!(matches!(err_win, MsiError::User32RenderError(_)));
-
-        Ok(())
+        assert!(matches!(
+            renderer.create_window("Test", 0, 600),
+            Err(MsiError::User32RenderError(_))
+        ));
     }
 
     #[cfg(not(windows))]
     #[test]
-    fn test_create_native_control_posix() -> Result<(), MsiError> {
+    fn test_create_native_control_posix() {
         let mut def = MsiControlDefinition {
             control_type: NativeControlType::PushButton,
             x: 10,
@@ -559,25 +754,27 @@ mod tests {
         };
 
         let mut renderer = posix_impl::PosixRenderer;
-        let mut win = renderer.create_window("Test", 800, 600)?;
+        let mut win = renderer.create_window("Test", 800, 600).unwrap();
         assert!(win.handle().as_raw() > 0);
 
-        let ctl = win.add_control(&def)?;
+        let ctl = win.add_control(&def).unwrap();
         assert!(ctl.handle().as_raw() > 0);
 
         def.width = 0;
-        let err = match win.add_control(&def) {
-            Ok(_) => return Err(MsiError::User32RenderError("Expected error".to_string())),
-            Err(e) => e,
-        };
-        assert!(matches!(err, MsiError::User32RenderError(_)));
+        assert!(matches!(
+            win.add_control(&def),
+            Err(MsiError::User32RenderError(_))
+        ));
 
-        let err_win = match renderer.create_window("Test", 0, 600) {
-            Ok(_) => return Err(MsiError::User32RenderError("Expected error".to_string())),
-            Err(e) => e,
-        };
-        assert!(matches!(err_win, MsiError::User32RenderError(_)));
-
-        Ok(())
+        assert!(matches!(
+            renderer.create_window("Test", 0, 600),
+            Err(MsiError::User32RenderError(_))
+        ));
     }
+}
+
+#[test]
+#[allow(clippy::missing_const_for_fn, clippy::no_effect_underscore_binding)]
+fn test_posix_renderer_default() {
+    let _renderer = posix_impl::PosixRenderer;
 }

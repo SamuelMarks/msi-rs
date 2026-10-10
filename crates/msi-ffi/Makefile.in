@@ -1,0 +1,19 @@
+MODULE    = msi.dll
+IMPORTLIB = msi
+IMPORTS   = uuid advapi32 cabinet comctl32 comdlg32 crypt32 gdi32 gdiplus kernel32 mpr netapi32 ole32 oleaut32 rpcrt4 shell32 shlwapi urlmon user32 userenv version wininet
+DELAYIMPORTS = fusion sxs odbccp32 mspatcha
+
+EXTRADLLFLAGS = -mno-cygwin
+
+C_SRCS = \
+	msi_main.c
+
+RC_SRCS = \
+	msi.rc
+
+# Rust integration
+RUST_CRATE = msi_ffi
+RUST_SRCS = \
+	src/lib.rs
+
+@MAKE_DLL_RULES@

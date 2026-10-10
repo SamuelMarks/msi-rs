@@ -29,7 +29,8 @@ pub type InstallUIHandlerRecord = Option<unsafe extern "system" fn(c_void, Uint,
 /// # Returns
 ///
 /// The previous UI level.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiSetInternalUI(
     dwUILevel: InstallUILevel,
@@ -54,7 +55,8 @@ pub extern "system" fn MsiSetInternalUI(
 /// # Returns
 ///
 /// The previous handler, or null on error.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiSetExternalUIW(
     puiHandler: InstallUIHandlerW,
@@ -79,7 +81,8 @@ pub extern "system" fn MsiSetExternalUIW(
 /// # Returns
 ///
 /// The previous handler, or null on error.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiSetExternalUIA(
     puiHandler: InstallUIHandlerA,
@@ -105,7 +108,8 @@ pub extern "system" fn MsiSetExternalUIA(
 /// # Returns
 ///
 /// `ERROR_SUCCESS`
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "system" fn MsiSetExternalUIRecord(
@@ -137,7 +141,8 @@ pub extern "system" fn MsiSetExternalUIRecord(
 /// # Returns
 ///
 /// Result code from the UI handler.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiProcessMessage(
     hInstall: MsiHandle,
@@ -156,7 +161,8 @@ pub extern "system" fn MsiProcessMessage(
 }
 
 /// Enables UI preview mode for the installer.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "system" fn MsiEnableUIPreview(hDatabase: MsiHandle, phPreview: *mut MsiHandle) -> Uint {
@@ -187,7 +193,8 @@ pub extern "system" fn MsiEnableUIPreview(hDatabase: MsiHandle, phPreview: *mut 
 }
 
 /// Previews a dialog box.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiPreviewDialogW(hPreview: MsiHandle, szDialogName: Lpcwstr) -> Uint {
     let result = panic::catch_unwind(|| {
@@ -213,7 +220,8 @@ pub extern "system" fn MsiPreviewDialogW(hPreview: MsiHandle, szDialogName: Lpcw
 }
 
 /// Previews a dialog box (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiPreviewDialogA(hPreview: MsiHandle, szDialogName: Lpcstr) -> Uint {
     let result = panic::catch_unwind(|| {
@@ -239,7 +247,8 @@ pub extern "system" fn MsiPreviewDialogA(hPreview: MsiHandle, szDialogName: Lpcs
 }
 
 /// Displays a message box (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiMessageBoxExW(
     hWndParent: *mut c_void,
@@ -260,7 +269,8 @@ pub extern "system" fn MsiMessageBoxExW(
 }
 
 /// Displays a message box (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiMessageBoxExA(
     hWndParent: *mut c_void,
@@ -281,7 +291,8 @@ pub extern "system" fn MsiMessageBoxExA(
 }
 
 /// Previews a billboard within a preview dialog (Unicode).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiPreviewBillboardW(
     hPreview: MsiHandle,
@@ -315,7 +326,8 @@ pub extern "system" fn MsiPreviewBillboardW(
 }
 
 /// Previews a billboard within a preview dialog (ANSI).
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiPreviewBillboardA(
     hPreview: MsiHandle,
@@ -421,6 +433,7 @@ mod tests {
         let mock_db = msi::wix::linker::LinkedDatabase::default();
         let db_handle = alloc_handle(MsiObject::Database(crate::types::MsiDatabaseHandle {
             inner: mock_db,
+            state: 0,
         }));
         let mut preview_handle = 0;
         assert_eq!(

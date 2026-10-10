@@ -23,6 +23,14 @@ pub struct NativeStream {
 
 impl NativeStream {
     /// Creates a new native `IStream`.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn new(data: Vec<u8>) -> Box<Self> {
         Box::new(Self {

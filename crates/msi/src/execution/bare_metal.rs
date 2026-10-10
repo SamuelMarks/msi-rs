@@ -184,6 +184,10 @@ impl OfflineChrootSandbox {
     /// # Errors
     ///
     /// Returns [`MsiError::SysrootMountError`] if creating mount mountpoints fails.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn setup_environment(&mut self) -> Result<()> {
         let dev = self.sysroot.join("dev");
         let proc = self.sysroot.join("proc");
@@ -207,6 +211,10 @@ impl OfflineChrootSandbox {
     /// # Errors
     ///
     /// Returns [`MsiError::SysrootMountError`] if cleanup fails.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub const fn teardown(&mut self) -> Result<()> {
         self.is_active = false;
         Ok(())
@@ -396,6 +404,10 @@ impl BareMetalRollbackJournal {
     /// # Errors
     ///
     /// Returns [`std::io::Error`] if seeking, writing, or flushing fails.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn wipe_stream(
         stream: &mut dyn SeekWrite,
         start_lba: u64,
@@ -426,6 +438,10 @@ impl BareMetalRollbackJournal {
     /// # Errors
     ///
     /// Returns [`MsiError::RollbackFailed`] if opening, seeking, or writing zeroes fails.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn wipe_sector_range(
         device_path: &Path,
         start_lba: u64,
@@ -494,6 +510,10 @@ impl BareMetalRollbackJournal {
     /// # Errors
     ///
     /// Returns [`MsiError::RollbackFailed`] if any critical rollback action fails.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn execute_rollback(&mut self) -> Result<()> {
         while let Some(action) = self.actions.pop() {
             match action {

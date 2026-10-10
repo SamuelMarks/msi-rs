@@ -48,6 +48,10 @@ impl SelfRegRow {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] or [`MsiError::RecordLengthMismatch`].
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     pub fn from_record(rec: &Record) -> Result<Self> {
         if rec.len() < 2 {
             return Err(MsiError::RecordLengthMismatch {

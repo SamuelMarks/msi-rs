@@ -8,6 +8,10 @@ use crate::error::{MsiError, Result};
 use std::fmt;
 
 /// Determines if the current process is running with elevated privileges (Administrator/root).
+///
+/// # Returns
+///
+/// TODO: Document return value.
 #[must_use]
 pub fn is_elevated() -> bool {
     #[cfg(target_family = "unix")]
@@ -33,12 +37,24 @@ pub struct UserName(String);
 
 impl UserName {
     /// Creates a new `UserName`.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn new(name: impl Into<String>) -> Self {
         Self(name.into())
     }
 
     /// Returns the string representation.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -57,12 +73,24 @@ pub struct GroupName(String);
 
 impl GroupName {
     /// Creates a new `GroupName`.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn new(name: impl Into<String>) -> Self {
         Self(name.into())
     }
 
     /// Returns the string representation.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -81,12 +109,24 @@ pub struct SecurityIdentifier(String);
 
 impl SecurityIdentifier {
     /// Creates a new `SecurityIdentifier`.
+    ///
+    /// # Arguments
+    ///
+    /// * `sid` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn new(sid: impl Into<String>) -> Self {
         Self(sid.into())
     }
 
     /// Returns the string representation.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -110,6 +150,16 @@ pub trait LocalAccountManager {
     /// # Errors
     /// Returns [`MsiError::UserManagementError`] if the operation fails, or if the user already exists
     /// and `fail_if_exists` is true.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - TODO: Document argument.
+    /// * `password` - TODO: Document argument.
+    /// * `fail_if_exists` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn create_user(
         &self,
         name: &UserName,
@@ -125,12 +175,30 @@ pub trait LocalAccountManager {
     /// # Errors
     /// Returns [`MsiError::UserManagementError`] if the operation fails, or if the group already exists
     /// and `fail_if_exists` is true.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - TODO: Document argument.
+    /// * `fail_if_exists` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn create_group(&self, name: &GroupName, fail_if_exists: bool) -> Result<String>;
 
     /// Adds a user to a local group.
     ///
     /// # Errors
     /// Returns [`MsiError::UserManagementError`] if the operation fails.
+    ///
+    /// # Arguments
+    ///
+    /// * `user` - TODO: Document argument.
+    /// * `group` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn add_user_to_group(&self, user: &UserName, group: &GroupName) -> Result<String>;
 }
 

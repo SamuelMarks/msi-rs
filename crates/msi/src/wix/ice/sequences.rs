@@ -105,6 +105,14 @@ impl SequenceGraph {
 }
 
 /// Helper returning map of custom action types from `CustomAction` table.
+///
+/// # Arguments
+///
+/// * `db` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn get_custom_actions(db: &LinkedDatabase) -> HashMap<String, (i16, String, String)> {
     let mut map = HashMap::new();
     for r in db.get_records("CustomAction") {

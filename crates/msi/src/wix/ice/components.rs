@@ -9,6 +9,14 @@ use crate::wix::linker::LinkedDatabase;
 use std::collections::{HashMap, HashSet};
 
 /// Returns mapping of Component -> Directory.
+///
+/// # Arguments
+///
+/// * `db` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn get_component_directories(db: &LinkedDatabase) -> HashMap<String, String> {
     let mut map = HashMap::new();
     for r in db.get_records("Component") {
@@ -22,6 +30,14 @@ fn get_component_directories(db: &LinkedDatabase) -> HashMap<String, String> {
 }
 
 /// Returns mapping of Component -> `KeyPath`.
+///
+/// # Arguments
+///
+/// * `db` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn get_component_keypaths(db: &LinkedDatabase) -> HashMap<String, Option<String>> {
     let mut map = HashMap::new();
     for r in db.get_records("Component") {
@@ -37,6 +53,14 @@ fn get_component_keypaths(db: &LinkedDatabase) -> HashMap<String, Option<String>
 }
 
 /// Returns mapping of Feature -> set of Components.
+///
+/// # Arguments
+///
+/// * `db` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn get_feature_components(db: &LinkedDatabase) -> HashMap<String, HashSet<String>> {
     let mut map: HashMap<String, HashSet<String>> = HashMap::new();
     for r in db.get_records("FeatureComponents") {

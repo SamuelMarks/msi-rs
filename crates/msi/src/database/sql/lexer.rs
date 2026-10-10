@@ -126,6 +126,10 @@ impl Lexer {
     /// # Arguments
     ///
     /// * `input` - Raw SQL query text.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn new(input: &str) -> Self {
         Self {
@@ -302,6 +306,14 @@ impl Lexer {
 }
 #[allow(clippy::cognitive_complexity)]
 /// Matches a case-insensitive word against known SQL keywords.
+///
+/// # Arguments
+///
+/// * `w` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn match_keyword_or_ident(w: &str) -> Token {
     if w.eq_ignore_ascii_case("SELECT") {
         Token::Select
@@ -548,7 +560,7 @@ mod tests {
     #[test]
     fn test_lex_longchar() {
         let mut lexer = Lexer::new("LONGCHAR");
-        let token = lexer.tokenize().unwrap()[0].clone();
+        let token = lexer.tokenize().expect("test")[0].clone();
         assert_eq!(token, Token::Longchar);
     }
 }

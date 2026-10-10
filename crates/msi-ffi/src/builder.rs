@@ -45,7 +45,8 @@ use std::path::Path;
 ///
 /// All string pointers must be valid null-terminated C strings.
 /// `out_builder` must point to valid writable memory.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "C" fn msi_package_builder_create(
     product_name: *const c_char,
     manufacturer: *const c_char,
@@ -97,7 +98,8 @@ pub unsafe extern "C" fn msi_package_builder_create(
 ///
 /// `builder` must be a valid pointer obtained from `msi_package_builder_create`.
 /// `name` must be a valid null-terminated C string.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "C" fn msi_package_builder_set_product_name(
     builder: *mut MsiPackageBuilderHandle,
     name: *const c_char,
@@ -132,7 +134,8 @@ pub unsafe extern "C" fn msi_package_builder_set_product_name(
 ///
 /// `builder` must be a valid pointer obtained from `msi_package_builder_create`.
 /// `manufacturer` must be a valid null-terminated C string.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "C" fn msi_package_builder_set_manufacturer(
     builder: *mut MsiPackageBuilderHandle,
     manufacturer: *const c_char,
@@ -168,7 +171,8 @@ pub unsafe extern "C" fn msi_package_builder_set_manufacturer(
 /// # Safety
 ///
 /// `builder` must be a valid pointer obtained from `msi_package_builder_create`.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "C" fn msi_package_builder_set_version(
     builder: *mut MsiPackageBuilderHandle,
     ver_major: u8,
@@ -205,7 +209,8 @@ pub unsafe extern "C" fn msi_package_builder_set_version(
 ///
 /// `builder` must be a valid pointer obtained from `msi_package_builder_create`.
 /// `product_code` must be a valid null-terminated C string.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "C" fn msi_package_builder_set_product_code(
     builder: *mut MsiPackageBuilderHandle,
     product_code: *const c_char,
@@ -240,7 +245,8 @@ pub unsafe extern "C" fn msi_package_builder_set_product_code(
 ///
 /// `builder` must be a valid pointer obtained from `msi_package_builder_create`.
 /// `upgrade_code` must be a valid null-terminated C string.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "C" fn msi_package_builder_set_upgrade_code(
     builder: *mut MsiPackageBuilderHandle,
     upgrade_code: *const c_char,
@@ -276,7 +282,8 @@ pub unsafe extern "C" fn msi_package_builder_set_upgrade_code(
 ///
 /// `builder` must be a valid pointer obtained from `msi_package_builder_create`.
 /// `name` and `value` must be valid null-terminated C strings.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "C" fn msi_package_builder_add_property(
     builder: *mut MsiPackageBuilderHandle,
     name: *const c_char,
@@ -315,7 +322,8 @@ pub unsafe extern "C" fn msi_package_builder_add_property(
 /// # Safety
 ///
 /// All non-null string pointers must be valid null-terminated C strings.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "C" fn msi_package_builder_add_directory(
     builder: *mut MsiPackageBuilderHandle,
     dir_id: *const c_char,
@@ -375,7 +383,8 @@ pub unsafe extern "C" fn msi_package_builder_add_directory(
 /// # Safety
 ///
 /// All non-null string pointers must be valid null-terminated C strings.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "C" fn msi_package_builder_add_component(
     builder: *mut MsiPackageBuilderHandle,
     comp_id: *const c_char,
@@ -448,7 +457,8 @@ pub unsafe extern "C" fn msi_package_builder_add_component(
 /// # Safety
 ///
 /// All non-null string pointers must be valid null-terminated C strings.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(clippy::too_many_arguments)]
 pub unsafe extern "C" fn msi_package_builder_add_feature(
     builder: *mut MsiPackageBuilderHandle,
@@ -525,7 +535,8 @@ pub unsafe extern "C" fn msi_package_builder_add_feature(
 /// # Safety
 ///
 /// All string pointers must be valid null-terminated C strings.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "C" fn msi_package_builder_add_feature_component(
     builder: *mut MsiPackageBuilderHandle,
     feat_id: *const c_char,
@@ -576,7 +587,8 @@ pub unsafe extern "C" fn msi_package_builder_add_feature_component(
 /// # Safety
 ///
 /// All non-null string pointers must be valid null-terminated C strings.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(clippy::too_many_arguments)]
 pub unsafe extern "C" fn msi_package_builder_add_file(
     builder: *mut MsiPackageBuilderHandle,
@@ -644,7 +656,8 @@ pub unsafe extern "C" fn msi_package_builder_add_file(
 /// # Safety
 ///
 /// All non-null string pointers must be valid null-terminated C strings.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "C" fn msi_package_builder_add_media(
     builder: *mut MsiPackageBuilderHandle,
     disk_id: i16,
@@ -699,7 +712,8 @@ pub unsafe extern "C" fn msi_package_builder_add_media(
 ///
 /// `cab_name` must be a valid null-terminated C string.
 /// `cab_data` must point to valid memory of at least `cab_len` bytes.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "C" fn msi_package_builder_add_embedded_cabinet(
     builder: *mut MsiPackageBuilderHandle,
     cab_name: *const c_char,
@@ -755,7 +769,8 @@ pub unsafe extern "C" fn msi_package_builder_add_embedded_cabinet(
 /// # Safety
 ///
 /// All array pointers must point to arrays of at least `file_count` valid null-terminated C strings.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 #[allow(clippy::too_many_lines)]
 pub unsafe extern "C" fn msi_package_builder_pack_files_from_disk(
     builder: *mut MsiPackageBuilderHandle,
@@ -816,7 +831,9 @@ pub unsafe extern "C" fn msi_package_builder_pack_files_from_disk(
 
                 let data = fs::read(src_path).map_err(|e| {
                     (
-                        map_msi_error(&msi::MsiError::Io(e.to_string())),
+                        map_msi_error(&msi::MsiError::Io(msi::error::IoContext::from_string(
+                            e.to_string(),
+                        ))),
                         format!("Failed reading source file '{src_path}'"),
                     )
                 })?;
@@ -906,7 +923,8 @@ pub unsafe extern "C" fn msi_package_builder_pack_files_from_disk(
 ///
 /// `builder` must be a valid pointer obtained from `msi_package_builder_create`.
 /// `out_package` must point to valid writable memory.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "C" fn msi_package_builder_build(
     builder: *mut MsiPackageBuilderHandle,
     out_package: *mut *mut MsiPackageHandle,

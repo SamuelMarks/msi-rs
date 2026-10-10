@@ -23,6 +23,14 @@ impl SecurityData {
     /// # Errors
     ///
     /// Returns [`MsiError::Io`] if the stream is truncated or invalid.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn parse(bytes: &[u8]) -> Result<Self> {
         if bytes.len() < 8 {
             return Ok(Self::default());
@@ -33,7 +41,9 @@ impl SecurityData {
 
         // If the stated total length exceeds our buffer, it's truncated
         if total_length as usize > bytes.len() {
-            return Err(MsiError::Io("Truncated Security Data Block".to_string()));
+            return Err(MsiError::Io(crate::error::IoContext::from_string(
+                "Truncated Security Data Block".to_string(),
+            )));
         }
 
         // A full implementation would parse SDDL strings and map via `translate_sddl`.
@@ -76,9 +86,19 @@ impl DirectoryEntry {
     /// # Errors
     ///
     /// Returns [`MsiError::Io`] if the entry is truncated.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn parse(bytes: &[u8]) -> Result<Self> {
         if bytes.len() < 8 {
-            return Err(MsiError::Io("Truncated DirectoryEntry length".to_string()));
+            return Err(MsiError::Io(crate::error::IoContext::from_string(
+                "Truncated DirectoryEntry length".to_string(),
+            )));
         }
 
         let length = u64::from_le_bytes([
@@ -91,7 +111,9 @@ impl DirectoryEntry {
 
         // Standard WIM Directory Entry is at least 106 bytes long for fixed fields
         if bytes.len() < 106 || usize::try_from(length).unwrap_or(0) > bytes.len() {
-            return Err(MsiError::Io("Truncated DirectoryEntry body".to_string()));
+            return Err(MsiError::Io(crate::error::IoContext::from_string(
+                "Truncated DirectoryEntry body".to_string(),
+            )));
         }
 
         let attributes = u32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]);
@@ -153,6 +175,15 @@ impl WimReader {
     /// # Errors
     ///
     /// Returns [`MsiError::WimChecksumMismatch`] if the checksum fails.
+    ///
+    /// # Arguments
+    ///
+    /// * `extracted_data` - TODO: Document argument.
+    /// * `expected_hash` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn validate_checksum(
         &self,
         extracted_data: &[u8],
@@ -173,6 +204,14 @@ impl WimReader {
     ///
     /// Currently yields [`MsiError::WimDecompressionError`] as stream extraction
     /// mapping is not yet fully linked.
+    ///
+    /// # Arguments
+    ///
+    /// * `_path` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn get_file_stream(&self, _path: &str) -> Result<impl Read> {
         // Return dummy implementation type that meets trait bounds, wrapped in Err
         let empty_stream: &[u8] = &[];

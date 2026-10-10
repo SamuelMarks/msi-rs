@@ -32,6 +32,45 @@ pub const _A_SYSTEM: u16 = ATTR_SYSTEM;
 /// Legacy MS-DOS attribute constant for archive.
 pub const _A_ARCH: u16 = ATTR_ARCHIVE;
 
+use std::fmt;
+
+/// Strongly typed file sequence number, enforcing 1-based indexing as mandated by Windows Installer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct FileSequence(pub u32);
+
+impl FileSequence {
+    /// Creates a new [`FileSequence`].
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - 1-based sequence number.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError::InvalidArgument`] if `value` is 0.
+    pub fn new(value: u32) -> Result<Self> {
+        if value == 0 {
+            return Err(MsiError::InvalidArgument {
+                argument: "value".to_string(),
+                reason: "File sequence must be 1-based (cannot be 0)".to_string(),
+            });
+        }
+        Ok(Self(value))
+    }
+
+    /// Returns the raw sequence number.
+    #[must_use]
+    pub const fn as_u32(&self) -> u32 {
+        self.0
+    }
+}
+
+impl fmt::Display for FileSequence {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "FileSeq({})", self.0)
+    }
+}
+
 /// Legacy MS-DOS attribute constant for execute.
 pub const _A_EXEC: u16 = ATTR_EXECUTE;
 
@@ -126,36 +165,60 @@ impl FileAttributes {
     }
 
     /// Returns `true` if read-only attribute is set.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn is_read_only(self) -> bool {
         (self.0 & ATTR_READONLY) != 0
     }
 
     /// Returns `true` if hidden attribute is set.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn is_hidden(self) -> bool {
         (self.0 & ATTR_HIDDEN) != 0
     }
 
     /// Returns `true` if system attribute is set.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn is_system(self) -> bool {
         (self.0 & ATTR_SYSTEM) != 0
     }
 
     /// Returns `true` if archive attribute is set.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn is_archive(self) -> bool {
         (self.0 & ATTR_ARCHIVE) != 0
     }
 
     /// Returns `true` if execute-after-extract attribute is set.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn is_exec(self) -> bool {
         (self.0 & ATTR_EXECUTE) != 0
     }
 
     /// Returns `true` if the filename is encoded in UTF-8.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn is_utf8_name(self) -> bool {
         (self.0 & ATTR_NAME_IS_UTF) != 0

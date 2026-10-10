@@ -51,6 +51,10 @@ impl ServiceEvaluator {
     /// # Errors
     /// Returns `MsiError::UnsupportedPlatformFeature` if the service type or SCM interaction
     /// is not supported on the target platform (e.g. attempting to install a Kernel Driver on macOS).
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn validate_service_install(
         &self,
         row: &ServiceInstallRow,
@@ -69,26 +73,22 @@ impl ServiceEvaluator {
             });
         }
 
-        if target_os != TargetOs::Windows {
-            // Map Windows Service configurations to equivalent init systems if possible,
-            // or reject them if mapping is unsupported for the specific platform.
-            let init_system = match target_os {
-                TargetOs::Linux => "systemd",
-                TargetOs::MacOs => "launchd",
-                TargetOs::FreeBsd => "rc",
-                TargetOs::SunOs => "SMF",
-                TargetOs::Windows => "Windows",
-            };
+        // Map Windows Service configurations to equivalent init systems if possible,
+        // or reject them if mapping is unsupported for the specific platform.
+        let init_system = match target_os {
+            TargetOs::Linux => "systemd",
+            TargetOs::MacOs => "launchd",
+            TargetOs::FreeBsd => "rc",
+            TargetOs::SunOs => "SMF",
+            TargetOs::Windows => return Ok(()),
+        };
 
-            // For now, we stub the translation and reject complex service dependencies.
-            return Err(MsiError::UnsupportedPlatformFeature {
-                feature: "ServiceInstall".to_string(),
-                target_os,
-                reason: format!("Translation of Windows services to POSIX {init_system} is not yet fully implemented"),
-            });
-        }
-
-        Ok(())
+        // For now, we stub the translation and reject complex service dependencies.
+        Err(MsiError::UnsupportedPlatformFeature {
+            feature: "ServiceInstall".to_string(),
+            target_os,
+            reason: format!("Translation of Windows services to POSIX {init_system} is not yet fully implemented"),
+        })
     }
 
     /// Validates a `ServiceControl` action for the target operating system.
@@ -100,6 +100,10 @@ impl ServiceEvaluator {
     ///
     /// # Errors
     /// Returns `MsiError::UnsupportedPlatformFeature` if service control is unsupported on the platform.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn validate_service_control(
         &self,
         _row: &ServiceControlRow,
@@ -119,6 +123,14 @@ impl ServiceEvaluator {
     ///
     /// # Errors
     /// Returns an error on failure.
+    ///
+    /// # Arguments
+    ///
+    /// * `row` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[cfg(windows)]
     pub fn evaluate_scm_install(&self, row: &ServiceInstallRow) -> Result<()> {
         // Native SCM interaction placeholder using Windows APIs.
@@ -186,30 +198,26 @@ mod tests {
         let err_linux = evaluator
             .validate_service_install(&row, TargetOs::Linux)
             .unwrap_err();
-        if let MsiError::UnsupportedPlatformFeature { reason, .. } = err_linux {
-            assert!(reason.contains("systemd"));
-        }
+        assert!(err_linux.to_string().contains("systemd"));
 
         let err_mac = evaluator
             .validate_service_install(&row, TargetOs::MacOs)
             .unwrap_err();
-        if let MsiError::UnsupportedPlatformFeature { reason, .. } = err_mac {
-            assert!(reason.contains("launchd"));
-        }
+        assert!(err_mac.to_string().contains("launchd"));
 
         let err_freebsd = evaluator
             .validate_service_install(&row, TargetOs::FreeBsd)
             .unwrap_err();
-        if let MsiError::UnsupportedPlatformFeature { reason, .. } = err_freebsd {
-            assert!(reason.contains("rc"));
-        }
+        assert!(err_freebsd.to_string().contains("rc"));
 
         let err_sunos = evaluator
             .validate_service_install(&row, TargetOs::SunOs)
             .unwrap_err();
-        if let MsiError::UnsupportedPlatformFeature { reason, .. } = err_sunos {
-            assert!(reason.contains("SMF"));
-        }
+        assert!(err_sunos.to_string().contains("SMF"));
+
+        assert!(evaluator
+            .validate_service_install(&row, TargetOs::Windows)
+            .is_ok());
     }
 
     #[test]

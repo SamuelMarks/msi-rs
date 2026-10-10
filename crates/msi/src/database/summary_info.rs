@@ -480,6 +480,14 @@ impl SummaryInfo {
     }
 
     /// Helper to encode a string into `VT_LPSTR` format (4-byte length + string + null byte + padding).
+    ///
+    /// # Arguments
+    ///
+    /// * `s` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::cast_possible_truncation)]
     fn encode_lpstr(s: &str) -> Vec<u8> {
         let bytes = s.as_bytes();

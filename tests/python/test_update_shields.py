@@ -8,8 +8,7 @@ from unittest.mock import patch
 
 repo_root = Path(__file__).resolve().parent.parent.parent
 scripts_dir = repo_root / "scripts"
-if str(scripts_dir) not in sys.path:
-    sys.path.insert(0, str(scripts_dir))
+sys.path.insert(0, str(scripts_dir))
 
 
 def test_update_shields_main() -> None:

@@ -31,15 +31,33 @@ pub struct FormatContext {
 /// # Returns
 ///
 /// The fully formatted string.
+///
+/// # Errors
+///
+/// Returns an error if the template cannot be formatted.
 pub fn format_record(template: &str, record: &Record, context: &FormatContext) -> Result<String> {
     format_internal(template, Some(record), context)
 }
 
 /// Formats a string without a record context.
+///
+/// # Arguments
+///
+/// * `template` - TODO: Document argument.
+/// * `context` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
+///
+/// # Errors
+///
+/// Returns an error if the template cannot be formatted.
 pub fn format_string(template: &str, context: &FormatContext) -> Result<String> {
     format_internal(template, None, context)
 }
 
+/// Internal formatter entrypoint.
 fn format_internal(
     template: &str,
     record: Option<&Record>,
@@ -49,6 +67,7 @@ fn format_internal(
     parse_until(&mut chars, None, record, context)
 }
 
+/// Parses the template string until a stop character.
 fn parse_until(
     chars: &mut std::iter::Peekable<std::str::Chars<'_>>,
     stop_char: Option<char>,
@@ -176,29 +195,29 @@ mod tests {
             .insert("comp1".to_string(), "C:\\Path\\".to_string());
 
         assert_eq!(
-            format_record("Test [MyProp]", &rec, &ctx).unwrap(),
+            format_record("Test [MyProp]", &rec, &ctx).expect("test"),
             "Test PropVal"
         );
         assert_eq!(
-            format_record("Test [%MY_ENV]", &rec, &ctx).unwrap(),
+            format_record("Test [%MY_ENV]", &rec, &ctx).expect("test"),
             "Test EnvVal"
         );
         assert_eq!(
-            format_record("Test [#file1]", &rec, &ctx).unwrap(),
+            format_record("Test [#file1]", &rec, &ctx).expect("test"),
             "Test C:\\Path\\file1.txt"
         );
         assert_eq!(
-            format_record("Test [$comp1]", &rec, &ctx).unwrap(),
+            format_record("Test [$comp1]", &rec, &ctx).expect("test"),
             "Test C:\\Path\\"
         );
         assert_eq!(
-            format_record("Field 1: [1], Field 2: [2]", &rec, &ctx).unwrap(),
+            format_record("Field 1: [1], Field 2: [2]", &rec, &ctx).expect("test"),
             "Field 1: Value1, Field 2: 42"
         );
 
         // Unclosed bracket
         assert_eq!(
-            format_record("Test [unclosed", &rec, &ctx).unwrap(),
+            format_record("Test [unclosed", &rec, &ctx).expect("test"),
             "Test [unclosed"
         );
     }
@@ -209,13 +228,49 @@ mod tests {
         let ctx = FormatContext::default();
         std::env::set_var("MSI_TEST_VAR", "SystemVal");
         assert_eq!(
-            format_record("Test [%MSI_TEST_VAR]", &rec, &ctx).unwrap(),
+            format_record("Test [%MSI_TEST_VAR]", &rec, &ctx).expect("test"),
             "Test SystemVal"
         );
         assert_eq!(
-            format_record("Test [%UNKNOWN_VAR]", &rec, &ctx).unwrap(),
+            format_record("Test [%UNKNOWN_VAR]", &rec, &ctx).expect("test"),
             "Test "
         );
+    }
+
+    #[test]
+    fn test_format_record_edge_cases() {
+        let rec = Record::with_fields(vec![
+            FieldValue::Null,
+            FieldValue::String("Value1".to_string()),
+        ]);
+        let ctx = FormatContext::default();
+
+        // [\ - ends abruptly
+        assert_eq!(
+            format_record("Test [\\", &rec, &ctx).expect("test"),
+            "Test [\\"
+        );
+
+        // [\] - missing x, evaluates as unknown property \
+        assert_eq!(
+            format_record("Test [\\]", &rec, &ctx).expect("test"),
+            "Test "
+        );
+
+        // [\[ - missing ]
+        assert_eq!(
+            format_record("Test [\\[", &rec, &ctx).expect("test"),
+            "Test [\\["
+        );
+
+        // [99] - idx out of bounds
+        assert_eq!(
+            format_record("Test [99]", &rec, &ctx).expect("test"),
+            "Test "
+        );
+
+        // [1] - record is None
+        assert_eq!(format_string("Test [1]", &ctx).expect("test"), "Test ");
     }
 
     #[test]
@@ -228,19 +283,19 @@ mod tests {
         ctx.properties.insert("Missing".to_string(), String::new());
 
         // Escapes
-        assert_eq!(format_string("[\\[]", &ctx).unwrap(), "[");
-        assert_eq!(format_string("[\\]]", &ctx).unwrap(), "]");
-        assert_eq!(format_string("[\\x]", &ctx).unwrap(), "x");
+        assert_eq!(format_string("[\\[]", &ctx).expect("test"), "[");
+        assert_eq!(format_string("[\\]]", &ctx).expect("test"), "]");
+        assert_eq!(format_string("[\\x]", &ctx).expect("test"), "x");
 
         // Null character
-        assert_eq!(format_string("[~]", &ctx).unwrap(), "\0");
+        assert_eq!(format_string("[~]", &ctx).expect("test"), "\0");
 
         // Nested
-        assert_eq!(format_string("[[Inner]]", &ctx).unwrap(), "OutVal");
-        assert_eq!(format_string("[Missing]", &ctx).unwrap(), "");
+        assert_eq!(format_string("[[Inner]]", &ctx).expect("test"), "OutVal");
+        assert_eq!(format_string("[Missing]", &ctx).expect("test"), "");
 
         // Unmatched right bracket
-        assert_eq!(format_string("foo]", &ctx).unwrap(), "foo]");
+        assert_eq!(format_string("foo]", &ctx).expect("test"), "foo]");
     }
 
     #[test]
@@ -257,7 +312,7 @@ mod tests {
         };
 
         // Just checking that we traverse that execution branch inside format_string without panicking.
-        let formatted = format_string(r"Prop is [MyProp[\]]", &ctx).unwrap();
+        let formatted = format_string(r"Prop is [MyProp[\]]", &ctx).expect("test");
         // Since MyProp[\] is not resolved to anything (because of depth nesting mismatch or whatever it produces),
         // we just assert it doesn't fail and returns the string.
         assert_eq!(formatted, r"Prop is [MyProp[\]]");
@@ -289,27 +344,27 @@ mod tests {
         ]);
 
         // $Comp1
-        let formatted = format_record("Component is [$Comp1]", &rec, &ctx).unwrap();
+        let formatted = format_record("Component is [$Comp1]", &rec, &ctx).expect("test");
         assert_eq!(formatted, "Component is C:\\CompDir");
 
         // !file
-        let formatted = format_record("File is [!file]", &rec, &ctx).unwrap();
+        let formatted = format_record("File is [!file]", &rec, &ctx).expect("test");
         assert_eq!(formatted, "File is "); // unsupported
 
         // ?file
-        let formatted = format_record("File is [?file]", &rec, &ctx).unwrap();
+        let formatted = format_record("File is [?file]", &rec, &ctx).expect("test");
         assert_eq!(formatted, "File is "); // unsupported
 
         // Invalid record index
-        let formatted = format_record("Value is [5]", &rec, &ctx).unwrap();
+        let formatted = format_record("Value is [5]", &rec, &ctx).expect("test");
         assert_eq!(formatted, "Value is ");
 
         // Missing property
-        let formatted = format_record("Missing is [MissingProp]", &rec, &ctx).unwrap();
+        let formatted = format_record("Missing is [MissingProp]", &rec, &ctx).expect("test");
         assert_eq!(formatted, "Missing is ");
 
         // Standalone bracket
-        let formatted = format_record("Close bracket ]", &rec, &ctx).unwrap();
+        let formatted = format_record("Close bracket ]", &rec, &ctx).expect("test");
         assert_eq!(formatted, "Close bracket ]");
     }
 }

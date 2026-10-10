@@ -6,6 +6,10 @@ pub struct TableName(pub String);
 
 impl TableName {
     /// Returns the string representation.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -18,6 +22,10 @@ pub struct ColumnName(pub String);
 
 impl ColumnName {
     /// Returns the string representation.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0

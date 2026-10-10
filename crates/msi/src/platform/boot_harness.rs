@@ -306,6 +306,10 @@ impl InitScriptBuilder {
     }
 
     /// Renders the standalone PID 1 shell script.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn render_pid_one(&self) -> String {
         let mut s = String::from("#!/bin/sh\n");
         s.push_str("# msi-rs bare-metal early userspace init (PID 1)\n");
@@ -342,6 +346,10 @@ impl InitScriptBuilder {
     }
 
     /// Renders a systemd unit service file.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn render_systemd(&self) -> String {
         let mut s = String::from("[Unit]\n");
         s.push_str("Description=msi-rs Bare-Metal Installer\n");
@@ -371,6 +379,10 @@ impl InitScriptBuilder {
     }
 
     /// Renders an `OpenRC` service script.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn render_openrc(&self) -> String {
         let mut s = String::from("#!/sbin/openrc-run\n");
         s.push_str("description=\"msi-rs Bare-Metal Installer\"\n\n");
@@ -875,6 +887,10 @@ impl LiveMediaGenerator {
     }
 
     /// Generates hybrid ISO-9660 with Primary Volume Descriptor, Path Tables, Directory records, and El Torito boot catalog.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn generate_hybrid_iso(&self) -> Vec<u8> {
         let sector_size = 2048;
         let mut image = vec![0u8; 16 * sector_size];
@@ -997,6 +1013,10 @@ impl LiveMediaGenerator {
     }
 
     /// Generates raw USB block disk image with protective MBR and compliant GPT partition table.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::cast_possible_truncation)]
     fn generate_raw_usb(&self) -> Vec<u8> {
         let sector_size = 512;

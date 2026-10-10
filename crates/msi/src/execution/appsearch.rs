@@ -16,6 +16,16 @@ pub trait HostSystem {
     ///
     /// # Errors
     /// Returns `MsiError` on system access failure.
+    ///
+    /// # Arguments
+    ///
+    /// * `root` - TODO: Document argument.
+    /// * `key` - TODO: Document argument.
+    /// * `name` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn get_registry_value(
         &self,
         root: i32,
@@ -26,6 +36,17 @@ pub trait HostSystem {
     ///
     /// # Errors
     /// Returns `MsiError` on system access failure.
+    ///
+    /// # Arguments
+    ///
+    /// * `file` - TODO: Document argument.
+    /// * `section` - TODO: Document argument.
+    /// * `key` - TODO: Document argument.
+    /// * `field` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn get_ini_value(
         &self,
         file: &str,
@@ -37,16 +58,44 @@ pub trait HostSystem {
     ///
     /// # Errors
     /// Returns `MsiError` on system access failure.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - TODO: Document argument.
+    /// * `name` - TODO: Document argument.
+    /// * `depth` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn find_file(&self, path: &str, name: &str, depth: u32) -> Result<Option<String>>;
     /// Finds a directory by path.
     ///
     /// # Errors
     /// Returns `MsiError` on system access failure.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - TODO: Document argument.
+    /// * `depth` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn find_dir(&self, path: &str, depth: u32) -> Result<Option<String>>;
     /// Validates a file against a signature.
     ///
     /// # Errors
     /// Returns `MsiError` on system access failure.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - TODO: Document argument.
+    /// * `sig` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn check_signature(&self, path: &str, sig: &Signature) -> Result<bool>;
 }
 
@@ -140,6 +189,15 @@ pub struct AppSearch<'a, H: HostSystem> {
 
 impl<'a, H: HostSystem> AppSearch<'a, H> {
     /// Gets a string field from a record.
+    ///
+    /// # Arguments
+    ///
+    /// * `r` - TODO: Document argument.
+    /// * `idx` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn get_string(r: &Record, idx: usize) -> Option<&str> {
         match r.get(idx) {
             Some(FieldValue::String(s)) => Some(s),
@@ -148,6 +206,15 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     }
 
     /// Gets an integer field from a record.
+    ///
+    /// # Arguments
+    ///
+    /// * `r` - TODO: Document argument.
+    /// * `idx` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn get_i32(r: &Record, idx: usize) -> Option<i32> {
         match r.get(idx) {
             Some(FieldValue::Long(i)) => Some(*i),
@@ -157,6 +224,15 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     }
 
     /// Creates a new `AppSearch`.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - TODO: Document argument.
+    /// * `host` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn new(db: &'a LinkedDatabase, host: H) -> Self {
         Self { db, host }
@@ -166,6 +242,10 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     ///
     /// # Errors
     /// Returns `MsiError` on evaluation failure.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn execute(&self) -> Result<HashMap<String, String>> {
         let mut results = HashMap::new();
         // Parse the AppSearch table
@@ -186,6 +266,14 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     }
 
     /// Resolves a signature ID to a path.
+    ///
+    /// # Arguments
+    ///
+    /// * `sig_id` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn resolve_signature(&self, sig_id: &str) -> Option<String> {
         // Step 1: Query CompLocator
         if let Some(_comp_loc) = self.find_comp_locator(sig_id) {
@@ -255,6 +343,15 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     }
 
     /// Validates a path against a signature.
+    ///
+    /// # Arguments
+    ///
+    /// * `sig_id` - TODO: Document argument.
+    /// * `path` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn validate_with_signature(&self, sig_id: &str, path: &str) -> Option<String> {
         self.find_signature(sig_id).map_or_else(
             || Some(path.to_string()),
@@ -263,11 +360,27 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     }
 
     /// Checks if a locator type is file or directory.
+    ///
+    /// # Arguments
+    ///
+    /// * `locator_type` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     const fn is_file_or_dir_locator(locator_type: u32) -> bool {
         locator_type == 0 || locator_type == 1
     }
 
     /// Finds a signature by ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `sig_id` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn find_signature(&self, sig_id: &str) -> Option<Signature> {
         self.db
             .tables
@@ -288,6 +401,14 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     }
 
     /// Finds a `RegLocator` by signature ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `sig_id` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn find_reg_locator(&self, sig_id: &str) -> Option<RegLocator> {
         self.db
             .tables
@@ -304,6 +425,14 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     }
 
     /// Finds an `IniLocator` by signature ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `sig_id` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn find_ini_locator(&self, sig_id: &str) -> Option<IniLocator> {
         self.db
             .tables
@@ -321,6 +450,14 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     }
 
     /// Finds a `DrLocator` by signature ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `sig_id` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn find_dr_locator(&self, sig_id: &str) -> Option<DrLocator> {
         self.db
             .tables
@@ -336,6 +473,14 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     }
 
     /// Finds a `CompLocator` by signature ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `sig_id` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn find_comp_locator(&self, sig_id: &str) -> Option<CompLocator> {
         self.db
             .tables
@@ -420,16 +565,16 @@ mod tests {
 
     #[test]
     fn test_appsearch_empty() {
-        let db = LinkedDatabase::new().unwrap();
+        let db = LinkedDatabase::new().expect("test");
         let host = MockHost::default();
         let app_search = AppSearch::new(&db, host);
-        let res = app_search.execute().unwrap();
+        let res = app_search.execute().expect("test");
         assert!(res.is_empty());
     }
 
     #[test]
     fn test_appsearch_reglocator_raw() {
-        let mut db = LinkedDatabase::new().unwrap();
+        let mut db = LinkedDatabase::new().expect("test");
         db.add_record(
             "AppSearch",
             Record::with_fields(vec![
@@ -498,13 +643,13 @@ mod tests {
         );
 
         let app_search = AppSearch::new(&db, host);
-        let res = app_search.execute().unwrap();
+        let res = app_search.execute().expect("test");
         assert_eq!(&res["MYPROP"], "C:\\Acme");
     }
 
     #[test]
     fn test_appsearch_reglocator_file_sig() {
-        let mut db = LinkedDatabase::new().unwrap();
+        let mut db = LinkedDatabase::new().expect("test");
         db.add_record(
             "AppSearch",
             Record::with_fields(vec![
@@ -585,13 +730,13 @@ mod tests {
             .insert("C:\\Acme\\acme.exe".to_string(), true);
 
         let app_search = AppSearch::new(&db, host);
-        let res = app_search.execute().unwrap();
+        let res = app_search.execute().expect("test");
         assert_eq!(&res["MYPROP"], "C:\\Acme\\acme.exe");
     }
 
     #[test]
     fn test_appsearch_inilocator() {
-        let mut db = LinkedDatabase::new().unwrap();
+        let mut db = LinkedDatabase::new().expect("test");
         db.add_record(
             "AppSearch",
             Record::with_fields(vec![
@@ -662,13 +807,13 @@ mod tests {
         );
 
         let app_search = AppSearch::new(&db, host);
-        let res = app_search.execute().unwrap();
+        let res = app_search.execute().expect("test");
         assert_eq!(&res["MYINI"], "IniValue");
     }
 
     #[test]
     fn test_appsearch_drlocator() {
-        let mut db = LinkedDatabase::new().unwrap();
+        let mut db = LinkedDatabase::new().expect("test");
         db.add_record(
             "AppSearch",
             Record::with_fields(vec![
@@ -732,13 +877,13 @@ mod tests {
         );
 
         let app_search = AppSearch::new(&db, host);
-        let res = app_search.execute().unwrap();
+        let res = app_search.execute().expect("test");
         assert_eq!(&res["MYDIR"], "C:\\Program Files\\Acme");
     }
 
     #[test]
     fn test_appsearch_drlocator_with_signature() {
-        let mut db = LinkedDatabase::new().unwrap();
+        let mut db = LinkedDatabase::new().expect("test");
         db.add_record(
             "AppSearch",
             Record::with_fields(vec![
@@ -817,13 +962,13 @@ mod tests {
         host.signatures.insert("C:\\App\\app.exe".to_string(), true);
 
         let app_search = AppSearch::new(&db, host);
-        let res = app_search.execute().unwrap();
+        let res = app_search.execute().expect("test");
         assert_eq!(&res["MYFILE"], "C:\\App\\app.exe");
     }
 
     #[test]
     fn test_appsearch_complocator() {
-        let mut db = LinkedDatabase::new().unwrap();
+        let mut db = LinkedDatabase::new().expect("test");
         db.add_record(
             "AppSearch",
             Record::with_fields(vec![
@@ -842,14 +987,14 @@ mod tests {
 
         let host = MockHost::default();
         let app_search = AppSearch::new(&db, host);
-        let res = app_search.execute().unwrap();
+        let res = app_search.execute().expect("test");
         // CompLocator unimpl
         assert!(res.is_empty());
     }
 
     #[test]
     fn test_appsearch_extra_coverage() {
-        let mut db = LinkedDatabase::new().unwrap();
+        let mut db = LinkedDatabase::new().expect("test");
         // 1) AppSearch empty prop/sig
         db.add_record(
             "AppSearch",
@@ -945,14 +1090,14 @@ mod tests {
         host.signatures
             .insert(r"C:\FailFile.exe".to_string(), false);
         let app_search = AppSearch::new(&db, host);
-        let res = app_search.execute().unwrap();
+        let res = app_search.execute().expect("test");
         assert_eq!(&res["MYINIFILE"], r"C:\IniFile");
     }
 
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_appsearch_extra_coverage_pt2() {
-        let mut db = LinkedDatabase::new().unwrap();
+        let mut db = LinkedDatabase::new().expect("test");
 
         // 5) DrLocator missing path but has parent (line 216), parent resolves to "C:\Parent"
         db.add_record(
@@ -1157,7 +1302,7 @@ mod tests {
             .insert("C:\\Found\\found_bad_sig.exe".to_string(), false);
 
         let app_search = AppSearch::new(&db, host);
-        let res = app_search.execute().unwrap();
+        let res = app_search.execute().expect("test");
 
         assert_eq!(&res["MYDIRPARENT"], "C:\\Parent");
         assert_eq!(&res["MYDIRBOTH"], "C:\\Parent\\Child");
@@ -1165,7 +1310,7 @@ mod tests {
 
     #[test]
     fn test_appsearch_locator_type_unsupported() {
-        let mut db = LinkedDatabase::new().unwrap();
+        let mut db = LinkedDatabase::new().expect("test");
         db.add_record(
             "AppSearch",
             Record::with_fields(vec![
@@ -1256,14 +1401,14 @@ mod tests {
         );
 
         let app_search = AppSearch::new(&db, host);
-        let res = app_search.execute().unwrap();
+        let res = app_search.execute().expect("test");
         assert!(res.is_empty());
     }
 
     #[test]
     #[allow(clippy::unwrap_used)]
     fn test_appsearch_negative_values() {
-        let mut db = LinkedDatabase::new().unwrap();
+        let mut db = LinkedDatabase::new().expect("test");
         db.add_record(
             "AppSearch",
             Record::with_fields(vec![
@@ -1301,7 +1446,7 @@ mod tests {
 
     #[test]
     fn test_appsearch_errors() {
-        let mut db = LinkedDatabase::new().unwrap();
+        let mut db = LinkedDatabase::new().expect("test");
         db.add_record(
             "DrLocator",
             Record::with_fields(vec![

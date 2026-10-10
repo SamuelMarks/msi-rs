@@ -20,7 +20,8 @@ use msi::cfb::reader::CfbReader;
 ///
 /// `data` must point to `len` bytes of readable memory.
 /// `ppstg` must be a valid pointer to receive the `IStorage` pointer.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "C" fn msi_create_storage_from_memory(
     data: *const u8,
     len: usize,

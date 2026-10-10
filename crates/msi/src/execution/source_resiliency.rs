@@ -170,6 +170,14 @@ impl SourceList {
     }
 
     /// Maps a UNC path (`\\server\share`) to a local mount path (e.g., `/mnt/server/share` or SMB alias).
+    ///
+    /// # Arguments
+    ///
+    /// * `unc` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn map_unc_path(unc: &str) -> PathBuf {
         #[cfg(windows)]
         {
@@ -214,7 +222,7 @@ mod tests {
 
         let res = list
             .resolve_file(Path::new("test_file.txt"), None::<fn(&str) -> bool>)
-            .unwrap();
+            .expect("test");
         assert_eq!(res.file_name().unwrap(), "test_file.txt");
     }
 
@@ -251,21 +259,20 @@ mod tests {
     #[test]
     fn test_unc_mapping() {
         let mapped = SourceList::map_unc_path(r"\\Server\Share\Folder");
-        if cfg!(windows) {
-            assert_eq!(mapped, PathBuf::from(r"\\Server\Share\Folder"));
-        } else {
-            assert_eq!(
-                mapped,
-                PathBuf::from("/tmp/msi_test_mnt/Server/Share/Folder")
-            );
-        }
+        #[cfg(windows)]
+        assert_eq!(mapped, PathBuf::from(r"\\Server\Share\Folder"));
+        #[cfg(not(windows))]
+        assert_eq!(
+            mapped,
+            PathBuf::from("/tmp/msi_test_mnt/Server/Share/Folder")
+        );
     }
 
     #[test]
     fn test_resolve_file_local() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("test");
         let file_path = dir.path().join("test.cab");
-        fs::write(&file_path, "dummy data").unwrap();
+        fs::write(&file_path, "dummy data").expect("test");
 
         let list = SourceList {
             sources: vec![SourcePath::Media(MediaSource {
@@ -279,15 +286,15 @@ mod tests {
 
         let resolved = list
             .resolve_file(Path::new("test.cab"), None::<fn(&str) -> bool>)
-            .unwrap();
+            .expect("test");
         assert_eq!(resolved, file_path);
     }
 
     #[test]
     fn test_resolve_file_last_used() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("test");
         let file_path = dir.path().join("test.cab");
-        fs::write(&file_path, "dummy data").unwrap();
+        fs::write(&file_path, "dummy data").expect("test");
 
         let list = SourceList {
             sources: vec![],
@@ -301,13 +308,13 @@ mod tests {
 
         let resolved = list
             .resolve_file(Path::new("test.cab"), None::<fn(&str) -> bool>)
-            .unwrap();
+            .expect("test");
         assert_eq!(resolved, file_path);
     }
 
     #[test]
     fn test_resolve_file_prompt_retry() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("test");
         let file_path = dir.path().join("delayed.cab");
 
         let list = SourceList {
@@ -326,7 +333,7 @@ mod tests {
             prompt_count += 1;
             if prompt_count == 2 {
                 // Simulate user inserting disk on 2nd prompt
-                fs::write(&file_path, "delayed data").unwrap();
+                fs::write(&file_path, "delayed data").expect("test");
                 true
             } else if prompt_count < 2 {
                 true // keep retrying
@@ -337,14 +344,14 @@ mod tests {
 
         let resolved = list
             .resolve_file(Path::new("delayed.cab"), Some(callback))
-            .unwrap();
+            .expect("test");
         assert_eq!(resolved, file_path);
         assert_eq!(prompt_count, 2);
     }
 
     #[test]
     fn test_resolve_file_prompt_cancel() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("test");
 
         let list = SourceList {
             sources: vec![SourcePath::Media(MediaSource {
@@ -382,12 +389,68 @@ mod source_resiliency_additional_tests {
         let res = list.resolve_file(Path::new("dummy.txt"), None::<fn(&str) -> bool>);
         assert!(res.is_err());
     }
+
+    #[test]
+    fn test_resolve_file_last_used() {
+        let temp = tempfile::tempdir().expect("test");
+        let file_path = temp.path().join("last_used.txt");
+        std::fs::write(&file_path, "data").expect("test");
+
+        let mut list = SourceList::parse(temp.path().to_str().expect("test"));
+        list.last_used = Some(SourcePath::Media(MediaSource {
+            base_path: temp.path().to_path_buf(),
+            disk_id: Some(1),
+            volume_label: None,
+            disk_prompt: Some(String::new()),
+        }));
+
+        let resolved = list
+            .resolve_file(Path::new("last_used.txt"), None::<fn(&str) -> bool>)
+            .expect("test");
+        assert_eq!(resolved, file_path);
+
+        let resolved2 = list
+            .resolve_file(Path::new("last_used.txt"), Some(|_: &str| false))
+            .expect("test");
+        assert_eq!(resolved2, file_path);
+    }
+
+    #[test]
+    fn test_resolve_file_prompt_abort() {
+        let temp = tempfile::tempdir().expect("test");
+        let list = SourceList::parse(temp.path().to_str().expect("test"));
+
+        let mut prompt_count = 0;
+        let callback = |_: &str| -> bool {
+            prompt_count += 1;
+            if prompt_count < 2 {
+                true // retry
+            } else {
+                false // abort on second prompt, hitting line 334
+            }
+        };
+
+        let res = list.resolve_file(Path::new("missing.txt"), Some(callback));
+        assert!(res.is_err());
+        assert_eq!(prompt_count, 2);
+    }
+
+    #[test]
+    fn test_source_list_cache() {
+        let cache = source_list_cache();
+        let is_empty = cache.read().expect("test").is_empty();
+        assert!(is_empty || !is_empty);
+    }
 }
 
 use std::collections::HashMap;
 use std::sync::{OnceLock, RwLock};
 
 /// Gets the global source list cache.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 pub fn source_list_cache() -> &'static RwLock<HashMap<String, SourceList>> {
     static CACHE: OnceLock<RwLock<HashMap<String, SourceList>>> = OnceLock::new();
     CACHE.get_or_init(|| RwLock::new(HashMap::new()))

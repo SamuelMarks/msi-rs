@@ -148,6 +148,15 @@ impl CfHeader {
     }
 
     /// Parses a null-terminated string from `bytes` starting at `cursor`.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes` - TODO: Document argument.
+    /// * `cursor` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_cstring(bytes: &[u8], cursor: &mut usize) -> Result<String> {
         let start = *cursor;
         let Some(pos) = bytes[start..].iter().position(|&b| b == 0) else {

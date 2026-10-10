@@ -22,6 +22,14 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 /// Executes the `build` subcommand.
+///
+/// # Arguments
+///
+/// * `args` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn handle_build(args: &[String]) -> i32 {
     match WixBuildOptions::parse(args) {
         Ok(opts) => match opts.execute() {
@@ -42,6 +50,14 @@ fn handle_build(args: &[String]) -> i32 {
 }
 
 /// Executes the `clean` subcommand.
+///
+/// # Arguments
+///
+/// * `args` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn handle_clean(args: &[String]) -> i32 {
     let target = if args.is_empty() {
         Path::new(".")
@@ -70,6 +86,14 @@ fn handle_clean(args: &[String]) -> i32 {
 }
 
 /// Executes the `extension` subcommand.
+///
+/// # Arguments
+///
+/// * `args` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn handle_extension(args: &[String]) -> i32 {
     if args.is_empty() {
         println!("Registered WiX Extensions:");
@@ -118,6 +142,14 @@ fn handle_extension(args: &[String]) -> i32 {
 }
 
 /// Executes the `format` subcommand.
+///
+/// # Arguments
+///
+/// * `args` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn handle_format(args: &[String]) -> i32 {
     if args.is_empty() {
         eprintln!("wix.exe : error WIX0009 : missing source file path for 'format'");
@@ -154,6 +186,14 @@ fn handle_format(args: &[String]) -> i32 {
 }
 
 /// Executes the `harvest` subcommand.
+///
+/// # Arguments
+///
+/// * `args` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn handle_harvest(args: &[String]) -> i32 {
     if args.len() < 2 {
         eprintln!(
@@ -216,6 +256,14 @@ fn handle_harvest(args: &[String]) -> i32 {
 }
 
 /// Executes the `msi` subcommand group.
+///
+/// # Arguments
+///
+/// * `args` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 #[allow(clippy::too_many_lines)]
 fn handle_msi(args: &[String]) -> i32 {
     if args.is_empty() {
@@ -397,6 +445,10 @@ pub fn run_app(args: &[String]) -> ExitCode {
 }
 
 /// Entry point for the `wix` executable.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 #[must_use = "process exit code must be handled"]
 pub fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();

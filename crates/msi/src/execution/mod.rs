@@ -76,6 +76,7 @@ pub mod com_rpc;
 pub mod font;
 pub mod ipc;
 pub mod logging;
+pub mod manifest_extract;
 pub mod msdelta;
 pub mod rm;
 pub use logging::*;
@@ -105,6 +106,7 @@ pub use automation::*;
 /// Sequence parsing and execution constants.
 pub mod dispatcher;
 
+pub mod rpc;
 /// Sequence types.
 pub mod sequence;
 pub mod services;

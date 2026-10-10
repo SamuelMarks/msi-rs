@@ -352,6 +352,10 @@ runcmd:
     /// # Errors
     ///
     /// Returns [`MsiError::UnattendError`] if directory or file write fails.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn write_to_sysroot(&self, sysroot: &Path) -> Result<()> {
         let cloud_dir = sysroot.join("etc/cloud/cloud.cfg.d");
         let sysusers_dir = sysroot.join("etc/sysusers.d");

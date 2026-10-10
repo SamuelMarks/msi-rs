@@ -1,15 +1,56 @@
 //! Error types and results for the MSI library.
 
 use crate::platform::paths::TargetOs;
-use derive_more::{Display, Error};
+use derive_more::{Display, Error, From};
+
+/// Strongly typed context for I/O errors that implements `PartialEq` and `Eq` for testing.
+#[derive(Debug, Display)]
+#[display("{_0}")]
+pub struct IoContext(pub std::io::Error);
+
+impl PartialEq for IoContext {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.kind() == other.0.kind() && self.0.to_string() == other.0.to_string()
+    }
+}
+
+impl Eq for IoContext {}
+
+impl std::error::Error for IoContext {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.0)
+    }
+}
+
+impl IoContext {
+    /// Creates a new `IoContext` from a string representation.
+    ///
+    /// # Arguments
+    ///
+    /// * `s` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
+    #[must_use]
+    pub fn from_string(s: String) -> Self {
+        Self(std::io::Error::new(std::io::ErrorKind::Other, s))
+    }
+}
+
+impl From<std::io::Error> for IoContext {
+    fn from(err: std::io::Error) -> Self {
+        Self(err)
+    }
+}
 
 /// Primary error enum for all MSI operations.
-#[derive(Debug, Display, Error, PartialEq, Eq)]
+#[derive(Debug, Display, Error, PartialEq, Eq, From)]
 pub enum MsiError {
     /// An I/O error occurred during an operation.
     #[display("I/O error: {_0}")]
-    #[error(ignore)]
-    Io(String),
+    #[from(forward)]
+    Io(IoContext),
 
     /// An invalid argument was provided to an operation.
     #[display("Invalid argument '{argument}': {reason}")]
@@ -40,6 +81,46 @@ pub enum MsiError {
         /// Target element or record that failed validation.
         element: String,
         /// Reason for validation failure.
+        reason: String,
+    },
+
+    /// Physical layout column count mismatch during serialization or deserialization.
+    #[display("Physical layout mismatch for table '{table}': expected {expected_cols} columns, actual {actual_cols}")]
+    PhysicalLayoutMismatch {
+        /// Name of the table.
+        table: String,
+        /// Expected number of columns from schema.
+        expected_cols: usize,
+        /// Actual number of columns in layout or record.
+        actual_cols: usize,
+    },
+
+    /// Integer encoding or biasing error.
+    #[display("Integer encoding error for column '{column}' with value {value}: {reason}")]
+    IntegerEncodingError {
+        /// Name of the column.
+        column: String,
+        /// Value that failed to encode.
+        value: i64,
+        /// Reason for failure.
+        reason: String,
+    },
+
+    /// Stream name encoding or decoding error.
+    #[display("Stream name encoding error for '{name}': {reason}")]
+    StreamNameEncodingError {
+        /// Name of the stream.
+        name: String,
+        /// Reason for failure.
+        reason: String,
+    },
+
+    /// Cabinet compression or decompression error.
+    #[display("Cabinet compression error for '{cab}': {reason}")]
+    CabinetCompressionError {
+        /// Name of the cabinet.
+        cab: String,
+        /// Reason for failure.
         reason: String,
     },
 
@@ -229,21 +310,67 @@ pub enum MsiError {
         reason: String,
     },
 
-    /// Decompression of a Cabinet block failed.
-    #[display("Decompression failed using {method}: {reason}")]
-    DecompressionFailed {
-        /// Name of compression algorithm (e.g., MSZIP, LZX).
-        method: String,
+    /// LZX decompression failed.
+    #[display("LZX decompression failed: {reason}")]
+    LzxDecompressionFailed {
         /// Reason decompression failed.
         reason: String,
     },
 
-    /// Compression of a Cabinet block failed.
-    #[display("Compression failed using {method}: {reason}")]
-    CompressionFailed {
-        /// Name of compression algorithm.
-        method: String,
+    /// LZX compression failed.
+    #[display("LZX compression failed: {reason}")]
+    LzxCompressionFailed {
         /// Reason compression failed.
+        reason: String,
+    },
+
+    /// The MSZIP signature is invalid.
+    #[display("Invalid MSZIP signature: expected {expected:02X?}, actual {actual:02X?}")]
+    InvalidMszipSignature {
+        /// Expected signature bytes.
+        expected: [u8; 2],
+        /// Actual signature bytes.
+        actual: [u8; 2],
+    },
+
+    /// MSZIP decompression failed.
+    #[display("MSZIP decompression failed: {reason}")]
+    MszipDecompressionFailed {
+        /// Reason decompression failed.
+        reason: String,
+    },
+
+    /// MSZIP compression failed.
+    #[display("MSZIP compression failed: {reason}")]
+    MszipCompressionFailed {
+        /// Reason compression failed.
+        reason: String,
+    },
+
+    /// Decompressed block size mismatch.
+    #[display("Decompressed size mismatch: expected {expected}, actual {actual}")]
+    DecompressedSizeMismatch {
+        /// Expected uncompressed bytes.
+        expected: usize,
+        /// Actual uncompressed bytes.
+        actual: usize,
+    },
+
+    /// Invalid cabinet folder index.
+    #[display("Invalid cabinet folder index: {index} (max {max})")]
+    InvalidCabinetFolderIndex {
+        /// Attempted index.
+        index: u16,
+        /// Maximum allowed index.
+        max: u16,
+    },
+
+    /// Cabinet deduplication conflict.
+    #[display("Cabinet deduplication conflict for '{path}': {reason}")]
+    CabinetDeduplicationConflict {
+        /// The path that caused the conflict.
+        path: String,
+        /// The reason for the conflict.
         reason: String,
     },
 
@@ -915,21 +1042,6 @@ pub enum MsiError {
     UserManagementError(String),
 }
 
-impl From<std::io::Error> for MsiError {
-    /// Converts a standard [`std::io::Error`] into an [`MsiError::Io`].
-    ///
-    /// # Arguments
-    ///
-    /// * `err` - The underlying standard I/O error.
-    ///
-    /// # Returns
-    ///
-    /// An [`MsiError::Io`] containing the string description of the I/O error.
-    fn from(err: std::io::Error) -> Self {
-        Self::Io(err.to_string())
-    }
-}
-
 /// A specialized [`Result`] type for MSI package operations.
 pub type Result<T> = std::result::Result<T, MsiError>;
 
@@ -941,7 +1053,7 @@ mod tests {
     /// Tests core error variant display formatting.
     #[test]
     fn test_error_display_core() {
-        let err_io = MsiError::Io("file not found".to_string());
+        let err_io = MsiError::Io(IoContext::from_string("file not found".to_string()));
         assert_eq!(format!("{err_io}"), "I/O error: file not found");
 
         let err_arg = MsiError::InvalidArgument {
@@ -1135,22 +1247,53 @@ mod tests {
             "Invalid Cabinet data: truncated header"
         );
 
-        let err_decomp = MsiError::DecompressionFailed {
-            method: "MSZIP".to_string(),
+        let err_sig_mszip = MsiError::InvalidMszipSignature {
+            expected: [0x43, 0x4B],
+            actual: [0x00, 0x00],
+        };
+        assert_eq!(
+            format!("{err_sig_mszip}"),
+            "Invalid MSZIP signature: expected [43, 4B], actual [00, 00]"
+        );
+
+        let err_decomp = MsiError::MszipDecompressionFailed {
             reason: "bad frame".to_string(),
         };
         assert_eq!(
             format!("{err_decomp}"),
-            "Decompression failed using MSZIP: bad frame"
+            "MSZIP decompression failed: bad frame"
         );
 
-        let err_comp = MsiError::CompressionFailed {
-            method: "LZX".to_string(),
+        let err_comp = MsiError::MszipCompressionFailed {
             reason: "window overflow".to_string(),
         };
         assert_eq!(
             format!("{err_comp}"),
-            "Compression failed using LZX: window overflow"
+            "MSZIP compression failed: window overflow"
+        );
+
+        let err_size = MsiError::DecompressedSizeMismatch {
+            expected: 100,
+            actual: 90,
+        };
+        assert_eq!(
+            format!("{err_size}"),
+            "Decompressed size mismatch: expected 100, actual 90"
+        );
+
+        let err_folder = MsiError::InvalidCabinetFolderIndex { index: 5, max: 2 };
+        assert_eq!(
+            format!("{err_folder}"),
+            "Invalid cabinet folder index: 5 (max 2)"
+        );
+
+        let err_dedup = MsiError::CabinetDeduplicationConflict {
+            path: "file.txt".to_string(),
+            reason: "hash collision".to_string(),
+        };
+        assert_eq!(
+            format!("{err_dedup}"),
+            "Cabinet deduplication conflict for 'file.txt': hash collision"
         );
 
         let err_fnf = MsiError::CabinetFileNotFound {
@@ -1165,6 +1308,44 @@ mod tests {
     /// Tests Database and String Pool error variant display formatting.
     #[test]
     fn test_error_display_db() {
+        let err_layout = MsiError::PhysicalLayoutMismatch {
+            table: "File".to_string(),
+            expected_cols: 5,
+            actual_cols: 4,
+        };
+        assert_eq!(
+            format!("{err_layout}"),
+            "Physical layout mismatch for table 'File': expected 5 columns, actual 4"
+        );
+
+        let err_int = MsiError::IntegerEncodingError {
+            column: "Sequence".to_string(),
+            value: -2_147_483_648,
+            reason: "out of bounds".to_string(),
+        };
+        assert_eq!(
+            format!("{err_int}"),
+            "Integer encoding error for column 'Sequence' with value -2147483648: out of bounds"
+        );
+
+        let err_stream = MsiError::StreamNameEncodingError {
+            name: "invalid".to_string(),
+            reason: "bad char".to_string(),
+        };
+        assert_eq!(
+            format!("{err_stream}"),
+            "Stream name encoding error for 'invalid': bad char"
+        );
+
+        let err_cab_comp = MsiError::CabinetCompressionError {
+            cab: "data.cab".to_string(),
+            reason: "mszip block fail".to_string(),
+        };
+        assert_eq!(
+            format!("{err_cab_comp}"),
+            "Cabinet compression error for 'data.cab': mszip block fail"
+        );
+
         let err_col = MsiError::InvalidColumnType { raw: 0xFFFF };
         assert_eq!(
             format!("{err_col}"),
@@ -1624,7 +1805,13 @@ mod tests {
     fn test_io_error_conversion() {
         let std_err = std::io::Error::new(std::io::ErrorKind::NotFound, "disk read failure");
         let msi_err = MsiError::from(std_err);
-        assert_eq!(msi_err, MsiError::Io("disk read failure".to_string()));
+        assert_eq!(
+            msi_err,
+            MsiError::Io(IoContext(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "disk read failure"
+            )))
+        );
     }
 
     /// Tests formatting and equality for WIM-specific error variants.
@@ -2031,5 +2218,13 @@ mod tests {
             err_act_exec,
             MsiError::ActionExecutionError("failed to execute".to_string())
         );
+    }
+
+    #[test]
+    fn test_io_context_error_trait() {
+        use std::error::Error;
+        let io_err = std::io::Error::new(std::io::ErrorKind::Other, "test");
+        let ctx = IoContext(io_err);
+        assert!(ctx.source().is_some());
     }
 }

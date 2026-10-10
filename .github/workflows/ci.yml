@@ -93,6 +93,33 @@ jobs:
       - name: Run Unit and Integration Tests
         run: cargo test --workspace --all-features --exclude msi-python
 
+  test-bsd-sunos:
+    name: Test Suite (${{ matrix.os }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: freebsd
+            uses: vmactions/freebsd-vm@v1
+          - os: solaris
+            uses: vmactions/solaris-vm@v1
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Run Unit and Integration Tests via VM
+        uses: ${{ matrix.uses }}
+        with:
+          usesh: true
+          prepare: |
+            pkg install -y curl gcc
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+            export PATH="$HOME/.cargo/bin:$PATH"
+          run: |
+            export PATH="$HOME/.cargo/bin:$PATH"
+            cargo test --workspace --all-features --exclude msi-python
+
   test-c-ffi:
     name: C-FFI Compatibility & Integration
     runs-on: ${{ matrix.os }}

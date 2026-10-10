@@ -81,6 +81,18 @@ impl MsiEmbeddedChainerRow {
     }
 
     /// Validates concrete parameters and creates a new [`MsiEmbeddedChainerRow`].
+    ///
+    /// # Arguments
+    ///
+    /// * `chainer` - Appropriate argument value.
+    /// * `condition` - Appropriate argument value.
+    /// * `command_line` - Appropriate argument value.
+    /// * `source` - Appropriate argument value.
+    /// * `chainer_type` - Appropriate argument value.
+    ///
+    /// # Returns
+    ///
+    /// An instance of this struct, or an appropriate return type.
     fn new_impl(
         chainer: String,
         condition: Option<String>,

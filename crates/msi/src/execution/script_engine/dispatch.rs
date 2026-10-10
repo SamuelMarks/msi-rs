@@ -30,6 +30,10 @@ pub struct DispParams {
 
 impl DispParams {
     /// Creates a new empty `DispParams`.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn new() -> Self {
         Self { args: Vec::new() }
@@ -59,6 +63,14 @@ pub trait DispatchResolver {
     ///
     /// # Errors
     /// Returns `ActiveXError` if the object is blocked or cannot be resolved.
+    ///
+    /// # Arguments
+    ///
+    /// * `prog_id` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn create_object(&self, prog_id: &str) -> Result<Box<dyn DispatchObject>>;
 }
 
@@ -68,6 +80,15 @@ pub trait DispatchObject: std::fmt::Debug {
     ///
     /// # Errors
     /// Returns `DispatchBridgeError` if the invocation fails.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - TODO: Document argument.
+    /// * `params` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn invoke(&self, name: &str, params: &DispParams) -> Result<VariantType>;
 }
 

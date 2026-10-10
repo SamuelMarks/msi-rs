@@ -161,12 +161,20 @@ impl NativeLibraryLoader {
     }
 
     /// Returns the detected binary format of the loaded library file.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn library_format(&self) -> BinaryFormat {
         self.library_format
     }
 
     /// Returns the active Wine executable path if Wine execution bridge is active.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn wine_executable(&self) -> Option<&Path> {
         self.wine_executable.as_deref()
@@ -283,6 +291,14 @@ impl NativeLibraryLoader {
 
     #[cfg(unix)]
     /// Formats a dlerror pointer into a safe string.
+    ///
+    /// # Arguments
+    ///
+    /// * `err_ptr` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn format_dlerror(err_ptr: *mut std::os::raw::c_char) -> String {
         std::ptr::NonNull::new(err_ptr).map_or_else(
             || "unknown dlopen error".to_string(),
@@ -296,6 +312,10 @@ impl NativeLibraryLoader {
     }
 
     /// Resolves the Wine binary path according to active [`WineMode`].
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn resolve_wine(&self) -> Option<PathBuf> {
         match self.wine_mode {
@@ -351,6 +371,10 @@ impl NativeLibraryLoader {
     ///
     /// Returns [`MsiError::UnsupportedPlatform`] if a Windows PE DLL is loaded on non-Windows without Wine,
     /// or [`MsiError::CustomActionFailed`] on I/O or dynamic loading failure.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn load_library(&mut self, path: &Path) -> Result<()> {
         if let Ok(header) = fs::read(path) {
             let format = BinaryFormat::detect(&header);
@@ -608,6 +632,10 @@ impl Default for SubprocessRunner {
 
 impl SubprocessRunner {
     /// Creates a new [`SubprocessRunner`] with default 30-second timeout.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn new() -> Self {
         Self {
@@ -616,6 +644,14 @@ impl SubprocessRunner {
     }
 
     /// Configures execution timeout in milliseconds.
+    ///
+    /// # Arguments
+    ///
+    /// * `timeout_ms` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn with_timeout(mut self, timeout_ms: u64) -> Self {
         self.timeout_ms = timeout_ms;
@@ -623,6 +659,14 @@ impl SubprocessRunner {
     }
 
     /// Maps a raw process exit code to standard MSI execution status codes.
+    ///
+    /// # Arguments
+    ///
+    /// * `raw_code` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn map_exit_code(raw_code: i32) -> u32 {
         if raw_code == 0 {
@@ -849,6 +893,10 @@ pub struct SqlProvisionerConfig {
 
 impl Default for SqlProvisionerConfig {
     /// Creates a default [`SqlProvisionerConfig`] matching standard defaults.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn default() -> Self {
         Self {
             host: "127.0.0.1".to_string(),
@@ -1086,6 +1134,10 @@ impl SqlProvisionerClient {
     /// # Errors
     ///
     /// Returns [`MsiError::SqlProvisioning`] on communication, authentication, or query failure.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::too_many_lines)]
     pub fn execute_wire_session(
         &self,
@@ -1755,6 +1807,14 @@ mod tests {
     }
 
     /// Helper to bind a test listener on the given address string.
+    ///
+    /// # Arguments
+    ///
+    /// * `addr` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn make_test_listener(addr: &str) -> (Option<std::net::TcpListener>, u16) {
         std::net::TcpListener::bind(addr).map_or_else(
             |_| (None, 0),
@@ -2006,6 +2066,14 @@ mod tests {
 
     impl MockFailStream {
         /// Creates a new [`MockFailStream`] initialized with the given read payload.
+        ///
+        /// # Arguments
+        ///
+        /// * `bytes` - TODO: Document argument.
+        ///
+        /// # Returns
+        ///
+        /// TODO: Document return value.
         fn with_bytes(bytes: &[u8]) -> Self {
             let mut read_bytes = std::collections::VecDeque::with_capacity(bytes.len());
             read_bytes.extend(bytes.iter().copied());
@@ -2170,9 +2238,9 @@ mod native_action_additional_tests {
     fn test_load_pe_without_wine() {
         let mut loader = NativeLibraryLoader::new();
         // Create a dummy PE file
-        let temp_dir = tempfile::tempdir().unwrap();
+        let temp_dir = tempfile::tempdir().expect("test");
         let pe_path = temp_dir.path().join("dummy.dll");
-        fs::write(&pe_path, b"MZ\x00\x00").unwrap();
+        fs::write(&pe_path, b"MZ\x00\x00").expect("test");
 
         // Temporarily clear PATH to ensure wine is not found
         let old_path = std::env::var_os("PATH");
@@ -2186,12 +2254,8 @@ mod native_action_additional_tests {
 
         #[cfg(not(windows))]
         {
-            assert!(res.is_err());
-            if let Err(MsiError::UnsupportedPlatform { reason, .. }) = res {
-                assert!(reason.contains("without Wine"));
-            } else {
-                panic!("Expected UnsupportedPlatform error");
-            }
+            let err_msg = res.unwrap_err().to_string();
+            assert!(err_msg.contains("without Wine"));
         }
     }
 }

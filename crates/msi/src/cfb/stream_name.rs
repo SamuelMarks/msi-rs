@@ -239,6 +239,12 @@ mod tests {
         let dec2 = enc2.and_then(|s| decode_msi_stream_name(&s));
         assert_eq!(dec2, Ok(("File".to_string(), true)));
 
+        // Phase 2.1: Embedded Cabinet Stream Name Encoding match WiX Exact Code Units
+        assert_eq!(
+            encode_msi_stream_name("payload.cab", false),
+            Ok("\u{4133}\u{43fc}\u{4132}\u{47a7}\u{4126}\u{4825}".to_string())
+        );
+
         // Single character table
         let enc3 = encode_msi_stream_name("A", true);
         let dec3 = enc3.and_then(|s| decode_msi_stream_name(&s));

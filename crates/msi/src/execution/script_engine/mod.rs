@@ -92,6 +92,10 @@ pub struct ScriptEngine {
 
 impl ScriptEngine {
     /// Creates a new [`ScriptEngine`].
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn new() -> Self {
         Self {

@@ -23,6 +23,14 @@ pub struct NativeStorage {
 
 impl NativeStorage {
     /// Creates a new native `IStorage`.
+    ///
+    /// # Arguments
+    ///
+    /// * `reader` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn new(reader: Option<CfbReader>) -> Box<Self> {
         Box::new(Self {

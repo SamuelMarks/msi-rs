@@ -36,7 +36,7 @@ pub use header::{
     CFHDR_NEXT_CABINET, CFHDR_PREV_CABINET, CFHDR_RESERVE_PRESENT,
 };
 pub use lzx::{e8_translate, LzxState, LZX_MAX_WINDOW_BITS, LZX_MIN_WINDOW_BITS};
-pub use mszip::{MszipEngine, MSZIP_BLOCK_SIZE, MSZIP_MAGIC};
+pub use mszip::{MszipCompressor, MszipDecompressor, MSZIP_BLOCK_SIZE, MSZIP_MAGIC};
 pub use quantum::{
     QuantumCompressor, QuantumDecompressor, QUANTUM_DEFAULT_WINDOW_BITS, QUANTUM_MAX_WINDOW_BITS,
     QUANTUM_MIN_WINDOW_BITS,

@@ -26,6 +26,7 @@ pub mod paths;
 pub mod permissions;
 pub mod provider;
 pub mod registry_store;
+pub mod squid;
 pub mod sysroot;
 pub mod unattend;
 pub mod users;
@@ -79,9 +80,24 @@ pub use registry_store::{
     SqliteTransactionLogEntry, HKEY_CLASSES_ROOT, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE,
     HKEY_USERS, SQLITE_REGISTRY_INIT_SQL,
 };
+pub use squid::{
+    decode_squid, encode_squid, get_component_user_data_key, get_product_user_data_key,
+    get_uninstall_key, get_upgrade_code_key, get_user_product_key,
+};
 pub use sysroot::SysrootMountGuard;
 pub use unattend::{LinuxCloudInitConfig, WindowsUnattendConfig};
 pub use users::{
     GroupName, LocalAccountManager, PosixAccountManager, SecurityIdentifier, UserName,
     WindowsAccountManager,
 };
+
+#[cfg(windows)]
+/// Windows native registry backend driver.
+pub mod native_registry;
+
+#[cfg(windows)]
+pub use native_registry::NativeRegistryDriver;
+/// Native and host registry implementation providers.
+pub mod registry;
+pub mod services;
+pub mod shell;

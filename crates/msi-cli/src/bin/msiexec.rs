@@ -62,6 +62,10 @@ pub fn run_app(args: &[String]) -> ExitCode {
 }
 
 /// Entry point for the `msiexec` executable.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 #[must_use = "process exit code must be handled"]
 pub fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();

@@ -217,6 +217,10 @@ impl LinuxIdentityConfig {
     /// # Errors
     ///
     /// Returns [`MsiError::SysrootMountError`] if writing identity files fails.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn write_to_sysroot(&self, sysroot: &Path) -> Result<()> {
         let etc = sysroot.join("etc");
         if let Err(e) = std::fs::create_dir_all(&etc) {

@@ -4,6 +4,7 @@
 //! OS font installation API integration.
 
 use crate::error::MsiError;
+#[cfg(not(windows))]
 use std::fs;
 use std::path::Path;
 #[cfg(any(
@@ -36,6 +37,14 @@ pub struct FontTitle {
 ///
 /// Returns `MsiError::FontRegistrationError` if the file is not a valid font or
 /// if the `name` table cannot be found or parsed.
+///
+/// # Arguments
+///
+/// * `data` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 pub fn extract_font_title(data: &[u8]) -> Result<FontTitle, MsiError> {
     if data.len() < 12 {
         return Err(MsiError::FontRegistrationError(
@@ -54,8 +63,7 @@ pub fn extract_font_title(data: &[u8]) -> Result<FontTitle, MsiError> {
     }
 
     let num_tables = u16::from_be_bytes([data[4], data[5]]);
-    let mut name_table_offset = None;
-    let mut name_table_length = None;
+    let mut name_table_info = None;
 
     let mut offset = 12;
     for _ in 0..num_tables {
@@ -80,18 +88,15 @@ pub fn extract_font_title(data: &[u8]) -> Result<FontTitle, MsiError> {
         ]) as usize;
 
         if table_tag == b"name" {
-            name_table_offset = Some(table_offset);
-            name_table_length = Some(table_length);
+            name_table_info = Some((table_offset, table_length));
             break;
         }
 
         offset += 16;
     }
 
-    let table_offset = name_table_offset
+    let (table_offset, table_length) = name_table_info
         .ok_or_else(|| MsiError::FontRegistrationError("Font missing 'name' table".to_string()))?;
-    let table_length = name_table_length
-        .ok_or_else(|| MsiError::FontRegistrationError("Missing name table".to_string()))?;
 
     if table_offset + table_length > data.len() {
         return Err(MsiError::FontRegistrationError(
@@ -187,6 +192,14 @@ pub fn extract_font_title(data: &[u8]) -> Result<FontTitle, MsiError> {
 /// # Errors
 ///
 /// Returns `MsiError::FontRegistrationError` if installation fails on the target platform.
+///
+/// # Arguments
+///
+/// * `font_path` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 pub fn register_font(font_path: &Path) -> Result<(), MsiError> {
     if !font_path.exists() {
         return Err(MsiError::FontRegistrationError(format!(
@@ -331,55 +344,148 @@ mod tests {
 
     #[test]
     #[cfg(target_os = "macos")]
-    fn test_register_font_macos_failures() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        // create a read-only home dir to fail directory creation
-        let home = temp_dir.path().join("home");
-        fs::create_dir_all(&home).unwrap();
-        let mut perms = fs::metadata(&home).unwrap().permissions();
-        perms.set_readonly(true);
-        fs::set_permissions(&home, perms).unwrap();
+    fn test_register_font_macos() {
+        // We use a single test to avoid race conditions with std::env::set_var("HOME", ...)
+        let temp_dir = tempfile::tempdir().expect("test");
 
-        std::env::set_var("HOME", &home);
+        // 1. Success case
+        let font_path = temp_dir.path().join("test.ttf");
+        fs::write(&font_path, "dummy").expect("test");
 
-        let font = temp_dir.path().join("f.ttf");
-        fs::write(&font, "data").unwrap();
+        let home_dir = temp_dir.path().join("home_success");
+        let font_dir = home_dir.join("Library").join("Fonts");
+        fs::create_dir_all(&font_dir).expect("test"); // Pre-create so exists() is true
+        std::env::set_var("HOME", &home_dir);
+        assert!(register_font(&font_path).is_ok());
 
-        // This will fail to create ~/Library/Fonts
-        let err = register_font(&font).unwrap_err();
+        // 2. Trigger "Invalid font path" error
+        let err1 =
+            register_font(Path::new("/")).expect_err("Expected error due to missing filename");
         assert!(
-            matches!(err, MsiError::FontRegistrationError(msg) if msg.contains("Failed to create macOS font dir"))
+            matches!(err1, MsiError::FontRegistrationError(msg) if msg.contains("Invalid font path"))
         );
 
-        // Reset perms to let it be deleted
-        let mut perms = fs::metadata(&home).unwrap().permissions();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            perms.set_mode(0o777);
-        }
-        #[cfg(not(unix))]
-        {
-            perms.set_readonly(false);
-        }
-        fs::set_permissions(&home, perms).unwrap();
-
-        // Now test copy failure
-        let home2 = temp_dir.path().join("home2");
-        fs::create_dir_all(&home2).unwrap();
-        std::env::set_var("HOME", &home2);
-
-        // Pre-create the directory
-        let fonts_dir = home2.join("Library").join("Fonts");
-        fs::create_dir_all(&fonts_dir).unwrap();
-
-        // Create a directory with the same name as the font file to cause copy to fail
-        fs::create_dir_all(fonts_dir.join("f.ttf")).unwrap();
-
-        let err2 = register_font(&font).unwrap_err();
+        // 3. Trigger fs::create_dir_all failure by pointing HOME to /dev/null/home
+        std::env::set_var("HOME", "/dev/null/home");
+        let err_create = register_font(&font_path).expect_err("Expected create_dir_all to fail");
         assert!(
-            matches!(err2, MsiError::FontRegistrationError(msg) if msg.contains("Failed to copy font to macOS font dir"))
+            matches!(err_create, MsiError::FontRegistrationError(msg) if msg.contains("Failed to create macOS font dir"))
         );
+
+        // 4. Trigger fs::copy failure by passing a directory instead of a file
+        std::env::set_var("HOME", &home_dir); // Restore to valid home
+        let font_dir_path = temp_dir.path().join("f.ttf");
+        fs::create_dir_all(&font_dir_path).expect("test");
+        let err2 =
+            register_font(&font_dir_path).expect_err("Expected error due to copying a directory");
+        assert!(
+            matches!(err2, MsiError::FontRegistrationError(msg) if msg.contains("Failed to copy font"))
+        );
+    }
+
+    #[test]
+    fn test_extract_font_title_mac_roman() {
+        let mut data = b"\x00\x01\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00".to_vec();
+        data.extend_from_slice(b"name");
+        data.extend_from_slice(&[0, 0, 0, 0, 0, 0, 0, 28]); // offset 28
+        data.extend_from_slice(&[0, 0, 0, 22]); // length 22
+
+        // format(2), count(1), stringOffset(18)
+        data.extend_from_slice(&[0, 0, 0, 1, 0, 18]);
+        // 1 record: platformID(1), encodingID(0), languageID(0), nameID(4), length(4), offset(0)
+        data.extend_from_slice(&[0, 1, 0, 0, 0, 0, 0, 4, 0, 4, 0, 0]);
+        // The string data: "Test"
+        data.extend_from_slice(b"Test");
+
+        let title = extract_font_title(&data).expect("test");
+        assert_eq!(title.full_name, "Test");
+    }
+
+    #[test]
+    fn test_extract_font_title_mac_roman_multiple() {
+        let mut data = b"\x00\x01\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00".to_vec();
+        data.extend_from_slice(b"name");
+        data.extend_from_slice(&[0, 0, 0, 0, 0, 0, 0, 28]); // offset 28
+        data.extend_from_slice(&[0, 0, 0, 38]); // length 38
+
+        // format(2), count(2), stringOffset(30)
+        data.extend_from_slice(&[0, 0, 0, 2, 0, 30]);
+        // Record 1: platformID(1), encodingID(0), languageID(0), nameID(4), length(4), offset(0)
+        data.extend_from_slice(&[0, 1, 0, 0, 0, 0, 0, 4, 0, 4, 0, 0]);
+        // Record 2: platformID(1), encodingID(0), languageID(0), nameID(4), length(4), offset(4)
+        data.extend_from_slice(&[0, 1, 0, 0, 0, 0, 0, 4, 0, 4, 0, 4]);
+
+        // String data
+        data.extend_from_slice(b"Mac1Mac2");
+
+        let title = extract_font_title(&data).expect("test");
+        assert_eq!(title.full_name, "Mac1"); // It should prefer the first one
+    }
+
+    #[test]
+    fn test_extract_font_title_mac_roman_invalid_utf8() {
+        let mut data = b"\x00\x01\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00".to_vec();
+        data.extend_from_slice(b"name");
+        data.extend_from_slice(&[0, 0, 0, 0, 0, 0, 0, 28]); // offset 28
+        data.extend_from_slice(&[0, 0, 0, 20]); // length 20
+
+        data.extend_from_slice(&[0, 0, 0, 1, 0, 18]);
+        data.extend_from_slice(&[0, 1, 0, 0, 0, 0, 0, 4, 0, 2, 0, 0]);
+        // Invalid UTF-8
+        data.extend_from_slice(b"\xFF\xFF");
+
+        // It should return an error because we didn't find any valid name
+        let err = extract_font_title(&data).unwrap_err();
+        assert!(matches!(err, MsiError::FontRegistrationError(_)));
+    }
+
+    #[test]
+    fn test_extract_font_title_unknown_platform() {
+        let mut data = b"\x00\x01\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00".to_vec();
+        data.extend_from_slice(b"name");
+        data.extend_from_slice(&[0, 0, 0, 0, 0, 0, 0, 28]);
+        data.extend_from_slice(&[0, 0, 0, 22]); // length 22
+
+        data.extend_from_slice(&[0, 0, 0, 1, 0, 18]);
+        // platformID(2) instead of 1 or 3
+        data.extend_from_slice(&[0, 2, 0, 0, 0, 0, 0, 4, 0, 4, 0, 0]);
+        data.extend_from_slice(b"Test");
+
+        // Should return error because no valid platform was found
+        assert!(extract_font_title(&data).is_err());
+    }
+
+    #[test]
+    fn test_extract_font_title_windows_invalid_utf16() {
+        let mut data = b"\x00\x01\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00".to_vec();
+        data.extend_from_slice(b"name");
+        data.extend_from_slice(&[0, 0, 0, 0, 0, 0, 0, 28]);
+        data.extend_from_slice(&[0, 0, 0, 20]); // length 20
+
+        data.extend_from_slice(&[0, 0, 0, 1, 0, 18]);
+        // platformID(3)
+        data.extend_from_slice(&[0, 3, 0, 0, 0, 0, 0, 4, 0, 2, 0, 0]);
+        // Invalid UTF-16 unpaired surrogate: 0xD800
+        data.extend_from_slice(&[0xD8, 0x00]);
+
+        // Should fall through and return error
+        assert!(extract_font_title(&data).is_err());
+    }
+
+    #[test]
+    fn test_extract_font_title_wrong_name_id() {
+        let mut data = b"\x00\x01\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00".to_vec();
+        data.extend_from_slice(b"name");
+        data.extend_from_slice(&[0, 0, 0, 0, 0, 0, 0, 28]);
+        data.extend_from_slice(&[0, 0, 0, 20]); // length 20
+
+        data.extend_from_slice(&[0, 0, 0, 1, 0, 18]);
+        // nameID(1) instead of 4
+        data.extend_from_slice(&[0, 3, 0, 0, 0, 0, 0, 1, 0, 2, 0, 0]);
+        data.extend_from_slice(b"AA"); // Valid UTF-16
+
+        // Should fall through and return error
+        assert!(extract_font_title(&data).is_err());
     }
 
     #[test]
@@ -404,23 +510,11 @@ mod tests {
     }
 
     #[test]
-    #[cfg(target_os = "macos")]
-    fn test_register_font_macos_success() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let font_path = temp_dir.path().join("test.ttf");
-        fs::write(&font_path, "dummy").unwrap();
-
-        // override HOME to prevent actually installing fonts
-        std::env::set_var("HOME", temp_dir.path());
-        assert!(register_font(&font_path).is_ok());
-    }
-
-    #[test]
     #[cfg(target_os = "windows")]
     fn test_register_font_windows_success() {
-        let temp_dir = tempfile::tempdir().unwrap();
+        let temp_dir = tempfile::tempdir().expect("test");
         let font_path = temp_dir.path().join("test.ttf");
-        fs::write(&font_path, "dummy").unwrap();
+        fs::write(&font_path, "dummy").expect("test");
         assert!(register_font(&font_path).is_ok());
     }
 
@@ -484,7 +578,7 @@ mod tests {
 
         data.extend(name_table);
 
-        let title = extract_font_title(&data).unwrap();
+        let title = extract_font_title(&data).expect("test");
         assert_eq!(title.full_name, "My Test Font");
     }
 
@@ -507,7 +601,7 @@ mod tests {
 
         data.extend(name_table);
 
-        let title = extract_font_title(&data).unwrap();
+        let title = extract_font_title(&data).expect("test");
         assert_eq!(title.full_name, "My OpenType Font");
     }
 
@@ -638,6 +732,113 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_font_title_mac_platform_invalid_utf8() {
+        let mut data = vec![0x00, 0x01, 0x00, 0x00];
+        data.extend_from_slice(&1u16.to_be_bytes());
+        data.extend_from_slice(&[0; 6]);
+
+        data.extend_from_slice(b"name");
+        data.extend_from_slice(&[0; 4]);
+        data.extend_from_slice(&28u32.to_be_bytes());
+        data.extend_from_slice(&26u32.to_be_bytes()); // length = 26
+
+        data.extend_from_slice(&0u16.to_be_bytes());
+        data.extend_from_slice(&1u16.to_be_bytes());
+        data.extend_from_slice(&18u16.to_be_bytes()); // string offset
+
+        data.extend_from_slice(&1u16.to_be_bytes()); // platform_id = 1 (Mac)
+        data.extend_from_slice(&0u16.to_be_bytes());
+        data.extend_from_slice(&0u16.to_be_bytes());
+        data.extend_from_slice(&4u16.to_be_bytes()); // name_id = 4
+        data.extend_from_slice(&8u16.to_be_bytes()); // length = 8
+        data.extend_from_slice(&0u16.to_be_bytes()); // offset = 0
+
+        data.extend_from_slice(b"Mac\xFFFont");
+
+        assert!(extract_font_title(&data).is_err());
+    }
+
+    #[test]
+    fn test_extract_font_title_mac_platform_duplicate() {
+        let mut data = vec![0x00, 0x01, 0x00, 0x00];
+        data.extend_from_slice(&1u16.to_be_bytes()); // 1 table
+        data.extend_from_slice(&[0; 6]);
+
+        data.extend_from_slice(b"name"); // tag
+        data.extend_from_slice(&[0; 4]); // checksum
+        data.extend_from_slice(&28u32.to_be_bytes()); // offset to table
+        data.extend_from_slice(&46u32.to_be_bytes()); // length
+
+        // Now at byte 28
+        data.extend_from_slice(&0u16.to_be_bytes()); // format
+        data.extend_from_slice(&2u16.to_be_bytes()); // 2 records
+        data.extend_from_slice(&30u16.to_be_bytes()); // string offset
+
+        // First record: Mac
+        data.extend_from_slice(&1u16.to_be_bytes()); // Mac
+        data.extend_from_slice(&0u16.to_be_bytes());
+        data.extend_from_slice(&0u16.to_be_bytes());
+        data.extend_from_slice(&4u16.to_be_bytes()); // name_id = 4
+        data.extend_from_slice(&8u16.to_be_bytes()); // length
+        data.extend_from_slice(&0u16.to_be_bytes()); // offset = 0
+
+        // Second record: Mac (duplicate)
+        data.extend_from_slice(&1u16.to_be_bytes()); // Mac
+        data.extend_from_slice(&0u16.to_be_bytes());
+        data.extend_from_slice(&0u16.to_be_bytes());
+        data.extend_from_slice(&4u16.to_be_bytes()); // name_id = 4
+        data.extend_from_slice(&8u16.to_be_bytes()); // length
+        data.extend_from_slice(&8u16.to_be_bytes()); // offset = 8
+
+        // String data
+        data.extend_from_slice(b"Mac Font"); // Mac string 1
+        data.extend_from_slice(b"Ignored "); // Mac string 2
+
+        let title = extract_font_title(&data).expect("test");
+        assert_eq!(title.full_name, "Mac Font"); // It should prefer the first one
+    }
+
+    #[test]
+    fn test_extract_font_title_mac_platform_with_existing_best_name() {
+        let mut data = vec![0x00, 0x01, 0x00, 0x00];
+        data.extend_from_slice(&1u16.to_be_bytes()); // 1 table
+        data.extend_from_slice(&[0; 6]);
+
+        data.extend_from_slice(b"name"); // tag
+        data.extend_from_slice(&[0; 4]); // checksum
+        data.extend_from_slice(&28u32.to_be_bytes()); // offset to table
+        data.extend_from_slice(&46u32.to_be_bytes()); // length
+
+        // Now at byte 28
+        data.extend_from_slice(&0u16.to_be_bytes()); // format
+        data.extend_from_slice(&2u16.to_be_bytes()); // 2 records
+        data.extend_from_slice(&30u16.to_be_bytes()); // string offset
+
+        // First record: Windows
+        data.extend_from_slice(&3u16.to_be_bytes()); // Windows
+        data.extend_from_slice(&0u16.to_be_bytes());
+        data.extend_from_slice(&0u16.to_be_bytes());
+        data.extend_from_slice(&4u16.to_be_bytes()); // name_id = 4
+        data.extend_from_slice(&8u16.to_be_bytes()); // length
+        data.extend_from_slice(&0u16.to_be_bytes()); // offset = 0
+
+        // Second record: Mac
+        data.extend_from_slice(&1u16.to_be_bytes()); // Mac
+        data.extend_from_slice(&0u16.to_be_bytes());
+        data.extend_from_slice(&0u16.to_be_bytes());
+        data.extend_from_slice(&4u16.to_be_bytes()); // name_id = 4
+        data.extend_from_slice(&8u16.to_be_bytes()); // length
+        data.extend_from_slice(&8u16.to_be_bytes()); // offset = 8
+
+        // String data
+        data.extend_from_slice(&[0, b'W', 0, b'i', 0, b'n', 0, b'd']); // Windows string
+        data.extend_from_slice(b"Mac Font"); // Mac string
+
+        let title = extract_font_title(&data).expect("test");
+        assert_eq!(title.full_name, "Wind"); // It should prefer Windows
+    }
+
+    #[test]
     fn test_extract_font_title_mac_platform() {
         let mut data = vec![0x00, 0x01, 0x00, 0x00];
         data.extend_from_slice(&1u16.to_be_bytes());
@@ -661,8 +862,35 @@ mod tests {
 
         data.extend_from_slice(b"Mac Font");
 
-        let title = extract_font_title(&data).unwrap();
+        let title = extract_font_title(&data).expect("test");
         assert_eq!(title.full_name, "Mac Font");
+    }
+
+    #[test]
+    fn test_extract_font_title_win_invalid_utf16_surrogates() {
+        let mut data = vec![0x00, 0x01, 0x00, 0x00];
+        data.extend_from_slice(&1u16.to_be_bytes());
+        data.extend_from_slice(&[0; 6]);
+
+        data.extend_from_slice(b"name");
+        data.extend_from_slice(&[0; 4]);
+        data.extend_from_slice(&28u32.to_be_bytes());
+        data.extend_from_slice(&20u32.to_be_bytes()); // length
+
+        data.extend_from_slice(&0u16.to_be_bytes());
+        data.extend_from_slice(&1u16.to_be_bytes());
+        data.extend_from_slice(&18u16.to_be_bytes());
+
+        data.extend_from_slice(&3u16.to_be_bytes()); // Windows
+        data.extend_from_slice(&0u16.to_be_bytes());
+        data.extend_from_slice(&0u16.to_be_bytes());
+        data.extend_from_slice(&4u16.to_be_bytes());
+        data.extend_from_slice(&2u16.to_be_bytes()); // length = 2
+        data.extend_from_slice(&0u16.to_be_bytes());
+
+        data.extend_from_slice(&[0xD8, 0x00]); // High surrogate without low surrogate
+
+        assert!(extract_font_title(&data).is_err());
     }
 
     #[test]

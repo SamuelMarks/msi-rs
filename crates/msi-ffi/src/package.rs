@@ -30,7 +30,8 @@ use std::ptr;
 ///
 /// `package` must be a valid pointer obtained from `msi_package_builder_build` or `msi_package_open`.
 /// `output_path` must be a valid null-terminated C string.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "C" fn msi_package_save(
     package: *const MsiPackageHandle,
     output_path: *const c_char,
@@ -71,7 +72,8 @@ pub unsafe extern "C" fn msi_package_save(
 ///
 /// `package` must be a valid pointer obtained from `msi_package_builder_build` or `msi_package_open`.
 /// `out_bytes` and `out_len` must point to valid writable memory.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "C" fn msi_package_to_bytes(
     package: *const MsiPackageHandle,
     out_bytes: *mut *mut u8,
@@ -123,7 +125,8 @@ pub unsafe extern "C" fn msi_package_to_bytes(
 ///
 /// `path` must be a valid null-terminated C string.
 /// `out_package` must point to valid writable memory.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "C" fn msi_package_open(
     path: *const c_char,
     out_package: *mut *mut MsiPackageHandle,
@@ -167,7 +170,8 @@ pub unsafe extern "C" fn msi_package_open(
 /// `package` must be a valid pointer.
 /// `property_name` must be a valid null-terminated C string.
 /// `buffer` and `out_written` must point to valid memory if non-null.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "C" fn msi_package_get_property(
     package: *const MsiPackageHandle,
     property_name: *const c_char,
@@ -248,7 +252,8 @@ pub unsafe extern "C" fn msi_package_get_property(
 ///
 /// `package` must be a valid pointer.
 /// `cabinet_name` and `dest_dir` must be valid null-terminated C strings.
-#[no_mangle]
+#[cfg_attr(not(coverage_nightly), no_mangle)]
+#[inline(never)]
 pub unsafe extern "C" fn msi_package_extract_cabinet(
     package: *const MsiPackageHandle,
     cabinet_name: *const c_char,
@@ -278,7 +283,9 @@ pub unsafe extern "C" fn msi_package_extract_cabinet(
 
             fs::create_dir_all(destination).map_err(|e| {
                 (
-                    map_msi_error(&msi::MsiError::Io(e.to_string())),
+                    map_msi_error(&msi::MsiError::Io(msi::error::IoContext::from_string(
+                        e.to_string(),
+                    ))),
                     format!("Failed creating destination directory '{destination}'"),
                 )
             })?;
@@ -291,7 +298,9 @@ pub unsafe extern "C" fn msi_package_extract_cabinet(
                 let file_path = Path::new(destination).join(&file.filename);
                 fs::write(&file_path, file_data).map_err(|e| {
                     (
-                        map_msi_error(&msi::MsiError::Io(e.to_string())),
+                        map_msi_error(&msi::MsiError::Io(msi::error::IoContext::from_string(
+                            e.to_string(),
+                        ))),
                         format!("Failed writing extracted file to '{}'", file_path.display()),
                     )
                 })?;

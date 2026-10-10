@@ -7,7 +7,7 @@
 //! - `condition_eval`: Arbitrary expression strings and unicode fuzzing.
 
 use crate::cab::lzx::LzxState;
-use crate::cab::mszip::MszipEngine;
+use crate::cab::mszip::MszipDecompressor;
 use crate::cfb::header::CfbHeader;
 use crate::cfb::reader::CfbReader;
 use crate::database::column::ColumnDef;
@@ -40,7 +40,8 @@ pub fn fuzz_cfbf_parse(data: &[u8]) {
 /// * `data` - Raw arbitrary compressed byte slice.
 pub fn fuzz_cab_decompress(data: &[u8]) {
     // 1. Fuzz MSZIP
-    drop(MszipEngine.decompress(data, 32768));
+    let mut decomp = MszipDecompressor::new();
+    let _ = decomp.decompress_block(data, 32768);
 
     // 2. Fuzz LZX
     let window_bits = if data.is_empty() { 15 } else { data[0] };

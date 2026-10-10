@@ -25,9 +25,16 @@ impl BindImageEngine {
     /// # Errors
     ///
     /// Returns an error if the operation fails.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn bind_image(&self, image_path: &Path, _dll_paths: Option<&[String]>) -> Result<()> {
-        let buffer = fs::read(image_path)
-            .map_err(|e| MsiError::Io(format!("Failed to read PE image: {e}")))?;
+        let buffer = fs::read(image_path).map_err(|e| {
+            MsiError::Io(crate::error::IoContext::from_string(format!(
+                "Failed to read PE image: {e}"
+            )))
+        })?;
 
         let pe = PE::parse(&buffer).map_err(|e| MsiError::DataIntegrityError {
             reason: format!("Failed to parse PE headers: {e}"),
@@ -57,9 +64,9 @@ mod tests {
     #[test]
     fn test_bind_image_parse_errors() {
         let engine = BindImageEngine;
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("test");
         let path = dir.path().join("invalid.exe");
-        fs::write(&path, b"MZ  NOT A PE").unwrap();
+        fs::write(&path, b"MZ  NOT A PE").expect("test");
         let res = engine.bind_image(&path, None);
         assert!(res.is_err());
     }
@@ -67,7 +74,7 @@ mod tests {
     #[test]
     fn test_bind_image_valid_pe() {
         let engine = BindImageEngine;
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("test");
         let path = dir.path().join("minimal.exe");
 
         // This is a minimal 64-bit PE file that Goblin can parse.
@@ -104,7 +111,7 @@ mod tests {
         pe_data[0x106] = 0;
         pe_data[0x107] = 0;
 
-        fs::write(&path, &pe_data).unwrap();
+        fs::write(&path, &pe_data).expect("test");
 
         // bind_image should succeed
         let res = engine.bind_image(&path, None);
@@ -114,7 +121,7 @@ mod tests {
     #[test]
     fn test_bind_image_valid_pe_32() {
         let engine = BindImageEngine;
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("test");
         let path = dir.path().join("minimal32.exe");
 
         let mut pe_data = vec![0u8; 1024];
@@ -149,7 +156,7 @@ mod tests {
         pe_data[0xF6] = 0;
         pe_data[0xF7] = 0;
 
-        fs::write(&path, &pe_data).unwrap();
+        fs::write(&path, &pe_data).expect("test");
 
         // bind_image should succeed
         let res = engine.bind_image(&path, None);

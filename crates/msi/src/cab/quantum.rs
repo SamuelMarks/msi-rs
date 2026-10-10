@@ -136,6 +136,14 @@ struct ArithmeticReader<'a> {
 
 impl<'a> ArithmeticReader<'a> {
     /// Creates a new [`ArithmeticReader`].
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     const fn new(bytes: &'a [u8]) -> Self {
         Self {
             bytes,
@@ -146,6 +154,10 @@ impl<'a> ArithmeticReader<'a> {
     }
 
     /// Refills bit buffer until it holds at least `needed` bits.
+    ///
+    /// # Arguments
+    ///
+    /// * `needed` - TODO: Document argument.
     fn ensure_bits(&mut self, needed: u8) {
         while self.bits_in_buf < needed && self.offset < self.bytes.len() {
             let next_byte = self.bytes[self.offset];
@@ -156,6 +168,14 @@ impl<'a> ArithmeticReader<'a> {
     }
 
     /// Reads `count` direct bits (1..=16) from bitstream.
+    ///
+    /// # Arguments
+    ///
+    /// * `count` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn read_bits(&mut self, count: u8) -> Result<u32> {
         if count == 0 {
             return Ok(0);
@@ -187,11 +207,20 @@ struct ArithmeticWriter {
 
 impl ArithmeticWriter {
     /// Creates a new [`ArithmeticWriter`].
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn new() -> Self {
         Self::default()
     }
 
     /// Writes `count` bits from `val` into bitstream.
+    ///
+    /// # Arguments
+    ///
+    /// * `val` - TODO: Document argument.
+    /// * `count` - TODO: Document argument.
     fn write_bits(&mut self, val: u32, count: u8) {
         let mask = (1u32 << count) - 1;
         self.bit_buf |= (val & mask) << self.bits_in_buf;
@@ -205,6 +234,10 @@ impl ArithmeticWriter {
     }
 
     /// Flushes any pending bits into output byte vector.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn finish(mut self) -> Vec<u8> {
         if self.bits_in_buf > 0 {
             #[allow(clippy::cast_possible_truncation)]
@@ -324,6 +357,10 @@ pub struct RangeEncoder {
 
 impl RangeEncoder {
     /// Creates a new [`RangeEncoder`].
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -380,6 +417,10 @@ impl RangeEncoder {
     }
 
     /// Flushes remaining bits and finishes range encoding into a byte vector.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn finish(mut self) -> Vec<u8> {
         self.underflow_bits += 1;
@@ -423,6 +464,10 @@ pub struct QuantumDecompressor {
 
 impl Default for QuantumDecompressor {
     /// Creates a default [`QuantumDecompressor`] with default window bits (`15`).
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn default() -> Self {
         Self {
             window_bits: QUANTUM_DEFAULT_WINDOW_BITS,
@@ -447,6 +492,10 @@ impl QuantumDecompressor {
     /// # Errors
     ///
     /// Returns [`MsiError::InvalidCabData`] if window bits is out of range.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn new(window_bits: u8) -> Result<Self> {
         if !(QUANTUM_MIN_WINDOW_BITS..=QUANTUM_MAX_WINDOW_BITS).contains(&window_bits) {
             return Err(MsiError::InvalidCabData {
@@ -470,6 +519,10 @@ impl QuantumDecompressor {
     }
 
     /// Returns the window size in bits ($2^{\text{window\_bits}}$ bytes).
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn window_bits(&self) -> u8 {
         self.window_bits
@@ -577,6 +630,14 @@ impl QuantumDecompressor {
 }
 
 /// Maps position slot index to (`extra_bits`, `base_offset`).
+///
+/// # Arguments
+///
+/// * `slot` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 #[allow(clippy::cast_possible_truncation)]
 const fn position_slot_info(slot: usize) -> (u8, usize) {
     if slot < 4 {
@@ -591,6 +652,14 @@ const fn position_slot_info(slot: usize) -> (u8, usize) {
 }
 
 /// Finds best position slot for a given offset (1-based).
+///
+/// # Arguments
+///
+/// * `offset` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn find_position_slot(offset: usize) -> (usize, u8, usize) {
     for slot in 0..NUM_POSITION_SLOTS {
         let (extra_bits, base) = position_slot_info(slot);
@@ -613,6 +682,10 @@ pub struct QuantumCompressor {
 
 impl Default for QuantumCompressor {
     /// Creates a [`QuantumCompressor`] with default window size ([`QUANTUM_DEFAULT_WINDOW_BITS`]).
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn default() -> Self {
         Self {
             window_bits: QUANTUM_DEFAULT_WINDOW_BITS,
@@ -630,6 +703,10 @@ impl QuantumCompressor {
     /// # Errors
     ///
     /// Returns [`MsiError::InvalidCabData`] if window bits is out of bounds.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn new(window_bits: u8) -> Result<Self> {
         if !(QUANTUM_MIN_WINDOW_BITS..=QUANTUM_MAX_WINDOW_BITS).contains(&window_bits) {
             return Err(MsiError::InvalidCabData {
@@ -640,6 +717,10 @@ impl QuantumCompressor {
     }
 
     /// Returns the window size in bits ($2^{\text{window\_bits}}$ bytes).
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn window_bits(&self) -> u8 {
         self.window_bits

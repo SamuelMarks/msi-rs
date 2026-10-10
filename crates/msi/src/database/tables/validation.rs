@@ -2,6 +2,10 @@ use crate::database::catalogs::TableSchema;
 use crate::database::column::ColumnDef;
 
 /// Returns the schema for the `_Validation` table.
+///
+/// # Returns
+///
+/// An instance of this struct, or an appropriate return type.
 #[must_use]
 pub fn validation_schema() -> TableSchema {
     TableSchema::new("_Validation")

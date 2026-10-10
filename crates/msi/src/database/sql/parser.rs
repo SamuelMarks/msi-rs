@@ -21,6 +21,10 @@ impl Parser {
     /// # Arguments
     ///
     /// * `tokens` - Sequence of tokens produced by [`super::lexer::Lexer`].
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn new(tokens: Vec<Token>) -> Self {
         Self { tokens, pos: 0 }
@@ -55,11 +59,19 @@ impl Parser {
     }
 
     /// Peeks at the current token.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn peek(&self) -> Option<&Token> {
         self.tokens.get(self.pos)
     }
 
     /// Advances and returns the next token.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn next_token(&mut self) -> Option<Token> {
         (self.pos < self.tokens.len()).then(|| {
             let tok = self.tokens[self.pos].clone();
@@ -69,6 +81,14 @@ impl Parser {
     }
 
     /// Verifies and consumes the expected token.
+    ///
+    /// # Arguments
+    ///
+    /// * `expected` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn expect(&mut self, expected: &Token) -> Result<()> {
         let tok = self.next_token().ok_or_else(|| MsiError::Sql {
             message: format!("expected token {expected:?}, but reached end of input"),
@@ -83,6 +103,10 @@ impl Parser {
     }
 
     /// Consumes and returns an identifier token.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn expect_ident(&mut self) -> Result<String> {
         let tok = self.next_token().ok_or_else(|| MsiError::Sql {
             message: "expected identifier, but reached end of input".to_string(),
@@ -96,6 +120,10 @@ impl Parser {
     }
 
     /// Parses a `SELECT` statement.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_select(&mut self) -> Result<Statement> {
         self.expect(&Token::Select)?;
 
@@ -174,6 +202,10 @@ impl Parser {
     }
 
     /// Parses an `INSERT INTO` statement.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_insert(&mut self) -> Result<Statement> {
         self.expect(&Token::Insert)?;
         self.expect(&Token::Into)?;
@@ -217,6 +249,10 @@ impl Parser {
     }
 
     /// Parses an `UPDATE` statement.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_update(&mut self) -> Result<Statement> {
         self.expect(&Token::Update)?;
         let table = self.expect_ident()?;
@@ -250,6 +286,10 @@ impl Parser {
     }
 
     /// Parses a `DELETE FROM` statement.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_delete(&mut self) -> Result<Statement> {
         self.expect(&Token::Delete)?;
         self.expect(&Token::From)?;
@@ -269,6 +309,10 @@ impl Parser {
     }
 
     /// Parses a `CREATE TABLE` statement.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_create_table(&mut self) -> Result<Statement> {
         self.expect(&Token::Create)?;
         self.expect(&Token::Table)?;
@@ -324,6 +368,10 @@ impl Parser {
     }
 
     /// Parses an `ALTER TABLE` statement.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_alter_table(&mut self) -> Result<Statement> {
         self.expect(&Token::Alter)?;
         self.expect(&Token::Table)?;
@@ -361,6 +409,10 @@ impl Parser {
     }
 
     /// Parses a `DROP TABLE` statement.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_drop_table(&mut self) -> Result<Statement> {
         self.expect(&Token::Drop)?;
         self.expect(&Token::Table)?;
@@ -371,6 +423,10 @@ impl Parser {
     }
 
     /// Parses a single column definition in `CREATE TABLE` or `ALTER TABLE`.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_column_def(&mut self) -> Result<SqlColumnDef> {
         let name = self.expect_ident()?;
         let type_tok = self.next_token().ok_or_else(|| MsiError::Sql {
@@ -434,6 +490,10 @@ impl Parser {
     }
 
     /// Parses a literal or parameter placeholder value.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_value(&mut self) -> Result<SqlValue> {
         let tok = self.next_token().ok_or_else(|| MsiError::Sql {
             message: "unexpected end of expression value".to_string(),
@@ -452,11 +512,19 @@ impl Parser {
     }
 
     /// Parses an expression tree.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_expression(&mut self) -> Result<Expression> {
         self.parse_or()
     }
 
     /// Parses logical OR level.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_or(&mut self) -> Result<Expression> {
         let mut expr = self.parse_and()?;
         while matches!(self.peek(), Some(Token::Or)) {
@@ -468,6 +536,10 @@ impl Parser {
     }
 
     /// Parses logical AND level.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_and(&mut self) -> Result<Expression> {
         let mut expr = self.parse_primary_expr()?;
         while matches!(self.peek(), Some(Token::And)) {
@@ -479,6 +551,10 @@ impl Parser {
     }
 
     /// Parses primary expression level.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_primary_expr(&mut self) -> Result<Expression> {
         if matches!(self.peek(), Some(Token::Not)) {
             self.next_token();

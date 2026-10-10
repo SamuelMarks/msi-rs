@@ -412,6 +412,10 @@ pub fn run_app(args: &[String]) -> ExitCode {
 }
 
 /// Entry point for the `msiextract` executable.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 #[must_use = "process exit code must be handled"]
 pub fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -598,40 +602,37 @@ mod tests {
         let no_dir_msi = temp_dir.join("no_dir.msi");
         let mut malformed_db = msi::wix::linker::LinkedDatabase::new().unwrap();
 
-        let mut file_rec = msi::database::tables::record::Record::new();
-        file_rec.push(msi::database::FieldValue::String("file1".to_string()));
-        file_rec.push(msi::database::FieldValue::String("comp1".to_string()));
-        file_rec.push(msi::database::FieldValue::String(
-            "filename.txt".to_string(),
-        ));
+        let mut file_rec = Record::new();
+        file_rec.push(FieldValue::String("file1".to_string()));
+        file_rec.push(FieldValue::String("comp1".to_string()));
+        file_rec.push(FieldValue::String("filename.txt".to_string()));
         for _ in 3..8 {
-            file_rec.push(msi::database::FieldValue::Null);
+            file_rec.push(FieldValue::Null);
         }
         malformed_db
             .tables
             .insert("File".to_string(), vec![file_rec]);
 
-        let mut comp_rec = msi::database::tables::record::Record::new();
-        comp_rec.push(msi::database::FieldValue::String("comp1".to_string()));
-        comp_rec.push(msi::database::FieldValue::Null);
-        comp_rec.push(msi::database::FieldValue::String("dir1".to_string()));
+        let mut comp_rec = Record::new();
+        comp_rec.push(FieldValue::String("comp1".to_string()));
+        comp_rec.push(FieldValue::Null);
+        comp_rec.push(FieldValue::String("dir1".to_string()));
         for _ in 3..6 {
-            comp_rec.push(msi::database::FieldValue::Null);
+            comp_rec.push(FieldValue::Null);
         }
         malformed_db
             .tables
             .insert("Component".to_string(), vec![comp_rec]);
 
-        let mut dir_rec = msi::database::tables::record::Record::new();
-        dir_rec.push(msi::database::FieldValue::String("dir1".to_string()));
-        dir_rec.push(msi::database::FieldValue::String("TARGETDIR".to_string()));
-        dir_rec.push(msi::database::FieldValue::String("MyDir".to_string()));
+        let mut dir_rec = Record::new();
+        dir_rec.push(FieldValue::String("dir1".to_string()));
+        dir_rec.push(FieldValue::String("TARGETDIR".to_string()));
+        dir_rec.push(FieldValue::String("MyDir".to_string()));
         malformed_db
             .tables
             .insert("Directory".to_string(), vec![dir_rec]);
 
-        let no_dir_pkg =
-            msi::package::Package::from_database(malformed_db, std::collections::HashMap::new());
+        let no_dir_pkg = Package::from_database(malformed_db, std::collections::HashMap::new());
         let bytes = no_dir_pkg.to_bytes().unwrap();
         assert!(fs::write(&no_dir_msi, &bytes).is_ok());
         let _ = run(&["-l".to_string(), no_dir_msi.to_string_lossy().to_string()]);
@@ -649,22 +650,21 @@ mod tests {
         // Package without Component table
         let no_comp_msi = temp_dir.join("no_comp.msi");
         let mut no_comp_db = msi::wix::linker::LinkedDatabase::new().unwrap();
-        let mut file_rec_nc = msi::database::tables::record::Record::new();
+        let mut file_rec_nc = Record::new();
         for _ in 0..8 {
-            file_rec_nc.push(msi::database::FieldValue::Null);
+            file_rec_nc.push(FieldValue::Null);
         }
         no_comp_db
             .tables
             .insert("File".to_string(), vec![file_rec_nc]);
-        let mut dir_rec_nc = msi::database::tables::record::Record::new();
+        let mut dir_rec_nc = Record::new();
         for _ in 0..3 {
-            dir_rec_nc.push(msi::database::FieldValue::Null);
+            dir_rec_nc.push(FieldValue::Null);
         }
         no_comp_db
             .tables
             .insert("Directory".to_string(), vec![dir_rec_nc]);
-        let no_comp_pkg =
-            msi::package::Package::from_database(no_comp_db, std::collections::HashMap::new());
+        let no_comp_pkg = Package::from_database(no_comp_db, std::collections::HashMap::new());
         assert!(fs::write(&no_comp_msi, no_comp_pkg.to_bytes().unwrap()).is_ok());
         let _ = run(&[
             "-C".to_string(),

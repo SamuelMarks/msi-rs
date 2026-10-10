@@ -59,6 +59,9 @@ impl MultiPlatformMatrixTest {
     /// # Returns
     ///
     /// Installed files map, service definition, and registry store.
+    ///
+    /// # Arguments
+    ///
     #[must_use]
     pub fn simulate_install(
         &self,

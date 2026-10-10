@@ -22,6 +22,10 @@ pub struct BalExtension;
 
 impl BalExtension {
     /// Creates a new `BalExtension` instance.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn new() -> Self {
         Self
@@ -31,6 +35,17 @@ impl BalExtension {
     ///
     /// # Errors
     /// Returns [`MsiError::WixCompiler`] if required attributes are missing.
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - TODO: Document argument.
+    /// * `parent_id` - TODO: Document argument.
+    /// * `tables` - TODO: Document argument.
+    /// * `IntermediateTable>` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::unnecessary_wraps)]
     fn compile_standard_bootstrapper(
         node: &XmlNode,

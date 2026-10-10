@@ -1,5 +1,6 @@
 #![allow(clippy::redundant_pub_crate)]
 #![deny(missing_docs)]
+#![deny(clippy::missing_docs_in_private_items)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Native Python extension module `_msi` for Windows Installer package creation and inspection.
 
@@ -25,6 +26,15 @@ use version::PyProductVersion;
 use wix::{compile_wix_file, compile_wix_source};
 
 /// Native Python module definition for `_msi`.
+///
+/// # Arguments
+///
+/// * `m` - TODO: Document argument.
+/// * `PyModule>` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 #[allow(clippy::redundant_pub_crate)]
 #[pymodule]
 #[allow(clippy::unnecessary_wraps)]
@@ -43,6 +53,15 @@ mod tests {
     use super::*;
 
     /// Helper verifying `_msi` extension module initialization across Ok and Err module results.
+    ///
+    /// # Arguments
+    ///
+    /// * `res` - TODO: Document argument.
+    /// * `PyModule>>` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn check_msi_module_init(res: PyResult<Bound<'_, PyModule>>) -> bool {
         res.is_ok_and(|m| {
             assert!(_msi(&m).is_ok());

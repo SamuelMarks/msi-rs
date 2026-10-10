@@ -241,6 +241,15 @@ impl BlockDeviceScanner {
     }
 
     /// Parses an individual sysfs block directory into a [`BlockDevice`].
+    ///
+    /// # Arguments
+    ///
+    /// * `dev_dir` - TODO: Document argument.
+    /// * `name` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_sysfs_device(dev_dir: &Path, name: &str) -> BlockDevice {
         let kind = if name.starts_with("loop") {
             DeviceKind::Loopback

@@ -6,19 +6,11 @@ import sys
 import tempfile
 from pathlib import Path
 
-# Prefer installed msi package (e.g. wheel built & installed in CI);
-# if not installed, fall back to local repository source.
-try:
-    import msi  # type: ignore[import-not-found]
-except ImportError:
-    repo_root = Path(__file__).resolve().parent.parent.parent
-    local_py_path = str(repo_root / "crates" / "msi-python" / "python")
-    if local_py_path not in sys.path:
-        sys.path.insert(0, local_py_path)
-    import msi  # type: ignore[import-not-found]
-
+import pytest
+import msi
 
 def test_product_version_parsing_and_comparisons() -> None:
+    """Verifies that ProductVersion parsing, instantiation, and property access work correctly."""
     v1 = msi.ProductVersion(1, 0, 0)
     assert v1.major == 1
     assert v1.minor == 0
@@ -38,6 +30,7 @@ def test_product_version_parsing_and_comparisons() -> None:
 
 
 def test_package_builder_and_package_lifecycle() -> None:
+    """Verifies the creation, modification, and property retrieval of a Package using PackageBuilder."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         msi_out = tmp_path / "builder_test.msi"
@@ -117,6 +110,7 @@ def test_package_builder_and_package_lifecycle() -> None:
 
 
 def test_build_msi_from_directory_tree() -> None:
+    """Verifies that build_msi correctly packages a directory tree into an MSI and preserves variables."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         source_dir = tmp_path / "source_tree"
@@ -197,6 +191,7 @@ def test_build_msi_from_directory_tree() -> None:
 
 
 def test_sanitize_identifier() -> None:
+    """Verifies that sanitize_identifier safely normalizes arbitrary strings into valid MSI identifiers."""
     assert msi.sanitize_identifier("") == "_id"
     assert msi.sanitize_identifier("123abc") == "_123abc"
     assert msi.sanitize_identifier(".hidden") == "_.hidden"
@@ -206,6 +201,7 @@ def test_sanitize_identifier() -> None:
 
 
 def test_compile_wix() -> None:
+    """Verifies that compile_wix accurately builds an MSI package from raw WiX XML source."""
     wxs_content = """
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
     <Product Id="{12345678-1234-1234-1234-1234567890AB}" Name="$(var.AppName)" Version="1.5.0" Manufacturer="WiXPythonCorp">
@@ -261,15 +257,13 @@ def test_compile_wix() -> None:
 
 
 def test_error_handling() -> None:
+    """Verifies that appropriate Python exceptions (ValidationError, IoError) are raised on invalid inputs."""
     # Invalid version
-    try:
+    with pytest.raises(msi.ValidationError):
         msi.ProductVersion.parse("invalid_version")
-        assert False, "Expected ValidationError"
-    except msi.ValidationError:
-        pass
 
     # Non-existent source dir
-    try:
+    with pytest.raises(msi.IoError):
         msi.build_msi(
             source_dir="/non/existent/path/never/found",
             output_path="/tmp/test.msi",
@@ -277,16 +271,3 @@ def test_error_handling() -> None:
             version="1.0",
             manufacturer="Bad",
         )
-        assert False, "Expected IoError"
-    except msi.IoError:
-        pass
-
-
-if __name__ == "__main__":
-    print("Running Python tests manually...")
-    test_product_version_parsing_and_comparisons()
-    test_package_builder_and_package_lifecycle()
-    test_build_msi_from_directory_tree()
-    test_compile_wix()
-    test_error_handling()
-    print("All Python tests passed successfully!")

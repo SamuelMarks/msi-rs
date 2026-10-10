@@ -25,8 +25,10 @@ use std::collections::HashMap;
 /// Installation states for Features and Components in MSI expressions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum InstallState {
-    /// Not installed / absent.
+    /// State is unknown (uninitialized).
     #[default]
+    Unknown = -1,
+    /// Not installed / absent.
     Absent = 2,
     /// Installed to run locally.
     Local = 3,
@@ -38,6 +40,14 @@ pub enum InstallState {
 
 impl InstallState {
     /// Converts integer value to [`InstallState`].
+    ///
+    /// # Arguments
+    ///
+    /// * `val` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn from_i32(val: i32) -> Option<Self> {
         match val {
@@ -50,6 +60,10 @@ impl InstallState {
     }
 
     /// Returns numeric value corresponding to MSI state constants.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub const fn as_i32(self) -> i32 {
         self as i32
@@ -121,10 +135,119 @@ impl EvaluationContext {
     ///
     /// # Returns
     ///
-    /// Optional reference to string value.
+    /// String slice.
     #[must_use]
     pub fn get_property(&self, name: &str) -> Option<&str> {
         self.properties.get(name).map(String::as_str)
+    }
+
+    /// Removes a property.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Property name.
+    pub fn remove_property(&mut self, name: &str) {
+        self.properties.remove(name);
+    }
+
+    /// Retrieves the requested action state of a feature.
+    ///
+    /// # Arguments
+    /// * `name` - Feature name.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
+    #[must_use]
+    pub fn get_feature_action_state(&self, name: &str) -> InstallState {
+        self.feature_action_states
+            .get(name)
+            .copied()
+            .unwrap_or(InstallState::Unknown)
+    }
+
+    /// Retrieves the installed state of a feature.
+    ///
+    /// # Arguments
+    /// * `name` - Feature name.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
+    #[must_use]
+    pub fn get_feature_installed_state(&self, name: &str) -> InstallState {
+        self.feature_installed_states
+            .get(name)
+            .copied()
+            .unwrap_or(InstallState::Unknown)
+    }
+
+    /// Sets the requested action state of a feature.
+    ///
+    /// # Arguments
+    /// * `name` - Feature name.
+    /// * `state` - Install state.
+    pub fn set_feature_action_state(&mut self, name: impl Into<String>, state: InstallState) {
+        self.feature_action_states.insert(name.into(), state);
+    }
+
+    /// Sets the installed state of a feature.
+    ///
+    /// # Arguments
+    /// * `name` - Feature name.
+    /// * `state` - Install state.
+    pub fn set_feature_installed_state(&mut self, name: impl Into<String>, state: InstallState) {
+        self.feature_installed_states.insert(name.into(), state);
+    }
+
+    /// Retrieves the requested action state of a component.
+    ///
+    /// # Arguments
+    /// * `name` - Component name.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
+    #[must_use]
+    pub fn get_component_action_state(&self, name: &str) -> InstallState {
+        self.component_action_states
+            .get(name)
+            .copied()
+            .unwrap_or(InstallState::Unknown)
+    }
+
+    /// Retrieves the installed state of a component.
+    ///
+    /// # Arguments
+    /// * `name` - Component name.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
+    #[must_use]
+    pub fn get_component_installed_state(&self, name: &str) -> InstallState {
+        self.component_installed_states
+            .get(name)
+            .copied()
+            .unwrap_or(InstallState::Unknown)
+    }
+
+    /// Sets the requested action state of a component.
+    ///
+    /// # Arguments
+    /// * `name` - Component name.
+    /// * `state` - Install state.
+    pub fn set_component_action_state(&mut self, name: impl Into<String>, state: InstallState) {
+        self.component_action_states.insert(name.into(), state);
+    }
+
+    /// Sets the installed state of a component.
+    ///
+    /// # Arguments
+    /// * `name` - Component name.
+    /// * `state` - Install state.
+    pub fn set_component_installed_state(&mut self, name: impl Into<String>, state: InstallState) {
+        self.component_installed_states.insert(name.into(), state);
     }
 
     /// Returns a reference to the map of all properties.
@@ -222,31 +345,61 @@ impl EvaluationContext {
     }
 
     /// Sets requested action state for a Feature (`&Feature`).
+    ///
+    /// # Arguments
+    ///
+    /// * `feature` - TODO: Document argument.
+    /// * `state` - TODO: Document argument.
     pub fn set_feature_action(&mut self, feature: impl Into<String>, state: InstallState) {
         self.feature_action_states.insert(feature.into(), state);
     }
 
     /// Sets installed state for a Feature (`!Feature`).
+    ///
+    /// # Arguments
+    ///
+    /// * `feature` - TODO: Document argument.
+    /// * `state` - TODO: Document argument.
     pub fn set_feature_installed(&mut self, feature: impl Into<String>, state: InstallState) {
         self.feature_installed_states.insert(feature.into(), state);
     }
 
     /// Sets requested action state for a Component (`$Component`).
+    ///
+    /// # Arguments
+    ///
+    /// * `comp` - TODO: Document argument.
+    /// * `state` - TODO: Document argument.
     pub fn set_component_action(&mut self, comp: impl Into<String>, state: InstallState) {
         self.component_action_states.insert(comp.into(), state);
     }
 
     /// Sets installed state for a Component (`?Component`).
+    ///
+    /// # Arguments
+    ///
+    /// * `comp` - TODO: Document argument.
+    /// * `state` - TODO: Document argument.
     pub fn set_component_installed(&mut self, comp: impl Into<String>, state: InstallState) {
         self.component_installed_states.insert(comp.into(), state);
     }
 
     /// Sets the resolved path for a File key (`[#FileKey]`).
+    ///
+    /// # Arguments
+    ///
+    /// * `file_key` - TODO: Document argument.
+    /// * `path` - TODO: Document argument.
     pub fn set_file_path(&mut self, file_key: impl Into<String>, path: impl Into<String>) {
         self.file_paths.insert(file_key.into(), path.into());
     }
 
     /// Sets the resolved directory for a Component key (`[$ComponentKey]`).
+    ///
+    /// # Arguments
+    ///
+    /// * `comp_key` - TODO: Document argument.
+    /// * `dir` - TODO: Document argument.
     pub fn set_component_dir(&mut self, comp_key: impl Into<String>, dir: impl Into<String>) {
         self.component_directories
             .insert(comp_key.into(), dir.into());
@@ -384,6 +537,14 @@ impl EvaluationContext {
     }
 
     /// Checks if a character terminates an unquoted word in condition syntax.
+    ///
+    /// # Arguments
+    ///
+    /// * `c` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     const fn is_word_terminator(c: char) -> bool {
         matches!(
             c,
@@ -392,6 +553,14 @@ impl EvaluationContext {
     }
     #[allow(clippy::cognitive_complexity)]
     /// Tokenizes an expression string.
+    ///
+    /// # Arguments
+    ///
+    /// * `expr` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[allow(clippy::too_many_lines)]
     fn tokenize_expression(expr: &str) -> Vec<Token> {
         let mut tokens = Vec::new();
@@ -669,6 +838,15 @@ struct ConditionParser<'a> {
 
 impl<'a> ConditionParser<'a> {
     /// Creates a new parser.
+    ///
+    /// # Arguments
+    ///
+    /// * `tokens` - TODO: Document argument.
+    /// * `context` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     const fn new(tokens: Vec<Token>, context: &'a EvaluationContext) -> Self {
         Self {
             tokens,
@@ -678,11 +856,19 @@ impl<'a> ConditionParser<'a> {
     }
 
     /// Returns the current token without consuming it.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn peek(&self) -> Option<&Token> {
         self.tokens.get(self.cursor)
     }
 
     /// Advances and returns the current token.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn advance(&mut self) -> Option<Token> {
         (self.cursor < self.tokens.len()).then(|| {
             let t = self.tokens[self.cursor].clone();
@@ -692,6 +878,10 @@ impl<'a> ConditionParser<'a> {
     }
 
     /// Parses an OR expression.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_or_expr(&mut self) -> Result<bool> {
         let mut left = self.parse_xor_expr()?;
         while matches!(self.peek(), Some(Token::Or)) {
@@ -703,6 +893,10 @@ impl<'a> ConditionParser<'a> {
     }
 
     /// Parses an XOR expression.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_xor_expr(&mut self) -> Result<bool> {
         let mut left = self.parse_and_expr()?;
         while matches!(self.peek(), Some(Token::Xor)) {
@@ -714,6 +908,10 @@ impl<'a> ConditionParser<'a> {
     }
 
     /// Parses an AND expression.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_and_expr(&mut self) -> Result<bool> {
         let mut left = self.parse_not_expr()?;
         while matches!(self.peek(), Some(Token::And)) {
@@ -725,6 +923,10 @@ impl<'a> ConditionParser<'a> {
     }
 
     /// Parses a NOT expression.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_not_expr(&mut self) -> Result<bool> {
         if matches!(self.peek(), Some(Token::Not)) {
             self.advance();
@@ -736,6 +938,10 @@ impl<'a> ConditionParser<'a> {
     }
 
     /// Parses a primary term or relational comparison.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_relational_or_primary(&mut self) -> Result<bool> {
         if matches!(self.peek(), Some(Token::OpenParen)) {
             self.advance();
@@ -766,6 +972,10 @@ impl<'a> ConditionParser<'a> {
     }
 
     /// Parses a value operand.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     fn parse_value(&mut self) -> Result<String> {
         match self.advance() {
             Some(Token::Literal(s)) => Ok(s),
@@ -823,6 +1033,14 @@ impl<'a> ConditionParser<'a> {
 }
 
 /// Checks if a token is a relational comparison operator.
+///
+/// # Arguments
+///
+/// * `t` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 const fn is_relational_op(t: &Token) -> bool {
     matches!(
         t,
@@ -850,6 +1068,16 @@ const fn is_relational_op(t: &Token) -> bool {
 }
 
 /// Compares two string or integer operand values.
+///
+/// # Arguments
+///
+/// * `left` - TODO: Document argument.
+/// * `op` - TODO: Document argument.
+/// * `right` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn compare_values(left: &str, op: &Token, right: &str) -> bool {
     // Check if both sides can be parsed as integers
     let l_int = left.parse::<i64>().ok();
@@ -893,6 +1121,14 @@ fn compare_values(left: &str, op: &Token, right: &str) -> bool {
 }
 
 /// Checks truthiness of a single value.
+///
+/// # Arguments
+///
+/// * `val` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn is_truthy(val: &str) -> bool {
     if val.is_empty() {
         return false;
@@ -1241,4 +1477,34 @@ mod properties_additional_tests {
         std::env::remove_var("MSI_TEST_EVAL_ENV");
         assert_eq!(ctx.evaluate_condition("%MSI_TEST_EVAL_ENV"), Ok(false));
     }
+}
+
+#[test]
+fn test_properties_accessors_coverage() {
+    let mut ctx = EvaluationContext::new();
+    ctx.set_property("TEST_PROP", "1");
+    ctx.remove_property("TEST_PROP");
+    assert_eq!(ctx.get_property("TEST_PROP"), None);
+
+    assert_eq!(ctx.get_feature_action_state("F1"), InstallState::Unknown);
+    ctx.set_feature_action_state("F1", InstallState::Local);
+    assert_eq!(ctx.get_feature_action_state("F1"), InstallState::Local);
+
+    assert_eq!(ctx.get_feature_installed_state("F1"), InstallState::Unknown);
+    ctx.set_feature_installed_state("F1", InstallState::Source);
+    assert_eq!(ctx.get_feature_installed_state("F1"), InstallState::Source);
+
+    assert_eq!(ctx.get_component_action_state("C1"), InstallState::Unknown);
+    ctx.set_component_action_state("C1", InstallState::Local);
+    assert_eq!(ctx.get_component_action_state("C1"), InstallState::Local);
+
+    assert_eq!(
+        ctx.get_component_installed_state("C1"),
+        InstallState::Unknown
+    );
+    ctx.set_component_installed_state("C1", InstallState::Source);
+    assert_eq!(
+        ctx.get_component_installed_state("C1"),
+        InstallState::Source
+    );
 }

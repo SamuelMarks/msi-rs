@@ -202,6 +202,14 @@ impl WixToolchainDiscovery {
 ///
 /// Returns the flag without prefix if it represents a command flag,
 /// or `None` if it represents a path or non-flag argument.
+///
+/// # Arguments
+///
+/// * `arg` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 #[allow(clippy::option_if_let_else)]
 fn strip_flag_prefix(arg: &str) -> Option<&str> {
     if let Some(rest) = arg.strip_prefix("--") {
@@ -214,12 +222,24 @@ fn strip_flag_prefix(arg: &str) -> Option<&str> {
 }
 
 /// Returns whether an argument is a CLI flag rather than a filesystem path.
+///
+/// # Arguments
+///
+/// * `arg` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 #[must_use]
 pub fn is_flag(arg: &str) -> bool {
     arg.starts_with('@') || strip_flag_prefix(arg).is_some()
 }
 
 /// Creates parent directory for a target path if one is specified and non-empty.
+///
+/// # Arguments
+///
+/// * `path` - TODO: Document argument.
 fn ensure_parent_dir_exists(path: &std::path::Path) {
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
@@ -573,6 +593,14 @@ impl CandleOptions {
 }
 
 /// Helper tokenizing response file content respecting quotes and comments.
+///
+/// # Arguments
+///
+/// * `content` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn parse_response_file_tokens(content: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     for line in content.lines() {
@@ -621,6 +649,15 @@ fn parse_response_file_tokens(content: &str) -> Vec<String> {
 }
 
 /// Helper expanding `@response_file` arguments recursively with a depth limit.
+///
+/// # Arguments
+///
+/// * `args` - TODO: Document argument.
+/// * `depth` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn expand_response_files_recursive(args: &[String], depth: usize) -> Result<Vec<String>> {
     if depth > 16 {
         return Err(MsiError::WixCompiler {

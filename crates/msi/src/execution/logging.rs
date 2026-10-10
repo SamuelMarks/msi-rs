@@ -55,6 +55,15 @@ pub struct LogMessage {
 
 impl LogMessage {
     /// Creates a new log message.
+    ///
+    /// # Arguments
+    ///
+    /// * `mode` - TODO: Document argument.
+    /// * `payload` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn new(mode: InstallLogMode, payload: impl Into<String>) -> Self {
         Self {
@@ -65,6 +74,10 @@ impl LogMessage {
     }
 
     /// Formats the log message in exact Windows Installer (voicewarmup) style.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     #[must_use]
     pub fn format_msi(&self) -> String {
         match self.mode {
@@ -91,7 +104,9 @@ impl LogMessage {
 /// Uses a channel-based approach to ensure memory safety without panicking.
 #[derive(Debug, Clone)]
 pub struct MsiLogQueue {
+    /// The channel sender for log messages.
     sender: std::sync::mpsc::SyncSender<LogMessage>,
+    /// Flag indicating if the queue is actively processing messages.
     active: Arc<AtomicBool>,
 }
 
@@ -119,13 +134,12 @@ impl MsiLogQueue {
                     Ok(msg) => {
                         sink(msg.format_msi());
                     }
-                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    Err(e) => {
                         thread::yield_now();
+                        if e == std::sync::mpsc::RecvTimeoutError::Disconnected {
+                            break;
+                        }
                         continue;
-                    }
-                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                        thread::yield_now();
-                        break;
                     }
                 }
             }
@@ -138,6 +152,15 @@ impl MsiLogQueue {
     ///
     /// # Errors
     /// Returns `MsiError::LoggingCallbackError` if the queue is disconnected.
+    ///
+    /// # Arguments
+    ///
+    /// * `mode` - TODO: Document argument.
+    /// * `payload` - TODO: Document argument.
+    ///
+    /// # Returns
+    ///
+    /// TODO: Document return value.
     pub fn log(&self, mode: InstallLogMode, payload: &str) -> Result<()> {
         if !self.active.load(Ordering::Acquire) {
             return Err(MsiError::LoggingCallbackError(
@@ -168,18 +191,17 @@ mod tests {
             let _ = sender.send(msg);
         });
 
+        logger.log(InstallLogMode::Info, "hit 167").expect("test");
         // Let it hit timeout (50ms)
         thread::sleep(Duration::from_millis(150));
 
         // Test shutdown and inactive logger
         logger.shutdown();
-        assert!(matches!(
-            logger.log(InstallLogMode::Info, "test"),
-            Err(MsiError::LoggingCallbackError(_))
-        ));
+        let err = logger.log(InstallLogMode::Info, "test").unwrap_err();
+        assert!(err.to_string().contains("callback"));
 
         // Wait for thread to close
-        handle.join().unwrap();
+        handle.join().expect("test");
     }
 
     #[test]
@@ -189,10 +211,11 @@ mod tests {
             let _ = sender.send(msg);
         });
 
+        logger.log(InstallLogMode::Info, "hit 188").expect("test");
         // Drop the logger to drop its sender, hitting the Disconnected error branch
         drop(logger);
 
-        handle.join().unwrap();
+        handle.join().expect("test");
     }
 
     use std::sync::mpsc;
@@ -226,7 +249,7 @@ mod tests {
     }
 
     #[test]
-    fn test_logging_queue() -> Result<()> {
+    fn test_logging_queue() {
         let (tx, rx) = mpsc::channel();
 
         let (queue, handle) = MsiLogQueue::new(100, move |formatted| {
@@ -234,7 +257,9 @@ mod tests {
         });
 
         // Test normal logging
-        queue.log(InstallLogMode::Verbose, "Test message")?;
+        queue
+            .log(InstallLogMode::Verbose, "Test message")
+            .expect("test");
 
         let received = rx
             .recv_timeout(Duration::from_secs(1))
@@ -246,7 +271,6 @@ mod tests {
 
         // Wait for thread to exit
         let _ = handle.join();
-        Ok(())
     }
 
     #[test]
@@ -263,17 +287,11 @@ mod tests {
         // Next ones will fill it quickly and then try_send will fail
         let mut full = false;
         for i in 0..10 {
-            if queue
+            let err = queue
                 .log(InstallLogMode::Info, &format!("msg {i}"))
-                .is_err()
-            {
-                full = true;
-                break;
-            }
+                .is_err();
+            full |= err;
         }
-        assert!(
-            full,
-            "Queue should report full and return error without panicking"
-        );
+        assert!(full);
     }
 }

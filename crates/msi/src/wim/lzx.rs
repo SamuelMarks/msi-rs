@@ -28,10 +28,29 @@ pub fn translate_e8_instructions(data: &mut [u8], file_offset: usize) {
 ///
 /// Returns [`MsiError::WimDecompressionError`] if the chunk data is corrupted,
 /// or if an underlying LZX error occurs.
+///
+/// # Arguments
+///
+/// * `input` - TODO: Document argument.
+/// * `output_size` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 pub fn decompress_lzx(input: &[u8], output_size: usize) -> Result<Vec<u8>> {
     decompress_lzx_internal(input, output_size, 15)
 }
 /// Internal helper for LZX decompression, allowing tests to access raw internals.
+///
+/// # Arguments
+///
+/// * `input` - TODO: Document argument.
+/// * `output_size` - TODO: Document argument.
+/// * `window_bits` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn decompress_lzx_internal(input: &[u8], output_size: usize, window_bits: u8) -> Result<Vec<u8>> {
     if input.is_empty() && output_size > 0 {
         return Err(MsiError::WimDecompressionError {

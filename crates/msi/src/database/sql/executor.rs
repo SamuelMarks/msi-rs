@@ -436,6 +436,18 @@ pub fn execute_statement(
 }
 
 /// Resolves a [`SqlValue`] into a typed [`FieldValue`].
+///
+/// # Arguments
+///
+/// * `val` - TODO: Document argument.
+/// * `params` - TODO: Document argument.
+/// * `param_idx` - TODO: Document argument.
+/// * `record` - TODO: Document argument.
+/// * `schemas` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn resolve_sql_value(
     val: &SqlValue,
     params: &[FieldValue],
@@ -477,6 +489,15 @@ fn resolve_sql_value(
 /// Evaluates a SQL expression against a record row.
 
 /// Finds the index of a column in a list of schemas, handling optional table prefixes.
+///
+/// # Arguments
+///
+/// * `schemas` - TODO: Document argument.
+/// * `col_ref` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn find_column_index(schemas: &[&TableSchema], col_ref: &str) -> Result<usize> {
     let mut match_idx = None;
     let mut current_offset = 0;
@@ -508,6 +529,7 @@ fn find_column_index(schemas: &[&TableSchema], col_ref: &str) -> Result<usize> {
     })
 }
 
+/// Evaluates an SQL expression against a record.
 fn eval_expression(
     expr: &Expression,
     record: &Record,
@@ -552,6 +574,16 @@ fn eval_expression(
 }
 
 /// Compares two field values according to a binary operator.
+///
+/// # Arguments
+///
+/// * `left` - TODO: Document argument.
+/// * `op` - TODO: Document argument.
+/// * `right` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn eval_binary_op(left: &FieldValue, op: BinaryOp, right: &FieldValue) -> bool {
     match (left, right) {
         (FieldValue::Null, FieldValue::Null) => op == BinaryOp::Equal,
@@ -576,6 +608,16 @@ fn eval_binary_op(left: &FieldValue, op: BinaryOp, right: &FieldValue) -> bool {
 }
 
 /// Compares two numeric values according to a binary operator.
+///
+/// # Arguments
+///
+/// * `n1` - TODO: Document argument.
+/// * `op` - TODO: Document argument.
+/// * `n2` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 const fn eval_num_op(n1: i32, op: BinaryOp, n2: i32) -> bool {
     match op {
         BinaryOp::Equal => n1 == n2,
@@ -589,6 +631,15 @@ const fn eval_num_op(n1: i32, op: BinaryOp, n2: i32) -> bool {
 }
 
 /// Matches simple SQL `LIKE` wildcard patterns (`%` for any string, `_` for single char).
+///
+/// # Arguments
+///
+/// * `text` - TODO: Document argument.
+/// * `pattern` - TODO: Document argument.
+///
+/// # Returns
+///
+/// TODO: Document return value.
 fn match_like_pattern(text: &str, pattern: &str) -> bool {
     let mut text_chars = text.chars();
     let mut pattern_chars = pattern.chars().peekable();
@@ -625,6 +676,12 @@ fn match_like_pattern(text: &str, pattern: &str) -> bool {
 }
 
 /// Sorts records in-place by `ORDER BY` terms.
+///
+/// # Arguments
+///
+/// * `records` - TODO: Document argument.
+/// * `order_by` - TODO: Document argument.
+/// * `schemas` - TODO: Document argument.
 fn sort_records(records: &mut [Record], order_by: &[OrderByTerm], schemas: &[&TableSchema]) {
     let order_indices: Vec<(usize, OrderDirection)> = order_by
         .iter()
@@ -797,6 +854,12 @@ mod tests {
         assert_eq!(
             execute_sql(&mut db, "INSERT INTO NoPk VALUES ('val1')", &[]).as_ref(),
             Ok(&QueryResult::Modified(1))
+        );
+
+        // DROP TABLE that doesn't exist
+        assert_eq!(
+            execute_sql(&mut db, "DROP TABLE NonExistent", &[]).as_ref(),
+            Ok(&QueryResult::SchemaChanged)
         );
 
         // CREATE TABLE with all column types (String, Short, Long, Stream, Nullable, PK, Localizable)
@@ -1224,7 +1287,7 @@ mod tests {
         let ast = Statement::DropTable {
             table: TableName("StreamTable".to_string()),
         };
-        execute_statement(&mut db, &ast, &[]).unwrap();
+        execute_statement(&mut db, &ast, &[]).expect("test");
 
         let s = &db.tables["_Streams"];
         assert_eq!(s.len(), 2);
