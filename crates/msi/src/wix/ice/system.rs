@@ -482,6 +482,7 @@ pub fn validate_ice100(db: &LinkedDatabase) -> Option<IceReport> {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::database::tables::record::Record;

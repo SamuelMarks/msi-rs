@@ -768,6 +768,7 @@ pub fn compute_crc32(bytes: &[u8]) -> u32 {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

@@ -156,6 +156,7 @@ pub fn populate_standard_tables(catalog: &mut DatabaseCatalog) -> Result<()> {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

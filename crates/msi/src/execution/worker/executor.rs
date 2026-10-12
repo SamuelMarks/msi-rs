@@ -67,7 +67,7 @@ impl LiveWorkerExecutor {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     #[must_use]
     pub fn quarantine_dir(&self) -> &Path {
         &self.quarantine_dir
@@ -86,7 +86,7 @@ impl LiveWorkerExecutor {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     pub fn create_directory(&mut self, path: &Path, mode_octal: Option<u32>) -> Result<()> {
         if !path.exists() {
             fs::create_dir_all(path)?;
@@ -124,7 +124,7 @@ impl LiveWorkerExecutor {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     pub fn write_file_atomic(
         &mut self,
         target_path: &Path,
@@ -200,7 +200,7 @@ impl LiveWorkerExecutor {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     pub fn commit(&mut self) -> Result<()> {
         if self.quarantine_dir.exists() {
             fs::remove_dir_all(&self.quarantine_dir)?;
@@ -222,7 +222,7 @@ impl LiveWorkerExecutor {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     pub fn rollback(&mut self) -> Result<()> {
         let mut errors = Vec::new();
 
@@ -296,7 +296,7 @@ impl LiveWorkerExecutor {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     pub fn recover_interrupted_transaction(quarantine_dir: &Path) -> Result<()> {
         let rbs_path = quarantine_dir.join("rollback.rbs");
         if !rbs_path.exists() {
@@ -314,6 +314,7 @@ impl LiveWorkerExecutor {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -329,28 +330,19 @@ mod tests {
         // Write first version
         let res1 = executor.write_file_atomic(&target_file, b"version 1.0", Some(0o644));
         assert!(res1.is_ok());
-        assert_eq!(
-            fs::read(&target_file).as_deref().map_err(|_| ()),
-            Ok(&b"version 1.0"[..])
-        );
+        assert_eq!(fs::read(&target_file).expect("read"), b"version 1.0");
 
         // Write second version (should quarantine v1)
         let res2 = executor.write_file_atomic(&target_file, b"version 2.0", Some(0o644));
         assert!(res2.is_ok());
-        assert_eq!(
-            fs::read(&target_file).as_deref().map_err(|_| ()),
-            Ok(&b"version 2.0"[..])
-        );
+        assert_eq!(fs::read(&target_file).expect("read"), b"version 2.0");
         assert!(quarantine.exists());
 
         // Commit transaction
         let res_commit = executor.commit();
         assert!(res_commit.is_ok());
         assert!(!quarantine.exists());
-        assert_eq!(
-            fs::read(&target_file).as_deref().map_err(|_| ()),
-            Ok(&b"version 2.0"[..])
-        );
+        assert_eq!(fs::read(&target_file).expect("read"), b"version 2.0");
 
         // Cleanup
         let _ = fs::remove_dir_all(&temp_dir);
@@ -432,10 +424,7 @@ mod tests {
             .write_file_atomic(&new_file, b"new extra data", None)
             .is_ok());
 
-        assert_eq!(
-            fs::read(&target_file).as_deref().map_err(|_| ()),
-            Ok(&b"corrupted data"[..])
-        );
+        assert_eq!(fs::read(&target_file).expect("read"), b"corrupted data");
         assert!(new_file.exists());
 
         // Rollback
@@ -443,10 +432,7 @@ mod tests {
         assert!(res_rollback.is_ok());
 
         // Verify original file restored and new file removed
-        assert_eq!(
-            fs::read(&target_file).as_deref().map_err(|_| ()),
-            Ok(&b"pristine data"[..])
-        );
+        assert_eq!(fs::read(&target_file).expect("read"), b"pristine data");
         assert!(!new_file.exists());
         assert!(!quarantine.exists());
 
@@ -560,10 +546,21 @@ mod worker_executor_additional_tests {
             },
         );
 
-        // 3. remove_dir fails (try to remove_dir on a file)
+        // 3. remove_dir fails (try to read_dir on a file)
         let dir_in_q = q_dir.join("empty_dir");
-        fs::create_dir_all(&dir_in_q).expect("test");
+        fs::write(&dir_in_q, "data").expect("test");
         exec.created_directories.push(dir_in_q);
+
+        // 3.b non-empty directory (will skip removing)
+        let non_empty_dir = q_dir.join("non_empty_dir");
+        fs::create_dir_all(&non_empty_dir).expect("test");
+        fs::write(non_empty_dir.join("file"), "data").expect("test");
+        exec.created_directories.push(non_empty_dir);
+
+        // 3.c remove_dir fails because parent is read-only
+        let unremovable_child = q_dir.join("unremovable_child");
+        fs::create_dir_all(&unremovable_child).expect("test");
+        exec.created_directories.push(unremovable_child);
 
         // 4. remove_dir_all fails on quarantine_dir (make parent read-only)
         #[cfg(unix)]
@@ -574,7 +571,7 @@ mod worker_executor_additional_tests {
 
         let res = exec.rollback();
         assert!(res.is_err());
-        let err_msg = res.unwrap_err().to_string();
+        let err_msg = res.expect_err("Expected an error").to_string();
         assert!(err_msg.contains("remove newly created file"));
         assert!(err_msg.contains("restore quarantined file"));
         assert!(err_msg.contains("remove created directory"));
@@ -602,5 +599,31 @@ mod worker_executor_additional_tests {
         fs::write(&rbs_path, script.serialize()).expect("test");
 
         assert!(LiveWorkerExecutor::recover_interrupted_transaction(&q_dir).is_ok());
+    }
+
+    #[test]
+    fn test_executor_derived_traits() {
+        let rec1 = InstalledFileRecord::NewlyCreated(PathBuf::from("a"));
+        let rec2 = InstalledFileRecord::NewlyCreated(PathBuf::from("a"));
+        let rec3 = InstalledFileRecord::NewlyCreated(PathBuf::from("b"));
+
+        assert_eq!(rec1, rec2);
+        assert_ne!(rec1, rec3);
+        assert_eq!(rec1.clone(), rec1);
+        assert_eq!(format!("{rec1:?}"), "NewlyCreated(\"a\")");
+
+        let rec4 = InstalledFileRecord::Overwritten {
+            target_path: PathBuf::from("a"),
+            quarantine_rbf: PathBuf::from("b"),
+        };
+        assert_ne!(rec1, rec4);
+        assert_eq!(rec4.clone(), rec4);
+        assert!(format!("{rec4:?}").contains("target_path"));
+
+        let exec = LiveWorkerExecutor::default();
+        #[allow(clippy::redundant_clone)]
+        let exec_clone = exec.clone();
+        assert!(format!("{exec:?}").contains("LiveWorkerExecutor"));
+        assert!(format!("{exec_clone:?}").contains("LiveWorkerExecutor"));
     }
 }

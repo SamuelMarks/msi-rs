@@ -301,6 +301,7 @@ pub fn register_font(font_path: &Path) -> Result<(), MsiError> {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -320,9 +321,7 @@ mod tests {
         data2.extend_from_slice(&[0, 0, 0, 2]); // length 2
         data2.extend_from_slice(&[0, 0]); // 2 bytes
         let err2 = extract_font_title(&data2).unwrap_err();
-        assert!(
-            matches!(err2, MsiError::FontRegistrationError(msg) if msg.contains("Invalid 'name' table header"))
-        );
+        assert!(err2.to_string().contains("Invalid 'name' table header"));
 
         // Name record out of bounds
         let mut data3 = b"\x00\x01\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00".to_vec();
@@ -337,9 +336,9 @@ mod tests {
         data3.extend_from_slice(&[0, 3, 0, 1, 0x04, 0x09, 0, 4, 0, 10, 0, 0]);
         // String offset is 28 + 18 = 46. length is 10. End is 56. But we only have 46 bytes!
         let err3 = extract_font_title(&data3).unwrap_err();
-        assert!(
-            matches!(err3, MsiError::FontRegistrationError(msg) if msg.contains("Name record string out of bounds"))
-        );
+        assert!(err3
+            .to_string()
+            .contains("Name record string out of bounds"));
     }
 
     #[test]
@@ -361,16 +360,14 @@ mod tests {
         // 2. Trigger "Invalid font path" error
         let err1 =
             register_font(Path::new("/")).expect_err("Expected error due to missing filename");
-        assert!(
-            matches!(err1, MsiError::FontRegistrationError(msg) if msg.contains("Invalid font path"))
-        );
+        assert!(err1.to_string().contains("Invalid font path"));
 
         // 3. Trigger fs::create_dir_all failure by pointing HOME to /dev/null/home
         std::env::set_var("HOME", "/dev/null/home");
         let err_create = register_font(&font_path).expect_err("Expected create_dir_all to fail");
-        assert!(
-            matches!(err_create, MsiError::FontRegistrationError(msg) if msg.contains("Failed to create macOS font dir"))
-        );
+        assert!(err_create
+            .to_string()
+            .contains("Failed to create macOS font dir"));
 
         // 4. Trigger fs::copy failure by passing a directory instead of a file
         std::env::set_var("HOME", &home_dir); // Restore to valid home
@@ -378,9 +375,7 @@ mod tests {
         fs::create_dir_all(&font_dir_path).expect("test");
         let err2 =
             register_font(&font_dir_path).expect_err("Expected error due to copying a directory");
-        assert!(
-            matches!(err2, MsiError::FontRegistrationError(msg) if msg.contains("Failed to copy font"))
-        );
+        assert!(err2.to_string().contains("Failed to copy font"));
     }
 
     #[test]
@@ -436,7 +431,7 @@ mod tests {
 
         // It should return an error because we didn't find any valid name
         let err = extract_font_title(&data).unwrap_err();
-        assert!(matches!(err, MsiError::FontRegistrationError(_)));
+        assert!(err.to_string().contains("Font registration error"));
     }
 
     #[test]
@@ -506,7 +501,7 @@ mod tests {
     #[test]
     fn test_register_font_not_found() {
         let err = register_font(Path::new("does_not_exist.ttf")).unwrap_err();
-        assert!(matches!(err, MsiError::FontRegistrationError(msg) if msg.contains("not found")));
+        assert!(err.to_string().contains("not found"));
     }
 
     #[test]
@@ -641,6 +636,12 @@ mod tests {
                                          // Only 1 table entry (16 bytes), missing the second one
         data.extend_from_slice(&[0; 16]);
         assert!(extract_font_title(&data).is_err());
+
+        let mut data2 = vec![0x00, 0x01, 0x00, 0x00];
+        data2.extend_from_slice(&2u16.to_be_bytes()); // num_tables = 2
+        data2.extend_from_slice(&[0; 6]); // pad to 12
+        data2.extend_from_slice(&[0; 31]); // 31 bytes, 1 byte short of 32 (2 tables * 16)
+        assert!(extract_font_title(&data2).is_err());
     }
 
     #[test]

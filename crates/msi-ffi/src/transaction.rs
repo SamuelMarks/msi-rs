@@ -26,8 +26,7 @@ use std::ffi::c_char;
 ///
 /// `name` must be a valid null-terminated C string.
 /// `out_handle` must point to valid writable memory.
-#[no_mangle]
-#[inline(always)]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn msi_begin_transaction(
     name: *const c_char,
     out_handle: *mut *mut MsiTransactionHandle,
@@ -67,8 +66,7 @@ pub unsafe extern "C" fn msi_begin_transaction(
 ///
 /// `handle` must be a valid transaction handle.
 /// `session_id` must be a valid null-terminated C string.
-#[no_mangle]
-#[inline(always)]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn msi_join_transaction(
     handle: *mut MsiTransactionHandle,
     session_id: *const c_char,
@@ -109,8 +107,7 @@ pub unsafe extern "C" fn msi_join_transaction(
 /// `handle` must be a valid transaction handle.
 /// `package_path` must be a valid null-terminated C string.
 /// `command_line` may be null or point to a valid null-terminated C string.
-#[no_mangle]
-#[inline(always)]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn msi_install_product(
     handle: *mut MsiTransactionHandle,
     package_path: *const c_char,
@@ -158,8 +155,7 @@ pub unsafe extern "C" fn msi_install_product(
 /// `handle` must be a valid transaction handle.
 /// `product_code` must be a valid null-terminated C string.
 /// `out_state` must point to valid writable memory.
-#[no_mangle]
-#[inline(always)]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn msi_query_product_state(
     handle: *const MsiTransactionHandle,
     product_code: *const c_char,
@@ -198,8 +194,7 @@ pub unsafe extern "C" fn msi_query_product_state(
 ///
 /// `handle` must be a valid transaction handle.
 /// `out_exit_code` must point to valid writable memory.
-#[no_mangle]
-#[inline(always)]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn msi_end_transaction(
     handle: *mut MsiTransactionHandle,
     commit: i32,

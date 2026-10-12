@@ -4,7 +4,7 @@ use std::ffi::c_void;
 
 
 /// Migrates 10 cached packages (ANSI).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn Migrate10CachedPackagesA(

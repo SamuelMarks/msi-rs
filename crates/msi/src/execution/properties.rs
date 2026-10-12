@@ -1140,6 +1140,7 @@ fn is_truthy(val: &str) -> bool {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

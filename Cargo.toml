@@ -5,7 +5,6 @@ members = [
     "crates/msi-cli",
     "crates/msi-gui",
     "crates/msi-ffi",
-    "crates/msi-python",
 ]
 
 [workspace.package]

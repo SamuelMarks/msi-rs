@@ -59,7 +59,7 @@ fn build_sample_cabinet() -> Result<Vec<u8>> {
         b"{\"database\": \"libscript_db\", \"port\": 3306}\n",
     )?;
     writer.add_file("fil_readme_txt", b"LibScript Product Suite Documentation\n")?;
-    Ok(writer.build())
+    writer.build()
 }
 
 /// Builds a test MSI database with standard installation sequence, directory hierarchy,

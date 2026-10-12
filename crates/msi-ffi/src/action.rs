@@ -62,8 +62,9 @@ pub struct ReinstallMode(pub u32);
 /// # Safety
 ///
 /// Pointers must point to valid null-terminated strings or be NULL.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiDoActionW(h_install: MSIHANDLE, sz_action: ActionNameW) -> u32 {
     std::panic::catch_unwind(|| {
         if sz_action.0.is_null() {
@@ -115,8 +116,9 @@ pub unsafe extern "system" fn MsiDoActionW(h_install: MSIHANDLE, sz_action: Acti
 /// # Safety
 ///
 /// Pointers must point to valid null-terminated strings or be NULL.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiDoActionA(h_install: MSIHANDLE, sz_action: ActionNameA) -> u32 {
     std::panic::catch_unwind(|| {
         if sz_action.0.is_null() {
@@ -169,8 +171,9 @@ pub unsafe extern "system" fn MsiDoActionA(h_install: MSIHANDLE, sz_action: Acti
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiSequenceW(
     h_install: MSIHANDLE,
     sz_table: SequenceNameW,
@@ -229,8 +232,9 @@ pub unsafe extern "system" fn MsiSequenceW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiSequenceA(
     h_install: MSIHANDLE,
     sz_table: SequenceNameA,
@@ -289,8 +293,9 @@ pub unsafe extern "system" fn MsiSequenceA(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiConfigureProductW(
     _sz_product: ProductCodeW,
     _i_install_level: InstallLevel,
@@ -341,8 +346,9 @@ pub unsafe extern "system" fn MsiConfigureProductW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiConfigureProductA(
     _sz_product: ProductCodeA,
     _i_install_level: InstallLevel,
@@ -392,8 +398,9 @@ pub unsafe extern "system" fn MsiConfigureProductA(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiReinstallProductW(
     _sz_product: ProductCodeW,
     _sz_reinstall_mode: ReinstallMode,
@@ -436,8 +443,9 @@ pub unsafe extern "system" fn MsiReinstallProductW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiReinstallProductA(
     _sz_product: ProductCodeA,
     _sz_reinstall_mode: ReinstallMode,
@@ -492,9 +500,10 @@ pub struct GUID {
 /// # Safety
 ///
 /// `guid` must be a valid pointer.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case)]
+#[must_use]
 pub unsafe extern "cdecl" fn __wine_msi_call_dll_function(
     client_pid: u32,
     guid: *const GUID,

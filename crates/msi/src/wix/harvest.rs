@@ -1114,7 +1114,7 @@ pub fn generate_cmake_package_registry_fragment(
 }
 
 #[cfg(test)]
-#[allow(clippy::manual_flatten)]
+#[allow(clippy::manual_flatten, clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::error::MsiError;

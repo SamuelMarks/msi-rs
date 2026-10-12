@@ -55,11 +55,14 @@ impl VolumeCostOperations for StandardCostEngine {
         #[cfg(unix)]
         {
             use rustix::fs::statvfs;
-            let stat = statvfs(path).map_err(|e| {
-                MsiError::Io(crate::error::IoContext::from_string(format!(
-                    "statvfs failed: {e}"
-                )))
-            })?;
+            let stat = match statvfs(path) {
+                Ok(s) => s,
+                Err(e) => {
+                    return Err(MsiError::Io(crate::error::IoContext::from_string(format!(
+                        "statvfs failed: {e}"
+                    ))))
+                }
+            };
             let block_size = stat.f_frsize;
             Ok(DiskCostMetrics {
                 total_bytes: stat.f_blocks.saturating_mul(block_size),
@@ -88,6 +91,7 @@ impl VolumeCostOperations for StandardCostEngine {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -95,7 +99,13 @@ mod tests {
     fn test_volume_costing_stubs() {
         let engine = StandardCostEngine;
         let metrics = engine.get_disk_free_space(Path::new("."));
-        assert!(metrics.is_ok() || metrics.is_err()); // Depends on test environment, just ensure it compiles and runs without unwrap
+        assert!(metrics.is_ok());
+
+        #[cfg(unix)]
+        {
+            let res = engine.get_disk_free_space(Path::new("/does_not_exist_ever_statvfs"));
+            assert!(res.is_err());
+        }
     }
 
     #[test]

@@ -447,7 +447,7 @@ mod tests {
         let _ = cab_writer.add_file("raw.bin", b"Cabinet payload contents");
         // File named "/" so that PathBuf::from("/").parent() is None.
         let _ = cab_writer.add_file("/", b"test");
-        let cab_bytes = cab_writer.build();
+        let cab_bytes = cab_writer.build().unwrap_or_default();
 
         use msi::database::{FieldValue, Record};
 
@@ -860,7 +860,7 @@ mod additional_tests {
         let _ = cab_writer.add_file("file2_id", b"Fallback content");
         let _ = cab_writer.add_file("file3_id", b"Fallback root content");
         let _ = cab_writer.add_file("file4_id", b"Unmapped content");
-        let cab_bytes = cab_writer.build();
+        let cab_bytes = cab_writer.build().unwrap_or_default();
 
         let msi_file = temp_dir.join("extract_hier.msi");
         let mut builder = Package::builder()

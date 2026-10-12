@@ -1,12 +1,11 @@
 use msi::platform::SqliteRegistryDriver;
 use std::sync::Mutex;
+use std::sync::OnceLock;
 
-lazy_static::lazy_static! {
-    pub static ref GLOBAL_REGISTRY: Mutex<SqliteRegistryDriver> = Mutex::new({
-        let path = std::env::var("MSI_REGISTRY_PATH")
-            .unwrap_or_else(|_| SqliteRegistryDriver::system_db_path().to_string());
-        SqliteRegistryDriver::default()
-    });
+#[allow(unreachable_pub)]
+pub fn global_registry() -> &'static Mutex<SqliteRegistryDriver> {
+    static GLOBAL_REGISTRY: OnceLock<Mutex<SqliteRegistryDriver>> = OnceLock::new();
+    GLOBAL_REGISTRY.get_or_init(|| Mutex::new(SqliteRegistryDriver::default()))
 }
 
 #[allow(dead_code, unreachable_pub)]
@@ -14,7 +13,7 @@ pub fn with_registry<F, R>(f: F) -> R
 where
     F: FnOnce(&mut SqliteRegistryDriver) -> R,
 {
-    let mut reg = GLOBAL_REGISTRY
+    let mut reg = global_registry()
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     f(&mut reg)
@@ -32,7 +31,7 @@ mod tests {
 
         // Test poisoning recovery
         let _ = catch_unwind(|| {
-            let _lock = GLOBAL_REGISTRY.lock().unwrap();
+            let _lock = global_registry().lock().unwrap();
             panic!("poisoning lock");
         });
 

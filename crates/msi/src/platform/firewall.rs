@@ -288,6 +288,7 @@ impl FirewallManager for WindowsFirewallManager {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -343,14 +344,19 @@ mod tests {
         );
 
         let empty_name = FirewallRuleName::new("");
-        assert!(matches!(
-            mgr.add_port_exception(&empty_name, port, Protocol::Tcp),
-            Err(MsiError::FirewallConfigError(_))
-        ));
-        assert!(matches!(
-            mgr.remove_port_exception(&empty_name, port, Protocol::Tcp),
-            Err(MsiError::FirewallConfigError(_))
-        ));
+        let add_err = mgr.add_port_exception(&empty_name, port, Protocol::Tcp);
+        assert!(add_err.is_err());
+        assert!(add_err
+            .unwrap_err()
+            .to_string()
+            .contains("Rule name cannot be empty"));
+
+        let rm_err = mgr.remove_port_exception(&empty_name, port, Protocol::Tcp);
+        assert!(rm_err.is_err());
+        assert!(rm_err
+            .unwrap_err()
+            .to_string()
+            .contains("Rule name cannot be empty"));
     }
 
     #[test]
@@ -386,14 +392,19 @@ mod tests {
         assert_eq!(remove_cmd_tcp, "# Remove rule 'PFApp' and reload pf anchor");
 
         let empty_name = FirewallRuleName::new("");
-        assert!(matches!(
-            mgr.add_port_exception(&empty_name, port, Protocol::Tcp),
-            Err(MsiError::FirewallConfigError(_))
-        ));
-        assert!(matches!(
-            mgr.remove_port_exception(&empty_name, port, Protocol::Tcp),
-            Err(MsiError::FirewallConfigError(_))
-        ));
+        let add_err = mgr.add_port_exception(&empty_name, port, Protocol::Tcp);
+        assert!(add_err.is_err());
+        assert!(add_err
+            .unwrap_err()
+            .to_string()
+            .contains("Rule name cannot be empty"));
+
+        let rm_err = mgr.remove_port_exception(&empty_name, port, Protocol::Tcp);
+        assert!(rm_err.is_err());
+        assert!(rm_err
+            .unwrap_err()
+            .to_string()
+            .contains("Rule name cannot be empty"));
     }
 
     #[test]
@@ -428,13 +439,18 @@ mod tests {
         assert!(remove_cmd_tcp.contains(r#"protocol="TCP""#));
 
         let empty_name = FirewallRuleName::new("");
-        assert!(matches!(
-            mgr.add_port_exception(&empty_name, port, Protocol::Tcp),
-            Err(MsiError::FirewallConfigError(_))
-        ));
-        assert!(matches!(
-            mgr.remove_port_exception(&empty_name, port, Protocol::Tcp),
-            Err(MsiError::FirewallConfigError(_))
-        ));
+        let add_err = mgr.add_port_exception(&empty_name, port, Protocol::Tcp);
+        assert!(add_err.is_err());
+        assert!(add_err
+            .unwrap_err()
+            .to_string()
+            .contains("Rule name cannot be empty"));
+
+        let rm_err = mgr.remove_port_exception(&empty_name, port, Protocol::Tcp);
+        assert!(rm_err.is_err());
+        assert!(rm_err
+            .unwrap_err()
+            .to_string()
+            .contains("Rule name cannot be empty"));
     }
 }

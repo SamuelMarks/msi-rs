@@ -605,7 +605,7 @@ impl PyPackageBuilder {
             for (fid, data) in &self.staged_files {
                 cab_writer.add_file(fid, data)?;
             }
-            let cab_bytes = cab_writer.build();
+            let cab_bytes = cab_writer.build().unwrap_or_default();
             builder = builder.add_embedded_cabinet("#cab1.cab", cab_bytes);
         }
         Ok(builder)

@@ -324,7 +324,7 @@ fn unescape_idt_value(s: &str) -> String {
 }
 
 #[cfg(test)]
-#[allow(clippy::manual_flatten)]
+#[allow(clippy::manual_flatten, clippy::redundant_clone)]
 mod tests {
     use super::*;
 

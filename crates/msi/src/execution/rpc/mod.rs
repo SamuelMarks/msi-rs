@@ -55,6 +55,7 @@ pub const fn wine_msi_call_dll_function(_client_pid: u32, _guid: &str) -> Result
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -82,6 +83,10 @@ mod tests {
             handle: 42,
             payload: vec![1, 2, 3],
         };
+
+        // Test derives
+        let p_clone = p.clone();
+        assert_eq!(p, p_clone);
 
         let p2 = client.dispatch(p).unwrap();
         let p3 = server.handle_request(p2).unwrap();

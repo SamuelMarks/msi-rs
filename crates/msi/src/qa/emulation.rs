@@ -533,6 +533,7 @@ impl QemuTestRunner {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::platform::format::{

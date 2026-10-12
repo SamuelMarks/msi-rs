@@ -85,7 +85,8 @@ fn decompress_lzx_internal(input: &[u8], output_size: usize, window_bits: u8) ->
     clippy::shadow_unrelated,
     clippy::unreadable_literal,
     clippy::assert_is_empty,
-    clippy::cast_possible_truncation
+    clippy::cast_possible_truncation,
+    clippy::redundant_clone
 )]
 mod tests {
     use super::*;

@@ -862,6 +862,7 @@ fn write_execution_log(
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::database::{FieldValue, Record};
@@ -1039,14 +1040,8 @@ mod tests {
         );
 
         // Uppercase /L flag
-        let opts_upper_l = MsiExecOptions::parse(["/I", "pkg.msi", "/L*", "out.log"]);
-        assert!(matches!(
-            opts_upper_l,
-            Ok(MsiExecOptions {
-                logging: Some(_),
-                ..
-            })
-        ));
+        let opts_upper_l = MsiExecOptions::parse(["/I", "pkg.msi", "/L*", "out.log"]).unwrap();
+        assert!(opts_upper_l.logging.is_some());
     }
 
     /// Tests parsing attached parameters such as `-ipackage.msi`.
@@ -1188,27 +1183,29 @@ mod tests {
         );
 
         // Uppercase action switches
-        assert!(matches!(
-            MsiExecOptions::parse(["/X", "package.msi"]),
-            Ok(MsiExecOptions {
-                action: ActionMode::Uninstall { .. },
-                ..
-            })
-        ));
-        assert!(matches!(
-            MsiExecOptions::parse(["/A", "package.msi"]),
-            Ok(MsiExecOptions {
-                action: ActionMode::Administrative { .. },
-                ..
-            })
-        ));
-        assert!(matches!(
-            MsiExecOptions::parse(["/P", "patch.msp"]),
-            Ok(MsiExecOptions {
-                action: ActionMode::ApplyPatch { .. },
-                ..
-            })
-        ));
+        let opts_x = MsiExecOptions::parse(["/X", "package.msi"]).unwrap();
+        assert_eq!(
+            opts_x.action,
+            ActionMode::Uninstall {
+                package_path: "package.msi".to_string()
+            }
+        );
+
+        let opts_a = MsiExecOptions::parse(["/A", "package.msi"]).unwrap();
+        assert_eq!(
+            opts_a.action,
+            ActionMode::Administrative {
+                package_path: "package.msi".to_string()
+            }
+        );
+
+        let opts_p = MsiExecOptions::parse(["/P", "patch.msp"]).unwrap();
+        assert_eq!(
+            opts_p.action,
+            ActionMode::ApplyPatch {
+                patch_path: "patch.msp".to_string()
+            }
+        );
 
         // Advertise scopes
         assert_eq!(
@@ -1290,13 +1287,14 @@ mod tests {
         );
 
         // Uppercase /F
-        assert!(matches!(
-            MsiExecOptions::parse(["/FOMUS", "app.msi"]),
-            Ok(MsiExecOptions {
-                action: ActionMode::Repair { .. },
-                ..
-            })
-        ));
+        let opts_f = MsiExecOptions::parse(["/FOMUS", "app.msi"]).unwrap();
+        assert_eq!(
+            opts_f.action,
+            ActionMode::Repair {
+                flags: RepairFlags::parse("omus").unwrap(),
+                package_path: "app.msi".to_string()
+            }
+        );
     }
 
     /// Tests invalid command-line inputs and parsing error conditions.

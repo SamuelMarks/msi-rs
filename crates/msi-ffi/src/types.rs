@@ -69,8 +69,7 @@ pub struct MsiBufferHandle {
 /// # Safety
 ///
 /// `handle` must be a valid pointer obtained from `msi_package_builder_create`, or NULL.
-#[no_mangle]
-#[inline(always)]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn msi_package_builder_destroy(handle: *mut MsiPackageBuilderHandle) {
     unsafe {
         if !handle.is_null() {
@@ -90,8 +89,7 @@ pub unsafe extern "C" fn msi_package_builder_destroy(handle: *mut MsiPackageBuil
 /// # Safety
 ///
 /// `handle` must be a valid pointer obtained from `msi_package_builder_build` or `msi_package_open`, or NULL.
-#[no_mangle]
-#[inline(always)]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn msi_package_destroy(handle: *mut MsiPackageHandle) {
     unsafe {
         if !handle.is_null() {
@@ -111,8 +109,7 @@ pub unsafe extern "C" fn msi_package_destroy(handle: *mut MsiPackageHandle) {
 /// # Safety
 ///
 /// `handle` must be a valid pointer obtained from the library, or NULL.
-#[no_mangle]
-#[inline(always)]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn msi_database_destroy(handle: *mut MsiDatabaseHandle) {
     unsafe {
         if !handle.is_null() {
@@ -132,8 +129,7 @@ pub unsafe extern "C" fn msi_database_destroy(handle: *mut MsiDatabaseHandle) {
 /// # Safety
 ///
 /// `handle` must be a valid pointer obtained from the library, or NULL.
-#[no_mangle]
-#[inline(always)]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn msi_record_destroy(handle: *mut MsiRecordHandle) {
     unsafe {
         if !handle.is_null() {
@@ -153,8 +149,7 @@ pub unsafe extern "C" fn msi_record_destroy(handle: *mut MsiRecordHandle) {
 /// # Safety
 ///
 /// `handle` must be a valid pointer obtained from the library, or NULL.
-#[no_mangle]
-#[inline(always)]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn msi_summary_info_destroy(handle: *mut MsiSummaryInfoHandle) {
     unsafe {
         if !handle.is_null() {
@@ -174,8 +169,7 @@ pub unsafe extern "C" fn msi_summary_info_destroy(handle: *mut MsiSummaryInfoHan
 /// # Safety
 ///
 /// `handle` must be a valid pointer obtained from `msi_begin_transaction`, or NULL.
-#[no_mangle]
-#[inline(always)]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn msi_transaction_destroy(handle: *mut MsiTransactionHandle) {
     unsafe {
         if !handle.is_null() {
@@ -195,8 +189,7 @@ pub unsafe extern "C" fn msi_transaction_destroy(handle: *mut MsiTransactionHand
 /// # Safety
 ///
 /// `ptr` must be a pointer allocated by `CString::into_raw` or NULL.
-#[no_mangle]
-#[inline(always)]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn msi_string_free(ptr: *mut c_char) {
     unsafe {
         if !ptr.is_null() {
@@ -217,8 +210,7 @@ pub unsafe extern "C" fn msi_string_free(ptr: *mut c_char) {
 /// # Safety
 ///
 /// `ptr` must be a buffer allocated via `Vec::into_raw_parts` or `Box::into_raw` of a slice of length `len`.
-#[no_mangle]
-#[inline(always)]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn msi_buffer_free(ptr: *mut u8, len: usize) {
     unsafe {
         if !ptr.is_null() && len > 0 {

@@ -1642,6 +1642,7 @@ impl WixBuildOptions {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

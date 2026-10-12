@@ -6,9 +6,10 @@ use crate::win32::{
 };
 
 /// Gets the number of fields in a record.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[must_use]
 pub extern "system" fn MsiRecordGetFieldCount(hRecord: MsiHandle) -> Uint {
     let result = std::panic::catch_unwind(|| {
         with_handle(hRecord, |obj| {
@@ -25,9 +26,10 @@ pub extern "system" fn MsiRecordGetFieldCount(hRecord: MsiHandle) -> Uint {
 }
 
 /// Checks if a field in a record is null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[must_use]
 pub extern "system" fn MsiRecordIsNull(hRecord: MsiHandle, iField: Uint) -> std::ffi::c_int {
     let result = std::panic::catch_unwind(|| {
         with_handle(hRecord, |obj| {
@@ -44,7 +46,7 @@ pub extern "system" fn MsiRecordIsNull(hRecord: MsiHandle, iField: Uint) -> std:
 }
 
 /// Reads a stream from a record.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -76,9 +78,10 @@ pub extern "system" fn MsiRecordReadStream(
 }
 
 /// Sets a stream in a record (Unicode).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[must_use]
 pub extern "system" fn MsiRecordSetStreamW(
     hRecord: MsiHandle,
     iField: Uint,
@@ -103,9 +106,10 @@ pub extern "system" fn MsiRecordSetStreamW(
 }
 
 /// Sets a stream in a record (ANSI).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[must_use]
 pub extern "system" fn MsiRecordSetStreamA(
     hRecord: MsiHandle,
     iField: Uint,

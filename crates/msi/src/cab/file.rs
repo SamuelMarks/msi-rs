@@ -424,6 +424,17 @@ impl CfFile {
 #[cfg(test)]
 /// Unit tests.
 mod tests {
+
+    #[test]
+    fn test_file_sequence() {
+        let seq = FileSequence::new(1).unwrap();
+        assert_eq!(seq.as_u32(), 1);
+        assert_eq!(format!("{seq}"), "FileSeq(1)");
+
+        let err = FileSequence::new(0);
+        assert!(err.is_err());
+    }
+
     use super::*;
 
     /// Tests MS-DOS date and time encoding and decoding roundtrip.

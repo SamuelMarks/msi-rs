@@ -35,7 +35,7 @@ pub struct ComponentState(pub i32);
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideComponentW(
     _sz_product: crate::action::ProductCodeW,
@@ -89,7 +89,7 @@ pub unsafe extern "system" fn MsiProvideComponentW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideComponentA(
     _sz_product: crate::action::ProductCodeA,
@@ -142,7 +142,7 @@ pub unsafe extern "system" fn MsiProvideComponentA(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideAssemblyW(
     _sz_assembly_name: *const u16,
@@ -189,7 +189,7 @@ pub unsafe extern "system" fn MsiProvideAssemblyW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideAssemblyA(
     _sz_assembly_name: *const c_char,
@@ -233,7 +233,7 @@ pub unsafe extern "system" fn MsiProvideAssemblyA(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 /// Returns the full path to an installed component without installing it.
 ///
@@ -311,7 +311,7 @@ pub unsafe extern "system" fn MsiLocateComponentW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub unsafe extern "system" fn MsiLocateComponentA(
@@ -351,7 +351,7 @@ pub unsafe extern "system" fn MsiLocateComponentA(
 }
 
 /// Returns the full component path from a descriptor (Unicode).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideComponentFromDescriptorW(
     _sz_descriptor: *const u16,
@@ -367,7 +367,7 @@ pub unsafe extern "system" fn MsiProvideComponentFromDescriptorW(
 }
 
 /// Returns the full component path from a descriptor (ANSI).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideComponentFromDescriptorA(
     _sz_descriptor: *const c_char,
@@ -382,7 +382,7 @@ pub unsafe extern "system" fn MsiProvideComponentFromDescriptorA(
 }
 
 /// Returns the full component path for a qualified component (Unicode).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideQualifiedComponentW(
     _sz_category: *const u16,
@@ -398,7 +398,7 @@ pub unsafe extern "system" fn MsiProvideQualifiedComponentW(
 }
 
 /// Returns the full component path for a qualified component (ANSI).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideQualifiedComponentA(
     _sz_category: *const c_char,
@@ -414,7 +414,7 @@ pub unsafe extern "system" fn MsiProvideQualifiedComponentA(
 }
 
 /// Returns the full component path for a qualified component with advanced options (Unicode).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideQualifiedComponentExW(
     _sz_category: *const u16,
@@ -433,7 +433,7 @@ pub unsafe extern "system" fn MsiProvideQualifiedComponentExW(
 }
 
 /// Returns the full component path for a qualified component with advanced options (ANSI).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideQualifiedComponentExA(
     _sz_category: *const c_char,
@@ -452,7 +452,7 @@ pub unsafe extern "system" fn MsiProvideQualifiedComponentExA(
 }
 
 /// Returns descriptive information for a product feature (Unicode).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 pub unsafe extern "system" fn MsiGetFeatureInfoW(
     _h_product: u32,
@@ -470,7 +470,7 @@ pub unsafe extern "system" fn MsiGetFeatureInfoW(
 }
 
 /// Returns descriptive information for a product feature (ANSI).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 pub unsafe extern "system" fn MsiGetFeatureInfoA(
     _h_product: u32,
@@ -488,8 +488,9 @@ pub unsafe extern "system" fn MsiGetFeatureInfoA(
 }
 
 /// Increments the usage metric for a feature and returns the installation state (Unicode).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiUseFeatureW(
     _sz_product: *const u16,
     _sz_feature: *const u16,
@@ -502,8 +503,9 @@ pub unsafe extern "system" fn MsiUseFeatureW(
 }
 
 /// Increments the usage metric for a feature and returns the installation state (ANSI).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiUseFeatureA(
     _sz_product: *const c_char,
     _sz_feature: *const c_char,
@@ -536,7 +538,7 @@ pub unsafe extern "system" fn MsiUseFeatureA(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 pub unsafe extern "system" fn MsiGetShortcutTargetW(
     _sz_shortcut_target: *const u16,
@@ -571,7 +573,7 @@ pub unsafe extern "system" fn MsiGetShortcutTargetW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 pub unsafe extern "system" fn MsiGetShortcutTargetA(
     _sz_shortcut_target: *const c_char,
@@ -591,13 +593,46 @@ mod tests {
 
     #[test]
     fn test_msi_locator_stubs() {
-        let dummy_a = std::ffi::CString::new("dummy").unwrap();
+        let dummy_a = std::ffi::CString::new("dummy").expect("tests should not fail");
         let dummy_w: Vec<u16> = "dummy".encode_utf16().chain(std::iter::once(0)).collect();
         let p_a = crate::action::ProductCodeA(dummy_a.as_ptr());
         let p_w = crate::action::ProductCodeW(dummy_w.as_ptr());
 
         unsafe {
             let mut sz = 0;
+            assert_eq!(
+                MsiProvideComponentA(
+                    crate::action::ProductCodeA(std::ptr::null()),
+                    dummy_a.as_ptr(),
+                    dummy_a.as_ptr(),
+                    0,
+                    std::ptr::null_mut(),
+                    &mut sz
+                ),
+                87
+            );
+            assert_eq!(
+                MsiProvideComponentA(
+                    p_a,
+                    std::ptr::null(),
+                    dummy_a.as_ptr(),
+                    0,
+                    std::ptr::null_mut(),
+                    &mut sz
+                ),
+                87
+            );
+            assert_eq!(
+                MsiProvideComponentA(
+                    p_a,
+                    dummy_a.as_ptr(),
+                    std::ptr::null(),
+                    0,
+                    std::ptr::null_mut(),
+                    &mut sz
+                ),
+                87
+            );
             let _ = MsiProvideComponentA(
                 p_a,
                 dummy_a.as_ptr(),
@@ -605,6 +640,39 @@ mod tests {
                 0,
                 std::ptr::null_mut(),
                 &mut sz,
+            );
+            assert_eq!(
+                MsiProvideComponentW(
+                    crate::action::ProductCodeW(std::ptr::null()),
+                    dummy_w.as_ptr(),
+                    dummy_w.as_ptr(),
+                    0,
+                    std::ptr::null_mut(),
+                    &mut sz
+                ),
+                87
+            );
+            assert_eq!(
+                MsiProvideComponentW(
+                    p_w,
+                    std::ptr::null(),
+                    dummy_w.as_ptr(),
+                    0,
+                    std::ptr::null_mut(),
+                    &mut sz
+                ),
+                87
+            );
+            assert_eq!(
+                MsiProvideComponentW(
+                    p_w,
+                    dummy_w.as_ptr(),
+                    std::ptr::null(),
+                    0,
+                    std::ptr::null_mut(),
+                    &mut sz
+                ),
+                87
             );
             let _ = MsiProvideComponentW(
                 p_w,
@@ -645,6 +713,26 @@ mod tests {
                 &mut sz,
                 &mut offset,
             );
+            assert_eq!(
+                MsiProvideQualifiedComponentA(
+                    std::ptr::null(),
+                    dummy_a.as_ptr(),
+                    0,
+                    std::ptr::null_mut(),
+                    &mut sz
+                ),
+                87
+            );
+            assert_eq!(
+                MsiProvideQualifiedComponentA(
+                    dummy_a.as_ptr(),
+                    std::ptr::null(),
+                    0,
+                    std::ptr::null_mut(),
+                    &mut sz
+                ),
+                87
+            );
             let _ = MsiProvideQualifiedComponentA(
                 dummy_a.as_ptr(),
                 dummy_a.as_ptr(),
@@ -652,12 +740,58 @@ mod tests {
                 std::ptr::null_mut(),
                 &mut sz,
             );
+            assert_eq!(
+                MsiProvideQualifiedComponentW(
+                    std::ptr::null(),
+                    dummy_w.as_ptr(),
+                    0,
+                    std::ptr::null_mut(),
+                    &mut sz
+                ),
+                87
+            );
+            assert_eq!(
+                MsiProvideQualifiedComponentW(
+                    dummy_w.as_ptr(),
+                    std::ptr::null(),
+                    0,
+                    std::ptr::null_mut(),
+                    &mut sz
+                ),
+                87
+            );
             let _ = MsiProvideQualifiedComponentW(
                 dummy_w.as_ptr(),
                 dummy_w.as_ptr(),
                 0,
                 std::ptr::null_mut(),
                 &mut sz,
+            );
+            assert_eq!(
+                MsiProvideQualifiedComponentExA(
+                    std::ptr::null(),
+                    dummy_a.as_ptr(),
+                    0,
+                    dummy_a.as_ptr(),
+                    0,
+                    0,
+                    std::ptr::null_mut(),
+                    &mut sz
+                ),
+                87
+            );
+            assert_eq!(
+                MsiProvideQualifiedComponentExA(
+                    dummy_a.as_ptr(),
+                    std::ptr::null(),
+                    0,
+                    dummy_a.as_ptr(),
+                    0,
+                    0,
+                    std::ptr::null_mut(),
+                    &mut sz
+                ),
+                87
             );
             let _ = MsiProvideQualifiedComponentExA(
                 dummy_a.as_ptr(),
@@ -668,6 +802,32 @@ mod tests {
                 0,
                 std::ptr::null_mut(),
                 &mut sz,
+            );
+            assert_eq!(
+                MsiProvideQualifiedComponentExW(
+                    std::ptr::null(),
+                    dummy_w.as_ptr(),
+                    0,
+                    dummy_w.as_ptr(),
+                    0,
+                    0,
+                    std::ptr::null_mut(),
+                    &mut sz
+                ),
+                87
+            );
+            assert_eq!(
+                MsiProvideQualifiedComponentExW(
+                    dummy_w.as_ptr(),
+                    std::ptr::null(),
+                    0,
+                    dummy_w.as_ptr(),
+                    0,
+                    0,
+                    std::ptr::null_mut(),
+                    &mut sz
+                ),
+                87
             );
             let _ = MsiProvideQualifiedComponentExW(
                 dummy_w.as_ptr(),
@@ -680,6 +840,18 @@ mod tests {
                 &mut sz,
             );
             let mut attr = 0;
+            assert_eq!(
+                MsiGetFeatureInfoA(
+                    0,
+                    std::ptr::null(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut()
+                ),
+                87
+            );
             let _ = MsiGetFeatureInfoA(
                 0,
                 dummy_a.as_ptr(),
@@ -688,6 +860,18 @@ mod tests {
                 &mut sz,
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
+            );
+            assert_eq!(
+                MsiGetFeatureInfoW(
+                    0,
+                    std::ptr::null(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut()
+                ),
+                87
             );
             let _ = MsiGetFeatureInfoW(
                 0,
@@ -698,13 +882,35 @@ mod tests {
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
             );
+            assert_eq!(MsiUseFeatureA(std::ptr::null(), dummy_a.as_ptr()), -2);
+            assert_eq!(MsiUseFeatureA(dummy_a.as_ptr(), std::ptr::null()), -2);
             let _ = MsiUseFeatureA(dummy_a.as_ptr(), dummy_a.as_ptr());
+            assert_eq!(MsiUseFeatureW(std::ptr::null(), dummy_w.as_ptr()), -2);
+            assert_eq!(MsiUseFeatureW(dummy_w.as_ptr(), std::ptr::null()), -2);
             let _ = MsiUseFeatureW(dummy_w.as_ptr(), dummy_w.as_ptr());
+            assert_eq!(
+                MsiGetShortcutTargetA(
+                    std::ptr::null(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut()
+                ),
+                87
+            );
             let _ = MsiGetShortcutTargetA(
                 dummy_a.as_ptr(),
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
+            );
+            assert_eq!(
+                MsiGetShortcutTargetW(
+                    std::ptr::null(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut()
+                ),
+                87
             );
             let _ = MsiGetShortcutTargetW(
                 dummy_w.as_ptr(),
@@ -713,7 +919,7 @@ mod tests {
                 std::ptr::null_mut(),
             );
 
-            let empty_a = std::ffi::CString::new("").unwrap();
+            let empty_a = std::ffi::CString::new("").expect("tests should not fail");
             let empty_w: Vec<u16> = vec![0];
             let p_empty_a = crate::action::ProductCodeA(empty_a.as_ptr());
             let p_empty_w = crate::action::ProductCodeW(empty_w.as_ptr());
@@ -1160,7 +1366,8 @@ mod tests {
 
             // Mock a valid state
             let valid_guid = "{12345678-1234-1234-1234-123456789012}";
-            let valid_squid = msi::platform::squid::encode_squid(valid_guid).unwrap();
+            let valid_squid =
+                msi::platform::squid::encode_squid(valid_guid).expect("tests should not fail");
             let key = format!("SOFTWARE\\MICROSOFT\\WINDOWS\\CURRENTVERSION\\INSTALLER\\USERDATA\\S-1-5-18\\COMPONENTS\\{valid_squid}");
             crate::win32::registry_backend::with_registry(|reg| {
                 reg.set_value(
@@ -1171,7 +1378,7 @@ mod tests {
                 );
             });
 
-            let valid_a = std::ffi::CString::new(valid_guid).unwrap();
+            let valid_a = std::ffi::CString::new(valid_guid).expect("tests should not fail");
             let valid_w: Vec<u16> = valid_guid
                 .encode_utf16()
                 .chain(std::iter::once(0))
@@ -1254,5 +1461,142 @@ mod tests {
                 0
             );
         }
+    }
+
+    #[test]
+    fn test_locate_component_missed() {
+        // null pointers
+        let mut sz = 0;
+        assert_eq!(
+            unsafe { MsiLocateComponentA(std::ptr::null(), std::ptr::null_mut(), &mut sz) },
+            -2
+        );
+        assert_eq!(
+            unsafe { MsiLocateComponentW(std::ptr::null(), std::ptr::null_mut(), &mut sz) },
+            -2
+        );
+
+        // empty strings to hit locate_component Err
+        let empty_a = std::ffi::CString::new("").unwrap();
+        let empty_w: Vec<u16> = vec![0];
+        assert_eq!(
+            unsafe { MsiLocateComponentA(empty_a.as_ptr(), std::ptr::null_mut(), &mut sz) },
+            -2
+        );
+        assert_eq!(
+            unsafe { MsiLocateComponentW(empty_w.as_ptr(), std::ptr::null_mut(), &mut sz) },
+            -2
+        );
+        let err_a = std::ffi::CString::new("{00000000-0000-0000-0000-000000000000}").unwrap();
+        let err_w: Vec<u16> = "{00000000-0000-0000-0000-000000000000}"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        assert_eq!(
+            unsafe { MsiLocateComponentA(err_a.as_ptr(), std::ptr::null_mut(), &mut sz) },
+            -1
+        );
+        assert_eq!(
+            unsafe { MsiLocateComponentW(err_w.as_ptr(), std::ptr::null_mut(), &mut sz) },
+            -1
+        );
+    }
+
+    #[test]
+    fn test_locate_component_invalid_guid() {
+        let invalid_w = [0xD800_u16, 0x0000]; // Unpaired surrogate
+        let dummy_a = std::ffi::CString::new("dummy").expect("tests should not fail");
+        let dummy_w: Vec<u16> = "dummy".encode_utf16().chain(std::iter::once(0)).collect();
+        let p_a = crate::action::ProductCodeA(dummy_a.as_ptr());
+        let p_w = crate::action::ProductCodeW(dummy_w.as_ptr());
+        let invalid_a = [0xFF_u8 as i8, 0x00]; // Invalid UTF-8
+        let invalid_a = [0xFF_u8 as i8, 0x00];
+        let p_invalid_a = crate::action::ProductCodeA(invalid_a.as_ptr());
+        let p_invalid_w = crate::action::ProductCodeW(invalid_w.as_ptr());
+        let mut sz = 0;
+        unsafe {
+            // MsiProvideComponentA invalid strings
+            assert_eq!(
+                MsiProvideComponentA(
+                    p_invalid_a,
+                    dummy_a.as_ptr(),
+                    dummy_a.as_ptr(),
+                    0,
+                    std::ptr::null_mut(),
+                    &mut sz
+                ),
+                87
+            );
+            assert_eq!(
+                MsiProvideComponentA(
+                    p_a,
+                    invalid_a.as_ptr().cast(),
+                    dummy_a.as_ptr(),
+                    0,
+                    std::ptr::null_mut(),
+                    &mut sz
+                ),
+                87
+            );
+            assert_eq!(
+                MsiProvideComponentA(
+                    p_a,
+                    dummy_a.as_ptr(),
+                    invalid_a.as_ptr().cast(),
+                    0,
+                    std::ptr::null_mut(),
+                    &mut sz
+                ),
+                87
+            );
+
+            // MsiProvideComponentW invalid strings
+            assert_eq!(
+                MsiProvideComponentW(
+                    p_invalid_w,
+                    dummy_w.as_ptr(),
+                    dummy_w.as_ptr(),
+                    0,
+                    std::ptr::null_mut(),
+                    &mut sz
+                ),
+                87
+            );
+            assert_eq!(
+                MsiProvideComponentW(
+                    p_w,
+                    invalid_w.as_ptr(),
+                    dummy_w.as_ptr(),
+                    0,
+                    std::ptr::null_mut(),
+                    &mut sz
+                ),
+                87
+            );
+            assert_eq!(
+                MsiProvideComponentW(
+                    p_w,
+                    dummy_w.as_ptr(),
+                    invalid_w.as_ptr(),
+                    0,
+                    std::ptr::null_mut(),
+                    &mut sz
+                ),
+                87
+            );
+        }
+        let invalid_a = [0xFF_u8 as i8, 0x00]; // Invalid UTF-8
+
+        let mut buf_w = [0u16; 256];
+        let mut buf_size_w = 256;
+        let res_w =
+            unsafe { MsiLocateComponentW(invalid_w.as_ptr(), buf_w.as_mut_ptr(), &mut buf_size_w) };
+        assert_eq!(res_w, -2); // INSTALLSTATE_INVALIDARG
+
+        let mut buf_a = [0i8; 256];
+        let mut buf_size_a = 256;
+        let res_a =
+            unsafe { MsiLocateComponentA(invalid_a.as_ptr(), buf_a.as_mut_ptr(), &mut buf_size_a) };
+        assert_eq!(res_a, -2); // INSTALLSTATE_INVALIDARG
     }
 }

@@ -423,7 +423,7 @@ impl MultiCabinetWriter {
             let mut writer = CabinetWriter::new(self.compression_type);
             writer.set_set_id(self.set_id);
             writer.set_cabinet_index(0);
-            let data = writer.build();
+            let data = writer.build().unwrap_or_default();
             return Ok(vec![SplitCabinetArtifact {
                 filename: format!("{}1.cab", self.cab_name_prefix),
                 disk_label: format!("{} 1", self.disk_label_prefix),
@@ -494,7 +494,7 @@ impl MultiCabinetWriter {
                 writer.add_file_with_folder_index(&fname, &fdata, findex)?;
             }
 
-            let cab_data = writer.build();
+            let cab_data = writer.build().unwrap_or_default();
 
             artifacts.push(SplitCabinetArtifact {
                 filename: cab_filename,
@@ -509,7 +509,7 @@ impl MultiCabinetWriter {
 }
 
 #[cfg(test)]
-#[allow(clippy::manual_flatten)]
+#[allow(clippy::manual_flatten, clippy::redundant_clone)]
 mod tests {
 
     #[test]
@@ -546,7 +546,7 @@ mod tests {
                 writer.set_next_cabinet(n_name, n_disk);
             }
             let _ = writer.add_file("dummy.txt", b"content");
-            writer.build()
+            writer.build().unwrap_or_default()
         };
 
         let c1_valid = make_cab(100, 0, None, Some(("disk2.cab", "Disk 2")));
@@ -637,7 +637,7 @@ mod tests {
         w_contained.set_set_id(1);
         w_contained.set_cabinet_index(0);
         let _ = w_contained.add_file("contained.txt", b"fully contained file content");
-        let contained_bytes = w_contained.build();
+        let contained_bytes = w_contained.build().unwrap_or_default();
 
         // MultiCabinetReader debug formatting
         let reader_res = MultiCabinetReader::new(&contained_bytes, None);
@@ -741,7 +741,9 @@ mod tests {
 
                 // 5b. Provider supplies valid volume without continued file (part2 missing)
                 let mut missing_file_prov = InMemoryMediaProvider::new();
-                let other_cab = CabinetWriter::new(CompressionType::None).build();
+                let other_cab = CabinetWriter::new(CompressionType::None)
+                    .build()
+                    .unwrap_or_default();
                 missing_file_prov.add_cabinet(artifacts[1].filename.clone(), other_cab);
                 for r_res in [
                     MultiCabinetReader::new(&artifacts[0].data, Some(Box::new(missing_file_prov))),
@@ -777,7 +779,7 @@ mod tests {
             b"part1",
             FolderIndex::ContinuedToNext,
         );
-        let no_next_bytes = w_no_next.build();
+        let no_next_bytes = w_no_next.build().unwrap_or_default();
         for r_res in [
             MultiCabinetReader::new(&no_next_bytes, None),
             MultiCabinetReader::new(&[0u8; 4], None),

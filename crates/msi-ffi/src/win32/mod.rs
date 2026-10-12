@@ -79,8 +79,9 @@ pub const ERROR_UNKNOWN_PATCH: Uint = 1647;
 /// # Returns
 ///
 /// `ERROR_SUCCESS` if successful, `ERROR_INVALID_HANDLE` if the handle was invalid.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub extern "system" fn MsiCloseHandle(handle: MsiHandle) -> Uint {
     let result = panic::catch_unwind(|| {
         if handle == MSI_NULL_HANDLE {
@@ -101,8 +102,9 @@ pub extern "system" fn MsiCloseHandle(handle: MsiHandle) -> Uint {
 /// # Returns
 ///
 /// `ERROR_SUCCESS`.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub extern "system" fn MsiCloseAllHandles() -> Uint {
     let result = panic::catch_unwind(|| {
         close_all_handles();

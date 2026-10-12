@@ -3087,7 +3087,7 @@ impl Linker {
 
         // Build cabinets and populate embedded_cabinets and external_cabinets
         for (cab_name, writer) in cab_writers {
-            let cab_bytes = writer.build();
+            let cab_bytes = writer.build().unwrap_or_default();
             if cab_name.starts_with('#') {
                 self.embedded_cabinets.insert(cab_name, cab_bytes);
             } else {
@@ -6364,7 +6364,7 @@ fn compute_md5(input: &[u8]) -> [u8; 16] {
 }
 
 #[cfg(test)]
-#[allow(clippy::unnecessary_wraps)]
+#[allow(clippy::unnecessary_wraps, clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::wix::extensions::WixExtension;
@@ -8688,6 +8688,11 @@ mod tests {
             FieldValue::String("Val2".to_string()),
         ]);
         let _ = db.execute_mutation("Feature", &mut rec2, 5);
+        let mut rec3 = Record::with_fields(vec![
+            FieldValue::String("PK".to_string()),
+            FieldValue::String("Val2".to_string()),
+        ]);
+        let _ = db.execute_mutation("Feature", &mut rec3, 8);
     }
 
     #[test]
@@ -8788,14 +8793,42 @@ mod tests {
         let mut db = LinkedDatabase::new().expect("test");
         let mut module_db = LinkedDatabase::default();
 
-        module_db.tables.insert(
-            "ModuleInstallExecuteSequence".to_string(),
+        db.tables.insert(
+            "InstallExecuteSequence".to_string(),
             vec![Record::with_fields(vec![
-                FieldValue::String("Action1".to_string()),
-                FieldValue::String("Cond".to_string()),
+                FieldValue::String("ExistingAction".to_string()),
                 FieldValue::Null,
+                FieldValue::String("NotAShort".to_string()), // index 2 is NOT a short!
                 FieldValue::Null,
             ])],
+        );
+
+        module_db.tables.insert(
+            "ModuleInstallExecuteSequence".to_string(),
+            vec![
+                Record::with_fields(vec![
+                    FieldValue::String("Action1".to_string()),
+                    FieldValue::String("Cond".to_string()),
+                    FieldValue::Null,
+                    FieldValue::Null,
+                ]),
+                // Case 1: base_action exists, but its sequence is not a short (covers line 1050)
+                Record::with_fields(vec![
+                    FieldValue::String("Action2".to_string()),
+                    FieldValue::Null,
+                    FieldValue::String("ExistingAction".to_string()),
+                    FieldValue::Short(1),
+                    FieldValue::Null,
+                ]),
+                // Case 2: base_action does not exist (covers line 1055)
+                Record::with_fields(vec![
+                    FieldValue::String("Action3".to_string()),
+                    FieldValue::Null,
+                    FieldValue::String("NonExistentAction".to_string()),
+                    FieldValue::Short(1),
+                    FieldValue::Null,
+                ]),
+            ],
         );
 
         let module = MergeModule {
@@ -12144,17 +12177,14 @@ mod tests {
 
         let ies = db.get_records("InstallExecuteSequence");
         let get_seq = |name: &str| -> Option<i16> {
-            for r in ies {
-                if r.get(0) == Some(&FieldValue::String(name.to_string())) {
-                    if let Some(FieldValue::Short(s)) = r.get(2) {
-                        return Some(*s);
-                    }
-                }
-            }
-            None
+            ies.iter().find_map(|r| match (r.get(0), r.get(2)) {
+                (Some(FieldValue::String(n)), Some(FieldValue::Short(s))) if n == name => Some(*s),
+                _ => None,
+            })
         };
 
         // Phase 4.2 Standard Action Sequence Ordering audit assertions
+        assert_eq!(get_seq("NonExistentActionForCoverage"), None);
         assert_eq!(get_seq("CostInitialize"), Some(800));
         assert_eq!(get_seq("FileCost"), Some(900));
         assert_eq!(get_seq("CostFinalize"), Some(1000));

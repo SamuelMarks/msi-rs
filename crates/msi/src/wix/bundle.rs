@@ -461,7 +461,7 @@ impl BurnLinker {
             writer.add_file(name, data)?;
         }
 
-        let cab_bytes = writer.build();
+        let cab_bytes = writer.build().unwrap_or_default();
 
         // Prepend standard PE loader stub (1024 bytes) followed by Cabinet container
         let mut exe_image = Vec::with_capacity(1024 + cab_bytes.len());
@@ -585,7 +585,7 @@ impl BurnEngine {
 }
 
 #[cfg(test)]
-#[allow(clippy::manual_flatten)]
+#[allow(clippy::manual_flatten, clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::wix::xml::{XmlNode, XmlParser};

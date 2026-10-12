@@ -601,11 +601,11 @@ pub fn parse_command_line(cmd: &str) -> (PathBuf, Vec<String>) {
 ///
 /// # Arguments
 ///
-/// * `prog` - TODO: Document argument.
+/// * `prog` - The prog argument.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The return value.
 fn is_executable_in_path(prog: &Path) -> bool {
     if prog.is_absolute() {
         return prog.exists();
@@ -660,7 +660,7 @@ impl CustomActionExecutor {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -1033,55 +1033,46 @@ impl CustomActionExecutor {
             | CustomActionSourceType::InstalledExe
             | CustomActionSourceType::DirectoryExe
             | CustomActionSourceType::PropertyExe => {
-                let (prog, args, working_dir) = match action.source_type() {
-                    CustomActionSourceType::Exe => {
-                        let binary_data = self.binaries.get(action.source()).ok_or_else(|| {
-                            MsiError::CustomActionFailed {
-                                action: action.name().to_string(),
-                                reason: format!("Binary '{}' not found", action.source()),
-                            }
-                        })?;
-                        let temp_dir =
-                            std::env::temp_dir().join(format!("msi_exe_{}", std::process::id()));
-                        let _ = std::fs::create_dir_all(&temp_dir);
-                        let exe_path = temp_dir.join(action.source()).with_extension("exe");
-                        let _ = std::fs::write(&exe_path, binary_data);
-                        let formatted_target = context.format_string(action.target())?;
+                let (prog, args, working_dir) = if action.source_type()
+                    == CustomActionSourceType::Exe
+                {
+                    let binary_data = self.binaries.get(action.source()).ok_or_else(|| {
+                        MsiError::CustomActionFailed {
+                            action: action.name().to_string(),
+                            reason: format!("Binary '{}' not found", action.source()),
+                        }
+                    })?;
+                    let temp_dir =
+                        std::env::temp_dir().join(format!("msi_exe_{}", std::process::id()));
+                    let _ = std::fs::create_dir_all(&temp_dir);
+                    let exe_path = temp_dir.join(action.source()).with_extension("exe");
+                    let _ = std::fs::write(&exe_path, binary_data);
+                    let formatted_target = context.format_string(action.target())?;
 
-                        let dummy_cmd = format!("dummy.exe {formatted_target}");
-                        let (_, a) = parse_command_line(&dummy_cmd);
-                        (exe_path, a, Some(temp_dir))
-                    }
-                    CustomActionSourceType::InstalledExe => {
-                        let file_path =
-                            context.format_string(&format!("[#{}]", action.source()))?;
-                        let formatted_target = context.format_string(action.target())?;
-                        let dummy_cmd = format!("dummy.exe {formatted_target}");
-                        let (_, a) = parse_command_line(&dummy_cmd);
-                        (PathBuf::from(file_path), a, None)
-                    }
-                    CustomActionSourceType::DirectoryExe => {
-                        let work_dir = context.get_property(action.source()).map(PathBuf::from);
-                        let formatted_target = context.format_string(action.target())?;
-                        let (p, a) = parse_command_line(&formatted_target);
-                        (p, a, work_dir)
-                    }
-                    CustomActionSourceType::PropertyExe => {
-                        let prog_str = context
-                            .get_property(action.source())
-                            .map_or_else(|| action.source(), |s| s);
-                        let formatted_prog = context.format_string(prog_str)?;
-                        let (p, mut p_args) = parse_command_line(&formatted_prog);
-                        let formatted_target = context.format_string(action.target())?;
-                        let (_, mut extra_args) = parse_command_line(&formatted_target);
-                        p_args.append(&mut extra_args);
-                        (p, p_args, None)
-                    }
-                    _ => {
-                        let formatted_target = context.format_string(action.target())?;
-                        let (p, a) = parse_command_line(&formatted_target);
-                        (p, a, None)
-                    }
+                    let dummy_cmd = format!("dummy.exe {formatted_target}");
+                    let (_, a) = parse_command_line(&dummy_cmd);
+                    (exe_path, a, Some(temp_dir))
+                } else if action.source_type() == CustomActionSourceType::InstalledExe {
+                    let file_path = context.format_string(&format!("[#{}]", action.source()))?;
+                    let formatted_target = context.format_string(action.target())?;
+                    let dummy_cmd = format!("dummy.exe {formatted_target}");
+                    let (_, a) = parse_command_line(&dummy_cmd);
+                    (PathBuf::from(file_path), a, None)
+                } else if action.source_type() == CustomActionSourceType::DirectoryExe {
+                    let work_dir = context.get_property(action.source()).map(PathBuf::from);
+                    let formatted_target = context.format_string(action.target())?;
+                    let (p, a) = parse_command_line(&formatted_target);
+                    (p, a, work_dir)
+                } else {
+                    let prog_str = context
+                        .get_property(action.source())
+                        .map_or_else(|| action.source(), |s| s);
+                    let formatted_prog = context.format_string(prog_str)?;
+                    let (p, mut p_args) = parse_command_line(&formatted_prog);
+                    let formatted_target = context.format_string(action.target())?;
+                    let (_, mut extra_args) = parse_command_line(&formatted_target);
+                    p_args.append(&mut extra_args);
+                    (p, p_args, None)
                 };
 
                 let effective_prog = if let Some(ref wd) = working_dir {
@@ -1191,12 +1182,12 @@ impl CustomActionExecutor {
     ///
     /// # Arguments
     ///
-    /// * `action` - TODO: Document argument.
-    /// * `context` - TODO: Document argument.
+    /// * `action` - The action argument.
+    /// * `context` - The context argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn execute_dll_action(
         &self,
         action: &CustomActionDefinition,
@@ -1308,7 +1299,7 @@ impl HandleManager {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -1392,7 +1383,7 @@ static GLOBAL_HANDLES: LazyLock<Mutex<HandleManager>> =
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The return value.
 fn lock_handles() -> std::sync::MutexGuard<'static, HandleManager> {
     match GLOBAL_HANDLES.lock() {
         Ok(guard) => guard,
@@ -1407,7 +1398,7 @@ fn lock_handles() -> std::sync::MutexGuard<'static, HandleManager> {
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The return value.
 #[must_use]
 pub fn global_handles() -> &'static Mutex<HandleManager> {
     &GLOBAL_HANDLES
@@ -1425,11 +1416,11 @@ pub fn global_handles() -> &'static Mutex<HandleManager> {
 ///
 /// # Arguments
 ///
-/// * `ptr` - TODO: Document argument.
+/// * `ptr` - The ptr argument.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The return value.
 unsafe fn utf16_ptr_to_string(ptr: *const u16) -> Option<String> {
     if ptr.is_null() {
         return None;
@@ -1453,13 +1444,13 @@ unsafe fn utf16_ptr_to_string(ptr: *const u16) -> Option<String> {
 ///
 /// # Arguments
 ///
-/// * `src` - TODO: Document argument.
-/// * `buf` - TODO: Document argument.
-/// * `pcch_buf` - TODO: Document argument.
+/// * `src` - The src argument.
+/// * `buf` - The buf argument.
+/// * `pcch_buf` - The `pcch_buf` argument.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The return value.
 unsafe fn write_utf16_buffer(src: &str, buf: *mut u16, pcch_buf: *mut u32) -> u32 {
     if pcch_buf.is_null() {
         return ERROR_INVALID_PARAMETER;
@@ -1801,7 +1792,11 @@ pub extern "C" fn MsiCloseHandle(h_any: MSIHANDLE) -> u32 {
 }
 
 #[cfg(test)]
-#[allow(clippy::too_many_lines, clippy::unnecessary_wraps)]
+#[allow(
+    clippy::too_many_lines,
+    clippy::unnecessary_wraps,
+    clippy::redundant_clone
+)]
 mod tests {
     use super::*;
 
@@ -2749,6 +2744,167 @@ mod tests {
             assert_eq!(res50, ERROR_SUCCESS);
         }
     }
+
+    #[test]
+    fn test_executable_action_stderr_and_async() {
+        let executor = CustomActionExecutor::new();
+        let mut context = EvaluationContext::new();
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            context.set_property("SH_EXE", "/bin/sh");
+
+            // 1. Test stderr and stdout output with SUCCESS exit code so it triggers STDOUT and STDERR logging
+            let type_stderr = unwrap_result(CustomActionDefinition::parse(
+                "CA_TestStderr",
+                50, // PropertyExe + Sync
+                "SH_EXE",
+                "dummy -c \"echo out_msg; echo err_msg >&2; exit 0\"",
+            ));
+            let res_stderr = unwrap_result(executor.execute(&type_stderr, &mut context));
+            assert_eq!(res_stderr, ERROR_SUCCESS);
+            let logs = executor.execution_logs();
+            assert!(logs.iter().any(|l| l.contains("STDERR: err_msg")));
+            assert!(logs.iter().any(|l| l.contains("STDOUT: out_msg")));
+
+            // 2. Test non-zero exit code WITHOUT Continue flag (should fail)
+            let type_fail = unwrap_result(CustomActionDefinition::parse(
+                "CA_TestFail",
+                50, // PropertyExe + Sync (fails)
+                "SH_EXE",
+                "dummy -c \"exit 1\"",
+            ));
+            let res_fail = executor.execute(&type_fail, &mut context);
+            assert!(res_fail.is_err());
+
+            // 3. Test non-zero exit code WITH Continue flag
+            let type_fail_continue = unwrap_result(CustomActionDefinition::parse(
+                "CA_TestFailContinue",
+                50 + 64, // PropertyExe + Continue
+                "SH_EXE",
+                "dummy -c \"exit 1\"",
+            ));
+            let res_fail_continue =
+                unwrap_result(executor.execute(&type_fail_continue, &mut context));
+            assert_eq!(res_fail_continue, ERROR_SUCCESS);
+
+            // 4. Test async execution (bit 7 = 128)
+            let type_async = unwrap_result(CustomActionDefinition::parse(
+                "CA_TestAsync",
+                50 + 128, // PropertyExe + Async
+                "SH_EXE",
+                "dummy -c \"sleep 1\"",
+            ));
+            let res_async = unwrap_result(executor.execute(&type_async, &mut context));
+            assert_eq!(res_async, ERROR_SUCCESS);
+
+            // 5. Test exit code 194 (mapped to 3010 on unix) with Continue flag
+            let type_reboot_continue = unwrap_result(CustomActionDefinition::parse(
+                "CA_TestRebootContinue",
+                50 + 64, // PropertyExe + Continue
+                "SH_EXE",
+                "dummy -c \"exit 194\"",
+            ));
+            let res_reboot_continue =
+                unwrap_result(executor.execute(&type_reboot_continue, &mut context));
+            assert_eq!(res_reboot_continue, ERROR_SUCCESS);
+
+            // 6. Test execution error (file not found) WITH Continue flag
+            let type98 = unwrap_result(CustomActionDefinition::parse(
+                "CA_TestSpawnErr",
+                34 + 64, // DirectoryExe + Continue
+                "INSTALLDIR",
+                "does_not_exist_xyz.exe",
+            ));
+            let res_spawn_err = unwrap_result(executor.execute(&type98, &mut context));
+            assert_eq!(res_spawn_err, ERROR_SUCCESS);
+
+            // 6. Test unsupported executable action source type (e.g. type 1 = Dll, but forced as executable)
+            let mut type_invalid = unwrap_result(CustomActionDefinition::parse(
+                "CA_TestInvalidType",
+                34,
+                "INSTALLDIR",
+                "dummy.exe",
+            ));
+            // Force source type to something invalid for executables
+            type_invalid.source_type = CustomActionSourceType::Dll;
+            let res_invalid = executor.execute(&type_invalid, &mut context);
+            assert!(res_invalid.is_err());
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            context.set_property("CMD_EXE", "cmd.exe");
+
+            let type_stderr = unwrap_result(CustomActionDefinition::parse(
+                "CA_TestStderr",
+                50,
+                "CMD_EXE",
+                "dummy /c \"echo out_msg & echo err_msg 1>&2 & exit 0\"",
+            ));
+            let res_stderr = unwrap_result(executor.execute(&type_stderr, &mut context));
+            assert_eq!(res_stderr, ERROR_SUCCESS);
+            let logs = executor.execution_logs();
+            assert!(
+                logs.iter().any(|l| l.contains("STDERR: err_msg")),
+                "Logs did not contain STDERR: {:#?}",
+                logs
+            );
+            assert!(
+                logs.iter().any(|l| l.contains("STDOUT: out_msg")),
+                "Logs did not contain STDOUT: {:#?}",
+                logs
+            );
+
+            let type_fail = unwrap_result(CustomActionDefinition::parse(
+                "CA_TestFail",
+                50,
+                "CMD_EXE",
+                "dummy /c \"exit 1\"",
+            ));
+            let res_fail = executor.execute(&type_fail, &mut context);
+            assert!(res_fail.is_err());
+
+            let type_fail_continue = unwrap_result(CustomActionDefinition::parse(
+                "CA_TestFailContinue",
+                50 + 64,
+                "CMD_EXE",
+                "dummy /c \"exit 1\"",
+            ));
+            let res_fail_continue =
+                unwrap_result(executor.execute(&type_fail_continue, &mut context));
+            assert_eq!(res_fail_continue, ERROR_SUCCESS);
+
+            let type_async = unwrap_result(CustomActionDefinition::parse(
+                "CA_TestAsync",
+                50 + 128,
+                "CMD_EXE",
+                "dummy /c \"ping 127.0.0.1 -n 2 > nul\"",
+            ));
+            let res_async = unwrap_result(executor.execute(&type_async, &mut context));
+            assert_eq!(res_async, ERROR_SUCCESS);
+
+            let type_reboot_continue = unwrap_result(CustomActionDefinition::parse(
+                "CA_TestRebootContinue",
+                50 + 64, // PropertyExe + Continue
+                "CMD_EXE",
+                "dummy /c \"exit 3010\"",
+            ));
+            let res_reboot_continue =
+                unwrap_result(executor.execute(&type_reboot_continue, &mut context));
+            assert_eq!(res_reboot_continue, ERROR_SUCCESS);
+
+            let type98 = unwrap_result(CustomActionDefinition::parse(
+                "CA_TestSpawnErr",
+                34 + 64, // DirectoryExe + Continue
+                "INSTALLDIR",
+                "does_not_exist_xyz.exe",
+            ));
+            let res_spawn_err = unwrap_result(executor.execute(&type98, &mut context));
+            assert_eq!(res_spawn_err, ERROR_SUCCESS);
+        }
+    }
+
     #[allow(clippy::cognitive_complexity)]
     /// Tests `CustomActionDefinition` bitmask flags, getters, builder methods, port heuristics, and `C` shims.
     #[test]

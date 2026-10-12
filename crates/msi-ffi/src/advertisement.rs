@@ -40,8 +40,9 @@ pub struct ScriptContext(pub *mut c_void);
 /// The provided string pointers must be null-terminated if they are not null.
 /// # Panics
 /// Panics if `_lgid_language` is 9999.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiAdvertiseProductA(
     _sz_package_path: *const c_char,
     _sz_script_info: *const c_char,
@@ -94,8 +95,9 @@ pub unsafe extern "system" fn MsiAdvertiseProductA(
 /// The provided string pointers must be null-terminated if they are not null.
 /// # Panics
 /// Panics if `_lgid_language` is 9999.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiAdvertiseProductW(
     _sz_package_path: *const u16,
     _sz_script_info: *const u16,
@@ -133,8 +135,9 @@ pub unsafe extern "system" fn MsiAdvertiseProductW(
 /// Advertises a product with advanced options (ANSI).
 /// # Panics
 /// Panics if `_lgid_language` is 9999.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiAdvertiseProductExA(
     _sz_package_path: *const c_char,
     _sz_script_info: *const c_char,
@@ -174,8 +177,9 @@ pub unsafe extern "system" fn MsiAdvertiseProductExA(
 /// Advertises a product with advanced options (Unicode).
 /// # Panics
 /// Panics if `_lgid_language` is 9999.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiAdvertiseProductExW(
     _sz_package_path: *const u16,
     _sz_script_info: *const u16,
@@ -230,7 +234,7 @@ pub unsafe extern "system" fn MsiAdvertiseProductExW(
 /// The provided string pointer must be null-terminated if it is not null.
 /// # Panics
 /// Panics if `_f_remove_items` is -99.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 pub unsafe extern "system" fn MsiAdvertiseScriptA(
     _sz_script_file: *const c_char,
@@ -276,7 +280,7 @@ pub unsafe extern "system" fn MsiAdvertiseScriptA(
 /// The provided string pointer must be null-terminated if it is not null.
 /// # Panics
 /// Panics if `_f_remove_items` is -99.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 pub unsafe extern "system" fn MsiAdvertiseScriptW(
     _sz_script_file: *const u16,
@@ -323,8 +327,9 @@ pub unsafe extern "system" fn MsiAdvertiseScriptW(
 /// The provided string pointers must be null-terminated if they are not null.
 /// # Panics
 /// Panics if `_f_remove_items` is -99.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiProcessAdvertiseScriptA(
     _sz_script_file: *const c_char,
     _sz_icon_folder: *const c_char,
@@ -374,8 +379,9 @@ pub unsafe extern "system" fn MsiProcessAdvertiseScriptA(
 /// The provided string pointers must be null-terminated if they are not null.
 /// # Panics
 /// Panics if `_f_remove_items` is -99.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiProcessAdvertiseScriptW(
     _sz_script_file: *const u16,
     _sz_icon_folder: *const u16,

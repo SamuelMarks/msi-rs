@@ -75,11 +75,11 @@ pub(crate) fn with_handle_table<R, F: FnOnce(&HandleTable) -> R>(f: F) -> R {
 ///
 /// # Arguments
 ///
-/// * `obj` - TODO: Document argument.
+/// * `obj` - The internal `MsiObject` to allocate a handle for.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// A new 32-bit `MsiHandle` representing the allocated object.
 #[must_use]
 pub fn alloc_handle(obj: MsiObject) -> MsiHandle {
     with_handle_table(|table| {
@@ -101,11 +101,11 @@ pub fn alloc_handle(obj: MsiObject) -> MsiHandle {
 ///
 /// # Arguments
 ///
-/// * `handle` - TODO: Document argument.
+/// * `handle` - The `MsiHandle` to close.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// `true` if the handle was valid and successfully closed, `false` otherwise.
 #[must_use]
 pub fn close_handle(handle: MsiHandle) -> bool {
     with_handle_table(|table| {
@@ -177,20 +177,15 @@ where
             .unwrap_or_else(std::sync::PoisonError::into_inner);
 
         let mut obj_mut = map.remove(&handle_mut)?;
-        let obj_read = map.remove(&handle_read);
-
-        let res = if let Some(read_val) = &obj_read {
-            f(&mut obj_mut, read_val)
-        } else {
-            // Restore immediately if read handle was invalid
+        let Some(read_val) = map.remove(&handle_read) else {
             map.insert(handle_mut, obj_mut);
             return None;
         };
 
+        let res = f(&mut obj_mut, &read_val);
+
         map.insert(handle_mut, obj_mut);
-        if let Some(read_val) = obj_read {
-            map.insert(handle_read, read_val);
-        }
+        map.insert(handle_read, read_val);
 
         Some(res)
     })
@@ -288,6 +283,10 @@ mod tests {
         let res = with_handle_mut_and_read(h1, MSI_NULL_HANDLE, |_, _| true);
         assert!(res.is_none());
 
+        // Test with_handle_mut_and_read invalid mut handle
+        let res = with_handle_mut_and_read(MSI_NULL_HANDLE, h2, |_, _| true);
+        assert!(res.is_none());
+
         // Also test with_handle_mut_and_read same handle
         let res = with_handle_mut_and_read(h1, h1, |_, _| true);
         assert!(res.is_none());
@@ -317,5 +316,45 @@ mod tests {
 
         let check2 = with_handle(h2, |_| ());
         assert!(check2.is_none());
+    }
+
+    #[test]
+    fn test_poisoning() {
+        let _ = std::panic::catch_unwind(|| {
+            with_handle_table(|table| {
+                let _guard = table
+                    .map
+                    .write()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                panic!("poisoning");
+            });
+        });
+
+        let rec = msi::database::tables::record::Record::new();
+        let h = alloc_handle(MsiObject::Record(crate::types::MsiRecordHandle {
+            inner: rec,
+        }));
+
+        with_handle(h, |_| ());
+        with_handle_mut(h, |_| ());
+        with_handle_mut_and_read(h, MSI_NULL_HANDLE, |_, _| ());
+        let _ = close_handle(h);
+        close_all_handles();
+    }
+
+    #[test]
+    fn test_poison_check() {
+        let _ = std::panic::catch_unwind(|| {
+            with_handle_table(|table| {
+                let _guard = table
+                    .map
+                    .write()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                panic!("poisoning");
+            });
+        });
+        with_handle_table(|table| {
+            assert!(table.map.write().is_err());
+        });
     }
 }

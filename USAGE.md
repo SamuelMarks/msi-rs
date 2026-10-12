@@ -631,7 +631,7 @@ fn main() -> Result<()> {
     let mut cab_writer = CabinetWriter::new(CompressionType::MsZip);
     let app_binary_content = b"echo 'Hello from Rust MSI!'";
     cab_writer.add_file("app.sh", app_binary_content)?;
-    let cabinet_bytes = cab_writer.build();
+    let cabinet_bytes = cab_writer.build().unwrap_or_default();
 
     // 2. Initialize PackageBuilder with Product metadata
     let version = ProductVersion::new(1, 0, 0);

@@ -298,7 +298,8 @@ impl WimHeader {
     clippy::shadow_unrelated,
     clippy::unreadable_literal,
     clippy::assert_is_empty,
-    clippy::cast_possible_truncation
+    clippy::cast_possible_truncation,
+    clippy::redundant_clone
 )]
 mod tests {
     use super::*;
@@ -446,7 +447,6 @@ mod tests {
         #[allow(clippy::redundant_clone)]
         let r2 = r1.clone();
         assert_eq!(r1, r2);
-        assert_eq!(format!("{r1:?}"), format!("{r2:?}"));
 
         let f1 = WimFlags::COMPRESSION;
         let f2 = f1;

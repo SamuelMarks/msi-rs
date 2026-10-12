@@ -294,6 +294,7 @@ impl WebServerConfigGenerator for WindowsIisExecutor {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -336,7 +337,11 @@ mod tests {
         );
 
         let err_pool = gen.generate_pool_config(&WebAppPoolName::new(""), "v4.0");
-        assert!(matches!(err_pool, Err(MsiError::IisConfigurationError(_))));
+        assert!(err_pool.is_err());
+        assert!(err_pool
+            .unwrap_err()
+            .to_string()
+            .contains("App pool name cannot be empty"));
 
         let path = VirtualDirectoryPath::new("/var/www");
         let site_cfg = gen
@@ -347,26 +352,29 @@ mod tests {
         assert_eq!(site_cfg, expected);
 
         let err_site_name = gen.generate_site_config("", &path, WebSitePort::new(8080));
-        assert!(matches!(
-            err_site_name,
-            Err(MsiError::IisConfigurationError(_))
-        ));
+        assert!(err_site_name.is_err());
+        assert!(err_site_name
+            .unwrap_err()
+            .to_string()
+            .contains("Web site name cannot be empty"));
 
         let err_site_dir = gen.generate_site_config(
             "example.com",
             &VirtualDirectoryPath::new(""),
             WebSitePort::new(8080),
         );
-        assert!(matches!(
-            err_site_dir,
-            Err(MsiError::IisConfigurationError(_))
-        ));
+        assert!(err_site_dir.is_err());
+        assert!(err_site_dir
+            .unwrap_err()
+            .to_string()
+            .contains("Directory path cannot be empty"));
 
         let err_site_port = gen.generate_site_config("example.com", &path, WebSitePort::new(21));
-        assert!(matches!(
-            err_site_port,
-            Err(MsiError::IisConfigurationError(_))
-        ));
+        assert!(err_site_port.is_err());
+        assert!(err_site_port
+            .unwrap_err()
+            .to_string()
+            .contains("requires root privileges"));
 
         let site_cfg_80 = gen
             .generate_site_config("example.com", &path, WebSitePort::new(80))
@@ -390,7 +398,11 @@ mod tests {
         );
 
         let err_pool = gen.generate_pool_config(&WebAppPoolName::new(""), "v4.0");
-        assert!(matches!(err_pool, Err(MsiError::IisConfigurationError(_))));
+        assert!(err_pool.is_err());
+        assert!(err_pool
+            .unwrap_err()
+            .to_string()
+            .contains("App pool name cannot be empty"));
 
         let path = VirtualDirectoryPath::new("C:\\inetpub\\wwwroot");
         let site_cfg = gen
@@ -401,19 +413,21 @@ mod tests {
         assert!(site_cfg.contains(r#"physicalPath="C:\inetpub\wwwroot""#));
 
         let err_site_name = gen.generate_site_config("", &path, WebSitePort::new(80));
-        assert!(matches!(
-            err_site_name,
-            Err(MsiError::IisConfigurationError(_))
-        ));
+        assert!(err_site_name.is_err());
+        assert!(err_site_name
+            .unwrap_err()
+            .to_string()
+            .contains("Web site name cannot be empty"));
 
         let err_site_dir = gen.generate_site_config(
             "mysite",
             &VirtualDirectoryPath::new(""),
             WebSitePort::new(80),
         );
-        assert!(matches!(
-            err_site_dir,
-            Err(MsiError::IisConfigurationError(_))
-        ));
+        assert!(err_site_dir.is_err());
+        assert!(err_site_dir
+            .unwrap_err()
+            .to_string()
+            .contains("Directory path cannot be empty"));
     }
 }

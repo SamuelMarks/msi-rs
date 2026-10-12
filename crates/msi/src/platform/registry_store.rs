@@ -276,10 +276,6 @@ impl RegistryStore {
         if upper_key.starts_with("SOFTWARE\\") && !upper_key.starts_with("SOFTWARE\\WOW6432NODE\\")
         {
             let remainder = &norm_key[9..];
-            if remainder.is_empty() {
-                #[cfg(not(tarpaulin_include))]
-                return "SOFTWARE\\WOW6432Node".to_string();
-            }
             return format!("SOFTWARE\\WOW6432Node\\{remainder}");
         }
 
@@ -1550,12 +1546,16 @@ impl Win32RegistryApi {
 }
 
 #[cfg(test)]
-#[allow(clippy::manual_flatten)]
+#[allow(clippy::manual_flatten, clippy::redundant_clone)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_redirect_32bit_key_software() {
+        assert_eq!(
+            RegistryStore::apply_wow6432node_reflection(r"Software\Wow6432Node\Acme", true, false),
+            r"Software\Wow6432Node\Acme"
+        );
         assert_eq!(
             RegistryStore::apply_wow6432node_reflection("SOFTWARE\\", true, false),
             "SOFTWARE\\WOW6432Node"

@@ -45,8 +45,9 @@ pub struct ResolutionMode(pub u32);
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiSourceListAddSourceW(
     _sz_product: crate::action::ProductCodeW,
     _sz_user_name: *const u16,
@@ -64,9 +65,9 @@ pub unsafe extern "system" fn MsiSourceListAddSourceW(
             return 87;
         };
 
-        let Ok(mut cache) = msi::execution::source_resiliency::source_list_cache().write() else {
-            return 1603;
-        };
+        let mut cache = msi::execution::source_resiliency::source_list_cache()
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let list = cache.entry(product_code).or_default();
         let path = if source_path.starts_with("http://") || source_path.starts_with("https://") {
             msi::execution::source_resiliency::SourcePath::Url(
@@ -115,8 +116,9 @@ pub unsafe extern "system" fn MsiSourceListAddSourceW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiSourceListAddSourceA(
     _sz_product: crate::action::ProductCodeA,
     _sz_user_name: *const c_char,
@@ -134,9 +136,9 @@ pub unsafe extern "system" fn MsiSourceListAddSourceA(
             return 87;
         };
 
-        let Ok(mut cache) = msi::execution::source_resiliency::source_list_cache().write() else {
-            return 1603;
-        };
+        let mut cache = msi::execution::source_resiliency::source_list_cache()
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let list = cache.entry(product_code).or_default();
         let path = if source_path.starts_with("http://") || source_path.starts_with("https://") {
             msi::execution::source_resiliency::SourcePath::Url(
@@ -184,8 +186,9 @@ pub unsafe extern "system" fn MsiSourceListAddSourceA(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiSourceListClearAllW(
     _sz_product: crate::action::ProductCodeW,
     _sz_user_name: *const u16,
@@ -198,9 +201,9 @@ pub unsafe extern "system" fn MsiSourceListClearAllW(
         let Some(product_code) = crate::win32::strings::lpcwstr_to_string(_sz_product.0) else {
             return 87;
         };
-        let Ok(mut cache) = msi::execution::source_resiliency::source_list_cache().write() else {
-            return 1603;
-        };
+        let mut cache = msi::execution::source_resiliency::source_list_cache()
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         cache.remove(&product_code);
         0
     })
@@ -227,8 +230,9 @@ pub unsafe extern "system" fn MsiSourceListClearAllW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiSourceListClearAllA(
     _sz_product: crate::action::ProductCodeA,
     _sz_user_name: *const c_char,
@@ -241,9 +245,9 @@ pub unsafe extern "system" fn MsiSourceListClearAllA(
         let Some(product_code) = crate::win32::strings::lpcstr_to_string(_sz_product.0) else {
             return 87;
         };
-        let Ok(mut cache) = msi::execution::source_resiliency::source_list_cache().write() else {
-            return 1603;
-        };
+        let mut cache = msi::execution::source_resiliency::source_list_cache()
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         cache.remove(&product_code);
         0
     })
@@ -273,8 +277,9 @@ pub unsafe extern "system" fn MsiSourceListClearAllA(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiSourceListAddMediaDiskW(
     _sz_product: crate::action::ProductCodeW,
     _sz_user_name: *const u16,
@@ -299,9 +304,9 @@ pub unsafe extern "system" fn MsiSourceListAddMediaDiskW(
             crate::win32::strings::lpcwstr_to_string(_sz_disk_prompt)
         };
 
-        let Ok(mut cache) = msi::execution::source_resiliency::source_list_cache().write() else {
-            return 1603;
-        };
+        let mut cache = msi::execution::source_resiliency::source_list_cache()
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let list = cache.entry(product_code).or_default();
         list.sources
             .push(msi::execution::source_resiliency::SourcePath::Media(
@@ -340,8 +345,9 @@ pub unsafe extern "system" fn MsiSourceListAddMediaDiskW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiSourceListAddMediaDiskA(
     _sz_product: crate::action::ProductCodeA,
     _sz_user_name: *const c_char,
@@ -366,9 +372,9 @@ pub unsafe extern "system" fn MsiSourceListAddMediaDiskA(
             crate::win32::strings::lpcstr_to_string(_sz_disk_prompt)
         };
 
-        let Ok(mut cache) = msi::execution::source_resiliency::source_list_cache().write() else {
-            return 1603;
-        };
+        let mut cache = msi::execution::source_resiliency::source_list_cache()
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let list = cache.entry(product_code).or_default();
         list.sources
             .push(msi::execution::source_resiliency::SourcePath::Media(
@@ -408,7 +414,7 @@ pub unsafe extern "system" fn MsiSourceListAddMediaDiskA(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 pub unsafe extern "system" fn MsiSourceListGetInfoW(
     _sz_product: crate::action::ProductCodeW,
@@ -430,9 +436,9 @@ pub unsafe extern "system" fn MsiSourceListGetInfoW(
             return 87;
         };
 
-        let Ok(cache) = msi::execution::source_resiliency::source_list_cache().read() else {
-            return 1603; // ERROR_INSTALL_FAILURE
-        };
+        let cache = msi::execution::source_resiliency::source_list_cache()
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let list = match cache.get(&product_code) {
             Some(l) => l,
             None => return 1610, // ERROR_BAD_CONFIGURATION
@@ -499,7 +505,7 @@ pub unsafe extern "system" fn MsiSourceListGetInfoW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 pub unsafe extern "system" fn MsiSourceListGetInfoA(
     _sz_product: crate::action::ProductCodeA,
@@ -521,9 +527,9 @@ pub unsafe extern "system" fn MsiSourceListGetInfoA(
             return 87;
         };
 
-        let Ok(cache) = msi::execution::source_resiliency::source_list_cache().read() else {
-            return 1603; // ERROR_INSTALL_FAILURE
-        };
+        let cache = msi::execution::source_resiliency::source_list_cache()
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let list = match cache.get(&product_code) {
             Some(l) => l,
             None => return 1610, // ERROR_BAD_CONFIGURATION
@@ -568,6 +574,565 @@ pub unsafe extern "system" fn MsiSourceListGetInfoA(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn test_source_list_missing_branches() {
+        use std::ptr;
+        let unknown_w: Vec<u16> = "unknown_product"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        let unknown_a = std::ffi::CString::new("unknown_product").unwrap();
+
+        unsafe {
+            // Hit 1605 branches
+            let mut sz: u32 = 0;
+            assert_eq!(
+                MsiSourceListClearMediaDiskW(unknown_w.as_ptr(), ptr::null(), 0, 0, 1),
+                1605
+            );
+            assert_eq!(
+                MsiSourceListClearMediaDiskA(unknown_a.as_ptr().cast(), ptr::null(), 0, 0, 1),
+                1605
+            );
+            assert_eq!(
+                MsiSourceListForceResolutionExW(unknown_w.as_ptr(), ptr::null(), 0, 0),
+                1605
+            );
+            assert_eq!(
+                MsiSourceListForceResolutionExA(unknown_a.as_ptr().cast(), ptr::null(), 0, 0),
+                1605
+            );
+
+            // Hit 259 (out of bounds)
+            // Need a product that exists but has less than 100 items. Let's just use "dummy".
+            let dummy_w: Vec<u16> = "dummy".encode_utf16().chain(std::iter::once(0)).collect();
+            let dummy_a = std::ffi::CString::new("dummy").unwrap();
+            assert_eq!(
+                MsiSourceListEnumMediaDisksW(
+                    dummy_w.as_ptr(),
+                    ptr::null(),
+                    0,
+                    0,
+                    100,
+                    &mut sz,
+                    ptr::null_mut(),
+                    &mut sz,
+                    ptr::null_mut(),
+                    &mut sz
+                ),
+                259
+            );
+            assert_eq!(
+                MsiSourceListEnumMediaDisksA(
+                    dummy_a.as_ptr().cast(),
+                    ptr::null(),
+                    0,
+                    0,
+                    100,
+                    &mut sz,
+                    ptr::null_mut(),
+                    &mut sz,
+                    ptr::null_mut(),
+                    &mut sz
+                ),
+                259
+            );
+            assert_eq!(
+                MsiSourceListEnumSourcesW(
+                    dummy_w.as_ptr(),
+                    ptr::null(),
+                    0,
+                    0,
+                    100,
+                    ptr::null_mut(),
+                    &mut sz
+                ),
+                259
+            );
+            assert_eq!(
+                MsiSourceListEnumSourcesA(
+                    dummy_a.as_ptr().cast(),
+                    ptr::null(),
+                    0,
+                    0,
+                    100,
+                    ptr::null_mut(),
+                    &mut sz
+                ),
+                259
+            );
+        }
+    }
+
+    #[test]
+    fn test_source_list_closures_coverage_2() {
+        use msi::execution::{
+            source_resiliency::source_list_cache, source_resiliency::MediaSource,
+            source_resiliency::NetworkSource, source_resiliency::SourceList,
+            source_resiliency::SourcePath, source_resiliency::UrlSource,
+        };
+        use std::ptr;
+        let dummy_w: Vec<u16> = "dummy".encode_utf16().chain(std::iter::once(0)).collect();
+        let dummy_a = std::ffi::CString::new("dummy").unwrap();
+        let dummy_str = "dummy".to_string();
+
+        {
+            let mut cache = source_list_cache().write().unwrap();
+            let mut list = SourceList::default();
+            list.sources.push(SourcePath::Media(MediaSource {
+                disk_id: Some(1),
+                volume_label: None,
+                disk_prompt: None,
+                base_path: std::path::PathBuf::new(),
+            }));
+            list.sources.push(SourcePath::Media(MediaSource {
+                disk_id: None,
+                volume_label: None,
+                disk_prompt: None,
+                base_path: std::path::PathBuf::new(),
+            }));
+            list.sources.push(SourcePath::Network(NetworkSource {
+                unc_path: "net".to_string(),
+            }));
+            list.sources.push(SourcePath::Url(UrlSource {
+                url: "url".to_string(),
+            }));
+            cache.insert(dummy_str, list);
+        }
+
+        unsafe {
+            let mut sz: u32 = 0;
+            let _ = MsiSourceListEnumMediaDisksW(
+                dummy_w.as_ptr(),
+                ptr::null(),
+                0,
+                0,
+                0,
+                &mut sz,
+                ptr::null_mut(),
+                &mut sz,
+                ptr::null_mut(),
+                &mut sz,
+            );
+            let _ = MsiSourceListEnumSourcesW(
+                dummy_w.as_ptr(),
+                ptr::null(),
+                0,
+                0,
+                0,
+                ptr::null_mut(),
+                &mut sz,
+            );
+            let _ = MsiSourceListClearMediaDiskW(dummy_w.as_ptr(), ptr::null(), 0, 0, 1);
+            let _ = MsiSourceListClearMediaDiskW(dummy_w.as_ptr(), ptr::null(), 0, 0, 0xFFFF_FFFF);
+
+            // Add items again for A versions
+            {
+                let mut cache = source_list_cache().write().unwrap();
+                let mut list = SourceList::default();
+                list.sources.push(SourcePath::Media(MediaSource {
+                    disk_id: Some(1),
+                    volume_label: None,
+                    disk_prompt: None,
+                    base_path: std::path::PathBuf::new(),
+                }));
+                list.sources.push(SourcePath::Network(NetworkSource {
+                    unc_path: "net".to_string(),
+                }));
+                list.sources.push(SourcePath::Url(UrlSource {
+                    url: "url".to_string(),
+                }));
+                cache.insert("dummy".to_string(), list);
+            }
+            let _ = MsiSourceListEnumMediaDisksA(
+                dummy_a.as_ptr(),
+                ptr::null(),
+                0,
+                0,
+                0,
+                &mut sz,
+                ptr::null_mut(),
+                &mut sz,
+                ptr::null_mut(),
+                &mut sz,
+            );
+            let _ = MsiSourceListEnumSourcesA(
+                dummy_a.as_ptr(),
+                ptr::null(),
+                0,
+                0,
+                0,
+                ptr::null_mut(),
+                &mut sz,
+            );
+            let _ = MsiSourceListClearMediaDiskA(dummy_a.as_ptr(), ptr::null(), 0, 0, 1);
+            let _ = MsiSourceListClearMediaDiskA(dummy_a.as_ptr(), ptr::null(), 0, 0, 0xFFFF_FFFF);
+        }
+    }
+
+    #[test]
+    fn test_msi_source_list_full_coverage() {
+        use std::ptr;
+        let dummy_w: Vec<u16> = "dummy".encode_utf16().chain(std::iter::once(0)).collect();
+        let invalid_w: Vec<u16> = [0xD800, 0].to_vec();
+        let dummy_a = std::ffi::CString::new("dummy").unwrap();
+        let invalid_a = [0xFF_u8 as i8, 0x00];
+        let mut sz: u32 = 0;
+
+        let p_w = ProductCodeW(dummy_w.as_ptr());
+        let p_a = ProductCodeA(dummy_a.as_ptr());
+        let path_w = SourceListPathW(dummy_w.as_ptr());
+        let path_a = SourceListPathA(dummy_a.as_ptr());
+
+        let p_inv_w = ProductCodeW(invalid_w.as_ptr());
+        let p_inv_a = ProductCodeA(invalid_a.as_ptr());
+        let path_inv_w = SourceListPathW(invalid_w.as_ptr());
+        let path_inv_a = SourceListPathA(invalid_a.as_ptr());
+
+        unsafe {
+            let _ = MsiSourceListAddSourceW(p_w, dummy_w.as_ptr(), 0, path_w);
+            let _ = MsiSourceListAddSourceW(p_inv_w, invalid_w.as_ptr(), 0, path_inv_w);
+            let _ = MsiSourceListAddSourceA(p_a, dummy_a.as_ptr(), 0, path_a);
+            let _ = MsiSourceListAddSourceA(p_inv_a, invalid_a.as_ptr().cast(), 0, path_inv_a);
+            let _ = MsiSourceListClearAllW(p_w, dummy_w.as_ptr(), 0);
+            let _ = MsiSourceListClearAllW(p_inv_w, invalid_w.as_ptr(), 0);
+            let _ = MsiSourceListClearAllA(p_a, dummy_a.as_ptr(), 0);
+            let _ = MsiSourceListClearAllA(p_inv_a, invalid_a.as_ptr().cast(), 0);
+            let _ = MsiSourceListAddMediaDiskW(
+                p_w,
+                dummy_w.as_ptr(),
+                0,
+                MediaDiskId(0),
+                dummy_w.as_ptr(),
+                dummy_w.as_ptr(),
+            );
+            let _ = MsiSourceListAddMediaDiskW(
+                p_inv_w,
+                invalid_w.as_ptr(),
+                0,
+                MediaDiskId(0),
+                invalid_w.as_ptr(),
+                invalid_w.as_ptr(),
+            );
+            let _ = MsiSourceListAddMediaDiskA(
+                p_a,
+                dummy_a.as_ptr(),
+                0,
+                MediaDiskId(0),
+                dummy_a.as_ptr(),
+                dummy_a.as_ptr(),
+            );
+            let _ = MsiSourceListAddMediaDiskA(
+                p_inv_a,
+                invalid_a.as_ptr().cast(),
+                0,
+                MediaDiskId(0),
+                invalid_a.as_ptr().cast(),
+                invalid_a.as_ptr().cast(),
+            );
+            let _ = MsiSourceListGetInfoW(
+                p_w,
+                dummy_w.as_ptr(),
+                0,
+                ResolutionMode(0),
+                dummy_w.as_ptr(),
+                ptr::null_mut(),
+                &mut sz,
+            );
+            let _ = MsiSourceListGetInfoW(
+                p_inv_w,
+                invalid_w.as_ptr(),
+                0,
+                ResolutionMode(0),
+                invalid_w.as_ptr(),
+                ptr::null_mut(),
+                &mut sz,
+            );
+            let _ = MsiSourceListGetInfoA(
+                p_a,
+                dummy_a.as_ptr(),
+                0,
+                ResolutionMode(0),
+                dummy_a.as_ptr(),
+                ptr::null_mut(),
+                &mut sz,
+            );
+            let _ = MsiSourceListGetInfoA(
+                p_inv_a,
+                invalid_a.as_ptr().cast(),
+                0,
+                ResolutionMode(0),
+                invalid_a.as_ptr().cast(),
+                ptr::null_mut(),
+                &mut sz,
+            );
+            let _ = MsiSourceListAddSourceExW(
+                dummy_w.as_ptr(),
+                dummy_w.as_ptr(),
+                0,
+                0,
+                dummy_w.as_ptr(),
+                0,
+            );
+            let _ = MsiSourceListAddSourceExW(
+                invalid_w.as_ptr(),
+                invalid_w.as_ptr(),
+                0,
+                0,
+                invalid_w.as_ptr(),
+                0,
+            );
+            let _ = MsiSourceListAddSourceExA(
+                dummy_a.as_ptr(),
+                dummy_a.as_ptr(),
+                0,
+                0,
+                dummy_a.as_ptr(),
+                0,
+            );
+            let _ = MsiSourceListAddSourceExA(
+                invalid_a.as_ptr().cast(),
+                invalid_a.as_ptr().cast(),
+                0,
+                0,
+                invalid_a.as_ptr().cast(),
+                0,
+            );
+            let _ = MsiSourceListClearAllExW(dummy_w.as_ptr(), dummy_w.as_ptr(), 0, 0);
+            let _ = MsiSourceListClearAllExW(invalid_w.as_ptr(), invalid_w.as_ptr(), 0, 0);
+            let _ = MsiSourceListClearAllExA(dummy_a.as_ptr(), dummy_a.as_ptr(), 0, 0);
+            let _ = MsiSourceListClearAllExA(
+                invalid_a.as_ptr().cast(),
+                invalid_a.as_ptr().cast(),
+                0,
+                0,
+            );
+            let _ =
+                MsiSourceListClearSourceW(dummy_w.as_ptr(), dummy_w.as_ptr(), 0, dummy_w.as_ptr());
+            let _ = MsiSourceListClearSourceW(
+                invalid_w.as_ptr(),
+                invalid_w.as_ptr(),
+                0,
+                invalid_w.as_ptr(),
+            );
+            let _ =
+                MsiSourceListClearSourceA(dummy_a.as_ptr(), dummy_a.as_ptr(), 0, dummy_a.as_ptr());
+            let _ = MsiSourceListClearSourceA(
+                invalid_a.as_ptr().cast(),
+                invalid_a.as_ptr().cast(),
+                0,
+                invalid_a.as_ptr().cast(),
+            );
+            let _ = MsiSourceListEnumMediaDisksW(
+                dummy_w.as_ptr(),
+                dummy_w.as_ptr(),
+                0,
+                0,
+                0,
+                &mut sz,
+                ptr::null_mut(),
+                &mut sz,
+                ptr::null_mut(),
+                &mut sz,
+            );
+            let _ = MsiSourceListEnumMediaDisksW(
+                invalid_w.as_ptr(),
+                invalid_w.as_ptr(),
+                0,
+                0,
+                0,
+                &mut sz,
+                ptr::null_mut(),
+                &mut sz,
+                ptr::null_mut(),
+                &mut sz,
+            );
+            let _ = MsiSourceListEnumMediaDisksA(
+                dummy_a.as_ptr(),
+                dummy_a.as_ptr(),
+                0,
+                0,
+                0,
+                &mut sz,
+                ptr::null_mut(),
+                &mut sz,
+                ptr::null_mut(),
+                &mut sz,
+            );
+            let _ = MsiSourceListEnumMediaDisksA(
+                invalid_a.as_ptr().cast(),
+                invalid_a.as_ptr().cast(),
+                0,
+                0,
+                0,
+                &mut sz,
+                ptr::null_mut(),
+                &mut sz,
+                ptr::null_mut(),
+                &mut sz,
+            );
+            let _ = MsiSourceListEnumSourcesW(
+                dummy_w.as_ptr(),
+                dummy_w.as_ptr(),
+                0,
+                0,
+                0,
+                ptr::null_mut(),
+                &mut sz,
+            );
+            let _ = MsiSourceListEnumSourcesW(
+                invalid_w.as_ptr(),
+                invalid_w.as_ptr(),
+                0,
+                0,
+                0,
+                ptr::null_mut(),
+                &mut sz,
+            );
+            let _ = MsiSourceListEnumSourcesA(
+                dummy_a.as_ptr(),
+                dummy_a.as_ptr(),
+                0,
+                0,
+                0,
+                ptr::null_mut(),
+                &mut sz,
+            );
+            let _ = MsiSourceListEnumSourcesA(
+                invalid_a.as_ptr().cast(),
+                invalid_a.as_ptr().cast(),
+                0,
+                0,
+                0,
+                ptr::null_mut(),
+                &mut sz,
+            );
+            let _ = MsiSourceListForceResolutionW(dummy_w.as_ptr(), dummy_w.as_ptr(), 0);
+            let _ = MsiSourceListForceResolutionW(invalid_w.as_ptr(), invalid_w.as_ptr(), 0);
+            let _ = MsiSourceListForceResolutionA(dummy_a.as_ptr(), dummy_a.as_ptr(), 0);
+            let _ = MsiSourceListForceResolutionA(
+                invalid_a.as_ptr().cast(),
+                invalid_a.as_ptr().cast(),
+                0,
+            );
+            let _ = MsiSourceListSetInfoW(
+                dummy_w.as_ptr(),
+                dummy_w.as_ptr(),
+                0,
+                0,
+                dummy_w.as_ptr(),
+                dummy_w.as_ptr(),
+            );
+            let _ = MsiSourceListSetInfoW(
+                invalid_w.as_ptr(),
+                invalid_w.as_ptr(),
+                0,
+                0,
+                invalid_w.as_ptr(),
+                invalid_w.as_ptr(),
+            );
+            let _ = MsiSourceListSetInfoA(
+                dummy_a.as_ptr(),
+                dummy_a.as_ptr(),
+                0,
+                0,
+                dummy_a.as_ptr(),
+                dummy_a.as_ptr(),
+            );
+            let _ = MsiSourceListSetInfoA(
+                invalid_a.as_ptr().cast(),
+                invalid_a.as_ptr().cast(),
+                0,
+                0,
+                invalid_a.as_ptr().cast(),
+                invalid_a.as_ptr().cast(),
+            );
+            let _ = MsiSourceListClearMediaDiskA(dummy_a.as_ptr(), dummy_a.as_ptr(), 0, 0, 0);
+            let _ = MsiSourceListClearMediaDiskA(
+                invalid_a.as_ptr().cast(),
+                invalid_a.as_ptr().cast(),
+                0,
+                0,
+                0,
+            );
+            let _ = MsiSourceListClearMediaDiskW(dummy_w.as_ptr(), dummy_w.as_ptr(), 0, 0, 0);
+            let _ = MsiSourceListClearMediaDiskW(invalid_w.as_ptr(), invalid_w.as_ptr(), 0, 0, 0);
+            let _ = MsiSourceListForceResolutionExA(dummy_a.as_ptr(), dummy_a.as_ptr(), 0, 0);
+            let _ = MsiSourceListForceResolutionExA(
+                invalid_a.as_ptr().cast(),
+                invalid_a.as_ptr().cast(),
+                0,
+                0,
+            );
+            let _ = MsiSourceListForceResolutionExW(dummy_w.as_ptr(), dummy_w.as_ptr(), 0, 0);
+            let _ = MsiSourceListForceResolutionExW(invalid_w.as_ptr(), invalid_w.as_ptr(), 0, 0);
+        }
+    }
+
+    #[test]
+    fn test_source_list_closures_coverage() {
+        use msi::execution::{
+            source_resiliency::source_list_cache, source_resiliency::MediaSource,
+            source_resiliency::NetworkSource, source_resiliency::SourceList,
+            source_resiliency::SourcePath, source_resiliency::UrlSource,
+        };
+        use std::ptr;
+        let dummy_w: Vec<u16> = "dummy".encode_utf16().chain(std::iter::once(0)).collect();
+        let dummy_str = "dummy".to_string();
+
+        {
+            let mut cache = source_list_cache().write().unwrap();
+            let mut list = SourceList::default();
+            list.sources.push(SourcePath::Media(MediaSource {
+                disk_id: Some(1),
+                volume_label: None,
+                disk_prompt: None,
+                base_path: std::path::PathBuf::new(),
+            }));
+            list.sources.push(SourcePath::Media(MediaSource {
+                disk_id: None,
+                volume_label: None,
+                disk_prompt: None,
+                base_path: std::path::PathBuf::new(),
+            }));
+            list.sources.push(SourcePath::Network(NetworkSource {
+                unc_path: "net".to_string(),
+            }));
+            list.sources.push(SourcePath::Url(UrlSource {
+                url: "url".to_string(),
+            }));
+            cache.insert(dummy_str, list);
+        }
+
+        unsafe {
+            let mut sz: u32 = 0;
+            let _ = MsiSourceListEnumMediaDisksW(
+                dummy_w.as_ptr(),
+                ptr::null(),
+                0,
+                0,
+                0,
+                &mut sz,
+                ptr::null_mut(),
+                &mut sz,
+                ptr::null_mut(),
+                &mut sz,
+            );
+            let _ = MsiSourceListEnumSourcesW(
+                dummy_w.as_ptr(),
+                ptr::null(),
+                0,
+                0,
+                0,
+                ptr::null_mut(),
+                &mut sz,
+            );
+            let _ = MsiSourceListClearMediaDiskW(dummy_w.as_ptr(), ptr::null(), 0, 0, 1);
+            let _ = MsiSourceListClearMediaDiskW(dummy_w.as_ptr(), ptr::null(), 0, 0, 0xFFFF_FFFF);
+        }
+    }
+
     use super::*;
     use crate::action::{ProductCodeA, ProductCodeW};
     use std::ptr;
@@ -957,11 +1522,11 @@ mod tests {
     }
 }
 
-#[cfg_attr(not(coverage_nightly), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 /// Adds a source ex W.
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiSourceListAddSourceExW(
     szProductCodeOrPatchCode: *const u16,
     szUserSid: *const u16,
@@ -979,11 +1544,11 @@ pub extern "system" fn MsiSourceListAddSourceExW(
     result.unwrap_or(1603)
 }
 
-#[cfg_attr(not(coverage_nightly), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 /// Adds a source ex A.
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiSourceListAddSourceExA(
     szProductCodeOrPatchCode: *const c_char,
     szUserSid: *const c_char,
@@ -1001,11 +1566,11 @@ pub extern "system" fn MsiSourceListAddSourceExA(
     result.unwrap_or(1603)
 }
 
-#[cfg_attr(not(coverage_nightly), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 /// Clears all ex W.
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiSourceListClearAllExW(
     szProductCodeOrPatchCode: *const u16,
     szUserSid: *const u16,
@@ -1021,11 +1586,11 @@ pub extern "system" fn MsiSourceListClearAllExW(
     result.unwrap_or(1603)
 }
 
-#[cfg_attr(not(coverage_nightly), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 /// Clears all ex A.
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiSourceListClearAllExA(
     szProductCodeOrPatchCode: *const c_char,
     szUserSid: *const c_char,
@@ -1041,11 +1606,11 @@ pub extern "system" fn MsiSourceListClearAllExA(
     result.unwrap_or(1603)
 }
 
-#[cfg_attr(not(coverage_nightly), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 /// Clears source W.
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiSourceListClearSourceW(
     szProduct: *const u16,
     szUserName: *const u16,
@@ -1061,11 +1626,11 @@ pub extern "system" fn MsiSourceListClearSourceW(
     result.unwrap_or(1603)
 }
 
-#[cfg_attr(not(coverage_nightly), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 /// Clears source A.
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiSourceListClearSourceA(
     szProduct: *const c_char,
     szUserName: *const c_char,
@@ -1081,7 +1646,6 @@ pub extern "system" fn MsiSourceListClearSourceA(
     result.unwrap_or(1603)
 }
 
-#[cfg_attr(not(coverage_nightly), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 /// Enums media disks W.
@@ -1107,9 +1671,9 @@ pub extern "system" fn MsiSourceListEnumMediaDisksW(
             Some(s) => s,
             None => return 87,
         };
-        let Ok(cache) = msi::execution::source_resiliency::source_list_cache().read() else {
-            return 1603;
-        };
+        let cache = msi::execution::source_resiliency::source_list_cache()
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let list = match cache.get(&product_code) {
             Some(l) => l,
             None => return 259, // ERROR_NO_MORE_ITEMS
@@ -1162,7 +1726,6 @@ pub extern "system" fn MsiSourceListEnumMediaDisksW(
     result.unwrap_or(1603)
 }
 
-#[cfg_attr(not(coverage_nightly), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 /// Enums media disks A.
@@ -1187,9 +1750,9 @@ pub extern "system" fn MsiSourceListEnumMediaDisksA(
         else {
             return 87;
         };
-        let Ok(cache) = msi::execution::source_resiliency::source_list_cache().read() else {
-            return 1603;
-        };
+        let cache = msi::execution::source_resiliency::source_list_cache()
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let list = match cache.get(&product_code) {
             Some(l) => l,
             None => return 259,
@@ -1242,7 +1805,6 @@ pub extern "system" fn MsiSourceListEnumMediaDisksA(
     result.unwrap_or(1603)
 }
 
-#[cfg_attr(not(coverage_nightly), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 /// Enums sources W.
@@ -1265,7 +1827,6 @@ pub extern "system" fn MsiSourceListEnumSourcesW(
     result.unwrap_or(1603)
 }
 
-#[cfg_attr(not(coverage_nightly), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 /// Enums sources A.
@@ -1288,11 +1849,11 @@ pub extern "system" fn MsiSourceListEnumSourcesA(
     result.unwrap_or(1603)
 }
 
-#[cfg_attr(not(coverage_nightly), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 /// Forces resolution W.
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiSourceListForceResolutionW(
     szProduct: *const u16,
     szUserName: *const u16,
@@ -1307,11 +1868,11 @@ pub extern "system" fn MsiSourceListForceResolutionW(
     result.unwrap_or(1603)
 }
 
-#[cfg_attr(not(coverage_nightly), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 /// Forces resolution A.
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiSourceListForceResolutionA(
     szProduct: *const c_char,
     szUserName: *const c_char,
@@ -1326,11 +1887,11 @@ pub extern "system" fn MsiSourceListForceResolutionA(
     result.unwrap_or(1603)
 }
 
-#[cfg_attr(not(coverage_nightly), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 /// Sets info W.
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiSourceListSetInfoW(
     szProductCodeOrPatchCode: *const u16,
     szUserSid: *const u16,
@@ -1354,9 +1915,9 @@ pub extern "system" fn MsiSourceListSetInfoW(
             return 87;
         };
 
-        let Ok(mut cache) = msi::execution::source_resiliency::source_list_cache().write() else {
-            return 1603; // ERROR_INSTALL_FAILURE
-        };
+        let mut cache = msi::execution::source_resiliency::source_list_cache()
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
 
         // Ensure cache entry exists
         let list = cache.entry(product_code).or_default();
@@ -1388,11 +1949,11 @@ pub extern "system" fn MsiSourceListSetInfoW(
     result.unwrap_or(1603)
 }
 
-#[cfg_attr(not(coverage_nightly), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 /// Sets info A.
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiSourceListSetInfoA(
     szProductCodeOrPatchCode: *const c_char,
     szUserSid: *const c_char,
@@ -1416,9 +1977,9 @@ pub extern "system" fn MsiSourceListSetInfoA(
             return 87;
         };
 
-        let Ok(mut cache) = msi::execution::source_resiliency::source_list_cache().write() else {
-            return 1603; // ERROR_INSTALL_FAILURE
-        };
+        let mut cache = msi::execution::source_resiliency::source_list_cache()
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
 
         let list = cache.entry(product_code).or_default();
 
@@ -2173,9 +2734,10 @@ mod tests_coverage {
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_PARAMETER` or `ERROR_UNKNOWN_PRODUCT`.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[must_use]
 pub extern "system" fn MsiSourceListClearMediaDiskA(
     _szProduct: *const c_char,
     _szUserName: *const c_char,
@@ -2191,9 +2753,9 @@ pub extern "system" fn MsiSourceListClearMediaDiskA(
             return 87;
         };
 
-        let Ok(mut cache) = msi::execution::source_resiliency::source_list_cache().write() else {
-            return 1603;
-        };
+        let mut cache = msi::execution::source_resiliency::source_list_cache()
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
 
         if let Some(list) = cache.get_mut(&product_code) {
             list.sources.retain(|s| {
@@ -2227,9 +2789,10 @@ pub extern "system" fn MsiSourceListClearMediaDiskA(
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_PARAMETER` or `ERROR_UNKNOWN_PRODUCT`.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[must_use]
 pub extern "system" fn MsiSourceListClearMediaDiskW(
     _szProduct: *const u16,
     _szUserName: *const u16,
@@ -2245,9 +2808,9 @@ pub extern "system" fn MsiSourceListClearMediaDiskW(
             return 87;
         };
 
-        let Ok(mut cache) = msi::execution::source_resiliency::source_list_cache().write() else {
-            return 1603;
-        };
+        let mut cache = msi::execution::source_resiliency::source_list_cache()
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
 
         if let Some(list) = cache.get_mut(&product_code) {
             list.sources.retain(|s| {
@@ -2280,9 +2843,10 @@ pub extern "system" fn MsiSourceListClearMediaDiskW(
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_PARAMETER` or `ERROR_UNKNOWN_PRODUCT`.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[must_use]
 pub extern "system" fn MsiSourceListForceResolutionExA(
     _szProduct: *const c_char,
     _szUserName: *const c_char,
@@ -2297,9 +2861,9 @@ pub extern "system" fn MsiSourceListForceResolutionExA(
             return 87;
         };
 
-        let Ok(mut cache) = msi::execution::source_resiliency::source_list_cache().write() else {
-            return 1603;
-        };
+        let mut cache = msi::execution::source_resiliency::source_list_cache()
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
 
         if cache.get_mut(&product_code).is_some() {
             0 // ERROR_SUCCESS
@@ -2322,9 +2886,10 @@ pub extern "system" fn MsiSourceListForceResolutionExA(
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_PARAMETER` or `ERROR_UNKNOWN_PRODUCT`.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[must_use]
 pub extern "system" fn MsiSourceListForceResolutionExW(
     _szProduct: *const u16,
     _szUserName: *const u16,
@@ -2339,9 +2904,9 @@ pub extern "system" fn MsiSourceListForceResolutionExW(
             return 87;
         };
 
-        let Ok(mut cache) = msi::execution::source_resiliency::source_list_cache().write() else {
-            return 1603;
-        };
+        let mut cache = msi::execution::source_resiliency::source_list_cache()
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
 
         if cache.get_mut(&product_code).is_some() {
             0 // ERROR_SUCCESS
@@ -2675,6 +3240,66 @@ mod tests_additional_coverage {
                     prop_last_a.as_ptr(),
                     media_path_a.as_ptr()
                 ),
+                0
+            );
+
+            // Re-insert sources for ClearMediaDisk tests since they might have been cleared
+            {
+                use msi::execution::source_resiliency::{MediaSource, SourcePath};
+                let mut cache = msi::execution::source_resiliency::source_list_cache()
+                    .write()
+                    .unwrap();
+                let mut list = msi::execution::source_resiliency::SourceList::default();
+                list.sources.push(SourcePath::Media(MediaSource {
+                    disk_id: Some(1),
+                    volume_label: None,
+                    disk_prompt: None,
+                    base_path: std::path::PathBuf::new(),
+                }));
+                cache.insert("dummy".to_string(), list);
+            }
+
+            // Cover ClearMediaDisk missing branches
+            let unknown_w: Vec<u16> = "unknown".encode_utf16().chain(std::iter::once(0)).collect();
+            let unknown_a = std::ffi::CString::new("unknown").unwrap();
+
+            assert_eq!(
+                MsiSourceListClearMediaDiskW(unknown_w.as_ptr(), ptr::null(), 0, 0, 1,),
+                1605 // ERROR_UNKNOWN_PRODUCT
+            );
+            assert_eq!(
+                MsiSourceListClearMediaDiskA(unknown_a.as_ptr(), ptr::null(), 0, 0, 1,),
+                1605 // ERROR_UNKNOWN_PRODUCT
+            );
+
+            assert_eq!(
+                MsiSourceListClearMediaDiskW(dummy_w.as_ptr(), ptr::null(), 0, 0, 1,),
+                0
+            );
+            assert_eq!(
+                MsiSourceListClearMediaDiskW(
+                    dummy_w.as_ptr(),
+                    ptr::null(),
+                    0,
+                    0,
+                    2, // Mismatch id, not FFFF_FFFF
+                ),
+                0
+            );
+            assert_eq!(
+                MsiSourceListClearMediaDiskW(dummy_w.as_ptr(), ptr::null(), 0, 0, 0xFFFF_FFFF,),
+                0
+            );
+            assert_eq!(
+                MsiSourceListClearMediaDiskA(dummy_a.as_ptr(), ptr::null(), 0, 0, 1,),
+                0
+            );
+            assert_eq!(
+                MsiSourceListClearMediaDiskA(dummy_a.as_ptr(), ptr::null(), 0, 0, 2,),
+                0
+            );
+            assert_eq!(
+                MsiSourceListClearMediaDiskA(dummy_a.as_ptr(), ptr::null(), 0, 0, 0xFFFF_FFFF,),
                 0
             );
             assert_eq!(

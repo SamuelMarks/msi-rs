@@ -395,7 +395,7 @@ fn match_keyword_or_ident(w: &str) -> Token {
 }
 
 #[cfg(test)]
-#[allow(clippy::manual_flatten)]
+#[allow(clippy::manual_flatten, clippy::redundant_clone)]
 mod tests {
     use super::*;
 

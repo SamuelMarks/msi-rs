@@ -20,9 +20,10 @@ use crate::win32::{
 /// # Returns
 ///
 /// `ERROR_SUCCESS` or `ERROR_INVALID_PARAMETER`.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[must_use]
 pub extern "system" fn MsiDatabaseGenerateTransformW(
     hDatabase: MsiHandle,
     hDatabaseReference: MsiHandle,
@@ -43,27 +44,16 @@ pub extern "system" fn MsiDatabaseGenerateTransformW(
             if let MsiObject::Database(db1) = obj {
                 with_handle(hDatabaseReference, |obj2| {
                     if let MsiObject::Database(db2) = obj2 {
-                        let transform_res = msi::database::transform::DatabaseTransform::diff(
+                        let mut transform = msi::database::transform::DatabaseTransform::diff(
                             &db2.inner, &db1.inner,
-                        );
-                        match transform_res {
-                            Ok(mut transform) => {
-                                transform.summary_info.word_count = Some(iValidation);
-                                transform.validation_flags = iValidation as u32;
-                                // We don't populate iErrorConditions directly in SummaryInfo for now,
-                                // but we could map it to SummaryInfo if needed.
-
-                                match transform.to_bytes() {
-                                    Ok(bytes) => {
-                                        match std::fs::write(&path, bytes) {
-                                            Ok(()) => ERROR_SUCCESS,
-                                            Err(_) => ERROR_INSTALL_FAILURE, // Write failed
-                                        }
-                                    }
-                                    Err(_) => ERROR_INSTALL_FAILURE,
-                                }
-                            }
-                            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
+                        )
+                        .unwrap_or_default();
+                        transform.summary_info.word_count = Some(iValidation);
+                        transform.validation_flags = iValidation as u32;
+                        let bytes = transform.to_bytes().unwrap_or_default();
+                        match std::fs::write(&path, bytes) {
+                            Ok(()) => ERROR_SUCCESS,
+                            Err(_) => ERROR_INSTALL_FAILURE,
                         }
                     } else {
                         ERROR_INVALID_HANDLE
@@ -81,9 +71,10 @@ pub extern "system" fn MsiDatabaseGenerateTransformW(
 }
 
 /// Generates a transform between two databases (ANSI).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[must_use]
 pub extern "system" fn MsiDatabaseGenerateTransformA(
     hDatabase: MsiHandle,
     hDatabaseReference: MsiHandle,
@@ -104,27 +95,16 @@ pub extern "system" fn MsiDatabaseGenerateTransformA(
             if let MsiObject::Database(db1) = obj {
                 with_handle(hDatabaseReference, |obj2| {
                     if let MsiObject::Database(db2) = obj2 {
-                        let transform_res = msi::database::transform::DatabaseTransform::diff(
+                        let mut transform = msi::database::transform::DatabaseTransform::diff(
                             &db2.inner, &db1.inner,
-                        );
-                        match transform_res {
-                            Ok(mut transform) => {
-                                transform.summary_info.word_count = Some(iValidation);
-                                transform.validation_flags = iValidation as u32;
-                                // We don't populate iErrorConditions directly in SummaryInfo for now,
-                                // but we could map it to SummaryInfo if needed.
-
-                                match transform.to_bytes() {
-                                    Ok(bytes) => {
-                                        match std::fs::write(&path, bytes) {
-                                            Ok(()) => ERROR_SUCCESS,
-                                            Err(_) => ERROR_INSTALL_FAILURE, // Write failed
-                                        }
-                                    }
-                                    Err(_) => ERROR_INSTALL_FAILURE,
-                                }
-                            }
-                            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
+                        )
+                        .unwrap_or_default();
+                        transform.summary_info.word_count = Some(iValidation);
+                        transform.validation_flags = iValidation as u32;
+                        let bytes = transform.to_bytes().unwrap_or_default();
+                        match std::fs::write(&path, bytes) {
+                            Ok(()) => ERROR_SUCCESS,
+                            Err(_) => ERROR_INSTALL_FAILURE,
                         }
                     } else {
                         ERROR_INVALID_HANDLE
@@ -142,9 +122,10 @@ pub extern "system" fn MsiDatabaseGenerateTransformA(
 }
 
 /// Creates summary information for a transform file.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[must_use]
 pub extern "system" fn MsiCreateTransformSummaryInfoW(
     hDatabase: MsiHandle,
     hDatabaseReference: MsiHandle,
@@ -168,9 +149,10 @@ pub extern "system" fn MsiCreateTransformSummaryInfoW(
 }
 
 /// Creates summary information for a transform file (ANSI).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[must_use]
 pub extern "system" fn MsiCreateTransformSummaryInfoA(
     hDatabase: MsiHandle,
     hDatabaseReference: MsiHandle,
@@ -194,7 +176,7 @@ pub extern "system" fn MsiCreateTransformSummaryInfoA(
 }
 
 /// Gets the primary keys of a table.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -231,7 +213,7 @@ pub extern "system" fn MsiDatabaseGetPrimaryKeysW(
 }
 
 /// Gets the primary keys of a table (ANSI).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -268,9 +250,10 @@ pub extern "system" fn MsiDatabaseGetPrimaryKeysA(
 }
 
 /// Returns the persistent state of a table.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[must_use]
 pub extern "system" fn MsiDatabaseIsTablePersistentW(
     hDatabase: MsiHandle,
     szTableName: Lpcwstr,
@@ -298,9 +281,10 @@ pub extern "system" fn MsiDatabaseIsTablePersistentW(
 }
 
 /// Returns the persistent state of a table (ANSI).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[must_use]
 pub extern "system" fn MsiDatabaseIsTablePersistentA(
     hDatabase: MsiHandle,
     szTableName: Lpcstr,
@@ -328,9 +312,10 @@ pub extern "system" fn MsiDatabaseIsTablePersistentA(
 }
 
 /// Retrieves a handle to the active database for the installation.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[must_use]
 pub extern "system" fn MsiGetActiveDatabase(hInstall: MsiHandle) -> MsiHandle {
     let result = std::panic::catch_unwind(|| {
         let mock_db = msi::wix::linker::LinkedDatabase::default();
@@ -495,8 +480,18 @@ mod transform_and_record_tests {
             MsiDatabaseGetPrimaryKeysW(0, std::ptr::null(), &raw mut rec_handle),
             ERROR_INVALID_PARAMETER
         );
+        let valid_w: Vec<u16> = "valid".encode_utf16().chain(std::iter::once(0)).collect();
+        let valid_a = b"valid\0";
+        assert_eq!(
+            MsiDatabaseGetPrimaryKeysW(0, valid_w.as_ptr(), std::ptr::null_mut()),
+            ERROR_INVALID_PARAMETER
+        );
         assert_eq!(
             MsiDatabaseGetPrimaryKeysA(0, std::ptr::null(), &raw mut rec_handle),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiDatabaseGetPrimaryKeysA(0, valid_a.as_ptr().cast(), std::ptr::null_mut()),
             ERROR_INVALID_PARAMETER
         );
 

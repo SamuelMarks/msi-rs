@@ -26,9 +26,10 @@ use std::fs;
 /// # Safety
 ///
 /// `wxs_content` and `output_msi_path` must be valid null-terminated C strings.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[cfg_attr(coverage_nightly, coverage(off))]
+#[must_use]
 pub unsafe extern "C" fn msi_compile_wix_source(
     wxs_content: *const c_char,
     output_msi_path: *const c_char,
@@ -97,9 +98,10 @@ pub unsafe extern "C" fn msi_compile_wix_source(
 /// # Safety
 ///
 /// `wxs_path` and `output_msi_path` must be valid null-terminated C strings.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[cfg_attr(coverage_nightly, coverage(off))]
+#[must_use]
 pub unsafe extern "C" fn msi_compile_wix_file(
     wxs_path: *const c_char,
     output_msi_path: *const c_char,

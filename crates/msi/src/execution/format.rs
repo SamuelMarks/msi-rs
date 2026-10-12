@@ -173,6 +173,7 @@ fn parse_until(
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::database::tables::FieldValue;
@@ -195,30 +196,30 @@ mod tests {
             .insert("comp1".to_string(), "C:\\Path\\".to_string());
 
         assert_eq!(
-            format_record("Test [MyProp]", &rec, &ctx).expect("test"),
-            "Test PropVal"
+            format_record("Test [MyProp]", &rec, &ctx),
+            Ok("Test PropVal".to_string())
         );
         assert_eq!(
-            format_record("Test [%MY_ENV]", &rec, &ctx).expect("test"),
-            "Test EnvVal"
+            format_record("Test [%MY_ENV]", &rec, &ctx),
+            Ok("Test EnvVal".to_string())
         );
         assert_eq!(
-            format_record("Test [#file1]", &rec, &ctx).expect("test"),
-            "Test C:\\Path\\file1.txt"
+            format_record("Test [#file1]", &rec, &ctx),
+            Ok("Test C:\\Path\\file1.txt".to_string())
         );
         assert_eq!(
-            format_record("Test [$comp1]", &rec, &ctx).expect("test"),
-            "Test C:\\Path\\"
+            format_record("Test [$comp1]", &rec, &ctx),
+            Ok("Test C:\\Path\\".to_string())
         );
         assert_eq!(
-            format_record("Field 1: [1], Field 2: [2]", &rec, &ctx).expect("test"),
-            "Field 1: Value1, Field 2: 42"
+            format_record("Field 1: [1], Field 2: [2]", &rec, &ctx),
+            Ok("Field 1: Value1, Field 2: 42".to_string())
         );
 
         // Unclosed bracket
         assert_eq!(
-            format_record("Test [unclosed", &rec, &ctx).expect("test"),
-            "Test [unclosed"
+            format_record("Test [unclosed", &rec, &ctx),
+            Ok("Test [unclosed".to_string())
         );
     }
 
@@ -228,12 +229,12 @@ mod tests {
         let ctx = FormatContext::default();
         std::env::set_var("MSI_TEST_VAR", "SystemVal");
         assert_eq!(
-            format_record("Test [%MSI_TEST_VAR]", &rec, &ctx).expect("test"),
-            "Test SystemVal"
+            format_record("Test [%MSI_TEST_VAR]", &rec, &ctx),
+            Ok("Test SystemVal".to_string())
         );
         assert_eq!(
-            format_record("Test [%UNKNOWN_VAR]", &rec, &ctx).expect("test"),
-            "Test "
+            format_record("Test [%UNKNOWN_VAR]", &rec, &ctx),
+            Ok("Test ".to_string())
         );
     }
 
@@ -247,30 +248,59 @@ mod tests {
 
         // [\ - ends abruptly
         assert_eq!(
-            format_record("Test [\\", &rec, &ctx).expect("test"),
-            "Test [\\"
+            format_record("Test [\\", &rec, &ctx),
+            Ok("Test [\\".to_string())
+        );
+
+        // [\x - ends abruptly
+        assert_eq!(
+            format_record("Test [\\x", &rec, &ctx),
+            Ok("Test [\\x".to_string())
+        );
+
+        // [\xy - ends abruptly
+        assert_eq!(
+            format_record("Test [\\xy", &rec, &ctx),
+            Ok("Test [\\xy".to_string())
         );
 
         // [\] - missing x, evaluates as unknown property \
         assert_eq!(
-            format_record("Test [\\]", &rec, &ctx).expect("test"),
-            "Test "
+            format_record("Test [\\]", &rec, &ctx),
+            Ok("Test ".to_string())
         );
 
         // [\[ - missing ]
         assert_eq!(
-            format_record("Test [\\[", &rec, &ctx).expect("test"),
-            "Test [\\["
+            format_record("Test [\\[", &rec, &ctx),
+            Ok("Test [\\[".to_string())
+        );
+
+        // Test inner loops ah.next() edge cases
+        // [[\ - ends abruptly inside
+        assert_eq!(
+            format_record("Test [[\\", &rec, &ctx),
+            Ok("Test [[\\".to_string())
+        );
+        // [[\x - ends abruptly inside
+        assert_eq!(
+            format_record("Test [[\\x", &rec, &ctx),
+            Ok("Test [[\\x".to_string())
+        );
+        // [[\xy - continues inside
+        assert_eq!(
+            format_record("Test [[\\xy", &rec, &ctx),
+            Ok("Test [[\\xy".to_string())
         );
 
         // [99] - idx out of bounds
         assert_eq!(
-            format_record("Test [99]", &rec, &ctx).expect("test"),
-            "Test "
+            format_record("Test [99]", &rec, &ctx),
+            Ok("Test ".to_string())
         );
 
         // [1] - record is None
-        assert_eq!(format_string("Test [1]", &ctx).expect("test"), "Test ");
+        assert_eq!(format_string("Test [1]", &ctx), Ok("Test ".to_string()));
     }
 
     #[test]
@@ -283,19 +313,19 @@ mod tests {
         ctx.properties.insert("Missing".to_string(), String::new());
 
         // Escapes
-        assert_eq!(format_string("[\\[]", &ctx).expect("test"), "[");
-        assert_eq!(format_string("[\\]]", &ctx).expect("test"), "]");
-        assert_eq!(format_string("[\\x]", &ctx).expect("test"), "x");
+        assert_eq!(format_string("[\\[]", &ctx), Ok("[".to_string()));
+        assert_eq!(format_string("[\\]]", &ctx), Ok("]".to_string()));
+        assert_eq!(format_string("[\\x]", &ctx), Ok("x".to_string()));
 
         // Null character
-        assert_eq!(format_string("[~]", &ctx).expect("test"), "\0");
+        assert_eq!(format_string("[~]", &ctx), Ok("\0".to_string()));
 
         // Nested
-        assert_eq!(format_string("[[Inner]]", &ctx).expect("test"), "OutVal");
-        assert_eq!(format_string("[Missing]", &ctx).expect("test"), "");
+        assert_eq!(format_string("[[Inner]]", &ctx), Ok("OutVal".to_string()));
+        assert_eq!(format_string("[Missing]", &ctx), Ok(String::new()));
 
         // Unmatched right bracket
-        assert_eq!(format_string("foo]", &ctx).expect("test"), "foo]");
+        assert_eq!(format_string("foo]", &ctx), Ok("foo]".to_string()));
     }
 
     #[test]
@@ -312,10 +342,10 @@ mod tests {
         };
 
         // Just checking that we traverse that execution branch inside format_string without panicking.
-        let formatted = format_string(r"Prop is [MyProp[\]]", &ctx).expect("test");
+        let formatted = format_string(r"Prop is [MyProp[\]]", &ctx);
         // Since MyProp[\] is not resolved to anything (because of depth nesting mismatch or whatever it produces),
         // we just assert it doesn't fail and returns the string.
-        assert_eq!(formatted, r"Prop is [MyProp[\]]");
+        assert_eq!(formatted, Ok(r"Prop is [MyProp[\]]".to_string()));
     }
 
     #[test]
@@ -344,27 +374,39 @@ mod tests {
         ]);
 
         // $Comp1
-        let formatted = format_record("Component is [$Comp1]", &rec, &ctx).expect("test");
-        assert_eq!(formatted, "Component is C:\\CompDir");
+        assert_eq!(
+            format_record("Component is [$Comp1]", &rec, &ctx),
+            Ok("Component is C:\\CompDir".to_string())
+        );
 
         // !file
-        let formatted = format_record("File is [!file]", &rec, &ctx).expect("test");
-        assert_eq!(formatted, "File is "); // unsupported
+        assert_eq!(
+            format_record("File is [!file]", &rec, &ctx),
+            Ok("File is ".to_string())
+        ); // unsupported
 
         // ?file
-        let formatted = format_record("File is [?file]", &rec, &ctx).expect("test");
-        assert_eq!(formatted, "File is "); // unsupported
+        assert_eq!(
+            format_record("File is [?file]", &rec, &ctx),
+            Ok("File is ".to_string())
+        ); // unsupported
 
         // Invalid record index
-        let formatted = format_record("Value is [5]", &rec, &ctx).expect("test");
-        assert_eq!(formatted, "Value is ");
+        assert_eq!(
+            format_record("Value is [5]", &rec, &ctx),
+            Ok("Value is ".to_string())
+        );
 
         // Missing property
-        let formatted = format_record("Missing is [MissingProp]", &rec, &ctx).expect("test");
-        assert_eq!(formatted, "Missing is ");
+        assert_eq!(
+            format_record("Missing is [MissingProp]", &rec, &ctx),
+            Ok("Missing is ".to_string())
+        );
 
         // Standalone bracket
-        let formatted = format_record("Close bracket ]", &rec, &ctx).expect("test");
-        assert_eq!(formatted, "Close bracket ]");
+        assert_eq!(
+            format_record("Close bracket ]", &rec, &ctx),
+            Ok("Close bracket ]".to_string())
+        );
     }
 }

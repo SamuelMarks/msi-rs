@@ -186,6 +186,13 @@ impl CfData {
 #[cfg(test)]
 /// Unit tests.
 mod tests {
+
+    #[test]
+    fn test_format_display() {
+        assert_eq!(format!("{}", CabinetBlockIndex(5)), "Block(5)");
+        assert_eq!(format!("{}", DataOffset(255)), "Offset(0x000000FF)");
+    }
+
     use super::*;
 
     /// Helper to extract [`CfData`].

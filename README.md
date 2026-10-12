@@ -3,7 +3,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![% doc coverage](https://img.shields.io/badge/doc%20coverage-100%25-brightgreen)](#)
-[![% test coverage](https://img.shields.io/badge/test%20coverage-98.6%25-brightgreen)](#)
+[![% test coverage](https://img.shields.io/badge/test%20coverage-99.9%25-brightgreen)](#)
 
 A complete, memory-safe, cross-platform implementation of the Windows Installer technology stack written in Rust.
 
@@ -139,7 +139,7 @@ For an in-depth reference of physical container representations, database schema
 
 ## Workspace Structure
 
-The repository is organized as a Cargo workspace with five specialized crates:
+The repository is organized into five specialized crates (four in the Cargo workspace, plus the Python native module built via Maturin):
 
 ```text
 msi-rs/
@@ -148,12 +148,12 @@ msi-rs/
 │   ├── msi-cli/     # msiexec-compatible CLI tool and 16 standalone WiX/msitools/msiexec binaries
 │   ├── msi-gui/     # Desktop native GUI wizard application (eframe / egui / wgpu / softbuffer)
 │   ├── msi-ffi/     # C-compatible ABI shared and static libraries (include/msi.h)
-│   └── msi-python/  # Python 3 native PyO3 extension module (import msi)
+│   └── msi-python/  # Python 3 native PyO3 extension module (built via maturin)
 ├── docs/
 │   └── python_guide.md # Comprehensive Python packaging guide and API reference
 ├── ARCHITECTURE.md  # In-depth architectural design, schemas, and specifications
 ├── USAGE.md         # Comprehensive usage manual, CLI recipes, library guides, and CI/CD examples
-├── Cargo.toml       # Workspace manifest
+├── Cargo.toml       # Workspace manifest (msi, msi-cli, msi-gui, msi-ffi)
 └── pyproject.toml   # Python package build configuration (maturin)
 ```
 
@@ -163,6 +163,12 @@ msi-rs/
 
 ### Python Extension (`msi-python`)
 `msi-rs` provides high-performance native Python 3 bindings built with PyO3. It allows packaging, inspecting, and extracting `.msi` installers directly from Python scripts and CI/CD pipelines without requiring Windows or WiX:
+
+```bash
+# In an active virtual environment (Python 3.9+)
+pip install maturin
+maturin develop --release -m crates/msi-python/Cargo.toml
+```
 
 ```python
 import msi
@@ -220,13 +226,13 @@ See the complete Python guide and API documentation in [`docs/python_guide.md`](
 
 ### 3. WiX Toolset Pipeline & Pure-Rust `.msi` Creation
 - **WiX Compiler & Linker:**
-  - Multi-source `.wxs` input support (`msi pack -o App.msi --multi-fragment Product.wxs Payload.wxs`).
+  - Multi-source `.wxs` input support (`msi-cli pack -o App.msi Product.wxs Payload.wxs`).
   - Cross-fragment symbol resolution (`<ComponentGroupRef Id="..." />`).
   - Preprocessor defines (`-d VAR=VAL` / `-dVAR=VAL`) and suppression flags (`-sval`, `-sice:<rule>`).
   - Authoring of platform daemons and services (`<ServiceInstall>` & `<ServiceControl>`) with automatic standard action injection (`StopServices`, `DeleteServices`, `InstallServices`, `StartServices`).
   - Authoring of desktop and Start Menu shortcuts, system environment variables, registry searches (`<RegistrySearch>`, `<FileSearch>`), and launch conditions (`<Condition Message="...">`).
   - Multi-cabinet deterministic media partitioning for offline air-gapped installers (`engine.cab`, `runtimes.cab`, `databases.cab`, `codebase.cab`) with non-overlapping sequence boundaries and compression levels (`high` with LZX vs `medium` with MSZIP).
-  - Native Payload Harvester (`msi harvest`) drop-in replacement for shell harvesting scripts: strictly respects `.gitignore`, generates deterministic RFC 4122 v5 UUIDs, and auto-hashes identifiers exceeding 72 characters (`CMP_<hash>`, `FIL_<hash>`).
+  - Native Payload Harvester (`msi-cli harvest`) drop-in replacement for shell harvesting scripts: strictly respects `.gitignore`, generates deterministic RFC 4122 v5 UUIDs, and auto-hashes identifiers exceeding 72 characters (`CMP_<hash>`, `FIL_<hash>`).
 - **Dynamic WiX Extension Ecosystem (10 Built-In Extensions):**
   - Modular extension registry (`ExtensionRegistry::with_builtin_extensions()`) executing custom XML element compilers and linker mutations natively:
     - **`WixUIExtension`**: Standard dialog presets (`WixUI_Mondo`, `WixUI_InstallDir`, `WixUI_FeatureTree`, `WixUI_Minimal`), fonts, and branding variables (`WixUIBannerBmp`, `WixUIDialogBmp`, `WixUILicenseRtf`).
@@ -249,7 +255,7 @@ See the complete Python guide and API documentation in [`docs/python_guide.md`](
     - **File Table Rules**: `ICE31`, `ICE54`, `ICE60`, `ICE96`.
     - **System & Search Tables**: `ICE15`, `ICE17`, `ICE32`, `ICE36`, `ICE49`, `ICE50`, `ICE52`, `ICE55`, `ICE56`, `ICE65`, `ICE85`, `ICE88`, `ICE100`.
     - **Advanced Subsystems**: `ICE25`, `ICE62`, `ICE66`, `ICE76`, `ICE81`, `ICE83`, `ICE94`, `ICE97`, `ICE98`, `ICE105`.
-  - Registered in `IceRegistry::with_standard_rules()` and exposed through `smoke.exe`, `light.exe`, and `msibuild.exe`.
+  - Registered in `IceRegistry::with_standard_rules()` and exposed through `smoke`, `light`, and `msibuild`.
 
 ### 4. Cross-Platform Platform Translation & Offline Sysroot Provisioning (`msi-platform`)
 - **Transparent Directory Translation:**
@@ -317,7 +323,7 @@ See the complete Python guide and API documentation in [`docs/python_guide.md`](
 # Build all workspace crates and binaries
 cargo build --release
 
-# Run the complete test suite (1,030+ unit, integration, doc, and binding tests)
+# Run the complete test suite (1,800+ unit, integration, doc, and binding tests)
 cargo test --workspace
 
 # Verify strict quality and lints

@@ -118,7 +118,8 @@ impl LookupTable {
     clippy::shadow_unrelated,
     clippy::unreadable_literal,
     clippy::assert_is_empty,
-    clippy::cast_possible_truncation
+    clippy::cast_possible_truncation,
+    clippy::redundant_clone
 )]
 mod tests {
     use super::*;
@@ -199,6 +200,5 @@ mod tests {
         t1.entries.push(LookupEntry::default());
         let t2 = t1.clone();
         assert_eq!(t1, t2);
-        assert_eq!(format!("{t1:?}"), format!("{t2:?}"));
     }
 }

@@ -93,12 +93,10 @@ pub struct GuiCli {
 
     /// Visual wizard styling preset.
     #[arg(short, long, value_enum, default_value_t = CliTheme::Mondo)]
-    #[cfg_attr(coverage_nightly, coverage(off))]
     pub theme: CliTheme,
 
     /// Hardware rendering backend.
     #[arg(short, long, value_enum, default_value_t = CliBackend::Wgpu)]
-    #[cfg_attr(coverage_nightly, coverage(off))]
     pub backend: CliBackend,
 
     /// Override window width in pixels.
@@ -114,14 +112,14 @@ pub struct GuiCli {
 ///
 /// # Arguments
 ///
-/// * `theme_style` - TODO: Document argument.
-/// * `backend` - TODO: Document argument.
-/// * `width_override` - TODO: Document argument.
-/// * `height_override` - TODO: Document argument.
+/// * `theme_style` - The selected `WizardStyle` for the UI.
+/// * `backend` - The graphics backend to use.
+/// * `width_override` - Optional manual width.
+/// * `height_override` - Optional manual height.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// A `GuiDesktopRuntime` initialized with default settings.
 #[must_use]
 pub fn create_standalone_runtime(
     theme_style: WizardStyle,
@@ -703,10 +701,11 @@ mod clap_coverage {
             "200",
             "pkg.msi",
         ]);
-        let mut cli = GuiCli::from_arg_matches_mut(&mut matches).unwrap();
+        let mut cli = GuiCli::from_arg_matches_mut(&mut matches).expect("valid");
 
         let mut matches2 = command.get_matches_from(["msi-gui"]);
-        cli.update_from_arg_matches_mut(&mut matches2).unwrap();
+        cli.update_from_arg_matches_mut(&mut matches2)
+            .expect("valid");
     }
     #[test]
     fn test_gui_cli_clap_none_branches() {
@@ -718,6 +717,7 @@ mod clap_coverage {
         let _ = matches.remove_one::<CliBackend>("backend");
 
         let mut cli = GuiCli::parse_from(["msi-gui"]);
-        cli.update_from_arg_matches_mut(&mut matches).unwrap();
+        cli.update_from_arg_matches_mut(&mut matches)
+            .expect("valid");
     }
 }

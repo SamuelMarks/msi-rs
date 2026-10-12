@@ -202,6 +202,7 @@ impl WixExtension for HttpExtension {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::wix::wixobj::SectionType;

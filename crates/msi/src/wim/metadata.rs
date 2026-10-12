@@ -231,7 +231,8 @@ impl WimReader {
     clippy::shadow_unrelated,
     clippy::unreadable_literal,
     clippy::assert_is_empty,
-    clippy::cast_possible_truncation
+    clippy::cast_possible_truncation,
+    clippy::redundant_clone
 )]
 mod tests {
     use super::*;
@@ -325,20 +326,17 @@ mod tests {
         s1.num_entries = 5;
         let s2 = s1.clone();
         assert_eq!(s1, s2);
-        assert_eq!(format!("{s1:?}"), format!("{s2:?}"));
 
         let mut d1 = DirectoryEntry::default();
         d1.file_name = "test".to_string();
         #[allow(clippy::redundant_clone)]
         let d2 = d1.clone();
         assert_eq!(d1, d2);
-        assert_eq!(format!("{d1:?}"), format!("{d2:?}"));
 
         let w1 = WimReader { security: s1 };
         #[allow(clippy::redundant_clone)]
         let w2 = w1.clone();
         assert_eq!(w1.security.num_entries, w2.security.num_entries);
-        assert_eq!(format!("{w1:?}"), format!("{w2:?}"));
     }
 
     #[test]

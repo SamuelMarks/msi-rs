@@ -144,6 +144,7 @@ impl ServiceEvaluator {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -179,7 +180,7 @@ mod tests {
         let err = evaluator
             .validate_service_install(&row, TargetOs::Windows)
             .unwrap_err();
-        assert!(matches!(err, MsiError::UnsupportedPlatformFeature { .. }));
+        assert!(err.to_string().contains("Kernel driver installations"));
     }
 
     #[test]
@@ -233,7 +234,7 @@ mod tests {
         let err = evaluator
             .validate_service_control(&row, TargetOs::Linux)
             .unwrap_err();
-        assert!(matches!(err, MsiError::UnsupportedPlatformFeature { .. }));
+        assert!(err.to_string().contains("Native SCM interactions"));
     }
 
     #[test]

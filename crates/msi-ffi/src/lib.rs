@@ -1,3 +1,6 @@
+#![allow(non_snake_case)]
+#![allow(clippy::empty_line_after_doc_comments)]
+#![allow(clippy::assertions_on_constants)]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 #![allow(
     clippy::unreadable_literal,

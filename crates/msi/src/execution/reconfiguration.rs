@@ -143,6 +143,7 @@ pub fn reinstall_product(product_code: &str, _mode: ReinstallMode) -> Result<(),
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -159,7 +160,21 @@ mod tests {
 
     #[test]
     fn test_configuration_state() {
-        assert_eq!(ConfigurationState::Install, ConfigurationState::Install);
+        let s = ConfigurationState::Install;
+        let s2 = s; // copy
+        assert_eq!(s, s2);
+        assert_eq!(s.clone(), s2);
+
+        let l = InstallLevel(1);
+        let l2 = l;
+        assert_eq!(l, l2);
+        assert_eq!(l.clone(), l2);
+
+        let rm = ReinstallMode(1);
+        let rm2 = rm;
+        assert_eq!(rm, rm2);
+        assert_eq!(rm.clone(), rm2);
+
         assert_ne!(ConfigurationState::Install, ConfigurationState::Repair);
     }
 

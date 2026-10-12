@@ -66,6 +66,7 @@ pub use execution::{
 pub use package::{Package, PackageBuilder, PackageMetadata, ProductVersion};
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -81,5 +82,26 @@ mod tests {
             .build();
 
         assert!(pkg.is_ok());
+
+        // Validate other exports
+        let _scope = AdvertiseScope::Machine;
+        let _ctx = EvaluationContext::new();
+        let _state = InstallState::Local;
+        let _log = LoggingOptions::default();
+        let _opt = MsiExecOptions::parse(["msiexec"]).unwrap_or_else(|_| MsiExecOptions {
+            action: ActionMode::Install {
+                package_path: "test".to_string(),
+            },
+            ui_level: UiLevel::Full,
+            logging: Some(LoggingOptions::default()),
+            tui: false,
+            properties: std::collections::HashMap::new(),
+        });
+        let _repair = RepairFlags::default();
+        let _ui = UiLevel::Full;
+
+        let _err = MsiError::FileNotFound {
+            path: "test".to_string(),
+        };
     }
 }

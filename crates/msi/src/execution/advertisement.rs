@@ -204,10 +204,22 @@ pub fn process_advertise_script(
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use std::io::Write;
     use tempfile::NamedTempFile;
+
+    #[test]
+    fn test_advertise_script_functions_parse_error() {
+        let mut file = NamedTempFile::new().unwrap();
+        file.write_all(b"BAD\0").unwrap();
+
+        let path = file.path().to_str().unwrap();
+
+        assert!(advertise_script(path, 0, true).is_err());
+        assert!(process_advertise_script(path, None, true, false).is_err());
+    }
 
     #[test]
     fn test_aas_parser_valid() {

@@ -671,7 +671,7 @@ impl SubprocessRunner {
     pub const fn map_exit_code(raw_code: i32) -> u32 {
         if raw_code == 0 {
             ERROR_SUCCESS
-        } else if raw_code == 3010 {
+        } else if raw_code == 3010 || (cfg!(unix) && raw_code == 194) {
             ERROR_SUCCESS_REBOOT_REQUIRED
         } else {
             ERROR_INSTALL_FAILURE
@@ -1244,6 +1244,7 @@ impl SqlProvisionerClient {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     #[allow(clippy::missing_const_for_fn)]
@@ -1778,6 +1779,11 @@ mod tests {
         let install_no_pwd = no_pwd_cfg.generate_statements(SqlProvisionerAction::Install);
         assert_eq!(install_no_pwd.len(), 4);
         assert!(install_no_pwd[1].contains("IDENTIFIED BY ''"));
+
+        let mut invalid_port_ctx = EvaluationContext::new();
+        invalid_port_ctx.set_property("MYSQL_PORT", "not_a_number");
+        let invalid_port_cfg = SqlProvisionerConfig::from_context(&invalid_port_ctx);
+        assert_eq!(invalid_port_cfg.port, 3306);
     }
     #[allow(clippy::doc_markdown)]
     /// Simulation modes for mock MySQL server behavior.

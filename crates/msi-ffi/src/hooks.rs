@@ -54,7 +54,7 @@ pub struct LogContext(pub *mut c_void);
 ///
 /// # Safety
 /// The provided pointer must be valid.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 pub unsafe extern "system" fn MsiEnableUIPreview_(
     _h_install: MSIHANDLE,
@@ -81,8 +81,9 @@ pub unsafe extern "system" fn MsiEnableUIPreview_(
 ///
 /// # Safety
 /// The provided string pointer must be null-terminated if it is not null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiPreviewDialogA_(
     _h_preview: DialogPreviewHandle,
     _sz_dialog_name: *const c_char,
@@ -108,8 +109,9 @@ pub unsafe extern "system" fn MsiPreviewDialogA_(
 ///
 /// # Safety
 /// The provided string pointer must be null-terminated if it is not null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiPreviewDialogW_(
     _h_preview: DialogPreviewHandle,
     _sz_dialog_name: *const u16,
@@ -136,8 +138,9 @@ pub unsafe extern "system" fn MsiPreviewDialogW_(
 ///
 /// # Safety
 /// The provided string pointer must be null-terminated if it is not null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiEnableLogA(
     _dw_log_mode: u32,
     _sz_log_file: *const c_char,
@@ -168,8 +171,9 @@ pub unsafe extern "system" fn MsiEnableLogA(
 ///
 /// # Safety
 /// The provided string pointer must be null-terminated if it is not null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiEnableLogW(
     _dw_log_mode: u32,
     _sz_log_file: *const u16,
@@ -185,9 +189,9 @@ pub unsafe extern "system" fn MsiEnableLogW(
 }
 
 fn setup_logger(path: &str) {
-    let Ok(mut lock) = LOGGER.write() else {
-        return;
-    };
+    let mut lock = LOGGER
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some((queue, _)) = lock.take() {
         queue.shutdown();
     }
@@ -223,8 +227,9 @@ fn setup_logger(path: &str) {
 ///
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiMessageBoxA(
     _h_wnd: NativeWindowHandle,
     _sz_text: *const c_char,
@@ -254,8 +259,9 @@ pub unsafe extern "system" fn MsiMessageBoxA(
 ///
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiMessageBoxW(
     _h_wnd: NativeWindowHandle,
     _sz_text: *const u16,
@@ -271,6 +277,11 @@ pub unsafe extern "system" fn MsiMessageBoxW(
 mod tests {
     use super::*;
     use std::ptr;
+    use std::sync::Mutex;
+
+    lazy_static::lazy_static! {
+        static ref TEST_MUTEX: Mutex<()> = Mutex::new(());
+    }
 
     #[test]
     fn test_msi_enable_ui_preview() {
@@ -285,7 +296,7 @@ mod tests {
             unsafe { MsiPreviewDialogA_(DialogPreviewHandle(ptr::null_mut()), ptr::null()) },
             87
         );
-        let dummy = std::ffi::CString::new("dummy").unwrap();
+        let dummy = std::ffi::CString::new("dummy").expect("valid");
         assert_eq!(
             unsafe {
                 MsiPreviewDialogA_(DialogPreviewHandle(ptr::null_mut()), dummy.as_ptr().cast())
@@ -309,6 +320,7 @@ mod tests {
 
     #[test]
     fn test_msi_enable_log_a() {
+        let _guard = TEST_MUTEX.lock().unwrap();
         assert_eq!(unsafe { MsiEnableLogA(0, ptr::null(), 0) }, 87);
         let dummy = [0_i8; 1];
         assert_eq!(unsafe { MsiEnableLogA(0, dummy.as_ptr().cast(), 0) }, 0);
@@ -316,6 +328,7 @@ mod tests {
 
     #[test]
     fn test_msi_enable_log_w() {
+        let _guard = TEST_MUTEX.lock().unwrap();
         assert_eq!(unsafe { MsiEnableLogW(0, ptr::null(), 0) }, 87);
         let dummy = [0_u16; 1];
         assert_eq!(unsafe { MsiEnableLogW(0, dummy.as_ptr(), 0) }, 0);
@@ -356,33 +369,90 @@ mod tests {
     }
 
     #[test]
+    fn test_msi_enable_log_invalid_strings() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        // Invalid UTF-8 for A
+        let invalid_a = [0xFF_u8 as i8, 0x00];
+        assert_eq!(unsafe { MsiEnableLogA(0, invalid_a.as_ptr(), 0) }, 0);
+
+        // Invalid UTF-16 for W (unpaired surrogate)
+        let invalid_w = [0xD800_u16, 0x0000];
+        assert_eq!(unsafe { MsiEnableLogW(0, invalid_w.as_ptr(), 0) }, 0);
+    }
+
+    #[test]
     fn test_logger_coverage() {
-        let log_file = std::env::temp_dir().join("test_msi_ffi_hooks.log");
-        let log_path = log_file.to_str().unwrap();
+        let _guard = TEST_MUTEX.lock().unwrap();
+        // Run all logger tests sequentially in one test to prevent global state data races
+        let log_file = std::env::temp_dir().join("test_msi_ffi_hooks_combined.log");
+        let log_path = log_file.to_str().expect("valid");
+
+        // 1. Poison test
+        let _ = std::panic::catch_unwind(|| {
+            let _guard = LOGGER
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            panic!("poisoning logger");
+        });
+        setup_logger(log_path);
+
+        // 2. Lifecycle
+        {
+            {
+                let mut lock = LOGGER
+                    .write()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                *lock = None;
+            }
+            let read_lock = LOGGER
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            assert!(read_lock.is_none());
+        }
 
         setup_logger(log_path);
         // Call twice to cover the early shutdown path
         setup_logger(log_path);
 
-        // Ensure the closure executes by doing a sleep and waiting before shutdown
-        std::thread::sleep(std::time::Duration::from_millis(150));
-
         // Push a message to cover the closure
-        let lock = LOGGER.read().unwrap();
-        let (queue, _) = lock.as_ref().unwrap();
+        {
+            let lock = LOGGER
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let (queue, _) = lock.as_ref().expect("LOGGER was None when trying to log");
+            queue
+                .log(msi::execution::logging::InstallLogMode::Info, "test")
+                .expect("valid");
+        }
+
+        // Wait for it to write
+        std::thread::sleep(std::time::Duration::from_millis(500));
+
+        {
+            let mut lock = LOGGER
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let (queue, handle) = lock.take().unwrap();
+            queue.shutdown();
+            let _ = handle.join(); // Ensure thread completes and writes
+        }
+
+        let _ = std::fs::remove_file(&log_file);
+
+        // 3. File open fail
+        let dir_path = std::env::temp_dir();
+        let dir_str = dir_path.to_str().expect("valid");
+        setup_logger(dir_str);
+
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        let mut lock = LOGGER
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let (queue, handle) = lock.take().unwrap();
         queue
             .log(msi::execution::logging::InstallLogMode::Info, "test")
-            .unwrap();
-        drop(lock);
-
-        // Wait for the queue to process
-        let mut lock = LOGGER.write().unwrap();
-        let (queue, handle) = lock.take().unwrap();
+            .expect("valid");
         queue.shutdown();
         let _ = handle.join();
-        drop(lock);
-
-        let _ = log_file.exists();
-        let _ = std::fs::remove_file(&log_file);
     }
 }

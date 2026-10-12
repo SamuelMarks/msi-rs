@@ -4858,6 +4858,7 @@ fn parse_registry_root(root_str: &str) -> i16 {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::wix::extensions::WixExtension;

@@ -302,6 +302,7 @@ impl IpcRouter {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -329,8 +330,10 @@ mod tests {
         let mut bs = BadStream;
         let _ = bs.flush(); // cover flush
         let mut conn = IpcConnection::new(bs);
-        assert!(conn.send_message(&RpcMessage::Ping).is_err());
-        assert!(conn.receive_message().is_err());
+        let err1 = conn.send_message(&RpcMessage::Ping).unwrap_err();
+        assert!(err1.to_string().contains("Failed to write length"));
+        let err2 = conn.receive_message().unwrap_err();
+        assert!(err2.to_string().contains("Failed to read length"));
 
         #[derive(Debug)]
         struct BadFlushStream;
@@ -348,8 +351,10 @@ mod tests {
             }
         }
         let mut conn2 = IpcConnection::new(BadFlushStream);
-        assert!(conn2.send_message(&RpcMessage::Ping).is_err());
-        assert!(conn2.receive_message().is_err()); // cover read
+        let err1 = conn2.send_message(&RpcMessage::Ping).unwrap_err();
+        assert!(err1.to_string().contains("Failed to flush"));
+        let err2 = conn2.receive_message().unwrap_err(); // cover read
+        assert!(err2.to_string().contains("Failed to read length"));
 
         #[derive(Debug)]
         struct PartialReadStream;
@@ -372,7 +377,8 @@ mod tests {
             }
         }
         let mut conn3 = IpcConnection::new(PartialReadStream);
-        assert!(conn3.receive_message().is_err());
+        let err3 = conn3.receive_message().unwrap_err();
+        assert!(err3.to_string().contains("Failed to read payload"));
         assert!(conn3.send_message(&RpcMessage::Ping).is_ok()); // cover write
 
         #[derive(Debug)]
@@ -397,8 +403,10 @@ mod tests {
         let mut pws = PartialWriteStream;
         let _ = pws.flush(); // cover flush
         let mut conn4 = IpcConnection::new(pws);
-        assert!(conn4.send_message(&RpcMessage::Ping).is_err());
-        assert!(conn4.receive_message().is_err()); // cover read
+        let err4a = conn4.send_message(&RpcMessage::Ping).unwrap_err();
+        assert!(err4a.to_string().contains("Failed to write payload"));
+        let err4b = conn4.receive_message().unwrap_err(); // cover read
+        assert!(err4b.to_string().contains("Failed to read length"));
     }
 
     #[test]
@@ -411,7 +419,7 @@ mod tests {
         let err = router
             .spawn_daemon(&IpcEndpoint::UnixSocket(path))
             .unwrap_err();
-        assert!(matches!(err, MsiError::IpcError(msg) if msg.contains("Failed to clean socket")));
+        assert!(err.to_string().contains("Failed to clean socket"));
     }
 
     #[test]
@@ -442,7 +450,8 @@ mod tests {
         buf.write_all(&oversized_len.to_le_bytes()).expect("test");
         buf.set_position(0);
         let mut conn = IpcConnection::new(&mut buf);
-        assert!(conn.receive_message().is_err());
+        let err = conn.receive_message().unwrap_err();
+        assert!(err.to_string().contains("exceeds maximum allowed"));
     }
 
     #[test]
@@ -482,25 +491,22 @@ mod tests {
 
     #[test]
     fn test_rpc_message_errors() {
-        assert!(RpcMessage::from_bytes(b"INVALID\x00").is_err());
-        assert!(RpcMessage::from_bytes(&[0xFF, 0xFE, 0xFD]).is_err());
-        assert!(RpcMessage::from_bytes(b"INVOKE\x00Name").is_err()); // Missing entry point
-        assert!(RpcMessage::from_bytes(b"RESULT\x00Name\x001603").is_err()); // Missing error field
+        let err1 = RpcMessage::from_bytes(b"INVALID\x00").unwrap_err();
+        assert!(err1.to_string().contains("Unknown RPC payload"));
+        let err2 = RpcMessage::from_bytes(&[0xFF, 0xFE, 0xFD]).unwrap_err();
+        assert!(err2.to_string().contains("Invalid UTF-8"));
+        let err3 = RpcMessage::from_bytes(b"INVOKE\x00Name").unwrap_err(); // Missing entry point
+        assert!(err3.to_string().contains("Unknown RPC payload"));
+        let err4 = RpcMessage::from_bytes(b"RESULT\x00Name\x001603").unwrap_err(); // Missing error field
+        assert!(err4.to_string().contains("Unknown RPC payload"));
     }
 
     #[test]
     fn test_ipc_endpoint_coverage() {
         let endpoint = IpcRouter::new_endpoint("test-session");
-        // Verify cross-platform fallback handling coverage
-        #[cfg(not(any(unix, windows)))]
-        {
-            match endpoint {
-                IpcEndpoint::UnixSocket(p) => assert!(p.to_string_lossy().contains("test-session")),
-                _ => panic!("Expected UnixSocket fallback"),
-            }
-        }
-        // Silence unused warning when running on unix/windows
-        let _ = endpoint;
+
+        let endpoint_str = format!("{endpoint:?}");
+        assert!(endpoint_str.contains("test-session"));
     }
 
     #[test]
@@ -519,22 +525,19 @@ mod tests {
     #[test]
     fn test_ipc_endpoint_generation() {
         let endpoint_u = IpcEndpoint::UnixSocket(PathBuf::from("/tmp/test-sock"));
-        if let IpcEndpoint::UnixSocket(p) = endpoint_u {
-            assert_eq!(p.to_string_lossy(), "/tmp/test-sock");
-        }
+        assert_eq!(
+            endpoint_u,
+            IpcEndpoint::UnixSocket(PathBuf::from("/tmp/test-sock"))
+        );
 
         let endpoint_p = IpcEndpoint::NamedPipe("\\\\.\\pipe\\test-pipe".to_string());
-        if let IpcEndpoint::NamedPipe(p) = endpoint_p {
-            assert_eq!(p, "\\\\.\\pipe\\test-pipe");
-        }
+        assert_eq!(
+            endpoint_p,
+            IpcEndpoint::NamedPipe("\\\\.\\pipe\\test-pipe".to_string())
+        );
 
         let endpoint = IpcRouter::new_endpoint("test-session");
-        if let IpcEndpoint::UnixSocket(p) = &endpoint {
-            assert!(p.to_string_lossy().contains("test-session"));
-        }
-        if let IpcEndpoint::NamedPipe(p) = &endpoint {
-            assert!(p.contains("test-session"));
-        }
+        assert!(format!("{endpoint:?}").contains("test-session"));
     }
 
     #[test]
@@ -563,8 +566,8 @@ mod additional_ipc_tests {
         std::fs::create_dir_all(&dir_path).unwrap_or(());
         let sock_endpoint = IpcEndpoint::UnixSocket(dir_path.clone());
 
-        let res = router.spawn_daemon(&sock_endpoint);
-        assert!(res.is_err());
+        let err = router.spawn_daemon(&sock_endpoint).unwrap_err();
+        assert!(err.to_string().contains("Failed to clean socket"));
 
         std::fs::remove_dir_all(&dir_path).unwrap_or(());
     }

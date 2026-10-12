@@ -11,24 +11,33 @@ use std::fmt;
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+#[cfg(target_family = "unix")]
+fn is_elevated_impl() -> bool {
+    // SAFETY: geteuid is always safe to call and has no side effects.
+    unsafe { libc::geteuid() == 0 }
+}
+
+#[cfg(target_os = "windows")]
+fn is_elevated_impl() -> bool {
+    // Stub for Windows elevation check without heavy winapi dependencies.
+    // In a full implementation, this checks the process token for Administrators SID.
+    std::env::var("UAC_ELEVATED").is_ok()
+}
+
+#[cfg(not(any(target_family = "unix", target_os = "windows")))]
+fn is_elevated_impl() -> bool {
+    false
+}
+
+/// Checks if the current process is running with elevated privileges (Administrator/root).
 #[must_use]
 pub fn is_elevated() -> bool {
-    #[cfg(target_family = "unix")]
-    {
-        // SAFETY: geteuid is always safe to call and has no side effects.
-        unsafe { libc::geteuid() == 0 }
+    #[cfg(test)]
+    if std::env::var("MSI_TEST_ELEVATED").is_ok() {
+        return true;
     }
-    #[cfg(target_os = "windows")]
-    {
-        // Stub for Windows elevation check without heavy winapi dependencies.
-        // In a full implementation, this checks the process token for Administrators SID.
-        std::env::var("UAC_ELEVATED").is_ok()
-    }
-    #[cfg(not(any(target_family = "unix", target_os = "windows")))]
-    {
-        false
-    }
+
+    is_elevated_impl()
 }
 
 /// A strong type representing a User Name.
@@ -302,6 +311,7 @@ impl LocalAccountManager for WindowsAccountManager {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

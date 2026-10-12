@@ -173,6 +173,7 @@ pub mod user32_stubs {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::user32_stubs::{DlgTemplateStub, WindowsUser32UI};
     use super::{ControlDefinition, ControlEvent, DialogDefinition, MsiUserInterface};

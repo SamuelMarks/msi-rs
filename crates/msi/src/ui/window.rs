@@ -1076,6 +1076,7 @@ impl GuiDesktopRuntime {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::ui::controls::ControlDefinition;

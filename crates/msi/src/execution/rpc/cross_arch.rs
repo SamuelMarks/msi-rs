@@ -61,6 +61,7 @@ impl RemotedHandle {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -69,6 +70,7 @@ mod tests {
         assert!(spawn_32bit_worker("msiexec.exe", &[]).unwrap());
 
         let handle = RemotedHandle(42);
+
         assert_eq!(handle.get_property("Prop").unwrap(), "");
         assert!(handle.set_property("Prop", "Val").is_ok());
         assert_eq!(handle.process_message(0, 0).unwrap(), 1);

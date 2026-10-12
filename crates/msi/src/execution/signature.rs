@@ -83,6 +83,7 @@ impl SignatureValidator {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use std::fs::File;
@@ -120,5 +121,9 @@ mod tests {
         let unsigned = dir.path().join("unsigned_test.cab");
         File::create(&unsigned).expect("test");
         assert!(SignatureValidator::get_file_signature_information(&unsigned).is_err());
+
+        assert!(
+            SignatureValidator::get_file_signature_information(Path::new("missing.msi")).is_err()
+        );
     }
 }

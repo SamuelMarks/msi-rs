@@ -1,3 +1,4 @@
+*.profraw
 *.bak
 lcov.info
 .coverage

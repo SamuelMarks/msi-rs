@@ -35,7 +35,7 @@ pub const MSIDBOPEN_CREATEDIRECT: Lpcwstr = 4 as Lpcwstr;
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_PARAMETER`
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -54,11 +54,11 @@ pub extern "system" fn MsiOpenDatabaseW(
         };
 
         let persist = szPersist as usize;
-        let state = if persist == MSIDBOPEN_TRANSACT as usize
+        let is_write = persist == MSIDBOPEN_TRANSACT as usize
             || persist == MSIDBOPEN_DIRECT as usize
             || persist == MSIDBOPEN_CREATE as usize
-            || persist == MSIDBOPEN_CREATEDIRECT as usize
-        {
+            || persist == MSIDBOPEN_CREATEDIRECT as usize;
+        let state = if is_write {
             MSIDBSTATE_WRITE
         } else {
             MSIDBSTATE_READ
@@ -93,7 +93,7 @@ pub extern "system" fn MsiOpenDatabaseW(
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_PARAMETER`
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -112,11 +112,11 @@ pub extern "system" fn MsiOpenDatabaseA(
         };
 
         let persist = szPersist as usize;
-        let state = if persist == MSIDBOPEN_TRANSACT as usize
+        let is_write = persist == MSIDBOPEN_TRANSACT as usize
             || persist == MSIDBOPEN_DIRECT as usize
             || persist == MSIDBOPEN_CREATE as usize
-            || persist == MSIDBOPEN_CREATEDIRECT as usize
-        {
+            || persist == MSIDBOPEN_CREATEDIRECT as usize;
+        let state = if is_write {
             MSIDBSTATE_WRITE
         } else {
             MSIDBSTATE_READ
@@ -151,7 +151,7 @@ pub extern "system" fn MsiOpenDatabaseA(
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_HANDLE`, `ERROR_INVALID_PARAMETER`
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiDatabaseOpenViewW(
@@ -202,7 +202,7 @@ pub extern "system" fn MsiDatabaseOpenViewW(
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_HANDLE`, `ERROR_INVALID_PARAMETER`
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiDatabaseOpenViewA(
@@ -261,9 +261,10 @@ pub const MSIDBSTATE_WRITE: Msidbstate = 1;
 /// # Returns
 ///
 /// The database state as `MSIDBSTATE_READ` or `MSIDBSTATE_WRITE`, or `MSIDBSTATE_ERROR` on failure.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[must_use]
 pub extern "system" fn MsiGetDatabaseState(hDatabase: MsiHandle) -> Msidbstate {
     let result = panic::catch_unwind(|| {
         let state = with_handle(hDatabase, |obj| {

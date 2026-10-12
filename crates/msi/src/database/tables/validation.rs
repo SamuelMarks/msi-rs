@@ -61,3 +61,21 @@ pub fn validation_schema() -> TableSchema {
             .nullable(),
         )
 }
+
+#[cfg(test)]
+#[allow(clippy::redundant_clone)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validation_schema() {
+        let schema = validation_schema();
+        assert_eq!(schema.name.as_str(), "_Validation");
+        assert_eq!(schema.columns.len(), 10);
+        assert_eq!(schema.columns[0].name.as_str(), "Table");
+        assert!(schema.columns[0].primary_key);
+        assert_eq!(schema.columns[1].name.as_str(), "Column");
+        assert!(schema.columns[1].primary_key);
+        assert_eq!(schema.columns[2].name.as_str(), "Nullable");
+    }
+}

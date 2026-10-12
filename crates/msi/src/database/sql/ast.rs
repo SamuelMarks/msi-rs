@@ -9,7 +9,7 @@ impl TableName {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The string representation of the table name.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -25,7 +25,7 @@ impl ColumnName {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The string representation of the column name.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -208,4 +208,70 @@ pub enum Statement {
         /// Table name to drop.
         table: TableName,
     },
+}
+
+#[cfg(test)]
+#[allow(clippy::redundant_clone)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_table_and_column_names() {
+        let table = TableName("MyTable".to_string());
+        assert_eq!(table.as_str(), "MyTable");
+        let table2 = table.clone();
+        assert_eq!(table, table2);
+
+        let col = ColumnName("MyCol".to_string());
+        assert_eq!(col.as_str(), "MyCol");
+        let col2 = col.clone();
+        assert_eq!(col, col2);
+    }
+
+    #[test]
+    fn test_order_direction_default() {
+        let default_dir = OrderDirection::default();
+        assert_eq!(default_dir, OrderDirection::Ascending);
+    }
+
+    #[test]
+    fn test_enums_debug_clone_eq() {
+        let op = BinaryOp::Equal;
+        let op2 = op;
+        assert_eq!(op, op2);
+        assert_eq!(format!("{op:?}"), "Equal");
+
+        let val = SqlValue::Integer(42);
+        let val2 = val.clone();
+        assert_eq!(val, val2);
+        assert_eq!(format!("{val:?}"), "Integer(42)");
+
+        let expr = Expression::IsNull {
+            column: ColumnName("C".to_string()),
+            negated: true,
+        };
+        let expr2 = expr.clone();
+        assert_eq!(expr, expr2);
+
+        let ty = SqlType::String;
+        let ty2 = ty;
+        assert_eq!(ty, ty2);
+
+        let col_def = SqlColumnDef {
+            name: ColumnName("C".to_string()),
+            data_type: SqlType::String,
+            length: 255,
+            not_null: true,
+            primary_key: false,
+            localizable: true,
+        };
+        let col_def2 = col_def.clone();
+        assert_eq!(col_def, col_def2);
+
+        let stmt = Statement::DropTable {
+            table: TableName("T".to_string()),
+        };
+        let stmt2 = stmt.clone();
+        assert_eq!(stmt, stmt2);
+    }
 }

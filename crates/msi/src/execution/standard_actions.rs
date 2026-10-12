@@ -17,12 +17,12 @@ pub trait FileOperations {
     ///
     /// # Arguments
     ///
-    /// * `source` - TODO: Document argument.
-    /// * `destination` - TODO: Document argument.
+    /// * `source` - The source argument.
+    /// * `destination` - The destination argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn install_file(&self, source: &Path, destination: &Path) -> Result<()>;
     /// Duplicate an existing file.
     /// # Errors
@@ -31,12 +31,12 @@ pub trait FileOperations {
     ///
     /// # Arguments
     ///
-    /// * `source` - TODO: Document argument.
-    /// * `destination` - TODO: Document argument.
+    /// * `source` - The source argument.
+    /// * `destination` - The destination argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn duplicate_file(&self, source: &Path, destination: &Path) -> Result<()>;
     /// Move an existing file.
     /// # Errors
@@ -45,12 +45,12 @@ pub trait FileOperations {
     ///
     /// # Arguments
     ///
-    /// * `source` - TODO: Document argument.
-    /// * `destination` - TODO: Document argument.
+    /// * `source` - The source argument.
+    /// * `destination` - The destination argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn move_file(&self, source: &Path, destination: &Path) -> Result<()>;
     /// Delete a file, managing `.lock` semantics on Unix or `MoveFileEx` semantics on Windows for in-use files.
     /// # Errors
@@ -59,11 +59,11 @@ pub trait FileOperations {
     ///
     /// # Arguments
     ///
-    /// * `target` - TODO: Document argument.
+    /// * `target` - The target argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn remove_file(&self, target: &Path) -> Result<()>;
 
     /// Create an empty directory structure (`CreateFolders`).
@@ -73,11 +73,11 @@ pub trait FileOperations {
     ///
     /// # Arguments
     ///
-    /// * `target` - TODO: Document argument.
+    /// * `target` - The target argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn create_folder(&self, target: &Path) -> Result<()>;
     /// Remove an empty directory (`RemoveFolders`).
     /// # Errors
@@ -86,11 +86,11 @@ pub trait FileOperations {
     ///
     /// # Arguments
     ///
-    /// * `target` - TODO: Document argument.
+    /// * `target` - The target argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn remove_folder(&self, target: &Path) -> Result<()>;
 }
 
@@ -103,14 +103,14 @@ pub trait SystemConfigOperations {
     ///
     /// # Arguments
     ///
-    /// * `root` - TODO: Document argument.
-    /// * `key` - TODO: Document argument.
-    /// * `name` - TODO: Document argument.
-    /// * `value` - TODO: Document argument.
+    /// * `root` - The root argument.
+    /// * `key` - The key argument.
+    /// * `name` - The name argument.
+    /// * `value` - The value argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn write_registry_value(
         &self,
         root: u32,
@@ -125,13 +125,13 @@ pub trait SystemConfigOperations {
     ///
     /// # Arguments
     ///
-    /// * `root` - TODO: Document argument.
-    /// * `key` - TODO: Document argument.
-    /// * `name` - TODO: Document argument.
+    /// * `root` - The root argument.
+    /// * `key` - The key argument.
+    /// * `name` - The name argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn remove_registry_value(&self, root: u32, key: &str, name: &str) -> Result<()>;
 
     /// Updates environment variables.
@@ -141,13 +141,13 @@ pub trait SystemConfigOperations {
     ///
     /// # Arguments
     ///
-    /// * `name` - TODO: Document argument.
-    /// * `value` - TODO: Document argument.
-    /// * `system_wide` - TODO: Document argument.
+    /// * `name` - The name argument.
+    /// * `value` - The value argument.
+    /// * `system_wide` - The `system_wide` argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn write_environment_string(&self, name: &str, value: &str, system_wide: bool) -> Result<()>;
     /// Removes an environment variable.
     /// # Errors
@@ -156,12 +156,12 @@ pub trait SystemConfigOperations {
     ///
     /// # Arguments
     ///
-    /// * `name` - TODO: Document argument.
-    /// * `system_wide` - TODO: Document argument.
+    /// * `name` - The name argument.
+    /// * `system_wide` - The `system_wide` argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn remove_environment_string(&self, name: &str, system_wide: bool) -> Result<()>;
 
     /// Updates an INI file value.
@@ -171,14 +171,14 @@ pub trait SystemConfigOperations {
     ///
     /// # Arguments
     ///
-    /// * `file_path` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `key` - TODO: Document argument.
-    /// * `value` - TODO: Document argument.
+    /// * `file_path` - The `file_path` argument.
+    /// * `section` - The section argument.
+    /// * `key` - The key argument.
+    /// * `value` - The value argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn write_ini_value(
         &self,
         file_path: &Path,
@@ -193,13 +193,13 @@ pub trait SystemConfigOperations {
     ///
     /// # Arguments
     ///
-    /// * `file_path` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `key` - TODO: Document argument.
+    /// * `file_path` - The `file_path` argument.
+    /// * `section` - The section argument.
+    /// * `key` - The key argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn remove_ini_value(&self, file_path: &Path, section: &str, key: &str) -> Result<()>;
 }
 
@@ -212,11 +212,11 @@ pub trait SystemServiceOperations {
     ///
     /// # Arguments
     ///
-    /// * `def` - TODO: Document argument.
+    /// * `def` - The def argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn install_service(&self, def: &crate::platform::daemon::ServiceDefinition) -> Result<()>;
     /// Control an existing background service.
     /// # Errors
@@ -225,13 +225,13 @@ pub trait SystemServiceOperations {
     ///
     /// # Arguments
     ///
-    /// * `name` - TODO: Document argument.
-    /// * `start` - TODO: Document argument.
-    /// * `stop` - TODO: Document argument.
+    /// * `name` - The name argument.
+    /// * `start` - The start argument.
+    /// * `stop` - The stop argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn control_service(&self, name: &str, start: bool, stop: bool) -> Result<()>;
     /// Delete a background service daemon.
     /// # Errors
@@ -240,11 +240,11 @@ pub trait SystemServiceOperations {
     ///
     /// # Arguments
     ///
-    /// * `name` - TODO: Document argument.
+    /// * `name` - The name argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn delete_service(&self, name: &str) -> Result<()>;
 
     /// Install an OS kernel driver (DIFx/systemd module abstraction).
@@ -254,11 +254,11 @@ pub trait SystemServiceOperations {
     ///
     /// # Arguments
     ///
-    /// * `inf_path` - TODO: Document argument.
+    /// * `inf_path` - The `inf_path` argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn install_driver(&self, inf_path: &Path) -> Result<()>;
 }
 
@@ -271,12 +271,12 @@ pub trait SpecializedRegistrationOperations {
     ///
     /// # Arguments
     ///
-    /// * `driver` - TODO: Document argument.
-    /// * `attributes` - TODO: Document argument.
+    /// * `driver` - The driver argument.
+    /// * `attributes` - The attributes argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn install_odbc(&self, driver: &str, attributes: &str) -> Result<()>;
     /// Remove an ODBC data source.
     /// # Errors
@@ -285,11 +285,11 @@ pub trait SpecializedRegistrationOperations {
     ///
     /// # Arguments
     ///
-    /// * `driver` - TODO: Document argument.
+    /// * `driver` - The driver argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn remove_odbc(&self, driver: &str) -> Result<()>;
 
     /// Install an ODBC driver.
@@ -315,12 +315,12 @@ pub trait SpecializedRegistrationOperations {
     ///
     /// # Arguments
     ///
-    /// * `font_title` - TODO: Document argument.
-    /// * `font_file` - TODO: Document argument.
+    /// * `font_title` - The `font_title` argument.
+    /// * `font_file` - The `font_file` argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn register_font(&self, font_title: &str, font_file: &Path) -> Result<()>;
     /// Unregister a system font.
     /// # Errors
@@ -329,12 +329,12 @@ pub trait SpecializedRegistrationOperations {
     ///
     /// # Arguments
     ///
-    /// * `font_title` - TODO: Document argument.
-    /// * `font_file` - TODO: Document argument.
+    /// * `font_title` - The `font_title` argument.
+    /// * `font_file` - The `font_file` argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn unregister_font(&self, font_title: &str, font_file: &Path) -> Result<()>;
 
     /// Register file extension, MIME, or `ProgID` (XDG/macOS LaunchServices/HKCR).
@@ -344,13 +344,13 @@ pub trait SpecializedRegistrationOperations {
     ///
     /// # Arguments
     ///
-    /// * `progid` - TODO: Document argument.
-    /// * `description` - TODO: Document argument.
-    /// * `icon` - TODO: Document argument.
+    /// * `progid` - The progid argument.
+    /// * `description` - The description argument.
+    /// * `icon` - The icon argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn register_progid_info(
         &self,
         progid: &str,
@@ -365,11 +365,11 @@ pub trait SpecializedRegistrationOperations {
     ///
     /// # Arguments
     ///
-    /// * `tlb_path` - TODO: Document argument.
+    /// * `tlb_path` - The `tlb_path` argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn register_typelib(&self, tlb_path: &Path) -> Result<()>;
 
     /// Invoke self-registration on a dynamic library.
@@ -380,11 +380,11 @@ pub trait SpecializedRegistrationOperations {
     ///
     /// # Arguments
     ///
-    /// * `dll_path` - TODO: Document argument.
+    /// * `dll_path` - The dll_path argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn self_register_module(&self, dll_path: &Path) -> Result<()>;
     /// # Errors
     ///
@@ -392,11 +392,11 @@ pub trait SpecializedRegistrationOperations {
     ///
     /// # Arguments
     ///
-    /// * `dll_path` - TODO: Document argument.
+    /// * `dll_path` - The `dll_path` argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn self_unregister_module(&self, dll_path: &Path) -> Result<()>;
     /// # Errors
     ///
@@ -404,11 +404,11 @@ pub trait SpecializedRegistrationOperations {
     ///
     /// # Arguments
     ///
-    /// * `exe_path` - TODO: Document argument.
+    /// * `exe_path` - The `exe_path` argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn bind_image(&self, exe_path: &Path) -> Result<()>;
     /// # Errors
     ///
@@ -416,13 +416,13 @@ pub trait SpecializedRegistrationOperations {
     ///
     /// # Arguments
     ///
-    /// * `component_id` - TODO: Document argument.
-    /// * `qualifier` - TODO: Document argument.
-    /// * `appdata` - TODO: Document argument.
+    /// * `component_id` - The `component_id` argument.
+    /// * `qualifier` - The qualifier argument.
+    /// * `appdata` - The appdata argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn publish_components(&self, component_id: &str, qualifier: &str, appdata: &str) -> Result<()>;
     /// # Errors
     ///
@@ -430,11 +430,11 @@ pub trait SpecializedRegistrationOperations {
     ///
     /// # Arguments
     ///
-    /// * `feature_id` - TODO: Document argument.
+    /// * `feature_id` - The `feature_id` argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn publish_features(&self, feature_id: &str) -> Result<()>;
     /// # Errors
     ///
@@ -442,12 +442,12 @@ pub trait SpecializedRegistrationOperations {
     ///
     /// # Arguments
     ///
-    /// * `component_id` - TODO: Document argument.
-    /// * `app_path` - TODO: Document argument.
+    /// * `component_id` - The `component_id` argument.
+    /// * `app_path` - The `app_path` argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn isolate_components(&self, component_id: &str, app_path: &Path) -> Result<()>;
 }
 
@@ -464,7 +464,7 @@ impl StandardActionEngine {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     #[must_use]
     pub const fn host() -> Self {
         Self {
@@ -480,19 +480,19 @@ impl FileOperations for StandardActionEngine {
     ///
     /// # Arguments
     ///
-    /// * `source` - TODO: Document argument.
-    /// * `destination` - TODO: Document argument.
+    /// * `source` - The source argument.
+    /// * `destination` - The destination argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn install_file(&self, source: &Path, destination: &Path) -> Result<()> {
         if let Some(parent) = destination.parent() {
-            fs::create_dir_all(parent).map_err(|e| {
-                MsiError::Io(crate::error::IoContext::from_string(format!(
+            if let Err(e) = fs::create_dir_all(parent) {
+                return Err(MsiError::Io(crate::error::IoContext::from_string(format!(
                     "Failed to create parent dir: {e}"
-                )))
-            })?;
+                ))));
+            }
         }
         fs::copy(source, destination).map_err(|e| {
             MsiError::Io(crate::error::IoContext::from_string(format!(
@@ -508,12 +508,12 @@ impl FileOperations for StandardActionEngine {
     ///
     /// # Arguments
     ///
-    /// * `source` - TODO: Document argument.
-    /// * `destination` - TODO: Document argument.
+    /// * `source` - The source argument.
+    /// * `destination` - The destination argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn duplicate_file(&self, source: &Path, destination: &Path) -> Result<()> {
         self.install_file(source, destination)
     }
@@ -524,19 +524,19 @@ impl FileOperations for StandardActionEngine {
     ///
     /// # Arguments
     ///
-    /// * `source` - TODO: Document argument.
-    /// * `destination` - TODO: Document argument.
+    /// * `source` - The source argument.
+    /// * `destination` - The destination argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn move_file(&self, source: &Path, destination: &Path) -> Result<()> {
         if let Some(parent) = destination.parent() {
-            fs::create_dir_all(parent).map_err(|e| {
-                MsiError::Io(crate::error::IoContext::from_string(format!(
+            if let Err(e) = fs::create_dir_all(parent) {
+                return Err(MsiError::Io(crate::error::IoContext::from_string(format!(
                     "Failed to create parent dir: {e}"
-                )))
-            })?;
+                ))));
+            }
         }
         fs::rename(source, destination).map_err(|e| {
             MsiError::Io(crate::error::IoContext::from_string(format!(
@@ -552,11 +552,11 @@ impl FileOperations for StandardActionEngine {
     ///
     /// # Arguments
     ///
-    /// * `target` - TODO: Document argument.
+    /// * `target` - The target argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn remove_file(&self, target: &Path) -> Result<()> {
         match fs::remove_file(target) {
             Ok(()) => Ok(()),
@@ -573,18 +573,18 @@ impl FileOperations for StandardActionEngine {
     ///
     /// # Arguments
     ///
-    /// * `target` - TODO: Document argument.
+    /// * `target` - The target argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn create_folder(&self, target: &Path) -> Result<()> {
-        fs::create_dir_all(target).map_err(|e| {
-            MsiError::Io(crate::error::IoContext::from_string(format!(
+        match fs::create_dir_all(target) {
+            Ok(()) => Ok(()),
+            Err(e) => Err(MsiError::Io(crate::error::IoContext::from_string(format!(
                 "Failed to create folder: {e}"
-            )))
-        })?;
-        Ok(())
+            )))),
+        }
     }
 
     /// # Errors
@@ -593,18 +593,23 @@ impl FileOperations for StandardActionEngine {
     ///
     /// # Arguments
     ///
-    /// * `target` - TODO: Document argument.
+    /// * `target` - The target argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn remove_folder(&self, target: &Path) -> Result<()> {
         match fs::remove_dir(target) {
             Ok(()) => Ok(()),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(e) => Err(MsiError::Io(crate::error::IoContext::from_string(format!(
-                "Failed to remove folder: {e}"
-            )))),
+            Err(e) => {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    Ok(())
+                } else {
+                    Err(MsiError::Io(crate::error::IoContext::from_string(format!(
+                        "Failed to remove folder: {e}"
+                    ))))
+                }
+            }
         }
     }
 }
@@ -616,14 +621,14 @@ impl SystemConfigOperations for StandardActionEngine {
     ///
     /// # Arguments
     ///
-    /// * `root` - TODO: Document argument.
-    /// * `key` - TODO: Document argument.
-    /// * `_name` - TODO: Document argument.
-    /// * `_value` - TODO: Document argument.
+    /// * `root` - The root argument.
+    /// * `key` - The key argument.
+    /// * `_name` - The _name argument.
+    /// * `_value` - The _value argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn write_registry_value(
         &self,
         root: u32,
@@ -642,13 +647,13 @@ impl SystemConfigOperations for StandardActionEngine {
     ///
     /// # Arguments
     ///
-    /// * `_root` - TODO: Document argument.
-    /// * `_key` - TODO: Document argument.
-    /// * `_name` - TODO: Document argument.
+    /// * `_root` - The _root argument.
+    /// * `_key` - The _key argument.
+    /// * `_name` - The _name argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn remove_registry_value(&self, _root: u32, _key: &str, _name: &str) -> Result<()> {
         Err(MsiError::SystemConfigurationError(
             "remove_registry_value not implemented natively yet".to_string(),
@@ -672,12 +677,12 @@ impl SystemConfigOperations for StandardActionEngine {
     ///
     /// # Arguments
     ///
-    /// * `_name` - TODO: Document argument.
-    /// * `_system_wide` - TODO: Document argument.
+    /// * `_name` - The _name argument.
+    /// * `_system_wide` - The _`system_wide` argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn remove_environment_string(&self, _name: &str, _system_wide: bool) -> Result<()> {
         Err(MsiError::Io(crate::error::IoContext::from_string(
             "remove_environment_string not implemented natively yet".to_string(),
@@ -690,14 +695,14 @@ impl SystemConfigOperations for StandardActionEngine {
     ///
     /// # Arguments
     ///
-    /// * `_file_path` - TODO: Document argument.
-    /// * `_section` - TODO: Document argument.
-    /// * `_key` - TODO: Document argument.
-    /// * `_value` - TODO: Document argument.
+    /// * `_file_path` - The _`file_path` argument.
+    /// * `_section` - The _section argument.
+    /// * `_key` - The _key argument.
+    /// * `_value` - The _value argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn write_ini_value(
         &self,
         _file_path: &Path,
@@ -716,13 +721,13 @@ impl SystemConfigOperations for StandardActionEngine {
     ///
     /// # Arguments
     ///
-    /// * `_file_path` - TODO: Document argument.
-    /// * `_section` - TODO: Document argument.
-    /// * `_key` - TODO: Document argument.
+    /// * `_file_path` - The _`file_path` argument.
+    /// * `_section` - The _section argument.
+    /// * `_key` - The _key argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn remove_ini_value(&self, _file_path: &Path, _section: &str, _key: &str) -> Result<()> {
         Err(MsiError::Io(crate::error::IoContext::from_string(
             "remove_ini_value not implemented natively yet".to_string(),
@@ -737,11 +742,11 @@ impl SystemServiceOperations for StandardActionEngine {
     ///
     /// # Arguments
     ///
-    /// * `def` - TODO: Document argument.
+    /// * `def` - The def argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn install_service(&self, def: &crate::platform::daemon::ServiceDefinition) -> Result<()> {
         Err(MsiError::SystemdError(format!(
             "install_service not implemented natively for {}",
@@ -755,13 +760,13 @@ impl SystemServiceOperations for StandardActionEngine {
     ///
     /// # Arguments
     ///
-    /// * `name` - TODO: Document argument.
-    /// * `_start` - TODO: Document argument.
-    /// * `_stop` - TODO: Document argument.
+    /// * `name` - The name argument.
+    /// * `_start` - The _start argument.
+    /// * `_stop` - The _stop argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn control_service(&self, name: &str, _start: bool, _stop: bool) -> Result<()> {
         Err(MsiError::SystemdError(format!(
             "control_service not implemented natively for {name}"
@@ -774,11 +779,11 @@ impl SystemServiceOperations for StandardActionEngine {
     ///
     /// # Arguments
     ///
-    /// * `name` - TODO: Document argument.
+    /// * `name` - The name argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn delete_service(&self, name: &str) -> Result<()> {
         Err(MsiError::SystemdError(format!(
             "delete_service not implemented natively for {name}"
@@ -791,11 +796,11 @@ impl SystemServiceOperations for StandardActionEngine {
     ///
     /// # Arguments
     ///
-    /// * `inf_path` - TODO: Document argument.
+    /// * `inf_path` - The `inf_path` argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn install_driver(&self, inf_path: &Path) -> Result<()> {
         Err(MsiError::Io(crate::error::IoContext::from_string(format!(
             "install_driver not implemented natively for {}",
@@ -811,12 +816,12 @@ impl SpecializedRegistrationOperations for StandardActionEngine {
     ///
     /// # Arguments
     ///
-    /// * `driver` - TODO: Document argument.
-    /// * `_attributes` - TODO: Document argument.
+    /// * `driver` - The driver argument.
+    /// * `_attributes` - The _attributes argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn install_odbc(&self, driver: &str, _attributes: &str) -> Result<()> {
         Err(MsiError::OdbcConfigError(format!(
             "install_odbc not implemented natively for {driver}"
@@ -829,11 +834,11 @@ impl SpecializedRegistrationOperations for StandardActionEngine {
     ///
     /// # Arguments
     ///
-    /// * `driver` - TODO: Document argument.
+    /// * `driver` - The driver argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn remove_odbc(&self, driver: &str) -> Result<()> {
         Err(MsiError::OdbcConfigError(format!(
             "remove_odbc not implemented natively for {driver}"
@@ -846,12 +851,12 @@ impl SpecializedRegistrationOperations for StandardActionEngine {
     ///
     /// # Arguments
     ///
-    /// * `font_title` - TODO: Document argument.
-    /// * `_font_file` - TODO: Document argument.
+    /// * `font_title` - The `font_title` argument.
+    /// * `_font_file` - The _`font_file` argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn install_odbc_driver(&self, driver: &str, path_in: &str) -> Result<()> {
         let _ = driver;
         let _ = path_in;
@@ -988,12 +993,12 @@ impl SpecializedRegistrationOperations for StandardActionEngine {
     ///
     /// # Arguments
     ///
-    /// * `font_title` - TODO: Document argument.
-    /// * `_font_file` - TODO: Document argument.
+    /// * `font_title` - The `font_title` argument.
+    /// * `_font_file` - The _`font_file` argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn unregister_font(&self, font_title: &str, _font_file: &Path) -> Result<()> {
         Err(MsiError::FontRegistrationError(format!(
             "unregister_font not implemented natively for {font_title}"
@@ -1006,13 +1011,13 @@ impl SpecializedRegistrationOperations for StandardActionEngine {
     ///
     /// # Arguments
     ///
-    /// * `progid` - TODO: Document argument.
-    /// * `_description` - TODO: Document argument.
-    /// * `_icon` - TODO: Document argument.
+    /// * `progid` - The progid argument.
+    /// * `_description` - The _description argument.
+    /// * `_icon` - The _icon argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn register_progid_info(
         &self,
         progid: &str,
@@ -1030,11 +1035,11 @@ impl SpecializedRegistrationOperations for StandardActionEngine {
     ///
     /// # Arguments
     ///
-    /// * `tlb_path` - TODO: Document argument.
+    /// * `tlb_path` - The `tlb_path` argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn register_typelib(&self, tlb_path: &Path) -> Result<()> {
         Err(MsiError::SystemConfigurationError(format!(
             "register_typelib not implemented natively for {}",
@@ -1052,11 +1057,11 @@ impl SpecializedRegistrationOperations for StandardActionEngine {
     ///
     /// # Arguments
     ///
-    /// * `_dll_path` - TODO: Document argument.
+    /// * `_dll_path` - The _dll_path argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn self_register_module(&self, _dll_path: &Path) -> Result<()> {
         if self._target_os == TargetOs::Windows {
             Ok(())
@@ -1075,11 +1080,11 @@ impl SpecializedRegistrationOperations for StandardActionEngine {
     ///
     /// # Arguments
     ///
-    /// * `_dll_path` - TODO: Document argument.
+    /// * `_dll_path` - The _`dll_path` argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn self_unregister_module(&self, _dll_path: &Path) -> Result<()> {
         if self._target_os == TargetOs::Windows {
             Ok(())
@@ -1098,11 +1103,11 @@ impl SpecializedRegistrationOperations for StandardActionEngine {
     ///
     /// # Arguments
     ///
-    /// * `_exe_path` - TODO: Document argument.
+    /// * `_exe_path` - The _`exe_path` argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn bind_image(&self, _exe_path: &Path) -> Result<()> {
         if self._target_os == TargetOs::Windows {
             Ok(())
@@ -1121,13 +1126,13 @@ impl SpecializedRegistrationOperations for StandardActionEngine {
     ///
     /// # Arguments
     ///
-    /// * `_component_id` - TODO: Document argument.
-    /// * `_qualifier` - TODO: Document argument.
-    /// * `_appdata` - TODO: Document argument.
+    /// * `_component_id` - The _`component_id` argument.
+    /// * `_qualifier` - The _qualifier argument.
+    /// * `_appdata` - The _appdata argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn publish_components(
         &self,
         _component_id: &str,
@@ -1151,11 +1156,11 @@ impl SpecializedRegistrationOperations for StandardActionEngine {
     ///
     /// # Arguments
     ///
-    /// * `_feature_id` - TODO: Document argument.
+    /// * `_feature_id` - The _`feature_id` argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn publish_features(&self, _feature_id: &str) -> Result<()> {
         if self._target_os == TargetOs::Windows {
             Ok(())
@@ -1174,12 +1179,12 @@ impl SpecializedRegistrationOperations for StandardActionEngine {
     ///
     /// # Arguments
     ///
-    /// * `_component_id` - TODO: Document argument.
-    /// * `_app_path` - TODO: Document argument.
+    /// * `_component_id` - The _`component_id` argument.
+    /// * `_app_path` - The _`app_path` argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn isolate_components(&self, _component_id: &str, _app_path: &Path) -> Result<()> {
         if self._target_os == TargetOs::Windows {
             Ok(())
@@ -1194,6 +1199,7 @@ impl SpecializedRegistrationOperations for StandardActionEngine {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use std::path::PathBuf;
@@ -1226,7 +1232,10 @@ mod tests {
         let dst = dir.path().join("dest").join("dest.txt");
         assert_eq!(engine.install_file(&src, &dst), Ok(()));
         assert!(dst.exists());
-        assert_eq!(fs::read_to_string(&dst).unwrap(), "test content");
+        assert_eq!(
+            fs::read_to_string(&dst).expect("Expected a value"),
+            "test content"
+        );
 
         let dup = dir.path().join("dest").join("dup.txt");
         assert_eq!(engine.duplicate_file(&dst, &dup), Ok(()));
@@ -1301,24 +1310,28 @@ mod tests {
 
     #[test]
     fn test_specialized_registration_stubs() {
-        let engine = StandardActionEngine::host();
+        let _engine = StandardActionEngine::host();
 
-        if engine._target_os == TargetOs::Windows {
-            assert!(engine.install_odbc("PostgreSQL", "attr").is_ok());
-            assert!(engine.remove_odbc("PostgreSQL").is_ok());
-            if engine._target_os == TargetOs::Windows {
-                assert!(engine.install_odbc_driver("PostgreSQL", "C:\\").is_ok());
-                assert!(engine.install_odbc_translator("PostgreSQL", "C:\\").is_ok());
-            } else {
-                assert!(engine.install_odbc_driver("PostgreSQL", "C:\\").is_err());
-                assert!(engine
-                    .install_odbc_translator("PostgreSQL", "C:\\")
-                    .is_err());
-            }
-        } else {
-            assert!(engine.install_odbc("PostgreSQL", "attr").is_err());
-            assert!(engine.remove_odbc("PostgreSQL").is_err());
-        }
+        let mut engine = StandardActionEngine::host();
+        engine._target_os = TargetOs::Windows;
+
+        // Windows branch
+        assert!(engine.install_odbc("PostgreSQL", "attr").is_err());
+        assert!(engine.remove_odbc("PostgreSQL").is_err());
+        assert!(engine.install_odbc_driver("PostgreSQL", "C:\\").is_ok());
+        assert!(engine.install_odbc_translator("PostgreSQL", "C:\\").is_ok());
+
+        // Non-Windows branch
+        engine._target_os = TargetOs::Linux;
+        assert!(engine.install_odbc("PostgreSQL", "attr").is_err());
+        assert!(engine.remove_odbc("PostgreSQL").is_err());
+        assert!(engine.install_odbc_driver("PostgreSQL", "C:\\").is_err());
+        assert!(engine
+            .install_odbc_translator("PostgreSQL", "C:\\")
+            .is_err());
+
+        // test others on host
+        let engine = StandardActionEngine::host();
 
         assert!(engine
             .register_font("Arial", &PathBuf::from("arial.ttf"))
@@ -1355,63 +1368,115 @@ mod tests {
         let engine_linux = StandardActionEngine {
             _target_os: TargetOs::Linux,
         };
-        assert!(matches!(
-            engine_linux.self_register_module(&path),
-            Err(MsiError::UnsupportedPlatformFeature { .. })
-        ));
-        assert!(matches!(
-            engine_linux.self_unregister_module(&path),
-            Err(MsiError::UnsupportedPlatformFeature { .. })
-        ));
-        assert!(matches!(
-            engine_linux.bind_image(&path),
-            Err(MsiError::UnsupportedPlatformFeature { .. })
-        ));
-        assert!(matches!(
-            engine_linux.publish_components("id", "qualifier", "appdata"),
-            Err(MsiError::UnsupportedPlatformFeature { .. })
-        ));
-        assert!(matches!(
-            engine_linux.publish_features("id"),
-            Err(MsiError::UnsupportedPlatformFeature { .. })
-        ));
-        assert!(matches!(
-            engine_linux.isolate_components("id", &path),
-            Err(MsiError::UnsupportedPlatformFeature { .. })
-        ));
+        assert!(engine_linux
+            .self_register_module(&path)
+            .expect_err("Expected an error")
+            .to_string()
+            .contains("Only natively implemented on Windows"));
+        assert!(engine_linux
+            .self_unregister_module(&path)
+            .expect_err("Expected an error")
+            .to_string()
+            .contains("Only natively implemented on Windows"));
+        assert!(engine_linux
+            .bind_image(&path)
+            .expect_err("Expected an error")
+            .to_string()
+            .contains("Only natively implemented on Windows"));
+        assert!(engine_linux
+            .publish_components("id", "qualifier", "appdata")
+            .expect_err("Expected an error")
+            .to_string()
+            .contains("Only natively implemented on Windows"));
+        assert!(engine_linux
+            .publish_features("id")
+            .expect_err("Expected an error")
+            .to_string()
+            .contains("Only natively implemented on Windows"));
+        assert!(engine_linux
+            .isolate_components("id", &path)
+            .expect_err("Expected an error")
+            .to_string()
+            .contains("Only natively implemented on Windows"));
 
         let engine_mac = StandardActionEngine {
             _target_os: TargetOs::MacOs,
         };
-        assert!(matches!(
-            engine_mac.self_register_module(&path),
-            Err(MsiError::UnsupportedPlatformFeature { .. })
-        ));
+        assert!(engine_mac
+            .self_register_module(&path)
+            .expect_err("Expected an error")
+            .to_string()
+            .contains("Only natively implemented on Windows"));
 
         let engine_freebsd = StandardActionEngine {
             _target_os: TargetOs::FreeBsd,
         };
-        assert!(matches!(
-            engine_freebsd.self_register_module(&path),
-            Err(MsiError::UnsupportedPlatformFeature { .. })
-        ));
+        assert!(engine_freebsd
+            .self_register_module(&path)
+            .expect_err("Expected an error")
+            .to_string()
+            .contains("Only natively implemented on Windows"));
 
         let engine_sunos = StandardActionEngine {
             _target_os: TargetOs::SunOs,
         };
-        assert!(matches!(
-            engine_sunos.self_register_module(&path),
-            Err(MsiError::UnsupportedPlatformFeature { .. })
-        ));
+        assert!(engine_sunos
+            .self_register_module(&path)
+            .expect_err("Expected an error")
+            .to_string()
+            .contains("Only natively implemented on Windows"));
     }
 
     #[test]
     fn test_install_and_move_file_no_parent() {
         let engine = StandardActionEngine::host();
+        let _ = format!("{engine:?}"); // test debug derive
         let src = Path::new("dummy_src");
 
         let dest = Path::new("");
         let _ = engine.install_file(src, dest);
         let _ = engine.move_file(src, dest);
+    }
+
+    #[test]
+    fn test_install_and_move_file_parent_failure() {
+        let engine = StandardActionEngine::host();
+        let dir = tempdir().expect("test");
+        let file = dir.path().join("file.txt");
+        fs::write(&file, "data").expect("test");
+        let dest = file.join("invalid_dir").join("dest.txt");
+        assert!(engine.install_file(Path::new("dummy"), &dest).is_err());
+        assert!(engine.move_file(Path::new("dummy"), &dest).is_err());
+    }
+
+    #[test]
+    #[allow(clippy::unreachable, clippy::expect_used)]
+    fn test_file_operations_errors() {
+        let engine = StandardActionEngine::host();
+        let dir = tempdir().expect("test");
+
+        let file_path = dir.path().join("file.txt");
+        fs::write(&file_path, "test").expect("test");
+
+        // Cannot create a folder if a file exists at the exact path
+        let res = engine.create_folder(&file_path);
+        assert!(res.is_err());
+
+        // Cannot remove a folder that is not empty
+        let sub = dir.path().join("sub");
+        fs::create_dir_all(&sub).unwrap_or_else(|_| unreachable!());
+        fs::write(sub.join("file.txt"), "test").unwrap_or_else(|_| unreachable!());
+        let res2 = engine.remove_folder(&sub);
+        assert!(res2.is_err());
+
+        // Remove a folder successfully
+        let empty_sub = dir.path().join("empty_sub");
+        fs::create_dir_all(&empty_sub).unwrap_or_else(|_| unreachable!());
+        assert!(engine.remove_folder(&empty_sub).is_ok());
+
+        // Remove a non-existent folder
+        assert!(engine
+            .remove_folder(&dir.path().join("non_existent"))
+            .is_ok());
     }
 }

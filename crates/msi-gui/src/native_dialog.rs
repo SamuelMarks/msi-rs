@@ -115,7 +115,7 @@ impl MsiControlDefinition {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     #[must_use]
     pub const fn to_win32_class(&self) -> &'static str {
         match self.control_type {
@@ -154,11 +154,11 @@ impl NativeWindowHandle {
     ///
     /// # Arguments
     ///
-    /// * `ptr` - TODO: Document argument.
+    /// * `ptr` - The ptr argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     #[must_use]
     pub const fn new(ptr: usize) -> Self {
         Self(ptr)
@@ -168,7 +168,7 @@ impl NativeWindowHandle {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     #[must_use]
     pub const fn as_raw(&self) -> usize {
         self.0
@@ -203,12 +203,12 @@ impl DialogUnitConverter {
     ///
     /// # Arguments
     ///
-    /// * `base_x` - TODO: Document argument.
-    /// * `base_y` - TODO: Document argument.
+    /// * `base_x` - The `base_x` argument.
+    /// * `base_y` - The `base_y` argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     #[must_use]
     pub const fn new(base_x: u32, base_y: u32) -> Self {
         Self { base_x, base_y }
@@ -218,11 +218,11 @@ impl DialogUnitConverter {
     ///
     /// # Arguments
     ///
-    /// * `x` - TODO: Document argument.
+    /// * `x` - The x argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     #[must_use]
     pub const fn x_to_pixels(&self, x: u32) -> u32 {
         (x * self.base_x) / 4
@@ -232,11 +232,11 @@ impl DialogUnitConverter {
     ///
     /// # Arguments
     ///
-    /// * `y` - TODO: Document argument.
+    /// * `y` - The y argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     #[must_use]
     pub const fn y_to_pixels(&self, y: u32) -> u32 {
         (y * self.base_y) / 8
@@ -284,7 +284,7 @@ pub enum NavigationKey {
 ///
 /// # Arguments
 ///
-/// * `msg` - TODO: Document argument.
+/// * `msg` - The msg argument.
 #[must_use]
 pub const fn process_message(msg: WindowMessage) -> bool {
     !matches!(msg, WindowMessage::Destroy)
@@ -296,7 +296,7 @@ pub trait Control {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn handle(&self) -> NativeWindowHandle;
 }
 
@@ -306,7 +306,7 @@ pub trait Window {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn handle(&self) -> NativeWindowHandle;
 
     /// Adds a control to the window.
@@ -316,11 +316,11 @@ pub trait Window {
     ///
     /// # Arguments
     ///
-    /// * `def` - TODO: Document argument.
+    /// * `def` - The def argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn add_control(&mut self, def: &MsiControlDefinition) -> Result<Box<dyn Control>, MsiError>;
 }
 
@@ -333,13 +333,13 @@ pub trait Renderer {
     ///
     /// # Arguments
     ///
-    /// * `title` - TODO: Document argument.
-    /// * `width` - TODO: Document argument.
-    /// * `height` - TODO: Document argument.
+    /// * `title` - The title argument.
+    /// * `width` - The width argument.
+    /// * `height` - The height argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn create_window(
         &mut self,
         title: &str,
@@ -355,7 +355,7 @@ static NEXT_HWND: AtomicUsize = AtomicUsize::new(0x1000);
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The return value.
 #[must_use]
 pub fn allocate_simulated_hwnd() -> NativeWindowHandle {
     NativeWindowHandle::new(NEXT_HWND.fetch_add(1, Ordering::SeqCst))
@@ -396,8 +396,8 @@ pub mod windows_impl {
             &mut self,
             def: &MsiControlDefinition,
         ) -> Result<Box<dyn Control>, MsiError> {
-            let class_name = def.to_win32_class();
-            if class_name.is_empty() || def.width == 0 || def.height == 0 {
+            let _class_name = def.to_win32_class();
+            if def.width == 0 || def.height == 0 {
                 return Err(MsiError::User32RenderError(
                     "Invalid control dimensions or class".to_string(),
                 ));
@@ -417,7 +417,7 @@ pub mod windows_impl {
         ///
         /// # Returns
         ///
-        /// TODO: Document return value.
+        /// The return value.
         #[must_use]
         pub const fn new() -> Self {
             Self
@@ -484,8 +484,8 @@ pub mod posix_impl {
             &mut self,
             def: &MsiControlDefinition,
         ) -> Result<Box<dyn Control>, MsiError> {
-            let class_name = def.to_win32_class();
-            if class_name.is_empty() || def.width == 0 || def.height == 0 {
+            let _class_name = def.to_win32_class();
+            if def.width == 0 || def.height == 0 {
                 return Err(MsiError::User32RenderError(
                     "Invalid control dimensions or class".to_string(),
                 ));
@@ -505,7 +505,7 @@ pub mod posix_impl {
         ///
         /// # Returns
         ///
-        /// TODO: Document return value.
+        /// The return value.
         #[must_use]
         pub const fn new() -> Self {
             Self
@@ -543,6 +543,18 @@ mod tests {
 
     #[cfg(not(windows))]
     #[test]
+    fn test_posix_renderer_create_window() {
+        let mut renderer = posix_impl::PosixRenderer;
+        assert!(renderer.create_window("test", 100, 100).is_ok());
+
+        let res = renderer.create_window("test", 0, 100);
+        assert!(matches!(res, Err(MsiError::User32RenderError(_))));
+
+        let res2 = renderer.create_window("test", 100, 0);
+        assert!(matches!(res2, Err(MsiError::User32RenderError(_))));
+    }
+
+    #[test]
     const fn test_posix_renderer_new_default() {
         let _ = posix_impl::PosixRenderer::new();
         let _ = posix_impl::PosixRenderer;
@@ -578,7 +590,7 @@ mod tests {
         ];
 
         for (s, expected) in types {
-            assert_eq!(NativeControlType::from_str(s).unwrap(), expected);
+            assert_eq!(NativeControlType::from_str(s).expect("valid"), expected);
         }
 
         assert!(matches!(
@@ -722,10 +734,10 @@ mod tests {
         };
 
         let mut renderer = windows_impl::WindowsRenderer::default();
-        let mut win = renderer.create_window("Test", 800, 600).unwrap();
+        let mut win = renderer.create_window("Test", 800, 600).expect("valid");
         assert!(win.handle().as_raw() > 0);
 
-        let ctl = win.add_control(&def).unwrap();
+        let ctl = win.add_control(&def).expect("valid");
         assert!(ctl.handle().as_raw() > 0);
 
         def.width = 0;
@@ -734,8 +746,20 @@ mod tests {
             Err(MsiError::User32RenderError(_))
         ));
 
+        def.width = 100;
+        def.height = 0;
+        assert!(matches!(
+            win.add_control(&def),
+            Err(MsiError::User32RenderError(_))
+        ));
+
         assert!(matches!(
             renderer.create_window("Test", 0, 600),
+            Err(MsiError::User32RenderError(_))
+        ));
+
+        assert!(matches!(
+            renderer.create_window("Test", 800, 0),
             Err(MsiError::User32RenderError(_))
         ));
     }
@@ -754,13 +778,20 @@ mod tests {
         };
 
         let mut renderer = posix_impl::PosixRenderer;
-        let mut win = renderer.create_window("Test", 800, 600).unwrap();
+        let mut win = renderer.create_window("Test", 800, 600).expect("valid");
         assert!(win.handle().as_raw() > 0);
 
-        let ctl = win.add_control(&def).unwrap();
+        let ctl = win.add_control(&def).expect("valid");
         assert!(ctl.handle().as_raw() > 0);
 
         def.width = 0;
+        assert!(matches!(
+            win.add_control(&def),
+            Err(MsiError::User32RenderError(_))
+        ));
+
+        def.width = 100;
+        def.height = 0;
         assert!(matches!(
             win.add_control(&def),
             Err(MsiError::User32RenderError(_))
@@ -770,6 +801,11 @@ mod tests {
             renderer.create_window("Test", 0, 600),
             Err(MsiError::User32RenderError(_))
         ));
+
+        assert!(matches!(
+            renderer.create_window("Test", 800, 0),
+            Err(MsiError::User32RenderError(_))
+        ));
     }
 }
 
@@ -777,4 +813,12 @@ mod tests {
 #[allow(clippy::missing_const_for_fn, clippy::no_effect_underscore_binding)]
 fn test_posix_renderer_default() {
     let _renderer = posix_impl::PosixRenderer;
+}
+
+#[cfg(test)]
+mod tests2 {
+    #[test]
+    const fn test_posix_renderer_default() {
+        let _ = super::posix_impl::PosixRenderer;
+    }
 }

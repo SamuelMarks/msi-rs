@@ -139,6 +139,7 @@ impl ScriptEngine {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -185,6 +186,22 @@ mod tests {
     /// Tests `ScriptValue` conversions from both `JsValue` and `Variant`.
     #[test]
     fn test_script_value_conversions() {
+        let engine_default = ScriptEngine::default();
+        let _ = format!("{engine_default:?}");
+
+        let sl1 = ScriptLanguage::JScript;
+        let sl2 = sl1;
+        assert_eq!(sl1, sl2);
+        assert_ne!(ScriptLanguage::JScript, ScriptLanguage::VBScript);
+        let _ = format!("{sl1:?}");
+
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::Hash;
+        let mut hasher = DefaultHasher::new();
+        sl1.hash(&mut hasher);
+
+        let sv1 = ScriptValue::Undefined;
+        let _ = format!("{sv1:?}");
         use std::collections::HashMap;
 
         assert_eq!(

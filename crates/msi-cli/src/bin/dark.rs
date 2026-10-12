@@ -348,7 +348,7 @@ mod tests {
             assert!(cab_writer
                 .add_file("valid_file.txt", b"cab payload")
                 .is_ok());
-            let cab_bytes = cab_writer.build();
+            let cab_bytes = cab_writer.build().unwrap_or_default();
             pkg_with_cab.add_embedded_cabinet("#valid.cab", cab_bytes.clone());
 
             // Continued cabinet (extract_file returns Err)

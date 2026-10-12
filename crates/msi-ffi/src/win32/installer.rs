@@ -22,7 +22,7 @@ use crate::win32::{
 /// # Returns
 ///
 /// `ERROR_SUCCESS` or `ERROR_INVALID_PARAMETER`.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -58,7 +58,7 @@ pub extern "system" fn MsiOpenPackageW(szPackagePath: Lpcwstr, hProduct: *mut Ms
 }
 
 /// Opens a Windows Installer package with advanced options (Unicode).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -103,7 +103,7 @@ pub extern "system" fn MsiOpenPackageExW(
 /// # Returns
 ///
 /// `ERROR_SUCCESS` or `ERROR_INVALID_PARAMETER`.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -136,7 +136,7 @@ pub extern "system" fn MsiOpenPackageA(szPackagePath: Lpcstr, hProduct: *mut Msi
 }
 
 /// Opens a Windows Installer package with advanced options (ANSI).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -181,7 +181,7 @@ pub extern "system" fn MsiOpenPackageExA(
 /// # Returns
 ///
 /// `ERROR_SUCCESS` or `ERROR_INVALID_PARAMETER`.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -224,7 +224,7 @@ pub extern "system" fn MsiOpenProductW(szProduct: Lpcwstr, hProduct: *mut MsiHan
 /// # Returns
 ///
 /// `ERROR_SUCCESS` or `ERROR_INVALID_PARAMETER`.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -258,7 +258,7 @@ pub extern "system" fn MsiOpenProductA(szProduct: Lpcstr, hProduct: *mut MsiHand
 }
 
 /// Begins a transaction (Unicode).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -278,14 +278,16 @@ pub extern "system" fn MsiBeginTransactionW(
             return ERROR_INVALID_PARAMETER;
         };
 
-        let tx_mgr =
+        let Ok(tx_mgr) =
             msi::execution::transaction::MultiPackageTransactionManager::begin_transaction(&name)
-                .unwrap_or_else(|_| {
+                .or_else(|_| {
                     msi::execution::transaction::MultiPackageTransactionManager::begin_transaction(
                         "Fallback",
                     )
-                    .unwrap_or_else(|_| unsafe { std::hint::unreachable_unchecked() })
-                });
+                })
+        else {
+            return ERROR_INSTALL_FAILURE;
+        };
         let obj = MsiObject::Transaction(Box::new(crate::types::MsiTransactionHandle {
             inner: tx_mgr,
         }));
@@ -301,7 +303,7 @@ pub extern "system" fn MsiBeginTransactionW(
 }
 
 /// Begins a transaction (ANSI).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -321,14 +323,16 @@ pub extern "system" fn MsiBeginTransactionA(
             return ERROR_INVALID_PARAMETER;
         };
 
-        let tx_mgr =
+        let Ok(tx_mgr) =
             msi::execution::transaction::MultiPackageTransactionManager::begin_transaction(&name)
-                .unwrap_or_else(|_| {
+                .or_else(|_| {
                     msi::execution::transaction::MultiPackageTransactionManager::begin_transaction(
                         "Fallback",
                     )
-                    .unwrap_or_else(|_| unsafe { std::hint::unreachable_unchecked() })
-                });
+                })
+        else {
+            return ERROR_INSTALL_FAILURE;
+        };
         let obj = MsiObject::Transaction(Box::new(crate::types::MsiTransactionHandle {
             inner: tx_mgr,
         }));
@@ -344,7 +348,7 @@ pub extern "system" fn MsiBeginTransactionA(
 }
 
 /// Joins a transaction.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -375,10 +379,11 @@ pub extern "system" fn MsiJoinTransaction(
 }
 
 /// Ends a transaction.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiEndTransaction(dwTransactionState: Dword) -> Uint {
     let result = panic::catch_unwind(|| {
         // Mocking end transaction globally or for current process
@@ -396,10 +401,11 @@ pub extern "system" fn MsiEndTransaction(dwTransactionState: Dword) -> Uint {
 /// # Returns
 ///
 /// A language ID (`LANGID`), or 0 on error.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiGetLanguage(hInstall: MsiHandle) -> u16 {
     let result = panic::catch_unwind(|| {
         // Return a mock LANGID (e.g., 1033 for en-US)
@@ -417,10 +423,11 @@ pub extern "system" fn MsiGetLanguage(hInstall: MsiHandle) -> u16 {
 /// # Returns
 ///
 /// `ERROR_SUCCESS` or an error code.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiCreateAndVerifyInstallerDirectory(dwArchitecture: Dword) -> Uint {
     let result = panic::catch_unwind(|| {
         // Mock success for cross-platform
@@ -447,7 +454,7 @@ pub struct MsiFileHashInfo {
 /// * `szFilePath` - Path to the file.
 /// * `dwOptions` - Reserved, must be 0.
 /// * `pHash` - Pointer to receive the hash info.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -477,7 +484,7 @@ pub extern "system" fn MsiGetFileHashW(
 }
 
 /// Returns the 128-bit MD5 hash of a file (ANSI).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -507,7 +514,7 @@ pub extern "system" fn MsiGetFileHashA(
 }
 
 /// Extracts a digital signature and related information from a file (Unicode).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -536,7 +543,7 @@ pub extern "system" fn MsiGetFileSignatureInformationW(
 }
 
 /// Extracts a digital signature and related information from a file (ANSI).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -565,11 +572,12 @@ pub extern "system" fn MsiGetFileSignatureInformationA(
 }
 
 /// Validates a package against the original install package (Unicode).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiVerifyPackageW(szPackagePath: Lpcwstr) -> Uint {
     let result = panic::catch_unwind(|| {
         if szPackagePath.is_null() {
@@ -588,11 +596,12 @@ pub extern "system" fn MsiVerifyPackageW(szPackagePath: Lpcwstr) -> Uint {
 }
 
 /// Validates a package against the original install package (ANSI).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiVerifyPackageA(szPackagePath: Lpcstr) -> Uint {
     let result = panic::catch_unwind(|| {
         if szPackagePath.is_null() {
@@ -663,13 +672,9 @@ fn execute_install(path_str: &str, cmd_str: Option<&str>) -> Uint {
     let cost_engine = msi::execution::DiskCostEngine::new();
     let tx = msi::execution::Transaction::from_package(&pkg, context, cost_engine);
 
-    let prep_tx = match if path_str.contains("FAIL_PREPARE") {
-        Err(1)
-    } else {
-        tx.prepare().map_err(|_| 1)
-    } {
-        Ok(t) => t,
-        Err(_) => return ERROR_INSTALL_FAILURE,
+    let prep_tx = match tx.prepare() {
+        Ok(t) if !path_str.contains("FAIL_PREPARE") => t,
+        _ => return ERROR_INSTALL_FAILURE,
     };
 
     let quarantine_dir = std::env::temp_dir().join("msi-quarantine");
@@ -677,13 +682,9 @@ fn execute_install(path_str: &str, cmd_str: Option<&str>) -> Uint {
     let executor = msi::execution::LiveWorkerExecutor::new(&quarantine_dir, &session_id);
     let mut worker = msi::execution::WorkerContext::new().with_live_executor(executor);
 
-    let exec_tx = match if path_str.contains("FAIL_EXECUTE") {
-        Err(1)
-    } else {
-        prep_tx.execute(&mut worker).map_err(|_| 1)
-    } {
-        Ok(t) => t,
-        Err(_) => return ERROR_INSTALL_FAILURE,
+    let exec_tx = match prep_tx.execute(&mut worker) {
+        Ok(t) if !path_str.contains("FAIL_EXECUTE") => t,
+        _ => return ERROR_INSTALL_FAILURE,
     };
 
     let _ = exec_tx.commit(&mut worker);
@@ -691,10 +692,11 @@ fn execute_install(path_str: &str, cmd_str: Option<&str>) -> Uint {
 }
 
 /// Installs or uninstalls a product (Unicode).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiInstallProductW(szPackagePath: Lpcwstr, szCommandLine: Lpcwstr) -> Uint {
     let result = panic::catch_unwind(|| {
         if szPackagePath.is_null() {
@@ -720,10 +722,11 @@ pub extern "system" fn MsiInstallProductW(szPackagePath: Lpcwstr, szCommandLine:
 }
 
 /// Installs or uninstalls a product (ANSI).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiInstallProductA(szPackagePath: Lpcstr, szCommandLine: Lpcstr) -> Uint {
     let result = panic::catch_unwind(|| {
         if szPackagePath.is_null() {
@@ -749,10 +752,11 @@ pub extern "system" fn MsiInstallProductA(szPackagePath: Lpcstr, szCommandLine: 
 }
 
 /// Installs or uninstalls a product with advanced options (Unicode).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiConfigureProductExW(
     szProduct: Lpcwstr,
     iInstallLevel: i32,
@@ -786,10 +790,11 @@ pub extern "system" fn MsiConfigureProductExW(
 }
 
 /// Installs or uninstalls a product with advanced options (ANSI).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiConfigureProductExA(
     szProduct: Lpcstr,
     iInstallLevel: i32,
@@ -823,7 +828,7 @@ pub extern "system" fn MsiConfigureProductExA(
 }
 
 /// Retrieves the full source path for a folder in the Directory table (Unicode).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -844,7 +849,7 @@ pub extern "system" fn MsiGetSourcePathW(
 }
 
 /// Retrieves the full source path for a folder in the Directory table (ANSI).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -865,7 +870,7 @@ pub extern "system" fn MsiGetSourcePathA(
 }
 
 /// Retrieves the full target path for a folder in the Directory table (Unicode).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -886,7 +891,7 @@ pub extern "system" fn MsiGetTargetPathW(
 }
 
 /// Retrieves the full target path for a folder in the Directory table (ANSI).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -907,10 +912,11 @@ pub extern "system" fn MsiGetTargetPathA(
 }
 
 /// Sets the full target path for a folder in the Directory table (Unicode).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiSetTargetPathW(
     hInstall: MsiHandle,
     szFolder: Lpcwstr,
@@ -927,10 +933,11 @@ pub extern "system" fn MsiSetTargetPathW(
 }
 
 /// Sets the full target path for a folder in the Directory table (ANSI).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiSetTargetPathA(
     hInstall: MsiHandle,
     szFolder: Lpcstr,
@@ -955,6 +962,56 @@ mod tests {
         clippy::borrow_as_ptr
     )]
     use super::*;
+
+    #[test]
+    fn test_installer_prepare_and_execute_errors() {
+        use msi::database::record::FieldValue;
+        use msi::database::record::Record;
+
+        let mut bad_row = Record::new();
+        bad_row.push(FieldValue::String("CostInitialize".to_string()));
+        bad_row.push(FieldValue::String("1 ==".to_string()));
+        bad_row.push(FieldValue::Short(100));
+
+        let mut b_prep = msi::Package::builder()
+            .product_name("Test")
+            .version(msi::package::ProductVersion::new(1, 0, 0))
+            .product_code("{00000000-0000-0000-0000-000000000000}")
+            .manufacturer("Test")
+            .upgrade_code("{00000000-0000-0000-0000-000000000001}");
+
+        b_prep = b_prep.add_record("InstallExecuteSequence", bad_row);
+        let pkg = b_prep.build().unwrap();
+
+        let path_prep = std::env::temp_dir().join("msi-ffi-test-fail-prep.msi");
+        std::fs::write(&path_prep, pkg.to_bytes().unwrap()).unwrap();
+
+        let path_prep_w: Vec<u16> = path_prep
+            .to_string_lossy()
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        assert_eq!(
+            MsiInstallProductW(path_prep_w.as_ptr(), std::ptr::null()),
+            ERROR_INSTALL_FAILURE
+        );
+        assert_eq!(
+            MsiInstallProductA(
+                std::ffi::CString::new(path_prep.to_str().unwrap())
+                    .unwrap()
+                    .as_ptr(),
+                std::ptr::null()
+            ),
+            ERROR_INSTALL_FAILURE
+        );
+    }
+
+    #[test]
+    fn test_parse_command_line_edge_cases() {
+        let mut context = msi::execution::EvaluationContext::new();
+        parse_command_line("  PROP=1  ", &mut context);
+        assert_eq!(context.get_property("PROP").unwrap(), "1");
+    }
 
     #[test]
     fn test_installer_stubs() {
@@ -1717,10 +1774,11 @@ mod tests {
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiDeleteUserDataA(
     _szProductCode: Lpcstr,
     _szUserName: Lpcstr,
@@ -1740,10 +1798,11 @@ pub extern "system" fn MsiDeleteUserDataA(
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiDeleteUserDataW(
     _szProductCode: Lpcwstr,
     _szUserName: Lpcwstr,
@@ -1762,7 +1821,7 @@ pub extern "system" fn MsiDeleteUserDataW(
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
@@ -1783,7 +1842,7 @@ pub extern "system" fn MsiGetProductCodeFromPackageCodeA(
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
@@ -1810,7 +1869,7 @@ pub extern "system" fn MsiGetProductCodeFromPackageCodeW(
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
@@ -1843,7 +1902,7 @@ pub extern "system" fn MsiGetProductInfoFromScriptA(
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
@@ -1870,10 +1929,11 @@ pub extern "system" fn MsiGetProductInfoFromScriptW(
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiInstallMissingFileA(_szProduct: Lpcstr, _szFile: Lpcstr) -> Uint {
     1605 // ERROR_UNKNOWN_PRODUCT
 }
@@ -1888,10 +1948,11 @@ pub extern "system" fn MsiInstallMissingFileA(_szProduct: Lpcstr, _szFile: Lpcst
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiInstallMissingFileW(_szProduct: Lpcwstr, _szFile: Lpcwstr) -> Uint {
     1605 // ERROR_UNKNOWN_PRODUCT
 }
@@ -1906,10 +1967,11 @@ pub extern "system" fn MsiInstallMissingFileW(_szProduct: Lpcwstr, _szFile: Lpcw
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiNotifySidChangeA(_pOldSid: Lpcstr, _pNewSid: Lpcstr) -> Uint {
     1605 // ERROR_UNKNOWN_PRODUCT
 }
@@ -1924,10 +1986,11 @@ pub extern "system" fn MsiNotifySidChangeA(_pOldSid: Lpcstr, _pNewSid: Lpcstr) -
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiNotifySidChangeW(_pOldSid: Lpcwstr, _pNewSid: Lpcwstr) -> Uint {
     1605 // ERROR_UNKNOWN_PRODUCT
 }
@@ -1942,10 +2005,11 @@ pub extern "system" fn MsiNotifySidChangeW(_pOldSid: Lpcwstr, _pNewSid: Lpcwstr)
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiSetOfflineContextW(_dwFlags: Dword, _szDirectory: Lpcwstr) -> Uint {
     1605 // ERROR_UNKNOWN_PRODUCT
 }
@@ -1959,10 +2023,11 @@ pub extern "system" fn MsiSetOfflineContextW(_dwFlags: Dword, _szDirectory: Lpcw
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiVerifyDiskSpace(_hInstall: MsiHandle) -> Uint {
     1605 // ERROR_UNKNOWN_PRODUCT
 }
@@ -1977,7 +2042,7 @@ pub extern "system" fn MsiVerifyDiskSpace(_hInstall: MsiHandle) -> Uint {
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
@@ -1991,6 +2056,56 @@ pub extern "system" fn QueryInstanceCount(
 #[cfg(test)]
 mod additional_stubs_tests {
     use super::*;
+
+    #[test]
+    fn test_installer_prepare_and_execute_errors() {
+        use msi::database::record::FieldValue;
+        use msi::database::record::Record;
+
+        let mut bad_row = Record::new();
+        bad_row.push(FieldValue::String("CostInitialize".to_string()));
+        bad_row.push(FieldValue::String("1 ==".to_string()));
+        bad_row.push(FieldValue::Short(100));
+
+        let mut b_prep = msi::Package::builder()
+            .product_name("Test")
+            .version(msi::package::ProductVersion::new(1, 0, 0))
+            .product_code("{00000000-0000-0000-0000-000000000000}")
+            .manufacturer("Test")
+            .upgrade_code("{00000000-0000-0000-0000-000000000001}");
+
+        b_prep = b_prep.add_record("InstallExecuteSequence", bad_row);
+        let pkg = b_prep.build().unwrap();
+
+        let path_prep = std::env::temp_dir().join("msi-ffi-test-fail-prep.msi");
+        std::fs::write(&path_prep, pkg.to_bytes().unwrap()).unwrap();
+
+        let path_prep_w: Vec<u16> = path_prep
+            .to_string_lossy()
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        assert_eq!(
+            MsiInstallProductW(path_prep_w.as_ptr(), std::ptr::null()),
+            ERROR_INSTALL_FAILURE
+        );
+        assert_eq!(
+            MsiInstallProductA(
+                std::ffi::CString::new(path_prep.to_str().unwrap())
+                    .unwrap()
+                    .as_ptr(),
+                std::ptr::null()
+            ),
+            ERROR_INSTALL_FAILURE
+        );
+    }
+
+    #[test]
+    fn test_parse_command_line_edge_cases() {
+        let mut context = msi::execution::EvaluationContext::new();
+        parse_command_line("  PROP=1  ", &mut context);
+        assert_eq!(context.get_property("PROP").unwrap(), "1");
+    }
 
     #[test]
     fn test_stubs_impl() {

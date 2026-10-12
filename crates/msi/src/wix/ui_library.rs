@@ -1172,7 +1172,7 @@ pub fn inject_ui_library(
 }
 
 #[cfg(test)]
-#[allow(clippy::manual_flatten)]
+#[allow(clippy::manual_flatten, clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::error::MsiError;

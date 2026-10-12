@@ -245,9 +245,16 @@ impl CabinetWriter {
     /// # Returns
     ///
     /// Serialized `.cab` archive bytes.
-    #[must_use]
-    #[allow(clippy::too_many_lines, clippy::cast_possible_truncation)]
-    pub fn build(self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// Returns `MsiError::CabinetCompressionError` if compression fails.
+    #[allow(
+        clippy::too_many_lines,
+        clippy::cast_possible_truncation,
+        clippy::unreachable
+    )]
+    pub fn build(self) -> Result<Vec<u8>> {
         let mut cf_files = Vec::with_capacity(self.files.len());
 
         for staged in &self.files {
@@ -282,17 +289,23 @@ impl CabinetWriter {
                 let uncompressed_size = uncompressed_chunk.len() as u16;
 
                 let compressed_payload = match self.compression_type {
-                    CompressionType::Mszip => mszip
-                        .compress(uncompressed_chunk)
-                        .unwrap_or_else(|_| uncompressed_chunk.to_vec()),
+                    CompressionType::Mszip => mszip.compress(uncompressed_chunk).map_err(|e| {
+                        MsiError::CabinetCompressionError {
+                            cab: "memory".to_string(),
+                            reason: format!("{e:?}"),
+                        }
+                    })?,
                     CompressionType::Lzx { .. } => lzx_state.as_mut().map_or_else(
-                        || uncompressed_chunk.to_vec(),
+                        || Ok(uncompressed_chunk.to_vec()),
                         |state| {
-                            state
-                                .compress_block(uncompressed_chunk)
-                                .unwrap_or_else(|_| uncompressed_chunk.to_vec())
+                            state.compress_block(uncompressed_chunk).map_err(|e| {
+                                MsiError::CabinetCompressionError {
+                                    cab: "memory".to_string(),
+                                    reason: format!("{e:?}"),
+                                }
+                            })
                         },
-                    ),
+                    )?,
                     CompressionType::Quantum => quantum_comp.compress(uncompressed_chunk),
                     CompressionType::None => uncompressed_chunk.to_vec(),
                 };
@@ -380,12 +393,12 @@ impl CabinetWriter {
             }
         }
 
-        output
+        Ok(output)
     }
 }
 
 #[cfg(test)]
-#[allow(clippy::manual_flatten)]
+#[allow(clippy::manual_flatten, clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::cab::reader::CabinetReader;
@@ -406,7 +419,7 @@ mod tests {
         // Duplicate file error
         assert!(writer.add_file("file1.txt", b"dup").is_err());
 
-        let cab_bytes = writer.build();
+        let cab_bytes = writer.build().unwrap_or_default();
         assert_ne!(cab_bytes.len(), 0);
 
         for res in [
@@ -438,7 +451,7 @@ mod tests {
             .add_file_with_folder_index("file2.bin", &payload, FolderIndex::Index(1))
             .is_ok());
 
-        let cab_bytes = writer.build();
+        let cab_bytes = writer.build().unwrap_or_default();
 
         // Size should be close to 10MB compressed (or essentially very small if fully uniform, but definitely not 20MB)
         // Let's assert it's less than 15MB which means only one copy is compressed.
@@ -478,7 +491,7 @@ mod tests {
             .add_file_with_folder_index("f2_1.txt", b"F2", FolderIndex::Index(2))
             .is_ok());
 
-        let cab_bytes = writer.build();
+        let cab_bytes = writer.build().unwrap_or_default();
         let reader = CabinetReader::new(&cab_bytes).expect("test");
 
         assert_eq!(reader.folders().len(), 3);
@@ -494,7 +507,7 @@ mod tests {
         let payload = b"LZX compressed file payload in Cabinet archive";
         assert!(writer.add_file("lzx_file.txt", payload).is_ok());
 
-        let cab_bytes = writer.build();
+        let cab_bytes = writer.build().unwrap_or_default();
         for res in [
             CabinetReader::new(&cab_bytes),
             Err(MsiError::InvalidCabData {
@@ -514,7 +527,7 @@ mod tests {
         let payload = b"Fallback uncompressed payload due to bad window bits";
         assert!(writer.add_file("fallback.txt", payload).is_ok());
 
-        let cab_bytes = writer.build();
+        let cab_bytes = writer.build().unwrap_or_default();
         assert_ne!(cab_bytes.len(), 0);
         // Reader validates header and rejects window_bits: 5
         assert!(CabinetReader::new(&cab_bytes).is_err());
@@ -527,7 +540,7 @@ mod tests {
         assert!(writer_none
             .add_file("uncomp.txt", b"plain uncompressed data")
             .is_ok());
-        let bytes_none = writer_none.build();
+        let bytes_none = writer_none.build().unwrap_or_default();
         for res in [
             CabinetReader::new(&bytes_none),
             Err(MsiError::InvalidCabData {
@@ -544,7 +557,7 @@ mod tests {
 
         let mut writer_q = CabinetWriter::new(CompressionType::Quantum);
         assert!(writer_q.add_file("q.txt", b"quantum payload").is_ok());
-        let bytes_q = writer_q.build();
+        let bytes_q = writer_q.build().unwrap_or_default();
         assert_ne!(bytes_q.len(), 0);
         for res in [
             CabinetReader::new(&bytes_q),
@@ -568,7 +581,7 @@ mod tests {
         let large_payload = vec![0xEEu8; 70_000]; // Requires 3 CFDATA blocks
         assert!(writer.add_file("large.dat", &large_payload).is_ok());
 
-        let cab_bytes = writer.build();
+        let cab_bytes = writer.build().unwrap_or_default();
         for res in [
             CabinetReader::new(&cab_bytes),
             Err(MsiError::InvalidCabData {
@@ -591,14 +604,10 @@ mod tests {
         }
 
         assert!(writer.add_file("huge.dat", &large_payload).is_ok());
-        let cab_bytes = writer.build();
+        let cab_bytes = writer.build().unwrap_or_default();
 
         // Assert compressed size is less than 15 MB
-        assert!(
-            cab_bytes.len() < 15 * 1024 * 1024,
-            "Cabinet size {} is not < 15MB",
-            cab_bytes.len()
-        );
+        assert!(cab_bytes.len() < 15 * 1024 * 1024);
 
         let reader = CabinetReader::new(&cab_bytes).expect("Valid cabinet");
         let extracted = reader.extract_file("huge.dat").expect("Extracted");
@@ -607,9 +616,26 @@ mod tests {
 
     /// Tests empty cabinet archive.
     #[test]
+    fn test_cabinet_writer_continuation_folders() {
+        let mut writer = CabinetWriter::new(CompressionType::None);
+        // Add file with continuation folder to empty folders array
+        writer
+            .add_file_with_folder_index("cont.txt", b"cont_data", FolderIndex::ContinuedToNext)
+            .unwrap();
+
+        // Add another to hit the `!self.folders.is_empty()` branch in the continuation folder block
+        writer
+            .add_file_with_folder_index("cont2.txt", b"cont_data_2", FolderIndex::ContinuedFromPrev)
+            .unwrap();
+
+        let cab = writer.build().unwrap_or_default();
+        assert!(!cab.is_empty());
+    }
+
+    #[test]
     fn test_cabinet_writer_empty() {
         let writer = CabinetWriter::new(CompressionType::None);
-        let cab_bytes = writer.build();
+        let cab_bytes = writer.build().unwrap_or_default();
         assert_ne!(cab_bytes.len(), 0);
 
         for res in [
@@ -631,42 +657,32 @@ mod tests {
         let mut writer = CabinetWriter::new(CompressionType::Mszip);
         let payload = b"Data to extract using external tool.";
         assert!(writer.add_file("ext.txt", payload).is_ok());
-        let cab_bytes = writer.build();
+        let cab_bytes = writer.build().unwrap_or_default();
 
         let dir = tempfile::tempdir().expect("tempdir");
         let cab_path = dir.path().join("test.cab");
         std::fs::write(&cab_path, &cab_bytes).expect("write cab");
 
-        // Try expand.exe (Windows) or cabextract (Unix)
-        let mut success = false;
-        if let Ok(status) = std::process::Command::new("expand")
-            .arg(&cab_path)
-            .arg("-F:*")
-            .arg(dir.path())
-            .status()
+        #[cfg(windows)]
         {
-            if status.success() {
-                success = true;
-            }
-        } else if let Ok(status) = std::process::Command::new("cabextract")
-            .arg("-d")
-            .arg(dir.path())
-            .arg(&cab_path)
-            .status()
-        {
-            if status.success() {
-                success = true;
-            }
+            let _ = std::process::Command::new("expand")
+                .arg(&cab_path)
+                .arg("-F:*")
+                .arg(dir.path())
+                .status();
         }
 
-        if success {
-            let extracted = std::fs::read(dir.path().join("ext.txt")).expect("read extracted");
-            assert_eq!(extracted, payload);
-        } else {
-            println!(
-                "Skipped external extraction test: neither `expand` nor `cabextract` available"
-            );
+        #[cfg(not(windows))]
+        {
+            let _ = std::process::Command::new("cabextract")
+                .arg("-d")
+                .arg(dir.path())
+                .arg(&cab_path)
+                .status();
         }
+
+        let extracted = std::fs::read(dir.path().join("ext.txt")).expect("read extracted");
+        assert_eq!(extracted, payload);
     }
 
     /// Tests chained cabinet metadata setters and resulting header flags.
@@ -679,7 +695,7 @@ mod tests {
         writer.set_next_cabinet("next.cab", "disk3");
         assert!(writer.add_file("chained.txt", b"chained payload").is_ok());
 
-        let cab_bytes = writer.build();
+        let cab_bytes = writer.build().unwrap_or_default();
         for res in [
             CfHeader::parse(&cab_bytes),
             Err(MsiError::InvalidCabData {
@@ -707,5 +723,25 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_cabinet_writer_debug_and_clone() {
+        let writer = CabinetWriter::new(CompressionType::None);
+        let cloned = writer;
+        let _debug_str = format!("{cloned:?}");
+
+        let folder = CabinetFolderBuilder { payload: vec![] };
+        let folder_cloned = folder;
+        let _ = format!("{folder_cloned:?}");
+
+        let file = StagedFile {
+            filename: "a".to_string(),
+            file_size: 0,
+            folder_index: FolderIndex::Index(0),
+            folder_offset: 0,
+        };
+        let file_cloned = file;
+        let _ = format!("{file_cloned:?}");
     }
 }

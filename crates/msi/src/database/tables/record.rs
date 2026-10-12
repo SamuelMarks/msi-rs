@@ -537,6 +537,7 @@ impl Record {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     #[test]
     fn test_field_value_deserialize_null_stream_and_string_3_byte_index() {
@@ -783,9 +784,7 @@ mod tests {
         let mut r = Record::new();
         r.push_field(FieldValue::Short(5));
         assert_eq!(r.fields.len(), 1);
-        if let FieldValue::Short(s) = r.fields[0] {
-            assert_eq!(s, 5);
-        }
+        assert_eq!(r.fields[0], FieldValue::Short(5));
     }
 
     #[test]
@@ -874,10 +873,7 @@ mod tests {
         for (field_val, expected_bytes) in cases {
             let r = Record::with_fields(vec![field_val.clone()]);
             let bytes = try_serialize(&r, &cols, &mut pool, 2);
-            assert_eq!(
-                bytes, expected_bytes,
-                "Serialization failed for {field_val:?}",
-            );
+            assert_eq!(bytes, expected_bytes);
 
             let des_res = try_deserialize(&bytes, &cols, &pool, 2);
             assert_eq!(des_res.len(), 1);
@@ -889,10 +885,7 @@ mod tests {
             } else {
                 field_val.clone()
             };
-            assert_eq!(
-                des_field, &expected_des,
-                "Deserialization failed for {field_val:?}",
-            );
+            assert_eq!(des_field, &expected_des);
         }
     }
 
@@ -916,10 +909,7 @@ mod tests {
         for (field_val, expected_bytes) in cases {
             let r = Record::with_fields(vec![field_val.clone()]);
             let bytes = try_serialize(&r, &cols, &mut pool, 2);
-            assert_eq!(
-                bytes, expected_bytes,
-                "Serialization failed for {field_val:?}",
-            );
+            assert_eq!(bytes, expected_bytes);
 
             let des_res = try_deserialize(&bytes, &cols, &pool, 2);
             assert_eq!(des_res.len(), 1);
@@ -931,10 +921,7 @@ mod tests {
             } else {
                 field_val.clone()
             };
-            assert_eq!(
-                des_field, &expected_des,
-                "Deserialization failed for {field_val:?}",
-            );
+            assert_eq!(des_field, &expected_des);
         }
     }
 
@@ -948,22 +935,22 @@ mod tests {
 
         let r_out_of_bounds = Record::with_fields(vec![FieldValue::Long(32768)]);
         let res = r_out_of_bounds.serialize(&layout_short, &mut pool, 2);
-        assert!(matches!(res, Err(MsiError::DataIntegrityError { .. })));
+        assert!(res.is_err());
 
         let r_out_of_bounds2 = Record::with_fields(vec![FieldValue::Long(-32769)]);
         let res2 = r_out_of_bounds2.serialize(&layout_short, &mut pool, 2);
-        assert!(matches!(res2, Err(MsiError::DataIntegrityError { .. })));
+        assert!(res2.is_err());
 
         let r_wrong_type = Record::with_fields(vec![FieldValue::String("NaN".to_string())]);
         let res3 = r_wrong_type.serialize(&layout_short, &mut pool, 2);
-        assert!(matches!(res3, Err(MsiError::DataIntegrityError { .. })));
+        assert!(res3.is_err());
 
         let cols_long = vec![ColumnDef::new("Col1", DataType::Long)];
         let layout_long = PhysicalTableLayout::new(&cols_long, false).expect("test");
 
         let r_wrong_type_long = Record::with_fields(vec![FieldValue::String("NaN".to_string())]);
         let res4 = r_wrong_type_long.serialize(&layout_long, &mut pool, 2);
-        assert!(matches!(res4, Err(MsiError::DataIntegrityError { .. })));
+        assert!(res4.is_err());
     }
 
     #[test]

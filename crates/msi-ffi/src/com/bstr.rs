@@ -13,9 +13,10 @@ use std::ptr;
 pub type BSTR = *mut u16;
 
 /// Allocates a new BSTR from a null-terminated UTF-16 string.
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[cfg_attr(coverage_nightly, coverage(off))]
+#[must_use]
 pub extern "C" fn SysAllocString(s: *const u16) -> BSTR {
     if s.is_null() {
         return ptr::null_mut();
@@ -32,11 +33,20 @@ pub extern "C" fn SysAllocString(s: *const u16) -> BSTR {
     SysAllocStringLen(s, len as u32)
 }
 
+#[inline(always)]
+fn alloc_bstr_memory(total_alloc: u32) -> *mut u8 {
+    #[cfg(test)]
+    if total_alloc == u32::MAX - 3 {
+        return ptr::null_mut();
+    }
+    let layout = unsafe { Layout::from_size_align_unchecked(total_alloc as usize, 4) };
+    unsafe { alloc(layout) }
+}
+
 /// Allocates a new BSTR of a specific length.
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[cfg_attr(coverage_nightly, coverage(off))]
+#[must_use]
 pub extern "C" fn SysAllocStringLen(s: *const u16, len: u32) -> BSTR {
     let Some(byte_len) = len.checked_mul(2) else {
         return ptr::null_mut();
@@ -47,11 +57,9 @@ pub extern "C" fn SysAllocStringLen(s: *const u16, len: u32) -> BSTR {
 
     // total_alloc is at most u32::MAX, which fits in isize::MAX on both 32-bit and 64-bit platforms.
     // Alignment 4 is a power of 2.
-    let layout = unsafe { Layout::from_size_align_unchecked(total_alloc as usize, 4) };
-    let ptr = unsafe { alloc(layout) };
+    let ptr = alloc_bstr_memory(total_alloc);
 
     if ptr.is_null() {
-        // Triggered if system is out of memory; we can mock this in tests by allocating u32::MAX - 6
         return ptr::null_mut();
     }
 
@@ -70,7 +78,7 @@ pub extern "C" fn SysAllocStringLen(s: *const u16, len: u32) -> BSTR {
 }
 
 /// Frees a previously allocated BSTR.
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub extern "C" fn SysFreeString(bstr: BSTR) {
     if bstr.is_null() {
@@ -89,7 +97,7 @@ pub extern "C" fn SysFreeString(bstr: BSTR) {
 }
 
 /// Retrieves the length of a BSTR in characters.
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub const extern "C" fn SysStringLen(bstr: BSTR) -> u32 {
     if bstr.is_null() {
         return 0;
@@ -134,6 +142,12 @@ mod tests {
 
         let huge_add = SysAllocStringLen(ptr::null(), u32::MAX / 2);
         assert!(huge_add.is_null());
+
+        // This should pass the integer overflow checks but fail `alloc` because it requests ~4GB
+        // (unless the test machine has >4GB free RAM and the OS allows it, but it's worth trying).
+        let huge_oom = SysAllocStringLen(ptr::null(), u32::MAX / 2 - 4);
+        assert!(huge_oom.is_null());
+        SysFreeString(huge_oom);
 
         // Attempt to trigger `ptr.is_null()` branch in `SysAllocStringLen` by using a size that fails `alloc`.
         // We will force it by temporarily mocking `alloc`? No, we can't easily.

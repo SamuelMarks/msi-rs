@@ -41,8 +41,9 @@ pub struct TargetProductCodeW(pub *const u16);
 ///
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiApplyPatchA(
     _sz_patch_package: *const c_char,
     _sz_install_package: *const c_char,
@@ -81,8 +82,9 @@ pub unsafe extern "system" fn MsiApplyPatchA(
 ///
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiApplyPatchW(
     _sz_patch_package: *const u16,
     _sz_install_package: *const u16,
@@ -122,7 +124,7 @@ pub unsafe extern "system" fn MsiApplyPatchW(
 ///
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 pub unsafe extern "system" fn MsiDeterminePatchSequenceA(
     _sz_product_code: TargetProductCodeA,
@@ -169,7 +171,7 @@ pub unsafe extern "system" fn MsiDeterminePatchSequenceA(
 ///
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 pub unsafe extern "system" fn MsiDeterminePatchSequenceW(
     _sz_product_code: TargetProductCodeW,
@@ -215,7 +217,7 @@ pub unsafe extern "system" fn MsiDeterminePatchSequenceW(
 /// The provided string pointers must be null-terminated if they are not null.
 /// The caller is responsible for providing a properly allocated buffer for `_sz_xml_data`
 /// and specifying its size in `_pcch_xml_data`. The caller must free any memory they allocate.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 pub unsafe extern "system" fn MsiExtractPatchXMLDataA(
     _sz_patch_path: *const c_char,
@@ -265,7 +267,7 @@ pub unsafe extern "system" fn MsiExtractPatchXMLDataA(
 /// The provided string pointers must be null-terminated if they are not null.
 /// The caller is responsible for providing a properly allocated buffer for `_sz_xml_data`
 /// and specifying its size in `_pcch_xml_data`. The caller must free any memory they allocate.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 pub unsafe extern "system" fn MsiExtractPatchXMLDataW(
     _sz_patch_path: *const u16,
@@ -312,8 +314,9 @@ pub unsafe extern "system" fn MsiExtractPatchXMLDataW(
 ///
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiRemovePatchesA(
     _sz_patch_list: *const c_char,
     _sz_product_code: *const c_char,
@@ -353,8 +356,9 @@ pub unsafe extern "system" fn MsiRemovePatchesA(
 ///
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiRemovePatchesW(
     _sz_patch_list: *const u16,
     _sz_product_code: *const u16,
@@ -516,6 +520,16 @@ mod tests {
             },
             0 // ERROR_SUCCESS
         );
+        assert_eq!(
+            unsafe { MsiExtractPatchXMLDataA(path_str.as_ptr(), 0, ptr::null_mut(), &mut size) },
+            0
+        );
+        assert_eq!(
+            unsafe {
+                MsiExtractPatchXMLDataA(path_str.as_ptr(), 0, buf.as_mut_ptr(), ptr::null_mut())
+            },
+            0
+        );
 
         let p_inv = temp_dir.join("invalid_manifest_test.msp");
         std::fs::File::create(&p_inv).unwrap();
@@ -557,6 +571,16 @@ mod tests {
                 MsiExtractPatchXMLDataW(path_w.as_ptr(), 0, ptr::null_mut(), ptr::null_mut())
             },
             0 // ERROR_SUCCESS
+        );
+        assert_eq!(
+            unsafe { MsiExtractPatchXMLDataW(path_w.as_ptr(), 0, ptr::null_mut(), &mut size) },
+            0
+        );
+        assert_eq!(
+            unsafe {
+                MsiExtractPatchXMLDataW(path_w.as_ptr(), 0, buf.as_mut_ptr(), ptr::null_mut())
+            },
+            0
         );
 
         let p_inv = temp_dir.join("invalid_manifest_test.msp");

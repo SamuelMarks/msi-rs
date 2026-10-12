@@ -435,6 +435,7 @@ impl MsiDecompiler {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::database::tables::record::Record;
@@ -962,7 +963,7 @@ mod tests {
             crate::cab::writer::CabinetWriter::new(crate::cab::folder::CompressionType::None);
         let _ = cab_writer.add_file("root_embedded.txt", b"root cab content");
         let _ = cab_writer.add_file("subfolder/embedded.txt", b"cab content");
-        let cab_bytes = cab_writer.build();
+        let cab_bytes = cab_writer.build().unwrap_or_default();
 
         let mut embedded_cabs = HashMap::new();
         embedded_cabs.insert("Data1.cab".to_string(), cab_bytes);

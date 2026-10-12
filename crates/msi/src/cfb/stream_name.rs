@@ -199,6 +199,7 @@ pub fn decode_msi_stream_name(encoded: &str) -> Result<(String, bool)> {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

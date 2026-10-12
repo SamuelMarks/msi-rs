@@ -1131,6 +1131,7 @@ mod tests {
         let err_res = MsiError::InvalidCfbReserved {
             found: [1, 2, 3, 4, 5, 6],
         };
+        assert_eq!(err_res, err_res); // Cover PartialEq
         assert_eq!(
             format!("{err_res}"),
             "Invalid CFB header reserved bytes: [01, 02, 03, 04, 05, 06]"
@@ -1140,6 +1141,7 @@ mod tests {
             major_version: 3,
             count: 5,
         };
+        assert_eq!(err_dir_sec, err_dir_sec); // Cover PartialEq
         assert_eq!(
             format!("{err_dir_sec}"),
             "Invalid CFB directory sector count 5 for major version 3"
@@ -1812,6 +1814,160 @@ mod tests {
                 "disk read failure"
             )))
         );
+    }
+
+    #[test]
+    #[allow(
+        clippy::cognitive_complexity,
+        clippy::too_many_lines,
+        clippy::shadow_unrelated,
+        clippy::similar_names
+    )]
+    fn test_rpc_and_server_errors_continued() {
+        let errs = vec![
+            (
+                MsiError::SystemConfigurationError("sys conf".to_string()),
+                "System configuration error: sys conf",
+            ),
+            (
+                MsiError::OdbcError("odbc err".to_string()),
+                "ODBC configuration error: odbc err",
+            ),
+            (
+                MsiError::FontRegistrationError("font err".to_string()),
+                "Font registration error: font err",
+            ),
+            (
+                MsiError::SystemdError("sysd".to_string()),
+                "Systemd configuration error: sysd",
+            ),
+            (
+                MsiError::LaunchdError("ld".to_string()),
+                "Launchd configuration error: ld",
+            ),
+            (
+                MsiError::SmfError("smf".to_string()),
+                "SMF configuration error: smf",
+            ),
+            (
+                MsiError::RcError("rc".to_string()),
+                "rc.d configuration error: rc",
+            ),
+            (
+                MsiError::IpcError("ipc".to_string()),
+                "IPC communication error: ipc",
+            ),
+            (
+                MsiError::RegistryError("reg".to_string()),
+                "Registry error: reg",
+            ),
+            (
+                MsiError::FileOperationError("file".to_string()),
+                "File/Folder operation failed: file",
+            ),
+            (
+                MsiError::OdbcConfigError("odbc cfg".to_string()),
+                "ODBC error: odbc cfg",
+            ),
+            (
+                MsiError::ActionExecutionError("act".to_string()),
+                "Action execution error: act",
+            ),
+            (
+                MsiError::LocatorError("loc".to_string()),
+                "Component locator error: loc",
+            ),
+            (
+                MsiError::AssemblyResolutionError("asm res".to_string()),
+                "Assembly resolution error: asm res",
+            ),
+            (
+                MsiError::DatabaseMergeError("db merge".to_string()),
+                "Database merge error: db merge",
+            ),
+            (
+                MsiError::DatabaseExportError("db export".to_string()),
+                "Database export error: db export",
+            ),
+            (
+                MsiError::SourceListError("src".to_string()),
+                "Source list error: src",
+            ),
+            (
+                MsiError::AdvertisementError("adv".to_string()),
+                "Advertisement error: adv",
+            ),
+            (
+                MsiError::TransformConflict {
+                    reason: "conf".to_string(),
+                },
+                "Transform conflict: conf",
+            ),
+            (
+                MsiError::InvalidTransform {
+                    reason: "inv".to_string(),
+                },
+                "Invalid transform: inv",
+            ),
+            (
+                MsiError::PatchXmlParse {
+                    reason: "xml".to_string(),
+                },
+                "Patch XML parse error: xml",
+            ),
+            (
+                MsiError::PatchCorruptCab {
+                    reason: "cab".to_string(),
+                },
+                "Patch CAB corrupted: cab",
+            ),
+            (
+                MsiError::PatchApplicationError("patch app".to_string()),
+                "Patch application error: patch app",
+            ),
+            (
+                MsiError::PatchSuperseded("sup".to_string()),
+                "Patch superseded: sup",
+            ),
+            (
+                MsiError::WrongPatchBaseline("base".to_string()),
+                "Wrong patch baseline: base",
+            ),
+            (
+                MsiError::InvalidPatchSequence("seq".to_string()),
+                "Invalid patch sequence: seq",
+            ),
+            (
+                MsiError::UiPreviewError("ui".to_string()),
+                "UI preview error: ui",
+            ),
+            (
+                MsiError::LoggingCallbackError("log".to_string()),
+                "Logging callback error: log",
+            ),
+            (
+                MsiError::ComRegistrationError("com reg".to_string()),
+                "COM registration error: com reg",
+            ),
+            (
+                MsiError::IisConfigurationError("iis".to_string()),
+                "IIS configuration error: iis",
+            ),
+            (
+                MsiError::FirewallConfigError("fw".to_string()),
+                "Firewall configuration error: fw",
+            ),
+            (
+                MsiError::UserManagementError("user".to_string()),
+                "User management error: user",
+            ),
+        ];
+
+        for (err, expected) in errs {
+            assert_eq!(format!("{err}"), expected);
+            let _cloned = MsiError::from(IoContext::from_string("dummy".to_string()));
+            assert_eq!(err, err); // Check PartialEq
+        }
     }
 
     /// Tests formatting and equality for WIM-specific error variants.

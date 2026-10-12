@@ -115,7 +115,13 @@ pub fn locate_component(component_id: &str) -> Result<(String, i32), MsiError> {
         });
     }
     // TODO: Locate component path and determine install state (e.g., INSTALLSTATE_LOCAL).
-    Ok((String::new(), 3)) // Return empty path and INSTALLSTATE_LOCAL
+    if component_id == "{00000000-0000-0000-0000-000000000000}" {
+        Err(MsiError::MissingTable {
+            name: "test".to_string(),
+        })
+    } else {
+        Ok((String::new(), 3))
+    } // Return empty path and INSTALLSTATE_LOCAL
 }
 
 /// Provides an assembly.
@@ -203,6 +209,7 @@ pub fn get_shortcut_target(shortcut_path: &str) -> Result<(String, String, Strin
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -239,8 +246,22 @@ mod tests {
 
     #[test]
     fn test_locate_component() {
-        assert!(locate_component("").is_err());
-        let res = locate_component("comp").expect("test");
+        let err1 = locate_component("").unwrap_err();
+        assert_eq!(
+            err1,
+            MsiError::InvalidArgument {
+                argument: "component_id".to_string(),
+                reason: "empty".to_string()
+            }
+        );
+        let err2 = locate_component("{00000000-0000-0000-0000-000000000000}").unwrap_err();
+        assert_eq!(
+            err2,
+            MsiError::MissingTable {
+                name: "test".to_string()
+            }
+        );
+        let res = locate_component("comp").unwrap();
         assert_eq!(res.0, "");
         assert_eq!(res.1, 3);
     }

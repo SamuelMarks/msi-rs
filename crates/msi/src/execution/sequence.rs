@@ -39,6 +39,7 @@ impl From<&str> for SequenceName {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -54,6 +55,19 @@ mod tests {
     #[test]
     fn test_sequence_name_from_str() {
         let name: SequenceName = "InstallUISequence".into();
+        let _ = format!("{name:?}");
+
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::Hash;
+        let mut hasher = DefaultHasher::new();
+        name.hash(&mut hasher);
+
+        let status = ActionStatus::Success;
+        let status2 = status; // Copy
+        assert_eq!(status, status2);
+        assert_eq!(status.clone(), status2);
+        let _ = format!("{status:?}");
+
         assert_eq!(name.0, "InstallUISequence");
         assert_eq!(name.to_string(), "InstallUISequence");
     }

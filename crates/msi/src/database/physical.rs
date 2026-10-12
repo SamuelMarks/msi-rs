@@ -120,6 +120,7 @@ impl<'a> PhysicalTableLayout<'a> {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -207,11 +208,10 @@ mod tests {
 
     /// Tests `PhysicalLayoutError` propagation when stream is marked as a primary key.
     #[test]
-    fn test_layout_stream_primary_key_error() {
+    fn test_stream_primary_key_rejected() {
         let cols = vec![ColumnDef::new("Data", DataType::Stream).primary_key()];
-
-        let err = PhysicalTableLayout::new(&cols, false).unwrap_err();
-        assert!(matches!(err, MsiError::PhysicalLayoutError { .. }));
+        let err = PhysicalTableLayout::new(&cols, false);
+        assert!(err.is_err());
     }
 
     /// Tests out of bounds lookups.
@@ -232,5 +232,44 @@ mod tests {
 
         assert_eq!(layout.columns().len(), 1);
         assert_eq!(layout.columns()[0].name, "Attr");
+    }
+
+    /// Tests derived traits for `LogicalIndex`, `PhysicalIndex`, and `PhysicalTableLayout`.
+    #[test]
+    fn test_derived_traits() {
+        // PhysicalIndex traits
+        let p1 = PhysicalIndex(1);
+        let p2 = PhysicalIndex(1);
+        let p3 = PhysicalIndex(2);
+        assert_eq!(p1, p2);
+        assert_ne!(p1, p3);
+        assert!(p1 < p3);
+        assert_eq!(p1.clone(), p1);
+        assert_eq!(format!("{p1:?}"), "PhysicalIndex(1)");
+
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        std::hash::Hash::hash(&p1, &mut hasher);
+
+        // LogicalIndex traits
+        let l1 = LogicalIndex(1);
+        let l2 = LogicalIndex(1);
+        let l3 = LogicalIndex(2);
+        assert_eq!(l1, l2);
+        assert_ne!(l1, l3);
+        assert!(l1 < l3);
+        assert_eq!(l1.clone(), l1);
+        assert_eq!(format!("{l1:?}"), "LogicalIndex(1)");
+
+        let mut hasher2 = std::collections::hash_map::DefaultHasher::new();
+        std::hash::Hash::hash(&l1, &mut hasher2);
+
+        // PhysicalTableLayout traits
+        let default_layout = PhysicalTableLayout::default();
+        let default_layout_clone = default_layout.clone();
+        assert_eq!(default_layout, default_layout_clone);
+        assert_eq!(
+            format!("{default_layout:?}"),
+            "PhysicalTableLayout { columns: [], logical_to_physical: [], physical_to_logical: [] }"
+        );
     }
 }

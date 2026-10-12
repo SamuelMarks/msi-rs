@@ -94,6 +94,7 @@ pub fn resolve_darwin_descriptor(descriptor: &str) -> Result<String> {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -122,6 +123,6 @@ mod tests {
         assert_eq!(res, "/path/from/darwin_descriptor.exe");
 
         let err = resolve_darwin_descriptor("short").unwrap_err();
-        assert!(matches!(err, MsiError::ActionExecutionError(_)));
+        assert!(err.to_string().contains("Invalid"));
     }
 }

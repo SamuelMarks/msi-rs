@@ -28,9 +28,10 @@ use msi::database::tables::record::Record;
 /// # Returns
 ///
 /// The new record handle, or `MSI_NULL_HANDLE` on error.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[must_use]
 pub extern "system" fn MsiCreateRecord(cParams: Uint) -> MsiHandle {
     let result = panic::catch_unwind(|| {
         let rec = Record::new();
@@ -54,9 +55,10 @@ pub extern "system" fn MsiCreateRecord(cParams: Uint) -> MsiHandle {
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_HANDLE`
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[must_use]
 pub extern "system" fn MsiRecordSetInteger(hRecord: MsiHandle, iField: Uint, iValue: i32) -> Uint {
     let result = panic::catch_unwind(|| {
         with_handle_mut(hRecord, |obj| {
@@ -84,9 +86,10 @@ pub extern "system" fn MsiRecordSetInteger(hRecord: MsiHandle, iField: Uint, iVa
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_HANDLE`, `ERROR_INVALID_PARAMETER`
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[must_use]
 pub extern "system" fn MsiRecordSetStringW(
     hRecord: MsiHandle,
     iField: Uint,
@@ -109,9 +112,10 @@ pub extern "system" fn MsiRecordSetStringW(
 }
 
 /// Sets a string field in a record in ANSI (`A`).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[must_use]
 pub extern "system" fn MsiRecordSetStringA(
     hRecord: MsiHandle,
     iField: Uint,
@@ -138,9 +142,10 @@ pub extern "system" fn MsiRecordSetStringA(
 /// # Returns
 ///
 /// The integer value, or `MSI_NULL_INTEGER` (0x80000000) on error.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[must_use]
 pub extern "system" fn MsiRecordGetInteger(hRecord: MsiHandle, iField: Uint) -> i32 {
     let result = panic::catch_unwind(|| {
         with_handle(hRecord, |obj| {
@@ -157,7 +162,7 @@ pub extern "system" fn MsiRecordGetInteger(hRecord: MsiHandle, iField: Uint) -> 
 }
 
 /// Gets a string field from a record in Unicode (`W`).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiRecordGetStringW(
@@ -182,7 +187,7 @@ pub extern "system" fn MsiRecordGetStringW(
 }
 
 /// Gets a string field from a record in ANSI (`A`).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiRecordGetStringA(
@@ -207,9 +212,10 @@ pub extern "system" fn MsiRecordGetStringA(
 }
 
 /// Clears all fields in a record.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
+#[must_use]
 pub extern "system" fn MsiRecordClearData(hRecord: MsiHandle) -> Uint {
     let result = panic::catch_unwind(|| {
         with_handle_mut(hRecord, |obj| {
@@ -230,9 +236,10 @@ pub extern "system" fn MsiRecordClearData(hRecord: MsiHandle) -> Uint {
 /// # Returns
 ///
 /// The handle to the error record, or `MSI_NULL_HANDLE` if no error record exists.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case)]
+#[must_use]
 pub extern "system" fn MsiGetLastErrorRecord() -> MsiHandle {
     let result = panic::catch_unwind(|| {
         // TODO: Map to thread-local MSI error records, currently we only expose FFI text errors.

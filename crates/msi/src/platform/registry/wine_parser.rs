@@ -137,9 +137,9 @@ impl WineRegHive {
                         WineRegValue::Hex(3, vec![])
                     };
 
-                    if let Some(key) = hive.keys.get_mut(&current_key) {
+                    hive.keys.entry(current_key.clone()).and_modify(|key| {
                         key.values.insert(key_str, val);
-                    }
+                    });
                 }
             }
         }
@@ -189,51 +189,165 @@ impl WineRegHive {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use std::io::Cursor;
+    use tempfile::NamedTempFile;
 
     #[test]
-    fn test_parse_empty() {
+    fn test_parse_empty() -> Result<()> {
         let empty = "";
         let res = WineRegHive::parse_reader(Cursor::new(empty));
         assert!(res.is_err());
+        Ok(())
     }
 
     #[test]
-    fn test_parse_invalid_header() {
+    fn test_parse_invalid_header() -> Result<()> {
         let invalid = "WINE REGISTRY Version 1\n";
         let res = WineRegHive::parse_reader(Cursor::new(invalid));
         assert!(res.is_err());
+        Ok(())
     }
 
     #[test]
-    fn test_parse_valid_header() {
+    fn test_parse_valid_header() -> Result<()> {
         let valid = "WINE REGISTRY Version 2\n";
-        let res = WineRegHive::parse_reader(Cursor::new(valid)).unwrap();
+        let res = WineRegHive::parse_reader(Cursor::new(valid))?;
         assert!(res.keys.is_empty());
+        Ok(())
     }
-}
 
-#[test]
-fn test_parse_and_serialize_roundtrip() {
-    use std::io::Cursor;
-    let valid = "WINE REGISTRY Version 2\n\n[Software\\Acme] 1234567\n\"Test\"=\"Value\"\n\"Num\"=dword:0000000a\n\n";
-    let hive = WineRegHive::parse_reader(Cursor::new(valid)).unwrap();
-    assert_eq!(hive.keys.len(), 1);
+    #[test]
+    fn test_parse_file() -> Result<()> {
+        let mut file = NamedTempFile::new()?;
+        writeln!(file, "WINE REGISTRY Version 2")?;
+        let hive = WineRegHive::parse_file(file.path())?;
+        assert!(hive.keys.is_empty());
 
-    let key = &hive.keys["Software\\Acme"];
-    assert_eq!(key.timestamp, 1_234_567);
-    assert_eq!(
-        key.values.get("Test"),
-        Some(&WineRegValue::String("Value".to_string()))
-    );
-    assert_eq!(key.values.get("Num"), Some(&WineRegValue::Dword(10)));
+        let res = WineRegHive::parse_file(Path::new("/does/not/exist/registry"));
+        assert!(res.is_err());
+        Ok(())
+    }
 
-    let mut out = Vec::new();
-    hive.serialize(&mut out).unwrap();
-    let serialized = String::from_utf8(out).unwrap();
-    assert!(serialized.contains("[Software\\Acme] 1234567"));
-    assert!(serialized.contains("\"Test\"=\"Value\""));
-    assert!(serialized.contains("\"Num\"=dword:0000000a"));
+    #[test]
+    fn test_parse_and_serialize_roundtrip() -> Result<()> {
+        let valid = "WINE REGISTRY Version 2\n\n[Software\\Acme] 1234567\n\"Test\"=\"Value\"\n\"Num\"=dword:0000000a\n\n";
+        let hive = WineRegHive::parse_reader(Cursor::new(valid))?;
+        assert_eq!(hive.keys.len(), 1);
+
+        let key = &hive.keys["Software\\Acme"];
+        assert_eq!(key.timestamp, 1_234_567);
+        assert_eq!(
+            key.values.get("Test"),
+            Some(&WineRegValue::String("Value".to_string()))
+        );
+        assert_eq!(key.values.get("Num"), Some(&WineRegValue::Dword(10)));
+
+        let mut out = Vec::new();
+        hive.serialize(&mut out)?;
+        let serialized = String::from_utf8(out).expect("valid utf8");
+        assert!(serialized.contains("[Software\\Acme] 1234567"));
+        assert!(serialized.contains("\"Test\"=\"Value\""));
+        assert!(serialized.contains("\"Num\"=dword:0000000a"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_various_keys_and_values() -> Result<()> {
+        let content = "WINE REGISTRY Version 2\n\n\
+        ; comment\n\
+        \"BeforeAnyKey\"=\"123\"\n\
+        [NoTimestamp]\n\
+        @=\"DefaultValue\"\n\
+        \"MissingQuote=String\n\
+        \"DwordInvalid\"=dword:invalid\n\
+        \"HexData\"=hex:01,02\n\
+        [UnclosedKey\n\
+        [Key]] 123\n\
+        \"Another\"=\"Value\"\n\
+        NoEqualsHere\n\
+        @=hex:00";
+
+        let hive = WineRegHive::parse_reader(Cursor::new(content))?;
+
+        assert!(hive.keys.contains_key("NoTimestamp"));
+        let key1 = &hive.keys["NoTimestamp"];
+        assert_eq!(key1.timestamp, 0);
+        assert_eq!(
+            key1.values.get(""),
+            Some(&WineRegValue::String("DefaultValue".to_string()))
+        );
+        assert_eq!(
+            key1.values.get("DwordInvalid"),
+            Some(&WineRegValue::Dword(0))
+        );
+        assert_eq!(
+            key1.values.get("HexData"),
+            Some(&WineRegValue::Hex(3, vec![]))
+        );
+
+        assert!(hive.keys.contains_key("UnclosedKe"));
+        assert!(hive.keys.contains_key("Key"));
+        assert_eq!(hive.keys["Key"].timestamp, 123);
+        assert_eq!(
+            hive.keys["Key"].values.get("Another"),
+            Some(&WineRegValue::String("Value".to_string()))
+        );
+        assert_eq!(
+            hive.keys["Key"].values.get(""),
+            Some(&WineRegValue::Hex(3, vec![]))
+        );
+
+        let mut out = Vec::new();
+        hive.serialize(&mut out)?;
+        let serialized = String::from_utf8(out).expect("valid utf8");
+        assert!(serialized.contains("[NoTimestamp]"));
+        assert!(serialized.contains("@=\"DefaultValue\""));
+        assert!(serialized.contains("\"HexData\"=hex(3):"));
+        assert!(serialized.contains("[Key] 123"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_bad_timestamp() -> Result<()> {
+        let content = "WINE REGISTRY Version 2\n\n\
+        [Software] badtimestamp\n";
+        let hive = WineRegHive::parse_reader(Cursor::new(content))?;
+        assert_eq!(hive.keys["Software"].timestamp, 0);
+        Ok(())
+    }
+
+    #[test]
+    fn test_wine_reg_value_derives() {
+        let v_str = WineRegValue::String("A".into());
+        let v_exp = WineRegValue::ExpandString("B".into());
+        let v_mul = WineRegValue::MultiString(vec!["C".into()]);
+        let v_dw = WineRegValue::Dword(1);
+        let v_qw = WineRegValue::Qword(2);
+        let v_hex = WineRegValue::Hex(3, vec![0xFF]);
+
+        assert_eq!(v_str, v_str.clone());
+        assert_eq!(v_exp, v_exp.clone());
+        assert_eq!(v_mul, v_mul.clone());
+        assert_eq!(v_dw, v_dw.clone());
+        assert_eq!(v_qw, v_qw.clone());
+        assert_eq!(v_hex, v_hex.clone());
+
+        assert_ne!(v_str, v_exp);
+        assert_ne!(v_exp, v_mul);
+        assert_ne!(v_mul, v_dw);
+        assert_ne!(v_dw, v_qw);
+        assert_ne!(v_qw, v_hex);
+        assert_ne!(v_hex, v_str);
+
+        assert_eq!(format!("{v_str:?}"), "String(\"A\")");
+        assert_eq!(format!("{v_exp:?}"), "ExpandString(\"B\")");
+        assert_eq!(format!("{v_mul:?}"), "MultiString([\"C\"])");
+        assert_eq!(format!("{v_dw:?}"), "Dword(1)");
+        assert_eq!(format!("{v_qw:?}"), "Qword(2)");
+        assert_eq!(format!("{v_hex:?}"), "Hex(3, [255])");
+    }
 }

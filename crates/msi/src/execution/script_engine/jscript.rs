@@ -2286,6 +2286,7 @@ impl JScriptEngine {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::EvaluationContext;
@@ -2372,11 +2373,8 @@ mod tests {
         let mut engine = JScriptEngine::new();
 
         let script = "var x = ;";
-        let res = engine.execute(script, &mut session);
-        assert!(matches!(
-            res,
-            Err(MsiError::ScriptRuntimeError { line: 1, .. })
-        ));
+        let res = engine.execute(script, &mut session).unwrap_err();
+        assert!(res.to_string().contains("at line 1"));
     }
 
     #[test]
@@ -2793,10 +2791,10 @@ mod tests {
         let mut fuel_session = ScriptSession::with_fuel(EvaluationContext::new(), 10);
         let mut engine = JScriptEngine::new();
         let while_infinite = "while (true) { }";
-        assert!(matches!(
-            engine.execute(while_infinite, &mut fuel_session),
-            Err(MsiError::ScriptRuntimeError { .. })
-        ));
+        let res = engine
+            .execute(while_infinite, &mut fuel_session)
+            .unwrap_err();
+        assert!(res.to_string().contains("step limit"));
     }
     #[allow(clippy::cognitive_complexity)]
     /// Tests remaining uncovered branches in property mirroring, assignments, and expressions.

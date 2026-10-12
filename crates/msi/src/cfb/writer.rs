@@ -632,7 +632,7 @@ impl CfbWriter {
 }
 
 #[cfg(test)]
-#[allow(clippy::manual_flatten)]
+#[allow(clippy::manual_flatten, clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::cfb::reader::CfbReader;
@@ -1025,7 +1025,7 @@ mod phase4_tests {
     #[test]
     fn test_cfb_writer_injects_mandatory_msi_guid() -> Result<()> {
         let mut writer = CfbWriter::new(CfbVersion::V3);
-        writer.add_stream("TestStream", b"content")?;
+        writer.add_stream("TestStream", b"content").expect("test");
         let bytes = writer.build();
         let first_dir_sector = u32::from_le_bytes([bytes[48], bytes[49], bytes[50], bytes[51]]);
         let root_entry_offset = 512 + (first_dir_sector as usize * 512);

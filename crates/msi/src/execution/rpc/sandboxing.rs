@@ -43,12 +43,14 @@ impl CustomActionSandbox {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_sandbox_stubs() {
         let sandbox = CustomActionSandbox;
+        let _ = format!("{sandbox:?}");
         assert_eq!(
             sandbox
                 .execute_with_timeout(Duration::from_secs(1), || 42)

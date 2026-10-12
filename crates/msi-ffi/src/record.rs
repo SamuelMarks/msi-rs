@@ -4,7 +4,7 @@ use msi::error::MsiError;
 use msi::execution::custom_action::{global_handles, MSIHANDLE};
 
 /// Creates a new record object.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 pub extern "system" fn MsiCreateRecord(c_params: u32) -> MSIHANDLE {
     std::panic::catch_unwind(|| {
@@ -18,7 +18,7 @@ pub extern "system" fn MsiCreateRecord(c_params: u32) -> MSIHANDLE {
 }
 
 /// Retrieves an integer field from a record.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 pub extern "system" fn MsiRecordGetInteger(h_record: MSIHANDLE, i_field: u32) -> i32 {
     std::panic::catch_unwind(|| {
@@ -41,7 +41,7 @@ pub extern "system" fn MsiRecordGetInteger(h_record: MSIHANDLE, i_field: u32) ->
 }
 
 /// Sets an integer field in a record.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 pub extern "system" fn MsiRecordSetInteger(h_record: MSIHANDLE, i_field: u32, i_value: i32) -> u32 {
     std::panic::catch_unwind(|| {
@@ -66,7 +66,7 @@ pub extern "system" fn MsiRecordSetInteger(h_record: MSIHANDLE, i_field: u32, i_
 }
 
 /// Retrieves a string field from a record (UTF-16).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 pub unsafe extern "system" fn MsiRecordGetStringW(
     h_record: MSIHANDLE,
@@ -125,7 +125,7 @@ pub unsafe extern "system" fn MsiRecordGetStringW(
 }
 
 /// Sets a string field in a record (UTF-16).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 pub unsafe extern "system" fn MsiRecordSetStringW(
     h_record: MSIHANDLE,
@@ -174,7 +174,7 @@ pub unsafe extern "system" fn MsiRecordSetStringW(
 }
 
 /// Retrieves the size of a record field (stream or string).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 pub extern "system" fn MsiRecordDataSize(h_record: MSIHANDLE, i_field: u32) -> u32 {
     std::panic::catch_unwind(|| {

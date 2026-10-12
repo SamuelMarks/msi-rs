@@ -150,7 +150,8 @@ pub fn decompress_xpress_huffman(_input: &[u8], _output_size: usize) -> Result<V
     clippy::shadow_unrelated,
     clippy::unreadable_literal,
     clippy::assert_is_empty,
-    clippy::cast_possible_truncation
+    clippy::cast_possible_truncation,
+    clippy::redundant_clone
 )]
 mod tests {
     use super::*;

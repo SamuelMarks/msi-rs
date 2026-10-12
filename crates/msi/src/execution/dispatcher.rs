@@ -66,7 +66,6 @@ impl<'a> ActionDispatcher<'a> {
 
         for record in rows {
             let fields = record.fields();
-            assert!(fields.len() >= 3, "Invalid sequence table format");
 
             let action = match &fields[0] {
                 crate::database::tables::record::FieldValue::String(s) => s.clone(),
@@ -136,6 +135,7 @@ impl<'a> ActionDispatcher<'a> {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -334,5 +334,63 @@ fn test_execute_force_success_sequence_fixed() {
 
     let mut dispatcher = ActionDispatcher::new(&mut transaction);
     let res = dispatcher.execute_sequence(&SequenceName::from("ForceSuccessSequence"));
-    assert!(matches!(res, Ok(ActionStatus::Success)));
+    assert_eq!(res, Ok(ActionStatus::Success));
+}
+
+#[cfg(test)]
+mod additional_tests {
+    use super::*;
+    use crate::database::tables::record::{FieldValue, Record};
+    use crate::execution::properties::EvaluationContext;
+    use crate::execution::Transaction;
+    use crate::wix::LinkedDatabase;
+
+    #[test]
+    fn test_execute_sequence_table_not_found() {
+        let mut transaction = Transaction::new(
+            LinkedDatabase::default(),
+            EvaluationContext::new(),
+            crate::execution::DiskCostEngine::new(),
+        );
+
+        let mut dispatcher = ActionDispatcher::new(&mut transaction);
+        let res = dispatcher.execute_sequence(&SequenceName::from("NonExistentSequence"));
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_execute_sequence_invalid_field_types() {
+        let mut db = LinkedDatabase::default();
+
+        // fields[0] is not a string -> should continue
+        db.add_record(
+            "InstallExecuteSequence",
+            Record::with_fields(vec![
+                FieldValue::Short(1),
+                FieldValue::Null,
+                FieldValue::Short(100),
+            ]),
+        );
+
+        // fields[1] is not a string or null -> should default to empty condition
+        db.add_record(
+            "InstallExecuteSequence",
+            Record::with_fields(vec![
+                FieldValue::String("ValidAction".to_string()),
+                FieldValue::Short(1), // not string/null
+                FieldValue::Short(200),
+            ]),
+        );
+
+        let mut transaction = Transaction::new(
+            db,
+            EvaluationContext::new(),
+            crate::execution::DiskCostEngine::new(),
+        );
+        let mut dispatcher = ActionDispatcher::new(&mut transaction);
+        let res = dispatcher
+            .execute_sequence(&SequenceName::from("InstallExecuteSequence"))
+            .unwrap();
+        assert_eq!(res, ActionStatus::Success);
+    }
 }

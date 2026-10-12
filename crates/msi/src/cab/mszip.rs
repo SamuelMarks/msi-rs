@@ -255,7 +255,35 @@ impl MszipDecompressor {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
+
+    #[test]
+    fn test_mszip_compress_done_loop() {
+        let mut comp = MszipCompressor::new();
+        // Generate enough highly random data to force miniz to output > 1024 bytes
+        let mut random_data = vec![0u8; 15000];
+        let mut state: u32 = 12345;
+        for b in &mut random_data {
+            state = state.wrapping_mul(1_103_515_245).wrapping_add(12345);
+            *b = (state >> 16) as u8;
+        }
+        let _ = comp.compress(&random_data).unwrap();
+    }
+
+    #[test]
+    fn test_mszip_compress_overflow() {
+        let mut comp = MszipCompressor::new();
+        // Fill history exactly
+        let exact = vec![b'H'; MSZIP_BLOCK_SIZE];
+        let _ = comp.compress(&exact).unwrap();
+
+        // Push past history
+        let push = vec![b'P'; 100];
+        let _ = comp.compress(&push).unwrap();
+        assert_eq!(comp.history.len(), MSZIP_BLOCK_SIZE);
+    }
+
     use super::*;
 
     /// Tests compression and decompression roundtrip of small and block-sized payloads.
@@ -300,10 +328,7 @@ mod tests {
         // Because of the sliding window, this should compress incredibly well
         let chunk2 = vec![b'A'; 15000];
         let comp2 = comp.compress(&chunk2).expect("test");
-        assert!(
-            comp2.len() < 100,
-            "Second block should be highly compressed due to history"
-        );
+        assert!(comp2.len() < 100);
         let dec2 = decomp.decompress_block(&comp2, chunk2.len()).expect("test");
         assert_eq!(dec2, chunk2);
 
@@ -346,5 +371,37 @@ mod tests {
         // Corrupt deflate payload
         let bad_payload = [0x43, 0x4B, 0xFF, 0xFF, 0xFF, 0xFF];
         assert!(decomp.decompress_block(&bad_payload, 10).is_err());
+    }
+}
+
+#[cfg(test)]
+mod random_tests {
+    use super::*;
+
+    #[test]
+    fn test_mszip_uncompressible() {
+        let mut comp = MszipCompressor::new();
+        let mut random_data = vec![0u8; 200_000];
+        for (i, b) in random_data.iter_mut().enumerate() {
+            *b = (i % 256) as u8;
+        }
+        let _ = comp.compress(&random_data);
+    }
+}
+
+#[cfg(test)]
+mod random_tests_2 {
+    use super::*;
+
+    #[test]
+    fn test_mszip_uncompressible_true() {
+        let mut comp = MszipCompressor::new();
+        let mut random_data = vec![0u8; 200_000];
+        let mut state: u32 = 12345;
+        for b in &mut random_data {
+            state = state.wrapping_mul(1_103_515_245).wrapping_add(12345);
+            *b = (state >> 16) as u8;
+        }
+        let _ = comp.compress(&random_data);
     }
 }

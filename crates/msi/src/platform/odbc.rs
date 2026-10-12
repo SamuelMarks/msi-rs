@@ -222,6 +222,8 @@ pub mod posix_impl {
                         .entry(current_section.clone())
                         .or_default()
                         .insert(k.trim().to_string(), v.trim().to_string());
+                } else {
+                    return Err(MsiError::OdbcConfigError("Invalid INI format".to_string()));
                 }
             }
 
@@ -322,6 +324,7 @@ pub mod posix_impl {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     #[allow(unused_imports)]
@@ -438,7 +441,10 @@ mod tests {
         assert_eq!(parsed["PostgreSQL"]["Driver"], "/usr/lib/psql.so");
 
         let err = OdbcManager::parse_ini("Key=Value\n[S]").unwrap_err();
-        assert!(matches!(err, MsiError::OdbcConfigError(_)));
+        assert!(err.to_string().contains("Key before section header"));
+
+        let err2 = OdbcManager::parse_ini("[S]\nInvalidLine").unwrap_err();
+        assert!(err2.to_string().contains("Invalid INI format"));
 
         let serialized = OdbcManager::write_ini(&parsed);
         assert!(serialized.contains("[PostgreSQL]\nDescription=Driver\nDriver=/usr/lib/psql.so\n"));

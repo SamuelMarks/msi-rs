@@ -441,6 +441,7 @@ fn rows_primary_keys_match(
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::error::MsiError;
@@ -487,6 +488,10 @@ mod tests {
             .validate(&db)
             .expect_err("Expected TransformConflict");
         assert!(err.to_string().contains("Mismatched UpgradeCode"));
+        let apply_err = transform
+            .apply(&mut db)
+            .expect_err("Expected TransformConflict");
+        assert!(apply_err.to_string().contains("Mismatched UpgradeCode"));
 
         transform.summary_info.rev_number =
             Some("SHORT;NONE;{22222222-2222-2222-2222-222222222222}".to_string());
@@ -760,7 +765,10 @@ mod tests {
 
                 let prop_trans = &transform.tables["Property"];
                 assert_eq!(prop_trans.operations.len(), 1);
-                assert!(matches!(prop_trans.operations[0], RowOperation::Delete(_)));
+                assert_eq!(
+                    std::mem::discriminant(&prop_trans.operations[0]),
+                    std::mem::discriminant(&RowOperation::Delete(Record::new()))
+                );
             } else {
                 assert!(!ok);
             }

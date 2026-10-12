@@ -116,7 +116,21 @@ impl AssemblyManifest {
     ///
     /// The parsed assembly manifest.
     pub fn from_pe_file(pe_path: &std::path::Path) -> Result<Self> {
-        let content = crate::execution::manifest_extract::extract_manifest(pe_path)?;
+        Self::from_pe_file_with_extractor(
+            pe_path,
+            crate::execution::manifest_extract::extract_manifest,
+        )
+    }
+
+    /// Extracts and parses an assembly manifest using a custom extraction function.
+    ///
+    /// # Errors
+    /// Returns an error if the manifest extraction or parsing fails.
+    pub fn from_pe_file_with_extractor(
+        pe_path: &std::path::Path,
+        extractor: fn(&std::path::Path) -> Result<String>,
+    ) -> Result<Self> {
+        let content = extractor(pe_path)?;
         let identity = ManifestXML::parse(&content)?;
         Ok(Self {
             identity,
@@ -543,6 +557,7 @@ pub mod posix_mock {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use std::fs;
@@ -554,10 +569,36 @@ mod tests {
         assert_eq!(valid.as_str(), "b77a5c561934e089");
 
         let invalid_len = PublicKeyToken::parse("12345678");
-        assert!(matches!(invalid_len, Err(MsiError::AssemblyError(_))));
+        assert!(invalid_len.is_err());
 
         let invalid_chars = PublicKeyToken::parse("zzzzzzzzzzzzzzzz");
-        assert!(matches!(invalid_chars, Err(MsiError::AssemblyError(_))));
+        assert!(invalid_chars.is_err());
+    }
+
+    #[test]
+    fn test_from_pe_file_mocked() {
+        let valid_path = Path::new("mock_valid_pe.dll");
+        let asm = AssemblyManifest::from_pe_file_with_extractor(valid_path, |_| {
+            Ok("<assemblyIdentity name=\"App\" version=\"1.0\" />".to_string())
+        })
+        .expect("test");
+        assert_eq!(asm.identity.name, "App");
+
+        let invalid_xml_path = Path::new("mock_invalid_xml.dll");
+        assert!(
+            AssemblyManifest::from_pe_file_with_extractor(invalid_xml_path, |_| {
+                Ok("<assemblyIdentity name=\"App\"".to_string())
+            })
+            .is_err()
+        );
+
+        let extract_err_path = Path::new("mock_err.dll");
+        assert!(
+            AssemblyManifest::from_pe_file_with_extractor(extract_err_path, |_| {
+                Err(MsiError::SxSError("Mock extraction error".to_string()))
+            })
+            .is_err()
+        );
     }
 
     #[test]
@@ -568,17 +609,17 @@ mod tests {
 
     #[test]
     fn test_assembly_manifest_from_file() -> Result<()> {
-        let temp_dir = tempfile::tempdir()
-            .map_err(|e| MsiError::Io(crate::error::IoContext::from_string(e.to_string())))?;
+        assert!(AssemblyManifest::from_file(Path::new("does_not_exist_file_123.txt")).is_err());
+
+        let temp_dir = tempfile::tempdir().expect("test IO error");
         let valid_manifest = temp_dir.path().join("valid.manifest");
         let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
         <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
             <assemblyIdentity name="App" version="1.0" publicKeyToken="b77a5c561934e089" processorArchitecture="amd64" />
         </assembly>"#;
-        fs::write(&valid_manifest, xml.as_bytes())
-            .map_err(|e| MsiError::Io(crate::error::IoContext::from_string(e.to_string())))?;
+        fs::write(&valid_manifest, xml.as_bytes()).expect("test IO error");
 
-        let manifest = AssemblyManifest::from_file(&valid_manifest)?;
+        let manifest = AssemblyManifest::from_file(&valid_manifest).expect("test");
         assert_eq!(manifest.identity.name, "App");
         assert_eq!(
             manifest.identity.processor_architecture,
@@ -587,6 +628,10 @@ mod tests {
         assert_eq!(manifest.path, valid_manifest);
 
         assert!(AssemblyManifest::from_file(Path::new("non_existent.manifest")).is_err());
+
+        let invalid_manifest = temp_dir.path().join("invalid.manifest");
+        fs::write(&invalid_manifest, b"INVALID_XML").expect("test IO error");
+        assert!(AssemblyManifest::from_file(&invalid_manifest).is_err());
 
         Ok(())
     }
@@ -647,37 +692,30 @@ mod tests {
     #[test]
     fn test_manifest_xml_parsing_errors() {
         let missing_element = "<assembly></assembly>";
-        assert!(matches!(
-            ManifestXML::parse(missing_element),
-            Err(MsiError::SxSError(_))
-        ));
+        assert!(ManifestXML::parse(missing_element).is_err());
 
         let malformed_element = "<assemblyIdentity name=\"bad\" ";
-        assert!(matches!(
-            ManifestXML::parse(malformed_element),
-            Err(MsiError::SxSError(_))
-        ));
+        assert!(ManifestXML::parse(malformed_element).is_err());
 
         let missing_name = "<assemblyIdentity version=\"1.0\" />";
-        assert!(matches!(
-            ManifestXML::parse(missing_name),
-            Err(MsiError::SxSError(_))
-        ));
+        assert!(ManifestXML::parse(missing_name).is_err());
 
         let missing_version = "<assemblyIdentity name=\"MyAssembly\" />";
-        assert!(matches!(
-            ManifestXML::parse(missing_version),
-            Err(MsiError::SxSError(_))
-        ));
+        assert!(ManifestXML::parse(missing_version).is_err());
+
+        let missing_closing_quote = "<assemblyIdentity name=\"MyAssembly />";
+        assert!(ManifestXML::parse(missing_closing_quote).is_err());
+
+        // This specifically tests the `?` in `extract_attribute` for missing end quote.
+        let missing_closing_quote_version = "<assemblyIdentity name=\"App\" version=\"1.0 />";
+        assert!(ManifestXML::parse(missing_closing_quote_version).is_err());
     }
 
     #[test]
     fn test_gac_bridge_lifecycle() -> Result<()> {
-        let temp_dir = tempfile::tempdir()
-            .map_err(|e| MsiError::Io(crate::error::IoContext::from_string(e.to_string())))?;
+        let temp_dir = tempfile::tempdir().expect("test IO error");
         let valid_asm = temp_dir.path().join("valid.dll");
-        fs::write(&valid_asm, b"DLLDATA")
-            .map_err(|e| MsiError::Io(crate::error::IoContext::from_string(e.to_string())))?;
+        fs::write(&valid_asm, b"DLLDATA").expect("test IO error");
 
         let bridge = GacBridge;
         assert!(bridge.install_assembly(&valid_asm, None).is_ok());
@@ -692,12 +730,10 @@ mod tests {
 
     #[test]
     fn test_sxs_bridge_lifecycle() -> Result<()> {
-        let temp_dir = tempfile::tempdir()
-            .map_err(|e| MsiError::Io(crate::error::IoContext::from_string(e.to_string())))?;
+        let temp_dir = tempfile::tempdir().expect("test IO error");
         let valid_manifest = temp_dir.path().join("valid.manifest");
         let xml = "<assemblyIdentity name=\"App\" version=\"1.0\" />";
-        fs::write(&valid_manifest, xml.as_bytes())
-            .map_err(|e| MsiError::Io(crate::error::IoContext::from_string(e.to_string())))?;
+        fs::write(&valid_manifest, xml.as_bytes()).expect("test IO error");
 
         let bridge = SxSBridge;
         assert!(bridge.register_manifest(&valid_manifest).is_ok());
@@ -709,9 +745,35 @@ mod tests {
         assert!(bridge.unregister_manifest("").is_err());
 
         let invalid_manifest = temp_dir.path().join("bad.manifest");
-        fs::write(&invalid_manifest, b"INVALID")
-            .map_err(|e| MsiError::Io(crate::error::IoContext::from_string(e.to_string())))?;
+        fs::write(&invalid_manifest, b"INVALID").expect("test IO error");
         assert!(bridge.register_manifest(&invalid_manifest).is_err());
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test_pe_errors {
+    use super::*;
+
+    #[test]
+    fn test_assembly_from_pe_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("fake.dll");
+        std::fs::write(&path, b"not a PE file").unwrap();
+
+        let res = AssemblyManifest::from_pe_file(&path);
+        assert!(res.is_err());
+    }
+}
+
+#[cfg(test)]
+mod assembly_pe_extract_tests {
+    use super::*;
+
+    #[test]
+    fn test_assembly_from_pe_file_not_found() {
+        // file doesn't exist
+        let res = AssemblyManifest::from_pe_file(std::path::Path::new("not_found.dll"));
+        assert!(res.is_err());
     }
 }

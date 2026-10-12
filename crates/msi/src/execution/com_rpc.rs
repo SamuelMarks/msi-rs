@@ -252,6 +252,7 @@ pub mod posix_mock {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -275,13 +276,21 @@ mod tests {
             .expect("failed to execute transaction");
 
         let err = server.execute_transaction(0).unwrap_err();
-        assert!(matches!(err, MsiError::MsiServerError(_)));
+        assert_eq!(
+            err,
+            MsiError::MsiServerError("Invalid transaction ID (0).".to_string())
+        );
 
         server.disconnect().expect("failed to disconnect");
         assert_eq!(server.get_state(), RpcConnectionState::Disconnected);
 
         let err2 = server.execute_transaction(42).unwrap_err();
-        assert!(matches!(err2, MsiError::ComRpcError(_)));
+        assert_eq!(
+            err2,
+            MsiError::ComRpcError(
+                "Cannot execute transaction: server is not connected.".to_string()
+            )
+        );
     }
 
     #[cfg(not(windows))]
@@ -298,12 +307,20 @@ mod tests {
             .expect("failed to execute transaction");
 
         let err = server.execute_transaction(0).unwrap_err();
-        assert!(matches!(err, MsiError::MsiServerError(_)));
+        assert_eq!(
+            err,
+            MsiError::MsiServerError("Invalid transaction ID (0).".to_string())
+        );
 
         server.disconnect().expect("failed to disconnect");
         assert_eq!(server.get_state(), RpcConnectionState::Disconnected);
 
         let err2 = server.execute_transaction(42).unwrap_err();
-        assert!(matches!(err2, MsiError::ComRpcError(_)));
+        assert_eq!(
+            err2,
+            MsiError::ComRpcError(
+                "Cannot execute transaction: mock server is not connected.".to_string()
+            )
+        );
     }
 }

@@ -177,9 +177,9 @@ pub mod posix_impl {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
-    use crate::error::MsiError;
 
     #[test]
     fn test_disp_params_default() {
@@ -209,16 +209,16 @@ mod tests {
     fn test_windows_dispatch() {
         let resolver = NativeDispatchResolver::default();
         let obj = resolver.create_object("TestObject").expect("failed");
-        assert!(matches!(
-            obj.invoke("Method", &DispParams::default()),
-            Ok(VariantType::Empty)
-        ));
+        assert_eq!(
+            obj.invoke("Method", &DispParams::default()).unwrap(),
+            VariantType::Empty
+        );
 
         let err = resolver.create_object("").unwrap_err();
-        assert!(matches!(err, MsiError::ActiveXError(_)));
+        assert!(err.to_string().contains("Empty ProgID"));
 
         let err2 = obj.invoke("", &DispParams::default()).unwrap_err();
-        assert!(matches!(err2, MsiError::DispatchBridgeError(_)));
+        assert!(err2.to_string().contains("Invoke name cannot be empty"));
     }
 
     #[cfg(not(windows))]
@@ -235,14 +235,14 @@ mod tests {
         assert_eq!(res, VariantType::Bool(false));
 
         let err = resolver.create_object("UnknownObject").unwrap_err();
-        assert!(matches!(err, MsiError::ActiveXError(_)));
+        assert!(err.to_string().contains("Unsupported COM object"));
 
         let err2 = resolver.create_object("").unwrap_err();
-        assert!(matches!(err2, MsiError::ActiveXError(_)));
+        assert!(err2.to_string().contains("Empty ProgID"));
 
         let err3 = obj
             .invoke("FormatDrive", &DispParams::default())
             .unwrap_err();
-        assert!(matches!(err3, MsiError::DispatchBridgeError(_)));
+        assert!(err3.to_string().contains("Unsupported method"));
     }
 }

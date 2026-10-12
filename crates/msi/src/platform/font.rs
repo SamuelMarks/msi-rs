@@ -292,6 +292,7 @@ impl FontManager {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use std::fs;
@@ -312,19 +313,17 @@ mod tests {
     #[test]
     fn test_truetype_header_parse_short() {
         let data = vec![0; 4];
-        assert!(matches!(
-            TrueTypeHeader::parse(&data),
-            Err(MsiError::FontRegistrationError(_))
-        ));
+        let res = TrueTypeHeader::parse(&data);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().to_string().contains("Font file too small"));
     }
 
     #[test]
     fn test_truetype_header_parse_invalid_magic() {
         let data = vec![0x12, 0x34, 0x56, 0x78, 0, 0, 0, 0, 0, 0, 0, 0];
-        assert!(matches!(
-            TrueTypeHeader::parse(&data),
-            Err(MsiError::FontRegistrationError(_))
-        ));
+        let res = TrueTypeHeader::parse(&data);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().to_string().contains("Invalid font magic"));
     }
 
     #[test]
@@ -363,10 +362,10 @@ mod tests {
         data.extend(0u32.to_be_bytes()); // length
                                          // Missing the second table directory entry, will trigger out of bounds error
 
-        assert!(matches!(
-            TrueTypeHeader::parse(&data),
-            Err(MsiError::FontRegistrationError(e)) if e == "Table directory out of bounds"
-        ));
+        let res = TrueTypeHeader::parse(&data);
+        assert!(res.is_err());
+        let err = res.unwrap_err();
+        assert!(err.to_string().contains("Table directory out of bounds"));
     }
 
     #[test]
@@ -384,20 +383,19 @@ mod tests {
         data.extend(128u32.to_be_bytes()); // offset
         data.extend(0u32.to_be_bytes()); // length
 
-        assert!(matches!(
-            TrueTypeHeader::parse(&data),
-            Err(MsiError::FontRegistrationError(e)) if e == "Missing 'name' table in font"
-        ));
+        let res = TrueTypeHeader::parse(&data);
+        assert!(res.is_err());
+        let err = res.unwrap_err();
+        assert!(err.to_string().contains("Missing 'name' table in font"));
     }
 
     #[test]
     fn test_font_manager_lifecycle() {
         #[allow(clippy::default_constructed_unit_structs)]
         let mgr = FontManager::default();
-        let temp_dir =
-            tempfile::tempdir().unwrap_or_else(|e| panic!("failed to create temp dir: {e}"));
+        let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
         let font_path = temp_dir.path().join("dummy.ttf");
-        fs::write(&font_path, b"DUMMY").unwrap_or_else(|e| panic!("failed to write: {e}"));
+        fs::write(&font_path, b"DUMMY").expect("failed to write");
 
         let file = FontFile::new(font_path);
         let name = FontName::new("Dummy");

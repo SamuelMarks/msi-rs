@@ -15,11 +15,11 @@ impl SourceChecksum {
     ///
     /// # Arguments
     ///
-    /// * `checksum` - TODO: Document argument.
+    /// * `checksum` - The checksum argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     #[must_use]
     pub const fn new(checksum: u32) -> Self {
         Self(checksum)
@@ -29,7 +29,7 @@ impl SourceChecksum {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     #[must_use]
     pub const fn as_u32(self) -> u32 {
         self.0
@@ -63,26 +63,33 @@ impl PatchHeader {
     ///
     /// # Arguments
     ///
-    /// * `data` - TODO: Document argument.
+    /// * `data` - The data argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     pub fn parse(data: &[u8]) -> Result<Self> {
         if data.len() < 16 {
             return Err(MsiError::DeltaDecodeError("Header too short".to_string()));
         }
 
-        let magic: [u8; 4] = data[0..4].try_into().unwrap_or([0; 4]);
+        let mut magic = [0u8; 4];
+        magic.copy_from_slice(&data[0..4]);
         if magic != *b"PA19" && magic != *b"PA30" {
             return Err(MsiError::DeltaDecodeError(format!(
                 "Invalid patch magic signature: {magic:?}"
             )));
         }
 
-        let src = u32::from_le_bytes(data[4..8].try_into().unwrap_or([0; 4]));
-        let tgt = u32::from_le_bytes(data[8..12].try_into().unwrap_or([0; 4]));
-        let size = u32::from_le_bytes(data[12..16].try_into().unwrap_or([0; 4]));
+        let mut src_bytes = [0u8; 4];
+        src_bytes.copy_from_slice(&data[4..8]);
+        let src = u32::from_le_bytes(src_bytes);
+        let mut tgt_bytes = [0u8; 4];
+        tgt_bytes.copy_from_slice(&data[8..12]);
+        let tgt = u32::from_le_bytes(tgt_bytes);
+        let mut size_bytes = [0u8; 4];
+        size_bytes.copy_from_slice(&data[12..16]);
+        let size = u32::from_le_bytes(size_bytes);
 
         Ok(Self {
             magic,
@@ -127,11 +134,11 @@ impl PatchDecoder {
     ///
     /// # Arguments
     ///
-    /// * `patch_data` - TODO: Document argument.
+    /// * `patch_data` - The `patch_data` argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     pub fn new(patch_data: &[u8]) -> Result<Self> {
         let header = PatchHeader::parse(patch_data)?;
 
@@ -154,7 +161,7 @@ impl PatchDecoder {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     #[must_use]
     pub const fn header(&self) -> &PatchHeader {
         &self.header
@@ -167,11 +174,11 @@ impl PatchDecoder {
     ///
     /// # Arguments
     ///
-    /// * `source_data` - TODO: Document argument.
+    /// * `source_data` - The `source_data` argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     pub fn apply(&self, source_data: &[u8]) -> Result<Vec<u8>> {
         // Compute checksum of source_data (simulated here for tests)
         let actual_src_checksum = self.compute_crc32(source_data);
@@ -219,12 +226,12 @@ impl PatchDecoder {
     ///
     /// # Arguments
     ///
-    /// * `source_path` - TODO: Document argument.
-    /// * `target_path` - TODO: Document argument.
+    /// * `source_path` - The `source_path` argument.
+    /// * `target_path` - The `target_path` argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     pub fn apply_to_file(
         &self,
         source_path: &std::path::Path,
@@ -246,7 +253,7 @@ impl PatchDecoder {
             crc ^= u32::from(*byte);
             for _ in 0..8 {
                 #[allow(clippy::cast_sign_loss)]
-                let mask = -(i32::try_from(crc & 1).unwrap_or(0)) as u32;
+                let mask = -((crc & 1) as i32) as u32;
                 crc = (crc >> 1) ^ (0xEDB8_8320 & mask);
             }
         }
@@ -255,6 +262,7 @@ impl PatchDecoder {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -263,9 +271,7 @@ mod tests {
         let mut patch_data = vec![0u8; 1024 * 1024 * 50 + 1];
         patch_data[0..4].copy_from_slice(b"PA19");
         let err = PatchDecoder::new(&patch_data).unwrap_err();
-        assert!(
-            matches!(err, MsiError::DeltaDecodeError(msg) if msg.contains("Patch exceeds safety limit"))
-        );
+        assert!(err.to_string().contains("Patch exceeds safety limit"));
     }
 
     #[test]
@@ -290,11 +296,11 @@ mod tests {
 
         data[0] = b'X';
         let err = PatchHeader::parse(&data).unwrap_err();
-        assert!(matches!(err, MsiError::DeltaDecodeError(_)));
+        assert!(err.to_string().contains("Invalid patch magic signature"));
 
         let short_data = vec![0u8; 10];
         let err2 = PatchHeader::parse(&short_data).unwrap_err();
-        assert!(matches!(err2, MsiError::DeltaDecodeError(_)));
+        assert!(err2.to_string().contains("Header too short"));
     }
 
     #[test]
@@ -343,7 +349,7 @@ mod tests {
         let decoder = PatchDecoder::new(&data).expect("failed");
 
         let err = decoder.apply(b"dummy source").unwrap_err();
-        assert!(matches!(err, MsiError::PatchApplyError(_)));
+        assert!(err.to_string().contains("Source checksum mismatch"));
     }
 
     #[test]
@@ -362,6 +368,25 @@ mod tests {
                 length: 1
             }
         );
+    }
+    #[test]
+    fn test_patch_decoder_apply_matching_checksum() {
+        let mut data = vec![b'P', b'A', b'3', b'0'];
+        data.extend(0u32.to_le_bytes()); // placeholder
+        data.extend(0u32.to_le_bytes());
+        data.extend(16u32.to_le_bytes());
+        let decoder_tmp = PatchDecoder::new(&data).unwrap();
+        let source = b"dummy source";
+        let correct_crc = decoder_tmp.compute_crc32(source);
+
+        let mut data2 = vec![b'P', b'A', b'3', b'0'];
+        data2.extend(correct_crc.to_le_bytes()); // Src (exact match)
+        data2.extend(0u32.to_le_bytes()); // Tgt
+        data2.extend(16u32.to_le_bytes()); // Size
+
+        let decoder = PatchDecoder::new(&data2).expect("failed");
+        let result = decoder.apply(source).expect("failed to apply");
+        assert_eq!(result.len(), 16);
     }
 }
 
@@ -395,6 +420,49 @@ mod additional_msdelta_tests {
             offset: 8,
             length: 5,
         });
-        assert!(decoder.apply(source_data).is_err());
+        assert!(decoder
+            .apply(source_data)
+            .unwrap_err()
+            .to_string()
+            .contains("Instruction out of source bounds"));
+    }
+
+    #[test]
+    fn test_msdelta_derives() {
+        use super::*;
+        let sum = SourceChecksum(0);
+        let _ = sum;
+        let _ = format!("{sum:?}");
+        assert_eq!(sum, SourceChecksum(0));
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::Hash;
+        let mut hasher = DefaultHasher::new();
+        sum.hash(&mut hasher);
+
+        let hdr = PatchHeader {
+            magic: [0; 4],
+            target_size: 0,
+            target_checksum: SourceChecksum(0),
+            source_checksum: SourceChecksum(0),
+        };
+        let _ = hdr;
+        let _ = format!("{hdr:?}");
+        assert_eq!(hdr, hdr.clone());
+
+        let inst = DeltaInstruction::Copy {
+            offset: 0,
+            length: 0,
+        };
+        let _ = inst;
+        let _ = format!("{inst:?}");
+        assert_eq!(inst, inst.clone());
+        let inst2 = DeltaInstruction::Add { length: 0 };
+        let _ = inst2;
+        let _ = format!("{inst2:?}");
+        assert_eq!(inst2, inst2.clone());
+        assert_ne!(inst, inst2);
+
+        let dec = PatchDecoder::new(b"").unwrap_err();
+        let _ = format!("{dec:?}");
     }
 }

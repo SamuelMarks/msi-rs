@@ -28,11 +28,11 @@ impl ProcessorArchitecture {
     ///
     /// # Arguments
     ///
-    /// * `arch` - TODO: Document argument.
+    /// * `arch` - The architecture string to parse.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The parsed `ProcessorArchitecture`.
     pub fn parse(arch: &str) -> Result<Self> {
         match arch.to_lowercase().as_str() {
             "x86" => Ok(Self::X86),
@@ -65,6 +65,7 @@ impl fmt::Display for ProcessorArchitecture {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::ProcessorArchitecture;
 
@@ -115,5 +116,24 @@ mod tests {
         assert_eq!(ProcessorArchitecture::Ia64.to_string(), "ia64");
         assert_eq!(ProcessorArchitecture::Msil.to_string(), "msil");
         assert_eq!(ProcessorArchitecture::Neutral.to_string(), "neutral");
+    }
+
+    #[test]
+    fn test_processor_architecture_derives() {
+        let arch = ProcessorArchitecture::X86;
+        let arch2 = arch;
+        assert_eq!(arch, arch2);
+
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        use std::hash::{Hash, Hasher};
+        arch.hash(&mut hasher);
+        let hash1 = hasher.finish();
+
+        let mut hasher2 = std::collections::hash_map::DefaultHasher::new();
+        arch2.hash(&mut hasher2);
+        let hash2 = hasher2.finish();
+        assert_eq!(hash1, hash2);
+
+        assert_eq!(format!("{arch:?}"), "X86");
     }
 }

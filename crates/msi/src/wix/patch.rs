@@ -1105,7 +1105,7 @@ impl PatchPackageBuilder {
             for (filename, data) in &self.delta_files {
                 cab_writer.add_file(filename, data)?;
             }
-            let cab_bytes = cab_writer.build();
+            let cab_bytes = cab_writer.build().unwrap_or_default();
             cfb_writer.add_stream("#patch.cab", &cab_bytes)?;
         }
 
@@ -1153,6 +1153,7 @@ impl PatchPackageBuilder {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

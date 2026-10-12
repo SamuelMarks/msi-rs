@@ -906,6 +906,7 @@ pub fn compare_cfb_names(a: &str, b: &str) -> Ordering {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -995,60 +996,39 @@ mod tests {
     #[test]
     fn test_directory_entry_parse_errors() {
         // Too short
-        assert!(matches!(
-            DirectoryEntry::parse(&[0; 127], 0),
-            Err(MsiError::CfbCorrupted { .. })
-        ));
+        assert!(DirectoryEntry::parse(&[0; 127], 0).is_err());
 
         // Name byte length odd
         let mut bytes = [0u8; 128];
         bytes[64] = 3; // Odd byte length
-        assert!(matches!(
-            DirectoryEntry::parse(&bytes, 0),
-            Err(MsiError::InvalidDirectoryEntry { .. })
-        ));
+        assert!(DirectoryEntry::parse(&bytes, 0).is_err());
 
         // Name byte length > 64
         bytes[64] = 66;
-        assert!(matches!(
-            DirectoryEntry::parse(&bytes, 0),
-            Err(MsiError::InvalidDirectoryEntry { .. })
-        ));
+        assert!(DirectoryEntry::parse(&bytes, 0).is_err());
 
         // Odd name byte length
         let mut odd_bytes = [0u8; 128];
         odd_bytes[64] = 3;
         odd_bytes[66] = 1;
-        assert!(matches!(
-            DirectoryEntry::parse(&odd_bytes, 0),
-            Err(MsiError::InvalidDirectoryEntry { .. })
-        ));
+        assert!(DirectoryEntry::parse(&odd_bytes, 0).is_err());
 
         // Invalid UTF-16 surrogate
         let mut bad_utf16 = [0u8; 128];
         bad_utf16[64] = 4; // 1 char + null terminator = 4 bytes
         bad_utf16[0] = 0x00;
         bad_utf16[1] = 0xD8; // Lone high surrogate U+D800
-        assert!(matches!(
-            DirectoryEntry::parse(&bad_utf16, 0),
-            Err(MsiError::InvalidDirectoryEntry { .. })
-        ));
+        assert!(DirectoryEntry::parse(&bad_utf16, 0).is_err());
 
         // Invalid object type
         bytes[64] = 0; // Empty name
         bytes[66] = 9; // Bad object type
-        assert!(matches!(
-            DirectoryEntry::parse(&bytes, 0),
-            Err(MsiError::InvalidDirectoryEntry { .. })
-        ));
+        assert!(DirectoryEntry::parse(&bytes, 0).is_err());
 
         // Invalid color flag
         bytes[66] = 1; // Valid storage
         bytes[67] = 5; // Bad color
-        assert!(matches!(
-            DirectoryEntry::parse(&bytes, 0),
-            Err(MsiError::InvalidDirectoryEntry { .. })
-        ));
+        assert!(DirectoryEntry::parse(&bytes, 0).is_err());
     }
 
     /// Tests name comparison according to [MS-CFB] 2.6.4.

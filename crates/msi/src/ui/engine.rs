@@ -932,6 +932,7 @@ impl UiEngine {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::ui::controls::ControlType;

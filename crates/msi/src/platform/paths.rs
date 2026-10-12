@@ -369,14 +369,11 @@ impl PathResolver {
         let upper_path = path_str.to_uppercase();
 
         // Very basic heuristic for System32 redirection matching Windows Installer behavior
-        if upper_path.contains(r"\WINDOWS\SYSTEM32") {
+        if let Some(idx) = upper_path.rfind(r"\WINDOWS\SYSTEM32") {
             // Replace the last occurrence of SYSTEM32 (case insensitive) with SysWOW64
-            // Since we know it contains it, we find the index in upper string
-            if let Some(idx) = upper_path.rfind(r"\WINDOWS\SYSTEM32") {
-                let start = &path_str[..idx];
-                let end = &path_str[idx + 17..]; // len of "\WINDOWS\SYSTEM32"
-                return PathBuf::from(format!(r"{start}\Windows\SysWOW64{end}"));
-            }
+            let start = &path_str[..idx];
+            let end = &path_str[idx + 17..]; // len of "\WINDOWS\SYSTEM32"
+            return PathBuf::from(format!(r"{start}\Windows\SysWOW64{end}"));
         }
 
         path.to_path_buf()
@@ -640,6 +637,7 @@ impl PathResolver {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

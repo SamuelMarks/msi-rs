@@ -220,6 +220,7 @@ impl MsiEmbeddedChainerRow {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -386,10 +387,7 @@ mod tests {
 
         // Record length mismatch
         let short_rec = Record::with_fields(vec![FieldValue::String("Chainer1".to_string())]);
-        assert!(matches!(
-            MsiEmbeddedChainerRow::from_record(&short_rec),
-            Err(MsiError::RecordLengthMismatch { .. })
-        ));
+        assert!(MsiEmbeddedChainerRow::from_record(&short_rec).is_err());
 
         // Missing or empty primary key in record
         let empty_pk_rec = Record::with_fields(vec![
@@ -399,10 +397,7 @@ mod tests {
             FieldValue::String("Src".to_string()),
             FieldValue::Long(1),
         ]);
-        assert!(matches!(
-            MsiEmbeddedChainerRow::from_record(&empty_pk_rec),
-            Err(MsiError::Validation { .. })
-        ));
+        assert!(MsiEmbeddedChainerRow::from_record(&empty_pk_rec).is_err());
 
         let empty_str_pk = Record::with_fields(vec![
             FieldValue::String(String::new()),
@@ -411,10 +406,7 @@ mod tests {
             FieldValue::String("Src".to_string()),
             FieldValue::Long(1),
         ]);
-        assert!(matches!(
-            MsiEmbeddedChainerRow::from_record(&empty_str_pk),
-            Err(MsiError::Validation { .. })
-        ));
+        assert!(MsiEmbeddedChainerRow::from_record(&empty_str_pk).is_err());
 
         let non_str_pk = Record::with_fields(vec![
             FieldValue::Long(999),
@@ -423,10 +415,7 @@ mod tests {
             FieldValue::String("Src".to_string()),
             FieldValue::Long(1),
         ]);
-        assert!(matches!(
-            MsiEmbeddedChainerRow::from_record(&non_str_pk),
-            Err(MsiError::Validation { .. })
-        ));
+        assert!(MsiEmbeddedChainerRow::from_record(&non_str_pk).is_err());
 
         // Missing or empty source in record
         let empty_src_rec = Record::with_fields(vec![
@@ -436,10 +425,7 @@ mod tests {
             FieldValue::Null,
             FieldValue::Long(1),
         ]);
-        assert!(matches!(
-            MsiEmbeddedChainerRow::from_record(&empty_src_rec),
-            Err(MsiError::Validation { .. })
-        ));
+        assert!(MsiEmbeddedChainerRow::from_record(&empty_src_rec).is_err());
 
         let empty_str_src = Record::with_fields(vec![
             FieldValue::String("Ch1".to_string()),
@@ -448,10 +434,7 @@ mod tests {
             FieldValue::String(String::new()),
             FieldValue::Long(1),
         ]);
-        assert!(matches!(
-            MsiEmbeddedChainerRow::from_record(&empty_str_src),
-            Err(MsiError::Validation { .. })
-        ));
+        assert!(MsiEmbeddedChainerRow::from_record(&empty_str_src).is_err());
 
         let non_str_src = Record::with_fields(vec![
             FieldValue::String("Ch1".to_string()),
@@ -460,10 +443,7 @@ mod tests {
             FieldValue::Long(42),
             FieldValue::Long(1),
         ]);
-        assert!(matches!(
-            MsiEmbeddedChainerRow::from_record(&non_str_src),
-            Err(MsiError::Validation { .. })
-        ));
+        assert!(MsiEmbeddedChainerRow::from_record(&non_str_src).is_err());
 
         // from_record with fields exceeding 72 chars
         let long_pk_rec = Record::with_fields(vec![

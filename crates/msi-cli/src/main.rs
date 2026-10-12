@@ -140,19 +140,19 @@ impl From<UiLevel> for CliUiLevel {
 pub struct CreateArgs {
     /// Friendly product display name.
     #[arg(long)]
-    pub name: String, // coverage:ignore-line
+    pub name: String,
 
     /// Manufacturer or vendor name.
     #[arg(long)]
-    pub manufacturer: String, // coverage:ignore-line
+    pub manufacturer: String,
 
     /// Product release version (e.g. 1.0.0).
     #[arg(long)]
-    pub version: String, // coverage:ignore-line
+    pub version: String,
 
     /// Unique GUID product code.
     #[arg(long)]
-    pub product_code: String, // coverage:ignore-line
+    pub product_code: String,
 }
 
 /// Arguments for inspecting an existing package.
@@ -160,7 +160,7 @@ pub struct CreateArgs {
 pub struct InfoArgs {
     /// Path to the MSI file to inspect.
     #[arg(value_name = "PATH")]
-    pub path: String, // coverage:ignore-line
+    pub path: String,
 }
 
 /// Arguments for installing a package.
@@ -168,11 +168,11 @@ pub struct InfoArgs {
 pub struct InstallArgs {
     /// Path to package file.
     #[arg(value_name = "PACKAGE")]
-    pub package: String, // coverage:ignore-line
+    pub package: String,
 
     /// User interface level.
     #[arg(long, value_enum, default_value = "full")]
-    pub ui: CliUiLevel, // coverage:ignore-line
+    pub ui: CliUiLevel,
 
     /// Path to output log file.
     #[arg(long)]
@@ -184,7 +184,7 @@ pub struct InstallArgs {
 
     /// Launch interactive Terminal User Interface (TUI) wizard.
     #[arg(long, alias = "console")]
-    pub tui: bool, // coverage:ignore-line
+    pub tui: bool,
 }
 
 /// Arguments for uninstalling a package.
@@ -192,11 +192,11 @@ pub struct InstallArgs {
 pub struct UninstallArgs {
     /// Path to package file or `ProductCode` GUID.
     #[arg(value_name = "PACKAGE")]
-    pub package: String, // coverage:ignore-line
+    pub package: String,
 
     /// User interface level.
     #[arg(long, value_enum, default_value = "quiet")]
-    pub ui: CliUiLevel, // coverage:ignore-line
+    pub ui: CliUiLevel,
 
     /// Path to output log file.
     #[arg(long)]
@@ -208,11 +208,11 @@ pub struct UninstallArgs {
 pub struct AdminArgs {
     /// Path to package file.
     #[arg(value_name = "PACKAGE")]
-    pub package: String, // coverage:ignore-line
+    pub package: String,
 
     /// User interface level.
     #[arg(long, value_enum, default_value = "basic")]
-    pub ui: CliUiLevel, // coverage:ignore-line
+    pub ui: CliUiLevel,
 
     /// Path to output log file.
     #[arg(long)]
@@ -224,11 +224,11 @@ pub struct AdminArgs {
 pub struct RepairArgs {
     /// Path to package file or `ProductCode` GUID.
     #[arg(value_name = "PACKAGE")]
-    pub package: String, // coverage:ignore-line
+    pub package: String,
 
     /// Repair mode flags (e.g. "vomus", "p", "a").
     #[arg(short, long, default_value = "omus")]
-    pub flags: String, // coverage:ignore-line
+    pub flags: String,
 
     /// Path to output log file.
     #[arg(long)]
@@ -240,11 +240,11 @@ pub struct RepairArgs {
 pub struct AdvertiseArgs {
     /// Path to package file.
     #[arg(value_name = "PACKAGE")]
-    pub package: String, // coverage:ignore-line
+    pub package: String,
 
     /// Advertise to current user instead of machine.
     #[arg(long)]
-    pub user: bool, // coverage:ignore-line
+    pub user: bool,
 }
 
 /// Arguments for applying a patch.
@@ -252,15 +252,15 @@ pub struct AdvertiseArgs {
 pub struct PatchArgs {
     /// Path to target package.
     #[arg(value_name = "PACKAGE")]
-    pub package: String, // coverage:ignore-line
+    pub package: String,
 
     /// Path to patch file (.msp).
     #[arg(value_name = "PATCH")]
-    pub patch: String, // coverage:ignore-line
+    pub patch: String,
 
     /// User interface level.
     #[arg(long, value_enum, default_value = "basic")]
-    pub ui: CliUiLevel, // coverage:ignore-line
+    pub ui: CliUiLevel,
 
     /// Path to output log file.
     #[arg(long)]
@@ -280,7 +280,7 @@ pub struct MsiexecArgs {
 pub struct WorkerArgs {
     /// Path to Unix domain socket or Windows named pipe.
     #[arg(long = "worker-socket")]
-    pub socket: String, // coverage:ignore-line
+    pub socket: String,
 }
 
 /// Arguments for harvesting files or registries into `WiX` XML fragments.
@@ -288,7 +288,7 @@ pub struct WorkerArgs {
 pub struct HarvestArgs {
     /// Target filesystem path, registry file path, or harvest type (e.g. `dir`, `reg`).
     #[arg(value_name = "TARGET_OR_TYPE", default_value = "")]
-    pub target: String, // coverage:ignore-line
+    pub target: String,
 
     /// Target path when harvest type is given as first positional argument (e.g. `msi harvest dir /path`).
     #[arg(value_name = "TARGET_PATH")]
@@ -309,7 +309,7 @@ pub struct HarvestArgs {
         alias = "component-group",
         short = 'c'
     )]
-    pub group: String, // coverage:ignore-line
+    pub group: String,
 
     /// Target directory identifier.
     #[arg(
@@ -318,7 +318,7 @@ pub struct HarvestArgs {
         alias = "directory-id",
         short = 'd'
     )]
-    pub dir_id: String, // coverage:ignore-line
+    pub dir_id: String,
 
     /// Destination output .wxs file path (defaults to stdout).
     #[arg(short, long, alias = "out")]
@@ -326,7 +326,7 @@ pub struct HarvestArgs {
 
     /// Mode: "dir" for directory harvesting, "reg" for registry file.
     #[arg(long, default_value = "dir")]
-    pub mode: String, // coverage:ignore-line
+    pub mode: String,
 
     /// Path to a .gitignore file to respect during harvesting.
     #[arg(long)]
@@ -338,7 +338,7 @@ pub struct HarvestArgs {
 
     /// Default Disk ID for non-matching files.
     #[arg(long = "default-disk-id", default_value = "1")]
-    pub default_disk_id: i16, // coverage:ignore-line
+    pub default_disk_id: i16,
 
     /// Automatic multi-cabinet split size in bytes.
     #[arg(long = "split-size")]
@@ -370,7 +370,7 @@ pub struct HarvestArgs {
 
     /// Whether to include .msi files in harvested payload (matches `LibScript` `--include-msi`).
     #[arg(long = "include-msi")]
-    pub include_msi: bool, // coverage:ignore-line
+    pub include_msi: bool,
 }
 
 /// Arguments for decompiling an MSI package into `WiX` source XML.
@@ -378,7 +378,7 @@ pub struct HarvestArgs {
 pub struct DecompileArgs {
     /// Path to input MSI package file.
     #[arg(value_name = "PACKAGE")]
-    pub package: String, // coverage:ignore-line
+    pub package: String,
 
     /// Destination output .wxs file path (defaults to stdout).
     #[arg(short, long)]
@@ -394,7 +394,7 @@ pub struct DecompileArgs {
 pub struct PackArgs {
     /// Output path for the generated .msi package.
     #[arg(short, long, value_name = "PATH")]
-    pub output: String, // coverage:ignore-line
+    pub output: String,
 
     /// One or more .wxs source files or .wixobj objects.
     #[arg(value_name = "SOURCES")]
@@ -414,11 +414,11 @@ pub struct PackArgs {
 
     /// Target platform architecture (e.g. x86, x64, arm64).
     #[arg(long, default_value = "x64")]
-    pub arch: String, // coverage:ignore-line
+    pub arch: String,
 
     /// Suppress internal consistency evaluators (ICE) validation.
     #[arg(short = 's', long = "suppress-validation", alias = "sval")]
-    pub suppress_validation: bool, // coverage:ignore-line
+    pub suppress_validation: bool,
 
     /// Specific ICE validation rules to suppress (-sice:ICE01).
     #[arg(long = "suppress-ice", alias = "sice")]
@@ -438,7 +438,7 @@ pub struct PackArgs {
 
     /// Enable verbose progress and binding diagnostics.
     #[arg(short, long)]
-    pub verbose: bool, // coverage:ignore-line
+    pub verbose: bool,
 }
 
 /// Real-time logging dispatcher streaming formatted records to log files or stdout.
@@ -3488,7 +3488,7 @@ mod tests {
         let name = if valid { "DecompileTarget" } else { "" };
         let mut cab_writer = msi::cab::CabinetWriter::new(msi::cab::CompressionType::None);
         let _ = cab_writer.add_file("embedded.txt", b"cab content");
-        let cab_bytes = cab_writer.build();
+        let cab_bytes = cab_writer.build().unwrap_or_default();
         if let Ok(pkg) = Package::builder()
             .product_name(name)
             .manufacturer("Acme")
@@ -4207,7 +4207,7 @@ mod full_args_tests {
 
     #[test]
     fn test_all_cli_flags_for_coverage() {
-        let _ = Cli::try_parse_from([
+        let cli = Cli::try_parse_from([
             "msi",
             "create",
             "--name",
@@ -4220,10 +4220,25 @@ mod full_args_tests {
             "d",
         ])
         .unwrap();
+        match cli.command {
+            Commands::Create(args) => {
+                assert_eq!(args.name, "a");
+                assert_eq!(args.manufacturer, "b");
+                assert_eq!(args.version, "c");
+                assert_eq!(args.product_code, "d");
+            }
+            _ => panic!("Expected Create"),
+        }
 
-        let _ = Cli::try_parse_from(["msi", "info", "package.msi"]).unwrap();
+        let cli = Cli::try_parse_from(["msi", "info", "package.msi"]).unwrap();
+        match cli.command {
+            Commands::Info(args) => {
+                assert_eq!(args.path, "package.msi");
+            }
+            _ => panic!("Expected Info"),
+        }
 
-        let _ = Cli::try_parse_from([
+        let cli = Cli::try_parse_from([
             "msi",
             "install",
             "package.msi",
@@ -4235,8 +4250,18 @@ mod full_args_tests {
             "--tui",
         ])
         .unwrap();
+        match cli.command {
+            Commands::Install(args) => {
+                assert_eq!(args.package, "package.msi");
+                assert_eq!(args.ui, CliUiLevel::Reduced);
+                assert_eq!(args.log.unwrap(), "log.txt");
+                assert_eq!(args.properties, vec!["PROP=1"]);
+                assert!(args.tui);
+            }
+            _ => panic!("Expected Install"),
+        }
 
-        let _ = Cli::try_parse_from([
+        let cli = Cli::try_parse_from([
             "msi",
             "uninstall",
             "package.msi",
@@ -4246,8 +4271,16 @@ mod full_args_tests {
             "log.txt",
         ])
         .unwrap();
+        match cli.command {
+            Commands::Uninstall(args) => {
+                assert_eq!(args.package, "package.msi");
+                assert_eq!(args.ui, CliUiLevel::Basic);
+                assert_eq!(args.log.unwrap(), "log.txt");
+            }
+            _ => panic!("Expected Uninstall"),
+        }
 
-        let _ = Cli::try_parse_from([
+        let cli = Cli::try_parse_from([
             "msi",
             "admin",
             "package.msi",
@@ -4257,8 +4290,16 @@ mod full_args_tests {
             "log.txt",
         ])
         .unwrap();
+        match cli.command {
+            Commands::Admin(args) => {
+                assert_eq!(args.package, "package.msi");
+                assert_eq!(args.ui, CliUiLevel::Quiet);
+                assert_eq!(args.log.unwrap(), "log.txt");
+            }
+            _ => panic!("Expected Admin"),
+        }
 
-        let _ = Cli::try_parse_from([
+        let cli = Cli::try_parse_from([
             "msi",
             "repair",
             "package.msi",
@@ -4268,10 +4309,25 @@ mod full_args_tests {
             "log.txt",
         ])
         .unwrap();
+        match cli.command {
+            Commands::Repair(args) => {
+                assert_eq!(args.package, "package.msi");
+                assert_eq!(args.flags, "vomus");
+                assert_eq!(args.log.unwrap(), "log.txt");
+            }
+            _ => panic!("Expected Repair"),
+        }
 
-        let _ = Cli::try_parse_from(["msi", "advertise", "package.msi", "--user"]).unwrap();
+        let cli = Cli::try_parse_from(["msi", "advertise", "package.msi", "--user"]).unwrap();
+        match cli.command {
+            Commands::Advertise(args) => {
+                assert_eq!(args.package, "package.msi");
+                assert!(args.user);
+            }
+            _ => panic!("Expected Advertise"),
+        }
 
-        let _ = Cli::try_parse_from([
+        let cli = Cli::try_parse_from([
             "msi",
             "patch",
             "package.msi",
@@ -4282,12 +4338,33 @@ mod full_args_tests {
             "log.txt",
         ])
         .unwrap();
+        match cli.command {
+            Commands::Patch(args) => {
+                assert_eq!(args.package, "package.msi");
+                assert_eq!(args.patch, "patch.msp");
+                assert_eq!(args.ui, CliUiLevel::Full);
+                assert_eq!(args.log.unwrap(), "log.txt");
+            }
+            _ => panic!("Expected Patch"),
+        }
 
-        let _ = Cli::try_parse_from(["msi", "msiexec", "/i", "package.msi", "/qn"]).unwrap();
+        let cli = Cli::try_parse_from(["msi", "msiexec", "/i", "package.msi", "/qn"]).unwrap();
+        match cli.command {
+            Commands::Msiexec(args) => {
+                assert_eq!(args.raw_args, vec!["/i", "package.msi", "/qn"]);
+            }
+            _ => panic!("Expected Msiexec"),
+        }
 
-        let _ = Cli::try_parse_from(["msi", "worker", "--worker-socket", "sock"]).unwrap();
+        let cli = Cli::try_parse_from(["msi", "worker", "--worker-socket", "sock"]).unwrap();
+        match cli.command {
+            Commands::Worker(args) => {
+                assert_eq!(args.socket, "sock");
+            }
+            _ => panic!("Expected Worker"),
+        }
 
-        let _ = Cli::try_parse_from([
+        let cli = Cli::try_parse_from([
             "msi",
             "harvest",
             "dir",
@@ -4327,8 +4404,32 @@ mod full_args_tests {
             "--include-msi",
         ])
         .unwrap();
+        match cli.command {
+            Commands::Harvest(args) => {
+                assert_eq!(args.target, "dir");
+                assert_eq!(args.extra_target.unwrap(), "target_dir");
+                assert_eq!(args.source_dir.unwrap(), "src");
+                assert_eq!(args.wix_fragment.unwrap(), "frag.wxs");
+                assert_eq!(args.group, "g");
+                assert_eq!(args.dir_id, "d");
+                assert_eq!(args.output.unwrap(), "out.wxs");
+                assert_eq!(args.mode, "dir");
+                assert_eq!(args.gitignore.unwrap(), ".gitignore");
+                assert_eq!(args.disk_rules, vec!["rule=1"]);
+                assert_eq!(args.default_disk_id, 2);
+                assert_eq!(args.split_size.unwrap(), 100);
+                assert_eq!(args.secondary_groups, vec!["sg=g"]);
+                assert_eq!(args.exclude_extensions, vec!["tmp"]);
+                assert_eq!(args.exclude_patterns, vec!["pat"]);
+                assert_eq!(args.manifest_file.unwrap(), "man.txt");
+                assert_eq!(args.output_dir.unwrap(), "outdir");
+                assert_eq!(args.include_cache.unwrap(), "cache");
+                assert!(args.include_msi);
+            }
+            _ => panic!("Expected Harvest"),
+        }
 
-        let _ = Cli::try_parse_from([
+        let cli = Cli::try_parse_from([
             "msi",
             "decompile",
             "package.msi",
@@ -4338,8 +4439,16 @@ mod full_args_tests {
             "assets",
         ])
         .unwrap();
+        match cli.command {
+            Commands::Decompile(args) => {
+                assert_eq!(args.package, "package.msi");
+                assert_eq!(args.output.unwrap(), "out.wxs");
+                assert_eq!(args.extract_assets.unwrap(), "assets");
+            }
+            _ => panic!("Expected Decompile"),
+        }
 
-        let _ = Cli::try_parse_from([
+        let cli = Cli::try_parse_from([
             "msi",
             "pack",
             "--output",
@@ -4366,6 +4475,23 @@ mod full_args_tests {
             "--verbose",
         ])
         .unwrap();
+        match cli.command {
+            Commands::Pack(args) => {
+                assert_eq!(args.output, "out.msi");
+                assert_eq!(args.sources, vec!["src1", "src2"]);
+                assert_eq!(args.manifest.unwrap(), "man.json");
+                assert_eq!(args.schema.unwrap(), "sch.json");
+                assert_eq!(args.defines, vec!["A=B"]);
+                assert_eq!(args.arch, "x86");
+                assert!(args.suppress_validation);
+                assert_eq!(args.suppress_ice, vec!["ICE01"]);
+                assert_eq!(args.select_ice, vec!["ICE02"]);
+                assert_eq!(args.extensions, vec!["ext"]);
+                assert_eq!(args.bind_paths, vec!["bind"]);
+                assert!(args.verbose);
+            }
+            _ => panic!("Expected Pack"),
+        }
     }
 
     #[test]
@@ -4473,5 +4599,199 @@ mod full_args_tests {
             let mut matches2 = cmd.clone().get_matches_from(args);
             cli.update_from_arg_matches_mut(&mut matches2).unwrap();
         }
+    }
+}
+
+#[cfg(test)]
+mod additional_struct_tests {
+    use super::*;
+
+    #[test]
+    fn test_struct_fields() {
+        assert_eq!(
+            CreateArgs {
+                name: "a".into(),
+                manufacturer: "a".into(),
+                version: "a".into(),
+                product_code: "a".into(),
+            },
+            CreateArgs {
+                name: "a".into(),
+                manufacturer: "a".into(),
+                version: "a".into(),
+                product_code: "a".into(),
+            }
+        );
+        assert_eq!(InfoArgs { path: "a".into() }, InfoArgs { path: "a".into() });
+        assert_eq!(
+            InstallArgs {
+                package: "a".into(),
+                ui: CliUiLevel::Quiet,
+                log: None,
+                tui: false,
+                properties: vec![],
+            },
+            InstallArgs {
+                package: "a".into(),
+                ui: CliUiLevel::Quiet,
+                log: None,
+                tui: false,
+                properties: vec![],
+            }
+        );
+        assert_eq!(
+            UninstallArgs {
+                package: "a".into(),
+                ui: CliUiLevel::Quiet,
+                log: None,
+            },
+            UninstallArgs {
+                package: "a".into(),
+                ui: CliUiLevel::Quiet,
+                log: None,
+            }
+        );
+        assert_eq!(
+            AdminArgs {
+                package: "a".into(),
+                ui: CliUiLevel::Quiet,
+                log: None,
+            },
+            AdminArgs {
+                package: "a".into(),
+                ui: CliUiLevel::Quiet,
+                log: None,
+            }
+        );
+        assert_eq!(
+            RepairArgs {
+                package: "a".into(),
+                flags: "a".into(),
+                log: None,
+            },
+            RepairArgs {
+                package: "a".into(),
+                flags: "a".into(),
+                log: None,
+            }
+        );
+        assert_eq!(
+            AdvertiseArgs {
+                package: "a".into(),
+                user: false,
+            },
+            AdvertiseArgs {
+                package: "a".into(),
+                user: false,
+            }
+        );
+        assert_eq!(
+            PatchArgs {
+                patch: "a".into(),
+                package: "a".into(),
+                ui: CliUiLevel::Quiet,
+                log: None,
+            },
+            PatchArgs {
+                patch: "a".into(),
+                package: "a".into(),
+                ui: CliUiLevel::Quiet,
+                log: None,
+            }
+        );
+        assert_eq!(
+            MsiexecArgs { raw_args: vec![] },
+            MsiexecArgs { raw_args: vec![] }
+        );
+        assert_eq!(
+            WorkerArgs { socket: "a".into() },
+            WorkerArgs { socket: "a".into() }
+        );
+        assert_eq!(
+            HarvestArgs {
+                target: "a".into(),
+                extra_target: None,
+                source_dir: None,
+                wix_fragment: None,
+                group: "a".into(),
+                dir_id: "a".into(),
+                mode: "a".into(),
+                gitignore: None,
+                disk_rules: vec![],
+                default_disk_id: 1,
+                split_size: None,
+                secondary_groups: vec![],
+                exclude_extensions: vec![],
+                exclude_patterns: vec![],
+                manifest_file: None,
+                output_dir: None,
+                include_cache: None,
+                include_msi: false,
+                output: None,
+            },
+            HarvestArgs {
+                target: "a".into(),
+                extra_target: None,
+                source_dir: None,
+                wix_fragment: None,
+                group: "a".into(),
+                dir_id: "a".into(),
+                mode: "a".into(),
+                gitignore: None,
+                disk_rules: vec![],
+                default_disk_id: 1,
+                split_size: None,
+                secondary_groups: vec![],
+                exclude_extensions: vec![],
+                exclude_patterns: vec![],
+                manifest_file: None,
+                output_dir: None,
+                include_cache: None,
+                include_msi: false,
+                output: None,
+            }
+        );
+        assert_eq!(
+            DecompileArgs {
+                package: "a".into(),
+                output: Some("a".into()),
+                extract_assets: None,
+            },
+            DecompileArgs {
+                package: "a".into(),
+                output: Some("a".into()),
+                extract_assets: None,
+            }
+        );
+        assert_eq!(
+            PackArgs {
+                output: "a".into(),
+                sources: vec![],
+                manifest: None,
+                schema: None,
+                defines: vec![],
+                arch: "x64".into(),
+                suppress_validation: false,
+                suppress_ice: vec![],
+                select_ice: vec![],
+                extensions: vec![],
+                bind_paths: vec![],
+                verbose: false,
+            },
+            PackArgs {
+                output: "a".into(),
+                sources: vec![],
+                manifest: None,
+                schema: None,
+                defines: vec![],
+                arch: "x64".into(),
+                suppress_validation: false,
+                suppress_ice: vec![],
+                select_ice: vec![],
+                extensions: vec![],
+                bind_paths: vec![],
+                verbose: false,
+            }
+        );
     }
 }

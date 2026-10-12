@@ -58,8 +58,9 @@ pub struct TransformErrorCondition(pub i32);
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiDatabaseMergeW(
     h_database: MSIHANDLE,
     h_database_merge: MSIHANDLE,
@@ -123,8 +124,9 @@ pub unsafe extern "system" fn MsiDatabaseMergeW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiDatabaseMergeA(
     h_database: MSIHANDLE,
     h_database_merge: MSIHANDLE,
@@ -187,8 +189,9 @@ pub unsafe extern "system" fn MsiDatabaseMergeA(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiDatabaseImportW(
     _h_database: MSIHANDLE,
     _sz_folder_path: ExportDirectoryW,
@@ -219,8 +222,9 @@ pub unsafe extern "system" fn MsiDatabaseImportW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiDatabaseImportA(
     _h_database: MSIHANDLE,
     _sz_folder_path: ExportDirectoryA,
@@ -253,8 +257,9 @@ pub unsafe extern "system" fn MsiDatabaseImportA(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiDatabaseExportW(
     _h_database: MSIHANDLE,
     _sz_table_name: TableNameW,
@@ -326,8 +331,9 @@ pub unsafe extern "system" fn MsiDatabaseExportW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiDatabaseExportA(
     _h_database: MSIHANDLE,
     _sz_table_name: TableNameA,
@@ -398,8 +404,9 @@ pub unsafe extern "system" fn MsiDatabaseExportA(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiDatabaseApplyTransformW(
     h_database: MSIHANDLE,
     sz_transform_file: FilePathW,
@@ -470,8 +477,9 @@ pub unsafe extern "system" fn MsiDatabaseApplyTransformW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "system" fn MsiDatabaseApplyTransformA(
     h_database: MSIHANDLE,
     sz_transform_file: FilePathA,
@@ -1022,7 +1030,15 @@ mod tests {
             87
         );
         assert_eq!(
+            unsafe { MsiDatabaseMergeW(1, 0, TableNameW(ptr::null())) },
+            87
+        );
+        assert_eq!(
             unsafe { MsiDatabaseMergeA(0, 0, TableNameA(ptr::null())) },
+            87
+        );
+        assert_eq!(
+            unsafe { MsiDatabaseMergeA(1, 0, TableNameA(ptr::null())) },
             87
         );
         assert_eq!(
@@ -1141,14 +1157,62 @@ mod tests {
         let _ = crate::handles::close_handle(valid_db4);
 
         // MsiDatabaseImport
+        let null_w = ptr::null();
+        let null_a = ptr::null();
+
+        // Branch: _h_database == 0
         assert_eq!(
-            unsafe { MsiDatabaseImportW(0, ExportDirectoryW(ptr::null()), FilePathW(ptr::null())) },
+            unsafe {
+                MsiDatabaseImportW(
+                    0,
+                    ExportDirectoryW(dummy_w.as_ptr()),
+                    FilePathW(dummy_w.as_ptr()),
+                )
+            },
             87
         );
         assert_eq!(
-            unsafe { MsiDatabaseImportA(0, ExportDirectoryA(ptr::null()), FilePathA(ptr::null())) },
+            unsafe {
+                MsiDatabaseImportA(
+                    0,
+                    ExportDirectoryA(dummy_a.as_ptr().cast()),
+                    FilePathA(dummy_a.as_ptr().cast()),
+                )
+            },
             87
         );
+        // Branch: folder == null
+        assert_eq!(
+            unsafe { MsiDatabaseImportW(1, ExportDirectoryW(null_w), FilePathW(dummy_w.as_ptr())) },
+            87
+        );
+        assert_eq!(
+            unsafe {
+                MsiDatabaseImportA(
+                    1,
+                    ExportDirectoryA(null_a),
+                    FilePathA(dummy_a.as_ptr().cast()),
+                )
+            },
+            87
+        );
+        // Branch: file == null
+        assert_eq!(
+            unsafe { MsiDatabaseImportW(1, ExportDirectoryW(dummy_w.as_ptr()), FilePathW(null_w)) },
+            87
+        );
+        assert_eq!(
+            unsafe {
+                MsiDatabaseImportA(
+                    1,
+                    ExportDirectoryA(dummy_a.as_ptr().cast()),
+                    FilePathA(null_a),
+                )
+            },
+            87
+        );
+
+        // Valid
         assert_eq!(
             unsafe {
                 MsiDatabaseImportW(
@@ -1169,15 +1233,57 @@ mod tests {
             },
             0
         );
+        // Invalid strings
+        assert_eq!(
+            unsafe {
+                MsiDatabaseImportW(
+                    1,
+                    ExportDirectoryW(invalid_w.as_ptr()),
+                    FilePathW(dummy_w.as_ptr()),
+                )
+            },
+            0
+        );
+        assert_eq!(
+            unsafe {
+                MsiDatabaseImportW(
+                    1,
+                    ExportDirectoryW(dummy_w.as_ptr()),
+                    FilePathW(invalid_w.as_ptr()),
+                )
+            },
+            0
+        );
+        assert_eq!(
+            unsafe {
+                MsiDatabaseImportA(
+                    1,
+                    ExportDirectoryA(invalid_a.as_ptr().cast()),
+                    FilePathA(dummy_a.as_ptr().cast()),
+                )
+            },
+            0
+        );
+        assert_eq!(
+            unsafe {
+                MsiDatabaseImportA(
+                    1,
+                    ExportDirectoryA(dummy_a.as_ptr().cast()),
+                    FilePathA(invalid_a.as_ptr().cast()),
+                )
+            },
+            0
+        );
 
         // MsiDatabaseExport
+        // Branch: _h_database == 0
         assert_eq!(
             unsafe {
                 MsiDatabaseExportW(
                     0,
-                    TableNameW(ptr::null()),
-                    ExportDirectoryW(ptr::null()),
-                    FilePathW(ptr::null()),
+                    TableNameW(dummy_w.as_ptr()),
+                    ExportDirectoryW(dummy_w.as_ptr()),
+                    FilePathW(dummy_w.as_ptr()),
                 )
             },
             87
@@ -1186,17 +1292,88 @@ mod tests {
             unsafe {
                 MsiDatabaseExportA(
                     0,
-                    TableNameA(ptr::null()),
-                    ExportDirectoryA(ptr::null()),
-                    FilePathA(ptr::null()),
+                    TableNameA(dummy_a.as_ptr().cast()),
+                    ExportDirectoryA(dummy_a.as_ptr().cast()),
+                    FilePathA(dummy_a.as_ptr().cast()),
+                )
+            },
+            87
+        );
+        // Branch: table == null
+        assert_eq!(
+            unsafe {
+                MsiDatabaseExportW(
+                    1,
+                    TableNameW(null_w),
+                    ExportDirectoryW(dummy_w.as_ptr()),
+                    FilePathW(dummy_w.as_ptr()),
                 )
             },
             87
         );
         assert_eq!(
             unsafe {
+                MsiDatabaseExportA(
+                    1,
+                    TableNameA(null_a),
+                    ExportDirectoryA(dummy_a.as_ptr().cast()),
+                    FilePathA(dummy_a.as_ptr().cast()),
+                )
+            },
+            87
+        );
+        // Branch: folder == null
+        assert_eq!(
+            unsafe {
                 MsiDatabaseExportW(
                     1,
+                    TableNameW(dummy_w.as_ptr()),
+                    ExportDirectoryW(null_w),
+                    FilePathW(dummy_w.as_ptr()),
+                )
+            },
+            87
+        );
+        assert_eq!(
+            unsafe {
+                MsiDatabaseExportA(
+                    1,
+                    TableNameA(dummy_a.as_ptr().cast()),
+                    ExportDirectoryA(null_a),
+                    FilePathA(dummy_a.as_ptr().cast()),
+                )
+            },
+            87
+        );
+        // Branch: file == null
+        assert_eq!(
+            unsafe {
+                MsiDatabaseExportW(
+                    1,
+                    TableNameW(dummy_w.as_ptr()),
+                    ExportDirectoryW(dummy_w.as_ptr()),
+                    FilePathW(null_w),
+                )
+            },
+            87
+        );
+        assert_eq!(
+            unsafe {
+                MsiDatabaseExportA(
+                    1,
+                    TableNameA(dummy_a.as_ptr().cast()),
+                    ExportDirectoryA(dummy_a.as_ptr().cast()),
+                    FilePathA(null_a),
+                )
+            },
+            87
+        );
+
+        // Non-DB Handle
+        assert_eq!(
+            unsafe {
+                MsiDatabaseExportW(
+                    non_db,
                     TableNameW(dummy_w.as_ptr()),
                     ExportDirectoryW(dummy_w.as_ptr()),
                     FilePathW(dummy_w.as_ptr()),
@@ -1207,7 +1384,99 @@ mod tests {
         assert_eq!(
             unsafe {
                 MsiDatabaseExportA(
+                    non_db,
+                    TableNameA(dummy_a.as_ptr().cast()),
+                    ExportDirectoryA(dummy_a.as_ptr().cast()),
+                    FilePathA(dummy_a.as_ptr().cast()),
+                )
+            },
+            0
+        );
+
+        // Invalid strings
+        assert_eq!(
+            unsafe {
+                MsiDatabaseExportW(
                     1,
+                    TableNameW(invalid_w.as_ptr()),
+                    ExportDirectoryW(dummy_w.as_ptr()),
+                    FilePathW(dummy_w.as_ptr()),
+                )
+            },
+            0
+        );
+        assert_eq!(
+            unsafe {
+                MsiDatabaseExportW(
+                    1,
+                    TableNameW(dummy_w.as_ptr()),
+                    ExportDirectoryW(invalid_w.as_ptr()),
+                    FilePathW(dummy_w.as_ptr()),
+                )
+            },
+            0
+        );
+        assert_eq!(
+            unsafe {
+                MsiDatabaseExportW(
+                    1,
+                    TableNameW(dummy_w.as_ptr()),
+                    ExportDirectoryW(dummy_w.as_ptr()),
+                    FilePathW(invalid_w.as_ptr()),
+                )
+            },
+            0
+        );
+        assert_eq!(
+            unsafe {
+                MsiDatabaseExportA(
+                    1,
+                    TableNameA(invalid_a.as_ptr().cast()),
+                    ExportDirectoryA(dummy_a.as_ptr().cast()),
+                    FilePathA(dummy_a.as_ptr().cast()),
+                )
+            },
+            0
+        );
+        assert_eq!(
+            unsafe {
+                MsiDatabaseExportA(
+                    1,
+                    TableNameA(dummy_a.as_ptr().cast()),
+                    ExportDirectoryA(invalid_a.as_ptr().cast()),
+                    FilePathA(dummy_a.as_ptr().cast()),
+                )
+            },
+            0
+        );
+        assert_eq!(
+            unsafe {
+                MsiDatabaseExportA(
+                    1,
+                    TableNameA(dummy_a.as_ptr().cast()),
+                    ExportDirectoryA(dummy_a.as_ptr().cast()),
+                    FilePathA(invalid_a.as_ptr().cast()),
+                )
+            },
+            0
+        );
+
+        // Valid strings but unknown table
+        assert_eq!(
+            unsafe {
+                MsiDatabaseExportW(
+                    valid_db1,
+                    TableNameW(dummy_w.as_ptr()),
+                    ExportDirectoryW(dummy_w.as_ptr()),
+                    FilePathW(dummy_w.as_ptr()),
+                )
+            },
+            0
+        );
+        assert_eq!(
+            unsafe {
+                MsiDatabaseExportA(
+                    valid_db1,
                     TableNameA(dummy_a.as_ptr().cast()),
                     ExportDirectoryA(dummy_a.as_ptr().cast()),
                     FilePathA(dummy_a.as_ptr().cast()),
@@ -1217,22 +1486,42 @@ mod tests {
         );
 
         // MsiDatabaseApplyTransform
-        assert_eq!(
-            unsafe {
-                MsiDatabaseApplyTransformW(0, FilePathW(ptr::null()), TransformErrorCondition(0))
-            },
-            87
-        );
-        assert_eq!(
-            unsafe {
-                MsiDatabaseApplyTransformA(0, FilePathA(ptr::null()), TransformErrorCondition(0))
-            },
-            87
-        );
+        // Branch: h_database == 0
         assert_eq!(
             unsafe {
                 MsiDatabaseApplyTransformW(
-                    1,
+                    0,
+                    FilePathW(dummy_w.as_ptr()),
+                    TransformErrorCondition(0),
+                )
+            },
+            87
+        );
+        assert_eq!(
+            unsafe {
+                MsiDatabaseApplyTransformA(
+                    0,
+                    FilePathA(dummy_a.as_ptr().cast()),
+                    TransformErrorCondition(0),
+                )
+            },
+            87
+        );
+        // Branch: sz == null
+        assert_eq!(
+            unsafe { MsiDatabaseApplyTransformW(1, FilePathW(null_w), TransformErrorCondition(0)) },
+            87
+        );
+        assert_eq!(
+            unsafe { MsiDatabaseApplyTransformA(1, FilePathA(null_a), TransformErrorCondition(0)) },
+            87
+        );
+
+        // Branch: Non-DB handle
+        assert_eq!(
+            unsafe {
+                MsiDatabaseApplyTransformW(
+                    non_db,
                     FilePathW(dummy_w.as_ptr()),
                     TransformErrorCondition(0),
                 )
@@ -1241,8 +1530,42 @@ mod tests {
         );
         assert_eq!(
             unsafe {
+                MsiDatabaseApplyTransformA(
+                    non_db,
+                    FilePathA(dummy_a.as_ptr().cast()),
+                    TransformErrorCondition(0),
+                )
+            },
+            6
+        );
+
+        // Valid DB handle, valid string
+        assert_eq!(
+            unsafe {
                 MsiDatabaseApplyTransformW(
-                    1,
+                    valid_db1,
+                    FilePathW(dummy_w.as_ptr()),
+                    TransformErrorCondition(0),
+                )
+            },
+            6
+        );
+        assert_eq!(
+            unsafe {
+                MsiDatabaseApplyTransformA(
+                    valid_db1,
+                    FilePathA(dummy_a.as_ptr().cast()),
+                    TransformErrorCondition(0),
+                )
+            },
+            6
+        );
+
+        // Invalid string
+        assert_eq!(
+            unsafe {
+                MsiDatabaseApplyTransformW(
+                    valid_db1,
                     FilePathW(invalid_w.as_ptr()),
                     TransformErrorCondition(0),
                 )
@@ -1252,8 +1575,22 @@ mod tests {
         assert_eq!(
             unsafe {
                 MsiDatabaseApplyTransformA(
-                    1,
-                    FilePathA(dummy_a.as_ptr().cast()),
+                    valid_db1,
+                    FilePathA(invalid_a.as_ptr().cast()),
+                    TransformErrorCondition(0),
+                )
+            },
+            87
+        );
+
+        // Embedded transforms starting with colon
+        let colon_w = [u16::from(b':'), u16::from(b'T'), 0];
+        let colon_a = [i32::from(b':'), i32::from(b'T'), 0];
+        assert_eq!(
+            unsafe {
+                MsiDatabaseApplyTransformW(
+                    valid_db1,
+                    FilePathW(colon_w.as_ptr()),
                     TransformErrorCondition(0),
                 )
             },
@@ -1262,12 +1599,12 @@ mod tests {
         assert_eq!(
             unsafe {
                 MsiDatabaseApplyTransformA(
-                    1,
-                    FilePathA(invalid_a.as_ptr().cast()),
+                    valid_db1,
+                    FilePathA(colon_a.as_ptr().cast()),
                     TransformErrorCondition(0),
                 )
             },
-            87
+            6
         );
     }
 }

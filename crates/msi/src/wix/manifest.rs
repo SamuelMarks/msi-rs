@@ -1038,6 +1038,7 @@ impl ManifestMsiSynthesizer {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::database::tables::record::FieldValue;

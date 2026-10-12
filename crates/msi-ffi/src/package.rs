@@ -30,8 +30,9 @@ use std::ptr;
 ///
 /// `package` must be a valid pointer obtained from `msi_package_builder_build` or `msi_package_open`.
 /// `output_path` must be a valid null-terminated C string.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "C" fn msi_package_save(
     package: *const MsiPackageHandle,
     output_path: *const c_char,
@@ -72,7 +73,7 @@ pub unsafe extern "C" fn msi_package_save(
 ///
 /// `package` must be a valid pointer obtained from `msi_package_builder_build` or `msi_package_open`.
 /// `out_bytes` and `out_len` must point to valid writable memory.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 pub unsafe extern "C" fn msi_package_to_bytes(
     package: *const MsiPackageHandle,
@@ -125,7 +126,7 @@ pub unsafe extern "C" fn msi_package_to_bytes(
 ///
 /// `path` must be a valid null-terminated C string.
 /// `out_package` must point to valid writable memory.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 pub unsafe extern "C" fn msi_package_open(
     path: *const c_char,
@@ -170,7 +171,7 @@ pub unsafe extern "C" fn msi_package_open(
 /// `package` must be a valid pointer.
 /// `property_name` must be a valid null-terminated C string.
 /// `buffer` and `out_written` must point to valid memory if non-null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 pub unsafe extern "C" fn msi_package_get_property(
     package: *const MsiPackageHandle,
@@ -252,8 +253,9 @@ pub unsafe extern "C" fn msi_package_get_property(
 ///
 /// `package` must be a valid pointer.
 /// `cabinet_name` and `dest_dir` must be valid null-terminated C strings.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
+#[must_use]
 pub unsafe extern "C" fn msi_package_extract_cabinet(
     package: *const MsiPackageHandle,
     cabinet_name: *const c_char,
@@ -567,7 +569,8 @@ mod tests {
             );
 
             // Extract cabinet errors
-            let missing_cab = CString::new("#missing.cab").unwrap_or_default();
+            let missing_cab =
+                CString::new("#[cfg_attr(not(test), no_mangle)]issing.cab").unwrap_or_default();
             let temp_dest = std::env::temp_dir().join("cab_dest");
             let temp_dest_c = CString::new(temp_dest.to_str().unwrap_or("")).unwrap_or_default();
             assert_eq!(
@@ -684,7 +687,7 @@ mod tests {
             let mut cab_writer =
                 msi::cab::writer::CabinetWriter::new(msi::cab::folder::CompressionType::Mszip);
             let _ = cab_writer.add_file("corrupt.txt", b"Valid payload data to corrupt");
-            let mut corrupt_cab_bytes = cab_writer.build();
+            let mut corrupt_cab_bytes = cab_writer.build().unwrap_or_default();
             let last_idx = corrupt_cab_bytes.len().saturating_sub(1);
             corrupt_cab_bytes[last_idx] ^= 0xFF;
 

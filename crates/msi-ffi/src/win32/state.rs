@@ -17,7 +17,7 @@ use std::panic;
 /// # Returns
 ///
 /// `ERROR_SUCCESS` or `ERROR_INVALID_PARAMETER`.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -45,7 +45,7 @@ pub extern "system" fn MsiIsProductElevatedW(szProduct: Lpcwstr, pfElevated: *mu
 }
 
 /// Determines whether the product is installed with elevated privileges (ANSI).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -80,10 +80,11 @@ pub extern "system" fn MsiIsProductElevatedA(szProduct: Lpcstr, pfElevated: *mut
 /// # Returns
 ///
 /// `TRUE` if the mode is set, `FALSE` otherwise.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiGetMode(hInstall: crate::handles::MsiHandle, eRunMode: Uint) -> Bool {
     let result = panic::catch_unwind(|| {
         // TODO: Map to actual execution engine state.
@@ -104,10 +105,11 @@ pub extern "system" fn MsiGetMode(hInstall: crate::handles::MsiHandle, eRunMode:
 /// # Returns
 ///
 /// `ERROR_SUCCESS` on success, or an error code.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiSetMode(
     hInstall: crate::handles::MsiHandle,
     eRunMode: Uint,
@@ -122,10 +124,11 @@ pub extern "system" fn MsiSetMode(
 }
 
 /// Sets the installation level for a full product installation.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiSetInstallLevel(
     hInstall: crate::handles::MsiHandle,
     iInstallLevel: i32,
@@ -135,10 +138,11 @@ pub extern "system" fn MsiSetInstallLevel(
 }
 
 /// Configures the installed state for a product feature (Unicode).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiConfigureFeatureW(
     szProduct: Lpcwstr,
     szFeature: Lpcwstr,
@@ -160,10 +164,11 @@ pub extern "system" fn MsiConfigureFeatureW(
 }
 
 /// Configures the installed state for a product feature (ANSI).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiConfigureFeatureA(
     szProduct: Lpcstr,
     szFeature: Lpcstr,
@@ -185,10 +190,11 @@ pub extern "system" fn MsiConfigureFeatureA(
 }
 
 /// Reinstalls a feature (Unicode).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiReinstallFeatureW(
     szProduct: Lpcwstr,
     szFeature: Lpcwstr,
@@ -210,10 +216,11 @@ pub extern "system" fn MsiReinstallFeatureW(
 }
 
 /// Reinstalls a feature (ANSI).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiReinstallFeatureA(
     szProduct: Lpcstr,
     szFeature: Lpcstr,
@@ -235,10 +242,11 @@ pub extern "system" fn MsiReinstallFeatureA(
 }
 
 /// Modifies the runtime attributes of a feature (Unicode).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiSetFeatureAttributesW(
     hInstall: crate::handles::MsiHandle,
     szFeature: Lpcwstr,
@@ -257,10 +265,11 @@ pub extern "system" fn MsiSetFeatureAttributesW(
 }
 
 /// Modifies the runtime attributes of a feature (ANSI).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiSetFeatureAttributesA(
     hInstall: crate::handles::MsiHandle,
     szFeature: Lpcstr,
@@ -279,10 +288,11 @@ pub extern "system" fn MsiSetFeatureAttributesA(
 }
 
 /// Sets the installed state for a product feature (Unicode).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiSetFeatureStateW(
     hInstall: crate::handles::MsiHandle,
     szFeature: Lpcwstr,
@@ -301,10 +311,11 @@ pub extern "system" fn MsiSetFeatureStateW(
 }
 
 /// Sets the installed state for a product feature (ANSI).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiSetFeatureStateA(
     hInstall: crate::handles::MsiHandle,
     szFeature: Lpcstr,
@@ -335,7 +346,7 @@ pub extern "system" fn MsiSetFeatureStateA(
 /// # Returns
 ///
 /// `ERROR_SUCCESS` or `ERROR_INVALID_PARAMETER`.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -372,7 +383,7 @@ pub extern "system" fn MsiQueryComponentStateW(
 }
 
 /// Queries the installed state of a component (ANSI).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -408,10 +419,11 @@ pub extern "system" fn MsiQueryComponentStateA(
 }
 
 /// Sets the installed state of a component.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiSetComponentStateW(
     hInstall: crate::handles::MsiHandle,
     szComponent: Lpcwstr,
@@ -433,10 +445,11 @@ pub extern "system" fn MsiSetComponentStateW(
 }
 
 /// Sets the installed state of a component (ANSI).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiSetComponentStateA(
     hInstall: crate::handles::MsiHandle,
     szComponent: Lpcstr,
@@ -458,7 +471,7 @@ pub extern "system" fn MsiSetComponentStateA(
 }
 
 /// Retrieves the usage metrics for a product feature.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -501,7 +514,7 @@ pub extern "system" fn MsiGetFeatureUsageW(
 }
 
 /// Retrieves the usage metrics for a product feature (ANSI).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -544,10 +557,11 @@ pub extern "system" fn MsiGetFeatureUsageA(
 }
 
 /// Increments the usage count for a particular feature and returns the installation state.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiUseFeatureExW(
     szProduct: Lpcwstr,
     szFeature: Lpcwstr,
@@ -574,10 +588,11 @@ pub extern "system" fn MsiUseFeatureExW(
 }
 
 /// Increments the usage count for a particular feature and returns the installation state (ANSI).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiUseFeatureExA(
     szProduct: Lpcstr,
     szFeature: Lpcstr,
@@ -604,10 +619,11 @@ pub extern "system" fn MsiUseFeatureExA(
 }
 
 /// Installs files that are unexpectedly missing.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiInstallMissingComponentW(
     szProduct: Lpcwstr,
     szComponent: Lpcwstr,
@@ -633,10 +649,11 @@ pub extern "system" fn MsiInstallMissingComponentW(
 }
 
 /// Installs files that are unexpectedly missing (ANSI).
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiInstallMissingComponentA(
     szProduct: Lpcstr,
     szComponent: Lpcstr,
@@ -663,12 +680,97 @@ pub extern "system" fn MsiInstallMissingComponentA(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn test_feature_usage_valid() {
+        let dummy_w: Vec<u16> = "dummy".encode_utf16().chain(std::iter::once(0)).collect();
+        let dummy_a = std::ffi::CString::new("dummy").unwrap();
+
+        let mut count: Dword = 123;
+        let mut date: u16 = 456;
+
+        assert_eq!(
+            MsiGetFeatureUsageW(dummy_w.as_ptr(), dummy_w.as_ptr(), &mut count, &mut date),
+            ERROR_SUCCESS
+        );
+        assert_eq!(count, 0);
+        assert_eq!(date, 0);
+
+        count = 123;
+        date = 456;
+        assert_eq!(
+            MsiGetFeatureUsageA(dummy_a.as_ptr(), dummy_a.as_ptr(), &mut count, &mut date),
+            ERROR_SUCCESS
+        );
+        assert_eq!(count, 0);
+        assert_eq!(date, 0);
+
+        assert_eq!(
+            MsiGetFeatureUsageW(
+                dummy_w.as_ptr(),
+                dummy_w.as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiGetFeatureUsageW(
+                dummy_w.as_ptr(),
+                dummy_w.as_ptr(),
+                &mut count,
+                std::ptr::null_mut()
+            ),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiGetFeatureUsageW(
+                dummy_w.as_ptr(),
+                dummy_w.as_ptr(),
+                std::ptr::null_mut(),
+                &mut date
+            ),
+            ERROR_SUCCESS
+        );
+
+        assert_eq!(
+            MsiGetFeatureUsageA(
+                dummy_a.as_ptr(),
+                dummy_a.as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiGetFeatureUsageA(
+                dummy_a.as_ptr(),
+                dummy_a.as_ptr(),
+                &mut count,
+                std::ptr::null_mut()
+            ),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiGetFeatureUsageA(
+                dummy_a.as_ptr(),
+                dummy_a.as_ptr(),
+                std::ptr::null_mut(),
+                &mut date
+            ),
+            ERROR_SUCCESS
+        );
+    }
+
     use super::*;
     use crate::win32::TRUE;
 
     #[test]
     fn test_component_state() {
         let mut state = 0;
+        let valid_w: Vec<u16> = "valid".encode_utf16().chain(std::iter::once(0)).collect();
+        let valid_a = b"valid\0";
+        let _ = valid_a;
 
         assert_eq!(
             MsiQueryComponentStateW(
@@ -677,6 +779,26 @@ mod tests {
                 0,
                 std::ptr::null(),
                 &raw mut state
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiQueryComponentStateW(
+                valid_w.as_ptr(),
+                std::ptr::null(),
+                0,
+                std::ptr::null(),
+                &raw mut state
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiQueryComponentStateW(
+                valid_w.as_ptr(),
+                std::ptr::null(),
+                0,
+                valid_w.as_ptr(),
+                std::ptr::null_mut()
             ),
             ERROR_INVALID_PARAMETER
         );
@@ -690,10 +812,26 @@ mod tests {
             ),
             ERROR_INVALID_PARAMETER
         );
-
-        let valid_w: Vec<u16> = "valid".encode_utf16().chain(std::iter::once(0)).collect();
-        let valid_a = b"valid\0";
-        let _ = valid_a;
+        assert_eq!(
+            MsiQueryComponentStateA(
+                valid_a.as_ptr().cast(),
+                std::ptr::null(),
+                0,
+                std::ptr::null(),
+                &raw mut state
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiQueryComponentStateA(
+                valid_a.as_ptr().cast(),
+                std::ptr::null(),
+                0,
+                valid_a.as_ptr().cast(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
 
         assert_eq!(
             MsiQueryComponentStateW(
@@ -830,18 +968,25 @@ mod tests {
     #[test]
     fn test_mode_and_elevation() {
         let mut elevated = TRUE;
+        let valid_w: Vec<u16> = "valid".encode_utf16().chain(std::iter::once(0)).collect();
+        let valid_a = b"valid\0";
 
         assert_eq!(
             MsiIsProductElevatedW(std::ptr::null(), std::ptr::null_mut()),
             ERROR_INVALID_PARAMETER
         );
         assert_eq!(
+            MsiIsProductElevatedW(valid_w.as_ptr(), std::ptr::null_mut()),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
             MsiIsProductElevatedA(std::ptr::null(), std::ptr::null_mut()),
             ERROR_INVALID_PARAMETER
         );
-
-        let valid_w: Vec<u16> = "valid".encode_utf16().chain(std::iter::once(0)).collect();
-        let valid_a = b"valid\0";
+        assert_eq!(
+            MsiIsProductElevatedA(valid_a.as_ptr().cast(), std::ptr::null_mut()),
+            ERROR_INVALID_PARAMETER
+        );
 
         assert_eq!(
             MsiIsProductElevatedW(valid_w.as_ptr(), &mut elevated),
@@ -1215,10 +1360,11 @@ mod tests {
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiConfigureFeatureFromDescriptorA(
     _szDescriptor: Lpcstr,
     _eInstallLevel: i32,
@@ -1238,10 +1384,11 @@ pub extern "system" fn MsiConfigureFeatureFromDescriptorA(
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiConfigureFeatureFromDescriptorW(
     _szDescriptor: Lpcwstr,
     _eInstallLevel: i32,
@@ -1255,10 +1402,11 @@ pub extern "system" fn MsiConfigureFeatureFromDescriptorW(
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiInvalidateFeatureCache() -> Uint {
     1605 // ERROR_UNKNOWN_PRODUCT
 }
@@ -1273,7 +1421,7 @@ pub extern "system" fn MsiInvalidateFeatureCache() -> Uint {
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
@@ -1294,7 +1442,7 @@ pub extern "system" fn MsiQueryFeatureStateFromDescriptorA(
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
@@ -1315,10 +1463,11 @@ pub extern "system" fn MsiQueryFeatureStateFromDescriptorW(
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiReinstallFeatureFromDescriptorA(
     _szDescriptor: Lpcstr,
     _dwReinstallMode: Dword,
@@ -1336,10 +1485,11 @@ pub extern "system" fn MsiReinstallFeatureFromDescriptorA(
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
+#[must_use]
 pub extern "system" fn MsiReinstallFeatureFromDescriptorW(
     _szDescriptor: Lpcwstr,
     _dwReinstallMode: Dword,

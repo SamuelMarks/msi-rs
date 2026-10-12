@@ -21,7 +21,11 @@ pub fn get_wine_prefix() -> Option<PathBuf> {
 
     // Fallback to ~/.wine
     #[cfg(unix)]
-    if let Some(home) = dirs::home_dir() {
+    if let Some(home) = if std::env::var("WINEPREFIX_MOCK_NO_HOME").is_ok() {
+        None
+    } else {
+        dirs::home_dir()
+    } {
         return Some(home.join(".wine"));
     }
 
@@ -29,12 +33,92 @@ pub fn get_wine_prefix() -> Option<PathBuf> {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
+    use std::env;
+    use std::sync::Mutex;
+
+    static ENV_MUTEX: Mutex<()> = Mutex::new(());
+
+    struct EnvGuard {
+        key: String,
+        original: Option<std::ffi::OsString>,
+    }
+
+    impl EnvGuard {
+        fn new(key: &str) -> Self {
+            Self {
+                key: key.to_string(),
+                original: env::var_os(key),
+            }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            if let Some(ref val) = self.original {
+                env::set_var(&self.key, val);
+            } else {
+                env::remove_var(&self.key);
+            }
+        }
+    }
 
     #[test]
-    fn test_get_wine_prefix() {
-        // Just test that it doesn't panic. The actual value depends on the environment.
-        let _prefix = get_wine_prefix();
+    fn test_env_guard_coverage() {
+        env::set_var("WINE_TEST_GUARD", "1");
+        {
+            let _guard = EnvGuard::new("WINE_TEST_GUARD");
+        }
+        env::remove_var("WINE_TEST_GUARD");
+        {
+            let _guard = EnvGuard::new("WINE_TEST_GUARD");
+        }
+    }
+
+    #[test]
+    fn test_get_wine_prefix_with_env() -> Result<(), crate::error::MsiError> {
+        let _lock = ENV_MUTEX.lock().unwrap();
+        let _guard = EnvGuard::new("WINEPREFIX");
+
+        env::set_var("WINEPREFIX", "/tmp/mock_wine_prefix");
+        let prefix = get_wine_prefix();
+        assert_eq!(prefix, Some(PathBuf::from("/tmp/mock_wine_prefix")));
+
+        env::set_var("WINEPREFIX", "");
+        let prefix2 = get_wine_prefix();
+        #[cfg(unix)]
+        assert_eq!(prefix2, dirs::home_dir().map(|h| h.join(".wine")));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_wine_prefix_without_env() -> Result<(), crate::error::MsiError> {
+        let _lock = ENV_MUTEX.lock().unwrap();
+        let _guard = EnvGuard::new("WINEPREFIX");
+
+        env::remove_var("WINEPREFIX");
+        let prefix = get_wine_prefix();
+        #[cfg(unix)]
+        assert_eq!(prefix, dirs::home_dir().map(|h| h.join(".wine")));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_wine_prefix_no_home() -> Result<(), crate::error::MsiError> {
+        let _lock = ENV_MUTEX.lock().unwrap();
+        let _guard_wine = EnvGuard::new("WINEPREFIX");
+        let _guard_mock = EnvGuard::new("WINEPREFIX_MOCK_NO_HOME");
+
+        env::remove_var("WINEPREFIX");
+        env::set_var("WINEPREFIX_MOCK_NO_HOME", "1");
+
+        let prefix = get_wine_prefix();
+        assert_eq!(prefix, None);
+
+        Ok(())
     }
 }

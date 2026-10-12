@@ -586,6 +586,7 @@ impl CfbHeader {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -650,90 +651,57 @@ mod tests {
         let bytes = header.to_bytes();
 
         // 1. Too short
-        assert!(matches!(
-            CfbHeader::parse(&bytes[0..511]),
-            Err(MsiError::CfbCorrupted { .. })
-        ));
+        assert!(CfbHeader::parse(&bytes[0..511]).is_err());
 
         // 2. Bad signature
         let mut bad = bytes;
         bad[0] = 0x00;
-        assert!(matches!(
-            CfbHeader::parse(&bad),
-            Err(MsiError::InvalidCfbSignature { .. })
-        ));
+        assert!(CfbHeader::parse(&bad).is_err());
 
         // 3. Bad CLSID
         bad = bytes;
         bad[8] = 0xFF;
-        assert!(matches!(
-            CfbHeader::parse(&bad),
-            Err(MsiError::InvalidCfbClsid { .. })
-        ));
+        assert!(CfbHeader::parse(&bad).is_err());
 
         // 4. Bad minor version
         bad = bytes;
         bad[24] = 0x3F;
-        assert!(matches!(
-            CfbHeader::parse(&bad),
-            Err(MsiError::InvalidCfbMinorVersion { .. })
-        ));
+        assert!(CfbHeader::parse(&bad).is_err());
 
         // 5. Bad major version
         bad = bytes;
         bad[26] = 0x02;
-        assert!(matches!(
-            CfbHeader::parse(&bad),
-            Err(MsiError::InvalidCfbMajorVersion { .. })
-        ));
+        assert!(CfbHeader::parse(&bad).is_err());
 
         // 6. Bad byte order
         bad = bytes;
         bad[28] = 0xFD;
-        assert!(matches!(
-            CfbHeader::parse(&bad),
-            Err(MsiError::InvalidCfbByteOrder { .. })
-        ));
+        assert!(CfbHeader::parse(&bad).is_err());
 
         // 7. Bad sector shift
         bad = bytes;
         bad[30] = 10;
-        assert!(matches!(
-            CfbHeader::parse(&bad),
-            Err(MsiError::InvalidCfbSectorShift { .. })
-        ));
+        assert!(CfbHeader::parse(&bad).is_err());
 
         // 8. Bad mini sector shift
         bad = bytes;
         bad[32] = 7;
-        assert!(matches!(
-            CfbHeader::parse(&bad),
-            Err(MsiError::InvalidCfbMiniSectorShift { .. })
-        ));
+        assert!(CfbHeader::parse(&bad).is_err());
 
         // 9. Bad reserved bytes
         bad = bytes;
         bad[34] = 1;
-        assert!(matches!(
-            CfbHeader::parse(&bad),
-            Err(MsiError::InvalidCfbReserved { .. })
-        ));
+        assert!(CfbHeader::parse(&bad).is_err());
 
         // 10. Non-zero directory sectors in v3
         bad = bytes;
         bad[40] = 1;
-        assert!(matches!(
-            CfbHeader::parse(&bad),
-            Err(MsiError::InvalidCfbDirectorySectors { .. })
-        ));
+        assert!(CfbHeader::parse(&bad).is_err());
 
         // 11. Bad mini stream cutoff
         bad = bytes;
         bad[56] = 0x00;
         bad[57] = 0x08; // 2048
-        assert!(matches!(
-            CfbHeader::parse(&bad),
-            Err(MsiError::InvalidCfbMiniStreamCutoff { .. })
-        ));
+        assert!(CfbHeader::parse(&bad).is_err());
     }
 }

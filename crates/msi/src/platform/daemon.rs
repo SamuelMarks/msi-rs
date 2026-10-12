@@ -1285,6 +1285,7 @@ impl HostSupervisorExecutor {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -1472,16 +1473,16 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::missing_const_for_fn)]
     fn test_supervisor_type_detect_host() {
         let sup = SupervisorType::detect_host();
-        assert!(matches!(
-            sup,
+        match sup {
             SupervisorType::Systemd
-                | SupervisorType::Launchd
-                | SupervisorType::FreeBsdRc
-                | SupervisorType::Smf
-                | SupervisorType::WindowsScm
-        ));
+            | SupervisorType::Launchd
+            | SupervisorType::FreeBsdRc
+            | SupervisorType::Smf
+            | SupervisorType::WindowsScm => {}
+        }
     }
 
     /// Tests systemd unit edge cases with empty `after` and populated `requires`, no user/group/wd, and disabled `auto_start`.
@@ -1812,14 +1813,13 @@ mod tests {
 
         // Host detection
         let host = SupervisorType::detect_host();
-        assert!(matches!(
-            host,
+        match host {
             SupervisorType::WindowsScm
-                | SupervisorType::Systemd
-                | SupervisorType::Launchd
-                | SupervisorType::FreeBsdRc
-                | SupervisorType::Smf
-        ));
+            | SupervisorType::Systemd
+            | SupervisorType::Launchd
+            | SupervisorType::FreeBsdRc
+            | SupervisorType::Smf => {}
+        }
     }
 
     /// Tests that Windows NT kernel and file system drivers are explicitly rejected on non-Windows platforms.

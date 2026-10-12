@@ -364,7 +364,7 @@ mod tests {
     fn create_test_package_helper(fail_build: bool) -> Result<PyPackage, msi::MsiError> {
         let mut cw = CabinetWriter::new(CompressionType::None);
         let _ = cw.add_file("sample.txt", b"sample file content");
-        let cab_bytes = cw.build();
+        let cab_bytes = cw.build().unwrap_or_default();
 
         let mut b = Package::builder();
         if !fail_build {
@@ -622,30 +622,7 @@ mod tests {
 
     /// Tests retrieving tables as dictionaries covering all `FieldValue` variants and error cases.
     #[test]
-    #[allow(dead_code)]
     fn test_package_get_table_field_variants_direct() {
-        pyo3::prepare_freethreaded_python();
-        let pkg = create_test_package().expect("pkg");
-        Python::with_gil(|py| {
-            let media = pkg.get_table(py, "Media").expect("media");
-            assert!(!media.is_empty());
-
-            let bad = pkg.get_table(py, "NonExistentTable");
-            assert!(bad.is_err());
-
-            let file = pkg.get_table(py, "File").expect("file");
-            assert!(!file.is_empty());
-
-            let short = pkg.get_table(py, "Shortcut").expect("short");
-            assert!(short.is_empty());
-
-            let bin = pkg.get_table(py, "Binary").expect("binary");
-            assert!(!bin.is_empty());
-        });
-    }
-
-    #[allow(dead_code)]
-    fn test_package_get_table_field_variants() {
         pyo3::prepare_freethreaded_python();
         assert!(check_package_get_table(create_test_package()));
     }
@@ -720,7 +697,7 @@ mod tests {
                 b_unsupp = b_unsupp.manufacturer("Mfr");
                 b_unsupp = b_unsupp.version(ProductVersion::new(1, 0, 0));
                 b_unsupp = b_unsupp.product_code("{00000000-0000-0000-0000-000000000000}");
-                b_unsupp = b_unsupp.add_embedded_cabinet("#unsupp.cab", cw_unsupp.build());
+                b_unsupp = b_unsupp.add_embedded_cabinet("#unsupp.cab", cw_unsupp.build().unwrap_or_default());
                 assert!(b_unsupp.build().is_ok_and(|unsupp_pkg| {
                     let py_unsupp = PyPackage { inner: unsupp_pkg };
                     let unsupp_dir = std::env::temp_dir().join("msi_test_py_unsupp");

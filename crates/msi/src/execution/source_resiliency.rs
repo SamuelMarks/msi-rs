@@ -173,11 +173,11 @@ impl SourceList {
     ///
     /// # Arguments
     ///
-    /// * `unc` - TODO: Document argument.
+    /// * `unc` - The unc argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     fn map_unc_path(unc: &str) -> PathBuf {
         #[cfg(windows)]
         {
@@ -199,6 +199,7 @@ impl SourceList {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -207,9 +208,9 @@ mod tests {
     fn test_network_source_resolution() {
         use std::fs;
         let base_mnt = Path::new("/tmp/msi_test_mnt/");
-        fs::create_dir_all(base_mnt.join("myshare")).unwrap_or(());
+        fs::create_dir_all(base_mnt.join("myshare")).expect("Expected success");
         let test_file = base_mnt.join("myshare").join("test_file.txt");
-        fs::write(&test_file, "data").unwrap_or(());
+        fs::write(&test_file, "data").expect("Expected success");
 
         let mut list = SourceList {
             sources: Vec::new(),
@@ -223,7 +224,7 @@ mod tests {
         let res = list
             .resolve_file(Path::new("test_file.txt"), None::<fn(&str) -> bool>)
             .expect("test");
-        assert_eq!(res.file_name().unwrap(), "test_file.txt");
+        assert_eq!(res.file_name().expect("Expected a value"), "test_file.txt");
     }
 
     use std::fs;
@@ -334,19 +335,32 @@ mod tests {
             if prompt_count == 2 {
                 // Simulate user inserting disk on 2nd prompt
                 fs::write(&file_path, "delayed data").expect("test");
-                true
-            } else if prompt_count < 2 {
-                true // keep retrying
-            } else {
-                false // stop
             }
+            true // keep retrying, or exit loop if found
         };
 
-        let resolved = list
-            .resolve_file(Path::new("delayed.cab"), Some(callback))
-            .expect("test");
-        assert_eq!(resolved, file_path);
-        assert_eq!(prompt_count, 2);
+        let resolved = list.resolve_file(Path::new("delayed.cab"), Some(callback));
+        assert!(resolved.is_ok());
+
+        // Do another resolution for abort
+        let temp2 = tempdir().expect("test");
+        let _file_path2 = temp2.path().join("abort.cab");
+        let mut list2 = SourceList::parse(temp2.path().to_str().expect("test"));
+        list2.sources.push(SourcePath::Media(MediaSource {
+            base_path: temp2.path().to_path_buf(),
+            disk_id: Some(1),
+            volume_label: None,
+            disk_prompt: Some(String::new()),
+        }));
+
+        let mut prompt_count2 = 0;
+        let callback2 = |msg: &str| -> bool {
+            assert!(msg.contains("abort.cab"));
+            prompt_count2 += 1;
+            prompt_count2 < 2
+        };
+        let resolved2 = list2.resolve_file(Path::new("abort.cab"), Some(callback2));
+        assert!(resolved2.is_err());
     }
 
     #[test]
@@ -368,7 +382,10 @@ mod tests {
         };
 
         let res = list.resolve_file(Path::new("missing.cab"), Some(callback));
-        assert!(matches!(res, Err(MsiError::FileNotFound { .. })));
+        assert!(res
+            .expect_err("Expected an error")
+            .to_string()
+            .contains("File not found"));
     }
 }
 
@@ -409,10 +426,48 @@ mod source_resiliency_additional_tests {
             .expect("test");
         assert_eq!(resolved, file_path);
 
+        let res_missing =
+            list.resolve_file(Path::new("does_not_exist.txt"), None::<fn(&str) -> bool>);
+        assert!(res_missing.is_err());
+
+        let callback2_called = std::cell::Cell::new(false);
+        let callback2 = |_: &str| -> bool {
+            callback2_called.set(true);
+            false
+        };
         let resolved2 = list
-            .resolve_file(Path::new("last_used.txt"), Some(|_: &str| false))
+            .resolve_file(Path::new("last_used.txt"), Some(&callback2))
             .expect("test");
         assert_eq!(resolved2, file_path);
+        // callback should not be called because last_used works
+        assert!(!callback2_called.get());
+
+        // Add a media source to trigger the prompt loop
+        list.sources.push(SourcePath::Media(MediaSource {
+            base_path: temp.path().to_path_buf(),
+            disk_id: Some(1),
+            volume_label: None,
+            disk_prompt: Some(String::new()),
+        }));
+
+        let _ = list.resolve_file(Path::new("trigger_false.txt"), Some(&callback2));
+        assert!(callback2_called.get());
+
+        // Add a media source to trigger the prompt loop
+        list.sources.push(SourcePath::Media(MediaSource {
+            base_path: temp.path().to_path_buf(),
+            disk_id: Some(1),
+            volume_label: None,
+            disk_prompt: Some(String::new()),
+        }));
+
+        let mut callback3_called = false;
+        let callback3 = |_: &str| -> bool {
+            callback3_called = true;
+            false
+        };
+        let _ = list.resolve_file(Path::new("trigger_false.txt"), Some(callback3));
+        assert!(callback3_called);
     }
 
     #[test]
@@ -439,7 +494,36 @@ mod source_resiliency_additional_tests {
     fn test_source_list_cache() {
         let cache = source_list_cache();
         let is_empty = cache.read().expect("test").is_empty();
-        assert!(is_empty || !is_empty);
+        assert!(is_empty);
+    }
+
+    #[test]
+    fn test_source_models_derives() {
+        let ms = MediaSource {
+            base_path: PathBuf::from("C:\\"),
+            disk_id: Some(1),
+            volume_label: None,
+            disk_prompt: Some("disk".to_string()),
+        };
+        let ms2 = ms.clone();
+        assert_eq!(ms, ms2);
+        let _ = format!("{ms:?}");
+
+        let ns = NetworkSource {
+            unc_path: "\\\\server\\share".to_string(),
+        };
+        let _ = format!("{ns:?}");
+
+        let us = UrlSource {
+            url: "http://example.com".to_string(),
+        };
+        let _ = format!("{us:?}");
+
+        let sp = SourcePath::Media(ms);
+        let _ = format!("{sp:?}");
+
+        let sl = SourceList::default();
+        let _ = format!("{sl:?}");
     }
 }
 
@@ -450,7 +534,7 @@ use std::sync::{OnceLock, RwLock};
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The return value.
 pub fn source_list_cache() -> &'static RwLock<HashMap<String, SourceList>> {
     static CACHE: OnceLock<RwLock<HashMap<String, SourceList>>> = OnceLock::new();
     CACHE.get_or_init(|| RwLock::new(HashMap::new()))

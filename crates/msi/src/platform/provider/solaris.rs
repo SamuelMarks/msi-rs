@@ -76,6 +76,7 @@ impl PlatformProvider for SolarisProvider {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

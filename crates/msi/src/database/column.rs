@@ -247,6 +247,7 @@ impl fmt::Display for ColumnDef {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
 
     #[test]
@@ -270,8 +271,20 @@ mod tests {
 
         // A stream type 0x0100 where trailing zeros < 8 (e.g., bitmask & 0xFF != 0)
         // should fall through to the Error since it doesn't match string categories either.
-        let err = ColumnDef::from_bitmask("BadStream", 0x0100 | 0x0001).unwrap_err();
-        assert!(matches!(err, MsiError::InvalidColumnType { .. }));
+        let err = ColumnDef::from_bitmask("BadStream", 0x0100 | 0x0001);
+        assert!(err.is_err());
+
+        // Test falling through Short when (bitmask & 0xFF) != 2
+        let err_short = ColumnDef::from_bitmask("BadShort", 0x0500 | 0x0003);
+        assert!(err_short.is_err());
+
+        // Test falling through Long when (bitmask & 0xFF) != 4
+        let err_long = ColumnDef::from_bitmask("BadLong", 0x0100 | 0x0005);
+        assert!(err_long.is_err());
+
+        // Test falling through Stream when trailing zeros < 8
+        let err_stream = ColumnDef::from_bitmask("BadStream2", 0x0900 | 0x0001);
+        assert!(err_stream.is_err());
     }
     use super::*;
 

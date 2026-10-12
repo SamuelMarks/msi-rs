@@ -263,13 +263,14 @@ impl CabinetReader {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
 
     #[test]
     fn test_cabinet_reader_file_chunk_not_found() {
         let mut writer = CabinetWriter::new(CompressionType::None);
         writer.add_file("test.txt", b"hello").expect("test");
-        let cab_bytes = writer.build();
+        let cab_bytes = writer.build().unwrap_or_default();
         let reader = CabinetReader::new(&cab_bytes).expect("test");
         let err = reader.extract_file_chunk("missing").unwrap_err();
         assert!(matches!(err, MsiError::CabinetFileNotFound { .. }));
@@ -279,23 +280,23 @@ mod tests {
     fn test_cabinet_reader_invalid_folder_index() {
         let mut writer = CabinetWriter::new(CompressionType::None);
         writer.add_file("test.txt", b"hello").expect("test");
-        let mut cab_bytes = writer.build();
+        let mut cab_bytes = writer.build().unwrap_or_default();
         // Corrupt folder index. CFFILE entries start after CFFOLDER (which is after CFHEADER).
         // Let's just find "test.txt" in the binary and corrupt the index right before it.
         // Or simply, we can corrupt the folder index inside the cabinet header or file entry.
         // File entry: [uncompressed size 4][offset 4][folder index 2][date 2][time 2][attrs 2][name...]
         // We know it's at offset 0x24 in a minimal cabinet.
         cab_bytes[0x24] = 0xFF;
-        if let Ok(reader) = CabinetReader::new(&cab_bytes) {
-            let _ = reader.extract_file_chunk("test.txt");
-        }
+        let reader = CabinetReader::new(&cab_bytes).unwrap();
+        let res = reader.extract_file_chunk("test.txt");
+        assert!(res.is_err());
     }
 
     #[test]
     fn test_cabinet_reader_lzx_invalid_window() {
         let mut writer = CabinetWriter::new(CompressionType::None);
         writer.add_file("test.txt", b"hello").expect("test");
-        let mut cab_bytes = writer.build();
+        let mut cab_bytes = writer.build().unwrap_or_default();
         cab_bytes[0x2A] = 0x03;
         cab_bytes[0x2B] = 0x0F;
         let reader = CabinetReader::new(&cab_bytes).expect("test");
@@ -322,7 +323,7 @@ mod tests {
     fn test_cabinet_reader_errors() {
         let mut writer = CabinetWriter::new(CompressionType::None);
         let _ = writer.add_file("test.txt", b"sample content");
-        let cab_bytes = writer.build();
+        let cab_bytes = writer.build().unwrap_or_default();
 
         // 1. Truncated before CFFILE entries and truncated during CFFILE entry
         let mut truncated_cab = cab_bytes.clone();
@@ -396,7 +397,7 @@ mod tests {
         assert!(writer
             .add_file("second.bin", &[1, 2, 3, 4, 5, 6, 7, 8])
             .is_ok());
-        let cab_bytes = writer.build();
+        let cab_bytes = writer.build().unwrap_or_default();
 
         let reader = CabinetReader::new(&cab_bytes).unwrap_or_default();
         assert_eq!(reader.files().len(), 2);
@@ -424,7 +425,7 @@ mod tests {
         assert!(writer
             .add_file("compressed.txt", b"MSZIP compression test payload.")
             .is_ok());
-        let cab_bytes = writer.build();
+        let cab_bytes = writer.build().unwrap_or_default();
 
         let reader = CabinetReader::new(&cab_bytes).unwrap_or_default();
         assert_eq!(
@@ -447,7 +448,7 @@ mod tests {
                 b"LZX compression test payload with repetition repetition repetition."
             )
             .is_ok());
-        let cab_bytes = writer.build();
+        let cab_bytes = writer.build().unwrap_or_default();
 
         let reader = CabinetReader::new(&cab_bytes).unwrap_or_default();
         assert_eq!(
@@ -463,7 +464,7 @@ mod tests {
         assert!(writer
             .add_file("quantum.txt", b"Quantum decompression test content")
             .is_ok());
-        let cab_bytes = writer.build();
+        let cab_bytes = writer.build().unwrap_or_default();
 
         let reader = CabinetReader::new(&cab_bytes).unwrap_or_default();
         assert_eq!(
@@ -477,7 +478,7 @@ mod tests {
     fn test_cabinet_reader_chunk_errors_and_missing() {
         let mut writer = CabinetWriter::new(CompressionType::None);
         assert!(writer.add_file("tiny.txt", b"abc").is_ok());
-        let cab_bytes = writer.build();
+        let cab_bytes = writer.build().unwrap_or_default();
         let reader = CabinetReader::new(&cab_bytes).unwrap_or_default();
 
         // File not found errors
@@ -492,7 +493,7 @@ mod tests {
         assert!(writer
             .add_file("continued.txt", b"Continued file chunk payload")
             .is_ok());
-        let cab_bytes = writer.build();
+        let cab_bytes = writer.build().unwrap_or_default();
 
         let files_offset =
             u32::from_le_bytes([cab_bytes[16], cab_bytes[17], cab_bytes[18], cab_bytes[19]])
@@ -537,7 +538,7 @@ mod tests {
         assert!(writer.add_file("first.txt", b"First short file").is_ok());
         let large_payload = vec![b'X'; 40_000];
         assert!(writer.add_file("second.txt", &large_payload).is_ok());
-        let cab_bytes = writer.build();
+        let cab_bytes = writer.build().unwrap_or_default();
 
         let reader = CabinetReader::new(&cab_bytes).unwrap_or_default();
         assert_eq!(
@@ -551,7 +552,7 @@ mod tests {
     fn test_cabinet_reader_traits() {
         let mut writer = CabinetWriter::new(CompressionType::None);
         assert!(writer.add_file("data.txt", b"traits test").is_ok());
-        let cab_bytes = writer.build();
+        let cab_bytes = writer.build().unwrap_or_default();
 
         let reader = CabinetReader::new(&cab_bytes).unwrap_or_default();
         #[allow(clippy::redundant_clone)]
@@ -568,7 +569,7 @@ mod tests {
     fn test_cabinet_reader_reserve_sizes() {
         let mut writer = CabinetWriter::new(CompressionType::None);
         assert!(writer.add_file("res.txt", b"reserve test").is_ok());
-        let cab_bytes = writer.build();
+        let cab_bytes = writer.build().unwrap_or_default();
 
         // Reconstruct cab with CFHDR_RESERVE_PRESENT:
         // Original header is 36 bytes.
@@ -613,7 +614,7 @@ mod tests {
         assert!(writer_mszip
             .add_file("mszip.txt", b"Valid MSZIP data to corrupt")
             .is_ok());
-        let mut bad_mszip_cab = writer_mszip.build();
+        let mut bad_mszip_cab = writer_mszip.build().unwrap_or_default();
         let mszip_data_offset = u32::from_le_bytes([
             bad_mszip_cab[36],
             bad_mszip_cab[37],
@@ -632,7 +633,7 @@ mod tests {
         assert!(writer_lzx
             .add_file("lzx.txt", b"Valid LZX data to corrupt")
             .is_ok());
-        let mut bad_lzx_payload = writer_lzx.build();
+        let mut bad_lzx_payload = writer_lzx.build().unwrap_or_default();
         let lzx_data_offset = u32::from_le_bytes([
             bad_lzx_payload[36],
             bad_lzx_payload[37],

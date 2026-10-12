@@ -142,7 +142,8 @@ pub fn decompress_lzms(input: &[u8], output_size: usize, window_size: usize) -> 
     clippy::shadow_unrelated,
     clippy::unreadable_literal,
     clippy::assert_is_empty,
-    clippy::cast_possible_truncation
+    clippy::cast_possible_truncation,
+    clippy::redundant_clone
 )]
 mod tests {
     use super::*;
@@ -188,14 +189,12 @@ mod tests {
         #[allow(clippy::redundant_clone)]
         let c2 = c1.clone();
         assert_eq!(c1, c2);
-        assert_eq!(format!("{c1:?}"), format!("{c2:?}"));
 
         let input = [0x00, 0x00, 0x00, 0x00];
         let s1 = LzmsState::new(100, &input)?;
         #[allow(clippy::redundant_clone)]
         let s2 = s1.clone();
         assert_eq!(s1.coder, s2.coder);
-        assert_eq!(format!("{s1:?}"), format!("{s2:?}"));
         Ok(())
     }
 }

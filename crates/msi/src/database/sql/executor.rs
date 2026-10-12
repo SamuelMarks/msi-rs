@@ -718,7 +718,7 @@ fn sort_records(records: &mut [Record], order_by: &[OrderByTerm], schemas: &[&Ta
 }
 
 #[cfg(test)]
-#[allow(clippy::manual_flatten)]
+#[allow(clippy::manual_flatten, clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -828,6 +828,12 @@ mod tests {
         let alter_sql = "ALTER TABLE CustomTest ADD ExtraCol SHORT HOLD";
         assert_eq!(
             execute_sql(&mut db, alter_sql, &[]).as_ref(),
+            Ok(&QueryResult::SchemaChanged)
+        );
+
+        let alter_free_sql = "ALTER TABLE CustomTest FREE";
+        assert_eq!(
+            execute_sql(&mut db, alter_free_sql, &[]).as_ref(),
             Ok(&QueryResult::SchemaChanged)
         );
 
@@ -1296,11 +1302,33 @@ mod tests {
     fn test_resolve_sql_value_column_no_context() {
         use crate::database::sql::ast::ColumnName;
         use crate::database::sql::ast::SqlValue;
-        use crate::error::MsiError;
 
         let val = SqlValue::Column(ColumnName("MyCol".to_string()));
         let mut idx = 0;
-        let err = resolve_sql_value(&val, &[], &mut idx, None, None).unwrap_err();
-        assert!(matches!(err, MsiError::Sql { .. }));
+        let err = resolve_sql_value(&val, &[], &mut idx, None, None);
+        assert!(err.is_err());
+
+        // Test with context but missing column
+        use crate::database::catalogs::TableSchema;
+        use crate::database::tables::record::Record;
+        let schema = TableSchema::new("MyTable".to_string());
+        let rec = Record::new();
+        let schemas = [&schema];
+        let err2 = resolve_sql_value(&val, &[], &mut idx, Some(&rec), Some(&schemas));
+        assert!(err2.is_err());
+    }
+
+    #[test]
+    fn test_drop_stream_table_without_streams_table() {
+        // Test dropping a table with a stream column when _Streams does not exist
+        let mut db = LinkedDatabase::new().unwrap();
+        let create_sql = "CREATE TABLE StreamTab (StreamCol OBJECT) HOLD";
+        execute_sql(&mut db, create_sql, &[]).unwrap();
+        // db.tables doesn't have _Streams because we haven't inserted any streams.
+        let drop_sql = "DROP TABLE StreamTab";
+        assert_eq!(
+            execute_sql(&mut db, drop_sql, &[]).as_ref(),
+            Ok(&QueryResult::SchemaChanged)
+        );
     }
 }

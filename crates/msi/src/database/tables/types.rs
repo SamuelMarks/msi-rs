@@ -1094,6 +1094,7 @@ impl fmt::Display for PropertyName {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -1433,5 +1434,24 @@ impl DiskId {
 impl fmt::Display for DiskId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+#[cfg(test)]
+mod types_coverage_tests {
+    use super::*;
+
+    #[test]
+    fn test_sequence_id() {
+        let seq = SequenceId::new(42);
+        assert_eq!(seq.get(), 42);
+        assert_eq!(seq.to_string(), "42");
+    }
+
+    #[test]
+    fn test_disk_id() {
+        let disk = DiskId::new(5);
+        assert_eq!(disk.get(), 5);
+        assert_eq!(disk.to_string(), "5");
     }
 }

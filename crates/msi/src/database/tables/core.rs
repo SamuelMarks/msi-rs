@@ -2065,6 +2065,7 @@ pub fn module_exclusion_schema() -> TableSchema {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -2487,6 +2488,13 @@ mod tests {
         assert!(FileHashRow::from_record(&bad_null).is_err());
         assert!(MediaRow::from_record(&bad_null).is_err());
         assert!(PropertyRow::from_record(&bad_null).is_err());
+
+        // Test invalid PropertyName in PropertyRow::from_record
+        let bad_prop_name = Record::with_fields(vec![
+            FieldValue::String(String::new()), // Empty string should fail PropertyName::new
+            FieldValue::String("Value".to_string()),
+        ]);
+        assert!(PropertyRow::from_record(&bad_prop_name).is_err());
 
         // Secondary PK / FK errors
         let comp_bad_dir = Record::with_fields(vec![

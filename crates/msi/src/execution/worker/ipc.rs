@@ -645,6 +645,7 @@ fn handle_ipc_stream_internal(
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -1003,7 +1004,15 @@ mod tests {
             rbs: vec![1, 2],
             quarantine_dir: temp_dir.to_string_lossy().to_string(),
         };
-        let input = IpcFrame::new(rb_msg.to_bytes()).encode();
+
+        let prog_msg = WorkerMessage::ProgressUpdate {
+            current: 10,
+            total: 10,
+            phase: "Test".to_string(),
+        };
+
+        let mut input = IpcFrame::new(prog_msg.to_bytes()).encode();
+        input.extend_from_slice(&IpcFrame::new(rb_msg.to_bytes()).encode());
 
         let mut output = Vec::new();
         assert!(handle_ipc_stream(input.as_slice(), &mut output, &mut executor).is_ok());

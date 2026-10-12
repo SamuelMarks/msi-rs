@@ -37,12 +37,12 @@ impl CustomActionServer {
     ///
     /// # Arguments
     ///
-    /// * `_action_name` - TODO: Document argument.
-    /// * `_is_64bit` - TODO: Document argument.
+    /// * `_action_name` - The _`action_name` argument.
+    /// * `_is_64bit` - The _`is_64bit` argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     pub const fn spawn_out_of_process_server(_action_name: &str, _is_64bit: bool) -> Result<()> {
         // Mock server spawning
         Ok(())
@@ -55,13 +55,13 @@ impl CustomActionServer {
     ///
     /// # Arguments
     ///
-    /// * `action_name` - TODO: Document argument.
-    /// * `timeout_ms` - TODO: Document argument.
-    /// * `simulate_failure` - TODO: Document argument.
+    /// * `action_name` - The `action_name` argument.
+    /// * `timeout_ms` - The `timeout_ms` argument.
+    /// * `simulate_failure` - The `simulate_failure` argument.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The return value.
     pub fn invoke_out_of_process_action(
         action_name: &str,
         timeout_ms: u64,
@@ -112,6 +112,7 @@ impl CustomActionServer {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -120,21 +121,34 @@ mod tests {
         let err = CustomActionServer::execute_dll_action_safely::<_, ()>("test", || {
             panic::panic_any("str_panic")
         })
-        .unwrap_err();
-        assert!(matches!(err, MsiError::ActionExecutionError(msg) if msg.contains("str_panic")));
+        .expect_err("Expected err");
+        assert_eq!(
+            err,
+            MsiError::ActionExecutionError(
+                "DLL Custom action 'test' panicked: str_panic".to_string()
+            )
+        );
 
         let err = CustomActionServer::execute_dll_action_safely::<_, ()>("test", || {
             panic::panic_any("String_panic".to_string())
         })
-        .unwrap_err();
-        assert!(matches!(err, MsiError::ActionExecutionError(msg) if msg.contains("String_panic")));
+        .expect_err("Expected err");
+        assert_eq!(
+            err,
+            MsiError::ActionExecutionError(
+                "DLL Custom action 'test' panicked: String_panic".to_string()
+            )
+        );
 
         let err = CustomActionServer::execute_dll_action_safely::<_, ()>("test", || {
             panic::panic_any(42_i32)
         })
-        .unwrap_err();
-        assert!(
-            matches!(err, MsiError::ActionExecutionError(msg) if msg.contains("Unknown panic"))
+        .expect_err("Expected err");
+        assert_eq!(
+            err,
+            MsiError::ActionExecutionError(
+                "DLL Custom action 'test' panicked: Unknown panic".to_string()
+            )
         );
     }
 
@@ -149,21 +163,38 @@ mod tests {
         let err_timeout =
             CustomActionServer::invoke_out_of_process_action("MyAct", 1, Some("timeout"))
                 .expect_err("Expected timeout error");
-        assert!(err_timeout.to_string().contains("timed out"));
+        assert_eq!(
+            err_timeout,
+            MsiError::WorkerIpcError {
+                reason: "Custom action surrogate for 'MyAct' timed out after 1ms".to_string()
+            }
+        );
 
         let err_crash = CustomActionServer::invoke_out_of_process_action("MyAct", 1, Some("crash"))
             .expect_err("Expected crash error");
-        assert!(err_crash.to_string().contains("crashed"));
+        assert_eq!(
+            err_crash,
+            MsiError::WorkerIpcError {
+                reason: "Custom action surrogate process for 'MyAct' crashed unexpectedly"
+                    .to_string()
+            }
+        );
 
         let err_other =
             CustomActionServer::invoke_out_of_process_action("MyAct", 1, Some("malformed"))
                 .expect_err("Expected malformed error");
-        assert!(err_other.to_string().contains("malformed"));
+        assert_eq!(
+            err_other,
+            MsiError::WorkerIpcError {
+                reason: "IPC failure: malformed".to_string()
+            }
+        );
     }
 
     #[test]
     fn test_spawn_out_of_process_server() {
         assert!(CustomActionServer::spawn_out_of_process_server("Action", true).is_ok());
+        assert!(CustomActionServer::spawn_out_of_process_server("Action", false).is_ok());
     }
 
     #[test]

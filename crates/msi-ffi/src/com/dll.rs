@@ -49,7 +49,7 @@ pub const CLSID_INSTALLER: GUID = GUID::new(
 ///
 /// # Safety
 /// The provided pointers (`rclsid`, `riid`, `ppv`) must be valid if not null. The function correctly handles unwinds.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -96,9 +96,10 @@ pub extern "system" fn DllGetClassObject(
 ///
 /// # Safety
 /// The function must handle unwinds gracefully.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case)]
+#[must_use]
 pub extern "system" fn DllCanUnloadNow() -> HRESULT {
     let result = panic::catch_unwind(|| {
         S_OK // We don't maintain global ref counts yet
@@ -118,9 +119,10 @@ pub extern "system" fn DllCanUnloadNow() -> HRESULT {
 ///
 /// # Safety
 /// The function must handle unwinds gracefully.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case)]
+#[must_use]
 pub extern "system" fn DllRegisterServer() -> HRESULT {
     let result = panic::catch_unwind(|| {
         #[cfg(windows)]
@@ -160,9 +162,10 @@ pub extern "system" fn DllRegisterServer() -> HRESULT {
 ///
 /// # Safety
 /// The function must handle unwinds gracefully.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case)]
+#[must_use]
 pub extern "system" fn DllUnregisterServer() -> HRESULT {
     let result = panic::catch_unwind(|| {
         #[cfg(windows)]
@@ -220,7 +223,7 @@ pub struct DLLVERSIONINFO {
 /// # Safety
 ///
 /// Pointer must be valid or null.
-#[cfg_attr(not(coverage_nightly), no_mangle)]
+
 #[inline(never)]
 #[allow(non_snake_case)]
 pub extern "system" fn DllGetVersion(pdvi: *mut DLLVERSIONINFO) -> HRESULT {
