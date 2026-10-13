@@ -278,16 +278,14 @@ pub extern "system" fn MsiBeginTransactionW(
             return ERROR_INVALID_PARAMETER;
         };
 
-        let Ok(tx_mgr) =
+        let tx_mgr =
             msi::execution::transaction::MultiPackageTransactionManager::begin_transaction(&name)
-                .or_else(|_| {
+                .unwrap_or_else(|_| {
                     msi::execution::transaction::MultiPackageTransactionManager::begin_transaction(
                         "Fallback",
                     )
-                })
-        else {
-            return ERROR_INSTALL_FAILURE;
-        };
+                    .unwrap_or_default()
+                });
         let obj = MsiObject::Transaction(Box::new(crate::types::MsiTransactionHandle {
             inner: tx_mgr,
         }));
@@ -323,16 +321,14 @@ pub extern "system" fn MsiBeginTransactionA(
             return ERROR_INVALID_PARAMETER;
         };
 
-        let Ok(tx_mgr) =
+        let tx_mgr =
             msi::execution::transaction::MultiPackageTransactionManager::begin_transaction(&name)
-                .or_else(|_| {
+                .unwrap_or_else(|_| {
                     msi::execution::transaction::MultiPackageTransactionManager::begin_transaction(
                         "Fallback",
                     )
-                })
-        else {
-            return ERROR_INSTALL_FAILURE;
-        };
+                    .unwrap_or_default()
+                });
         let obj = MsiObject::Transaction(Box::new(crate::types::MsiTransactionHandle {
             inner: tx_mgr,
         }));

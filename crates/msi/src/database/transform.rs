@@ -1152,3 +1152,9 @@ mod tests {
         assert!(transform.validate(&db).is_ok());
     }
 }
+
+#[cfg(test)]
+mod transform_validation_tests {
+
+    // I will create this if I need to, but let's just add it to transform.rs.
+}

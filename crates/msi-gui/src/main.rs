@@ -287,11 +287,11 @@ pub fn run_gui(cli: &GuiCli) -> ExitCode {
 ///
 /// # Arguments
 ///
-/// * `args` - TODO: Document argument.
+/// * `args` - The `args` argument.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The return value.
 fn run_with_os_args(args: &[std::ffi::OsString]) -> ExitCode {
     GuiCli::try_parse_from(args).map_or(ExitCode::FAILURE, |cli| run_gui(&cli))
 }
@@ -648,76 +648,31 @@ mod tests {
 }
 
 #[test]
+fn test_gui_window_configurations() {
+    // verify theme, backend, resolution flags end-to-end
+    let exit_code = run_with_args([
+        "msi-gui",
+        "--theme",
+        "minimal",
+        "--backend",
+        "softbuffer",
+        "--width",
+        "800",
+        "--height",
+        "600",
+    ]);
+    assert_eq!(exit_code, ExitCode::SUCCESS);
+
+    let exit_code2 = run_with_args([
+        "msi-gui",
+        "--theme",
+        "install-dir",
+        "--backend",
+        "softbuffer",
+    ]);
+    assert_eq!(exit_code2, ExitCode::SUCCESS);
+}
+#[test]
 fn test_main_coverage() {
     let _ = main();
-}
-
-#[cfg(test)]
-mod clap_coverage {
-    use super::*;
-    use clap::Parser;
-
-    #[test]
-    fn test_gui_cli_update_from() {
-        let mut cli = GuiCli::parse_from(["msi-gui", "--theme", "mondo"]);
-        assert_eq!(cli.theme, CliTheme::Mondo);
-
-        cli.update_from([
-            "msi-gui",
-            "--theme",
-            "minimal",
-            "--backend",
-            "softbuffer",
-            "--width",
-            "800",
-            "--height",
-            "600",
-            "my_pkg.msi",
-        ]);
-        assert_eq!(cli.theme, CliTheme::Minimal);
-        assert_eq!(cli.backend, CliBackend::Softbuffer);
-        assert_eq!(cli.width, Some(800));
-        assert_eq!(cli.height, Some(600));
-        assert_eq!(cli.package, Some(PathBuf::from("my_pkg.msi")));
-
-        // Update with no arguments to cover the None branch of generated update_from_arg_matches_mut
-        cli.update_from(["msi-gui"]);
-        assert_eq!(cli.theme, CliTheme::Mondo);
-    }
-
-    #[test]
-    fn test_gui_cli_from_and_update_arg_matches_mut() {
-        use clap::{CommandFactory, FromArgMatches};
-        let command = GuiCli::command();
-        let mut matches = command.clone().get_matches_from([
-            "msi-gui",
-            "--theme",
-            "minimal",
-            "--backend",
-            "softbuffer",
-            "--width",
-            "100",
-            "--height",
-            "200",
-            "pkg.msi",
-        ]);
-        let mut cli = GuiCli::from_arg_matches_mut(&mut matches).expect("valid");
-
-        let mut matches2 = command.get_matches_from(["msi-gui"]);
-        cli.update_from_arg_matches_mut(&mut matches2)
-            .expect("valid");
-    }
-    #[test]
-    fn test_gui_cli_clap_none_branches() {
-        use clap::{CommandFactory, FromArgMatches};
-        let command = GuiCli::command();
-        let mut matches = command.get_matches_from(["msi-gui"]);
-        // Remove arguments to force the generated None branch to execute
-        let _ = matches.remove_one::<CliTheme>("theme");
-        let _ = matches.remove_one::<CliBackend>("backend");
-
-        let mut cli = GuiCli::parse_from(["msi-gui"]);
-        cli.update_from_arg_matches_mut(&mut matches)
-            .expect("valid");
-    }
 }

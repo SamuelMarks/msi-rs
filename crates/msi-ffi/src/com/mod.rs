@@ -154,10 +154,33 @@ mod tests {
     }
 
     #[test]
-    fn test_com_constants() {
-        assert_eq!(S_OK, 0);
-        assert_eq!(E_NOINTERFACE, -2_147_467_262);
-        assert_eq!(E_POINTER, -2_147_467_261);
+    fn test_iunknown_vtable_layout() {
+        unsafe extern "system" fn mock_query_interface(
+            _: *mut IUnknown,
+            _: *const GUID,
+            _: *mut *mut c_void,
+        ) -> HRESULT {
+            S_OK
+        }
+        unsafe extern "system" fn mock_add_ref(_: *mut IUnknown) -> ULONG {
+            2
+        }
+        unsafe extern "system" fn mock_release(_: *mut IUnknown) -> ULONG {
+            1
+        }
+
+        let vtbl = IUnknownVtbl {
+            QueryInterface: mock_query_interface,
+            AddRef: mock_add_ref,
+            Release: mock_release,
+        };
+
+        let mut obj = IUnknown { lpVtbl: &vtbl };
+
+        unsafe {
+            assert_eq!(((*obj.lpVtbl).AddRef)(&mut obj), 2);
+            assert_eq!(((*obj.lpVtbl).Release)(&mut obj), 1);
+        }
     }
 }
 

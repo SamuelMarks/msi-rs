@@ -294,7 +294,7 @@ jobs:
           find release_assets -type f \( -name "*.tar.gz" -o -name "*.zip" -o -name "*.whl" -o -name "*.tar.gz" \) -exec cp {} release_dist/ \;
 
           cd release_dist
-          sha256sum * > SHA256SUMS.txt
+          sha256sum ./* > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
       - name: Generate Release Notes & Changelog

@@ -93,14 +93,4 @@ pub use wix::*;
 #[cfg(test)]
 mod integration;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_ffi_exports_presence() {
-        assert_eq!(MSI_SUCCESS, 0);
-        assert_eq!(MSI_ERROR_NULL_POINTER, -1);
-    }
-}
 pub mod com;

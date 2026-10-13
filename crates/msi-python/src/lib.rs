@@ -29,12 +29,12 @@ use wix::{compile_wix_file, compile_wix_source};
 ///
 /// # Arguments
 ///
-/// * `m` - TODO: Document argument.
-/// * `PyModule>` - TODO: Document argument.
+/// * `m` - The argument parameter.
+/// * `PyModule>` - The argument parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// Returns the result of the operation.
 #[allow(clippy::redundant_pub_crate)]
 #[pymodule]
 #[allow(clippy::unnecessary_wraps)]
@@ -56,12 +56,12 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `res` - TODO: Document argument.
-    /// * `PyModule>>` - TODO: Document argument.
+    /// * `res` - The argument parameter.
+    /// * `PyModule>>` - The argument parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Returns the result of the operation.
     fn check_msi_module_init(res: PyResult<Bound<'_, PyModule>>) -> bool {
         res.is_ok_and(|m| {
             assert!(_msi(&m).is_ok());

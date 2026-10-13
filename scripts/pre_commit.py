@@ -354,6 +354,14 @@ def hook_shields(repo_root: Path, force_run: bool = True) -> int:
     return 0
 
 
+
+def hook_pytest(repo_root: Path) -> int:
+    """Runs all pytest tests for msi-python."""
+    print("==> [pytest] Running pytest tests (pytest tests/python)...")
+    run_command(["pytest", "tests/python"], cwd=repo_root)
+    print("==> [pytest] All pytest tests passed.")
+    return 0
+
 def hook_all(repo_root: Path) -> int:
     """Executes the complete pre-commit validation pipeline in sequence."""
     print("========================================================")
@@ -363,6 +371,7 @@ def hook_all(repo_root: Path) -> int:
     hook_build(repo_root)
     hook_clippy(repo_root)
     hook_test(repo_root)
+    hook_pytest(repo_root)
     hook_shields(repo_root, force_run=True)
     print("========================================================")
     print(" All pre-commit checks passed successfully!")
@@ -377,7 +386,7 @@ def main() -> int:
     parser.add_argument(
         "stage",
         nargs="?",
-        choices=["fmt", "build", "clippy", "test", "shields", "all"],
+        choices=["fmt", "build", "clippy", "test", "pytest", "shields", "all"],
         default="all",
         help="Pipeline stage to execute (default: all)",
     )
@@ -389,6 +398,7 @@ def main() -> int:
         "build": hook_build,
         "clippy": hook_clippy,
         "test": hook_test,
+        "pytest": hook_pytest,
         "shields": hook_shields,
         "all": hook_all,
     }

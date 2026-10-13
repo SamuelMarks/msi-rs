@@ -45,7 +45,7 @@ pub enum SourcePath {
 }
 
 /// Represents the list of available sources for an installation.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SourceList {
     /// Array of fallback sources in order of preference.
     pub sources: Vec<SourcePath>,
@@ -538,4 +538,66 @@ use std::sync::{OnceLock, RwLock};
 pub fn source_list_cache() -> &'static RwLock<HashMap<String, SourceList>> {
     static CACHE: OnceLock<RwLock<HashMap<String, SourceList>>> = OnceLock::new();
     CACHE.get_or_init(|| RwLock::new(HashMap::new()))
+}
+
+#[cfg(test)]
+mod source_resiliency_exhaustive_derives {
+    use super::*;
+
+    #[test]
+    fn test_all_derives_exhaustive() {
+        let ms1 = MediaSource {
+            base_path: PathBuf::from("C:\\"),
+            disk_id: Some(1),
+            volume_label: None,
+            disk_prompt: Some("disk".to_string()),
+        };
+        let ms2 = MediaSource {
+            base_path: PathBuf::from("D:\\"),
+            disk_id: None,
+            volume_label: Some("vol".to_string()),
+            disk_prompt: None,
+        };
+
+        assert_eq!(ms1, ms1.clone());
+        assert_ne!(ms1, ms2);
+        assert!(!format!("{ms1:?}").is_empty());
+
+        let ns1 = NetworkSource {
+            unc_path: "\\\\server\\share".to_string(),
+        };
+        let ns2 = NetworkSource {
+            unc_path: "\\\\server2\\share2".to_string(),
+        };
+        assert_eq!(ns1, ns1.clone());
+        assert_ne!(ns1, ns2);
+        assert!(!format!("{ns1:?}").is_empty());
+
+        let us1 = UrlSource {
+            url: "http://example.com".to_string(),
+        };
+        let us2 = UrlSource {
+            url: "https://example.com".to_string(),
+        };
+        assert_eq!(us1, us1.clone());
+        assert_ne!(us1, us2);
+        assert!(!format!("{us1:?}").is_empty());
+
+        let sp1 = SourcePath::Media(ms1);
+        let sp2 = SourcePath::Network(ns1);
+        let sp3 = SourcePath::Url(us1);
+        assert_eq!(sp1, sp1.clone());
+        assert_ne!(sp1, sp2);
+        assert_ne!(sp2, sp3);
+        assert_ne!(sp1, sp3);
+        assert!(!format!("{sp1:?}").is_empty());
+
+        let mut sl1 = SourceList::default();
+        sl1.sources.push(sp1);
+        let mut sl2 = SourceList::default();
+        sl2.sources.push(sp2);
+        assert_eq!(sl1, sl1.clone());
+        assert_ne!(sl1, sl2);
+        assert!(!format!("{sl1:?}").is_empty());
+    }
 }

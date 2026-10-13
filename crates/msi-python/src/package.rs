@@ -32,7 +32,7 @@ impl PyPackage {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Returns the result of the operation.
     #[staticmethod]
     pub fn open(py: Python<'_>, path: &str) -> PyResult<Self> {
         let p = path.to_string();
@@ -54,7 +54,7 @@ impl PyPackage {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Returns the result of the operation.
     #[staticmethod]
     pub fn from_bytes(py: Python<'_>, bytes: &[u8]) -> PyResult<Self> {
         let b = bytes.to_vec();
@@ -76,7 +76,7 @@ impl PyPackage {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Returns the result of the operation.
     pub fn save(&self, py: Python<'_>, path: &str) -> PyResult<()> {
         let pkg = self.inner.clone();
         let p = path.to_string();
@@ -93,11 +93,11 @@ impl PyPackage {
     ///
     /// # Arguments
     ///
-    /// * `py` - TODO: Document argument.
+    /// * `py` - The argument parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Returns the result of the operation.
     pub fn to_bytes(&self, py: Python<'_>) -> PyResult<Vec<u8>> {
         let pkg = self.inner.clone();
         let bytes = py
@@ -114,7 +114,7 @@ impl PyPackage {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Returns the result of the operation.
     #[must_use]
     pub fn get_property(&self, name: &str) -> Option<String> {
         match name {
@@ -143,7 +143,7 @@ impl PyPackage {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Returns the result of the operation.
     #[getter]
     #[must_use]
     pub fn properties(&self) -> HashMap<String, String> {
@@ -182,7 +182,7 @@ impl PyPackage {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Returns the result of the operation.
     #[getter]
     #[must_use]
     pub fn table_names(&self) -> Vec<String> {
@@ -300,12 +300,12 @@ impl PyPackage {
     ///
     /// # Arguments
     ///
-    /// * `slf` - TODO: Document argument.
-    /// * `Self>` - TODO: Document argument.
+    /// * `slf` - The argument parameter.
+    /// * `Self>` - The argument parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Returns the result of the operation.
     const fn __enter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf
     }
@@ -314,16 +314,16 @@ impl PyPackage {
     ///
     /// # Arguments
     ///
-    /// * `_exc_type` - TODO: Document argument.
-    /// * `PyAny>>` - TODO: Document argument.
-    /// * `_exc_val` - TODO: Document argument.
-    /// * `PyAny>>` - TODO: Document argument.
-    /// * `_exc_tb` - TODO: Document argument.
-    /// * `PyAny>>` - TODO: Document argument.
+    /// * `_exc_type` - The argument parameter.
+    /// * `PyAny>>` - The argument parameter.
+    /// * `_exc_val` - The argument parameter.
+    /// * `PyAny>>` - The argument parameter.
+    /// * `_exc_tb` - The argument parameter.
+    /// * `PyAny>>` - The argument parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Returns the result of the operation.
     #[allow(clippy::unused_self)]
     #[pyo3(signature = (_exc_type=None, _exc_val=None, _exc_tb=None))]
     const fn __exit__(
@@ -437,12 +437,12 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `res` - TODO: Document argument.
-    /// * `msi` - TODO: Document argument.
+    /// * `res` - The argument parameter.
+    /// * `msi` - The argument parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Returns the result of the operation.
     #[allow(clippy::redundant_clone)]
     fn check_package_properties(res: Result<PyPackage, msi::MsiError>) -> bool {
         res.is_ok_and(|py_pkg| {
@@ -562,12 +562,12 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `res` - TODO: Document argument.
-    /// * `msi` - TODO: Document argument.
+    /// * `res` - The argument parameter.
+    /// * `msi` - The argument parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Returns the result of the operation.
     #[allow(dead_code)]
     fn check_package_get_table(res: Result<PyPackage, msi::MsiError>) -> bool {
         res.is_ok_and(|py_pkg| {
@@ -631,12 +631,12 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `res` - TODO: Document argument.
-    /// * `msi` - TODO: Document argument.
+    /// * `res` - The argument parameter.
+    /// * `msi` - The argument parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Returns the result of the operation.
     fn check_package_extract_cabinet(res: Result<PyPackage, msi::MsiError>) -> bool {
         res.is_ok_and(|py_pkg| {
             Python::with_gil(|py| {
@@ -697,7 +697,8 @@ mod tests {
                 b_unsupp = b_unsupp.manufacturer("Mfr");
                 b_unsupp = b_unsupp.version(ProductVersion::new(1, 0, 0));
                 b_unsupp = b_unsupp.product_code("{00000000-0000-0000-0000-000000000000}");
-                b_unsupp = b_unsupp.add_embedded_cabinet("#unsupp.cab", cw_unsupp.build().unwrap_or_default());
+                b_unsupp = b_unsupp
+                    .add_embedded_cabinet("#unsupp.cab", cw_unsupp.build().unwrap_or_default());
                 assert!(b_unsupp.build().is_ok_and(|unsupp_pkg| {
                     let py_unsupp = PyPackage { inner: unsupp_pkg };
                     let unsupp_dir = std::env::temp_dir().join("msi_test_py_unsupp");
@@ -729,12 +730,12 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `res` - TODO: Document argument.
-    /// * `msi` - TODO: Document argument.
+    /// * `res` - The argument parameter.
+    /// * `msi` - The argument parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Returns the result of the operation.
     fn check_package_io_and_bytes(res: Result<PyPackage, msi::MsiError>) -> bool {
         res.is_ok_and(|py_pkg| {
             Python::with_gil(|py| {
@@ -799,13 +800,13 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `res` - TODO: Document argument.
-    /// * `PyModule>>` - TODO: Document argument.
-    /// * `py_pkg` - TODO: Document argument.
+    /// * `res` - The argument parameter.
+    /// * `PyModule>>` - The argument parameter.
+    /// * `py_pkg` - The argument parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Returns the result of the operation.
     fn run_pkg_script(res: PyResult<Bound<'_, PyModule>>, py_pkg: &PyPackage) -> bool {
         res.is_ok_and(|m| {
             let py = m.py();
@@ -873,12 +874,12 @@ with m.Package.from_bytes(bytes(pkg_bytes)) as p:
     ///
     /// # Arguments
     ///
-    /// * `res` - TODO: Document argument.
-    /// * `msi` - TODO: Document argument.
+    /// * `res` - The argument parameter.
+    /// * `msi` - The argument parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Returns the result of the operation.
     fn check_package_context_manager(res: Result<PyPackage, msi::MsiError>) -> bool {
         res.is_ok_and(|py_pkg| {
             Python::with_gil(|py| {

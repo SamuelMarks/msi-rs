@@ -23,7 +23,7 @@ use std::fs;
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// Returns the result of the operation.
 #[pyfunction]
 pub fn compile_wix_source(py: Python<'_>, source: String, output_path: String) -> PyResult<()> {
     py.allow_threads(move || {
@@ -77,7 +77,7 @@ pub fn compile_wix_source(py: Python<'_>, source: String, output_path: String) -
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// Returns the result of the operation.
 #[pyfunction]
 pub fn compile_wix_file(py: Python<'_>, wxs_path: &str, output_path: String) -> PyResult<()> {
     let source = fs::read_to_string(wxs_path).map_err(|e| {

@@ -818,7 +818,7 @@ fn test_posix_renderer_default() {
 #[cfg(test)]
 mod tests2 {
     #[test]
-    const fn test_posix_renderer_default() {
+    const fn test_posix_renderer_default_2() {
         let _ = super::posix_impl::PosixRenderer;
     }
 }

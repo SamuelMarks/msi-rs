@@ -23,4 +23,5 @@ libc = { workspace = true }
 msi = { workspace = true }
 
 [dev-dependencies]
+libloading = "0.8.9"
 tempfile = "3.27.0"

@@ -16,6 +16,31 @@ sys.path.insert(0, str(scripts_dir))
 import generate_screenshots  # type: ignore[import-not-found,import-untyped]
 
 
+
+
+
+def test_fit_text_to_width_exhaust_loop() -> None:
+    """Test fitting text where loop exhausts due to mock."""
+    font = MagicMock()
+    # first check: full text width = 101, max_width = 100 -> proceeds
+    # ellipsis width = 10
+    # loop characters: their widths always stay <= 90
+    call_count = [0]
+    def getbbox(t):
+        call_count[0] += 1
+        if call_count[0] == 1:
+            return (0, 0, 101, 10)
+        return (0, 0, 10, 10)
+    font.getbbox.side_effect = getbbox
+    result = generate_screenshots.fit_text_to_width("ab", font, 100)
+    assert result == "ab..."
+
+def test_fit_text_to_width_empty() -> None:
+    """Test fitting an empty string to a width."""
+    font = ImageFont.load_default()
+    result = generate_screenshots.fit_text_to_width("", font, 100)
+    assert result == ""
+
 def test_fit_text_to_width_short() -> None:
     """Verifies that text fitting within max_width is returned unchanged."""
     f = ImageFont.load_default()

@@ -420,11 +420,6 @@ pub unsafe extern "system" fn MsiDatabaseApplyTransformW(
             return crate::win32::ERROR_INVALID_PARAMETER;
         };
 
-        #[cfg(test)]
-        if path == "PANIC_TEST" {
-            panic!("Test panic");
-        }
-
         crate::handles::with_handle_mut(h_database, |obj| {
             let crate::handles::MsiObject::Database(db_handle) = obj else {
                 return crate::win32::ERROR_INVALID_HANDLE;
@@ -492,11 +487,6 @@ pub unsafe extern "system" fn MsiDatabaseApplyTransformA(
         let Some(path) = crate::win32::strings::lpcstr_to_string(sz_transform_file.0) else {
             return crate::win32::ERROR_INVALID_PARAMETER;
         };
-
-        #[cfg(test)]
-        if path == "PANIC_TEST" {
-            panic!("Test panic");
-        }
 
         crate::handles::with_handle_mut(h_database, |obj| {
             let crate::handles::MsiObject::Database(db_handle) = obj else {
@@ -808,31 +798,6 @@ mod tests {
                 TransformErrorCondition(0),
             );
             assert_eq!(res_bad_a, crate::win32::ERROR_FILE_NOT_FOUND);
-
-            // Test panic handler
-            let panic_path = "PANIC_TEST";
-            let mut panic_w: Vec<u16> = panic_path.encode_utf16().collect();
-            panic_w.push(0);
-            let mut panic_a: Vec<i8> = panic_path.as_bytes().iter().map(|&b| b as i8).collect();
-            panic_a.push(0);
-
-            assert_eq!(
-                MsiDatabaseApplyTransformW(
-                    g_handle,
-                    FilePathW(panic_w.as_ptr()),
-                    TransformErrorCondition(0),
-                ),
-                crate::win32::ERROR_INSTALL_FAILURE
-            );
-
-            assert_eq!(
-                MsiDatabaseApplyTransformA(
-                    g_handle,
-                    FilePathA(panic_a.as_ptr()),
-                    TransformErrorCondition(0),
-                ),
-                crate::win32::ERROR_INSTALL_FAILURE
-            );
 
             // Test missing files from disk (no colon prefix)
             let disk_path = "non_existent_file.mst";

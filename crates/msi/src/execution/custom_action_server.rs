@@ -226,3 +226,45 @@ mod tests {
         assert!(err.to_string().contains("Unknown panic"));
     }
 }
+
+#[test]
+fn test_action_execution_model_derives() {
+    let model1 = ActionExecutionModel::Immediate;
+    let model2 = model1;
+    assert_eq!(model1, model2);
+
+    let model_diff = ActionExecutionModel::Deferred;
+    assert_ne!(model1, model_diff);
+
+    assert_eq!(format!("{model1:?}"), "Immediate");
+}
+
+#[test]
+fn test_custom_action_server_derives_exhaustive() {
+    let models = [
+        ActionExecutionModel::Immediate,
+        ActionExecutionModel::Deferred,
+        ActionExecutionModel::Rollback,
+        ActionExecutionModel::Commit,
+        ActionExecutionModel::Synchronous,
+        ActionExecutionModel::Asynchronous,
+    ];
+
+    for (i, m1) in models.iter().enumerate() {
+        let cloned = *m1;
+        assert_eq!(*m1, cloned); // tests Clone, Copy, Eq
+        let debug_str = format!("{m1:?}"); // tests Debug
+        assert!(!debug_str.is_empty());
+
+        for (j, m2) in models.iter().enumerate() {
+            if i == j {
+                assert_eq!(m1, m2); // tests PartialEq
+            } else {
+                assert_ne!(m1, m2); // tests PartialEq
+            }
+        }
+    }
+
+    let server = CustomActionServer;
+    let _ = format!("{server:?}");
+}

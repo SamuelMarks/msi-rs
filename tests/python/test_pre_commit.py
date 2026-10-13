@@ -155,6 +155,13 @@ def test_hook_clippy(tmp_path: Path) -> None:
         mock_cmd.assert_called_once()
 
 
+
+@patch("pre_commit.run_command")
+def test_hook_pytest(mock_run: MagicMock, tmp_path: Path) -> None:
+    """Test hook_pytest."""
+    assert pre_commit.hook_pytest(tmp_path) == 0
+    mock_run.assert_called_once_with(["pytest", "tests/python"], cwd=tmp_path)
+
 def test_hook_test(tmp_path: Path) -> None:
     """Verifies hook_test runs cargo test."""
     with patch("pre_commit.run_command") as mock_cmd:
@@ -361,6 +368,7 @@ def test_hook_all(tmp_path: Path) -> None:
         patch("pre_commit.hook_build") as mock_build,
         patch("pre_commit.hook_clippy") as mock_clippy,
         patch("pre_commit.hook_test") as mock_test,
+        patch("pre_commit.hook_pytest") as mock_pytest,
         patch("pre_commit.hook_shields") as mock_shields,
     ):
         assert pre_commit.hook_all(tmp_path) == 0
@@ -368,12 +376,13 @@ def test_hook_all(tmp_path: Path) -> None:
         mock_build.assert_called_once_with(tmp_path)
         mock_clippy.assert_called_once_with(tmp_path)
         mock_test.assert_called_once_with(tmp_path)
+        mock_pytest.assert_called_once_with(tmp_path)
         mock_shields.assert_called_once_with(tmp_path, force_run=True)
 
 
 def test_main_stages() -> None:
     """Verifies main executes selected stage handler or handles failure."""
-    for stage in ["fmt", "build", "clippy", "test", "shields", "all"]:
+    for stage in ["fmt", "build", "clippy", "test", "pytest", "shields", "all"]:
         with (
             patch.object(sys, "argv", ["pre_commit.py", stage]),
             patch(f"pre_commit.hook_{stage}", return_value=0) as mock_stage,

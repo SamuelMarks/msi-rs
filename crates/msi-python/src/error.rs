@@ -100,7 +100,7 @@ pub fn to_py_err(err: &msi::MsiError) -> PyErr {
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// Returns the result of the operation.
 pub fn register_exceptions(m: &Bound<'_, PyModule>) -> PyResult<()> {
     let _ = m.add("MsiError", m.py().get_type_bound::<MsiError>());
     let _ = m.add(
@@ -122,12 +122,12 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `res` - TODO: Document argument.
-    /// * `PyModule>>` - TODO: Document argument.
+    /// * `res` - The argument parameter.
+    /// * `PyModule>>` - The argument parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Returns the result of the operation.
     fn check_register_exceptions(res: PyResult<Bound<'_, PyModule>>) -> bool {
         res.is_ok_and(|m| {
             let _ = register_exceptions(&m);

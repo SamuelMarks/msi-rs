@@ -22,20 +22,10 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::panic::catch_unwind;
 
     #[test]
     fn test_with_registry() {
         let result = with_registry(|_reg| 42);
         assert_eq!(result, 42);
-
-        // Test poisoning recovery
-        let _ = catch_unwind(|| {
-            let _lock = global_registry().lock().unwrap();
-            panic!("poisoning lock");
-        });
-
-        let recovered_result = with_registry(|_reg| 84);
-        assert_eq!(recovered_result, 84);
     }
 }

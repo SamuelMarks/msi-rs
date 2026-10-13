@@ -1,6 +1,7 @@
 `msi-rs`
 ========
 
+[![.github/workflows/ci.yml](https://github.com/SamuelMarks/msi-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/SamuelMarks/msi-rs/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![% doc coverage](https://img.shields.io/badge/doc%20coverage-100%25-brightgreen)](#)
 [![% test coverage](https://img.shields.io/badge/test%20coverage-99.9%25-brightgreen)](#)

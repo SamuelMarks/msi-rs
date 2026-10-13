@@ -323,3 +323,16 @@ mod tests {
         // `add_table` fails if a table with the same name already exists. But we already check `if let Some(target_schema) = self.catalog.get_table(...)`. So `add_table` failing here is actually impossible unless there's a concurrency bug or something else. We'll skip forcing this unreachable error condition for now.
     }
 }
+
+#[cfg(test)]
+mod merge_tests {
+    use super::*;
+
+    #[test]
+    fn test_merge_config_default() {
+        let config = MergeConfig::default();
+        assert_eq!(config.table_name, None);
+    }
+
+    // TODO: write more tests.
+}

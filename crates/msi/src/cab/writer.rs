@@ -255,6 +255,24 @@ impl CabinetWriter {
         clippy::unreachable
     )]
     pub fn build(self) -> Result<Vec<u8>> {
+        self.build_with_block_size(CAB_BLOCK_MAX_SIZE)
+    }
+
+    /// Builds and serializes the complete Cabinet archive with a specific block size.
+    ///
+    /// # Returns
+    ///
+    /// Serialized `.cab` archive bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns `MsiError::CabinetCompressionError` if compression fails.
+    #[allow(
+        clippy::too_many_lines,
+        clippy::cast_possible_truncation,
+        clippy::unreachable
+    )]
+    pub(crate) fn build_with_block_size(self, block_size: usize) -> Result<Vec<u8>> {
         let mut cf_files = Vec::with_capacity(self.files.len());
 
         for staged in &self.files {
@@ -284,7 +302,7 @@ impl CabinetWriter {
 
             let mut offset = 0;
             while offset < folder.payload.len() {
-                let end = (offset + CAB_BLOCK_MAX_SIZE).min(folder.payload.len());
+                let end = (offset + block_size).min(folder.payload.len());
                 let uncompressed_chunk = &folder.payload[offset..end];
                 let uncompressed_size = uncompressed_chunk.len() as u16;
 
@@ -744,4 +762,24 @@ mod tests {
         let file_cloned = file;
         let _ = format!("{file_cloned:?}");
     }
+}
+
+#[test]
+fn test_cabinet_writer_mszip_compression_error() {
+    let mut writer = CabinetWriter::new(CompressionType::Mszip);
+    let payload = vec![0x42u8; 40_000]; // Larger than 32KB
+    writer.add_file("huge.txt", &payload).unwrap();
+
+    let res = writer.build_with_block_size(40_000);
+    assert!(matches!(res, Err(MsiError::CabinetCompressionError { .. })));
+}
+
+#[test]
+fn test_cabinet_writer_lzx_compression_error() {
+    let mut writer = CabinetWriter::new(CompressionType::Lzx { window_bits: 16 });
+    let payload = vec![0x42u8; 40_000]; // Larger than 32KB
+    writer.add_file("huge.txt", &payload).unwrap();
+
+    let res = writer.build_with_block_size(40_000);
+    assert!(matches!(res, Err(MsiError::CabinetCompressionError { .. })));
 }

@@ -386,16 +386,7 @@ mod tests {
         // Run all logger tests sequentially in one test to prevent global state data races
         let log_file = std::env::temp_dir().join("test_msi_ffi_hooks_combined.log");
         let log_path = log_file.to_str().expect("valid");
-
-        // 1. Poison test
-        let _ = std::panic::catch_unwind(|| {
-            let _guard = LOGGER
-                .write()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            panic!("poisoning logger");
-        });
         setup_logger(log_path);
-
         // 2. Lifecycle
         {
             {

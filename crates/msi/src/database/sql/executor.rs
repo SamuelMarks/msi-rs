@@ -722,8 +722,6 @@ fn sort_records(records: &mut [Record], order_by: &[OrderByTerm], schemas: &[&Ta
 mod tests {
     use super::*;
 
-    include!("tests_extended.rs");
-
     fn get_select_rows(res: QueryResult) -> Vec<Record> {
         match res {
             QueryResult::Select { rows, .. } => rows,

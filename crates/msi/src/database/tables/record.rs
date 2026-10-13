@@ -1008,3 +1008,12 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod record_tests_extra {
+
+    #[cfg(test)]
+    mod extra_tests {
+        // We will append this to the test module in record.rs.
+    }
+}
