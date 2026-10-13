@@ -80,6 +80,7 @@ pub const ERROR_UNKNOWN_PATCH: Uint = 1647;
 ///
 /// `ERROR_SUCCESS` if successful, `ERROR_INVALID_HANDLE` if the handle was invalid.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub extern "system" fn MsiCloseHandle(handle: MsiHandle) -> Uint {
@@ -103,6 +104,7 @@ pub extern "system" fn MsiCloseHandle(handle: MsiHandle) -> Uint {
 ///
 /// `ERROR_SUCCESS`.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub extern "system" fn MsiCloseAllHandles() -> Uint {

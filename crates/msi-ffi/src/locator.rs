@@ -36,6 +36,7 @@ pub struct ComponentState(pub i32);
 ///
 /// Pointers must be valid or null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideComponentW(
     _sz_product: crate::action::ProductCodeW,
@@ -90,6 +91,7 @@ pub unsafe extern "system" fn MsiProvideComponentW(
 ///
 /// Pointers must be valid or null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideComponentA(
     _sz_product: crate::action::ProductCodeA,
@@ -143,6 +145,7 @@ pub unsafe extern "system" fn MsiProvideComponentA(
 ///
 /// Pointers must be valid or null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideAssemblyW(
     _sz_assembly_name: *const u16,
@@ -190,6 +193,7 @@ pub unsafe extern "system" fn MsiProvideAssemblyW(
 ///
 /// Pointers must be valid or null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideAssemblyA(
     _sz_assembly_name: *const c_char,
@@ -254,6 +258,7 @@ pub unsafe extern "system" fn MsiProvideAssemblyA(
 /// # Safety
 ///
 /// Pointers must be valid or null.
+#[cfg_attr(not(test), no_mangle)]
 #[allow(non_snake_case, unused_variables)]
 pub unsafe extern "system" fn MsiLocateComponentW(
     szComponent: crate::win32::Lpcwstr,
@@ -312,6 +317,7 @@ pub unsafe extern "system" fn MsiLocateComponentW(
 ///
 /// Pointers must be valid or null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub unsafe extern "system" fn MsiLocateComponentA(
@@ -352,6 +358,7 @@ pub unsafe extern "system" fn MsiLocateComponentA(
 
 /// Returns the full component path from a descriptor (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideComponentFromDescriptorW(
     _sz_descriptor: *const u16,
@@ -368,6 +375,7 @@ pub unsafe extern "system" fn MsiProvideComponentFromDescriptorW(
 
 /// Returns the full component path from a descriptor (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideComponentFromDescriptorA(
     _sz_descriptor: *const c_char,
@@ -383,6 +391,7 @@ pub unsafe extern "system" fn MsiProvideComponentFromDescriptorA(
 
 /// Returns the full component path for a qualified component (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideQualifiedComponentW(
     _sz_category: *const u16,
@@ -399,6 +408,7 @@ pub unsafe extern "system" fn MsiProvideQualifiedComponentW(
 
 /// Returns the full component path for a qualified component (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideQualifiedComponentA(
     _sz_category: *const c_char,
@@ -415,6 +425,7 @@ pub unsafe extern "system" fn MsiProvideQualifiedComponentA(
 
 /// Returns the full component path for a qualified component with advanced options (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideQualifiedComponentExW(
     _sz_category: *const u16,
@@ -434,6 +445,7 @@ pub unsafe extern "system" fn MsiProvideQualifiedComponentExW(
 
 /// Returns the full component path for a qualified component with advanced options (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideQualifiedComponentExA(
     _sz_category: *const c_char,
@@ -453,6 +465,7 @@ pub unsafe extern "system" fn MsiProvideQualifiedComponentExA(
 
 /// Returns descriptive information for a product feature (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiGetFeatureInfoW(
     _h_product: u32,
@@ -471,6 +484,7 @@ pub unsafe extern "system" fn MsiGetFeatureInfoW(
 
 /// Returns descriptive information for a product feature (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiGetFeatureInfoA(
     _h_product: u32,
@@ -489,6 +503,7 @@ pub unsafe extern "system" fn MsiGetFeatureInfoA(
 
 /// Increments the usage metric for a feature and returns the installation state (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiUseFeatureW(
@@ -504,6 +519,7 @@ pub unsafe extern "system" fn MsiUseFeatureW(
 
 /// Increments the usage metric for a feature and returns the installation state (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiUseFeatureA(
@@ -539,6 +555,7 @@ pub unsafe extern "system" fn MsiUseFeatureA(
 ///
 /// Pointers must be valid or null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiGetShortcutTargetW(
     _sz_shortcut_target: *const u16,
@@ -574,6 +591,7 @@ pub unsafe extern "system" fn MsiGetShortcutTargetW(
 ///
 /// Pointers must be valid or null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiGetShortcutTargetA(
     _sz_shortcut_target: *const c_char,

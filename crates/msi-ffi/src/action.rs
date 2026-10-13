@@ -63,6 +63,7 @@ pub struct ReinstallMode(pub u32);
 ///
 /// Pointers must point to valid null-terminated strings or be NULL.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiDoActionW(h_install: MSIHANDLE, sz_action: ActionNameW) -> u32 {
@@ -117,6 +118,7 @@ pub unsafe extern "system" fn MsiDoActionW(h_install: MSIHANDLE, sz_action: Acti
 ///
 /// Pointers must point to valid null-terminated strings or be NULL.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiDoActionA(h_install: MSIHANDLE, sz_action: ActionNameA) -> u32 {
@@ -172,6 +174,7 @@ pub unsafe extern "system" fn MsiDoActionA(h_install: MSIHANDLE, sz_action: Acti
 ///
 /// Pointers must be valid or null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiSequenceW(
@@ -233,6 +236,7 @@ pub unsafe extern "system" fn MsiSequenceW(
 ///
 /// Pointers must be valid or null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiSequenceA(
@@ -294,6 +298,7 @@ pub unsafe extern "system" fn MsiSequenceA(
 ///
 /// Pointers must be valid or null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiConfigureProductW(
@@ -347,6 +352,7 @@ pub unsafe extern "system" fn MsiConfigureProductW(
 ///
 /// Pointers must be valid or null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiConfigureProductA(
@@ -399,6 +405,7 @@ pub unsafe extern "system" fn MsiConfigureProductA(
 ///
 /// Pointers must be valid or null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiReinstallProductW(
@@ -444,6 +451,7 @@ pub unsafe extern "system" fn MsiReinstallProductW(
 ///
 /// Pointers must be valid or null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiReinstallProductA(
@@ -504,10 +512,7 @@ pub struct GUID {
 #[inline(never)]
 #[allow(non_snake_case)]
 #[must_use]
-pub unsafe extern "cdecl" fn __wine_msi_call_dll_function(
-    client_pid: u32,
-    guid: *const GUID,
-) -> u32 {
+pub unsafe extern "C" fn __wine_msi_call_dll_function(client_pid: u32, guid: *const GUID) -> u32 {
     std::panic::catch_unwind(|| {
         if guid.is_null() {
             return 87; // ERROR_INVALID_PARAMETER

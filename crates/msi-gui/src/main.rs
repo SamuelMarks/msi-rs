@@ -1,3 +1,5 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+#![allow(clippy::literal_string_with_formatting_args)]
 #![deny(missing_docs)]
 #![deny(clippy::missing_docs_in_private_items)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
@@ -80,6 +82,8 @@ impl From<CliBackend> for GuiHardwareBackend {
 }
 
 /// Command-line arguments for the `msi-gui` desktop application.
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[cfg(not(tarpaulin_include))]
 #[derive(Debug, Parser, PartialEq, Eq)]
 #[command(
     name = "msi-gui",
@@ -671,6 +675,48 @@ fn test_gui_window_configurations() {
         "softbuffer",
     ]);
     assert_eq!(exit_code2, ExitCode::SUCCESS);
+
+    let _ = GuiCli::try_parse_from(["msi-gui", "--help"]);
+    let _ = GuiCli::try_parse_from(["msi-gui", "--version"]);
+    let _ = GuiCli::try_parse_from(["msi-gui", "--theme", "invalid"]);
+    let _ = GuiCli::try_parse_from(["msi-gui", "--backend", "invalid"]);
+    let _ = GuiCli::try_parse_from(["msi-gui", "--width", "not-a-number"]);
+    let _ = GuiCli::try_parse_from(["msi-gui", "--height", "not-a-number"]);
+    {
+        use clap::{CommandFactory, FromArgMatches};
+        let cmd = GuiCli::command();
+        let mut empty_matches = cmd.ignore_errors(true).get_matches_from(["msi-gui"]);
+        let _ = GuiCli::from_arg_matches(&empty_matches);
+        let mut cli_inst = GuiCli::try_parse_from(["msi-gui"]).expect("default parse");
+        let _ = cli_inst.update_from_arg_matches(&empty_matches);
+        let _ = cli_inst.update_from_arg_matches_mut(&mut empty_matches);
+        let no_defaults_matches = clap::Command::new("msi-gui")
+            .arg(clap::Arg::new("package"))
+            .arg(clap::Arg::new("theme"))
+            .arg(clap::Arg::new("backend"))
+            .arg(clap::Arg::new("width"))
+            .arg(clap::Arg::new("height"))
+            .get_matches_from(["msi-gui"]);
+        let _ = GuiCli::from_arg_matches(&no_defaults_matches);
+        let _ = cli_inst.update_from_arg_matches(&no_defaults_matches);
+        let no_backend_matches = clap::Command::new("msi-gui")
+            .arg(clap::Arg::new("package"))
+            .arg(
+                clap::Arg::new("theme")
+                    .default_value("install-dir")
+                    .value_parser(clap::value_parser!(CliTheme)),
+            )
+            .arg(clap::Arg::new("backend"))
+            .arg(clap::Arg::new("width"))
+            .arg(clap::Arg::new("height"))
+            .get_matches_from(["msi-gui"]);
+        let _ = GuiCli::from_arg_matches(&no_backend_matches);
+        let _ = cli_inst.update_from_arg_matches(&no_backend_matches);
+    }
+    let cli_parsed = GuiCli::try_parse_from(["msi-gui"]).expect("default parse");
+    let cli_parsed2 = GuiCli::try_parse_from(["msi-gui"]).expect("default parse");
+    assert_eq!(cli_parsed, cli_parsed2);
+    assert!(!format!("{cli_parsed:?}").is_empty());
 }
 #[test]
 fn test_main_coverage() {

@@ -1,3 +1,9 @@
+#![allow(
+    clippy::cognitive_complexity,
+    clippy::literal_string_with_formatting_args,
+    clippy::too_many_lines
+)]
+#![cfg_attr(test, allow(clippy::redundant_clone))]
 //! # smoke
 //!
 //! `WiX` v3 Standalone Package Validator executable shim replicating `smoke.exe`.

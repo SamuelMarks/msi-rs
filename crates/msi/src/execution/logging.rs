@@ -139,7 +139,6 @@ impl MsiLogQueue {
                         if e == std::sync::mpsc::RecvTimeoutError::Disconnected {
                             break;
                         }
-                        continue;
                     }
                 }
             }

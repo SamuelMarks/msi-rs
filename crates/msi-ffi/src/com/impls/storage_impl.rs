@@ -34,7 +34,7 @@ impl NativeStorage {
     #[must_use]
     pub fn new(reader: Option<CfbReader>) -> Box<Self> {
         Box::new(Self {
-            lp_vtbl: &NATIVE_STORAGE_VTBL,
+            lp_vtbl: &raw const NATIVE_STORAGE_VTBL,
             ref_count: AtomicU32::new(1),
             reader,
         })
@@ -44,7 +44,7 @@ impl NativeStorage {
 impl Default for NativeStorage {
     fn default() -> Self {
         Self {
-            lp_vtbl: &NATIVE_STORAGE_VTBL,
+            lp_vtbl: &raw const NATIVE_STORAGE_VTBL,
             ref_count: AtomicU32::new(1),
             reader: None,
         }

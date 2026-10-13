@@ -30,6 +30,7 @@ pub type InstallUIHandlerRecord = Option<unsafe extern "system" fn(c_void, Uint,
 ///
 /// The previous UI level.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiSetInternalUI(
@@ -56,6 +57,7 @@ pub extern "system" fn MsiSetInternalUI(
 ///
 /// The previous handler, or null on error.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiSetExternalUIW(
@@ -82,6 +84,7 @@ pub extern "system" fn MsiSetExternalUIW(
 ///
 /// The previous handler, or null on error.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiSetExternalUIA(
@@ -109,6 +112,7 @@ pub extern "system" fn MsiSetExternalUIA(
 ///
 /// `ERROR_SUCCESS`
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -142,6 +146,7 @@ pub extern "system" fn MsiSetExternalUIRecord(
 ///
 /// Result code from the UI handler.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[must_use]
@@ -163,6 +168,7 @@ pub extern "system" fn MsiProcessMessage(
 
 /// Enables UI preview mode for the installer.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -195,6 +201,7 @@ pub extern "system" fn MsiEnableUIPreview(hDatabase: MsiHandle, phPreview: *mut 
 
 /// Previews a dialog box.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[must_use]
@@ -223,6 +230,7 @@ pub extern "system" fn MsiPreviewDialogW(hPreview: MsiHandle, szDialogName: Lpcw
 
 /// Previews a dialog box (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[must_use]
@@ -251,6 +259,7 @@ pub extern "system" fn MsiPreviewDialogA(hPreview: MsiHandle, szDialogName: Lpcs
 
 /// Displays a message box (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiMessageBoxExW(
@@ -273,6 +282,7 @@ pub extern "system" fn MsiMessageBoxExW(
 
 /// Displays a message box (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiMessageBoxExA(
@@ -295,6 +305,7 @@ pub extern "system" fn MsiMessageBoxExA(
 
 /// Previews a billboard within a preview dialog (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[must_use]
@@ -331,6 +342,7 @@ pub extern "system" fn MsiPreviewBillboardW(
 
 /// Previews a billboard within a preview dialog (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[must_use]

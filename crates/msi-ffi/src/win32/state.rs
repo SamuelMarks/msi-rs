@@ -18,6 +18,7 @@ use std::panic;
 ///
 /// `ERROR_SUCCESS` or `ERROR_INVALID_PARAMETER`.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -46,6 +47,7 @@ pub extern "system" fn MsiIsProductElevatedW(szProduct: Lpcwstr, pfElevated: *mu
 
 /// Determines whether the product is installed with elevated privileges (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -81,6 +83,7 @@ pub extern "system" fn MsiIsProductElevatedA(szProduct: Lpcstr, pfElevated: *mut
 ///
 /// `TRUE` if the mode is set, `FALSE` otherwise.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -106,6 +109,7 @@ pub extern "system" fn MsiGetMode(hInstall: crate::handles::MsiHandle, eRunMode:
 ///
 /// `ERROR_SUCCESS` on success, or an error code.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -125,6 +129,7 @@ pub extern "system" fn MsiSetMode(
 
 /// Sets the installation level for a full product installation.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -139,6 +144,7 @@ pub extern "system" fn MsiSetInstallLevel(
 
 /// Configures the installed state for a product feature (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -165,6 +171,7 @@ pub extern "system" fn MsiConfigureFeatureW(
 
 /// Configures the installed state for a product feature (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -191,6 +198,7 @@ pub extern "system" fn MsiConfigureFeatureA(
 
 /// Reinstalls a feature (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -217,6 +225,7 @@ pub extern "system" fn MsiReinstallFeatureW(
 
 /// Reinstalls a feature (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -243,6 +252,7 @@ pub extern "system" fn MsiReinstallFeatureA(
 
 /// Modifies the runtime attributes of a feature (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -266,6 +276,7 @@ pub extern "system" fn MsiSetFeatureAttributesW(
 
 /// Modifies the runtime attributes of a feature (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -289,6 +300,7 @@ pub extern "system" fn MsiSetFeatureAttributesA(
 
 /// Sets the installed state for a product feature (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -312,6 +324,7 @@ pub extern "system" fn MsiSetFeatureStateW(
 
 /// Sets the installed state for a product feature (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -347,6 +360,7 @@ pub extern "system" fn MsiSetFeatureStateA(
 ///
 /// `ERROR_SUCCESS` or `ERROR_INVALID_PARAMETER`.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -384,6 +398,7 @@ pub extern "system" fn MsiQueryComponentStateW(
 
 /// Queries the installed state of a component (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -420,6 +435,7 @@ pub extern "system" fn MsiQueryComponentStateA(
 
 /// Sets the installed state of a component.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -446,6 +462,7 @@ pub extern "system" fn MsiSetComponentStateW(
 
 /// Sets the installed state of a component (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -472,6 +489,7 @@ pub extern "system" fn MsiSetComponentStateA(
 
 /// Retrieves the usage metrics for a product feature.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -515,6 +533,7 @@ pub extern "system" fn MsiGetFeatureUsageW(
 
 /// Retrieves the usage metrics for a product feature (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -558,6 +577,7 @@ pub extern "system" fn MsiGetFeatureUsageA(
 
 /// Increments the usage count for a particular feature and returns the installation state.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -589,6 +609,7 @@ pub extern "system" fn MsiUseFeatureExW(
 
 /// Increments the usage count for a particular feature and returns the installation state (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -620,6 +641,7 @@ pub extern "system" fn MsiUseFeatureExA(
 
 /// Installs files that are unexpectedly missing.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -650,6 +672,7 @@ pub extern "system" fn MsiInstallMissingComponentW(
 
 /// Installs files that are unexpectedly missing (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -1361,6 +1384,7 @@ mod tests {
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
@@ -1385,6 +1409,7 @@ pub extern "system" fn MsiConfigureFeatureFromDescriptorA(
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
@@ -1403,6 +1428,7 @@ pub extern "system" fn MsiConfigureFeatureFromDescriptorW(
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
@@ -1422,6 +1448,7 @@ pub extern "system" fn MsiInvalidateFeatureCache() -> Uint {
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
@@ -1443,6 +1470,7 @@ pub extern "system" fn MsiQueryFeatureStateFromDescriptorA(
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
@@ -1464,6 +1492,7 @@ pub extern "system" fn MsiQueryFeatureStateFromDescriptorW(
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
@@ -1486,6 +1515,7 @@ pub extern "system" fn MsiReinstallFeatureFromDescriptorA(
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]

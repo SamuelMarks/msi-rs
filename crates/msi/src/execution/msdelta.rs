@@ -318,25 +318,38 @@ mod tests {
     }
 
     #[test]
-    fn test_patch_decoder_apply_to_file() -> Result<()> {
-        let temp_dir = tempfile::tempdir()
-            .map_err(|e| MsiError::Io(crate::error::IoContext::from_string(e.to_string())))?;
+    fn test_patch_decoder_apply_to_file() {
+        let temp_dir = tempfile::tempdir().expect("test");
         let src_path = temp_dir.path().join("src.txt");
         let tgt_path = temp_dir.path().join("tgt.txt");
-        std::fs::write(&src_path, "dummy source")
-            .map_err(|e| MsiError::Io(crate::error::IoContext::from_string(e.to_string())))?;
+        std::fs::write(&src_path, "dummy source").expect("test");
 
         let mut data = vec![b'P', b'A', b'3', b'0'];
         data.extend(0u32.to_le_bytes()); // Src (0 = bypass check)
         data.extend(0u32.to_le_bytes()); // Tgt
         data.extend(16u32.to_le_bytes()); // Size
 
-        let decoder = PatchDecoder::new(&data).expect("failed");
+        let decoder = PatchDecoder::new(&data).expect("test");
         assert!(decoder.apply_to_file(&src_path, &tgt_path).is_ok());
 
         let out = std::fs::read(&tgt_path).expect("test");
         assert_eq!(out.len(), 16);
-        Ok(())
+
+        // Missing source file error
+        assert!(decoder
+            .apply_to_file(&temp_dir.path().join("missing_src.txt"), &tgt_path)
+            .is_err());
+
+        // Invalid target path error (writing to a directory)
+        assert!(decoder.apply_to_file(&src_path, temp_dir.path()).is_err());
+
+        // Apply error inside apply_to_file (checksum mismatch)
+        let mut bad_data = vec![b'P', b'A', b'3', b'0'];
+        bad_data.extend(0x1234_5678u32.to_le_bytes());
+        bad_data.extend(0u32.to_le_bytes());
+        bad_data.extend(16u32.to_le_bytes());
+        let bad_decoder = PatchDecoder::new(&bad_data).expect("test");
+        assert!(bad_decoder.apply_to_file(&src_path, &tgt_path).is_err());
     }
 
     #[test]

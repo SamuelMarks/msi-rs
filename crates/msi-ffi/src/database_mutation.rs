@@ -59,6 +59,7 @@ pub struct TransformErrorCondition(pub i32);
 ///
 /// Pointers must be valid or null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiDatabaseMergeW(
@@ -125,6 +126,7 @@ pub unsafe extern "system" fn MsiDatabaseMergeW(
 ///
 /// Pointers must be valid or null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiDatabaseMergeA(
@@ -190,6 +192,7 @@ pub unsafe extern "system" fn MsiDatabaseMergeA(
 ///
 /// Pointers must be valid or null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiDatabaseImportW(
@@ -223,6 +226,7 @@ pub unsafe extern "system" fn MsiDatabaseImportW(
 ///
 /// Pointers must be valid or null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiDatabaseImportA(
@@ -258,6 +262,7 @@ pub unsafe extern "system" fn MsiDatabaseImportA(
 ///
 /// Pointers must be valid or null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiDatabaseExportW(
@@ -332,6 +337,7 @@ pub unsafe extern "system" fn MsiDatabaseExportW(
 ///
 /// Pointers must be valid or null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiDatabaseExportA(
@@ -405,6 +411,7 @@ pub unsafe extern "system" fn MsiDatabaseExportA(
 ///
 /// Pointers must be valid or null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiDatabaseApplyTransformW(
@@ -473,6 +480,7 @@ pub unsafe extern "system" fn MsiDatabaseApplyTransformW(
 ///
 /// Pointers must be valid or null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiDatabaseApplyTransformA(

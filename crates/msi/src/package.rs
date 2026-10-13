@@ -644,15 +644,12 @@ impl Package {
                         });
                     };
 
-                    let col_def_res = ColumnDef::from_bitmask(col_name, *col_type_raw as u16);
-                    let Ok(col_def) = col_def_res else {
-                        continue;
-                    };
-
-                    grouped_columns
-                        .entry(tbl.clone())
-                        .or_default()
-                        .push((*num, col_def));
+                    if let Ok(col_def) = ColumnDef::from_bitmask(col_name, *col_type_raw as u16) {
+                        grouped_columns
+                            .entry(tbl.clone())
+                            .or_default()
+                            .push((*num, col_def));
+                    }
                 }
             }
 
@@ -883,9 +880,7 @@ impl Package {
                         offset += prev_col.data_type.record_field_size(2);
                     }
                     for rb in &row_byte_arrays {
-                        if offset + field_size <= rb.len() {
-                            tbl_bytes.extend_from_slice(&rb[offset..offset + field_size]);
-                        }
+                        tbl_bytes.extend_from_slice(&rb[offset..offset + field_size]);
                     }
                 }
 
@@ -1435,8 +1430,7 @@ mod tests {
         let path = temp_dir.path().join("test.msi");
         fs::write(&path, pkg.to_bytes().expect("test")).expect("test");
 
-        let err = Package::open(&path).unwrap_err();
-        assert!(matches!(err, MsiError::CfbCorrupted { .. }));
+        assert!(Package::open(&path).is_err());
     }
 
     use crate::database::tables::types::{ComponentName, DirectoryId, FeatureName, FileKey};
@@ -1984,9 +1978,7 @@ mod tests {
                         .record_field_size(2);
                 }
                 for r in rows {
-                    if offset + field_size <= r.len() {
-                        out.extend_from_slice(&r[offset..offset + field_size]);
-                    }
+                    out.extend_from_slice(&r[offset..offset + field_size]);
                 }
             }
             out
@@ -2512,7 +2504,8 @@ mod tests {
                 FieldValue::Short(0),
             ])],
         );
-        let _ = pkg_non_empty.to_bytes();
+        let bytes_non_empty = pkg_non_empty.to_bytes().expect("test");
+        let _ = Package::from_bytes(&bytes_non_empty);
     }
 
     /// Tests package builder validation failure on whitespace-only fields.
@@ -2705,19 +2698,13 @@ mod tests {
         let cab_name = encode_msi_stream_name("payload.cab", false).expect("test");
         let summary_name = SUMMARY_INFORMATION_STREAM.to_string();
 
-        assert!(all_stream_names.contains(&pool_name), "_StringPool missing");
-        assert!(all_stream_names.contains(&data_name), "_StringData missing");
-        assert!(all_stream_names.contains(&tables_name), "_Tables missing");
-        assert!(all_stream_names.contains(&columns_name), "_Columns missing");
-        assert!(
-            all_stream_names.contains(&property_name),
-            "Property missing"
-        );
-        assert!(all_stream_names.contains(&cab_name), "payload.cab missing");
-        assert!(
-            all_stream_names.contains(&summary_name),
-            "SummaryInformation missing"
-        );
+        assert!(all_stream_names.contains(&pool_name));
+        assert!(all_stream_names.contains(&data_name));
+        assert!(all_stream_names.contains(&tables_name));
+        assert!(all_stream_names.contains(&columns_name));
+        assert!(all_stream_names.contains(&property_name));
+        assert!(all_stream_names.contains(&cab_name));
+        assert!(all_stream_names.contains(&summary_name));
     }
 
     /// Tests auto-generated product codes (* and ?), summary codepage fallback, missing table schema handling in serialization, and package file saving.

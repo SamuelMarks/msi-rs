@@ -41,6 +41,7 @@ pub struct ScriptContext(pub *mut c_void);
 /// # Panics
 /// Panics if `_lgid_language` is 9999.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiAdvertiseProductA(
@@ -96,6 +97,7 @@ pub unsafe extern "system" fn MsiAdvertiseProductA(
 /// # Panics
 /// Panics if `_lgid_language` is 9999.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiAdvertiseProductW(
@@ -136,6 +138,7 @@ pub unsafe extern "system" fn MsiAdvertiseProductW(
 /// # Panics
 /// Panics if `_lgid_language` is 9999.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiAdvertiseProductExA(
@@ -178,6 +181,7 @@ pub unsafe extern "system" fn MsiAdvertiseProductExA(
 /// # Panics
 /// Panics if `_lgid_language` is 9999.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiAdvertiseProductExW(
@@ -235,6 +239,7 @@ pub unsafe extern "system" fn MsiAdvertiseProductExW(
 /// # Panics
 /// Panics if `_f_remove_items` is -99.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiAdvertiseScriptA(
     _sz_script_file: *const c_char,
@@ -281,6 +286,7 @@ pub unsafe extern "system" fn MsiAdvertiseScriptA(
 /// # Panics
 /// Panics if `_f_remove_items` is -99.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiAdvertiseScriptW(
     _sz_script_file: *const u16,
@@ -328,6 +334,7 @@ pub unsafe extern "system" fn MsiAdvertiseScriptW(
 /// # Panics
 /// Panics if `_f_remove_items` is -99.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiProcessAdvertiseScriptA(
@@ -380,6 +387,7 @@ pub unsafe extern "system" fn MsiProcessAdvertiseScriptA(
 /// # Panics
 /// Panics if `_f_remove_items` is -99.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiProcessAdvertiseScriptW(

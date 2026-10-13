@@ -78,38 +78,48 @@ mod tests {
     }
 
     #[test]
-    fn test_get_wine_prefix_with_env() -> Result<(), crate::error::MsiError> {
-        let _lock = ENV_MUTEX.lock().unwrap();
-        let _guard = EnvGuard::new("WINEPREFIX");
+    fn test_get_wine_prefix_with_env() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard_wine = EnvGuard::new("WINEPREFIX");
+        let _guard_mock = EnvGuard::new("WINEPREFIX_MOCK_NO_HOME");
 
+        env::remove_var("WINEPREFIX_MOCK_NO_HOME");
         env::set_var("WINEPREFIX", "/tmp/mock_wine_prefix");
         let prefix = get_wine_prefix();
         assert_eq!(prefix, Some(PathBuf::from("/tmp/mock_wine_prefix")));
 
         env::set_var("WINEPREFIX", "");
-        let prefix2 = get_wine_prefix();
+        let _prefix2 = get_wine_prefix();
         #[cfg(unix)]
-        assert_eq!(prefix2, dirs::home_dir().map(|h| h.join(".wine")));
-
-        Ok(())
+        assert_eq!(_prefix2, dirs::home_dir().map(|h| h.join(".wine")));
+        #[cfg(not(unix))]
+        assert_eq!(_prefix2, None);
     }
 
     #[test]
-    fn test_get_wine_prefix_without_env() -> Result<(), crate::error::MsiError> {
-        let _lock = ENV_MUTEX.lock().unwrap();
-        let _guard = EnvGuard::new("WINEPREFIX");
+    fn test_get_wine_prefix_without_env() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard_wine = EnvGuard::new("WINEPREFIX");
+        let _guard_mock = EnvGuard::new("WINEPREFIX_MOCK_NO_HOME");
 
+        env::remove_var("WINEPREFIX_MOCK_NO_HOME");
         env::remove_var("WINEPREFIX");
-        let prefix = get_wine_prefix();
+        let _prefix = get_wine_prefix();
         #[cfg(unix)]
-        assert_eq!(prefix, dirs::home_dir().map(|h| h.join(".wine")));
-
-        Ok(())
+        assert_eq!(_prefix, dirs::home_dir().map(|h| h.join(".wine")));
+        #[cfg(not(unix))]
+        assert_eq!(_prefix, None);
     }
 
     #[test]
-    fn test_get_wine_prefix_no_home() -> Result<(), crate::error::MsiError> {
-        let _lock = ENV_MUTEX.lock().unwrap();
+    fn test_get_wine_prefix_no_home() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _guard_wine = EnvGuard::new("WINEPREFIX");
         let _guard_mock = EnvGuard::new("WINEPREFIX_MOCK_NO_HOME");
 
@@ -118,7 +128,5 @@ mod tests {
 
         let prefix = get_wine_prefix();
         assert_eq!(prefix, None);
-
-        Ok(())
     }
 }

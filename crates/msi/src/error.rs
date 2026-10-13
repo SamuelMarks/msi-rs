@@ -34,7 +34,7 @@ impl IoContext {
     /// TODO: Document return value.
     #[must_use]
     pub fn from_string(s: String) -> Self {
-        Self(std::io::Error::new(std::io::ErrorKind::Other, s))
+        Self(std::io::Error::other(s))
     }
 }
 
@@ -2379,7 +2379,7 @@ mod tests {
     #[test]
     fn test_io_context_error_trait() {
         use std::error::Error;
-        let io_err = std::io::Error::new(std::io::ErrorKind::Other, "test");
+        let io_err = std::io::Error::other("test");
         let ctx = IoContext(io_err);
         assert!(ctx.source().is_some());
     }

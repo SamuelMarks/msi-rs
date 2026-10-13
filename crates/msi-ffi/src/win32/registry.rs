@@ -20,6 +20,7 @@ const INSTALLSTATE_UNKNOWN: i32 = -1;
 
 /// Enumerates through all the products currently advertised or installed (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -41,6 +42,7 @@ pub extern "system" fn MsiEnumProductsW(
 
 /// Enumerates through all the products currently advertised or installed (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -62,6 +64,7 @@ pub extern "system" fn MsiEnumProductsA(
 
 /// Enumerates the published features for a given product (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -83,6 +86,7 @@ pub extern "system" fn MsiEnumFeaturesW(
 
 /// Enumerates the published features for a given product (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -104,6 +108,7 @@ pub extern "system" fn MsiEnumFeaturesA(
 
 /// Enumerates the installed components (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -123,6 +128,7 @@ pub extern "system" fn MsiEnumComponentsW(
 
 /// Enumerates the installed components (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -142,6 +148,7 @@ pub extern "system" fn MsiEnumComponentsA(
 
 /// Returns the installed state for a product (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -159,6 +166,7 @@ pub extern "system" fn MsiQueryProductStateW(szProduct: Lpcwstr) -> i32 {
 
 /// Returns the installed state for a product (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -176,6 +184,7 @@ pub extern "system" fn MsiQueryProductStateA(szProduct: Lpcstr) -> i32 {
 
 /// Returns the installed state for a product feature (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -193,6 +202,7 @@ pub extern "system" fn MsiQueryFeatureStateW(szProduct: Lpcwstr, szFeature: Lpcw
 
 /// Returns the installed state for a product feature (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -210,6 +220,7 @@ pub extern "system" fn MsiQueryFeatureStateA(szProduct: Lpcstr, szFeature: Lpcst
 
 /// Returns product information (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -232,6 +243,7 @@ pub extern "system" fn MsiGetProductInfoW(
 
 /// Returns product information (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -253,6 +265,7 @@ pub extern "system" fn MsiGetProductInfoA(
 
 /// Enumerates the clients for a given component (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -272,6 +285,7 @@ pub extern "system" fn MsiEnumClientsW(
 
 /// Enumerates the clients for a given component (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -291,6 +305,7 @@ pub extern "system" fn MsiEnumClientsA(
 
 /// Enumerates the clients for a given component with advanced options (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -315,6 +330,7 @@ pub extern "system" fn MsiEnumClientsExW(
 
 /// Enumerates the clients for a given component with advanced options (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -339,6 +355,7 @@ pub extern "system" fn MsiEnumClientsExA(
 
 /// Enumerates the qualifiers for a given component (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -361,6 +378,7 @@ pub extern "system" fn MsiEnumComponentQualifiersW(
 
 /// Enumerates the qualifiers for a given component (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -383,6 +401,7 @@ pub extern "system" fn MsiEnumComponentQualifiersA(
 
 /// Enumerates the patches for a given product (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -404,6 +423,7 @@ pub extern "system" fn MsiEnumPatchesW(
 
 /// Enumerates the patches for a given product (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -425,6 +445,7 @@ pub extern "system" fn MsiEnumPatchesA(
 
 /// Enumerates the patches with advanced options (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -451,6 +472,7 @@ pub extern "system" fn MsiEnumPatchesExW(
 
 /// Enumerates the patches with advanced options (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -477,6 +499,7 @@ pub extern "system" fn MsiEnumPatchesExA(
 
 /// Enumerates the related products (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -497,6 +520,7 @@ pub extern "system" fn MsiEnumRelatedProductsW(
 
 /// Enumerates the related products (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -517,6 +541,7 @@ pub extern "system" fn MsiEnumRelatedProductsA(
 
 /// Enumerates the products with advanced options (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -536,6 +561,7 @@ pub extern "system" fn MsiEnumProductsExW(
 
 /// Enumerates the products with advanced options (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -555,6 +581,7 @@ pub extern "system" fn MsiEnumProductsExA(
 
 /// Enumerates the components with advanced options (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -573,6 +600,7 @@ pub extern "system" fn MsiEnumComponentsExW(
 
 /// Enumerates the components with advanced options (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -591,6 +619,7 @@ pub extern "system" fn MsiEnumComponentsExA(
 
 /// Advanced feature state check (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -612,6 +641,7 @@ pub extern "system" fn MsiQueryFeatureStateExW(
 
 /// Advanced feature state check (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -633,6 +663,7 @@ pub extern "system" fn MsiQueryFeatureStateExA(
 
 /// Get current and action state for component (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -653,6 +684,7 @@ pub extern "system" fn MsiGetComponentStateW(
 
 /// Get current and action state for component (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -673,6 +705,7 @@ pub extern "system" fn MsiGetComponentStateA(
 
 /// Get current and action state for feature (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -693,6 +726,7 @@ pub extern "system" fn MsiGetFeatureStateW(
 
 /// Get current and action state for feature (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -713,6 +747,7 @@ pub extern "system" fn MsiGetFeatureStateA(
 
 /// Locate component file path (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -735,6 +770,7 @@ pub extern "system" fn MsiGetComponentPathExW(
 
 /// Locate component file path (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -757,6 +793,7 @@ pub extern "system" fn MsiGetComponentPathExA(
 
 /// Locate component file path for the current user (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -777,6 +814,7 @@ pub extern "system" fn MsiGetComponentPathW(
 
 /// Locate component file path for the current user (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -797,6 +835,7 @@ pub extern "system" fn MsiGetComponentPathA(
 
 /// Retrieve valid installation states for feature (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -816,6 +855,7 @@ pub extern "system" fn MsiGetFeatureValidStatesW(
 
 /// Retrieve valid installation states for feature (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -835,6 +875,7 @@ pub extern "system" fn MsiGetFeatureValidStatesA(
 
 /// Calculate feature disk cost (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -856,6 +897,7 @@ pub extern "system" fn MsiGetFeatureCostW(
 
 /// Calculate feature disk cost (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -877,6 +919,7 @@ pub extern "system" fn MsiGetFeatureCostA(
 
 /// Enumerate drive costs for component (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -901,6 +944,7 @@ pub extern "system" fn MsiEnumComponentCostsW(
 
 /// Enumerate drive costs for component (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -925,6 +969,7 @@ pub extern "system" fn MsiEnumComponentCostsA(
 
 /// Parse MSI component descriptor (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -946,6 +991,7 @@ pub extern "system" fn MsiDecomposeDescriptorW(
 
 /// Parse MSI component descriptor (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -967,6 +1013,7 @@ pub extern "system" fn MsiDecomposeDescriptorA(
 
 /// Extract PE file version (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -988,6 +1035,7 @@ pub extern "system" fn MsiGetFileVersionW(
 
 /// Extract PE file version (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -1009,6 +1057,7 @@ pub extern "system" fn MsiGetFileVersionA(
 
 /// Obtains user information for a product (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -1025,6 +1074,7 @@ pub extern "system" fn MsiCollectUserInfoW(szProduct: Lpcwstr) -> Uint {
 
 /// Obtains user information for a product (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -1041,6 +1091,7 @@ pub extern "system" fn MsiCollectUserInfoA(szProduct: Lpcstr) -> Uint {
 
 /// Retrieves registered user information (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -1064,6 +1115,7 @@ pub extern "system" fn MsiGetUserInfoW(
 
 /// Retrieves registered user information (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
@@ -1101,6 +1153,7 @@ pub extern "system" fn MsiGetUserInfoA(
 ///
 /// # Returns
 /// `ERROR_SUCCESS`.
+#[cfg_attr(not(test), no_mangle)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
 pub extern "system" fn Migrate10CachedPackagesW(
@@ -2736,6 +2789,7 @@ mod tests {
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]

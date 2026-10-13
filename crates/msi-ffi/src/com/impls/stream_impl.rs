@@ -34,7 +34,7 @@ impl NativeStream {
     #[must_use]
     pub fn new(data: Vec<u8>) -> Box<Self> {
         Box::new(Self {
-            lp_vtbl: &NATIVE_STREAM_VTBL,
+            lp_vtbl: &raw const NATIVE_STREAM_VTBL,
             ref_count: AtomicU32::new(1),
             data,
             offset: 0,

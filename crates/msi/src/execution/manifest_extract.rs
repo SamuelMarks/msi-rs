@@ -50,9 +50,9 @@ mod tests {
 
     #[test]
     fn test_extract_manifest_not_pe() -> Result<()> {
-        let temp_dir = tempfile::tempdir().unwrap();
+        let temp_dir = tempfile::tempdir()?;
         let bad_pe = temp_dir.path().join("bad.dll");
-        std::fs::write(&bad_pe, b"not a pe file").unwrap();
+        std::fs::write(&bad_pe, b"not a pe file")?;
         let result = extract_manifest(&bad_pe);
         assert!(result.is_err());
         Ok(())

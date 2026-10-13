@@ -1014,7 +1014,7 @@ impl LinkedDatabase {
                 continue;
             }
 
-            let dest_rows = self.tables.entry(target_table_name.clone()).or_default();
+            let dest_rows = self.tables.entry(target_table_name).or_default();
 
             for mut record in rows {
                 match table_name.as_str() {
@@ -3038,7 +3038,7 @@ impl Linker {
 
                 let disk_folders = disk_cab_folders.entry(disk_id).or_default();
                 let next_idx = disk_folders.len() as u16;
-                let folder_idx = *disk_folders.entry(comp_id.clone()).or_insert(next_idx);
+                let folder_idx = *disk_folders.entry(comp_id).or_insert(next_idx);
 
                 writer.add_file_with_folder_index(
                     file_name_in_cab,
@@ -6401,30 +6401,21 @@ mod tests {
 
         // Verify _Validation table is present
         let val_records = db.get_records("_Validation");
-        assert!(
-            !val_records.is_empty(),
-            "_Validation table should be populated"
-        );
+        assert!(!val_records.is_empty());
 
         let has_component = val_records.iter().any(|r| {
             r.get(0) == Some(&FieldValue::String("Component".to_string()))
                 && r.get(1) == Some(&FieldValue::String("Component".to_string()))
                 && r.get(2) == Some(&FieldValue::String("N".to_string()))
         });
-        assert!(
-            has_component,
-            "Component column Component must be present and not nullable"
-        );
+        assert!(has_component);
 
         let has_component_guid = val_records.iter().any(|r| {
             r.get(0) == Some(&FieldValue::String("Component".to_string()))
                 && r.get(1) == Some(&FieldValue::String("ComponentId".to_string()))
                 && r.get(2) == Some(&FieldValue::String("Y".to_string()))
         });
-        assert!(
-            has_component_guid,
-            "Component column ComponentId must be present and nullable"
-        );
+        assert!(has_component_guid);
 
         Ok(())
     }

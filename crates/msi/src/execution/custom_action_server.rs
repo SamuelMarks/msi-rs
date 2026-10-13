@@ -118,10 +118,18 @@ mod tests {
 
     #[test]
     fn test_execute_dll_action_safely_panics() {
-        let err = CustomActionServer::execute_dll_action_safely::<_, ()>("test", || {
-            panic::panic_any("str_panic")
-        })
-        .expect_err("Expected err");
+        let run_mode = |mode: u8| {
+            CustomActionServer::execute_dll_action_safely("test", || match mode {
+                0 => 42_i32,
+                1 => panic::panic_any("str_panic"),
+                2 => panic::panic_any("String_panic".to_string()),
+                _ => panic::panic_any(42_i32),
+            })
+        };
+
+        assert_eq!(run_mode(0), Ok(42));
+
+        let err = run_mode(1).expect_err("Expected err");
         assert_eq!(
             err,
             MsiError::ActionExecutionError(
@@ -129,10 +137,7 @@ mod tests {
             )
         );
 
-        let err = CustomActionServer::execute_dll_action_safely::<_, ()>("test", || {
-            panic::panic_any("String_panic".to_string())
-        })
-        .expect_err("Expected err");
+        let err = run_mode(2).expect_err("Expected err");
         assert_eq!(
             err,
             MsiError::ActionExecutionError(
@@ -140,10 +145,7 @@ mod tests {
             )
         );
 
-        let err = CustomActionServer::execute_dll_action_safely::<_, ()>("test", || {
-            panic::panic_any(42_i32)
-        })
-        .expect_err("Expected err");
+        let err = run_mode(3).expect_err("Expected err");
         assert_eq!(
             err,
             MsiError::ActionExecutionError(
@@ -195,35 +197,6 @@ mod tests {
     fn test_spawn_out_of_process_server() {
         assert!(CustomActionServer::spawn_out_of_process_server("Action", true).is_ok());
         assert!(CustomActionServer::spawn_out_of_process_server("Action", false).is_ok());
-    }
-
-    #[test]
-    fn test_execute_dll_action_safely_success() {
-        let res = CustomActionServer::execute_dll_action_safely("SafeAction", || 42)
-            .expect("Success expected");
-        assert_eq!(res, 42);
-    }
-
-    #[test]
-    fn test_execute_dll_action_safely_panic() {
-        let err = CustomActionServer::execute_dll_action_safely("PanicAction", || {
-            panic!("test panic string");
-        })
-        .expect_err("Expected panic");
-
-        let msg = err.to_string();
-        assert!(msg.contains("test panic string"));
-        assert!(msg.contains("PanicAction"));
-    }
-
-    #[test]
-    fn test_execute_dll_action_safely_panic_unknown() {
-        let err = CustomActionServer::execute_dll_action_safely("UnknownPanic", || {
-            panic::panic_any(12345);
-        })
-        .expect_err("Expected unknown panic");
-
-        assert!(err.to_string().contains("Unknown panic"));
     }
 }
 

@@ -25,20 +25,20 @@ use package::PyPackage;
 use version::PyProductVersion;
 use wix::{compile_wix_file, compile_wix_source};
 
-/// Native Python module definition for `_msi`.
+/// Populates the `_msi` Python module with classes, exceptions, and functions.
 ///
 /// # Arguments
 ///
-/// * `m` - The argument parameter.
-/// * `PyModule>` - The argument parameter.
+/// * `m` - The bound Python module.
+///
+/// # Errors
+///
+/// Returns [`PyErr`] if module registration fails.
 ///
 /// # Returns
 ///
-/// Returns the result of the operation.
-#[allow(clippy::redundant_pub_crate)]
-#[pymodule]
-#[allow(clippy::unnecessary_wraps)]
-fn _msi(m: &Bound<'_, PyModule>) -> PyResult<()> {
+/// `Ok(())` when all items are registered.
+pub fn init_msi_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     register_exceptions(m)?;
     m.add_class::<PyProductVersion>()?;
     m.add_class::<PyPackageBuilder>()?;
@@ -46,6 +46,22 @@ fn _msi(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(compile_wix_source, m)?)?;
     m.add_function(wrap_pyfunction!(compile_wix_file, m)?)?;
     Ok(())
+}
+
+/// Native Python module definition for `_msi`.
+///
+/// # Arguments
+///
+/// * `m` - The argument parameter.
+///
+/// # Returns
+///
+/// Returns the result of the operation.
+#[allow(clippy::redundant_pub_crate)]
+#[cfg_attr(not(coverage), pymodule)]
+#[allow(clippy::unnecessary_wraps)]
+fn _msi(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    init_msi_module(m)
 }
 
 #[cfg(test)]
@@ -57,13 +73,13 @@ mod tests {
     /// # Arguments
     ///
     /// * `res` - The argument parameter.
-    /// * `PyModule>>` - The argument parameter.
     ///
     /// # Returns
     ///
     /// Returns the result of the operation.
     fn check_msi_module_init(res: PyResult<Bound<'_, PyModule>>) -> bool {
         res.is_ok_and(|m| {
+            assert!(init_msi_module(&m).is_ok());
             assert!(_msi(&m).is_ok());
             assert!(matches!(m.hasattr("ProductVersion"), Ok(true)));
             assert!(matches!(m.hasattr("PackageBuilder"), Ok(true)));

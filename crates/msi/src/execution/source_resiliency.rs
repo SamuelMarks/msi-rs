@@ -159,7 +159,6 @@ impl SourceList {
                 }
                 SourcePath::Url(_url) => {
                     // URL resolution would involve downloading, currently unsupported in mock
-                    continue;
                 }
             }
         }
@@ -344,7 +343,6 @@ mod tests {
 
         // Do another resolution for abort
         let temp2 = tempdir().expect("test");
-        let _file_path2 = temp2.path().join("abort.cab");
         let mut list2 = SourceList::parse(temp2.path().to_str().expect("test"));
         list2.sources.push(SourcePath::Media(MediaSource {
             base_path: temp2.path().to_path_buf(),
@@ -462,12 +460,41 @@ mod source_resiliency_additional_tests {
         }));
 
         let mut callback3_called = false;
-        let callback3 = |_: &str| -> bool {
+        let mut callback3 = |_: &str| -> bool {
             callback3_called = true;
             false
         };
-        let _ = list.resolve_file(Path::new("trigger_false.txt"), Some(callback3));
+        let _ = list.resolve_file(Path::new("last_used.txt"), Some(&mut callback3));
+        let _ = list.resolve_file(Path::new("trigger_false.txt"), Some(&mut callback3));
         assert!(callback3_called);
+
+        // Also exercise Media source found & Network source found with None::<fn(&str) -> bool>
+        list.last_used = None;
+        let resolved_none_cb = list
+            .resolve_file(Path::new("last_used.txt"), None::<fn(&str) -> bool>)
+            .expect("test");
+        assert_eq!(resolved_none_cb, file_path);
+
+        let mnt_dir = PathBuf::from("/tmp/msi_test_mnt/srv_none/share_none");
+        let _ = std::fs::create_dir_all(&mnt_dir);
+        let net_file = mnt_dir.join("net_found.txt");
+        let _ = std::fs::write(&net_file, "net");
+        list.sources.push(SourcePath::Network(NetworkSource {
+            unc_path: r"\\srv_none\share_none".to_string(),
+        }));
+        let resolved_net_none = list
+            .resolve_file(Path::new("net_found.txt"), None::<fn(&str) -> bool>)
+            .expect("test");
+        assert_eq!(resolved_net_none, net_file);
+        let _ = std::fs::remove_dir_all("/tmp/msi_test_mnt/srv_none");
+
+        static FN_PTR_CALLS: std::sync::atomic::AtomicUsize =
+            std::sync::atomic::AtomicUsize::new(0);
+        fn fn_ptr_retry_then_cancel(_: &str) -> bool {
+            FN_PTR_CALLS.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0
+        }
+        let cb_ptr: fn(&str) -> bool = fn_ptr_retry_then_cancel;
+        let _ = list.resolve_file(Path::new("missing_fn_ptr.txt"), Some(cb_ptr));
     }
 
     #[test]

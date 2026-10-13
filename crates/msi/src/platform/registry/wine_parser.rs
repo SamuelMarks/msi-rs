@@ -111,7 +111,7 @@ impl WineRegHive {
                     (inner.to_string(), 0)
                 };
 
-                current_key = name.to_string();
+                current_key = name;
                 hive.keys.insert(
                     current_key.clone(),
                     WineRegKey {
@@ -247,7 +247,7 @@ mod tests {
 
         let mut out = Vec::new();
         hive.serialize(&mut out)?;
-        let serialized = String::from_utf8(out).expect("valid utf8");
+        let serialized = String::from_utf8_lossy(&out);
         assert!(serialized.contains("[Software\\Acme] 1234567"));
         assert!(serialized.contains("\"Test\"=\"Value\""));
         assert!(serialized.contains("\"Num\"=dword:0000000a"));
@@ -302,7 +302,7 @@ mod tests {
 
         let mut out = Vec::new();
         hive.serialize(&mut out)?;
-        let serialized = String::from_utf8(out).expect("valid utf8");
+        let serialized = String::from_utf8_lossy(&out);
         assert!(serialized.contains("[NoTimestamp]"));
         assert!(serialized.contains("@=\"DefaultValue\""));
         assert!(serialized.contains("\"HexData\"=hex(3):"));

@@ -380,7 +380,7 @@ pub trait SpecializedRegistrationOperations {
     ///
     /// # Arguments
     ///
-    /// * `dll_path` - The dll_path argument.
+    /// * `dll_path` - The `dll_path` argument.
     ///
     /// # Returns
     ///
@@ -864,9 +864,8 @@ impl SpecializedRegistrationOperations for StandardActionEngine {
             #[cfg(windows)]
             {
                 use windows::core::{s, w, PCWSTR, PWSTR};
-                use windows::Win32::System::LibraryLoader::{
-                    FreeLibrary, GetProcAddress, LoadLibraryW,
-                };
+                use windows::Win32::Foundation::FreeLibrary;
+                use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
 
                 type SQLInstallDriverExWFn = unsafe extern "system" fn(
                     lpszDriver: PCWSTR,
@@ -926,9 +925,8 @@ impl SpecializedRegistrationOperations for StandardActionEngine {
             #[cfg(windows)]
             {
                 use windows::core::{s, w, PCWSTR, PWSTR};
-                use windows::Win32::System::LibraryLoader::{
-                    FreeLibrary, GetProcAddress, LoadLibraryW,
-                };
+                use windows::Win32::Foundation::FreeLibrary;
+                use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
 
                 type SQLInstallTranslatorExWFn = unsafe extern "system" fn(
                     lpszTranslator: PCWSTR,
@@ -1057,7 +1055,7 @@ impl SpecializedRegistrationOperations for StandardActionEngine {
     ///
     /// # Arguments
     ///
-    /// * `_dll_path` - The _dll_path argument.
+    /// * `_dll_path` - The `_dll_path` argument.
     ///
     /// # Returns
     ///

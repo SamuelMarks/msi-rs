@@ -10,6 +10,9 @@ name = "msi-cli"
 version = "0.0.1"
 edition = "2021"
 
+[lints]
+workspace = true
+
 [dependencies]
 msi = { path = "../msi" }
 clap = { version = "4.4.11", features = ["derive", "cargo"] }

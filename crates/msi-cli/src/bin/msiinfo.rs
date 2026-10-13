@@ -1,3 +1,5 @@
+#![allow(clippy::cognitive_complexity)]
+#![allow(clippy::literal_string_with_formatting_args)]
 //! # msiinfo
 //!
 //! Windows Installer Information and Inspection tool replicating GNOME `msiinfo`.

@@ -176,8 +176,14 @@ mod tests {
         };
 
         let mut obj = IUnknown { lpVtbl: &vtbl };
+        let iid = GUID::new(0, 0, 0, [0xC0, 0, 0, 0, 0, 0, 0, 0x46]);
 
         unsafe {
+            let mut out: *mut c_void = std::ptr::null_mut();
+            assert_eq!(
+                ((*obj.lpVtbl).QueryInterface)(&mut obj, &iid, &mut out),
+                S_OK
+            );
             assert_eq!(((*obj.lpVtbl).AddRef)(&mut obj), 2);
             assert_eq!(((*obj.lpVtbl).Release)(&mut obj), 1);
         }

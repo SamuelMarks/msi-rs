@@ -1,3 +1,5 @@
+#![allow(clippy::cognitive_complexity)]
+#![allow(clippy::literal_string_with_formatting_args)]
 //! # pyro
 //!
 //! `WiX` v3 Patch Creation tool replicating `pyro.exe`.
@@ -240,7 +242,7 @@ mod tests {
     use super::*;
 
     #[test]
-    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::too_many_lines, clippy::redundant_clone)]
     fn test_pyro_run_all_branches() {
         let temp_dir = std::env::temp_dir().join("msi_cli_test_pyro_bin");
         let _ = fs::create_dir_all(&temp_dir);

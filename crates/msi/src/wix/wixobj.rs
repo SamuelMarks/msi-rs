@@ -1182,10 +1182,7 @@ mod tests {
 
         // Truncate at every single byte boundary from header to end - 1
         for i in 0..valid_bytes.len() - 1 {
-            assert!(
-                WixObject::deserialize(&valid_bytes[..i]).is_err(),
-                "Expected failure for truncation at byte {i}"
-            );
+            assert!(WixObject::deserialize(&valid_bytes[..i]).is_err());
         }
 
         // Unknown field type byte

@@ -810,9 +810,14 @@ mod tests {
 }
 
 #[test]
-#[allow(clippy::missing_const_for_fn, clippy::no_effect_underscore_binding)]
+#[allow(
+    clippy::missing_const_for_fn,
+    clippy::no_effect_underscore_binding,
+    clippy::default_constructed_unit_structs
+)]
 fn test_posix_renderer_default() {
-    let _renderer = posix_impl::PosixRenderer;
+    let _renderer = posix_impl::PosixRenderer::default();
+    let _renderer2 = posix_impl::PosixRenderer::new();
 }
 
 #[cfg(test)]

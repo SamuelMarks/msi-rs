@@ -232,7 +232,10 @@ impl LiveWorkerExecutor {
                 InstalledFileRecord::NewlyCreated(path) => {
                     if path.exists() {
                         if let Err(e) = fs::remove_file(path) {
-                            errors.push(format!("remove newly created file '{path:?}': {e}"));
+                            errors.push(format!(
+                                "remove newly created file '{}': {e}",
+                                path.display()
+                            ));
                         }
                     }
                 }
@@ -242,7 +245,10 @@ impl LiveWorkerExecutor {
                 } => {
                     if quarantine_rbf.exists() {
                         if let Err(e) = fs::copy(quarantine_rbf, target_path) {
-                            errors.push(format!("restore quarantined file '{target_path:?}': {e}"));
+                            errors.push(format!(
+                                "restore quarantined file '{}': {e}",
+                                target_path.display()
+                            ));
                         }
                         let _ = fs::remove_file(quarantine_rbf);
                     }
@@ -257,7 +263,8 @@ impl LiveWorkerExecutor {
                 if let Ok(mut entries) = fs::read_dir(dir) {
                     if entries.next().is_none() {
                         if let Err(e) = fs::remove_dir(dir) {
-                            errors.push(format!("remove created directory '{dir:?}': {e}"));
+                            errors
+                                .push(format!("remove created directory '{}': {e}", dir.display()));
                         }
                     }
                 }

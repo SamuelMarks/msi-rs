@@ -310,17 +310,17 @@ mod tests {
 
     #[test]
     fn test_ipc_connection_errors() {
-        use std::io::{Error, ErrorKind, Read, Write};
+        use std::io::{Error, Read, Write};
         #[derive(Debug)]
         struct BadStream;
         impl Read for BadStream {
             fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
-                Err(Error::new(ErrorKind::Other, "read error"))
+                Err(Error::other("read error"))
             }
         }
         impl Write for BadStream {
             fn write(&mut self, _buf: &[u8]) -> std::io::Result<usize> {
-                Err(Error::new(ErrorKind::Other, "write error"))
+                Err(Error::other("write error"))
             }
             fn flush(&mut self) -> std::io::Result<()> {
                 Ok(())
@@ -347,7 +347,7 @@ mod tests {
                 Ok(buf.len())
             }
             fn flush(&mut self) -> std::io::Result<()> {
-                Err(Error::new(ErrorKind::Other, "flush error"))
+                Err(Error::other("flush error"))
             }
         }
         let mut conn2 = IpcConnection::new(BadFlushStream);
@@ -364,7 +364,7 @@ mod tests {
                     buf.copy_from_slice(&1u32.to_le_bytes());
                     Ok(4)
                 } else {
-                    Err(Error::new(ErrorKind::Other, "payload read error"))
+                    Err(Error::other("payload read error"))
                 }
             }
         }
@@ -393,7 +393,7 @@ mod tests {
                 if buf.len() == 4 {
                     Ok(4)
                 } else {
-                    Err(Error::new(ErrorKind::Other, "payload write error"))
+                    Err(Error::other("payload write error"))
                 }
             }
             fn flush(&mut self) -> std::io::Result<()> {

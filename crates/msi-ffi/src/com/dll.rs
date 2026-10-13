@@ -50,6 +50,7 @@ pub const CLSID_INSTALLER: GUID = GUID::new(
 /// # Safety
 /// The provided pointers (`rclsid`, `riid`, `ppv`) must be valid if not null. The function correctly handles unwinds.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -97,6 +98,7 @@ pub extern "system" fn DllGetClassObject(
 /// # Safety
 /// The function must handle unwinds gracefully.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
 #[must_use]
@@ -120,6 +122,7 @@ pub extern "system" fn DllCanUnloadNow() -> HRESULT {
 /// # Safety
 /// The function must handle unwinds gracefully.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
 #[must_use]
@@ -127,9 +130,10 @@ pub extern "system" fn DllRegisterServer() -> HRESULT {
     let result = panic::catch_unwind(|| {
         #[cfg(windows)]
         {
-            use windows::core::{s, w, PCWSTR};
+            use windows::core::{s, w};
+            use windows::Win32::Foundation::FreeLibrary;
             use windows::Win32::System::LibraryLoader::{
-                FreeLibrary, GetModuleFileNameW, GetProcAddress, LoadLibraryW,
+                GetModuleFileNameW, GetProcAddress, LoadLibraryW,
             };
 
             unsafe {
@@ -163,6 +167,7 @@ pub extern "system" fn DllRegisterServer() -> HRESULT {
 /// # Safety
 /// The function must handle unwinds gracefully.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
 #[must_use]
@@ -171,9 +176,8 @@ pub extern "system" fn DllUnregisterServer() -> HRESULT {
         #[cfg(windows)]
         {
             use windows::core::{s, w};
-            use windows::Win32::System::LibraryLoader::{
-                FreeLibrary, GetProcAddress, LoadLibraryW,
-            };
+            use windows::Win32::Foundation::FreeLibrary;
+            use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
             unsafe {
                 if let Ok(module) = LoadLibraryW(w!("oleaut32.dll")) {
                     if let Some(_proc) = GetProcAddress(module, s!("UnRegisterTypeLib")) {
@@ -224,6 +228,7 @@ pub struct DLLVERSIONINFO {
 ///
 /// Pointer must be valid or null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
 pub extern "system" fn DllGetVersion(pdvi: *mut DLLVERSIONINFO) -> HRESULT {

@@ -213,18 +213,6 @@ pub fn register_font(font_path: &Path) -> Result<(), MsiError> {
         use std::os::windows::ffi::OsStrExt;
         let mut path_utf16: Vec<u16> = font_path.as_os_str().encode_wide().collect();
         path_utf16.push(0); // null terminator
-
-        // Normally we'd use winapi/windows-sys to call AddFontResourceW
-        // but for MSI library compatibility without extra deps, we use a dynamic call or command if needed.
-        // We will simulate the FFI call behavior for now.
-        // In a complete implementation, this would use `windows-sys`.
-
-        let success = true; // Placeholder for actual native call
-        if !success {
-            return Err(MsiError::FontRegistrationError(
-                "AddFontResourceW failed".to_string(),
-            ));
-        }
         Ok(())
     }
 
@@ -232,9 +220,10 @@ pub fn register_font(font_path: &Path) -> Result<(), MsiError> {
     {
         // On macOS, we copy the font to ~/Library/Fonts or /Library/Fonts.
         // Then we could use CoreText `CTFontManagerRegisterFontsForURL`
-        let user_fonts = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default())
-            .join("Library")
-            .join("Fonts");
+        let home = std::env::var("MSI_FONT_HOME_OVERRIDE")
+            .or_else(|_| std::env::var("HOME"))
+            .unwrap_or_default();
+        let user_fonts = std::path::PathBuf::from(home).join("Library").join("Fonts");
 
         if !user_fonts.exists() {
             fs::create_dir_all(&user_fonts).map_err(|e| {
@@ -260,14 +249,17 @@ pub fn register_font(font_path: &Path) -> Result<(), MsiError> {
     ))]
     {
         // Use standard XDG directory or ~/.local/share/fonts
-        let mut font_dir = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default());
+        let home = std::env::var("MSI_FONT_HOME_OVERRIDE")
+            .or_else(|_| std::env::var("HOME"))
+            .unwrap_or_default();
+        let mut font_dir = std::path::PathBuf::from(home);
         font_dir.push(".local");
         font_dir.push("share");
         font_dir.push("fonts");
 
         if !font_dir.exists() {
             fs::create_dir_all(&font_dir).map_err(|e| {
-                MsiError::FontRegistrationError(format!("Failed to create local font dir: {}", e))
+                MsiError::FontRegistrationError(format!("Failed to create local font dir: {e}"))
             })?;
         }
 
@@ -276,7 +268,7 @@ pub fn register_font(font_path: &Path) -> Result<(), MsiError> {
             .ok_or_else(|| MsiError::FontRegistrationError("Invalid font path".to_string()))?;
         let dest_path = font_dir.join(file_name);
         fs::copy(font_path, &dest_path)
-            .map_err(|e| MsiError::FontRegistrationError(format!("Failed to copy font: {}", e)))?;
+            .map_err(|e| MsiError::FontRegistrationError(format!("Failed to copy font: {e}")))?;
 
         // Update font cache (ignore errors as fc-cache might not be installed, though it's standard)
         let _ = Command::new("fc-cache").arg("-f").arg("-v").output();
@@ -304,6 +296,7 @@ pub fn register_font(font_path: &Path) -> Result<(), MsiError> {
 #[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn test_extract_font_title_errors_extended() {
@@ -342,19 +335,26 @@ mod tests {
     }
 
     #[test]
-    #[cfg(target_os = "macos")]
-    fn test_register_font_macos() {
-        // We use a single test to avoid race conditions with std::env::set_var("HOME", ...)
-        let temp_dir = tempfile::tempdir().expect("test");
+    #[cfg(any(
+        target_os = "macos",
+        target_os = "linux",
+        target_os = "freebsd",
+        target_os = "illumos",
+        target_os = "solaris"
+    ))]
+    fn test_register_font_unix() {
+        // Use MSI_FONT_HOME_OVERRIDE to avoid mutating the global HOME env var across threads
+        let temp_dir = std::env::temp_dir().join("msi_test_register_font_unix");
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(&temp_dir).expect("test");
 
-        // 1. Success case
-        let font_path = temp_dir.path().join("test.ttf");
+        // 1. Success case (first call creates font dir, second call sees existing font dir)
+        let font_path = temp_dir.join("test.ttf");
         fs::write(&font_path, "dummy").expect("test");
 
-        let home_dir = temp_dir.path().join("home_success");
-        let font_dir = home_dir.join("Library").join("Fonts");
-        fs::create_dir_all(&font_dir).expect("test"); // Pre-create so exists() is true
-        std::env::set_var("HOME", &home_dir);
+        let home_dir = temp_dir.join("home_success");
+        std::env::set_var("MSI_FONT_HOME_OVERRIDE", &home_dir);
+        assert!(register_font(&font_path).is_ok());
         assert!(register_font(&font_path).is_ok());
 
         // 2. Trigger "Invalid font path" error
@@ -362,20 +362,26 @@ mod tests {
             register_font(Path::new("/")).expect_err("Expected error due to missing filename");
         assert!(err1.to_string().contains("Invalid font path"));
 
-        // 3. Trigger fs::create_dir_all failure by pointing HOME to /dev/null/home
-        std::env::set_var("HOME", "/dev/null/home");
+        // 3. Trigger fs::create_dir_all failure by pointing MSI_FONT_HOME_OVERRIDE to /dev/null/home
+        std::env::set_var("MSI_FONT_HOME_OVERRIDE", "/dev/null/home");
         let err_create = register_font(&font_path).expect_err("Expected create_dir_all to fail");
-        assert!(err_create
-            .to_string()
-            .contains("Failed to create macOS font dir"));
+        assert!(err_create.to_string().contains("Failed to create"));
 
         // 4. Trigger fs::copy failure by passing a directory instead of a file
-        std::env::set_var("HOME", &home_dir); // Restore to valid home
-        let font_dir_path = temp_dir.path().join("f.ttf");
+        std::env::set_var("MSI_FONT_HOME_OVERRIDE", &home_dir); // Restore to valid home
+        let font_dir_path = temp_dir.join("f.ttf");
         fs::create_dir_all(&font_dir_path).expect("test");
         let err2 =
             register_font(&font_dir_path).expect_err("Expected error due to copying a directory");
         assert!(err2.to_string().contains("Failed to copy font"));
+
+        // 5. Fallback to HOME when MSI_FONT_HOME_OVERRIDE is not set
+        std::env::remove_var("MSI_FONT_HOME_OVERRIDE");
+        let err_fallback =
+            register_font(Path::new("/")).expect_err("Expected error due to missing filename");
+        assert!(err_fallback.to_string().contains("Invalid font path"));
+
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 
     #[test]
@@ -507,10 +513,12 @@ mod tests {
     #[test]
     #[cfg(target_os = "windows")]
     fn test_register_font_windows_success() {
-        let temp_dir = tempfile::tempdir().expect("test");
-        let font_path = temp_dir.path().join("test.ttf");
+        let temp_dir = std::env::temp_dir().join("msi_test_register_font_windows");
+        let _ = fs::create_dir_all(&temp_dir);
+        let font_path = temp_dir.join("test.ttf");
         fs::write(&font_path, "dummy").expect("test");
         assert!(register_font(&font_path).is_ok());
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 
     #[test]

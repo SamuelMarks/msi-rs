@@ -2624,16 +2624,13 @@ impl Compiler {
                 }
                 "Condition" | "ControlCondition" => {
                     let action = sub.attribute("Action").unwrap_or("enable");
-                    let cond = sub.attribute("Condition").map_or_else(
-                        || {
-                            if sub.text.is_empty() {
-                                "1"
-                            } else {
-                                &sub.text
-                            }
-                        },
-                        |c| c,
-                    );
+                    let cond = sub.attribute("Condition").unwrap_or_else(|| {
+                        if sub.text.is_empty() {
+                            "1"
+                        } else {
+                            &sub.text
+                        }
+                    });
                     let cc_rec = Record::with_fields(vec![
                         FieldValue::String(dlg_name.to_string()),
                         FieldValue::String(ctrl_id.to_string()),
@@ -7684,11 +7681,7 @@ mod tests {
             assert!(id.starts_with("reg_"));
             ids.insert(id);
         }
-        assert_eq!(
-            ids.len(),
-            5,
-            "All 5 RegistryValue records must have unique IDs"
-        );
+        assert_eq!(ids.len(), 5);
 
         let sc_table = get_table(sec, "Shortcut");
         assert_eq!(sc_table.records.len(), 1);

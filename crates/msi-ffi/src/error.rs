@@ -91,6 +91,7 @@ pub fn clear_last_error() {
 /// `buffer` must point to valid writable memory of at least `capacity` bytes if non-null.
 /// `out_written` must point to valid writable memory if non-null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "C" fn msi_get_last_error_message(
     buffer: *mut c_char,
@@ -123,6 +124,7 @@ pub unsafe extern "C" fn msi_get_last_error_message(
 ///
 /// Numeric error code, or [`MSI_SUCCESS`] if no error has occurred.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub extern "C" fn msi_get_last_error_code() -> i32 {
@@ -132,6 +134,7 @@ pub extern "C" fn msi_get_last_error_code() -> i32 {
 
 /// Resets the thread-local error state to [`MSI_SUCCESS`].
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub extern "C" fn msi_clear_last_error() {
     clear_last_error();

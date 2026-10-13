@@ -52,6 +52,7 @@ pub const MSIMODIFY_VALIDATE_DELETE: i32 = 11;
 ///
 /// An `MSIDBERROR` enum value. `MSIDBERROR_NOERROR` (0) on success, or negative on failure.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiViewGetErrorW(
@@ -85,6 +86,7 @@ pub extern "system" fn MsiViewGetErrorW(
 
 /// Validates a view execution and returns any error that occurred (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiViewGetErrorA(
@@ -127,6 +129,7 @@ pub extern "system" fn MsiViewGetErrorA(
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_HANDLE`
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[must_use]
@@ -154,6 +157,7 @@ pub extern "system" fn MsiViewExecute(
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_HANDLE`, `ERROR_NO_MORE_ITEMS`
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiViewFetch(hView: MsiHandle, phRecord: *mut MsiHandle) -> Uint {
@@ -179,6 +183,7 @@ pub extern "system" fn MsiViewFetch(hView: MsiHandle, phRecord: *mut MsiHandle) 
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_HANDLE`
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[must_use]
@@ -304,6 +309,7 @@ pub extern "system" fn MsiViewModify(
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_HANDLE`
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[must_use]
@@ -325,6 +331,7 @@ pub extern "system" fn MsiViewClose(hView: MsiHandle) -> Uint {
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_HANDLE`, `ERROR_INVALID_PARAMETER`
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiViewGetColumnInfo(

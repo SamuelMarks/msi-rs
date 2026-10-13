@@ -15,6 +15,7 @@ use crate::win32::{
 
 /// Obtains a handle for the _`SummaryInformation` stream for a Windows Installer database (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -40,6 +41,7 @@ pub extern "system" fn MsiGetSummaryInformationW(
 
 /// Obtains a handle for the _`SummaryInformation` stream for a Windows Installer database (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -65,6 +67,7 @@ pub extern "system" fn MsiGetSummaryInformationA(
 
 /// Gets a single property from the summary information stream (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiSummaryInfoGetPropertyW(
@@ -83,6 +86,7 @@ pub extern "system" fn MsiSummaryInfoGetPropertyW(
 
 /// Gets a single property from the summary information stream (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiSummaryInfoGetPropertyA(
@@ -101,6 +105,7 @@ pub extern "system" fn MsiSummaryInfoGetPropertyA(
 
 /// Sets a single property in the summary information stream (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiSummaryInfoSetPropertyW(
@@ -118,6 +123,7 @@ pub extern "system" fn MsiSummaryInfoSetPropertyW(
 
 /// Sets a single property in the summary information stream (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiSummaryInfoSetPropertyA(
@@ -144,6 +150,7 @@ pub extern "system" fn MsiSummaryInfoSetPropertyA(
 ///
 /// `ERROR_SUCCESS` or `ERROR_INVALID_HANDLE`.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -173,6 +180,7 @@ pub extern "system" fn MsiSummaryInfoGetPropertyCount(
 ///
 /// `ERROR_SUCCESS` or `ERROR_INVALID_HANDLE`.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[must_use]
@@ -195,6 +203,7 @@ pub extern "system" fn MsiSummaryInfoPersist(hSummaryInfo: MsiHandle) -> Uint {
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_HANDLE`
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[must_use]

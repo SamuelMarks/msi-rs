@@ -55,6 +55,7 @@ pub struct LogContext(pub *mut c_void);
 /// # Safety
 /// The provided pointer must be valid.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiEnableUIPreview_(
     _h_install: MSIHANDLE,
@@ -82,6 +83,7 @@ pub unsafe extern "system" fn MsiEnableUIPreview_(
 /// # Safety
 /// The provided string pointer must be null-terminated if it is not null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiPreviewDialogA_(
@@ -110,6 +112,7 @@ pub unsafe extern "system" fn MsiPreviewDialogA_(
 /// # Safety
 /// The provided string pointer must be null-terminated if it is not null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiPreviewDialogW_(
@@ -139,6 +142,7 @@ pub unsafe extern "system" fn MsiPreviewDialogW_(
 /// # Safety
 /// The provided string pointer must be null-terminated if it is not null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiEnableLogA(
@@ -172,6 +176,7 @@ pub unsafe extern "system" fn MsiEnableLogA(
 /// # Safety
 /// The provided string pointer must be null-terminated if it is not null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiEnableLogW(
@@ -228,6 +233,7 @@ fn setup_logger(path: &str) {
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiMessageBoxA(
@@ -260,6 +266,7 @@ pub unsafe extern "system" fn MsiMessageBoxA(
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiMessageBoxW(

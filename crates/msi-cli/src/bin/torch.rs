@@ -1,3 +1,5 @@
+#![allow(clippy::cognitive_complexity)]
+#![allow(clippy::literal_string_with_formatting_args)]
 //! # torch
 //!
 //! `WiX` v3 Database Transform Generation tool replicating `torch.exe`.
@@ -345,7 +347,7 @@ mod tests {
 
     /// Tests all branches and error handling of `torch` binary execution.
     #[test]
-    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::too_many_lines, clippy::redundant_clone)]
     fn test_torch_run_all_branches() {
         let temp_dir = std::env::temp_dir().join("msi_cli_test_torch_bin");
         let _ = fs::create_dir_all(&temp_dir);

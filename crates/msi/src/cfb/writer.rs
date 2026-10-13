@@ -327,12 +327,8 @@ impl CfbWriter {
     #[allow(
         clippy::too_many_lines,
         clippy::cast_possible_truncation,
-        clippy::manual_div_ceil
-    )]
-    #[allow(
-        clippy::too_many_lines,
-        clippy::cognitive_complexity,
-        clippy::cast_possible_truncation
+        clippy::manual_div_ceil,
+        clippy::cognitive_complexity
     )]
     pub fn build(self) -> Vec<u8> {
         let sector_size = self.version.sector_size();
@@ -1025,7 +1021,7 @@ mod phase4_tests {
     #[test]
     fn test_cfb_writer_injects_mandatory_msi_guid() -> Result<()> {
         let mut writer = CfbWriter::new(CfbVersion::V3);
-        writer.add_stream("TestStream", b"content").expect("test");
+        writer.add_stream("TestStream", b"content")?;
         let bytes = writer.build();
         let first_dir_sector = u32::from_le_bytes([bytes[48], bytes[49], bytes[50], bytes[51]]);
         let root_entry_offset = 512 + (first_dir_sector as usize * 512);

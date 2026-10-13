@@ -224,6 +224,10 @@ mod tests {
 
     #[test]
     fn test_handle_wraparound() {
+        fn noop_mut_read(_: &mut MsiObject, _: &MsiObject) -> bool {
+            true
+        }
+
         with_handle_table(|table| {
             table.next_id.store(0xFFFF_FFFF, Ordering::Relaxed);
         });
@@ -241,21 +245,19 @@ mod tests {
         assert_ne!(h2, MSI_NULL_HANDLE);
 
         // Test with_handle_mut_and_read valid handles
-        let res = with_handle_mut_and_read(h1, h2, |mut_obj, read_obj| true);
+        let res = with_handle_mut_and_read(h1, h2, noop_mut_read);
         assert!(res.is_some());
 
         // Test with_handle_mut_and_read invalid read handle
-        let res =
-            with_handle_mut_and_read(h1, MSI_NULL_HANDLE, |_, _| panic!("should not be reached"));
+        let res = with_handle_mut_and_read(h1, MSI_NULL_HANDLE, noop_mut_read);
         assert!(res.is_none());
 
         // Test with_handle_mut_and_read invalid mut handle
-        let res =
-            with_handle_mut_and_read(MSI_NULL_HANDLE, h2, |_, _| panic!("should not be reached"));
+        let res = with_handle_mut_and_read(MSI_NULL_HANDLE, h2, noop_mut_read);
         assert!(res.is_none());
 
         // Also test with_handle_mut_and_read same handle
-        let res = with_handle_mut_and_read(h1, h1, |_, _| panic!("should not be reached"));
+        let res = with_handle_mut_and_read(h1, h1, noop_mut_read);
         assert!(res.is_none());
 
         assert!(close_handle(h1));
@@ -264,6 +266,10 @@ mod tests {
 
     #[test]
     fn test_close_all_handles() {
+        fn noop_read(_: &MsiObject) -> bool {
+            true
+        }
+
         let rec1 = msi::database::tables::record::Record::new();
         let h1 = alloc_handle(MsiObject::Record(crate::types::MsiRecordHandle {
             inner: rec1,
@@ -275,13 +281,14 @@ mod tests {
 
         assert_ne!(h1, MSI_NULL_HANDLE);
         assert_ne!(h2, MSI_NULL_HANDLE);
+        assert_eq!(with_handle(h1, noop_read), Some(true));
 
         close_all_handles();
 
-        let check1 = with_handle(h1, |_| panic!("should not be reached"));
+        let check1 = with_handle(h1, noop_read);
         assert!(check1.is_none());
 
-        let check2 = with_handle(h2, |_| panic!("should not be reached"));
+        let check2 = with_handle(h2, noop_read);
         assert!(check2.is_none());
     }
 

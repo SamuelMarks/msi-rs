@@ -1218,27 +1218,15 @@ mod tests {
             .process("<?include \"sub_dir_inc\"?>", &mut ctx)
             .is_err());
 
-        // Unreadable include file test on unix
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let unreadable = temp_dir.join("unreadable.wxi");
-            assert!(std::fs::write(&unreadable, "content").is_ok());
-            assert!(
-                std::fs::set_permissions(&unreadable, std::fs::Permissions::from_mode(0o000))
-                    .is_ok()
-            );
-            assert!(prep
-                .process(
-                    &format!("<?include \"{}\"?>", unreadable.display()),
-                    &mut ctx
-                )
-                .is_err());
-            assert!(
-                std::fs::set_permissions(&unreadable, std::fs::Permissions::from_mode(0o644))
-                    .is_ok()
-            );
-        }
+        // Invalid UTF-8 include file test (triggers read_to_string failure even when running as root)
+        let invalid_utf8_inc = temp_dir.join("invalid_utf8.wxi");
+        assert!(std::fs::write(&invalid_utf8_inc, [0xFF, 0xFE, 0xFD]).is_ok());
+        assert!(prep
+            .process(
+                &format!("<?include \"{}\"?>", invalid_utf8_inc.display()),
+                &mut ctx
+            )
+            .is_err());
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }

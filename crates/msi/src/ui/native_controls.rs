@@ -30,7 +30,7 @@ impl NativeControl {
     }
 
     /// Handles a Win32 message targeted at this control.
-    pub fn handle_message(&mut self, _msg: u32, _wparam: usize, _lparam: isize) -> isize {
+    pub const fn handle_message(&mut self, _msg: u32, _wparam: usize, _lparam: isize) -> isize {
         0
     }
 }

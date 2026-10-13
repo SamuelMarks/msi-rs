@@ -21,7 +21,7 @@ impl<'a> ActionDispatcher<'a> {
     ///
     /// TODO: Document return value.
     #[must_use]
-    pub fn new(transaction: &'a mut Transaction<Uninitialized>) -> Self {
+    pub const fn new(transaction: &'a mut Transaction<Uninitialized>) -> Self {
         Self { transaction }
     }
 

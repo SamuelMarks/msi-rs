@@ -42,6 +42,7 @@ pub struct TargetProductCodeW(pub *const u16);
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiApplyPatchA(
@@ -83,6 +84,7 @@ pub unsafe extern "system" fn MsiApplyPatchA(
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiApplyPatchW(
@@ -125,6 +127,7 @@ pub unsafe extern "system" fn MsiApplyPatchW(
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiDeterminePatchSequenceA(
     _sz_product_code: TargetProductCodeA,
@@ -172,6 +175,7 @@ pub unsafe extern "system" fn MsiDeterminePatchSequenceA(
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiDeterminePatchSequenceW(
     _sz_product_code: TargetProductCodeW,
@@ -218,6 +222,7 @@ pub unsafe extern "system" fn MsiDeterminePatchSequenceW(
 /// The caller is responsible for providing a properly allocated buffer for `_sz_xml_data`
 /// and specifying its size in `_pcch_xml_data`. The caller must free any memory they allocate.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiExtractPatchXMLDataA(
     _sz_patch_path: *const c_char,
@@ -268,6 +273,7 @@ pub unsafe extern "system" fn MsiExtractPatchXMLDataA(
 /// The caller is responsible for providing a properly allocated buffer for `_sz_xml_data`
 /// and specifying its size in `_pcch_xml_data`. The caller must free any memory they allocate.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiExtractPatchXMLDataW(
     _sz_patch_path: *const u16,
@@ -315,6 +321,7 @@ pub unsafe extern "system" fn MsiExtractPatchXMLDataW(
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiRemovePatchesA(
@@ -357,6 +364,7 @@ pub unsafe extern "system" fn MsiRemovePatchesA(
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiRemovePatchesW(

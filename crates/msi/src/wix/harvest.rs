@@ -1686,9 +1686,7 @@ LineWithoutEquals
             let out_copy = temp_dir.join("fail_copy");
             assert!(harvester.copy_payload(&src_dir, &out_copy).is_err());
 
-            assert!(
-                fs::set_permissions(&unreadable_sub, fs::Permissions::from_mode(0o755)).is_ok()
-            );
+            let _ = fs::set_permissions(&unreadable_sub, fs::Permissions::from_mode(0o755));
             let _ = fs::remove_dir_all(&unreadable_sub);
         }
 
@@ -1873,10 +1871,7 @@ LineWithoutEquals
                 .harvest_payload(&temp_dir.join("src"), &bad_cache_copy)
                 .is_err());
 
-            assert!(
-                fs::set_permissions(cache_dir.join("sub"), fs::Permissions::from_mode(0o755))
-                    .is_ok()
-            );
+            let _ = fs::set_permissions(cache_dir.join("sub"), fs::Permissions::from_mode(0o755));
             let _ = fs::remove_dir_all(&cache_dir);
         }
 
@@ -1903,14 +1898,8 @@ LineWithoutEquals
             "libscript/bin/other.sh",
         );
 
-        assert_eq!(
-            guid1, guid2,
-            "RFC 4122 v5 GUID generation must be deterministic"
-        );
-        assert_ne!(
-            guid1, guid3,
-            "Different resource names must produce different GUIDs"
-        );
+        assert_eq!(guid1, guid2);
+        assert_ne!(guid1, guid3);
         assert_eq!(guid1.as_str().len(), 38);
         assert!(guid1.as_str().starts_with('{'));
         assert!(guid1.as_str().ends_with('}'));
@@ -1978,10 +1967,7 @@ LineWithoutEquals
         assert!(!xml_default.contains("Thumbs.db"));
         assert!(!xml_default.contains("scratch.tmp"));
         assert!(!xml_default.contains("backup.bak"));
-        assert!(
-            !xml_default.contains("payload.msi"),
-            ".msi must be excluded by default"
-        );
+        assert!(!xml_default.contains("payload.msi"));
 
         // Verify deep identifier does not exceed 72 characters
         for line in xml_default.lines() {
@@ -1989,16 +1975,13 @@ LineWithoutEquals
                 let id_start = line.find("<Component Id=\"").unwrap_or(0) + 15;
                 let id_end = line[id_start..].find('"').unwrap_or(0) + id_start;
                 let comp_id = &line[id_start..id_end];
-                assert!(
-                    comp_id.len() <= 72,
-                    "Component ID exceeds 72 chars: {comp_id}"
-                );
+                assert!(comp_id.len() <= 72);
             }
             if line.contains("<File Id=\"") {
                 let id_start = line.find("<File Id=\"").unwrap_or(0) + 10;
                 let id_end = line[id_start..].find('"').unwrap_or(0) + id_start;
                 let file_id = &line[id_start..id_end];
-                assert!(file_id.len() <= 72, "File ID exceeds 72 chars: {file_id}");
+                assert!(file_id.len() <= 72);
             }
         }
 
@@ -2008,10 +1991,7 @@ LineWithoutEquals
         let xml_with_msi = harvester_msi
             .harvest_directory(&temp_dir, "MsiComponents", "INSTALLFOLDER")
             .unwrap_or_default();
-        assert!(
-            xml_with_msi.contains("payload.msi"),
-            "payload.msi must be included when include_msi is true"
-        );
+        assert!(xml_with_msi.contains("payload.msi"));
 
         let _ = fs::remove_dir_all(&temp_dir);
     }

@@ -1,3 +1,5 @@
+#![allow(clippy::cognitive_complexity)]
+#![allow(clippy::literal_string_with_formatting_args)]
 //! # lit
 //!
 //! `WiX` v3 Library Tool executable shim replicating `lit.exe`.
@@ -261,7 +263,7 @@ mod tests {
 
     /// Tests all branches and error handling of `lit` binary execution.
     #[test]
-    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::too_many_lines, clippy::redundant_clone)]
     fn test_lit_run_all_branches() {
         let temp_dir = std::env::temp_dir().join("msi_cli_test_lit_bin");
         let _ = fs::create_dir_all(&temp_dir);

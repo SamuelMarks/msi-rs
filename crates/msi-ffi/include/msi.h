@@ -51,6 +51,11 @@ extern "C" {
 /** Unhandled panic intercepted at the FFI boundary. */
 #define MSI_ERROR_PANIC -99
 
+/** COM HRESULT error code for invalid/null pointer (0x80004003). */
+#ifndef E_POINTER
+#define E_POINTER ((int32_t)0x80004003)
+#endif
+
 /* ========================================================================= */
 /* Compression Algorithms                                                    */
 /* ========================================================================= */
@@ -451,6 +456,28 @@ int32_t msi_end_transaction(
     MsiTransactionHandle* handle,
     int32_t commit,
     uint32_t* out_exit_code
+);
+
+/* ========================================================================= */
+/* COM Structured Storage (IStorage) C-ABI                                   */
+/* ========================================================================= */
+
+/** Opaque COM IStorage interface handle (guarded if windows/objidl headers are already included). */
+#ifndef __IStorage_INTERFACE_DEFINED__
+typedef struct IStorage IStorage;
+#endif
+
+/**
+ * @brief Creates a new COM IStorage instance wrapping a CFB reader from memory.
+ * @param data Pointer to the CFB memory buffer.
+ * @param len Length of the buffer in bytes.
+ * @param ppstg Output pointer receiving the allocated IStorage interface.
+ * @return S_OK (0) on success, E_POINTER on null pointer, or E_FAIL on parse error.
+ */
+int32_t msi_create_storage_from_memory(
+    const uint8_t* data,
+    size_t len,
+    IStorage** ppstg
 );
 
 #ifdef __cplusplus

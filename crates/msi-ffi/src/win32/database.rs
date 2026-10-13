@@ -36,6 +36,7 @@ pub const MSIDBOPEN_CREATEDIRECT: Lpcwstr = 4 as Lpcwstr;
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_PARAMETER`
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -94,6 +95,7 @@ pub extern "system" fn MsiOpenDatabaseW(
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_PARAMETER`
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -152,6 +154,7 @@ pub extern "system" fn MsiOpenDatabaseA(
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_HANDLE`, `ERROR_INVALID_PARAMETER`
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiDatabaseOpenViewW(
@@ -203,6 +206,7 @@ pub extern "system" fn MsiDatabaseOpenViewW(
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_HANDLE`, `ERROR_INVALID_PARAMETER`
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiDatabaseOpenViewA(
@@ -262,6 +266,7 @@ pub const MSIDBSTATE_WRITE: Msidbstate = 1;
 ///
 /// The database state as `MSIDBSTATE_READ` or `MSIDBSTATE_WRITE`, or `MSIDBSTATE_ERROR` on failure.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[must_use]

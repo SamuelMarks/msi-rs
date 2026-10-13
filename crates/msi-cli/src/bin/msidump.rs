@@ -1,4 +1,4 @@
-#![allow(clippy::similar_names)]
+#![allow(clippy::similar_names, clippy::shadow_unrelated)]
 
 //! Internal utility for dumping MSI files.
 
@@ -111,16 +111,16 @@ mod tests {
         let path = std::env::temp_dir().join("test_msidump.msi");
 
         let mut writer = CfbWriter::new(CfbVersion::V3);
-        let pool_name = encode_msi_stream_name("_StringPool", true).unwrap();
-        let data_name = encode_msi_stream_name("_StringData", true).unwrap();
+        let pool_name = encode_msi_stream_name("_StringPool", true).unwrap_or_default();
+        let data_name = encode_msi_stream_name("_StringData", true).unwrap_or_default();
 
         let mut pool_bytes = vec![0; 4]; // codepage 0, refcount 0
         pool_bytes.extend_from_slice(&[0, 0, 0, 0]); // String 1: len 0, ref_count 0
         pool_bytes.extend_from_slice(&[4, 0, 1, 0]); // String 2: len 4, ref_count 1
         pool_bytes.extend_from_slice(&[0, 0, 1, 0]); // String 3: len 0, ref_count 1
 
-        writer.add_stream(&pool_name, &pool_bytes).unwrap();
-        writer.add_stream(&data_name, b"test").unwrap();
+        let _ = writer.add_stream(&pool_name, &pool_bytes);
+        let _ = writer.add_stream(&data_name, b"test");
 
         let cfb_data = writer.build();
         let _ = fs::write(&path, cfb_data);

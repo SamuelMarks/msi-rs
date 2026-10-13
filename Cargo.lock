@@ -360,6 +360,7 @@ dependencies = [
  "libloading",
  "msi",
  "tempfile",
+ "windows",
 ]
 
 [[package]]

@@ -3830,7 +3830,8 @@ fn test_custom_action_exe_source_types_coverage() {
     ctx.set_property("CustomActionData", "some_data");
 
     let action_async =
-        CustomActionDefinition::parse("AsyncAction", 34 | 128, "MyDirKey", "arg6").expect("async");
+        CustomActionDefinition::parse("AsyncAction", 0x22 | 0x80, "MyDirKey", "arg6")
+            .expect("async");
     let _ = executor.execute(&action_async, &mut ctx);
 
     let action_async2 =
@@ -3838,7 +3839,7 @@ fn test_custom_action_exe_source_types_coverage() {
     let _ = executor.execute(&action_async2, &mut ctx);
 
     let action_text_continue =
-        CustomActionDefinition::parse("TextActionCont", 3 | 64, "MySource", "target")
+        CustomActionDefinition::parse("TextActionCont", 0x03 | 0x40, "MySource", "target")
             .expect("text_cont");
     let _ = executor.execute(&action_text_continue, &mut ctx);
 }

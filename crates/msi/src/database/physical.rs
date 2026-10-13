@@ -28,6 +28,7 @@ impl<'a> PhysicalTableLayout<'a> {
     /// # Arguments
     ///
     /// * `columns` - The logical column definitions.
+    /// * `_is_system_catalog` - Whether the table is a system catalog (`_Tables` or `_Columns`).
     ///
     /// # Returns
     ///

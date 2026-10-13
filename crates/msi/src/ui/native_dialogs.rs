@@ -244,7 +244,6 @@ impl UiManager {
                         "Cannot spawn unknown dialog {name}"
                     )));
                 }
-                Ok(())
             }
             ControlEvent::EndDialog(val) => {
                 if val.is_empty() {
@@ -252,7 +251,6 @@ impl UiManager {
                         "EndDialog requires a return value".to_string(),
                     ));
                 }
-                Ok(())
             }
             ControlEvent::SetTargetPath(path) => {
                 if path.is_empty() {
@@ -260,9 +258,9 @@ impl UiManager {
                         "SetTargetPath requires a path".to_string(),
                     ));
                 }
-                Ok(())
             }
         }
+        Ok(())
     }
 }
 

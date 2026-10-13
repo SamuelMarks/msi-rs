@@ -192,6 +192,28 @@ mod tests {
             assert!(res4.is_ok());
             assert!(out_msi4.exists());
 
+            // 5. Invoke through PyO3 bound PyCFunction wrappers
+            let m = PyModule::new_bound(py, "test_wix_mod").expect("mod");
+            m.add_function(wrap_pyfunction!(compile_wix_source, &m).expect("wrap"))
+                .expect("add");
+            m.add_function(wrap_pyfunction!(compile_wix_file, &m).expect("wrap"))
+                .expect("add");
+            let out_msi5 = temp_dir.join("pkg5.msi");
+            assert!(m
+                .getattr("compile_wix_source")
+                .expect("getattr")
+                .call1((VALID_WXS, out_msi5.to_string_lossy().as_ref()))
+                .is_ok());
+            let out_msi6 = temp_dir.join("pkg6.msi");
+            assert!(m
+                .getattr("compile_wix_file")
+                .expect("getattr")
+                .call1((
+                    wxs_file.to_string_lossy().as_ref(),
+                    out_msi6.to_string_lossy().as_ref()
+                ))
+                .is_ok());
+
             let _ = fs::remove_dir_all(&temp_dir);
         });
     }

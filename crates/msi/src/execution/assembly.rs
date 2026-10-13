@@ -244,10 +244,9 @@ pub mod windows_impl {
     use super::{MsiError, Result};
     use std::path::Path;
     use windows::core::{s, w, HRESULT, PCWSTR};
-    use windows::Win32::System::ApplicationInstallationAndServicing::{
-        IAssemblyCache, FUSION_INSTALL_REFERENCE,
-    };
-    use windows::Win32::System::LibraryLoader::{FreeLibrary, GetProcAddress, LoadLibraryW};
+    use windows::Win32::Foundation::FreeLibrary;
+    use windows::Win32::System::ApplicationInstallationAndServicing::IAssemblyCache;
+    use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
 
     type CreateAssemblyCacheFn =
         unsafe extern "system" fn(ppasmcache: *mut *mut std::ffi::c_void, reserved: u32) -> HRESULT;
@@ -611,15 +610,15 @@ mod tests {
     fn test_assembly_manifest_from_file() -> Result<()> {
         assert!(AssemblyManifest::from_file(Path::new("does_not_exist_file_123.txt")).is_err());
 
-        let temp_dir = tempfile::tempdir().expect("test IO error");
+        let temp_dir = tempfile::tempdir()?;
         let valid_manifest = temp_dir.path().join("valid.manifest");
         let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
         <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
             <assemblyIdentity name="App" version="1.0" publicKeyToken="b77a5c561934e089" processorArchitecture="amd64" />
         </assembly>"#;
-        fs::write(&valid_manifest, xml.as_bytes()).expect("test IO error");
+        fs::write(&valid_manifest, xml.as_bytes())?;
 
-        let manifest = AssemblyManifest::from_file(&valid_manifest).expect("test");
+        let manifest = AssemblyManifest::from_file(&valid_manifest)?;
         assert_eq!(manifest.identity.name, "App");
         assert_eq!(
             manifest.identity.processor_architecture,
@@ -630,7 +629,7 @@ mod tests {
         assert!(AssemblyManifest::from_file(Path::new("non_existent.manifest")).is_err());
 
         let invalid_manifest = temp_dir.path().join("invalid.manifest");
-        fs::write(&invalid_manifest, b"INVALID_XML").expect("test IO error");
+        fs::write(&invalid_manifest, b"INVALID_XML")?;
         assert!(AssemblyManifest::from_file(&invalid_manifest).is_err());
 
         Ok(())
@@ -643,12 +642,15 @@ mod tests {
             <assemblyIdentity name="MyAssembly" version="1.0.0.0" publicKeyToken="b77a5c561934e089" processorArchitecture="amd64" />
         </assembly>"#;
 
-        let manifest = ManifestXML::parse(valid_xml).expect("failed to parse xml");
+        let manifest = ManifestXML::parse(valid_xml)?;
         assert_eq!(manifest.name, "MyAssembly");
         assert_eq!(manifest.version, "1.0.0.0");
         assert_eq!(
-            manifest.public_key_token.expect("test").as_str(),
-            "b77a5c561934e089"
+            manifest
+                .public_key_token
+                .as_ref()
+                .map(PublicKeyToken::as_str),
+            Some("b77a5c561934e089")
         );
         assert_eq!(
             manifest.processor_architecture,
@@ -665,12 +667,15 @@ mod tests {
             <asmv1:assemblyIdentity type="win32" name="Microsoft.Windows.Common-Controls" version="6.0.0.0" processorArchitecture="*" publicKeyToken="6595b64144ccf1df" language="*"></asmv1:assemblyIdentity>
         </assembly>"#;
 
-        let manifest = ManifestXML::parse(msft_xml).expect("failed to parse MSFT xml");
+        let manifest = ManifestXML::parse(msft_xml)?;
         assert_eq!(manifest.name, "Microsoft.Windows.Common-Controls");
         assert_eq!(manifest.version, "6.0.0.0");
         assert_eq!(
-            manifest.public_key_token.expect("test").as_str(),
-            "6595b64144ccf1df"
+            manifest
+                .public_key_token
+                .as_ref()
+                .map(PublicKeyToken::as_str),
+            Some("6595b64144ccf1df")
         );
         assert_eq!(
             manifest.processor_architecture,
@@ -682,7 +687,7 @@ mod tests {
             <ns:assemblyIdentity name="App" version="1.0" />
         </ns:assembly>"#;
 
-        let manifest2 = ManifestXML::parse(msft_xml_ns2).expect("failed to parse ns2 xml");
+        let manifest2 = ManifestXML::parse(msft_xml_ns2)?;
         assert_eq!(manifest2.name, "App");
         assert_eq!(manifest2.version, "1.0");
 
@@ -713,9 +718,9 @@ mod tests {
 
     #[test]
     fn test_gac_bridge_lifecycle() -> Result<()> {
-        let temp_dir = tempfile::tempdir().expect("test IO error");
+        let temp_dir = tempfile::tempdir()?;
         let valid_asm = temp_dir.path().join("valid.dll");
-        fs::write(&valid_asm, b"DLLDATA").expect("test IO error");
+        fs::write(&valid_asm, b"DLLDATA")?;
 
         let bridge = GacBridge;
         assert!(bridge.install_assembly(&valid_asm, None).is_ok());
@@ -730,10 +735,10 @@ mod tests {
 
     #[test]
     fn test_sxs_bridge_lifecycle() -> Result<()> {
-        let temp_dir = tempfile::tempdir().expect("test IO error");
+        let temp_dir = tempfile::tempdir()?;
         let valid_manifest = temp_dir.path().join("valid.manifest");
         let xml = "<assemblyIdentity name=\"App\" version=\"1.0\" />";
-        fs::write(&valid_manifest, xml.as_bytes()).expect("test IO error");
+        fs::write(&valid_manifest, xml.as_bytes())?;
 
         let bridge = SxSBridge;
         assert!(bridge.register_manifest(&valid_manifest).is_ok());
@@ -745,7 +750,7 @@ mod tests {
         assert!(bridge.unregister_manifest("").is_err());
 
         let invalid_manifest = temp_dir.path().join("bad.manifest");
-        fs::write(&invalid_manifest, b"INVALID").expect("test IO error");
+        fs::write(&invalid_manifest, b"INVALID")?;
         assert!(bridge.register_manifest(&invalid_manifest).is_err());
         Ok(())
     }

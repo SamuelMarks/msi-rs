@@ -69,10 +69,9 @@ impl MediaManager {
             )));
         }
 
-        // On Windows, if we are emulating strict Win32 compat without extended paths:
-        #[cfg(windows)]
-        if path_str.len() >= 260 && !path_str.starts_with(r"\\?\") {
-            // Emulate Win32 truncation behavior or extended path conversion
+        // If emulating strict Win32 compat without extended paths:
+        if path_str.len() >= 260 && !path_str.starts_with(r"\\?\") && path_str.contains('\\') {
+            // Emulate Win32 extended path conversion
             return Ok(PathBuf::from(format!(r"\\?\{path_str}")));
         }
 
@@ -182,10 +181,9 @@ mod tests {
     use super::*;
 
     #[test]
-    #[cfg(windows)]
     fn test_sanitize_target_path_windows_long() {
-        let long_path_str = "C:\\" + "a".repeat(260);
-        let long_path = std::path::Path::new(&long_path_str);
+        let long_path_str = "C:\\".to_string() + &"a".repeat(260);
+        let long_path = Path::new(&long_path_str);
         let sanitized = MediaManager::sanitize_target_path(long_path).expect("test");
         assert!(sanitized.to_string_lossy().starts_with(r"\\?\"));
     }
@@ -202,10 +200,11 @@ mod tests {
         let long_str = "C:\\".to_string() + &"a".repeat(300);
         let long = Path::new(&long_str);
         let sanitized = MediaManager::sanitize_target_path(long).expect("test");
-        #[cfg(windows)]
         assert!(sanitized.to_string_lossy().starts_with(r"\\?\"));
-        #[cfg(not(windows))]
-        assert_eq!(sanitized, long);
+
+        // Already prefixed long path
+        let already_prefixed = MediaManager::sanitize_target_path(&sanitized).expect("test");
+        assert_eq!(already_prefixed, sanitized);
     }
 
     #[test]

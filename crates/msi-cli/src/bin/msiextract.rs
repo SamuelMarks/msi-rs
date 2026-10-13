@@ -1,6 +1,8 @@
 #![allow(clippy::items_after_statements)]
 #![allow(clippy::unnecessary_wraps)]
 #![allow(clippy::too_many_lines)]
+#![allow(clippy::cognitive_complexity)]
+#![allow(clippy::literal_string_with_formatting_args)]
 #![deny(clippy::unwrap_used)]
 //! # msiextract
 //!
@@ -234,7 +236,7 @@ impl MsiExtractOptions {
                     let dir_name = match default_dir {
                         Some(FieldValue::String(s)) => {
                             let target = s.split(':').next().unwrap_or(s.as_str());
-                            target.split('|').last().unwrap_or(target).to_string()
+                            target.split('|').next_back().unwrap_or(target).to_string()
                         }
                         _ => id.clone(),
                     };
@@ -292,7 +294,10 @@ impl MsiExtractOptions {
                     Some(FieldValue::String(file_name)),
                 ) = (r.get(0), r.get(1), r.get(2))
                 {
-                    let name = file_name.split('|').last().unwrap_or(file_name.as_str());
+                    let name = file_name
+                        .split('|')
+                        .next_back()
+                        .unwrap_or(file_name.as_str());
 
                     let mut path = PathBuf::new();
                     if let Some(dir_id) = comp_to_dir.get(comp_id) {
@@ -426,7 +431,8 @@ pub fn main() -> ExitCode {
 #[allow(
     clippy::unwrap_used,
     clippy::shadow_unrelated,
-    clippy::cast_possible_truncation
+    clippy::cast_possible_truncation,
+    clippy::redundant_clone
 )]
 mod tests {
     use super::*;

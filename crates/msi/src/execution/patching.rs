@@ -99,7 +99,8 @@ impl PatchEngine {
     pub fn extract_msp_metadata(patch_path: &Path) -> Result<MspMetadata> {
         if !patch_path.exists() {
             return Err(MsiError::Io(crate::error::IoContext::from_string(format!(
-                "Patch file not found: {patch_path:?}"
+                "Patch file not found: {}",
+                patch_path.display()
             ))));
         }
 
@@ -213,9 +214,8 @@ impl PatchEngine {
         #[cfg(windows)]
         {
             use windows::core::{s, w, PCWSTR};
-            use windows::Win32::System::LibraryLoader::{
-                FreeLibrary, GetProcAddress, LoadLibraryW,
-            };
+            use windows::Win32::Foundation::FreeLibrary;
+            use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
 
             type ApplyPatchToFileByBuffersFn = unsafe extern "system" fn(
                 PatchFileBuffers: *const u8,

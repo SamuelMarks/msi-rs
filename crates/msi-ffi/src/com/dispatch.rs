@@ -20,6 +20,7 @@ const DISP_E_MEMBERNOTFOUND: HRESULT = -2_147_352_573; // 0x80020003
 #[allow(non_snake_case)]
 /// # Safety
 /// Unsafe C FFI.
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "system" fn IDispatch_GetIDsOfNames(
     _this: *mut IDispatch,
     _riid: *const GUID,
@@ -116,6 +117,7 @@ pub unsafe extern "system" fn IDispatch_GetIDsOfNames(
 #[allow(non_snake_case, unused_variables)]
 /// # Safety
 /// Unsafe C FFI.
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "system" fn IDispatch_Invoke(
     this: *mut IDispatch,
     dispIdMember: DISPID,

@@ -18,6 +18,7 @@ use std::panic;
 ///
 /// `ERROR_SUCCESS` or `ERROR_INVALID_PARAMETER`.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[must_use]
@@ -44,6 +45,7 @@ pub extern "system" fn MsiApplyMultiplePatchesW(
 
 /// Applies one or more patches to products that are eligible to receive the patch.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 #[must_use]
@@ -69,6 +71,7 @@ pub extern "system" fn MsiApplyMultiplePatchesA(
 
 /// Determines whether a set of patches apply to a product.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiDetermineApplicablePatchesW(
@@ -93,6 +96,7 @@ pub extern "system" fn MsiDetermineApplicablePatchesW(
 
 /// Determines whether a set of patches apply to a product.
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiDetermineApplicablePatchesA(
@@ -117,6 +121,7 @@ pub extern "system" fn MsiDetermineApplicablePatchesA(
 
 /// Provides a list of the files updated by a list of patches (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiGetPatchFileListW(
@@ -141,6 +146,7 @@ pub extern "system" fn MsiGetPatchFileListW(
 
 /// Provides a list of the files updated by a list of patches (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiGetPatchFileListA(
@@ -165,6 +171,7 @@ pub extern "system" fn MsiGetPatchFileListA(
 
 /// Returns information about a patch (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiGetPatchInfoW(
@@ -185,6 +192,7 @@ pub extern "system" fn MsiGetPatchInfoW(
 
 /// Returns information about a patch (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiGetPatchInfoA(
@@ -205,6 +213,7 @@ pub extern "system" fn MsiGetPatchInfoA(
 
 /// Retrieves information about the application of a patch to a specified instance of a product (Unicode).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiGetPatchInfoExW(
@@ -228,6 +237,7 @@ pub extern "system" fn MsiGetPatchInfoExW(
 
 /// Retrieves information about the application of a patch to a specified instance of a product (ANSI).
 
+#[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 pub extern "system" fn MsiGetPatchInfoExA(
