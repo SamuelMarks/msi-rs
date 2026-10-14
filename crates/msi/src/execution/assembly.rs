@@ -16,11 +16,11 @@ impl PublicKeyToken {
     ///
     /// # Arguments
     ///
-    /// * `token` - TODO: Document argument.
+    /// * `token` - 16-character hexadecimal public key token string.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Normalized lowercase [`PublicKeyToken`].
     pub fn parse(token: &str) -> Result<Self> {
         if token.len() != 16 || !token.chars().all(|c| c.is_ascii_hexdigit()) {
             return Err(MsiError::AssemblyError(format!(
@@ -34,7 +34,7 @@ impl PublicKeyToken {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Borrowed string slice of the 16-character hex token.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -50,11 +50,11 @@ impl StrongNameSignature {
     ///
     /// # Arguments
     ///
-    /// * `signature` - TODO: Document argument.
+    /// * `signature` - Raw strong-name cryptographic signature bytes.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Newly constructed [`StrongNameSignature`].
     #[must_use]
     pub fn new(signature: &[u8]) -> Self {
         Self(signature.to_vec())
@@ -64,7 +64,7 @@ impl StrongNameSignature {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Borrowed byte slice of the strong-name signature.
     #[must_use]
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
@@ -88,11 +88,11 @@ impl AssemblyManifest {
     ///
     /// # Arguments
     ///
-    /// * `path` - TODO: Document argument.
+    /// * `path` - Filesystem path to the `.manifest` XML file.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Parsed [`AssemblyManifest`].
     pub fn from_file(path: &std::path::Path) -> Result<Self> {
         let content = std::fs::read_to_string(path)
             .map_err(|e| MsiError::Io(crate::error::IoContext::from_string(e.to_string())))?;
@@ -160,11 +160,11 @@ impl ManifestXML {
     ///
     /// # Arguments
     ///
-    /// * `xml_content` - TODO: Document argument.
+    /// * `xml_content` - Raw XML manifest string containing `<assemblyIdentity .../>`.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Parsed [`ManifestXML`] identity structure.
     pub fn parse(xml_content: &str) -> Result<Self> {
         // More robust non-panicking parser handling namespaces like <asm:assemblyIdentity
         let identity_start = xml_content
@@ -217,12 +217,12 @@ impl ManifestXML {
     ///
     /// # Arguments
     ///
-    /// * `xml` - TODO: Document argument.
-    /// * `attr` - TODO: Document argument.
+    /// * `xml` - XML element tag fragment.
+    /// * `attr` - Attribute name to extract.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// `Some(String)` with the attribute value if found, or `None`.
     #[must_use]
     fn extract_attribute(xml: &str, attr: &str) -> Option<String> {
         let pattern = format!("{attr}=\"");
@@ -457,12 +457,12 @@ pub mod posix_mock {
         ///
         /// # Arguments
         ///
-        /// * `assembly_path` - TODO: Document argument.
-        /// * `_manifest_path` - TODO: Document argument.
+        /// * `assembly_path` - Path to the `.dll` assembly file on disk.
+        /// * `_manifest_path` - Optional path to the accompanying `.manifest` file.
         ///
         /// # Returns
         ///
-        /// TODO: Document return value.
+        /// `Ok(())` when the assembly is verified and staged.
         pub fn install_assembly(
             &self,
             assembly_path: &Path,
@@ -486,11 +486,11 @@ pub mod posix_mock {
         ///
         /// # Arguments
         ///
-        /// * `assembly_name` - TODO: Document argument.
+        /// * `assembly_name` - Strong name or identifier of the assembly to uninstall.
         ///
         /// # Returns
         ///
-        /// TODO: Document return value.
+        /// `Ok(())` when the assembly is removed.
         pub fn uninstall_assembly(&self, assembly_name: &str) -> Result<()> {
             if assembly_name.is_empty() {
                 return Err(MsiError::InvalidArgument {
@@ -514,11 +514,11 @@ pub mod posix_mock {
         ///
         /// # Arguments
         ///
-        /// * `manifest_path` - TODO: Document argument.
+        /// * `manifest_path` - Path to the `.manifest` XML file on disk.
         ///
         /// # Returns
         ///
-        /// TODO: Document return value.
+        /// `Ok(())` when the manifest is validated.
         pub fn register_manifest(&self, manifest_path: &Path) -> Result<()> {
             if !manifest_path.exists() {
                 return Err(MsiError::Io(crate::error::IoContext::from_string(format!(
@@ -538,11 +538,11 @@ pub mod posix_mock {
         ///
         /// # Arguments
         ///
-        /// * `manifest_name` - TODO: Document argument.
+        /// * `manifest_name` - Name of the side-by-side manifest to unregister.
         ///
         /// # Returns
         ///
-        /// TODO: Document return value.
+        /// `Ok(())` when unregistration completes.
         pub fn unregister_manifest(&self, manifest_name: &str) -> Result<()> {
             if manifest_name.is_empty() {
                 return Err(MsiError::InvalidArgument {

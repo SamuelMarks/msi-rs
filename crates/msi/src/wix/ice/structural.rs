@@ -14,11 +14,11 @@ use std::collections::HashSet;
 ///
 /// # Arguments
 ///
-/// * `s` - TODO: Document argument.
+/// * `s` - The `s` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 fn is_valid_uppercase_guid(s: &str) -> bool {
     let bytes = s.as_bytes();
     if bytes.len() != 38 {

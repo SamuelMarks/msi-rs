@@ -181,26 +181,21 @@ impl MsiExtractOptions {
         if self.is_wim {
             let bytes = fs::read(&self.input_msi)
                 .map_err(|e| format!("failed reading file '{}': {e}", self.input_msi.display()))?;
-            let mut cursor = std::io::Cursor::new(&bytes);
-            let header = msi::wim::header::WimHeader::read(&mut cursor)
-                .map_err(|e| format!("WIM parse error: {e}"))?;
+            let wim_reader =
+                msi::wim::WimReader::new(&bytes).map_err(|e| format!("WIM parse error: {e}"))?;
 
             if self.list_only {
                 println!("Contained files in WIM '{}':", self.input_msi.display());
-                let xml_start = usize::try_from(header.xml_data.offset).unwrap_or_default();
-                let xml_end = xml_start + usize::try_from(header.xml_data.size).unwrap_or_default();
-                let xml_data = bytes.get(xml_start..xml_end).unwrap_or(&[]);
-                let xml = msi::wim::xml::WimManifest::parse(xml_data).unwrap_or_default();
-                for img in xml.images {
+                for img in &wim_reader.manifest.images {
                     println!("  Image {}: {}", img.index.0, img.name);
                 }
                 return Ok(());
             }
 
-            fs::create_dir_all(&self.dest_dir)
-                .map_err(|e| format!("failed creating target dir: {e}"))?;
-
             let idx = self.wim_index.unwrap_or(1);
+            let _ = wim_reader
+                .extract_image(&self.dest_dir, idx)
+                .map_err(|e| format!("failed extracting WIM image {idx}: {e}"))?;
             println!(
                 "msiextract: extracted WIM image {} into '{}'",
                 idx,
@@ -241,7 +236,6 @@ impl MsiExtractOptions {
                         _ => id.clone(),
                     };
 
-                    println!("DEBUG dir_name: '{dir_name}'");
                     if dir_name == "." || dir_name == "SourceDir" {
                         names.insert(id.clone(), String::new());
                     } else {
@@ -275,8 +269,6 @@ impl MsiExtractOptions {
             let mut comp_to_dir = std::collections::HashMap::new();
             if let Some(comps) = pkg.database().tables.get("Component") {
                 for r in comps {
-                    println!("DEBUG Component row: {:?}", r.fields());
-
                     use msi::database::FieldValue;
                     if let (Some(FieldValue::String(id)), Some(FieldValue::String(dir_id))) =
                         (r.get(0), r.get(2))
@@ -420,7 +412,7 @@ pub fn run_app(args: &[String]) -> ExitCode {
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// Process [`ExitCode`] (`ExitCode::SUCCESS` or `ExitCode::FAILURE`).
 #[must_use = "process exit code must be handled"]
 pub fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();

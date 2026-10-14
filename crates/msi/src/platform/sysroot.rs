@@ -106,14 +106,14 @@ impl SysrootMountGuard {
     ///
     /// # Arguments
     ///
-    /// * `source` - TODO: Document argument.
-    /// * `target` - TODO: Document argument.
-    /// * `fstype` - TODO: Document argument.
-    /// * `flags` - TODO: Document argument.
+    /// * `source` - The `source` parameter.
+    /// * `target` - The `target` parameter.
+    /// * `fstype` - The `fstype` parameter.
+    /// * `flags` - The `flags` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[allow(clippy::unnecessary_wraps, clippy::missing_const_for_fn)]
     fn perform_mount(source: &Path, target: &Path, fstype: Option<&str>, flags: u64) -> Result<()> {
         #[cfg(target_os = "linux")]
@@ -172,12 +172,12 @@ impl SysrootMountGuard {
     ///
     /// # Arguments
     ///
-    /// * `target` - TODO: Document argument.
-    /// * `lazy` - TODO: Document argument.
+    /// * `target` - The `target` parameter.
+    /// * `lazy` - The `lazy` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[allow(clippy::unnecessary_wraps, clippy::missing_const_for_fn)]
     fn perform_unmount(target: &Path, lazy: bool) -> Result<()> {
         #[cfg(target_os = "linux")]
@@ -222,7 +222,7 @@ impl SysrootMountGuard {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn mount_active(&mut self) -> Result<()> {
         std::fs::create_dir_all(&self.scratch_dir).map_err(|e| MsiError::SysrootMountError {
             path: self.scratch_dir.display().to_string(),
@@ -283,7 +283,7 @@ impl SysrootMountGuard {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn mount_pseudofs(&mut self) -> Result<()> {
         let pseudofs = [
             ("dev", "/dev"),
@@ -320,7 +320,7 @@ impl SysrootMountGuard {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn unmount_all(&mut self) -> Result<()> {
         if !self.is_mounted {
             return Ok(());
@@ -379,7 +379,7 @@ impl SysrootMountGuard {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn create_essential_hierarchy(&self, target_os: TargetOs) -> Result<()> {
         if !self.is_mounted {
             return Err(MsiError::SysrootMountError {

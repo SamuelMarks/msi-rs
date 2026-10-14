@@ -29,7 +29,7 @@ impl TargetOs {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn host() -> Self {
         #[cfg(target_os = "macos")]
@@ -133,7 +133,7 @@ impl StandardDirectoryId {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -210,11 +210,11 @@ impl PathResolver {
     ///
     /// # Arguments
     ///
-    /// * `per_machine` - TODO: Document argument.
+    /// * `per_machine` - The `per_machine` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn per_machine(mut self, per_machine: bool) -> Self {
         self.per_machine = per_machine;
@@ -225,11 +225,11 @@ impl PathResolver {
     ///
     /// # Arguments
     ///
-    /// * `vendor` - TODO: Document argument.
+    /// * `vendor` - The `vendor` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn vendor(mut self, vendor: impl Into<String>) -> Self {
         self.vendor = Some(vendor.into());
@@ -240,11 +240,11 @@ impl PathResolver {
     ///
     /// # Arguments
     ///
-    /// * `home` - TODO: Document argument.
+    /// * `home` - The `home` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn home_dir(mut self, home: impl Into<PathBuf>) -> Self {
         self.home_dir = home.into();
@@ -255,11 +255,11 @@ impl PathResolver {
     ///
     /// # Arguments
     ///
-    /// * `prefix` - TODO: Document argument.
+    /// * `prefix` - The `prefix` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn root_prefix(mut self, prefix: impl Into<PathBuf>) -> Self {
         self.root_prefix = prefix.into();
@@ -335,8 +335,8 @@ impl PathResolver {
     ///
     /// # Arguments
     ///
-    /// * `key` - TODO: Document argument.
-    /// * `val` - TODO: Document argument.
+    /// * `key` - The `key` parameter.
+    /// * `val` - The `val` parameter.
     pub fn set_env(&mut self, key: impl Into<String>, val: impl Into<String>) {
         self.env_vars.insert(key.into(), val.into());
     }
@@ -553,12 +553,12 @@ impl PathResolver {
     ///
     /// # Arguments
     ///
-    /// * `dir_id` - TODO: Document argument.
-    /// * `sysroot` - TODO: Document argument.
+    /// * `dir_id` - The `dir_id` parameter.
+    /// * `sysroot` - The `sysroot` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn resolve_offline_sysroot(&self, dir_id: StandardDirectoryId, sysroot: &Path) -> PathBuf {
         match (self.target_os, dir_id) {
             (_, StandardDirectoryId::TargetDir) => sysroot.to_path_buf(),

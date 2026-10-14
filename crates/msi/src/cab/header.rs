@@ -151,12 +151,12 @@ impl CfHeader {
     ///
     /// # Arguments
     ///
-    /// * `bytes` - TODO: Document argument.
-    /// * `cursor` - TODO: Document argument.
+    /// * `bytes` - Raw cabinet header byte slice.
+    /// * `cursor` - Mutable byte offset updated past the trailing NUL terminator.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Decoded UTF-8 string.
     fn parse_cstring(bytes: &[u8], cursor: &mut usize) -> Result<String> {
         let start = *cursor;
         let Some(pos) = bytes[start..].iter().position(|&b| b == 0) else {

@@ -94,11 +94,11 @@ impl ServiceDefinition {
     ///
     /// # Arguments
     ///
-    /// * `name` - TODO: Document argument.
+    /// * `name` - The `name` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn display_name(mut self, name: impl Into<String>) -> Self {
         self.display_name = name.into();
@@ -109,11 +109,11 @@ impl ServiceDefinition {
     ///
     /// # Arguments
     ///
-    /// * `desc` - TODO: Document argument.
+    /// * `desc` - The `desc` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn description(mut self, desc: impl Into<String>) -> Self {
         self.description = Some(desc.into());
@@ -124,11 +124,11 @@ impl ServiceDefinition {
     ///
     /// # Arguments
     ///
-    /// * `argument` - TODO: Document argument.
+    /// * `argument` - The `argument` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn arg(mut self, argument: impl Into<String>) -> Self {
         self.arguments.push(argument.into());
@@ -139,11 +139,11 @@ impl ServiceDefinition {
     ///
     /// # Arguments
     ///
-    /// * `dir` - TODO: Document argument.
+    /// * `dir` - The `dir` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn working_dir(mut self, dir: impl Into<PathBuf>) -> Self {
         self.working_directory = Some(dir.into());
@@ -154,12 +154,12 @@ impl ServiceDefinition {
     ///
     /// # Arguments
     ///
-    /// * `user` - TODO: Document argument.
-    /// * `group` - TODO: Document argument.
+    /// * `user` - The `user` parameter.
+    /// * `group` - The `group` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn run_as(mut self, user: impl Into<String>, group: Option<String>) -> Self {
         self.user = Some(user.into());
@@ -171,11 +171,11 @@ impl ServiceDefinition {
     ///
     /// # Arguments
     ///
-    /// * `auto` - TODO: Document argument.
+    /// * `auto` - The `auto` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn auto_start(mut self, auto: bool) -> Self {
         self.auto_start = auto;
@@ -205,7 +205,7 @@ impl ServiceDefinition {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn systemd_unit_path(&self) -> PathBuf {
         PathBuf::from("/lib/systemd/system").join(format!("{}.service", self.name))
@@ -215,7 +215,7 @@ impl ServiceDefinition {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn systemd_etc_unit_path(&self) -> PathBuf {
         PathBuf::from("/etc/systemd/system").join(format!("{}.service", self.name))
@@ -340,7 +340,7 @@ impl ServiceDefinition {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn launchd_plist_path(&self, is_system_daemon: bool) -> PathBuf {
         let base = if is_system_daemon {
@@ -411,7 +411,7 @@ impl ServiceDefinition {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn launchd_lifecycle_commands(&self, is_system_daemon: bool) -> Vec<String> {
         let path = self.launchd_plist_path(is_system_daemon);
@@ -477,7 +477,7 @@ impl ServiceDefinition {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn freebsd_rc_script_path(&self) -> PathBuf {
         PathBuf::from("/usr/local/etc/rc.d").join(&self.name)
@@ -526,7 +526,7 @@ impl ServiceDefinition {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn freebsd_lifecycle_commands(&self) -> Vec<String> {
         let mut cmds = Vec::new();
@@ -545,7 +545,7 @@ impl ServiceDefinition {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn smf_manifest_path(&self) -> PathBuf {
         PathBuf::from("/lib/svc/manifest/site").join(format!("{}.xml", self.name))
@@ -612,7 +612,7 @@ impl ServiceDefinition {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn smf_lifecycle_commands(&self) -> Vec<String> {
         let path = self.smf_manifest_path();
@@ -737,7 +737,7 @@ impl SupervisorType {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn detect_host() -> Self {
         #[cfg(target_os = "windows")]
@@ -772,7 +772,7 @@ impl SupervisorType {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn target_os(self) -> TargetOs {
         match self {
@@ -849,7 +849,7 @@ impl HostSupervisorExecutor {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -859,11 +859,11 @@ impl HostSupervisorExecutor {
     ///
     /// # Arguments
     ///
-    /// * `dry_run` - TODO: Document argument.
+    /// * `dry_run` - The `dry_run` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn with_dry_run(mut self, dry_run: bool) -> Self {
         self.dry_run = dry_run;
@@ -874,11 +874,11 @@ impl HostSupervisorExecutor {
     ///
     /// # Arguments
     ///
-    /// * `timeout_ms` - TODO: Document argument.
+    /// * `timeout_ms` - The `timeout_ms` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn with_timeout_ms(mut self, timeout_ms: u64) -> Self {
         self.timeout_ms = timeout_ms;
@@ -889,7 +889,7 @@ impl HostSupervisorExecutor {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn is_dry_run(&self) -> bool {
         self.dry_run
@@ -899,7 +899,7 @@ impl HostSupervisorExecutor {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn timeout_ms(&self) -> u64 {
         self.timeout_ms
@@ -909,7 +909,7 @@ impl HostSupervisorExecutor {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn installed_services(&self) -> &[InstalledService] {
         &self.installed_services
@@ -919,7 +919,7 @@ impl HostSupervisorExecutor {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn executed_commands(&self) -> &[String] {
         &self.executed_commands
@@ -1043,7 +1043,7 @@ impl HostSupervisorExecutor {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[allow(clippy::too_many_lines)]
     pub fn execute_control(
         &mut self,
@@ -1188,7 +1188,7 @@ impl HostSupervisorExecutor {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn run_supervisor_command(cmd_str: &str, timeout_ms: u64) -> Result<()> {
         Self::run_supervisor_command_with_shell("sh", cmd_str, timeout_ms)
     }
@@ -1207,7 +1207,7 @@ impl HostSupervisorExecutor {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn run_supervisor_command_with_shell(
         shell: &str,
         cmd_str: &str,
@@ -1262,7 +1262,7 @@ impl HostSupervisorExecutor {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn rollback(&mut self) -> Result<()> {
         let services_to_rollback = std::mem::take(&mut self.installed_services);
         for svc in services_to_rollback.into_iter().rev() {

@@ -38,11 +38,11 @@ impl MediaManager {
     ///
     /// # Arguments
     ///
-    /// * `prompt_cb` - TODO: Document argument.
+    /// * `prompt_cb` - The `prompt_cb` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn new(prompt_cb: Option<MediaPromptCallback>) -> Self {
         Self { prompt_cb }
@@ -56,11 +56,11 @@ impl MediaManager {
     ///
     /// # Arguments
     ///
-    /// * `path` - TODO: Document argument.
+    /// * `path` - The `path` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn sanitize_target_path(path: &Path) -> Result<PathBuf> {
         let path_str = path.to_string_lossy();
         if path_str.is_empty() {
@@ -85,12 +85,12 @@ impl MediaManager {
     ///
     /// # Arguments
     ///
-    /// * `disk_id` - TODO: Document argument.
-    /// * `prompt_msg` - TODO: Document argument.
+    /// * `disk_id` - The `disk_id` parameter.
+    /// * `prompt_msg` - The `prompt_msg` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn prompt_for_disk(&self, disk_id: i32, prompt_msg: &str) -> Result<()> {
         if let Some(cb) = self.prompt_cb {
             if cb(disk_id, prompt_msg) {
@@ -114,13 +114,13 @@ impl MediaManager {
     ///
     /// # Arguments
     ///
-    /// * `_file_key` - TODO: Document argument.
-    /// * `is_compressed` - TODO: Document argument.
-    /// * `cab_name` - TODO: Document argument.
+    /// * `_file_key` - The `_file_key` parameter.
+    /// * `is_compressed` - The `is_compressed` parameter.
+    /// * `cab_name` - The `cab_name` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn determine_extraction_source(
         _file_key: &str,
         is_compressed: bool,
@@ -151,11 +151,11 @@ impl MediaManager {
     ///
     /// # Arguments
     ///
-    /// * `data` - TODO: Document argument.
+    /// * `data` - The `data` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn decompress_stream(data: &[u8]) -> Result<Vec<u8>> {
         if data.is_empty() {
             return Err(MsiError::Io(crate::error::IoContext::from_string(

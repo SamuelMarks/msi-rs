@@ -1,7 +1,8 @@
+#![deny(missing_docs)]
+#![deny(clippy::missing_docs_in_private_items)]
 #![allow(non_snake_case)]
 #![allow(clippy::empty_line_after_doc_comments)]
 #![allow(clippy::assertions_on_constants)]
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 #![allow(
     clippy::unreadable_literal,
     clippy::missing_safety_doc,
@@ -16,7 +17,6 @@
     clippy::option_if_let_else,
     clippy::cast_sign_loss,
     clippy::not_unsafe_ptr_arg_deref,
-    clippy::missing_docs_in_private_items,
     clippy::manual_let_else,
     clippy::maybe_infinite_iter,
     clippy::cast_possible_truncation,
@@ -29,8 +29,6 @@
 #![allow(clippy::cognitive_complexity)]
 #![allow(clippy::too_many_lines)]
 #![allow(clippy::unnecessary_wraps)]
-#![deny(missing_docs)]
-//#![deny(clippy::missing_docs_in_private_items)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! # msi-ffi
 //!

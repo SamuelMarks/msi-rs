@@ -289,8 +289,8 @@ impl OfflineRegistryHive {
     ///
     /// # Arguments
     ///
-    /// * `bin_data` - TODO: Document argument.
-    /// * `hive` - TODO: Document argument.
+    /// * `bin_data` - The `bin_data` parameter.
+    /// * `hive` - The `hive` parameter.
     fn parse_bin_cells(bin_data: &[u8], hive: &mut Self) {
         let mut pos = 0;
         while pos + 8 <= bin_data.len() {
@@ -411,7 +411,7 @@ impl OfflineRegistryHive {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn save_to_file(&self, destination: &Path) -> Result<()> {
         if let Some(parent) = destination.parent() {
             std::fs::create_dir_all(parent).map_err(|e| MsiError::RegistryHiveError {
@@ -483,7 +483,7 @@ impl OfflineHiveStore {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn flush_all(&self) -> Result<()> {
         if let Some(ref path) = self.system_hive.path {
             self.system_hive.save_to_file(path)?;

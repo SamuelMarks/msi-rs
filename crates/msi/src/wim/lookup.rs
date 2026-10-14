@@ -55,7 +55,7 @@ impl LookupEntry {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn end_offset(&self) -> Result<u64> {
         self.resource
             .offset
@@ -83,11 +83,11 @@ impl LookupTable {
     ///
     /// # Arguments
     ///
-    /// * `bytes` - TODO: Document argument.
+    /// * `bytes` - The `bytes` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn parse(bytes: &[u8]) -> Result<Self> {
         let mut entries = Vec::new();
         let mut cursor = bytes;

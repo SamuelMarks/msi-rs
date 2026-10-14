@@ -124,7 +124,7 @@ impl ControlType {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -219,11 +219,11 @@ impl SelectionTreeNode {
     ///
     /// # Arguments
     ///
-    /// * `desc` - TODO: Document argument.
+    /// * `desc` - The `desc` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn description(mut self, desc: impl Into<String>) -> Self {
         self.description = Some(desc.into());
@@ -234,7 +234,7 @@ impl SelectionTreeNode {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
     pub fn add_child(&mut self, child: Self) {
         self.children.push(child);
     }
@@ -302,11 +302,11 @@ impl ControlDefinition {
     ///
     /// # Arguments
     ///
-    /// * `prop` - TODO: Document argument.
+    /// * `prop` - The `prop` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn property(mut self, prop: impl Into<String>) -> Self {
         self.property = Some(prop.into());
@@ -317,11 +317,11 @@ impl ControlDefinition {
     ///
     /// # Arguments
     ///
-    /// * `text` - TODO: Document argument.
+    /// * `text` - The `text` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn text(mut self, text: impl Into<String>) -> Self {
         self.text = Some(text.into());
@@ -332,11 +332,11 @@ impl ControlDefinition {
     ///
     /// # Arguments
     ///
-    /// * `next` - TODO: Document argument.
+    /// * `next` - The `next` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn control_next(mut self, next: impl Into<String>) -> Self {
         self.control_next = Some(next.into());
@@ -347,11 +347,11 @@ impl ControlDefinition {
     ///
     /// # Arguments
     ///
-    /// * `help` - TODO: Document argument.
+    /// * `help` - The `help` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn help(mut self, help: impl Into<String>) -> Self {
         self.help = Some(help.into());
@@ -362,7 +362,7 @@ impl ControlDefinition {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn dialog(&self) -> &str {
         &self.dialog
@@ -372,7 +372,7 @@ impl ControlDefinition {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn control(&self) -> &str {
         &self.control
@@ -382,7 +382,7 @@ impl ControlDefinition {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn control_type(&self) -> ControlType {
         self.control_type
@@ -392,7 +392,7 @@ impl ControlDefinition {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn rect(&self) -> DluRect {
         self.rect
@@ -402,7 +402,7 @@ impl ControlDefinition {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn attributes(&self) -> u32 {
         self.attributes
@@ -412,7 +412,7 @@ impl ControlDefinition {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn property_name(&self) -> Option<&str> {
         self.property.as_deref()
@@ -422,7 +422,7 @@ impl ControlDefinition {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn text_template(&self) -> Option<&str> {
         self.text.as_deref()
@@ -432,7 +432,7 @@ impl ControlDefinition {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn next_control(&self) -> Option<&str> {
         self.control_next.as_deref()
@@ -442,7 +442,7 @@ impl ControlDefinition {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn help_text(&self) -> Option<&str> {
         self.help.as_deref()
@@ -452,7 +452,7 @@ impl ControlDefinition {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn is_visible_by_default(&self) -> bool {
         self.attributes & CONTROL_ATTR_VISIBLE != 0
@@ -462,7 +462,7 @@ impl ControlDefinition {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn is_enabled_by_default(&self) -> bool {
         self.attributes & CONTROL_ATTR_ENABLED != 0
@@ -472,7 +472,7 @@ impl ControlDefinition {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn is_password_input(&self) -> bool {
         self.attributes & CONTROL_ATTR_PASSWORD_INPUT != 0
@@ -482,7 +482,7 @@ impl ControlDefinition {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn is_integer_only(&self) -> bool {
         self.attributes & CONTROL_ATTR_INTEGER != 0

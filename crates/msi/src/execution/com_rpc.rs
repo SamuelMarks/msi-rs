@@ -36,7 +36,7 @@ impl ComInterfacePointer {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn new(ptr: usize) -> Self {
         Self(ptr)
@@ -46,7 +46,7 @@ impl ComInterfacePointer {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn as_raw(&self) -> usize {
         self.0
@@ -63,7 +63,7 @@ pub trait MsiServerInterface {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn connect(&mut self) -> Result<()>;
 
     /// Disconnects from the server process cleanly.
@@ -74,7 +74,7 @@ pub trait MsiServerInterface {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn disconnect(&mut self) -> Result<()>;
 
     /// Executes a sequence of database operations within a transaction.
@@ -89,14 +89,14 @@ pub trait MsiServerInterface {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn execute_transaction(&self, transaction_id: u32) -> Result<()>;
 
     /// Gets the current connection state.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn get_state(&self) -> RpcConnectionState;
 }
 
@@ -128,7 +128,7 @@ pub mod windows_impl {
         ///
         /// # Returns
         ///
-        /// TODO: Document return value.
+        /// The resulting value or `Ok(())` on success.
         #[must_use]
         pub const fn new() -> Self {
             Self {
@@ -205,7 +205,7 @@ pub mod posix_mock {
         ///
         /// # Returns
         ///
-        /// TODO: Document return value.
+        /// The resulting value or `Ok(())` on success.
         #[must_use]
         pub const fn new() -> Self {
             Self {

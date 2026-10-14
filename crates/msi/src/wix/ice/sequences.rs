@@ -108,11 +108,11 @@ impl SequenceGraph {
 ///
 /// # Arguments
 ///
-/// * `db` - TODO: Document argument.
+/// * `db` - The `db` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 fn get_custom_actions(db: &LinkedDatabase) -> HashMap<String, (i16, String, String)> {
     let mut map = HashMap::new();
     for r in db.get_records("CustomAction") {

@@ -27,11 +27,11 @@ impl IoContext {
     ///
     /// # Arguments
     ///
-    /// * `s` - TODO: Document argument.
+    /// * `s` - Error message describing the I/O failure.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Wrapped [`IoContext`] instance.
     #[must_use]
     pub fn from_string(s: String) -> Self {
         Self(std::io::Error::other(s))

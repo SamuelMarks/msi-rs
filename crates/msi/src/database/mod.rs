@@ -10,6 +10,7 @@
 pub mod catalogs;
 pub mod column;
 pub mod idt;
+pub mod md5;
 pub mod merge;
 pub mod physical;
 pub mod sql;
@@ -26,6 +27,7 @@ pub use column::{
     ColumnDef, DataType, MSIDB_ALL_FLAGS, MSIDB_LOCALIZABLE, MSIDB_LONG, MSIDB_NULL,
     MSIDB_NULLABLE, MSIDB_PRIMARY_KEY, MSIDB_SHORT, MSIDB_STREAM, MSIDB_STRING, MSIDB_VALID_FLAGS,
 };
+pub use md5::{compute_md5, format_msi_md5_quads};
 pub use merge::*;
 pub use string_pool::{StringPool, CODEPAGE_ANSI_1252, CODEPAGE_UTF8};
 pub use summary_info::{

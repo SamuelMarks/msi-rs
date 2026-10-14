@@ -178,12 +178,12 @@ impl CPackWiXPatch {
     ///
     /// # Arguments
     ///
-    /// * `node` - TODO: Document argument.
-    /// * `frag` - TODO: Document argument.
+    /// * `node` - The `node` parameter.
+    /// * `frag` - The `frag` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn inject_fragment(node: &mut XmlNode, frag: &CPackWiXFragment) -> bool {
         let is_match = match frag.id.as_str() {
             "#PRODUCT" => node.tag == "Product" || node.tag == "Package",
@@ -1131,7 +1131,7 @@ impl PatchPackageBuilder {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn build_to_file(self, path: impl AsRef<Path>) -> Result<()> {
         self.build_to_file_path(path.as_ref())
     }
@@ -1140,11 +1140,11 @@ impl PatchPackageBuilder {
     ///
     /// # Arguments
     ///
-    /// * `path` - TODO: Document argument.
+    /// * `path` - The `path` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn build_to_file_path(self, path: &Path) -> Result<()> {
         let bytes = self.build()?;
         std::fs::write(path, bytes)?;
@@ -1161,11 +1161,11 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `res` - TODO: Document argument.
+    /// * `res` - The `res` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[allow(clippy::manual_unwrap_or_default, clippy::option_if_let_else)]
     fn extract_patch_or_default(res: Result<CPackWiXPatch>) -> CPackWiXPatch {
         match res {
@@ -1178,11 +1178,11 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `res` - TODO: Document argument.
+    /// * `res` - The `res` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[allow(clippy::manual_unwrap_or_default, clippy::option_if_let_else)]
     fn extract_node_or_default(res: Result<XmlNode>) -> XmlNode {
         match res {

@@ -9,6 +9,9 @@ pub mod lookup;
 pub mod lzms;
 pub mod lzx;
 pub mod metadata;
+pub mod reader;
 pub mod types;
 pub mod xml;
 pub mod xpress;
+
+pub use reader::WimReader;

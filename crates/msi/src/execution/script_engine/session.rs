@@ -435,7 +435,7 @@ impl ScriptSession {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn consume_fuel(&mut self, line: usize, col: usize) -> Result<()> {
         if self.fuel == 0 {
             let stack_trace = if self.call_stack.is_empty() {

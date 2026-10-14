@@ -330,7 +330,7 @@ impl GptTable {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn add_partition(&mut self, entry: GptPartitionEntry) -> Result<()> {
         if entry.start_lba.0 < self.first_usable_lba.0 {
             return Err(MsiError::PartitionError {
@@ -570,15 +570,15 @@ impl StandardPartitionScheme {
     ///
     /// # Arguments
     ///
-    /// * `table` - TODO: Document argument.
-    /// * `sectors_per_mb` - TODO: Document argument.
-    /// * `esp_mb` - TODO: Document argument.
-    /// * `msr_mb` - TODO: Document argument.
-    /// * `recovery_mb` - TODO: Document argument.
+    /// * `table` - The `table` parameter.
+    /// * `sectors_per_mb` - The `sectors_per_mb` parameter.
+    /// * `esp_mb` - The `esp_mb` parameter.
+    /// * `msr_mb` - The `msr_mb` parameter.
+    /// * `recovery_mb` - The `recovery_mb` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn provision_windows(
         table: &mut GptTable,
         sectors_per_mb: u64,
@@ -658,15 +658,15 @@ impl StandardPartitionScheme {
     ///
     /// # Arguments
     ///
-    /// * `table` - TODO: Document argument.
-    /// * `sectors_per_mb` - TODO: Document argument.
-    /// * `esp_mb` - TODO: Document argument.
-    /// * `boot_mb` - TODO: Document argument.
-    /// * `swap_mb` - TODO: Document argument.
+    /// * `table` - The `table` parameter.
+    /// * `sectors_per_mb` - The `sectors_per_mb` parameter.
+    /// * `esp_mb` - The `esp_mb` parameter.
+    /// * `boot_mb` - The `boot_mb` parameter.
+    /// * `swap_mb` - The `swap_mb` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn provision_linux(
         table: &mut GptTable,
         sectors_per_mb: u64,
@@ -746,11 +746,11 @@ impl StandardPartitionScheme {
 ///
 /// # Arguments
 ///
-/// * `bytes` - TODO: Document argument.
+/// * `bytes` - The `bytes` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 #[must_use]
 pub fn compute_crc32(bytes: &[u8]) -> u32 {
     let mut crc: u32 = 0xFFFF_FFFF;

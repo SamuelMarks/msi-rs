@@ -55,12 +55,12 @@ pub trait AutomationObject: Debug + Send + Sync + 'static {
     ///
     /// # Arguments
     ///
-    /// * `name` - TODO: Document argument.
-    /// * `args` - TODO: Document argument.
+    /// * `name` - The `name` parameter.
+    /// * `args` - The `args` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn invoke(&self, name: &str, args: &[Variant]) -> Result<Variant>;
 
     /// Retrieves a property from the automation object.
@@ -70,11 +70,11 @@ pub trait AutomationObject: Debug + Send + Sync + 'static {
     ///
     /// # Arguments
     ///
-    /// * `name` - TODO: Document argument.
+    /// * `name` - The `name` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn get_property(&self, name: &str) -> Result<Variant>;
 
     /// Sets a property on the automation object.
@@ -84,19 +84,19 @@ pub trait AutomationObject: Debug + Send + Sync + 'static {
     ///
     /// # Arguments
     ///
-    /// * `name` - TODO: Document argument.
-    /// * `value` - TODO: Document argument.
+    /// * `name` - The `name` parameter.
+    /// * `value` - The `value` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn set_property(&mut self, name: &str, value: Variant) -> Result<()>;
 
     /// Clones this automation object into a new boxed trait object.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn clone_box(&self) -> Box<dyn AutomationObject>;
 }
 
@@ -126,7 +126,7 @@ impl Installer {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -177,7 +177,7 @@ impl Session {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn new() -> Self {
         Self { language: 1033 }
@@ -238,11 +238,11 @@ impl Record {
     ///
     /// # Arguments
     ///
-    /// * `count` - TODO: Document argument.
+    /// * `count` - The `count` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn new(count: usize) -> Self {
         Self {
@@ -293,7 +293,7 @@ impl StringList {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn new() -> Self {
         Self { items: Vec::new() }
@@ -303,7 +303,7 @@ impl StringList {
     ///
     /// # Arguments
     ///
-    /// * `item` - TODO: Document argument.
+    /// * `item` - The `item` parameter.
     pub fn add(&mut self, item: String) {
         self.items.push(item);
     }
@@ -315,11 +315,11 @@ impl StringList {
     ///
     /// # Arguments
     ///
-    /// * `index` - TODO: Document argument.
+    /// * `index` - The `index` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn item(&self, index: usize) -> Result<String> {
         if index == 0 || index > self.items.len() {
             return Err(MsiError::ActionExecutionError(
@@ -333,7 +333,7 @@ impl StringList {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn count(&self) -> usize {
         self.items.len()
@@ -370,7 +370,7 @@ impl RecordList {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn new() -> Self {
         Self {
@@ -382,7 +382,7 @@ impl RecordList {
     ///
     /// # Arguments
     ///
-    /// * `record` - TODO: Document argument.
+    /// * `record` - The `record` parameter.
     pub fn add(&mut self, record: u32) {
         self.records.push(record);
     }
@@ -394,11 +394,11 @@ impl RecordList {
     ///
     /// # Arguments
     ///
-    /// * `index` - TODO: Document argument.
+    /// * `index` - The `index` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn item(&self, index: usize) -> Result<u32> {
         if index == 0 || index > self.records.len() {
             return Err(MsiError::ActionExecutionError(
@@ -412,7 +412,7 @@ impl RecordList {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn count(&self) -> usize {
         self.records.len()
@@ -437,11 +437,11 @@ impl UiPreview {
     ///
     /// # Arguments
     ///
-    /// * `database_path` - TODO: Document argument.
+    /// * `database_path` - The `database_path` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn new(database_path: String) -> Self {
         Self { database_path }
@@ -454,11 +454,11 @@ impl UiPreview {
     ///
     /// # Arguments
     ///
-    /// * `dialog` - TODO: Document argument.
+    /// * `dialog` - The `dialog` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn view_dialog(&self, dialog: &str) -> Result<()> {
         if dialog.is_empty() {
             return Err(MsiError::ActionExecutionError(
@@ -493,12 +493,12 @@ impl SummaryInfoExt {
     ///
     /// # Arguments
     ///
-    /// * `data` - TODO: Document argument.
-    /// * `is_ansi` - TODO: Document argument.
+    /// * `data` - The `data` parameter.
+    /// * `is_ansi` - The `is_ansi` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn translate_dictionary(data: &[u8], is_ansi: bool) -> Result<String> {
         if data.is_empty() {
             return Err(MsiError::ActionExecutionError(

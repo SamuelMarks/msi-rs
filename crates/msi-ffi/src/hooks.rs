@@ -17,6 +17,7 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::sync::RwLock;
 
+/// Global background logger queue and worker thread handle.
 static LOGGER: RwLock<
     Option<(
         msi::execution::logging::MsiLogQueue,
@@ -193,6 +194,7 @@ pub unsafe extern "system" fn MsiEnableLogW(
     0 // ERROR_SUCCESS
 }
 
+/// Initializes or replaces the global background [`msi::execution::logging::MsiLogQueue`] writing to `path`.
 fn setup_logger(path: &str) {
     let mut lock = LOGGER
         .write()
@@ -284,11 +286,9 @@ pub unsafe extern "system" fn MsiMessageBoxW(
 mod tests {
     use super::*;
     use std::ptr;
-    use std::sync::Mutex;
+    use std::sync::{LazyLock, Mutex};
 
-    lazy_static::lazy_static! {
-        static ref TEST_MUTEX: Mutex<()> = Mutex::new(());
-    }
+    static TEST_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
     #[test]
     fn test_msi_enable_ui_preview() {

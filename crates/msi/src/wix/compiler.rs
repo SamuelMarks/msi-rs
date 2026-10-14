@@ -105,7 +105,7 @@ impl Compiler {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn with_extensions(registry: ExtensionRegistry) -> Self {
         Self {
@@ -176,12 +176,12 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `node` - TODO: Document argument.
-    /// * `sec_type` - TODO: Document argument.
+    /// * `node` - The `node` parameter.
+    /// * `sec_type` - The `sec_type` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[allow(clippy::cognitive_complexity)]
     #[allow(clippy::too_many_lines)]
     fn compile_section(
@@ -428,15 +428,15 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `node` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `node` - The `node` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[allow(clippy::cognitive_complexity)]
     #[allow(clippy::too_many_lines, clippy::self_only_used_in_recursion)]
     fn compile_element_tree(
@@ -1644,13 +1644,13 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `inherited_root` - TODO: Document argument.
-    /// * `inherited_key` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `inherited_root` - The `inherited_root` parameter.
+    /// * `inherited_key` - The `inherited_key` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_registry_value(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -1709,11 +1709,11 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_shortcut(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -1794,11 +1794,11 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_service_install(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -1881,11 +1881,11 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_service_control(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -1963,14 +1963,14 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn compile_embedded_chainer(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -2042,15 +2042,15 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn compile_sql_database(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -2110,15 +2110,15 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn compile_sql_string(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -2196,15 +2196,15 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn compile_sql_script(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -2272,14 +2272,14 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[allow(clippy::option_if_let_else)]
     fn compile_custom_action(
         child: &XmlNode,
@@ -2376,14 +2376,14 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn compile_dialog(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -2454,15 +2454,15 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[allow(clippy::too_many_lines)]
     fn compile_control(
         child: &XmlNode,
@@ -2756,10 +2756,10 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_text_style(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -2791,10 +2791,10 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_upgrade(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -2864,9 +2864,9 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_major_upgrade(child: &XmlNode, tables: &mut HashMap<String, IntermediateTable>) {
         let downgrade_err = child.attribute("DowngradeErrorMessage");
         let schedule = child
@@ -2953,11 +2953,11 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_posix_element(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -2988,10 +2988,10 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_posix_file(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -3021,11 +3021,11 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_posix_symlink(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -3058,10 +3058,10 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_posix_daemon(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -3101,10 +3101,10 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_posix_acl(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -3139,10 +3139,10 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_posix_desktop(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -3176,9 +3176,9 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_module_configuration(
         child: &XmlNode,
         tables: &mut HashMap<String, IntermediateTable>,
@@ -3209,9 +3209,9 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_module_substitution(
         child: &XmlNode,
         tables: &mut HashMap<String, IntermediateTable>,
@@ -3236,9 +3236,9 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_module_ignore_modularization(
         child: &XmlNode,
         tables: &mut HashMap<String, IntermediateTable>,
@@ -3259,9 +3259,9 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_module_dependency(child: &XmlNode, tables: &mut HashMap<String, IntermediateTable>) {
         let req_id = child
             .attribute("RequiredId")
@@ -3299,9 +3299,9 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_module_exclusion(child: &XmlNode, tables: &mut HashMap<String, IntermediateTable>) {
         let excl_id = child
             .attribute("ExcludedId")
@@ -3344,11 +3344,11 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_copy_file(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -3411,11 +3411,11 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_move_file(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -3451,11 +3451,11 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_remove_file(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -3500,15 +3500,15 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn compile_symlink(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -3552,9 +3552,9 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_media_template(child: &XmlNode, tables: &mut HashMap<String, IntermediateTable>) {
         let cab_template = child.attribute("CabinetTemplate").unwrap_or("cab1.cab");
         let cab_name = cab_template.replace("{0}", "1");
@@ -3577,11 +3577,11 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_remove_registry(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -3615,11 +3615,11 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_ini_file(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -3665,11 +3665,11 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_remove_ini_file(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -3707,10 +3707,10 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_icon(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -3732,11 +3732,11 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_prog_id(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -3769,11 +3769,11 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_extension(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -3828,10 +3828,10 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_mime(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -3865,11 +3865,11 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_class(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -3912,11 +3912,11 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_type_lib(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -3957,10 +3957,10 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_app_id(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -3993,14 +3993,14 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn compile_set_property(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -4048,10 +4048,10 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_app_search(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -4074,11 +4074,11 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_registry_search(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -4183,11 +4183,11 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_directory_search(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -4223,11 +4223,11 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_file_search(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -4279,11 +4279,11 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_ini_file_search(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -4343,11 +4343,11 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_component_search(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -4394,9 +4394,9 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     #[allow(clippy::option_if_let_else)]
     fn compile_launch_condition(child: &XmlNode, tables: &mut HashMap<String, IntermediateTable>) {
         let message = child
@@ -4423,14 +4423,14 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn compile_sequence_table(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -4508,10 +4508,10 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_patch_element(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -4533,10 +4533,10 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `_tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `_tables` - The `_tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_ui_ref(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -4550,10 +4550,10 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_control_event(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -4601,10 +4601,10 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_control_condition(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -4642,10 +4642,10 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_subscribe(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -4674,10 +4674,10 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_binary(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -4709,10 +4709,10 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_billboard(
         child: &XmlNode,
         section: &mut IntermediateSection,
@@ -4741,9 +4741,9 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_progress_text(child: &XmlNode, tables: &mut HashMap<String, IntermediateTable>) {
         let action = child.attribute("Action").unwrap_or("InstallFiles");
         let template = child.attribute("Template").map(ToString::to_string);
@@ -4767,9 +4767,9 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_error(child: &XmlNode, tables: &mut HashMap<String, IntermediateTable>) {
         let id: i16 = child
             .attribute("Id")
@@ -4799,11 +4799,11 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `child` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `child` - The `child` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     fn compile_extension_element(
         child: &XmlNode,
         parent_id: Option<&str>,
@@ -4840,11 +4840,11 @@ impl Compiler {
 ///
 /// # Arguments
 ///
-/// * `root_str` - TODO: Document argument.
+/// * `root_str` - The `root_str` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 fn parse_registry_root(root_str: &str) -> i16 {
     match root_str.to_ascii_uppercase().as_str() {
         "HKCR" | "HKEY_CLASSES_ROOT" => 0,

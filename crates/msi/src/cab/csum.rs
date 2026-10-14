@@ -39,10 +39,49 @@ pub fn csum_compute(bytes: &[u8], seed: u32) -> u32 {
     csum ^ tail
 }
 
+/// Computes the standard IEEE 802.3 CRC32 checksum over the given byte slice.
+///
+/// Uses the reflected polynomial `0xEDB8_8320` with initial value `0xFFFF_FFFF`
+/// and final bitwise inversion.
+///
+/// # Arguments
+///
+/// * `bytes` - The slice of bytes to checksum.
+///
+/// # Returns
+///
+/// The 32-bit IEEE 802.3 CRC32 checksum.
+#[must_use]
+pub const fn compute_crc32(bytes: &[u8]) -> u32 {
+    let mut crc = 0xFFFF_FFFF_u32;
+    let mut idx = 0;
+    while idx < bytes.len() {
+        crc ^= bytes[idx] as u32;
+        let mut bit = 0;
+        while bit < 8 {
+            if (crc & 1) != 0 {
+                crc = (crc >> 1) ^ 0xEDB8_8320;
+            } else {
+                crc >>= 1;
+            }
+            bit += 1;
+        }
+        idx += 1;
+    }
+    !crc
+}
+
 #[cfg(test)]
 /// Unit tests.
 mod tests {
     use super::*;
+
+    /// Tests IEEE 802.3 CRC32 computation on empty and standard test vectors.
+    #[test]
+    fn test_compute_crc32() {
+        assert_eq!(compute_crc32(b""), 0x0000_0000);
+        assert_eq!(compute_crc32(b"123456789"), 0xCBF4_3926);
+    }
 
     /// Tests checksum computation on empty slice.
     #[test]

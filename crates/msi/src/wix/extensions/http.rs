@@ -25,7 +25,7 @@ impl HttpExtension {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn new() -> Self {
         Self
@@ -39,14 +39,14 @@ impl HttpExtension {
     ///
     /// # Arguments
     ///
-    /// * `node` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `node` - The `node` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn compile_url_reservation(
         node: &XmlNode,
         parent_id: Option<&str>,
@@ -99,14 +99,14 @@ impl HttpExtension {
     ///
     /// # Arguments
     ///
-    /// * `node` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `node` - The `node` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn compile_certificate_ref(
         node: &XmlNode,
         parent_id: Option<&str>,
@@ -181,10 +181,9 @@ impl WixExtension for HttpExtension {
             "CustomAction",
             Record::with_fields(vec![
                 FieldValue::String(ca_name.clone()),
-                FieldValue::Long(38), // Type 38 = VBScript inline placeholder for now
-                FieldValue::String(String::new()),
-                // Placeholder action script instead of DLL injection for now
-                FieldValue::String("WScript.Quit 0".to_string()),
+                FieldValue::Long(1),
+                FieldValue::String("WixHttpCA".to_string()),
+                FieldValue::String(ca_name.clone()),
             ]),
         );
 

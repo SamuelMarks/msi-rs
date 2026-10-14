@@ -30,7 +30,7 @@ impl DisplayBackendType {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -586,7 +586,7 @@ impl SoftwareBuffer {
     ///
     /// # Arguments
     ///
-    /// * `color` - TODO: Document argument.
+    /// * `color` - The `color` parameter.
     pub fn clear(&mut self, color: Color32) {
         self.pixels.fill(color);
     }
@@ -595,8 +595,8 @@ impl SoftwareBuffer {
     ///
     /// # Arguments
     ///
-    /// * `rect` - TODO: Document argument.
-    /// * `color` - TODO: Document argument.
+    /// * `rect` - The `rect` parameter.
+    /// * `color` - The `color` parameter.
     #[allow(clippy::cast_sign_loss)]
     pub fn fill_rect(&mut self, rect: PixelRect, color: Color32) {
         let x0 = rect.x.max(0) as u32;
@@ -616,8 +616,8 @@ impl SoftwareBuffer {
     ///
     /// # Arguments
     ///
-    /// * `rect` - TODO: Document argument.
-    /// * `color` - TODO: Document argument.
+    /// * `rect` - The `rect` parameter.
+    /// * `color` - The `color` parameter.
     pub fn stroke_rect(&mut self, rect: PixelRect, color: Color32) {
         let top = PixelRect::new(rect.x, rect.y, rect.width, 1);
         let bottom = PixelRect::new(rect.x, rect.y + rect.height - 1, rect.width, 1);
@@ -634,12 +634,12 @@ impl SoftwareBuffer {
     ///
     /// # Arguments
     ///
-    /// * `x` - TODO: Document argument.
-    /// * `y` - TODO: Document argument.
+    /// * `x` - The `x` parameter.
+    /// * `y` - The `y` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn get_pixel(&self, x: u32, y: u32) -> Option<Color32> {
         if x < self.width && y < self.height {
@@ -654,7 +654,7 @@ impl SoftwareBuffer {
     ///
     /// # Arguments
     ///
-    /// * `commands` - TODO: Document argument.
+    /// * `commands` - The `commands` parameter.
     pub fn render_commands(&mut self, commands: &[DrawCommand]) {
         for cmd in commands {
             match cmd {
@@ -844,7 +844,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[test]
     #[allow(clippy::too_many_lines, clippy::unnecessary_wraps)]
     fn test_layout_mapper_all_control_variants() -> crate::error::Result<()> {

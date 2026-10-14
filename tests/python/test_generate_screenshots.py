@@ -289,48 +289,40 @@ def test_generate_cli_chainer() -> None:
 
 def test_main(tmp_path: Path) -> None:
     """Verifies main creates target directory and exports all screenshot PNG files."""
-    target_dir = tmp_path / "screenshots"
-
-    def fake_generate() -> None:
-        target_dir.mkdir(parents=True, exist_ok=True)
-        (target_dir / "gui_welcome_dialog.png").touch()
-        (target_dir / "gui_feature_tree_dialog.png").touch()
-        (target_dir / "gui_progress_dialog.png").touch()
-        (target_dir / "tui_wizard.png").touch()
-        (target_dir / "cli_install_output.png").touch()
-        (target_dir / "cli_chainer_output.png").touch()
+    fake_script = tmp_path / "repo" / "scripts" / "generate_screenshots.py"
+    fake_script.parent.mkdir(parents=True, exist_ok=True)
+    small_img = Image.new("RGBA", (16, 16), (255, 255, 255, 255))
 
     with (
-        patch("pathlib.Path.parent", tmp_path),
-        patch.object(generate_screenshots, "main") as mock_main,
+        patch.object(generate_screenshots, "__file__", str(fake_script)),
+        patch.object(
+            generate_screenshots, "generate_gui_welcome", return_value=small_img
+        ),
+        patch.object(
+            generate_screenshots, "generate_gui_feature_tree", return_value=small_img
+        ),
+        patch.object(
+            generate_screenshots, "generate_gui_progress", return_value=small_img
+        ),
+        patch.object(
+            generate_screenshots, "generate_tui_wizard", return_value=small_img
+        ),
+        patch.object(
+            generate_screenshots, "generate_cli_workflow", return_value=small_img
+        ),
+        patch.object(
+            generate_screenshots, "generate_cli_chainer", return_value=small_img
+        ),
     ):
-        mock_main.side_effect = fake_generate
         generate_screenshots.main()
 
-    def patched_main() -> None:
-        fonts = generate_screenshots.get_fonts()
-        images = {
-            "gui_welcome_dialog.png": generate_screenshots.generate_gui_welcome(fonts),
-            "gui_feature_tree_dialog.png": generate_screenshots.generate_gui_feature_tree(
-                fonts
-            ),
-            "gui_progress_dialog.png": generate_screenshots.generate_gui_progress(fonts),
-            "tui_wizard.png": generate_screenshots.generate_tui_wizard(fonts),
-            "cli_install_output.png": generate_screenshots.generate_cli_workflow(fonts),
-            "cli_chainer_output.png": generate_screenshots.generate_cli_chainer(fonts),
-        }
-        target_dir.mkdir(parents=True, exist_ok=True)
-        for name, img in images.items():
-            img.save(target_dir / name, format="PNG")
-
-    with patch.object(generate_screenshots, "main", side_effect=patched_main):
-        generate_screenshots.main()
-        assert (target_dir / "gui_welcome_dialog.png").exists()
-        assert (target_dir / "gui_feature_tree_dialog.png").exists()
-        assert (target_dir / "gui_progress_dialog.png").exists()
-        assert (target_dir / "tui_wizard.png").exists()
-        assert (target_dir / "cli_install_output.png").exists()
-        assert (target_dir / "cli_chainer_output.png").exists()
+    target_dir = tmp_path / "cc0-assets" / "msi-rs" / "screenshots"
+    assert (target_dir / "gui_welcome_dialog.png").exists()
+    assert (target_dir / "gui_feature_tree_dialog.png").exists()
+    assert (target_dir / "gui_progress_dialog.png").exists()
+    assert (target_dir / "tui_wizard.png").exists()
+    assert (target_dir / "cli_install_output.png").exists()
+    assert (target_dir / "cli_chainer_output.png").exists()
 
 
 def test_generate_screenshots_run_as_main(tmp_path: Path) -> None:

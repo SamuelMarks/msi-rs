@@ -929,7 +929,7 @@ impl Package {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// `Ok(())` when the package is serialized and written to `path`.
     pub fn save(&self, path: impl AsRef<Path>) -> Result<()> {
         let bytes = self.to_bytes()?;
         fs::write(path, bytes)?;
@@ -942,7 +942,7 @@ impl Default for Package {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Empty [`Package`] initialized with [`LinkedDatabase::default`].
     fn default() -> Self {
         Self::from_database(LinkedDatabase::default(), HashMap::new())
     }

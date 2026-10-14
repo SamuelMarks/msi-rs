@@ -43,7 +43,7 @@ impl VARIANT {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn new_empty() -> Self {
         Self {
@@ -59,11 +59,11 @@ impl VARIANT {
     ///
     /// # Arguments
     ///
-    /// * `val` - TODO: Document argument.
+    /// * `val` - The `val` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn new_i4(val: i32) -> Self {
         let mut v = Self::new_empty();
@@ -77,7 +77,7 @@ impl VARIANT {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn as_i4(&self) -> Option<i32> {
         (self.vt == VARENUM::VtI4 as u16).then(|| {
@@ -91,7 +91,7 @@ impl VARIANT {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn as_bstr(&self) -> Option<*mut u16> {
         (self.vt == VARENUM::VtBstr as u16).then(|| {

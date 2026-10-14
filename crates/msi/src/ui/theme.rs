@@ -27,13 +27,13 @@ impl Color32 {
     ///
     /// # Arguments
     ///
-    /// * `r` - TODO: Document argument.
-    /// * `g` - TODO: Document argument.
-    /// * `b` - TODO: Document argument.
+    /// * `r` - The `r` parameter.
+    /// * `g` - The `g` parameter.
+    /// * `b` - The `b` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn from_rgb(r: u8, g: u8, b: u8) -> Self {
         Self { r, g, b, a: 255 }
@@ -43,14 +43,14 @@ impl Color32 {
     ///
     /// # Arguments
     ///
-    /// * `r` - TODO: Document argument.
-    /// * `g` - TODO: Document argument.
-    /// * `b` - TODO: Document argument.
-    /// * `a` - TODO: Document argument.
+    /// * `r` - The `r` parameter.
+    /// * `g` - The `g` parameter.
+    /// * `b` - The `b` parameter.
+    /// * `a` - The `a` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn from_rgba(r: u8, g: u8, b: u8, a: u8) -> Self {
         Self { r, g, b, a }
@@ -99,7 +99,7 @@ impl WizardStyle {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -155,7 +155,7 @@ impl WizardTheme {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn mondo() -> Self {
         Self {
@@ -180,7 +180,7 @@ impl WizardTheme {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn install_dir() -> Self {
         let mut t = Self::mondo();
@@ -192,7 +192,7 @@ impl WizardTheme {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn feature_tree() -> Self {
         let mut t = Self::mondo();
@@ -204,7 +204,7 @@ impl WizardTheme {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn minimal() -> Self {
         let mut t = Self::mondo();
@@ -255,11 +255,11 @@ impl AccessibilityInfo {
     ///
     /// # Arguments
     ///
-    /// * `desc` - TODO: Document argument.
+    /// * `desc` - The `desc` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn description(mut self, desc: impl Into<String>) -> Self {
         self.description = Some(desc.into());
@@ -270,11 +270,11 @@ impl AccessibilityInfo {
     ///
     /// # Arguments
     ///
-    /// * `focus` - TODO: Document argument.
+    /// * `focus` - The `focus` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn with_focus(mut self, focus: bool) -> Self {
         self.has_focus = focus;

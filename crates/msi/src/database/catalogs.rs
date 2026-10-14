@@ -188,7 +188,7 @@ impl DatabaseCatalog {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// `Ok(())` when the table schema is registered in the catalog.
     pub fn add_table(&mut self, schema: TableSchema) -> Result<()> {
         if self.tables.contains_key(&schema.name) {
             return Err(MsiError::Validation {
@@ -218,7 +218,7 @@ impl DatabaseCatalog {
     ///
     /// # Arguments
     ///
-    /// * `name` - TODO: Document argument.
+    /// * `name` - Name of the table schema to remove.
     pub fn remove_table(&mut self, name: &str) {
         self.tables.remove(name);
     }

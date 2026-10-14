@@ -33,7 +33,7 @@ impl DispParams {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn new() -> Self {
         Self { args: Vec::new() }
@@ -66,11 +66,11 @@ pub trait DispatchResolver {
     ///
     /// # Arguments
     ///
-    /// * `prog_id` - TODO: Document argument.
+    /// * `prog_id` - The `prog_id` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn create_object(&self, prog_id: &str) -> Result<Box<dyn DispatchObject>>;
 }
 
@@ -83,12 +83,12 @@ pub trait DispatchObject: std::fmt::Debug {
     ///
     /// # Arguments
     ///
-    /// * `name` - TODO: Document argument.
-    /// * `params` - TODO: Document argument.
+    /// * `name` - The `name` parameter.
+    /// * `params` - The `params` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn invoke(&self, name: &str, params: &DispParams) -> Result<VariantType>;
 }
 

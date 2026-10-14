@@ -853,12 +853,8 @@ pub unsafe extern "C" fn msi_package_builder_pack_files_from_disk(
                     )
                 })?;
 
-                let digest = crate::md5::compute_md5(&data);
-                let hash_part1 = i32::from_le_bytes([digest[0], digest[1], digest[2], digest[3]]);
-                let hash_part2 = i32::from_le_bytes([digest[4], digest[5], digest[6], digest[7]]);
-                let hash_part3 = i32::from_le_bytes([digest[8], digest[9], digest[10], digest[11]]);
-                let hash_part4 =
-                    i32::from_le_bytes([digest[12], digest[13], digest[14], digest[15]]);
+                let (hash_part1, hash_part2, hash_part3, hash_part4) =
+                    crate::md5::format_msi_md5_quads(&data);
 
                 let file_key =
                     FileKey::new(file_id).map_err(|e| (map_msi_error(&e), e.to_string()))?;

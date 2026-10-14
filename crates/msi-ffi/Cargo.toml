@@ -18,7 +18,6 @@ workspace = true
 
 [dependencies]
 derive_more = { workspace = true }
-lazy_static = "1.5.1"
 libc = { workspace = true }
 msi = { workspace = true }
 

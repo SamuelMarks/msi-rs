@@ -34,7 +34,7 @@ impl SectionType {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn to_u8(self) -> u8 {
         match self {
@@ -54,11 +54,11 @@ impl SectionType {
     ///
     /// # Arguments
     ///
-    /// * `val` - TODO: Document argument.
+    /// * `val` - The `val` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn from_u8(val: u8) -> Result<Self> {
         match val {
             1 => Ok(Self::Product),
@@ -345,7 +345,7 @@ impl IntermediateTable {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn new(name: impl Into<String>) -> Self {
         Self {
@@ -389,7 +389,7 @@ impl IntermediateSection {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn new(section_type: SectionType, id: Option<String>) -> Self {
         Self {
@@ -443,7 +443,7 @@ impl IntermediateSection {
     ///
     /// # Arguments
     ///
-    /// * `table` - TODO: Document argument.
+    /// * `table` - The `table` parameter.
     pub fn add_table(&mut self, table: IntermediateTable) {
         self.tables.push(table);
     }
@@ -461,7 +461,7 @@ impl WixObject {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn new() -> Self {
         Self {
@@ -473,7 +473,7 @@ impl WixObject {
     ///
     /// # Arguments
     ///
-    /// * `section` - TODO: Document argument.
+    /// * `section` - The `section` parameter.
     pub fn add_section(&mut self, section: IntermediateSection) {
         self.sections.push(section);
     }
@@ -832,8 +832,8 @@ impl WixObject {
     ///
     /// # Arguments
     ///
-    /// * `out` - TODO: Document argument.
-    /// * `s` - TODO: Document argument.
+    /// * `out` - The `out` parameter.
+    /// * `s` - The `s` parameter.
     #[allow(clippy::cast_possible_truncation)]
     fn write_string(out: &mut Vec<u8>, s: &str) {
         let bytes = s.as_bytes();
@@ -845,8 +845,8 @@ impl WixObject {
     ///
     /// # Arguments
     ///
-    /// * `out` - TODO: Document argument.
-    /// * `s` - TODO: Document argument.
+    /// * `out` - The `out` parameter.
+    /// * `s` - The `s` parameter.
     fn write_opt_string(out: &mut Vec<u8>, s: Option<&str>) {
         match s {
             Some(val) => {
@@ -863,12 +863,12 @@ impl WixObject {
     ///
     /// # Arguments
     ///
-    /// * `bytes` - TODO: Document argument.
-    /// * `cursor` - TODO: Document argument.
+    /// * `bytes` - The `bytes` parameter.
+    /// * `cursor` - The `cursor` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn read_string(bytes: &[u8], cursor: usize) -> Result<(String, usize)> {
         if cursor + 4 > bytes.len() {
             return Err(MsiError::InvalidWixObject {
@@ -896,12 +896,12 @@ impl WixObject {
     ///
     /// # Arguments
     ///
-    /// * `bytes` - TODO: Document argument.
-    /// * `cursor` - TODO: Document argument.
+    /// * `bytes` - The `bytes` parameter.
+    /// * `cursor` - The `cursor` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn read_opt_string(bytes: &[u8], cursor: usize) -> Result<(Option<String>, usize)> {
         if cursor >= bytes.len() {
             return Err(MsiError::InvalidWixObject {

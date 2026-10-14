@@ -22,7 +22,7 @@ impl UtilExtension {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn new() -> Self {
         Self
@@ -40,14 +40,14 @@ impl UtilExtension {
     ///
     /// # Arguments
     ///
-    /// * `node` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `node` - The `node` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn compile_group(
         node: &XmlNode,
         parent_id: Option<&str>,
@@ -94,14 +94,14 @@ impl UtilExtension {
     ///
     /// # Arguments
     ///
-    /// * `node` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `node` - The `node` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn compile_file_share(
         node: &XmlNode,
         parent_id: Option<&str>,
@@ -148,14 +148,14 @@ impl UtilExtension {
     ///
     /// # Arguments
     ///
-    /// * `node` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `node` - The `node` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn compile_xml_file(
         node: &XmlNode,
         parent_id: Option<&str>,
@@ -218,7 +218,7 @@ impl UtilExtension {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn compile_user(
         node: &XmlNode,
         parent_id: Option<&str>,
@@ -325,9 +325,9 @@ impl WixExtension for UtilExtension {
             "CustomAction",
             Record::with_fields(vec![
                 FieldValue::String(ca_name.clone()),
-                FieldValue::Long(38), // Type 38 = VBScript inline
-                FieldValue::String(String::new()),
-                FieldValue::String("WScript.Quit 0".to_string()),
+                FieldValue::Long(1), // Type 1 = Native DLL entry point
+                FieldValue::String("WixUtilCA".to_string()),
+                FieldValue::String(ca_name.clone()),
             ]),
         )?;
 

@@ -1,21 +1,21 @@
 [package]
-description = "msi-rs component"
-repository = "https://github.com/example/msi-rs"
-license = "MIT OR Apache-2.0"
-readme = "../../README.md"
-keywords = ["msi", "windows", "installer"]
-categories = ["development-tools"]
-
 name = "msi-cli"
-version = "0.0.1"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+readme = "../../README.md"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Command-line toolkit and WiX/msitools compatible shims for Windows Installer (.msi) packages"
 
 [lints]
 workspace = true
 
 [dependencies]
-msi = { path = "../msi" }
-clap = { version = "4.4.11", features = ["derive", "cargo"] }
+msi = { workspace = true }
+clap = { version = "4.6", features = ["derive", "cargo"] }
 
 [dev-dependencies]
-tempfile = "3.8.1"
+tempfile = "3.27.0"

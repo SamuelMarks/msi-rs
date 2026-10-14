@@ -301,7 +301,7 @@ impl HuffmanTree {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Decoded value, code table, or `Ok(())` on success.
     #[must_use]
     pub fn code_lengths(&self) -> &[u8] {
         &self.code_lengths
@@ -311,7 +311,7 @@ impl HuffmanTree {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Decoded value, code table, or `Ok(())` on success.
     #[must_use]
     #[allow(clippy::cast_possible_truncation)]
     pub fn canonical_codes(&self) -> Vec<(u16, u8)> {
@@ -360,7 +360,7 @@ impl HuffmanTree {
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// `Ok(())` when the Huffman code lengths are decoded.
 #[allow(clippy::cast_possible_truncation)]
 pub fn decode_tree_lengths(
     reader: &mut LzxBitReader<'_>,
@@ -1202,11 +1202,11 @@ impl<'a> LzxBitReader<'a> {
     ///
     /// # Arguments
     ///
-    /// * `bytes` - TODO: Document argument.
+    /// * `bytes` - Compressed LZX bitstream slice.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Initialized [`LzxBitReader`].
     #[must_use]
     pub const fn new(bytes: &'a [u8]) -> Self {
         Self {
@@ -1225,7 +1225,7 @@ impl<'a> LzxBitReader<'a> {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// `0` or `1` bit value.
     #[allow(clippy::cast_possible_truncation)]
     pub fn read_bit(&mut self) -> Result<u8> {
         self.read_bits(1).map(|v| v as u8)
@@ -1239,11 +1239,11 @@ impl<'a> LzxBitReader<'a> {
     ///
     /// # Arguments
     ///
-    /// * `n` - TODO: Document argument.
+    /// * `n` - Number of bits to read (`1..=16`).
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Extracted 16-bit unsigned value.
     #[allow(clippy::cast_possible_truncation)]
     pub fn read_bits(&mut self, n: u8) -> Result<u16> {
         while self.bits_count < n {
@@ -1295,11 +1295,11 @@ impl<'a> LzxBitReader<'a> {
     ///
     /// # Arguments
     ///
-    /// * `len` - TODO: Document argument.
+    /// * `len` - Number of uncompressed literal bytes to read.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Borrowed slice of `len` literal bytes.
     pub fn read_bytes(&mut self, len: usize) -> Result<&'a [u8]> {
         self.align_to_16();
         let words_in_buf = (self.bits_count / 8) as usize;
@@ -1336,7 +1336,7 @@ impl LzxBitWriter {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Empty [`LzxBitWriter`].
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -1346,8 +1346,8 @@ impl LzxBitWriter {
     ///
     /// # Arguments
     ///
-    /// * `val` - TODO: Document argument.
-    /// * `n` - TODO: Document argument.
+    /// * `val` - 16-bit value containing the bits to write.
+    /// * `n` - Number of low-order bits from `val` to emit.
     #[allow(clippy::cast_possible_truncation)]
     pub fn write_bits(&mut self, val: u16, n: u8) {
         self.bit_buffer |= u32::from(val) << self.bits_count;
@@ -1365,8 +1365,8 @@ impl LzxBitWriter {
     ///
     /// # Arguments
     ///
-    /// * `val` - TODO: Document argument.
-    /// * `n` - TODO: Document argument.
+    /// * `val` - Canonical Huffman code word.
+    /// * `n` - Bit length of the Huffman code word.
     pub fn write_bits_msb(&mut self, val: u16, n: u8) {
         for bit_idx in (0..n).rev() {
             let b = (val >> bit_idx) & 1;
@@ -1389,7 +1389,7 @@ impl LzxBitWriter {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Decoded value, code table, or `Ok(())` on success.
     #[must_use]
     pub fn into_bytes(mut self) -> Vec<u8> {
         self.align_to_16();
@@ -1481,7 +1481,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Decoded value, code table, or `Ok(())` on success.
     #[test]
     fn test_huffman_tree_roundtrip() -> Result<()> {
         let lengths = [2, 1, 3, 3]; // Alphabet of 4 symbols
@@ -1519,7 +1519,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Decoded value, code table, or `Ok(())` on success.
     #[test]
     fn test_lzx_verbatim_roundtrip() -> Result<()> {
         let mut state = LzxState::new(16)?;
@@ -1539,7 +1539,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Decoded value, code table, or `Ok(())` on success.
     #[test]
     fn test_lzx_aligned_and_secondary_lengths() -> Result<()> {
         let mut state = LzxState::new(16)?;
@@ -1594,7 +1594,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Decoded value, code table, or `Ok(())` on success.
     #[test]
     fn test_lzx_uncompressed_roundtrip() -> Result<()> {
         let mut state = LzxState::new(16)?;
@@ -1614,7 +1614,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Decoded value, code table, or `Ok(())` on success.
     #[test]
     fn test_lzx_adaptive_roundtrip() -> Result<()> {
         let mut state = LzxState::new(15)?;
@@ -1640,7 +1640,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Decoded value, code table, or `Ok(())` on success.
     #[test]
     fn test_lzx_errors() -> Result<()> {
         let mut state = LzxState::new(15)?;
@@ -1832,7 +1832,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Decoded value, code table, or `Ok(())` on success.
     #[test]
     fn test_decode_tree_lengths_rle() -> Result<()> {
         let mut pre_lengths = [0u8; LZX_PRE_TREE_NUM_SYMBOLS];
@@ -1889,7 +1889,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Decoded value, code table, or `Ok(())` on success.
     #[test]
     fn test_lzx_repeat_offsets_and_consecutive_blocks() -> Result<()> {
         let mut state = LzxState::new(15)?;
@@ -1946,7 +1946,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Decoded value, code table, or `Ok(())` on success.
     #[test]
     fn test_lzx_backward_match_max_length() -> Result<()> {
         let mut state = LzxState::new(15)?;
@@ -1981,7 +1981,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Decoded value, code table, or `Ok(())` on success.
     #[test]
     fn test_lzx_type2_aligned_decoding_and_invalid_offsets() -> Result<()> {
         let mut writer = LzxBitWriter::new();
@@ -2079,7 +2079,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Decoded value, code table, or `Ok(())` on success.
     #[test]
     fn test_decompress_uncompressed_block_truncated_headers() -> Result<()> {
         let mut state = LzxState::new(15)?;
@@ -2117,7 +2117,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Decoded value, code table, or `Ok(())` on success.
     #[test]
     fn test_decode_tree_lengths_truncated_rle() -> Result<()> {
         let mut pre_lengths = [0u8; LZX_PRE_TREE_NUM_SYMBOLS];
@@ -2138,7 +2138,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Decoded value, code table, or `Ok(())` on success.
     #[test]
     fn test_lzx_remaining_uncovered_branches() -> Result<()> {
         // 1. Invalid window bits

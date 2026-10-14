@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 
-def get_augmented_env() -> dict:
+def get_augmented_env() -> dict[str, str]:
     """Returns os.environ augmented with standard python and cargo paths."""
     env = dict(os.environ)
     paths = env.get("PATH", "").split(os.pathsep)
@@ -29,7 +29,7 @@ def get_augmented_env() -> dict:
     return env
 
 
-def find_pre_commit_cmd(env: dict) -> list:
+def find_pre_commit_cmd(env: dict[str, str]) -> list[str]:
     """Locates the PyPI pre-commit executable or module runner."""
     # 1. Check PATH for pre-commit binary
     pre_commit_path = shutil.which("pre-commit", path=env.get("PATH"))

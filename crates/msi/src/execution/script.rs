@@ -180,7 +180,7 @@ impl ScriptOp {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn opcode_id(&self) -> u8 {
         match self {
@@ -291,7 +291,7 @@ impl RollbackOp {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn opcode_id(&self) -> u8 {
         match self {
@@ -1101,8 +1101,8 @@ impl fmt::Display for RollbackOp {
 ///
 /// # Arguments
 ///
-/// * `out` - TODO: Document argument.
-/// * `s` - TODO: Document argument.
+/// * `out` - The `out` parameter.
+/// * `s` - The `s` parameter.
 fn write_string(out: &mut Vec<u8>, s: &str) {
     let bytes = s.as_bytes();
     let len = u32::try_from(bytes.len()).unwrap_or(u32::MAX);
@@ -1114,8 +1114,8 @@ fn write_string(out: &mut Vec<u8>, s: &str) {
 ///
 /// # Arguments
 ///
-/// * `out` - TODO: Document argument.
-/// * `s` - TODO: Document argument.
+/// * `out` - The `out` parameter.
+/// * `s` - The `s` parameter.
 fn write_opt_string(out: &mut Vec<u8>, s: Option<&str>) {
     if let Some(val) = s {
         out.push(1);
@@ -1129,8 +1129,8 @@ fn write_opt_string(out: &mut Vec<u8>, s: Option<&str>) {
 ///
 /// # Arguments
 ///
-/// * `out` - TODO: Document argument.
-/// * `bytes` - TODO: Document argument.
+/// * `out` - The `out` parameter.
+/// * `bytes` - The `bytes` parameter.
 fn write_bytes(out: &mut Vec<u8>, bytes: &[u8]) {
     let len = u32::try_from(bytes.len()).unwrap_or(u32::MAX);
     out.extend_from_slice(&len.to_le_bytes());
@@ -1141,12 +1141,12 @@ fn write_bytes(out: &mut Vec<u8>, bytes: &[u8]) {
 ///
 /// # Arguments
 ///
-/// * `data` - TODO: Document argument.
-/// * `offset` - TODO: Document argument.
+/// * `data` - The `data` parameter.
+/// * `offset` - The `offset` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 fn read_u32(data: &[u8], offset: &mut usize) -> Result<u32> {
     if *offset + 4 > data.len() {
         return Err(MsiError::ScriptError {
@@ -1164,12 +1164,12 @@ fn read_u32(data: &[u8], offset: &mut usize) -> Result<u32> {
 ///
 /// # Arguments
 ///
-/// * `data` - TODO: Document argument.
-/// * `offset` - TODO: Document argument.
+/// * `data` - The `data` parameter.
+/// * `offset` - The `offset` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 fn read_i32(data: &[u8], offset: &mut usize) -> Result<i32> {
     if *offset + 4 > data.len() {
         return Err(MsiError::ScriptError {
@@ -1187,12 +1187,12 @@ fn read_i32(data: &[u8], offset: &mut usize) -> Result<i32> {
 ///
 /// # Arguments
 ///
-/// * `data` - TODO: Document argument.
-/// * `offset` - TODO: Document argument.
+/// * `data` - The `data` parameter.
+/// * `offset` - The `offset` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 fn read_string(data: &[u8], offset: &mut usize) -> Result<String> {
     let len = read_u32(data, offset)? as usize;
     if *offset + len > data.len() {
@@ -1215,12 +1215,12 @@ fn read_string(data: &[u8], offset: &mut usize) -> Result<String> {
 ///
 /// # Arguments
 ///
-/// * `data` - TODO: Document argument.
-/// * `offset` - TODO: Document argument.
+/// * `data` - The `data` parameter.
+/// * `offset` - The `offset` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 fn read_opt_string(data: &[u8], offset: &mut usize) -> Result<Option<String>> {
     if *offset >= data.len() {
         return Err(MsiError::ScriptError {
@@ -1241,12 +1241,12 @@ fn read_opt_string(data: &[u8], offset: &mut usize) -> Result<Option<String>> {
 ///
 /// # Arguments
 ///
-/// * `data` - TODO: Document argument.
-/// * `offset` - TODO: Document argument.
+/// * `data` - The `data` parameter.
+/// * `offset` - The `offset` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 fn read_bytes(data: &[u8], offset: &mut usize) -> Result<Vec<u8>> {
     let len = read_u32(data, offset)? as usize;
     if *offset + len > data.len() {

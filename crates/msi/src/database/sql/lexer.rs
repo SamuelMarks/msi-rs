@@ -129,7 +129,7 @@ impl Lexer {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Initialized [`Lexer`].
     #[must_use]
     pub fn new(input: &str) -> Self {
         Self {
@@ -309,11 +309,11 @@ impl Lexer {
 ///
 /// # Arguments
 ///
-/// * `w` - TODO: Document argument.
+/// * `w` - Identifier or keyword token string.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// Matching keyword [`Token`] or [`Token::Identifier`].
 fn match_keyword_or_ident(w: &str) -> Token {
     if w.eq_ignore_ascii_case("SELECT") {
         Token::Select

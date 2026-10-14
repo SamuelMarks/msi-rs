@@ -205,11 +205,11 @@ impl WixToolchainDiscovery {
 ///
 /// # Arguments
 ///
-/// * `arg` - TODO: Document argument.
+/// * `arg` - The `arg` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 #[allow(clippy::option_if_let_else)]
 fn strip_flag_prefix(arg: &str) -> Option<&str> {
     if let Some(rest) = arg.strip_prefix("--") {
@@ -225,11 +225,11 @@ fn strip_flag_prefix(arg: &str) -> Option<&str> {
 ///
 /// # Arguments
 ///
-/// * `arg` - TODO: Document argument.
+/// * `arg` - The `arg` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 #[must_use]
 pub fn is_flag(arg: &str) -> bool {
     arg.starts_with('@') || strip_flag_prefix(arg).is_some()
@@ -239,7 +239,7 @@ pub fn is_flag(arg: &str) -> bool {
 ///
 /// # Arguments
 ///
-/// * `path` - TODO: Document argument.
+/// * `path` - The `path` parameter.
 fn ensure_parent_dir_exists(path: &std::path::Path) {
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
@@ -596,11 +596,11 @@ impl CandleOptions {
 ///
 /// # Arguments
 ///
-/// * `content` - TODO: Document argument.
+/// * `content` - The `content` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 fn parse_response_file_tokens(content: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     for line in content.lines() {
@@ -652,12 +652,12 @@ fn parse_response_file_tokens(content: &str) -> Vec<String> {
 ///
 /// # Arguments
 ///
-/// * `args` - TODO: Document argument.
-/// * `depth` - TODO: Document argument.
+/// * `args` - The `args` parameter.
+/// * `depth` - The `depth` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 fn expand_response_files_recursive(args: &[String], depth: usize) -> Result<Vec<String>> {
     if depth > 16 {
         return Err(MsiError::WixCompiler {

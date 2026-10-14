@@ -14,6 +14,7 @@ use std::fs;
 ///
 /// # Arguments
 ///
+/// * `py` - Python GIL token.
 /// * `source` - `WiX` source code string (`.wxs`).
 /// * `output_path` - Target `.msi` file path on disk.
 ///
@@ -23,7 +24,7 @@ use std::fs;
 ///
 /// # Returns
 ///
-/// Returns the result of the operation.
+/// `Ok(())` when the `.msi` package is linked and written to `output_path`.
 #[pyfunction]
 pub fn compile_wix_source(py: Python<'_>, source: String, output_path: String) -> PyResult<()> {
     py.allow_threads(move || {
@@ -68,6 +69,7 @@ pub fn compile_wix_source(py: Python<'_>, source: String, output_path: String) -
 ///
 /// # Arguments
 ///
+/// * `py` - Python GIL token.
 /// * `wxs_path` - Path to the `.wxs` source file on disk.
 /// * `output_path` - Target `.msi` file path on disk.
 ///
@@ -77,7 +79,7 @@ pub fn compile_wix_source(py: Python<'_>, source: String, output_path: String) -
 ///
 /// # Returns
 ///
-/// Returns the result of the operation.
+/// `Ok(())` when the `.wxs` file is compiled and written to `output_path`.
 #[pyfunction]
 pub fn compile_wix_file(py: Python<'_>, wxs_path: &str, output_path: String) -> PyResult<()> {
     let source = fs::read_to_string(wxs_path).map_err(|e| {

@@ -15,7 +15,6 @@ pub type BSTR = *mut u16;
 /// Allocates a new BSTR from a null-terminated UTF-16 string.
 #[cfg_attr(not(test), no_mangle)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-#[cfg_attr(coverage_nightly, coverage(off))]
 #[must_use]
 pub extern "C" fn SysAllocString(s: *const u16) -> BSTR {
     if s.is_null() {
@@ -33,6 +32,7 @@ pub extern "C" fn SysAllocString(s: *const u16) -> BSTR {
     SysAllocStringLen(s, len as u32)
 }
 
+/// Allocates raw 4-byte-aligned heap memory for a `BSTR` buffer of `total_alloc` bytes.
 #[inline(always)]
 fn alloc_bstr_memory(total_alloc: u32) -> *mut u8 {
     #[cfg(test)]
@@ -79,7 +79,6 @@ pub extern "C" fn SysAllocStringLen(s: *const u16, len: u32) -> BSTR {
 
 /// Frees a previously allocated BSTR.
 #[cfg_attr(not(test), no_mangle)]
-#[cfg_attr(coverage_nightly, coverage(off))]
 pub extern "C" fn SysFreeString(bstr: BSTR) {
     if bstr.is_null() {
         return;

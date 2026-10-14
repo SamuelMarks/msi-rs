@@ -19,30 +19,7 @@ pub const IPC_FRAME_MAGIC: [u8; 6] = [b'M', b'S', b'I', b'P', b'C', 0x01];
 /// Minimum frame header size: 6-byte magic + 4-byte length + 4-byte CRC32 = 14 bytes.
 pub const IPC_FRAME_HEADER_SIZE: usize = 14;
 
-/// Computes the standard IEEE 802.3 CRC32 checksum over the given byte slice.
-///
-/// # Arguments
-///
-/// * `bytes` - TODO: Document argument.
-///
-/// # Returns
-///
-/// TODO: Document return value.
-#[must_use]
-pub fn compute_crc32(bytes: &[u8]) -> u32 {
-    let mut crc = 0xFFFF_FFFF_u32;
-    for &b in bytes {
-        crc ^= u32::from(b);
-        for _ in 0..8 {
-            if (crc & 1) != 0 {
-                crc = (crc >> 1) ^ 0xEDB8_8320;
-            } else {
-                crc >>= 1;
-            }
-        }
-    }
-    !crc
-}
+pub use crate::cab::csum::compute_crc32;
 
 /// A validated binary IPC frame with length prefix and CRC32 payload checksum.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -223,7 +200,7 @@ impl Default for WorkerMessage {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn default() -> Self {
         Self::ProgressUpdate {
             current: 0,
@@ -414,12 +391,12 @@ impl WorkerMessage {
 ///
 /// # Arguments
 ///
-/// * `bytes` - TODO: Document argument.
-/// * `offset` - TODO: Document argument.
+/// * `bytes` - The `bytes` parameter.
+/// * `offset` - The `offset` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 fn read_u32(bytes: &[u8], offset: &mut usize) -> Result<u32> {
     if *offset + 4 > bytes.len() {
         return Err(MsiError::WorkerIpcError {
@@ -436,12 +413,12 @@ fn read_u32(bytes: &[u8], offset: &mut usize) -> Result<u32> {
 ///
 /// # Arguments
 ///
-/// * `bytes` - TODO: Document argument.
-/// * `offset` - TODO: Document argument.
+/// * `bytes` - The `bytes` parameter.
+/// * `offset` - The `offset` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 fn read_i32(bytes: &[u8], offset: &mut usize) -> Result<i32> {
     if *offset + 4 > bytes.len() {
         return Err(MsiError::WorkerIpcError {
@@ -458,13 +435,13 @@ fn read_i32(bytes: &[u8], offset: &mut usize) -> Result<i32> {
 ///
 /// # Arguments
 ///
-/// * `bytes` - TODO: Document argument.
-/// * `offset` - TODO: Document argument.
-/// * `len` - TODO: Document argument.
+/// * `bytes` - The `bytes` parameter.
+/// * `offset` - The `offset` parameter.
+/// * `len` - The `len` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 fn read_slice(bytes: &[u8], offset: &mut usize, len: usize) -> Result<Vec<u8>> {
     if *offset + len > bytes.len() {
         return Err(MsiError::WorkerIpcError {
@@ -505,12 +482,12 @@ impl IpcSocketEndpoint {
     ///
     /// # Arguments
     ///
-    /// * `guid` - TODO: Document argument.
-    /// * `is_windows` - TODO: Document argument.
+    /// * `guid` - The `guid` parameter.
+    /// * `is_windows` - The `is_windows` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn socket_path_for(guid: &str, is_windows: bool) -> String {
         if is_windows {
@@ -548,13 +525,13 @@ pub fn handle_ipc_stream<R: Read, W: Write>(
 ///
 /// # Arguments
 ///
-/// * `reader` - TODO: Document argument.
-/// * `writer` - TODO: Document argument.
-/// * `executor` - TODO: Document argument.
+/// * `reader` - The `reader` parameter.
+/// * `writer` - The `writer` parameter.
+/// * `executor` - The `executor` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 fn handle_ipc_stream_internal(
     reader: &mut dyn Read,
     writer: &mut dyn Write,

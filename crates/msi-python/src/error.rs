@@ -100,7 +100,7 @@ pub fn to_py_err(err: &msi::MsiError) -> PyErr {
 ///
 /// # Returns
 ///
-/// Returns the result of the operation.
+/// `Ok(())` when all custom exception classes are added to `m`.
 pub fn register_exceptions(m: &Bound<'_, PyModule>) -> PyResult<()> {
     let _ = m.add("MsiError", m.py().get_type_bound::<MsiError>());
     let _ = m.add(
@@ -122,12 +122,11 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `res` - The argument parameter.
-    /// * `PyModule>>` - The argument parameter.
+    /// * `res` - Result of constructing the target Python module.
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// `true` if `res` was `Ok` and all exception classes were registered, `false` otherwise.
     fn check_register_exceptions(res: PyResult<Bound<'_, PyModule>>) -> bool {
         res.is_ok_and(|m| {
             let _ = register_exceptions(&m);

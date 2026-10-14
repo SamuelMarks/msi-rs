@@ -28,7 +28,7 @@ impl BindImageEngine {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// `Ok(())` when PE image import binding succeeds.
     pub fn bind_image(&self, image_path: &Path, _dll_paths: Option<&[String]>) -> Result<()> {
         let buffer = fs::read(image_path).map_err(|e| {
             MsiError::Io(crate::error::IoContext::from_string(format!(

@@ -23,11 +23,11 @@ impl<T: Read + Write + std::fmt::Debug> IpcConnection<T> {
     ///
     /// # Arguments
     ///
-    /// * `stream` - TODO: Document argument.
+    /// * `stream` - The `stream` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub const fn new(stream: T) -> Self {
         Self { stream }
     }
@@ -39,11 +39,11 @@ impl<T: Read + Write + std::fmt::Debug> IpcConnection<T> {
     ///
     /// # Arguments
     ///
-    /// * `message` - TODO: Document argument.
+    /// * `message` - The `message` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn send_message(&mut self, message: &RpcMessage) -> Result<()> {
         let data = message.to_bytes();
         let len = data.len() as u32;
@@ -70,7 +70,7 @@ impl<T: Read + Write + std::fmt::Debug> IpcConnection<T> {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn receive_message(&mut self) -> Result<RpcMessage> {
         let mut len_buf = [0u8; 4];
         self.stream
@@ -126,7 +126,7 @@ impl RpcMessage {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn to_bytes(&self) -> Vec<u8> {
         match self {
@@ -154,11 +154,11 @@ impl RpcMessage {
     ///
     /// # Arguments
     ///
-    /// * `data` - TODO: Document argument.
+    /// * `data` - The `data` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn from_bytes(data: &[u8]) -> Result<Self> {
         let text = std::str::from_utf8(data).map_err(|_| MsiError::WorkerIpcError {
             reason: "Invalid UTF-8".to_string(),
@@ -210,7 +210,7 @@ impl IpcRouter {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn new_endpoint(session_id: &str) -> IpcEndpoint {
         #[cfg(unix)]
@@ -243,7 +243,7 @@ impl IpcRouter {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn apply_impersonation(&self, no_impersonate: bool) -> Result<()> {
         if no_impersonate {
             // Leave elevated privileges intact
@@ -278,11 +278,11 @@ impl IpcRouter {
     ///
     /// # Arguments
     ///
-    /// * `endpoint` - TODO: Document argument.
+    /// * `endpoint` - The `endpoint` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn spawn_daemon(&self, endpoint: &IpcEndpoint) -> Result<()> {
         match endpoint {
             IpcEndpoint::UnixSocket(path) => {

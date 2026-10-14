@@ -58,12 +58,12 @@ impl LogMessage {
     ///
     /// # Arguments
     ///
-    /// * `mode` - TODO: Document argument.
-    /// * `payload` - TODO: Document argument.
+    /// * `mode` - [`InstallLogMode`] severity / category flag.
+    /// * `payload` - Formatted log text payload.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Newly constructed [`LogMessage`].
     #[must_use]
     pub fn new(mode: InstallLogMode, payload: impl Into<String>) -> Self {
         Self {
@@ -77,7 +77,7 @@ impl LogMessage {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Formatted MSI log line with trailing newline.
     #[must_use]
     pub fn format_msi(&self) -> String {
         match self.mode {
@@ -154,12 +154,12 @@ impl MsiLogQueue {
     ///
     /// # Arguments
     ///
-    /// * `mode` - TODO: Document argument.
-    /// * `payload` - TODO: Document argument.
+    /// * `mode` - [`InstallLogMode`] severity / category flag.
+    /// * `payload` - Log message text.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// `Ok(())` when the message is queued.
     pub fn log(&self, mode: InstallLogMode, payload: &str) -> Result<()> {
         if !self.active.load(Ordering::Acquire) {
             return Err(MsiError::LoggingCallbackError(

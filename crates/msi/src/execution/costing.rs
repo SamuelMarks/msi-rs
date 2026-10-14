@@ -102,13 +102,13 @@ impl VolumeCost {
     ///
     /// # Arguments
     ///
-    /// * `volume` - TODO: Document argument.
-    /// * `cluster_size` - TODO: Document argument.
-    /// * `available_bytes` - TODO: Document argument.
+    /// * `volume` - The `volume` parameter.
+    /// * `cluster_size` - The `cluster_size` parameter.
+    /// * `available_bytes` - The `available_bytes` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     const fn new_inner(volume: String, cluster_size: u64, available_bytes: u64) -> Self {
         let cluster = if cluster_size == 0 {
             DEFAULT_CLUSTER_SIZE
@@ -128,7 +128,7 @@ impl VolumeCost {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn volume(&self) -> &str {
         &self.volume
@@ -138,7 +138,7 @@ impl VolumeCost {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn cluster_size(&self) -> u64 {
         self.cluster_size
@@ -148,7 +148,7 @@ impl VolumeCost {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn available_bytes(&self) -> u64 {
         self.available_bytes
@@ -158,7 +158,7 @@ impl VolumeCost {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn cost_bytes(&self) -> i64 {
         self.cost_bytes
@@ -168,7 +168,7 @@ impl VolumeCost {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn file_count(&self) -> u32 {
         self.file_count

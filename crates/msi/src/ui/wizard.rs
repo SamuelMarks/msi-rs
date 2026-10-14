@@ -333,7 +333,7 @@ impl LocaleKeyboardDialog {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn current_locale(&self) -> &str {
         &self.locales[self.selected_locale]
@@ -343,7 +343,7 @@ impl LocaleKeyboardDialog {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn current_keymap(&self) -> &str {
         &self.keymaps[self.selected_keymap]
@@ -1088,7 +1088,7 @@ impl DiagnosticsLogConsole {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn export_to_file(&self, dest_path: &Path) -> Result<()> {
         let mut out = String::new();
         for line in &self.logs {

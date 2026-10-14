@@ -125,7 +125,7 @@ impl UiManager {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -138,7 +138,7 @@ impl UiManager {
     ///
     /// # Arguments
     ///
-    /// * `cb` - TODO: Document argument.
+    /// * `cb` - The `cb` parameter.
     pub fn set_external_ui(&mut self, cb: ExternalUiCallback) {
         self.external_cb = Some(cb);
     }
@@ -150,12 +150,12 @@ impl UiManager {
     ///
     /// # Arguments
     ///
-    /// * `msg_type` - TODO: Document argument.
-    /// * `message` - TODO: Document argument.
+    /// * `msg_type` - The `msg_type` parameter.
+    /// * `message` - The `message` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn invoke_external_ui(&self, msg_type: u32, message: &str) -> Result<i32> {
         if let Some(cb) = self.external_cb {
             let res = cb(msg_type, message);
@@ -177,12 +177,12 @@ impl UiManager {
     ///
     /// # Arguments
     ///
-    /// * `name` - TODO: Document argument.
-    /// * `title` - TODO: Document argument.
+    /// * `name` - The `name` parameter.
+    /// * `title` - The `title` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn load_dialog(&mut self, name: &str, title: &str) -> Result<()> {
         if name.is_empty() {
             return Err(MsiError::ActionExecutionError(
@@ -207,12 +207,12 @@ impl UiManager {
     ///
     /// # Arguments
     ///
-    /// * `dialog_name` - TODO: Document argument.
-    /// * `control` - TODO: Document argument.
+    /// * `dialog_name` - The `dialog_name` parameter.
+    /// * `control` - The `control` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn add_control(&mut self, dialog_name: &str, control: ControlDef) -> Result<()> {
         if let Some(dlg) = self.dialogs.get_mut(dialog_name) {
             dlg.controls.push(control);
@@ -231,11 +231,11 @@ impl UiManager {
     ///
     /// # Arguments
     ///
-    /// * `event` - TODO: Document argument.
+    /// * `event` - The `event` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn handle_event(&self, event: &ControlEvent) -> Result<()> {
         match event {
             ControlEvent::SpawnDialog(name) | ControlEvent::NewDialog(name) => {

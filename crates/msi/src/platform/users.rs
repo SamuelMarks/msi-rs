@@ -49,11 +49,11 @@ impl UserName {
     ///
     /// # Arguments
     ///
-    /// * `name` - TODO: Document argument.
+    /// * `name` - The `name` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn new(name: impl Into<String>) -> Self {
         Self(name.into())
@@ -63,7 +63,7 @@ impl UserName {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -85,11 +85,11 @@ impl GroupName {
     ///
     /// # Arguments
     ///
-    /// * `name` - TODO: Document argument.
+    /// * `name` - The `name` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn new(name: impl Into<String>) -> Self {
         Self(name.into())
@@ -99,7 +99,7 @@ impl GroupName {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -121,11 +121,11 @@ impl SecurityIdentifier {
     ///
     /// # Arguments
     ///
-    /// * `sid` - TODO: Document argument.
+    /// * `sid` - The `sid` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn new(sid: impl Into<String>) -> Self {
         Self(sid.into())
@@ -135,7 +135,7 @@ impl SecurityIdentifier {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -162,13 +162,13 @@ pub trait LocalAccountManager {
     ///
     /// # Arguments
     ///
-    /// * `name` - TODO: Document argument.
-    /// * `password` - TODO: Document argument.
-    /// * `fail_if_exists` - TODO: Document argument.
+    /// * `name` - The `name` parameter.
+    /// * `password` - The `password` parameter.
+    /// * `fail_if_exists` - The `fail_if_exists` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn create_user(
         &self,
         name: &UserName,
@@ -187,12 +187,12 @@ pub trait LocalAccountManager {
     ///
     /// # Arguments
     ///
-    /// * `name` - TODO: Document argument.
-    /// * `fail_if_exists` - TODO: Document argument.
+    /// * `name` - The `name` parameter.
+    /// * `fail_if_exists` - The `fail_if_exists` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn create_group(&self, name: &GroupName, fail_if_exists: bool) -> Result<String>;
 
     /// Adds a user to a local group.
@@ -202,12 +202,12 @@ pub trait LocalAccountManager {
     ///
     /// # Arguments
     ///
-    /// * `user` - TODO: Document argument.
-    /// * `group` - TODO: Document argument.
+    /// * `user` - The `user` parameter.
+    /// * `group` - The `group` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn add_user_to_group(&self, user: &UserName, group: &GroupName) -> Result<String>;
 }
 

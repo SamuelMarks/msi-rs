@@ -16,7 +16,7 @@ use std::fs;
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// `Ok(())` when the string pool dump is printed to stdout.
 pub fn run_dump(path: &str) -> Result<(), msi::error::MsiError> {
     let buf = fs::read(path)?;
     let reader = msi::cfb::reader::CfbReader::new(&buf)?;
@@ -65,11 +65,11 @@ pub fn run_dump(path: &str) -> Result<(), msi::error::MsiError> {
 ///
 /// # Arguments
 ///
-/// * `args` - TODO: Document argument.
+/// * `args` - Command-line arguments including the program name at index 0.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// `Ok(())` when the dump completes.
 fn run_main(args: &[String]) -> Result<(), msi::error::MsiError> {
     let path = if args.len() > 1 {
         &args[1]
@@ -87,7 +87,7 @@ fn run_main(args: &[String]) -> Result<(), msi::error::MsiError> {
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// `Ok(())` when the dump completes.
 fn main() -> Result<(), msi::error::MsiError> {
     let args: Vec<String> = std::env::args().collect();
     run_main(&args)

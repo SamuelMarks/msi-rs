@@ -12,6 +12,7 @@ pub mod properties;
 pub mod record;
 pub mod record_stream;
 pub mod registry;
+/// Shared thread-safe registry backend for Win32 MSI registry queries.
 pub(crate) mod registry_backend;
 pub mod state;
 pub mod strings;

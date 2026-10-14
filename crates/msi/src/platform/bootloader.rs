@@ -240,7 +240,7 @@ impl LinuxBootloaderConfig {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn write_systemd_boot(
         esp_root: &Path,
         entry_name: &str,
@@ -458,7 +458,7 @@ impl EfiNvramManager {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn create_boot_entry(
         efivarfs_root: Option<&Path>,
         boot_index: u16,
@@ -550,7 +550,7 @@ impl EfiNvramManager {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn set_boot_order(efivarfs_root: Option<&Path>, order: &[u16]) -> Result<()> {
         let root = efivarfs_root.unwrap_or_else(|| Path::new("/sys/firmware/efi/efivars"));
         let var_filename = format!("BootOrder-{}", Self::EFI_GLOBAL_VARIABLE_GUID);

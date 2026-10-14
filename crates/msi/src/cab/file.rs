@@ -168,7 +168,7 @@ impl FileAttributes {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// `true` if `ATTR_READONLY` (`0x01`) is set, `false` otherwise.
     #[must_use]
     pub const fn is_read_only(self) -> bool {
         (self.0 & ATTR_READONLY) != 0
@@ -178,7 +178,7 @@ impl FileAttributes {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// `true` if `ATTR_HIDDEN` (`0x02`) is set, `false` otherwise.
     #[must_use]
     pub const fn is_hidden(self) -> bool {
         (self.0 & ATTR_HIDDEN) != 0
@@ -188,7 +188,7 @@ impl FileAttributes {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// `true` if `ATTR_SYSTEM` (`0x04`) is set, `false` otherwise.
     #[must_use]
     pub const fn is_system(self) -> bool {
         (self.0 & ATTR_SYSTEM) != 0
@@ -198,7 +198,7 @@ impl FileAttributes {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// `true` if `ATTR_ARCHIVE` (`0x20`) is set, `false` otherwise.
     #[must_use]
     pub const fn is_archive(self) -> bool {
         (self.0 & ATTR_ARCHIVE) != 0
@@ -208,7 +208,7 @@ impl FileAttributes {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// `true` if `ATTR_EXECUTE` (`0x40`) is set, `false` otherwise.
     #[must_use]
     pub const fn is_exec(self) -> bool {
         (self.0 & ATTR_EXECUTE) != 0
@@ -218,7 +218,7 @@ impl FileAttributes {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// `true` if `ATTR_NAME_IS_UTF` (`0x80`) is set, `false` otherwise.
     #[must_use]
     pub const fn is_utf8_name(self) -> bool {
         (self.0 & ATTR_NAME_IS_UTF) != 0

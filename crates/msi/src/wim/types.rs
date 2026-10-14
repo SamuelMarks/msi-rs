@@ -90,33 +90,33 @@ mod tests {
     #[test]
     fn test_types_traits() {
         let g1 = WimGuid::default();
-        let g2 = g1;
-        assert_eq!(g1, g2);
-        assert!(g1 >= g2);
+        let g2 = WimGuid([1u8; 16]);
+        assert_ne!(g1, g2);
+        assert!(g2 > g1);
 
         let i1 = ImageIndex::default();
-        let i2 = i1;
-        assert_eq!(i1, i2);
-        assert!(i1 >= i2);
+        let i2 = ImageIndex(2);
+        assert_ne!(i1, i2);
+        assert!(i2 > i1);
 
         let d1 = DirectoryOffset::default();
-        let d2 = d1;
-        assert_eq!(d1, d2);
-        assert!(d1 >= d2);
+        let d2 = DirectoryOffset(64);
+        assert_ne!(d1, d2);
+        assert!(d2 > d1);
 
         let c1 = ChunkIndex::default();
-        let c2 = c1;
-        assert_eq!(c1, c2);
-        assert!(c1 >= c2);
+        let c2 = ChunkIndex(1);
+        assert_ne!(c1, c2);
+        assert!(c2 > c1);
 
         let m1 = FileAttributeMask::default();
-        let m2 = m1;
-        assert_eq!(m1, m2);
-        assert!(m1 >= m2);
+        let m2 = FileAttributeMask(0x10);
+        assert_ne!(m1, m2);
+        assert!(m2 > m1);
 
         let h1 = FileHash::default();
-        let h2 = h1;
-        assert_eq!(h1, h2);
-        assert!(h1 >= h2);
+        let h2 = FileHash([0xAB; 20]);
+        assert_ne!(h1, h2);
+        assert!(h2 > h1);
     }
 }

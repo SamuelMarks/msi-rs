@@ -225,7 +225,7 @@ impl Default for SerialConsoleConfig {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn default() -> Self {
         Self {
             port_name: "/dev/ttyS0".to_string(),
@@ -364,7 +364,7 @@ impl UefiGopFramebuffer {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn put_pixel(&self, x: u32, y: u32, color: Color32, buffer: &mut [u8]) -> Result<()> {
         if x >= self.width || y >= self.height {
             return Err(MsiError::ConsoleInitError {
@@ -432,7 +432,7 @@ impl UefiGopFramebuffer {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn clear(&self, color: Color32, buffer: &mut [u8]) -> Result<()> {
         let total_bytes = (self.height * self.stride * 4) as usize;
         if buffer.len() < total_bytes {

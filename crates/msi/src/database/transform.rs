@@ -194,7 +194,7 @@ impl DatabaseTransform {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// `Ok(())` if the transform satisfies all validation flags against `db`.
     pub fn validate(&self, db: &LinkedDatabase) -> Result<()> {
         let flags = self.summary_info.word_count.unwrap_or(0) as u32;
 
@@ -264,7 +264,7 @@ impl DatabaseTransform {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// `Ok(())` when the transform operations are applied to `db`.
     pub fn apply(&self, db: &mut LinkedDatabase) -> Result<()> {
         self.validate(db)?;
         for (table_name, tt) in &self.tables {
@@ -405,13 +405,13 @@ impl DatabaseTransform {
 ///
 /// # Arguments
 ///
-/// * `r1` - TODO: Document argument.
-/// * `r2` - TODO: Document argument.
-/// * `schema` - TODO: Document argument.
+/// * `r1` - First [`Record`] to compare.
+/// * `r2` - Second [`Record`] to compare.
+/// * `schema` - Optional [`crate::database::TableSchema`] defining primary key columns.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// `true` if the records share identical primary key values (or are equal when no schema is present).
 fn rows_primary_keys_match(
     r1: &Record,
     r2: &Record,

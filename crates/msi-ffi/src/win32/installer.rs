@@ -637,8 +637,8 @@ pub extern "system" fn MsiVerifyPackageA(szPackagePath: Lpcstr) -> Uint {
 ///
 /// # Arguments
 ///
-/// * `cmd` - TODO: Document argument.
-/// * `context` - TODO: Document argument.
+/// * `cmd` - The `cmd` parameter.
+/// * `context` - The `context` parameter.
 fn parse_command_line(cmd: &str, context: &mut msi::execution::EvaluationContext) {
     let mut current_key = String::new();
     let mut current_val = String::new();
@@ -669,6 +669,7 @@ fn parse_command_line(cmd: &str, context: &mut msi::execution::EvaluationContext
     }
 }
 
+/// Opens and executes a transactional package installation from `path_str` with optional `cmd_str` property overrides.
 fn execute_install(path_str: &str, cmd_str: Option<&str>) -> Uint {
     let pkg = match msi::Package::open(path_str) {
         Ok(p) => p,

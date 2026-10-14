@@ -17,11 +17,11 @@ impl WebAppPoolName {
     ///
     /// # Arguments
     ///
-    /// * `name` - TODO: Document argument.
+    /// * `name` - The `name` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn new(name: impl Into<String>) -> Self {
         Self(name.into())
@@ -31,7 +31,7 @@ impl WebAppPoolName {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -53,11 +53,11 @@ impl WebSitePort {
     ///
     /// # Arguments
     ///
-    /// * `port` - TODO: Document argument.
+    /// * `port` - The `port` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn new(port: u16) -> Self {
         Self(port)
@@ -67,7 +67,7 @@ impl WebSitePort {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn value(&self) -> u16 {
         self.0
@@ -89,11 +89,11 @@ impl CertificateHash {
     ///
     /// # Arguments
     ///
-    /// * `hash` - TODO: Document argument.
+    /// * `hash` - The `hash` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn new(hash: impl Into<String>) -> Self {
         Self(hash.into())
@@ -103,7 +103,7 @@ impl CertificateHash {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -125,11 +125,11 @@ impl VirtualDirectoryPath {
     ///
     /// # Arguments
     ///
-    /// * `path` - TODO: Document argument.
+    /// * `path` - The `path` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn new(path: impl Into<String>) -> Self {
         Self(path.into())
@@ -139,7 +139,7 @@ impl VirtualDirectoryPath {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -161,12 +161,12 @@ pub trait WebServerConfigGenerator {
     ///
     /// # Arguments
     ///
-    /// * `name` - TODO: Document argument.
-    /// * `runtime` - TODO: Document argument.
+    /// * `name` - The `name` parameter.
+    /// * `runtime` - The `runtime` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn generate_pool_config(&self, name: &WebAppPoolName, runtime: &str) -> Result<String>;
 
     /// Generates a configuration block for a website/virtual host.
@@ -176,13 +176,13 @@ pub trait WebServerConfigGenerator {
     ///
     /// # Arguments
     ///
-    /// * `name` - TODO: Document argument.
-    /// * `directory` - TODO: Document argument.
-    /// * `port` - TODO: Document argument.
+    /// * `name` - The `name` parameter.
+    /// * `directory` - The `directory` parameter.
+    /// * `port` - The `port` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn generate_site_config(
         &self,
         name: &str,

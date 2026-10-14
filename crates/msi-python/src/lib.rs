@@ -52,11 +52,11 @@ pub fn init_msi_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
 ///
 /// # Arguments
 ///
-/// * `m` - The argument parameter.
+/// * `m` - The bound `_msi` Python module being initialized.
 ///
 /// # Returns
 ///
-/// Returns the result of the operation.
+/// `Ok(())` when the module is populated.
 #[allow(clippy::redundant_pub_crate)]
 #[cfg_attr(not(coverage), pymodule)]
 #[allow(clippy::unnecessary_wraps)]
@@ -72,11 +72,11 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `res` - The argument parameter.
+    /// * `res` - Result of constructing the bound Python module.
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// `true` if `res` was `Ok` and all exported symbols were verified, `false` otherwise.
     fn check_msi_module_init(res: PyResult<Bound<'_, PyModule>>) -> bool {
         res.is_ok_and(|m| {
             assert!(init_msi_module(&m).is_ok());

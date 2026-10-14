@@ -29,7 +29,6 @@ use std::fs;
 
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[cfg_attr(coverage_nightly, coverage(off))]
 #[must_use]
 pub unsafe extern "C" fn msi_compile_wix_source(
     wxs_content: *const c_char,
@@ -102,7 +101,6 @@ pub unsafe extern "C" fn msi_compile_wix_source(
 
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[cfg_attr(coverage_nightly, coverage(off))]
 #[must_use]
 pub unsafe extern "C" fn msi_compile_wix_file(
     wxs_path: *const c_char,

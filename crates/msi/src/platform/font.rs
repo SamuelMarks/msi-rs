@@ -17,11 +17,11 @@ impl FontName {
     ///
     /// # Arguments
     ///
-    /// * `name` - TODO: Document argument.
+    /// * `name` - The `name` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn new(name: impl Into<String>) -> Self {
         Self(name.into())
@@ -31,7 +31,7 @@ impl FontName {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -47,11 +47,11 @@ impl FontFile {
     ///
     /// # Arguments
     ///
-    /// * `path` - TODO: Document argument.
+    /// * `path` - The `path` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn new(path: impl Into<PathBuf>) -> Self {
         Self(path.into())
@@ -61,7 +61,7 @@ impl FontFile {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn as_path(&self) -> &Path {
         &self.0
@@ -85,11 +85,11 @@ impl TrueTypeHeader {
     ///
     /// # Arguments
     ///
-    /// * `data` - TODO: Document argument.
+    /// * `data` - The `data` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn parse(data: &[u8]) -> Result<Self> {
         if data.len() < 12 {
             return Err(MsiError::FontRegistrationError(
@@ -155,12 +155,12 @@ impl FontManager {
     ///
     /// # Arguments
     ///
-    /// * `_title` - TODO: Document argument.
-    /// * `file` - TODO: Document argument.
+    /// * `_title` - The `_title` parameter.
+    /// * `file` - The `file` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn register_font(&self, _title: &FontName, file: &FontFile) -> Result<()> {
         if !file.as_path().exists() {
             return Err(MsiError::FontRegistrationError(
@@ -178,12 +178,12 @@ impl FontManager {
     ///
     /// # Arguments
     ///
-    /// * `_title` - TODO: Document argument.
-    /// * `file` - TODO: Document argument.
+    /// * `_title` - The `_title` parameter.
+    /// * `file` - The `file` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn unregister_font(&self, _title: &FontName, file: &FontFile) -> Result<()> {
         if !file.as_path().exists() {
             return Err(MsiError::FontRegistrationError(
@@ -204,12 +204,12 @@ impl FontManager {
     ///
     /// # Arguments
     ///
-    /// * `_title` - TODO: Document argument.
-    /// * `file` - TODO: Document argument.
+    /// * `_title` - The `_title` parameter.
+    /// * `file` - The `file` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn register_font(&self, _title: &FontName, file: &FontFile) -> Result<()> {
         if !file.as_path().exists() {
             return Err(MsiError::FontRegistrationError(
@@ -227,12 +227,12 @@ impl FontManager {
     ///
     /// # Arguments
     ///
-    /// * `_title` - TODO: Document argument.
-    /// * `file` - TODO: Document argument.
+    /// * `_title` - The `_title` parameter.
+    /// * `file` - The `file` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn unregister_font(&self, _title: &FontName, file: &FontFile) -> Result<()> {
         if !file.as_path().exists() {
             return Err(MsiError::FontRegistrationError(
@@ -252,12 +252,12 @@ impl FontManager {
     ///
     /// # Arguments
     ///
-    /// * `_title` - TODO: Document argument.
-    /// * `file` - TODO: Document argument.
+    /// * `_title` - The `_title` parameter.
+    /// * `file` - The `file` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn register_font(&self, _title: &FontName, file: &FontFile) -> Result<()> {
         if !file.as_path().exists() {
             return Err(MsiError::FontRegistrationError(
@@ -275,12 +275,12 @@ impl FontManager {
     ///
     /// # Arguments
     ///
-    /// * `_title` - TODO: Document argument.
-    /// * `file` - TODO: Document argument.
+    /// * `_title` - The `_title` parameter.
+    /// * `file` - The `file` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn unregister_font(&self, _title: &FontName, file: &FontFile) -> Result<()> {
         if !file.as_path().exists() {
             return Err(MsiError::FontRegistrationError(

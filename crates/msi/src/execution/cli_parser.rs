@@ -325,12 +325,12 @@ impl LoggingOptions {
     ///
     /// # Arguments
     ///
-    /// * `flags` - TODO: Document argument.
-    /// * `log_file` - TODO: Document argument.
+    /// * `flags` - The `flags` parameter.
+    /// * `log_file` - The `log_file` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn parse_impl(flags: &str, log_file: String) -> Result<Self> {
         let mut opts = Self {
             log_file,
@@ -421,11 +421,11 @@ impl MsiExecOptions {
     ///
     /// # Arguments
     ///
-    /// * `arg_list` - TODO: Document argument.
+    /// * `arg_list` - The `arg_list` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[allow(clippy::too_many_lines)]
     fn parse_strings(arg_list: &[String]) -> Result<Self> {
         if arg_list.is_empty() {
@@ -576,14 +576,14 @@ impl MsiExecOptions {
     ///
     /// # Arguments
     ///
-    /// * `opt` - TODO: Document argument.
-    /// * `prefix` - TODO: Document argument.
-    /// * `arg_list` - TODO: Document argument.
-    /// * `i` - TODO: Document argument.
+    /// * `opt` - The `opt` parameter.
+    /// * `prefix` - The `prefix` parameter.
+    /// * `arg_list` - The `arg_list` parameter.
+    /// * `i` - The `i` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn extract_param(
         opt: &str,
         prefix: &str,

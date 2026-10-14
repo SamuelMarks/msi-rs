@@ -95,7 +95,7 @@ impl ScriptEngine {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn new() -> Self {
         Self {

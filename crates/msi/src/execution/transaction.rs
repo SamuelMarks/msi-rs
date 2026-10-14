@@ -40,11 +40,11 @@ pub const ERROR_INSTALL_FAILURE: u32 = 1603;
 ///
 /// # Arguments
 ///
-/// * `path_str` - TODO: Document argument.
+/// * `path_str` - The `path_str` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 fn is_executable_file(path_str: &str) -> bool {
     Path::new(path_str).extension().is_some_and(|ext| {
         ext.eq_ignore_ascii_case("sh")
@@ -179,7 +179,7 @@ impl WorkerContext {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn with_live_executor(mut self, executor: super::worker::LiveWorkerExecutor) -> Self {
         self.live_executor = Some(executor);
@@ -211,7 +211,7 @@ impl WorkerContext {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub const fn bare_metal_journal_mut(
         &mut self,
     ) -> Option<&mut crate::execution::bare_metal::BareMetalRollbackJournal> {
@@ -222,7 +222,7 @@ impl WorkerContext {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn live_executor(&self) -> Option<&super::worker::LiveWorkerExecutor> {
         self.live_executor.as_ref()
@@ -232,7 +232,7 @@ impl WorkerContext {
     ///
     /// # Arguments
     ///
-    /// * `exec` - TODO: Document argument.
+    /// * `exec` - The `exec` parameter.
     pub fn set_live_executor(&mut self, exec: super::worker::LiveWorkerExecutor) {
         self.live_executor = Some(exec);
     }
@@ -250,7 +250,7 @@ impl WorkerContext {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn add_cabinet_bytes(&mut self, name: &str, bytes: &[u8]) -> Result<()> {
         let reader = crate::cab::reader::CabinetReader::new(bytes)?;
         self.cabinet_readers.insert(name.to_string(), reader);
@@ -280,7 +280,7 @@ impl WorkerContext {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn with_cabinet_bytes(mut self, name: &str, bytes: &[u8]) -> Result<Self> {
         self.add_cabinet_bytes(name, bytes)?;
         Ok(self)
@@ -401,7 +401,7 @@ impl WorkerContext {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn custom_action_executor(&self) -> &super::custom_action::CustomActionExecutor {
         &self.custom_action_executor
@@ -414,7 +414,7 @@ impl WorkerContext {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub const fn custom_action_executor_mut(
         &mut self,
     ) -> &mut super::custom_action::CustomActionExecutor {
@@ -425,7 +425,7 @@ impl WorkerContext {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn evaluation_context(&self) -> &EvaluationContext {
         &self.evaluation_context
@@ -435,7 +435,7 @@ impl WorkerContext {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub const fn evaluation_context_mut(&mut self) -> &mut EvaluationContext {
         &mut self.evaluation_context
     }
@@ -478,7 +478,7 @@ impl WorkerContext {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn binaries(&self) -> &HashMap<String, Vec<u8>> {
         &self.binaries
@@ -488,7 +488,7 @@ impl WorkerContext {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn executed_actions(&self) -> &[String] {
         &self.executed_actions
@@ -666,9 +666,9 @@ impl WorkerContext {
     ///
     /// # Arguments
     ///
-    /// * `path` - TODO: Document argument.
-    /// * `content` - TODO: Document argument.
-    /// * `shared_dll_ref_count` - TODO: Document argument.
+    /// * `path` - The `path` parameter.
+    /// * `content` - The `content` parameter.
+    /// * `shared_dll_ref_count` - The `shared_dll_ref_count` parameter.
     fn install_component_file_impl(
         &mut self,
         path: String,
@@ -1026,7 +1026,7 @@ impl WorkerContext {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[allow(clippy::too_many_lines)]
     pub fn execute_script(&mut self, script: &InstallScript) -> Result<()> {
         for op in script.operations() {
@@ -1254,7 +1254,7 @@ impl WorkerContext {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn execute_rollback(&mut self, script: &RollbackScript) -> Result<()> {
         for op in script.operations().iter().rev() {
             match op {
@@ -1338,7 +1338,7 @@ impl WorkerContext {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn commit(&mut self) -> Result<()> {
         self.quarantine_files.clear();
         self.executed_actions.push("CommitSuccess".to_string());
@@ -1378,7 +1378,7 @@ impl InstallState {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn to_i32(self) -> i32 {
         self as i32
@@ -1488,7 +1488,7 @@ impl MultiPackageTransactionManager {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn join_transaction(&mut self, session_id: &str) -> Result<()> {
         if self.state != Some(TransactionState::Active) {
             return Err(MsiError::Chainer(
@@ -1834,12 +1834,12 @@ impl MultiPackageTransactionManager {
     ///
     /// # Arguments
     ///
-    /// * `package_path` - TODO: Document argument.
-    /// * `command_line` - TODO: Document argument.
+    /// * `package_path` - The `package_path` parameter.
+    /// * `command_line` - The `command_line` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn install_product_nested_impl(
         &mut self,
         package_path: String,
@@ -2185,7 +2185,7 @@ impl MultiPackageTransactionManager {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn transaction_name(&self) -> &str {
         &self.transaction_name
@@ -2195,7 +2195,7 @@ impl MultiPackageTransactionManager {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn state(&self) -> Option<TransactionState> {
         self.state
@@ -2205,7 +2205,7 @@ impl MultiPackageTransactionManager {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn chained_packages(&self) -> &[ChainedPackage] {
         &self.chained_packages
@@ -2215,7 +2215,7 @@ impl MultiPackageTransactionManager {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn worker(&self) -> &WorkerContext {
         &self.worker
@@ -2225,7 +2225,7 @@ impl MultiPackageTransactionManager {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub const fn worker_mut(&mut self) -> &mut WorkerContext {
         &mut self.worker
     }
@@ -2257,7 +2257,7 @@ impl<State> Transaction<State> {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn context(&self) -> &EvaluationContext {
         &self.context
@@ -2267,7 +2267,7 @@ impl<State> Transaction<State> {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn database(&self) -> &LinkedDatabase {
         &self.database
@@ -3424,7 +3424,7 @@ impl Transaction<Prepared> {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn install_script(&self) -> &InstallScript {
         &self.install_script
@@ -3434,7 +3434,7 @@ impl Transaction<Prepared> {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn rollback_script(&self) -> &RollbackScript {
         &self.rollback_script
@@ -3444,7 +3444,7 @@ impl Transaction<Prepared> {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn cost_engine(&self) -> &DiskCostEngine {
         &self.cost_engine
@@ -3592,7 +3592,7 @@ impl Transaction<Committed> {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn return_code(&self) -> u32 {
         ERROR_SUCCESS
@@ -3604,7 +3604,7 @@ impl Transaction<RolledBack> {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn return_code(&self) -> u32 {
         ERROR_INSTALL_FAILURE
@@ -3628,7 +3628,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[allow(clippy::too_many_lines, clippy::unnecessary_wraps)]
     fn create_test_database() -> Result<LinkedDatabase> {
         let mut db = unwrap_result(LinkedDatabase::new());

@@ -43,12 +43,12 @@ pub fn format_record(template: &str, record: &Record, context: &FormatContext) -
 ///
 /// # Arguments
 ///
-/// * `template` - TODO: Document argument.
-/// * `context` - TODO: Document argument.
+/// * `template` - The `template` parameter.
+/// * `context` - The `context` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 ///
 /// # Errors
 ///

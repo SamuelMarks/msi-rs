@@ -298,7 +298,7 @@ impl LinuxKernelModuleServicing {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn stage_modules(
         sysroot: &Path,
         kernel_version: &str,

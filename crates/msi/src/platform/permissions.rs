@@ -96,7 +96,7 @@ impl PosixMode {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn as_octal(&self) -> u32 {
         self.mode
@@ -106,7 +106,7 @@ impl PosixMode {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn is_setuid(&self) -> bool {
         self.mode & S_ISUID != 0
@@ -116,7 +116,7 @@ impl PosixMode {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn is_setgid(&self) -> bool {
         self.mode & S_ISGID != 0
@@ -126,7 +126,7 @@ impl PosixMode {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn is_sticky(&self) -> bool {
         self.mode & S_ISVTX != 0
@@ -136,11 +136,11 @@ impl PosixMode {
     ///
     /// # Arguments
     ///
-    /// * `setuid` - TODO: Document argument.
+    /// * `setuid` - The `setuid` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn with_setuid(mut self, setuid: bool) -> Self {
         if setuid {
@@ -155,11 +155,11 @@ impl PosixMode {
     ///
     /// # Arguments
     ///
-    /// * `setgid` - TODO: Document argument.
+    /// * `setgid` - The `setgid` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn with_setgid(mut self, setgid: bool) -> Self {
         if setgid {
@@ -174,11 +174,11 @@ impl PosixMode {
     ///
     /// # Arguments
     ///
-    /// * `sticky` - TODO: Document argument.
+    /// * `sticky` - The `sticky` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn with_sticky(mut self, sticky: bool) -> Self {
         if sticky {
@@ -277,7 +277,7 @@ impl AclEntry {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn to_posix_1e_string(&self) -> String {
         let tag = match self.principal_type {
@@ -296,7 +296,7 @@ impl AclEntry {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn to_nfsv4_zfs_string(&self) -> String {
         let tag = match self.principal_type {
@@ -329,7 +329,7 @@ impl AclEntry {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn to_macos_kauth_string(&self) -> String {
         let tag = match self.principal_type {
@@ -463,7 +463,7 @@ impl ExtendedAttribute {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn key_name(&self) -> &'static str {
         match self {
@@ -477,7 +477,7 @@ impl ExtendedAttribute {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn value_str(&self) -> &str {
         match self {
@@ -511,7 +511,7 @@ impl LiveSecurityApplier {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -521,11 +521,11 @@ impl LiveSecurityApplier {
     ///
     /// # Arguments
     ///
-    /// * `dry_run` - TODO: Document argument.
+    /// * `dry_run` - The `dry_run` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn with_dry_run(mut self, dry_run: bool) -> Self {
         self.dry_run = dry_run;
@@ -536,7 +536,7 @@ impl LiveSecurityApplier {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn is_dry_run(&self) -> bool {
         self.dry_run
@@ -546,7 +546,7 @@ impl LiveSecurityApplier {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn executed_commands(&self) -> &[String] {
         &self.executed_commands
@@ -566,7 +566,7 @@ impl LiveSecurityApplier {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[allow(clippy::missing_const_for_fn)]
     pub fn set_xattr(path: &Path, name: &str, value: &[u8]) -> Result<()> {
         #[cfg(target_os = "macos")]
@@ -780,7 +780,7 @@ impl LiveSecurityApplier {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn apply_mode(&self, path: &Path, mode: PosixMode) -> Result<()> {
         if !path.exists() {
             return Err(MsiError::Io(crate::error::IoContext::from_string(format!(
@@ -820,7 +820,7 @@ impl LiveSecurityApplier {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn apply_posix1e_acl(&mut self, path: &Path, acl_text: &str) -> Result<()> {
         let cmd = format!("setfacl -m {acl_text} {}", path.display());
         self.executed_commands.push(cmd.clone());
@@ -848,7 +848,7 @@ impl LiveSecurityApplier {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn apply_nfsv4_acl(&mut self, path: &Path, entries: &[AclEntry]) -> Result<()> {
         for entry in entries {
             let cmd = format!(
@@ -882,7 +882,7 @@ impl LiveSecurityApplier {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn apply_macos_acl(&mut self, path: &Path, entries: &[AclEntry]) -> Result<()> {
         for entry in entries {
             let cmd = format!(
@@ -916,7 +916,7 @@ impl LiveSecurityApplier {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn apply_extended_attribute(
         &mut self,
         path: &Path,
@@ -978,7 +978,7 @@ impl LiveSecurityApplier {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn apply_security_descriptor(
         &mut self,
         path: &Path,

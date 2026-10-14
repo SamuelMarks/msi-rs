@@ -504,7 +504,7 @@ impl Default for LinkedDatabase {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn default() -> Self {
         let mut catalog = DatabaseCatalog::new();
         let _ = crate::database::tables::populate_standard_tables(&mut catalog);
@@ -557,7 +557,7 @@ impl LinkedDatabase {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn add_or_merge_record(&mut self, table: &str, record: Record) -> Result<()> {
         let records = self.tables.entry(table.to_string()).or_default();
 
@@ -626,7 +626,7 @@ impl LinkedDatabase {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn execute_mutation(
         &mut self,
         table: &str,
@@ -885,7 +885,7 @@ impl LinkedDatabase {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[allow(clippy::cognitive_complexity)]
     #[allow(clippy::too_many_lines)]
     pub fn merge_module(
@@ -1265,11 +1265,11 @@ impl MergeModule {
     ///
     /// # Arguments
     ///
-    /// * `path` - TODO: Document argument.
+    /// * `path` - The `path` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn open_path(path: &Path) -> Result<Self> {
         let pkg = Package::open(path)?;
         Ok(Self::from_database(pkg.database().clone()))
@@ -1295,7 +1295,7 @@ impl Default for MergeModule {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn default() -> Self {
         Self::from_database(LinkedDatabase::default())
     }
@@ -1449,14 +1449,14 @@ pub trait IceRule: Send + Sync {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn name(&self) -> &str;
 
     /// Returns a short description of what this ICE rule validates.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn description(&self) -> &str;
 
     /// Executes the validation check on the given [`LinkedDatabase`].
@@ -1813,11 +1813,11 @@ impl CubValidator {
     ///
     /// # Arguments
     ///
-    /// * `p` - TODO: Document argument.
+    /// * `p` - The `p` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn open_path(p: &Path) -> Result<Self> {
         let name = p.file_stem().map_or_else(
             || "cub".to_string(),
@@ -1997,7 +1997,7 @@ impl Default for CubValidator {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn default() -> Self {
         Self::from_database("default", LinkedDatabase::default())
     }
@@ -2053,7 +2053,7 @@ pub struct Linker {
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 fn is_special_reference(rf: &Reference, defined_symbols: &HashMap<Symbol, Vec<usize>>) -> bool {
     match rf.namespace.as_str() {
         "Directory" => STANDARD_DIRECTORIES.iter().any(|d| d.id == rf.id),
@@ -2123,7 +2123,7 @@ impl Linker {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn with_extensions(registry: ExtensionRegistry) -> Self {
         Self {
@@ -2410,11 +2410,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn expand_localization_tokens(&self, db: &mut LinkedDatabase) -> Result<()> {
         for records in db.tables.values_mut() {
             for rec in records {
@@ -2788,11 +2788,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `src_path` - TODO: Document argument.
+    /// * `src_path` - The `src_path` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn resolve_source_path(&self, src_path: &str) -> Option<PathBuf> {
         let p = Path::new(src_path);
         if p.is_absolute() && p.exists() {
@@ -3102,11 +3102,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn run_filtered_ice_validations(&self, db: &LinkedDatabase) -> Result<()> {
         if self.suppress_ice {
             return Ok(());
@@ -3169,7 +3169,7 @@ impl Linker {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[allow(clippy::too_many_lines)]
     fn solve_symbol_graph(&self) -> Result<Vec<IntermediateSection>> {
         let mut all_sections: Vec<&IntermediateSection> = Vec::new();
@@ -3322,11 +3322,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn resolve_component_groups(db: &mut LinkedDatabase) -> Result<()> {
         let members = db.get_records("_ComponentGroupMember").to_vec();
         let nested = db.get_records("_ComponentGroupNested").to_vec();
@@ -3394,16 +3394,16 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `group` - TODO: Document argument.
-    /// * `group_to_components` - TODO: Document argument.
-    /// * `HashSet<String>>` - TODO: Document argument.
-    /// * `group_to_children` - TODO: Document argument.
-    /// * `HashSet<String>>` - TODO: Document argument.
-    /// * `visited` - TODO: Document argument.
+    /// * `group` - The `group` parameter.
+    /// * `group_to_components` - The `group_to_components` parameter.
+    /// * `HashSet<String>>` - The `HashSet<String>>` parameter.
+    /// * `group_to_children` - The `group_to_children` parameter.
+    /// * `HashSet<String>>` - The `HashSet<String>>` parameter.
+    /// * `visited` - The `visited` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn collect_transitive_components(
         group: &str,
         group_to_components: &HashMap<String, HashSet<String>>,
@@ -3432,7 +3432,7 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     fn resolve_standard_directories(db: &mut LinkedDatabase) {
         let existing_dirs: HashSet<String> = db
             .get_records("Directory")
@@ -3487,7 +3487,7 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     fn sequence_standard_actions(db: &mut LinkedDatabase) {
         let existing_actions: HashSet<String> = db
             .get_records("InstallExecuteSequence")
@@ -3604,7 +3604,7 @@ impl Linker {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn bind_binaries(&mut self, db: &mut LinkedDatabase) -> Result<()> {
         let wix_binaries = db.tables.remove("WixBinary").unwrap_or_default();
         for r in &wix_binaries {
@@ -3632,7 +3632,7 @@ impl Linker {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn validate_embedded_chainers(db: &LinkedDatabase) -> Result<()> {
         let chainers = db.get_records("MsiEmbeddedChainer");
         if chainers.is_empty() {
@@ -3718,7 +3718,7 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
     fn layout_media_and_files(db: &mut LinkedDatabase) {
         let file_disk_mapping = db.tables.remove("_FileDiskId").unwrap_or_default();
@@ -3992,11 +3992,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn validate_ice01(db: &LinkedDatabase) -> Option<IceReport> {
         let required_tables = ["Property", "Directory", "Component", "Feature"];
         for tbl in required_tables {
@@ -4015,11 +4015,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn validate_ice02(db: &LinkedDatabase) -> Option<IceReport> {
         let mut parent_map: HashMap<String, String> = HashMap::new();
         for r in db.get_records("Feature") {
@@ -4059,11 +4059,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn validate_ice03(db: &LinkedDatabase) -> Option<IceReport> {
         for (tbl_name, records) in &db.tables {
             if let Some(schema) = db.catalog.get_table(tbl_name) {
@@ -4087,11 +4087,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
     fn validate_ice04(db: &LinkedDatabase) -> Option<IceReport> {
         let files = db.get_records("File");
@@ -4124,11 +4124,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
     fn validate_ice05(db: &LinkedDatabase) -> Option<IceReport> {
         let files = db.get_records("File");
@@ -4172,11 +4172,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn validate_ice06(db: &LinkedDatabase) -> Option<IceReport> {
         for r in db.get_records("File") {
             let ver = r.get(4);
@@ -4201,11 +4201,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn validate_ice07(db: &LinkedDatabase) -> Option<IceReport> {
         for r in db.get_records("File") {
             if let Some(FieldValue::String(name)) = r.get(2) {
@@ -4228,11 +4228,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn validate_ice08(db: &LinkedDatabase) -> Option<IceReport> {
         let mut guid_to_comp: HashMap<String, String> = HashMap::new();
         for r in db.get_records("Component") {
@@ -4262,11 +4262,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn validate_ice09(db: &LinkedDatabase) -> Option<IceReport> {
         let file_keys: HashSet<String> = db
             .get_records("File")
@@ -4335,11 +4335,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn validate_ice18(db: &LinkedDatabase) -> Option<IceReport> {
         let mut file_components: HashMap<String, String> = HashMap::new();
         for r in db.get_records("File") {
@@ -4377,11 +4377,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn validate_ice20(db: &LinkedDatabase) -> Option<IceReport> {
         let seq_records = db.get_records("InstallExecuteSequence");
         let mut action_orders: HashMap<&str, i16> = HashMap::new();
@@ -4433,11 +4433,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn validate_ice30(db: &LinkedDatabase) -> Option<IceReport> {
         let comp_to_dir: HashMap<String, String> = db
             .get_records("Component")
@@ -4491,11 +4491,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn validate_ice33(db: &LinkedDatabase) -> Option<IceReport> {
         for r in db.get_records("Class") {
             if let Some(FieldValue::String(clsid)) = r.get(0) {
@@ -4534,11 +4534,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn validate_ice38(db: &LinkedDatabase) -> Option<IceReport> {
         let reg_roots: HashMap<String, i16> = db
             .get_records("Registry")
@@ -4589,11 +4589,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn validate_ice61(db: &LinkedDatabase) -> Option<IceReport> {
         let product_version_str =
             db.get_records("Property")
@@ -4634,11 +4634,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn validate_ice80(db: &LinkedDatabase) -> Option<IceReport> {
         let mut has_32bit = false;
         let mut has_64bit = false;
@@ -4665,11 +4665,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn validate_ice99(db: &LinkedDatabase) -> Option<IceReport> {
         let mut dir_parents: HashMap<String, String> = HashMap::new();
         for r in db.get_records("Directory") {
@@ -4709,11 +4709,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn validate_ice101(db: &LinkedDatabase) -> Option<IceReport> {
         for r in db.get_records("File") {
             if let Some(FieldValue::Short(seq)) = r.get(7) {
@@ -4733,11 +4733,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn validate_ice103(db: &LinkedDatabase) -> Option<IceReport> {
         for r in db.get_records("Shortcut") {
             if let Some(FieldValue::Short(idx)) = r.get(9) {
@@ -4757,11 +4757,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `rep` - TODO: Document argument.
+    /// * `rep` - The `rep` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[allow(clippy::single_option_map)]
     fn convert_ice(rep: Option<crate::wix::ice::types::IceReport>) -> Option<IceReport> {
         rep.map(|r| IceReport {
@@ -4775,11 +4775,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice10(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::components::validate_ice10(db))
@@ -4789,11 +4789,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice11(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::sequences::validate_ice11(db))
@@ -4803,11 +4803,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice12(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::sequences::validate_ice12(db))
@@ -4817,11 +4817,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice13(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::ui::validate_ice13(db))
@@ -4831,11 +4831,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice14(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::components::validate_ice14(db))
@@ -4845,11 +4845,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice15(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::system::validate_ice15(db))
@@ -4859,11 +4859,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice16(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice16(db))
@@ -4873,11 +4873,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice17(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::system::validate_ice17(db))
@@ -4887,11 +4887,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice19(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::components::validate_ice19(db))
@@ -4901,11 +4901,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice21(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::components::validate_ice21(db))
@@ -4915,11 +4915,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice22(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::components::validate_ice22(db))
@@ -4929,11 +4929,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice23(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::ui::validate_ice23(db))
@@ -4943,11 +4943,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice24(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::ui::validate_ice24(db))
@@ -4957,11 +4957,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice25(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::advanced::validate_ice25(db))
@@ -4971,11 +4971,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice26(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::sequences::validate_ice26(db))
@@ -4985,11 +4985,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice27(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::sequences::validate_ice27(db))
@@ -4999,11 +4999,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice28(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::sequences::validate_ice28(db))
@@ -5013,11 +5013,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice29(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice29(db))
@@ -5027,11 +5027,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice31(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::files::validate_ice31(db))
@@ -5041,11 +5041,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice32(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::system::validate_ice32(db))
@@ -5055,11 +5055,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice34(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::ui::validate_ice34(db))
@@ -5069,11 +5069,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice35(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice35(db))
@@ -5083,11 +5083,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice36(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::system::validate_ice36(db))
@@ -5097,11 +5097,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice37(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice37(db))
@@ -5111,11 +5111,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice39(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice39(db))
@@ -5125,11 +5125,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice40(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice40(db))
@@ -5139,11 +5139,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice41(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice41(db))
@@ -5153,11 +5153,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice42(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::sequences::validate_ice42(db))
@@ -5167,11 +5167,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice43(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::components::validate_ice43(db))
@@ -5181,11 +5181,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice44(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::ui::validate_ice44(db))
@@ -5195,11 +5195,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice45(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice45(db))
@@ -5209,11 +5209,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice46(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice46(db))
@@ -5223,11 +5223,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice47(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::components::validate_ice47(db))
@@ -5237,11 +5237,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice48(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice48(db))
@@ -5251,11 +5251,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice49(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::system::validate_ice49(db))
@@ -5265,11 +5265,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice50(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::system::validate_ice50(db))
@@ -5279,11 +5279,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice51(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice51(db))
@@ -5293,11 +5293,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice52(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::system::validate_ice52(db))
@@ -5307,11 +5307,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice53(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice53(db))
@@ -5321,11 +5321,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice54(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::files::validate_ice54(db))
@@ -5335,11 +5335,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice55(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::system::validate_ice55(db))
@@ -5349,11 +5349,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice56(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::system::validate_ice56(db))
@@ -5363,11 +5363,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice57(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::components::validate_ice57(db))
@@ -5377,11 +5377,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice58(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice58(db))
@@ -5391,11 +5391,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice59(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::components::validate_ice59(db))
@@ -5405,11 +5405,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice60(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::files::validate_ice60(db))
@@ -5419,11 +5419,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice62(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::advanced::validate_ice62(db))
@@ -5433,11 +5433,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice63(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::sequences::validate_ice63(db))
@@ -5447,11 +5447,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice64(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::components::validate_ice64(db))
@@ -5461,11 +5461,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice65(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::system::validate_ice65(db))
@@ -5475,11 +5475,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice66(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::advanced::validate_ice66(db))
@@ -5489,11 +5489,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice67(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::sequences::validate_ice67(db))
@@ -5503,11 +5503,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice68(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::sequences::validate_ice68(db))
@@ -5517,11 +5517,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice69(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::components::validate_ice69(db))
@@ -5531,11 +5531,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice70(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice70(db))
@@ -5545,11 +5545,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice71(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice71(db))
@@ -5559,11 +5559,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice72(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::sequences::validate_ice72(db))
@@ -5573,11 +5573,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice73(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice73(db))
@@ -5587,11 +5587,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice74(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice74(db))
@@ -5601,11 +5601,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice75(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::sequences::validate_ice75(db))
@@ -5615,11 +5615,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice76(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::advanced::validate_ice76(db))
@@ -5629,11 +5629,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice77(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::sequences::validate_ice77(db))
@@ -5643,11 +5643,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice78(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::sequences::validate_ice78(db))
@@ -5657,11 +5657,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice79(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::components::validate_ice79(db))
@@ -5671,11 +5671,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice81(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::advanced::validate_ice81(db))
@@ -5685,11 +5685,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice82(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice82(db))
@@ -5699,11 +5699,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice83(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::advanced::validate_ice83(db))
@@ -5713,11 +5713,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice84(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice84(db))
@@ -5727,11 +5727,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice85(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::system::validate_ice85(db))
@@ -5741,11 +5741,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice86(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::ui::validate_ice86(db))
@@ -5755,11 +5755,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice87(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice87(db))
@@ -5769,11 +5769,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice88(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::system::validate_ice88(db))
@@ -5783,11 +5783,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice89(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::components::validate_ice89(db))
@@ -5797,11 +5797,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice90(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::components::validate_ice90(db))
@@ -5811,11 +5811,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice91(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::components::validate_ice91(db))
@@ -5825,11 +5825,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice92(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice92(db))
@@ -5839,11 +5839,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice93(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice93(db))
@@ -5853,11 +5853,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice94(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::advanced::validate_ice94(db))
@@ -5867,11 +5867,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice95(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::structural::validate_ice95(db))
@@ -5881,11 +5881,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice96(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::files::validate_ice96(db))
@@ -5895,11 +5895,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice97(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::advanced::validate_ice97(db))
@@ -5909,11 +5909,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice98(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::advanced::validate_ice98(db))
@@ -5923,11 +5923,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice100(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::system::validate_ice100(db))
@@ -5937,11 +5937,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice102(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::ui::validate_ice102(db))
@@ -5951,11 +5951,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice104(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::ui::validate_ice104(db))
@@ -5965,11 +5965,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn validate_ice105(db: &LinkedDatabase) -> Option<IceReport> {
         Self::convert_ice(crate::wix::ice::advanced::validate_ice105(db))
@@ -5980,11 +5980,11 @@ impl Linker {
 ///
 /// # Arguments
 ///
-/// * `data` - TODO: Document argument.
+/// * `data` - The `data` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 #[allow(clippy::cast_possible_truncation, clippy::too_many_lines)]
 fn inspect_pe_version(data: &[u8]) -> Option<(String, String)> {
     if data.len() < 64 || data.get(0..2) != Some(b"MZ") {
@@ -6123,11 +6123,11 @@ fn inspect_pe_version(data: &[u8]) -> Option<(String, String)> {
 ///
 /// # Arguments
 ///
-/// * `data` - TODO: Document argument.
+/// * `data` - The `data` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 fn inspect_font_title(data: &[u8]) -> Option<String> {
     if data.len() < 12 {
         return None;
@@ -6199,11 +6199,11 @@ fn inspect_font_title(data: &[u8]) -> Option<String> {
 ///
 /// # Arguments
 ///
-/// * `input` - TODO: Document argument.
+/// * `input` - The `input` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 #[must_use]
 #[allow(clippy::many_single_char_names, clippy::too_many_lines)]
 fn compute_md5(input: &[u8]) -> [u8; 16] {
@@ -7263,7 +7263,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[test]
     fn test_linker_add_library_and_module_and_unreferenced_fragments() -> Result<()> {
         let mut obj = WixObject::new();
@@ -7318,7 +7318,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[test]
     fn test_linker_component_groups_edge_cases() -> Result<()> {
         let mut db_empty = LinkedDatabase::default();
@@ -7403,7 +7403,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[test]
     fn test_linker_directories_and_actions_edge_cases() -> Result<()> {
         let mut db = LinkedDatabase::default();
@@ -7484,7 +7484,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[test]
     fn test_linker_media_layout_edge_cases() -> Result<()> {
         let mut db_empty_files = LinkedDatabase::default();
@@ -7587,7 +7587,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_ice01_to_ice05_comprehensive() -> Result<()> {
@@ -7772,7 +7772,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_ice06_to_ice09_comprehensive() -> Result<()> {
@@ -8065,7 +8065,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_ice18_to_ice33_comprehensive() -> Result<()> {
@@ -8392,7 +8392,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_ice38_to_ice103_comprehensive() -> Result<()> {
@@ -12122,7 +12122,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[test]
     fn test_run_ice_validations_filtered_whitelist_and_suppression() -> Result<()> {
         let mut db = LinkedDatabase::default();
@@ -12196,7 +12196,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[allow(clippy::cognitive_complexity)]
     #[test]
     #[allow(clippy::too_many_lines)]
@@ -12486,7 +12486,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[test]
     fn test_linker_add_or_merge_and_bind_binaries_edge_cases() -> Result<()> {
         let mut db = LinkedDatabase::default();

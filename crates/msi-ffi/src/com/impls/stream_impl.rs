@@ -26,11 +26,11 @@ impl NativeStream {
     ///
     /// # Arguments
     ///
-    /// * `data` - TODO: Document argument.
+    /// * `data` - The `data` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn new(data: Vec<u8>) -> Box<Self> {
         Box::new(Self {
@@ -56,6 +56,7 @@ impl crate::com::util::ComObject for NativeStream {
     }
 }
 
+/// `IStream::Read` `VTable` entry point reading bytes from the in-memory stream buffer.
 unsafe extern "system" fn read(
     this: *mut IStream,
     pv: *mut c_void,
@@ -83,6 +84,7 @@ unsafe extern "system" fn read(
     S_OK
 }
 
+/// `IStream::Write` `VTable` entry point.
 const unsafe extern "system" fn write(
     _this: *mut IStream,
     _pv: *const c_void,
@@ -92,6 +94,7 @@ const unsafe extern "system" fn write(
     crate::error::E_FAIL // Read-only for now
 }
 
+/// `IStream::Seek` `VTable` entry point updating the stream cursor position.
 unsafe extern "system" fn seek(
     this: *mut IStream,
     dlib_move: LARGE_INTEGER,
@@ -117,6 +120,7 @@ unsafe extern "system" fn seek(
     S_OK
 }
 
+/// `IStream::SetSize` `VTable` entry point.
 const unsafe extern "system" fn set_size(
     _this: *mut IStream,
     _lib_new_size: ULARGE_INTEGER,
@@ -124,6 +128,7 @@ const unsafe extern "system" fn set_size(
     crate::error::E_FAIL
 }
 
+/// `IStream::CopyTo` `VTable` entry point.
 const unsafe extern "system" fn copy_to(
     _this: *mut IStream,
     _pstm: *mut IStream,
@@ -134,14 +139,17 @@ const unsafe extern "system" fn copy_to(
     crate::error::E_FAIL
 }
 
+/// `IStream::Commit` `VTable` entry point.
 const unsafe extern "system" fn commit(_this: *mut IStream, _grf_commit_flags: u32) -> HRESULT {
     S_OK
 }
 
+/// `IStream::Revert` `VTable` entry point.
 const unsafe extern "system" fn revert(_this: *mut IStream) -> HRESULT {
     S_OK
 }
 
+/// `IStream::LockRegion` `VTable` entry point.
 const unsafe extern "system" fn lock_region(
     _this: *mut IStream,
     _lib_offset: ULARGE_INTEGER,
@@ -151,6 +159,7 @@ const unsafe extern "system" fn lock_region(
     crate::error::E_FAIL
 }
 
+/// `IStream::UnlockRegion` `VTable` entry point.
 const unsafe extern "system" fn unlock_region(
     _this: *mut IStream,
     _lib_offset: ULARGE_INTEGER,
@@ -160,6 +169,7 @@ const unsafe extern "system" fn unlock_region(
     crate::error::E_FAIL
 }
 
+/// `IStream::Stat` `VTable` entry point.
 const unsafe extern "system" fn stat(
     _this: *mut IStream,
     _pstatstg: *mut STATSTG,
@@ -168,10 +178,12 @@ const unsafe extern "system" fn stat(
     crate::error::E_FAIL
 }
 
+/// `IStream::Clone` `VTable` entry point.
 const unsafe extern "system" fn clone(_this: *mut IStream, _ppstm: *mut *mut IStream) -> HRESULT {
     crate::error::E_FAIL
 }
 
+/// `IUnknown::QueryInterface` `VTable` entry point for [`NativeStream`].
 const unsafe extern "system" fn query_interface(
     _this: *mut IUnknown,
     _riid: *const GUID,
@@ -180,6 +192,7 @@ const unsafe extern "system" fn query_interface(
     crate::com::E_NOINTERFACE
 }
 
+/// Static COM `VTable` instance for [`NativeStream`].
 static NATIVE_STREAM_VTBL: IStreamVtbl = IStreamVtbl {
     parent: IUnknownVtbl {
         QueryInterface: query_interface,

@@ -31,11 +31,11 @@ impl RestartManager {
     ///
     /// # Arguments
     ///
-    /// * `_target_files` - TODO: Document argument.
+    /// * `_target_files` - The `_target_files` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub const fn detect_locking_processes(_target_files: &[&Path]) -> Result<Vec<String>> {
         #[cfg(windows)]
         {
@@ -57,12 +57,12 @@ impl RestartManager {
     ///
     /// # Arguments
     ///
-    /// * `locking_processes` - TODO: Document argument.
-    /// * `unattended` - TODO: Document argument.
+    /// * `locking_processes` - The `locking_processes` parameter.
+    /// * `unattended` - The `unattended` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn prompt_files_in_use(
         &self,
         locking_processes: &[String],

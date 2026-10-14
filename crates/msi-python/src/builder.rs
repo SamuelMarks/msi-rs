@@ -45,7 +45,7 @@ impl PyPackageBuilder {
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// Newly constructed [`PyPackageBuilder`] instance.
     #[new]
     #[pyo3(signature = (product_name, manufacturer, version, product_code = None, upgrade_code = None))]
     pub fn new(
@@ -79,7 +79,7 @@ impl PyPackageBuilder {
     ///
     /// # Arguments
     ///
-    /// * `name` - The argument parameter.
+    /// * `name` - Product display name string.
     pub fn set_product_name(&mut self, name: String) {
         self.inner = std::mem::take(&mut self.inner).product_name(name);
     }
@@ -88,7 +88,7 @@ impl PyPackageBuilder {
     ///
     /// # Arguments
     ///
-    /// * `mfr` - The argument parameter.
+    /// * `mfr` - Vendor or manufacturer display name.
     pub fn set_manufacturer(&mut self, mfr: String) {
         self.inner = std::mem::take(&mut self.inner).manufacturer(mfr);
     }
@@ -101,12 +101,11 @@ impl PyPackageBuilder {
     ///
     /// # Arguments
     ///
-    /// * `version` - The argument parameter.
-    /// * `PyAny>` - The argument parameter.
+    /// * `version` - Python `ProductVersion`, version string (`"1.0.0"`), or version tuple.
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// `Ok(())` when the version is validated and updated.
     pub fn set_version(&mut self, version: &Bound<'_, PyAny>) -> PyResult<()> {
         let ver = extract_product_version(version)?;
         self.inner = std::mem::take(&mut self.inner).version(ver);
@@ -117,7 +116,7 @@ impl PyPackageBuilder {
     ///
     /// # Arguments
     ///
-    /// * `code` - The argument parameter.
+    /// * `code` - `ProductCode` GUID string in `{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}` format.
     pub fn set_product_code(&mut self, code: String) {
         self.inner = std::mem::take(&mut self.inner).product_code(code);
     }
@@ -126,7 +125,7 @@ impl PyPackageBuilder {
     ///
     /// # Arguments
     ///
-    /// * `code` - The argument parameter.
+    /// * `code` - `UpgradeCode` GUID string in `{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}` format.
     pub fn set_upgrade_code(&mut self, code: String) {
         self.inner = std::mem::take(&mut self.inner).upgrade_code(code);
     }
@@ -135,8 +134,8 @@ impl PyPackageBuilder {
     ///
     /// # Arguments
     ///
-    /// * `name` - The argument parameter.
-    /// * `value` - The argument parameter.
+    /// * `name` - Property identifier.
+    /// * `value` - Property string value.
     pub fn add_property(&mut self, name: String, value: String) {
         self.inner = std::mem::take(&mut self.inner).add_property(name, value);
     }
@@ -155,7 +154,7 @@ impl PyPackageBuilder {
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// `Ok(())` when the `Directory` row is added.
     #[pyo3(signature = (dir_id, parent_id = None, default_dir = ".".to_string()))]
     pub fn add_directory(
         &mut self,
@@ -195,7 +194,7 @@ impl PyPackageBuilder {
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// `Ok(())` when the `Component` row is added.
     #[pyo3(signature = (comp_id, dir_id, comp_guid = None, attributes = None, condition = None, keypath = None))]
     pub fn add_component(
         &mut self,
@@ -244,7 +243,7 @@ impl PyPackageBuilder {
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// `Ok(())` when the `Feature` row is added.
     #[allow(clippy::too_many_arguments)]
     #[pyo3(signature = (feat_id, parent_id = None, title = None, description = None, display = None, level = None, dir_id = None, attributes = None))]
     pub fn add_feature(
@@ -295,7 +294,7 @@ impl PyPackageBuilder {
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// `Ok(())` when the `FeatureComponents` row is added.
     pub fn add_feature_component(&mut self, feat_id: String, comp_id: String) -> PyResult<()> {
         let feature = FeatureName::new(feat_id).map_err(|e| to_py_err(&e))?;
         let component = ComponentName::new(comp_id).map_err(|e| to_py_err(&e))?;
@@ -324,7 +323,7 @@ impl PyPackageBuilder {
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// `Ok(())` when the `File` row is added.
     #[allow(clippy::too_many_arguments)]
     #[pyo3(signature = (file_id, comp_id, file_name, file_size, version = None, language = None, attributes = None, sequence = None))]
     pub fn add_file(
@@ -465,11 +464,8 @@ impl PyPackageBuilder {
             None,
         );
 
-        let digest = crate::md5::compute_md5(&data);
-        let hash_part1 = i32::from_le_bytes([digest[0], digest[1], digest[2], digest[3]]);
-        let hash_part2 = i32::from_le_bytes([digest[4], digest[5], digest[6], digest[7]]);
-        let hash_part3 = i32::from_le_bytes([digest[8], digest[9], digest[10], digest[11]]);
-        let hash_part4 = i32::from_le_bytes([digest[12], digest[13], digest[14], digest[15]]);
+        let (hash_part1, hash_part2, hash_part3, hash_part4) =
+            crate::md5::format_msi_md5_quads(&data);
 
         let hash_row = FileHashRow {
             file: file_key,
@@ -493,11 +489,11 @@ impl PyPackageBuilder {
     ///
     /// # Arguments
     ///
-    /// * `py` - The argument parameter.
+    /// * `py` - Python GIL token.
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// Compiled [`PyPackage`] instance.
     pub fn build(&self, py: Python<'_>) -> PyResult<PyPackage> {
         let builder = self.finalize_builder().map_err(|e| to_py_err(&e))?;
         let pkg = py
@@ -510,6 +506,7 @@ impl PyPackageBuilder {
     ///
     /// # Arguments
     ///
+    /// * `py` - Python GIL token.
     /// * `path` - Destination file path.
     ///
     /// # Errors
@@ -518,7 +515,7 @@ impl PyPackageBuilder {
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// `Ok(())` when the package is built and written to `path`.
     pub fn build_to_file(&self, py: Python<'_>, path: String) -> PyResult<()> {
         let builder = self.finalize_builder().map_err(|e| to_py_err(&e))?;
         py.allow_threads(move || {
@@ -536,11 +533,11 @@ impl PyPackageBuilder {
     ///
     /// # Arguments
     ///
-    /// * `py` - The argument parameter.
+    /// * `py` - Python GIL token.
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// Serialized Compound File Binary byte vector.
     pub fn build_to_bytes(&self, py: Python<'_>) -> PyResult<Vec<u8>> {
         let builder = self.finalize_builder().map_err(|e| to_py_err(&e))?;
         let bytes = py.allow_threads(move || {
@@ -554,12 +551,11 @@ impl PyPackageBuilder {
     ///
     /// # Arguments
     ///
-    /// * `slf` - The argument parameter.
-    /// * `Self>` - The argument parameter.
+    /// * `slf` - Bound reference to the [`PyPackageBuilder`] instance.
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// The same [`PyRef`] handle for use in a Python `with` block.
     const fn __enter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf
     }
@@ -568,16 +564,13 @@ impl PyPackageBuilder {
     ///
     /// # Arguments
     ///
-    /// * `_exc_type` - The argument parameter.
-    /// * `PyAny>>` - The argument parameter.
-    /// * `_exc_val` - The argument parameter.
-    /// * `PyAny>>` - The argument parameter.
-    /// * `_exc_tb` - The argument parameter.
-    /// * `PyAny>>` - The argument parameter.
+    /// * `_exc_type` - Optional exception type raised inside the `with` block.
+    /// * `_exc_val` - Optional exception value raised inside the `with` block.
+    /// * `_exc_tb` - Optional traceback object raised inside the `with` block.
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// `false` so any raised exception propagates normally.
     #[allow(clippy::unused_self)]
     #[pyo3(signature = (_exc_type=None, _exc_val=None, _exc_tb=None))]
     const fn __exit__(
@@ -596,7 +589,11 @@ impl PyPackageBuilder {
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// Cloned [`PackageBuilder`] with any staged files packed into `#cab1.cab`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`msi::MsiError`] if cabinet compression or deduplication fails.
     fn finalize_builder(&self) -> Result<PackageBuilder, msi::MsiError> {
         let mut builder = self.inner.clone();
         if !self.staged_files.is_empty() {
@@ -616,11 +613,11 @@ impl PyPackageBuilder {
 ///
 /// # Arguments
 ///
-/// * `input` - The argument parameter.
+/// * `input` - Raw filename or identifier string to sanitize.
 ///
 /// # Returns
 ///
-/// Returns the result of the operation.
+/// Sanitized MSI identifier string.
 fn sanitize_id(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     for (i, c) in input.chars().enumerate() {
@@ -658,11 +655,11 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `res` - The argument parameter.
+    /// * `res` - Result of constructing the [`PyPackageBuilder`].
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// `true` if `res` is `Ok` and all setter assertions pass, `false` otherwise.
     fn check_builder_new_and_setters(res: PyResult<PyPackageBuilder>) -> bool {
         res.is_ok_and(|mut b| {
             Python::with_gil(|py| {
@@ -727,11 +724,11 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `res` - The argument parameter.
+    /// * `res` - Result of constructing the [`PyPackageBuilder`].
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// `true` if `res` is `Ok` and all component/directory/feature assertions pass, `false` otherwise.
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn check_builder_components(res: PyResult<PyPackageBuilder>) -> bool {
         res.is_ok_and(|mut b| {
@@ -971,11 +968,11 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `res` - The argument parameter.
+    /// * `res` - Result of constructing the [`PyPackageBuilder`].
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// `true` if `res` is `Ok` and all file staging assertions pass, `false` otherwise.
     fn check_add_file_from_disk(res: PyResult<PyPackageBuilder>) -> bool {
         res.is_ok_and(|mut b| {
             assert!(b
@@ -1104,11 +1101,11 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `res` - The argument parameter.
+    /// * `res` - Result of constructing the [`PyPackageBuilder`].
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// `true` if `res` is `Ok` and all build assertions pass, `false` otherwise.
     fn check_builder_build(res: PyResult<PyPackageBuilder>) -> bool {
         res.is_ok_and(|mut b| {
             Python::with_gil(|py| {
@@ -1229,12 +1226,11 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `res` - The argument parameter.
-    /// * `PyModule>>` - The argument parameter.
+    /// * `res` - Result of constructing the test Python module.
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// `true` if `res` is `Ok` and the Python script succeeds, `false` otherwise.
     fn run_builder_script(res: PyResult<Bound<'_, PyModule>>) -> bool {
         res.is_ok_and(|m| {
             let py = m.py();

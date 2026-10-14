@@ -220,7 +220,7 @@ impl LinuxIdentityConfig {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn write_to_sysroot(&self, sysroot: &Path) -> Result<()> {
         let etc = sysroot.join("etc");
         if let Err(e) = std::fs::create_dir_all(&etc) {

@@ -19,13 +19,13 @@ pub trait HostSystem {
     ///
     /// # Arguments
     ///
-    /// * `root` - TODO: Document argument.
-    /// * `key` - TODO: Document argument.
-    /// * `name` - TODO: Document argument.
+    /// * `root` - The `root` parameter.
+    /// * `key` - The `key` parameter.
+    /// * `name` - The `name` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn get_registry_value(
         &self,
         root: i32,
@@ -39,14 +39,14 @@ pub trait HostSystem {
     ///
     /// # Arguments
     ///
-    /// * `file` - TODO: Document argument.
-    /// * `section` - TODO: Document argument.
-    /// * `key` - TODO: Document argument.
-    /// * `field` - TODO: Document argument.
+    /// * `file` - The `file` parameter.
+    /// * `section` - The `section` parameter.
+    /// * `key` - The `key` parameter.
+    /// * `field` - The `field` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn get_ini_value(
         &self,
         file: &str,
@@ -61,13 +61,13 @@ pub trait HostSystem {
     ///
     /// # Arguments
     ///
-    /// * `path` - TODO: Document argument.
-    /// * `name` - TODO: Document argument.
-    /// * `depth` - TODO: Document argument.
+    /// * `path` - The `path` parameter.
+    /// * `name` - The `name` parameter.
+    /// * `depth` - The `depth` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn find_file(&self, path: &str, name: &str, depth: u32) -> Result<Option<String>>;
     /// Finds a directory by path.
     ///
@@ -76,12 +76,12 @@ pub trait HostSystem {
     ///
     /// # Arguments
     ///
-    /// * `path` - TODO: Document argument.
-    /// * `depth` - TODO: Document argument.
+    /// * `path` - The `path` parameter.
+    /// * `depth` - The `depth` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn find_dir(&self, path: &str, depth: u32) -> Result<Option<String>>;
     /// Validates a file against a signature.
     ///
@@ -90,12 +90,12 @@ pub trait HostSystem {
     ///
     /// # Arguments
     ///
-    /// * `path` - TODO: Document argument.
-    /// * `sig` - TODO: Document argument.
+    /// * `path` - The `path` parameter.
+    /// * `sig` - The `sig` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn check_signature(&self, path: &str, sig: &Signature) -> Result<bool>;
 }
 
@@ -192,12 +192,12 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     ///
     /// # Arguments
     ///
-    /// * `r` - TODO: Document argument.
-    /// * `idx` - TODO: Document argument.
+    /// * `r` - The `r` parameter.
+    /// * `idx` - The `idx` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn get_string(r: &Record, idx: usize) -> Option<&str> {
         match r.get(idx) {
             Some(FieldValue::String(s)) => Some(s),
@@ -209,12 +209,12 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     ///
     /// # Arguments
     ///
-    /// * `r` - TODO: Document argument.
-    /// * `idx` - TODO: Document argument.
+    /// * `r` - The `r` parameter.
+    /// * `idx` - The `idx` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn get_i32(r: &Record, idx: usize) -> Option<i32> {
         match r.get(idx) {
             Some(FieldValue::Long(i)) => Some(*i),
@@ -227,12 +227,12 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     ///
     /// # Arguments
     ///
-    /// * `db` - TODO: Document argument.
-    /// * `host` - TODO: Document argument.
+    /// * `db` - The `db` parameter.
+    /// * `host` - The `host` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn new(db: &'a LinkedDatabase, host: H) -> Self {
         Self { db, host }
@@ -245,7 +245,7 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn execute(&self) -> Result<HashMap<String, String>> {
         let mut results = HashMap::new();
         // Parse the AppSearch table
@@ -269,11 +269,11 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     ///
     /// # Arguments
     ///
-    /// * `sig_id` - TODO: Document argument.
+    /// * `sig_id` - The `sig_id` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn resolve_signature(&self, sig_id: &str) -> Option<String> {
         // Step 1: Query CompLocator
         if let Some(_comp_loc) = self.find_comp_locator(sig_id) {
@@ -346,12 +346,12 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     ///
     /// # Arguments
     ///
-    /// * `sig_id` - TODO: Document argument.
-    /// * `path` - TODO: Document argument.
+    /// * `sig_id` - The `sig_id` parameter.
+    /// * `path` - The `path` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn validate_with_signature(&self, sig_id: &str, path: &str) -> Option<String> {
         self.find_signature(sig_id).map_or_else(
             || Some(path.to_string()),
@@ -363,11 +363,11 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     ///
     /// # Arguments
     ///
-    /// * `locator_type` - TODO: Document argument.
+    /// * `locator_type` - The `locator_type` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     const fn is_file_or_dir_locator(locator_type: u32) -> bool {
         locator_type == 0 || locator_type == 1
     }
@@ -376,11 +376,11 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     ///
     /// # Arguments
     ///
-    /// * `sig_id` - TODO: Document argument.
+    /// * `sig_id` - The `sig_id` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn find_signature(&self, sig_id: &str) -> Option<Signature> {
         self.db
             .tables
@@ -404,11 +404,11 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     ///
     /// # Arguments
     ///
-    /// * `sig_id` - TODO: Document argument.
+    /// * `sig_id` - The `sig_id` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn find_reg_locator(&self, sig_id: &str) -> Option<RegLocator> {
         self.db
             .tables
@@ -428,11 +428,11 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     ///
     /// # Arguments
     ///
-    /// * `sig_id` - TODO: Document argument.
+    /// * `sig_id` - The `sig_id` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn find_ini_locator(&self, sig_id: &str) -> Option<IniLocator> {
         self.db
             .tables
@@ -453,11 +453,11 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     ///
     /// # Arguments
     ///
-    /// * `sig_id` - TODO: Document argument.
+    /// * `sig_id` - The `sig_id` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn find_dr_locator(&self, sig_id: &str) -> Option<DrLocator> {
         self.db
             .tables
@@ -476,11 +476,11 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     ///
     /// # Arguments
     ///
-    /// * `sig_id` - TODO: Document argument.
+    /// * `sig_id` - The `sig_id` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn find_comp_locator(&self, sig_id: &str) -> Option<CompLocator> {
         self.db
             .tables

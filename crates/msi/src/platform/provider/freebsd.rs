@@ -1,12 +1,43 @@
 //! FreeBSD platform provider implementation.
 
-use super::PlatformProvider;
+use super::{PlatformProvider, ProviderState};
 use crate::error::MsiError;
+use std::fmt;
 use std::path::Path;
 
-/// FreeBSD-specific `PlatformProvider`.
-#[derive(Debug, Clone, Default)]
-pub struct FreeBsdProvider;
+/// FreeBSD-specific [`PlatformProvider`] backed by [`ProviderState`] and XDG `.desktop` generation.
+#[derive(Clone, Default)]
+pub struct FreeBsdProvider {
+    /// Shared registry and service state.
+    state: ProviderState,
+}
+
+impl fmt::Debug for FreeBsdProvider {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("FreeBsdProvider")
+    }
+}
+
+impl FreeBsdProvider {
+    /// Creates a new [`FreeBsdProvider`].
+    ///
+    /// # Returns
+    ///
+    /// A new [`FreeBsdProvider`].
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Registers an `rc.d` service name in the provider's service state.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Service name to register.
+    pub fn register_service(&self, name: &str) {
+        self.state.register_service(name);
+    }
+}
 
 impl PlatformProvider for FreeBsdProvider {
     fn os_name(&self) -> &'static str {
@@ -15,28 +46,25 @@ impl PlatformProvider for FreeBsdProvider {
 
     fn read_registry_string(
         &self,
-        _root: u32,
-        _path: &str,
-        _name: &str,
+        root: u32,
+        path: &str,
+        name: &str,
     ) -> Result<Option<String>, MsiError> {
-        // Fallback for registry read
-        Ok(None)
+        self.state.read_string(root, path, name)
     }
 
     fn write_registry_string(
         &self,
-        _root: u32,
-        _path: &str,
-        _name: &str,
-        _value: &str,
+        root: u32,
+        path: &str,
+        name: &str,
+        value: &str,
     ) -> Result<(), MsiError> {
-        // Fallback for registry write
-        Ok(())
+        self.state.write_string(root, path, name, value)
     }
 
-    fn service_exists(&self, _name: &str) -> Result<bool, MsiError> {
-        // Emulation of service check on FreeBSD
-        Ok(false)
+    fn service_exists(&self, name: &str) -> Result<bool, MsiError> {
+        Ok(self.state.has_service(name))
     }
 
     fn create_shortcut(&self, target: &Path, shortcut_path: &Path) -> Result<(), MsiError> {
@@ -48,8 +76,10 @@ impl PlatformProvider for FreeBsdProvider {
         let entry = crate::platform::desktop::XdgDesktopEntry::new(name, target_str);
 
         if let Some(parent) = shortcut_path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-            let _ = std::fs::write(shortcut_path, entry.generate_desktop_file());
+            if !parent.as_os_str().is_empty() {
+                let _ = std::fs::create_dir_all(parent);
+                let _ = std::fs::write(shortcut_path, entry.generate_desktop_file());
+            }
         }
 
         Ok(())
@@ -57,21 +87,22 @@ impl PlatformProvider for FreeBsdProvider {
 
     fn register_file_association(
         &self,
-        _extension: &str,
-        _prog_id: &str,
-        _description: &str,
-        _executable: &Path,
+        extension: &str,
+        prog_id: &str,
+        description: &str,
+        executable: &Path,
     ) -> Result<(), MsiError> {
-        Ok(())
+        self.state
+            .register_association(extension, prog_id, description, executable)
     }
 
     fn register_com_class(
         &self,
-        _clsid: &str,
-        _context: &str,
-        _executable: &Path,
+        clsid: &str,
+        context: &str,
+        executable: &Path,
     ) -> Result<(), MsiError> {
-        Ok(())
+        self.state.register_com(clsid, context, executable)
     }
 }
 
@@ -80,9 +111,10 @@ impl PlatformProvider for FreeBsdProvider {
 mod tests {
     use super::*;
 
+    /// Verifies shortcut creation on `FreeBsdProvider`.
     #[test]
     fn test_create_shortcut() {
-        let provider = FreeBsdProvider;
+        let provider = FreeBsdProvider::new();
         let temp_dir = tempfile::tempdir().expect("test");
         let target = temp_dir.path().join("target");
         let shortcut = temp_dir.path().join("shortcut.desktop");
@@ -91,37 +123,46 @@ mod tests {
         assert!(shortcut.exists());
     }
 
+    /// Verifies `FreeBsdProvider` registry persistence, service tracking, and defaults.
     #[test]
-    fn test_freebsd_provider_defaults() {
-        let provider = FreeBsdProvider;
+    fn test_freebsd_provider_defaults() -> Result<(), MsiError> {
+        let provider = FreeBsdProvider::default().clone();
 
         assert_eq!(format!("{provider:?}"), "FreeBsdProvider");
-
         assert_eq!(provider.os_name(), "freebsd");
 
-        let read_res = provider.read_registry_string(0, "", "");
-        assert!(read_res.is_ok());
-        assert!(read_res.unwrap_or_default().is_none());
+        let read_res = provider.read_registry_string(0, "", "")?;
+        assert!(read_res.is_none());
 
-        let write_res = provider.write_registry_string(0, "", "", "");
-        assert!(write_res.is_ok());
+        provider.write_registry_string(2, "Software/BsdApp", "Root", "/usr/local")?;
+        assert_eq!(
+            provider
+                .read_registry_string(2, "Software/BsdApp", "Root")?
+                .as_deref(),
+            Some("/usr/local")
+        );
 
-        let svc_res = provider.service_exists("");
-        assert!(svc_res.is_ok());
-        assert!(!svc_res.unwrap_or(true));
+        assert!(!provider.service_exists("sshd")?);
+        provider.register_service("sshd");
+        assert!(provider.service_exists("sshd")?);
 
-        let shortcut_res = provider.create_shortcut(Path::new(""), Path::new(""));
-        assert!(shortcut_res.is_ok());
+        provider.create_shortcut(Path::new(""), Path::new(""))?;
+        Ok(())
     }
 
+    /// Verifies file association and COM class registration on `FreeBsdProvider`.
     #[test]
-    fn test_shell_registration_stubs() {
-        let provider = FreeBsdProvider;
+    fn test_shell_registration() -> Result<(), MsiError> {
+        let provider = FreeBsdProvider::new();
+        provider.register_file_association(".txt", "txtfile", "Text File", Path::new(""))?;
+        assert_eq!(
+            provider.read_registry_string(0, ".txt", "")?.as_deref(),
+            Some("txtfile")
+        );
+        provider.register_com_class("clsid", "context", Path::new(""))?;
         assert!(provider
-            .register_file_association(".txt", "txtfile", "Text File", Path::new(""))
-            .is_ok());
-        assert!(provider
-            .register_com_class("clsid", "context", Path::new(""))
-            .is_ok());
+            .read_registry_string(0, r"CLSID\clsid\context", "")?
+            .is_some());
+        Ok(())
     }
 }

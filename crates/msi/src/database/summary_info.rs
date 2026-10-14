@@ -483,11 +483,11 @@ impl SummaryInfo {
     ///
     /// # Arguments
     ///
-    /// * `s` - TODO: Document argument.
+    /// * `s` - String value to serialize.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// 4-byte aligned `VT_LPSTR` byte vector.
     #[allow(clippy::cast_possible_truncation)]
     fn encode_lpstr(s: &str) -> Vec<u8> {
         let bytes = s.as_bytes();

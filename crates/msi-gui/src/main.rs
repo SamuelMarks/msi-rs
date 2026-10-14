@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 #![allow(clippy::literal_string_with_formatting_args)]
 #![deny(missing_docs)]
 #![deny(clippy::missing_docs_in_private_items)]
@@ -82,8 +81,6 @@ impl From<CliBackend> for GuiHardwareBackend {
 }
 
 /// Command-line arguments for the `msi-gui` desktop application.
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[cfg(not(tarpaulin_include))]
 #[derive(Debug, Parser, PartialEq, Eq)]
 #[command(
     name = "msi-gui",
@@ -248,23 +245,20 @@ pub fn run_gui(cli: &GuiCli) -> ExitCode {
     let resolved_backend =
         GuiDesktopRuntime::select_backend_with_fallback(cli.backend.into(), true, true);
 
-    let mut runtime = cli
-        .package
-        .as_deref()
-        .filter(|p| p.exists())
-        .and_then(|p| msi::Package::open(p).ok())
-        .map_or_else(
-            || create_standalone_runtime(cli.theme.into(), resolved_backend, cli.width, cli.height),
-            |pkg| {
-                create_package_runtime(
-                    &pkg,
-                    cli.theme.into(),
-                    resolved_backend,
-                    cli.width,
-                    cli.height,
-                )
-            },
-        );
+    let mut runtime = if let Some(ref pkg_path) = cli.package {
+        let Ok(pkg) = msi::Package::open(pkg_path) else {
+            return ExitCode::FAILURE;
+        };
+        create_package_runtime(
+            &pkg,
+            cli.theme.into(),
+            resolved_backend,
+            cli.width,
+            cli.height,
+        )
+    } else {
+        create_standalone_runtime(cli.theme.into(), resolved_backend, cli.width, cli.height)
+    };
 
     // Non-resizable modal dialog constraint checking
     let (req_w, req_h) = (
@@ -420,7 +414,7 @@ mod tests {
             width: None,
             height: None,
         };
-        assert_eq!(run_gui(&cli_nonexistent), ExitCode::SUCCESS);
+        assert_eq!(run_gui(&cli_nonexistent), ExitCode::FAILURE);
 
         // Test with existing file that is not a valid MSI package
         let temp_dir = std::env::temp_dir().join("msi_gui_corrupt_test");
@@ -434,7 +428,7 @@ mod tests {
             width: None,
             height: None,
         };
-        assert_eq!(run_gui(&cli_corrupt), ExitCode::SUCCESS);
+        assert_eq!(run_gui(&cli_corrupt), ExitCode::FAILURE);
         let _ = std::fs::remove_file(corrupt_path);
         let _ = std::fs::remove_dir(temp_dir);
     }

@@ -26,11 +26,11 @@ impl NativeStorage {
     ///
     /// # Arguments
     ///
-    /// * `reader` - TODO: Document argument.
+    /// * `reader` - The `reader` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn new(reader: Option<CfbReader>) -> Box<Self> {
         Box::new(Self {
@@ -65,7 +65,7 @@ impl crate::com::util::ComObject for NativeStorage {
     }
 }
 
-// Stubs for IStorage VTable.
+/// `IStorage::CreateStream` `VTable` entry point.
 const unsafe extern "system" fn create_stream(
     _this: *mut IStorage,
     _pwcs_name: *const u16,
@@ -76,6 +76,8 @@ const unsafe extern "system" fn create_stream(
 ) -> HRESULT {
     crate::error::E_FAIL
 }
+
+/// `IStorage::OpenStream` `VTable` entry point reading a stream from the backing [`CfbReader`].
 unsafe extern "system" fn open_stream(
     this: *mut IStorage,
     pwcs_name: *const u16,
@@ -107,6 +109,8 @@ unsafe extern "system" fn open_stream(
         Err(_) => STG_E_FILENOTFOUND,
     }
 }
+
+/// `IStorage::CreateStorage` `VTable` entry point.
 const unsafe extern "system" fn create_storage(
     _this: *mut IStorage,
     _pwcs_name: *const u16,
@@ -117,6 +121,8 @@ const unsafe extern "system" fn create_storage(
 ) -> HRESULT {
     crate::error::E_FAIL
 }
+
+/// `IStorage::OpenStorage` `VTable` entry point.
 const unsafe extern "system" fn open_storage(
     _this: *mut IStorage,
     _pwcs_name: *const u16,
@@ -128,6 +134,8 @@ const unsafe extern "system" fn open_storage(
 ) -> HRESULT {
     STG_E_FILENOTFOUND
 }
+
+/// `IStorage::CopyTo` `VTable` entry point.
 const unsafe extern "system" fn copy_to(
     _this: *mut IStorage,
     _ciid_exclude: u32,
@@ -137,6 +145,8 @@ const unsafe extern "system" fn copy_to(
 ) -> HRESULT {
     crate::error::E_FAIL
 }
+
+/// `IStorage::MoveElementTo` `VTable` entry point.
 const unsafe extern "system" fn move_element_to(
     _this: *mut IStorage,
     _pwcs_name: *const u16,
@@ -146,12 +156,18 @@ const unsafe extern "system" fn move_element_to(
 ) -> HRESULT {
     crate::error::E_FAIL
 }
+
+/// `IStorage::Commit` `VTable` entry point.
 const unsafe extern "system" fn commit(_this: *mut IStorage, _grf_commit_flags: u32) -> HRESULT {
     S_OK
 }
+
+/// `IStorage::Revert` `VTable` entry point.
 const unsafe extern "system" fn revert(_this: *mut IStorage) -> HRESULT {
     S_OK
 }
+
+/// `IStorage::EnumElements` `VTable` entry point.
 const unsafe extern "system" fn enum_elements(
     _this: *mut IStorage,
     _reserved1: u32,
@@ -161,12 +177,16 @@ const unsafe extern "system" fn enum_elements(
 ) -> HRESULT {
     crate::error::E_FAIL
 }
+
+/// `IStorage::DestroyElement` `VTable` entry point.
 const unsafe extern "system" fn destroy_element(
     _this: *mut IStorage,
     _pwcs_name: *const u16,
 ) -> HRESULT {
     crate::error::E_FAIL
 }
+
+/// `IStorage::RenameElement` `VTable` entry point.
 const unsafe extern "system" fn rename_element(
     _this: *mut IStorage,
     _pwcs_old_name: *const u16,
@@ -174,6 +194,8 @@ const unsafe extern "system" fn rename_element(
 ) -> HRESULT {
     crate::error::E_FAIL
 }
+
+/// `IStorage::SetElementTimes` `VTable` entry point.
 const unsafe extern "system" fn set_element_times(
     _this: *mut IStorage,
     _pwcs_name: *const u16,
@@ -183,9 +205,13 @@ const unsafe extern "system" fn set_element_times(
 ) -> HRESULT {
     crate::error::E_FAIL
 }
+
+/// `IStorage::SetClass` `VTable` entry point.
 const unsafe extern "system" fn set_class(_this: *mut IStorage, _clsid: *const GUID) -> HRESULT {
     S_OK
 }
+
+/// `IStorage::SetStateBits` `VTable` entry point.
 const unsafe extern "system" fn set_state_bits(
     _this: *mut IStorage,
     _grf_state_bits: u32,
@@ -193,6 +219,8 @@ const unsafe extern "system" fn set_state_bits(
 ) -> HRESULT {
     S_OK
 }
+
+/// `IStorage::Stat` `VTable` entry point.
 const unsafe extern "system" fn stat(
     _this: *mut IStorage,
     _pstatstg: *mut STATSTG,
@@ -201,6 +229,7 @@ const unsafe extern "system" fn stat(
     crate::error::E_FAIL
 }
 
+/// `IUnknown::QueryInterface` `VTable` entry point for [`NativeStorage`].
 const unsafe extern "system" fn query_interface(
     _this: *mut IUnknown,
     _riid: *const GUID,
@@ -209,6 +238,7 @@ const unsafe extern "system" fn query_interface(
     crate::com::E_NOINTERFACE
 }
 
+/// Static COM `VTable` instance for [`NativeStorage`].
 static NATIVE_STORAGE_VTBL: IStorageVtbl = IStorageVtbl {
     parent: IUnknownVtbl {
         QueryInterface: query_interface,

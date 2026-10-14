@@ -143,10 +143,22 @@ impl TorchOptions {
             let read_xml_or_pkg = |path: &std::path::Path| -> Result<LinkedDatabase, String> {
                 if let Ok(content) = fs::read_to_string(path) {
                     let parser = msi::wix::xml::XmlParser::new();
-                    let _root = parser
+                    let root = parser
                         .parse(&content)
                         .map_err(|e| format!("failed parsing XML '{}': {e}", path.display()))?;
-                    Ok(LinkedDatabase::new().unwrap_or_default())
+                    let mut db = LinkedDatabase::new().unwrap_or_default();
+                    for child in &root.children {
+                        if let Some(name) = child.attribute("Name") {
+                            db.add_record(
+                                "Property",
+                                msi::database::Record::with_fields(vec![
+                                    msi::database::FieldValue::String(name.to_string()),
+                                    msi::database::FieldValue::String(child.text.clone()),
+                                ]),
+                            );
+                        }
+                    }
+                    Ok(db)
                 } else {
                     let pkg = Package::open(path)
                         .map_err(|e| format!("failed opening package '{}': {e}", path.display()))?;
@@ -307,7 +319,7 @@ pub fn run_app(args: &[String]) -> ExitCode {
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// Process [`ExitCode`] (`ExitCode::SUCCESS` or `ExitCode::FAILURE`).
 #[must_use = "process exit code must be handled"]
 pub fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();

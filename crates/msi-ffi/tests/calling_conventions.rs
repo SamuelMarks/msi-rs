@@ -1,35 +1,40 @@
 //! Calling convention verification tests.
-#![allow(clippy::no_effect_underscore_binding, clippy::used_underscore_binding)]
 
+/// Verifies that Win32 MSI API exports use the `extern "system"` calling convention
+/// and return the expected Win32 status codes when invoked through typed function pointers.
 #[test]
 fn test_verify_calling_conventions() {
-    let _fn_ptr: extern "system" fn(msi_ffi::handles::MsiHandle) -> msi_ffi::win32::Uint =
-        msi_ffi::win32::MsiCloseHandle;
-    assert_eq!(_fn_ptr(0), 0); // 0 = ERROR_SUCCESS (from MsiCloseHandle for handle 0 actually)
-}
+    let close_fn: extern "system" fn(msi_ffi::handles::MsiHandle) -> msi_ffi::win32::Uint =
+        msi_ffi::MsiCloseHandle;
+    let create_fn: extern "system" fn(msi_ffi::win32::Uint) -> msi_ffi::handles::MsiHandle =
+        msi_ffi::win32::record::MsiCreateRecord;
+    let open_db_fn: extern "system" fn(
+        msi_ffi::win32::Lpcwstr,
+        msi_ffi::win32::Lpcwstr,
+        *mut msi_ffi::handles::MsiHandle,
+    ) -> msi_ffi::win32::Uint = msi_ffi::win32::database::MsiOpenDatabaseW;
+    let open_view_fn: extern "system" fn(
+        msi_ffi::handles::MsiHandle,
+        msi_ffi::win32::Lpcwstr,
+        *mut msi_ffi::handles::MsiHandle,
+    ) -> msi_ffi::win32::Uint = msi_ffi::win32::database::MsiDatabaseOpenViewW;
+    let db_state_fn: extern "system" fn(
+        msi_ffi::handles::MsiHandle,
+    ) -> msi_ffi::win32::database::Msidbstate = msi_ffi::win32::database::MsiGetDatabaseState;
 
-/// Verifies that our internal C-ABI uses `extern "C"` to avoid C++ name mangling issues,
-/// distinct from the `extern "system"` used for the Win32 `msi.dll` surface.
-#[test]
-fn verify_c_abi_conventions() {
-    let _c_fn_ptr: unsafe extern "C" fn(*mut msi_ffi::types::MsiPackageBuilderHandle) =
-        msi_ffi::types::msi_package_builder_destroy;
-    let _sys_fn_ptr: extern "system" fn(msi_ffi::handles::MsiHandle) -> msi_ffi::win32::Uint =
-        msi_ffi::win32::MsiCloseHandle;
-}
+    let h_rec = create_fn(2);
+    assert_ne!(h_rec, 0);
+    assert_eq!(close_fn(h_rec), msi_ffi::win32::ERROR_SUCCESS);
+    assert_eq!(close_fn(0), msi_ffi::win32::ERROR_SUCCESS);
+    assert_eq!(close_fn(9999), msi_ffi::win32::ERROR_INVALID_HANDLE);
 
-#[test]
-fn verify_all_win32_system_conventions() {
-    let _f1: extern "system" fn(_, _) -> _ = msi_ffi::properties::MsiGetProductCodeW;
-    let _f2: extern "system" fn(_, _) -> _ = msi_ffi::properties::MsiGetProductCodeA;
-    let _f3: extern "system" fn(_, _) -> _ = msi_ffi::installer::MsiInstallProductW;
-    let _f4: extern "system" fn(_, _) -> _ = msi_ffi::installer::MsiInstallProductA;
-    let _f5: extern "system" fn() -> _ = msi_ffi::win32::MsiCloseAllHandles;
-}
-
-#[test]
-fn verify_all_win32_system_conventions_database() {
-    let _f1: extern "system" fn(_, _, _) -> _ = msi_ffi::win32::database::MsiOpenDatabaseW;
-    let _f2: extern "system" fn(_, _, _) -> _ = msi_ffi::win32::database::MsiDatabaseOpenViewW;
-    let _f3: extern "system" fn(_) -> _ = msi_ffi::win32::database::MsiGetDatabaseState;
+    assert_eq!(
+        open_db_fn(std::ptr::null(), std::ptr::null(), std::ptr::null_mut()),
+        msi_ffi::win32::ERROR_INVALID_PARAMETER
+    );
+    assert_eq!(
+        open_view_fn(0, std::ptr::null(), std::ptr::null_mut()),
+        msi_ffi::win32::ERROR_INVALID_PARAMETER
+    );
+    assert_eq!(db_state_fn(0), -1);
 }

@@ -98,7 +98,7 @@ impl CfbWriter {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// `Ok(())` when the stream is staged.
     pub fn add_stream(&mut self, name: &str, data: &[u8]) -> Result<()> {
         for s in &self.streams {
             if compare_cfb_names(&s.name, name) == Ordering::Equal {
@@ -118,14 +118,14 @@ impl CfbWriter {
     ///
     /// # Arguments
     ///
-    /// * `root` - TODO: Document argument.
-    /// * `new_id` - TODO: Document argument.
-    /// * `entries` - TODO: Document argument.
-    /// * `parents` - TODO: Document argument.
+    /// * `root` - Current root [`StreamId`] of the directory sibling tree.
+    /// * `new_id` - [`StreamId`] of the newly inserted directory entry.
+    /// * `entries` - Mutable slice of all [`DirectoryEntry`] nodes.
+    /// * `parents` - Mutable parent pointer map indexed by [`StreamId`].
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Updated root [`StreamId`] after Red-Black tree rebalancing.
     fn rb_insert(
         root: StreamId,
         new_id: StreamId,
@@ -224,14 +224,14 @@ impl CfbWriter {
     ///
     /// # Arguments
     ///
-    /// * `x` - TODO: Document argument.
-    /// * `root` - TODO: Document argument.
-    /// * `entries` - TODO: Document argument.
-    /// * `parents` - TODO: Document argument.
+    /// * `x` - Pivot [`StreamId`] to rotate left around.
+    /// * `root` - Current root [`StreamId`] of the Red-Black tree.
+    /// * `entries` - Mutable slice of all [`DirectoryEntry`] nodes.
+    /// * `parents` - Mutable parent pointer map indexed by [`StreamId`].
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Updated root [`StreamId`] after rotation.
     fn rotate_left(
         x: StreamId,
         root: StreamId,
@@ -273,14 +273,14 @@ impl CfbWriter {
     ///
     /// # Arguments
     ///
-    /// * `y` - TODO: Document argument.
-    /// * `root` - TODO: Document argument.
-    /// * `entries` - TODO: Document argument.
-    /// * `parents` - TODO: Document argument.
+    /// * `y` - Pivot [`StreamId`] to rotate right around.
+    /// * `root` - Current root [`StreamId`] of the Red-Black tree.
+    /// * `entries` - Mutable slice of all [`DirectoryEntry`] nodes.
+    /// * `parents` - Mutable parent pointer map indexed by [`StreamId`].
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Updated root [`StreamId`] after rotation.
     fn rotate_right(
         y: StreamId,
         root: StreamId,

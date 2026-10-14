@@ -24,7 +24,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Parsed SQL AST node, token, or `Ok(())` on match.
     #[must_use]
     pub const fn new(tokens: Vec<Token>) -> Self {
         Self { tokens, pos: 0 }
@@ -62,7 +62,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Parsed SQL AST node, token, or `Ok(())` on match.
     fn peek(&self) -> Option<&Token> {
         self.tokens.get(self.pos)
     }
@@ -71,7 +71,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Parsed SQL AST node, token, or `Ok(())` on match.
     fn next_token(&mut self) -> Option<Token> {
         (self.pos < self.tokens.len()).then(|| {
             let tok = self.tokens[self.pos].clone();
@@ -84,11 +84,11 @@ impl Parser {
     ///
     /// # Arguments
     ///
-    /// * `expected` - TODO: Document argument.
+    /// * `expected` - Expected [`Token`] to match and consume.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Parsed SQL AST node, token, or `Ok(())` on match.
     fn expect(&mut self, expected: &Token) -> Result<()> {
         let tok = self.next_token().ok_or_else(|| MsiError::Sql {
             message: format!("expected token {expected:?}, but reached end of input"),
@@ -106,7 +106,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Parsed SQL AST node, token, or `Ok(())` on match.
     fn expect_ident(&mut self) -> Result<String> {
         let tok = self.next_token().ok_or_else(|| MsiError::Sql {
             message: "expected identifier, but reached end of input".to_string(),
@@ -123,7 +123,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Parsed SQL AST node, token, or `Ok(())` on match.
     fn parse_select(&mut self) -> Result<Statement> {
         self.expect(&Token::Select)?;
 
@@ -205,7 +205,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Parsed SQL AST node, token, or `Ok(())` on match.
     fn parse_insert(&mut self) -> Result<Statement> {
         self.expect(&Token::Insert)?;
         self.expect(&Token::Into)?;
@@ -252,7 +252,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Parsed SQL AST node, token, or `Ok(())` on match.
     fn parse_update(&mut self) -> Result<Statement> {
         self.expect(&Token::Update)?;
         let table = self.expect_ident()?;
@@ -289,7 +289,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Parsed SQL AST node, token, or `Ok(())` on match.
     fn parse_delete(&mut self) -> Result<Statement> {
         self.expect(&Token::Delete)?;
         self.expect(&Token::From)?;
@@ -312,7 +312,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Parsed SQL AST node, token, or `Ok(())` on match.
     fn parse_create_table(&mut self) -> Result<Statement> {
         self.expect(&Token::Create)?;
         self.expect(&Token::Table)?;
@@ -371,7 +371,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Parsed SQL AST node, token, or `Ok(())` on match.
     fn parse_alter_table(&mut self) -> Result<Statement> {
         self.expect(&Token::Alter)?;
         self.expect(&Token::Table)?;
@@ -412,7 +412,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Parsed SQL AST node, token, or `Ok(())` on match.
     fn parse_drop_table(&mut self) -> Result<Statement> {
         self.expect(&Token::Drop)?;
         self.expect(&Token::Table)?;
@@ -426,7 +426,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Parsed SQL AST node, token, or `Ok(())` on match.
     fn parse_column_def(&mut self) -> Result<SqlColumnDef> {
         let name = self.expect_ident()?;
         let type_tok = self.next_token().ok_or_else(|| MsiError::Sql {
@@ -493,7 +493,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Parsed SQL AST node, token, or `Ok(())` on match.
     fn parse_value(&mut self) -> Result<SqlValue> {
         let tok = self.next_token().ok_or_else(|| MsiError::Sql {
             message: "unexpected end of expression value".to_string(),
@@ -515,7 +515,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Parsed SQL AST node, token, or `Ok(())` on match.
     fn parse_expression(&mut self) -> Result<Expression> {
         self.parse_or()
     }
@@ -524,7 +524,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Parsed SQL AST node, token, or `Ok(())` on match.
     fn parse_or(&mut self) -> Result<Expression> {
         let mut expr = self.parse_and()?;
         while matches!(self.peek(), Some(Token::Or)) {
@@ -539,7 +539,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Parsed SQL AST node, token, or `Ok(())` on match.
     fn parse_and(&mut self) -> Result<Expression> {
         let mut expr = self.parse_primary_expr()?;
         while matches!(self.peek(), Some(Token::And)) {
@@ -554,7 +554,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Parsed SQL AST node, token, or `Ok(())` on match.
     fn parse_primary_expr(&mut self) -> Result<Expression> {
         if matches!(self.peek(), Some(Token::Not)) {
             self.next_token();

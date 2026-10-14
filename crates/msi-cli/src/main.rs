@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 #![allow(
     clippy::too_many_lines,
     clippy::cognitive_complexity,
@@ -144,8 +143,6 @@ impl From<UiLevel> for CliUiLevel {
 
 /// Arguments for creating a new package.
 /// The created package will be saved to disk as `{name}.msi`.
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[cfg(not(tarpaulin_include))]
 #[derive(Debug, Args)]
 pub struct CreateArgs {
     /// Friendly product display name.
@@ -166,8 +163,6 @@ pub struct CreateArgs {
 }
 
 /// Arguments for inspecting an existing package.
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[cfg(not(tarpaulin_include))]
 #[derive(Debug, Args)]
 pub struct InfoArgs {
     /// Path to the MSI file to inspect.
@@ -176,8 +171,6 @@ pub struct InfoArgs {
 }
 
 /// Arguments for installing a package.
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[cfg(not(tarpaulin_include))]
 #[derive(Debug, Args)]
 pub struct InstallArgs {
     /// Path to package file.
@@ -202,8 +195,6 @@ pub struct InstallArgs {
 }
 
 /// Arguments for uninstalling a package.
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[cfg(not(tarpaulin_include))]
 #[derive(Debug, Args)]
 pub struct UninstallArgs {
     /// Path to package file or `ProductCode` GUID.
@@ -220,8 +211,6 @@ pub struct UninstallArgs {
 }
 
 /// Arguments for administrative installation.
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[cfg(not(tarpaulin_include))]
 #[derive(Debug, Args)]
 pub struct AdminArgs {
     /// Path to package file.
@@ -238,8 +227,6 @@ pub struct AdminArgs {
 }
 
 /// Arguments for repairing an installation.
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[cfg(not(tarpaulin_include))]
 #[derive(Debug, Args)]
 pub struct RepairArgs {
     /// Path to package file or `ProductCode` GUID.
@@ -256,8 +243,6 @@ pub struct RepairArgs {
 }
 
 /// Arguments for advertising a package.
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[cfg(not(tarpaulin_include))]
 #[derive(Debug, Args)]
 pub struct AdvertiseArgs {
     /// Path to package file.
@@ -270,8 +255,6 @@ pub struct AdvertiseArgs {
 }
 
 /// Arguments for applying a patch.
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[cfg(not(tarpaulin_include))]
 #[derive(Debug, Args)]
 pub struct PatchArgs {
     /// Path to target package.
@@ -292,8 +275,6 @@ pub struct PatchArgs {
 }
 
 /// Arguments for executing raw `msiexec` flags.
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[cfg(not(tarpaulin_include))]
 #[derive(Debug, Args)]
 pub struct MsiexecArgs {
     /// Raw msiexec arguments.
@@ -302,8 +283,6 @@ pub struct MsiexecArgs {
 }
 
 /// Arguments for running in privileged worker daemon mode over IPC.
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[cfg(not(tarpaulin_include))]
 #[derive(Debug, Args)]
 pub struct WorkerArgs {
     /// Path to Unix domain socket or Windows named pipe.
@@ -312,8 +291,6 @@ pub struct WorkerArgs {
 }
 
 /// Arguments for harvesting files or registries into `WiX` XML fragments.
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[cfg(not(tarpaulin_include))]
 #[derive(Debug, Args)]
 pub struct HarvestArgs {
     /// Target filesystem path, registry file path, or harvest type (e.g. `dir`, `reg`).
@@ -404,8 +381,6 @@ pub struct HarvestArgs {
 }
 
 /// Arguments for decompiling an MSI package into `WiX` source XML.
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[cfg(not(tarpaulin_include))]
 #[derive(Debug, Args)]
 pub struct DecompileArgs {
     /// Path to input MSI package file.
@@ -422,8 +397,6 @@ pub struct DecompileArgs {
 }
 
 /// Arguments for compiling and linking `WiX` source manifests into an MSI package.
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[cfg(not(tarpaulin_include))]
 #[derive(Debug, Args)]
 pub struct PackArgs {
     /// Output path for the generated .msi package.

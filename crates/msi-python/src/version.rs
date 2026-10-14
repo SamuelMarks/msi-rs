@@ -31,7 +31,7 @@ impl PyProductVersion {
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// Newly constructed [`PyProductVersion`].
     #[new]
     #[must_use]
     #[pyo3(signature = (major, minor, build = 0))]
@@ -55,7 +55,7 @@ impl PyProductVersion {
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// Parsed [`PyProductVersion`].
     #[staticmethod]
     pub fn parse(version_str: &str) -> PyResult<Self> {
         let parsed = msi::package::ProductVersion::parse(version_str)
@@ -71,7 +71,7 @@ impl PyProductVersion {
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// 3-tuple `(major, minor, build)`.
     #[must_use]
     pub const fn as_tuple(&self) -> (u8, u8, u16) {
         (self.major, self.minor, self.build)
@@ -81,12 +81,12 @@ impl PyProductVersion {
     ///
     /// # Arguments
     ///
-    /// * `other` - The argument parameter.
-    /// * `op` - The argument parameter.
+    /// * `other` - Right-hand side [`PyProductVersion`] to compare against.
+    /// * `op` - Python comparison operator (`<`, `<=`, `==`, `!=`, `>`, `>=`).
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// Boolean result of the comparison.
     #[allow(clippy::trivially_copy_pass_by_ref)]
     #[must_use]
     pub fn __richcmp__(&self, other: &Self, op: CompareOp) -> bool {
@@ -104,7 +104,7 @@ impl PyProductVersion {
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// Dot-separated version string (`"major.minor.build"`).
     #[allow(clippy::trivially_copy_pass_by_ref)]
     #[must_use]
     pub fn __str__(&self) -> String {
@@ -115,7 +115,7 @@ impl PyProductVersion {
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// Constructor-style representation string (`"ProductVersion(major=..., minor=..., build=...)"`).
     #[allow(clippy::trivially_copy_pass_by_ref)]
     #[must_use]
     pub fn __repr__(&self) -> String {
@@ -138,7 +138,7 @@ impl PyProductVersion {
 ///
 /// # Returns
 ///
-/// Returns the result of the operation.
+/// Extracted core [`msi::package::ProductVersion`].
 pub fn extract_product_version(obj: &Bound<'_, PyAny>) -> PyResult<msi::package::ProductVersion> {
     if let Ok(py_ver) = obj.extract::<PyProductVersion>() {
         return Ok(msi::package::ProductVersion::new(
@@ -251,12 +251,11 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `res` - The argument parameter.
-    /// * `PyAny>>` - The argument parameter.
+    /// * `res` - Result of instantiating the bound `ProductVersion` Python object.
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// `true` if `res` is `Ok` and all method calls succeed, `false` otherwise.
     fn check_version_inst(res: PyResult<Bound<'_, PyAny>>) -> bool {
         res.is_ok_and(|i| {
             assert!(i.str().is_ok_and(|s| s.to_string_lossy() == "1.2.3"));
@@ -274,12 +273,11 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `cls_res` - The argument parameter.
-    /// * `PyAny>>` - The argument parameter.
+    /// * `cls_res` - Result of looking up the `ProductVersion` class on the Python module.
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// `true` if `cls_res` is `Ok` and constructor tests pass, `false` otherwise.
     fn check_cls(cls_res: PyResult<Bound<'_, PyAny>>) -> bool {
         cls_res.is_ok_and(|c| {
             assert!(check_version_inst(c.call1((1u8, 2u8, 3u16))));
@@ -292,13 +290,12 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `res` - The argument parameter.
-    /// * `PyModule>>` - The argument parameter.
-    /// * `script` - The argument parameter.
+    /// * `res` - Result of constructing the test Python module.
+    /// * `script` - Python test script to execute against `m`.
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// `true` if `res` is `Ok` and `script` executes without error, `false` otherwise.
     fn run_version_script(res: PyResult<Bound<'_, PyModule>>, script: &str) -> bool {
         res.is_ok_and(|m| {
             let py = m.py();
@@ -374,11 +371,11 @@ assert (parsed >= v) is True
     ///
     /// # Arguments
     ///
-    /// * `res` - The argument parameter.
+    /// * `res` - Result of allocating the `Py<PyProductVersion>` handle.
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// `true` if `res` is `Ok` and `extract_product_version` yields `(3, 4, 5)`, `false` otherwise.
     fn check_extract_version(res: PyResult<Py<PyProductVersion>>) -> bool {
         res.is_ok_and(|py_v| {
             Python::with_gil(|py| {

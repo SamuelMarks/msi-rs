@@ -247,14 +247,14 @@ impl CfbReader {
     ///
     /// # Arguments
     ///
-    /// * `data` - TODO: Document argument.
-    /// * `fat` - TODO: Document argument.
-    /// * `start_sector` - TODO: Document argument.
-    /// * `sector_shift` - TODO: Document argument.
+    /// * `data` - Full CFB container byte slice.
+    /// * `fat` - Parsed File Allocation Table (`FAT`) sector array.
+    /// * `start_sector` - First [`SectorId`] in the chain.
+    /// * `sector_shift` - Log2 sector size shift (`9` for 512B, `12` for 4096B).
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Concatenated byte vector from all sectors in the chain.
     #[allow(clippy::cast_possible_truncation)]
     fn read_sector_chain_bytes(
         data: &[u8],
@@ -617,7 +617,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Synthesized CFB container byte vector or unit test completion.
     #[allow(clippy::cast_possible_truncation)]
     fn build_minimal_cfb() -> Vec<u8> {
         let mut header = CfbHeader::new(CfbVersion::V3);
@@ -713,7 +713,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Synthesized CFB container byte vector or unit test completion.
     #[test]
     fn test_cfb_reader_basic() {
         let bytes = build_minimal_cfb();
@@ -746,7 +746,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Synthesized CFB container byte vector or unit test completion.
     #[test]
     fn test_cfb_reader_errors() {
         assert!(CfbReader::new(&[0u8; 100]).is_err());
@@ -768,7 +768,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Synthesized CFB container byte vector or unit test completion.
     #[test]
     fn test_cfb_reader_difat_chains() {
         // Build CFB with 1 external DIFAT sector
@@ -820,7 +820,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Synthesized CFB container byte vector or unit test completion.
     #[test]
     #[allow(clippy::too_many_lines, clippy::cast_possible_truncation)]
     fn test_cfb_reader_chains_and_mini_stream() {
@@ -953,7 +953,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Synthesized CFB container byte vector or unit test completion.
     #[test]
     fn test_cfb_reader_non_regular_sectors() {
         let mut bytes = build_minimal_cfb();
@@ -975,7 +975,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Synthesized CFB container byte vector or unit test completion.
     #[test]
     #[allow(clippy::cast_possible_truncation)]
     fn test_cfb_reader_error_branches() {

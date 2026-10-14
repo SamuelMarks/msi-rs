@@ -199,11 +199,11 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `res` - TODO: Document argument.
+    /// * `res` - Result of parsing a [`CfData`] block.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Unwrapped [`CfData`] or [`CfData::default`] on error.
     fn unwrap_data(res: Result<CfData>) -> CfData {
         res.unwrap_or_default()
     }

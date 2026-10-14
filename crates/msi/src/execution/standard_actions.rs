@@ -10,107 +10,118 @@ use std::path::Path;
 
 /// Interface for cross-platform OS-agnostic IO file operations (`InstallFiles`, `MoveFiles`, `RemoveFiles`).
 pub trait FileOperations {
-    /// Extract or copy a file to a destination path.
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
+    /// Extracts or copies a file from `source` to `destination`, creating parent directories as needed.
     ///
     /// # Arguments
     ///
-    /// * `source` - The source argument.
-    /// * `destination` - The destination argument.
+    /// * `source` - Source file path on disk or staging cache.
+    /// * `destination` - Target installation file path.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(())` when the file is installed at `destination`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError::Io`] if parent directory creation or file copying fails.
     fn install_file(&self, source: &Path, destination: &Path) -> Result<()>;
-    /// Duplicate an existing file.
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
+
+    /// Duplicates an existing installed file (`DuplicateFiles` standard action).
     ///
     /// # Arguments
     ///
-    /// * `source` - The source argument.
-    /// * `destination` - The destination argument.
+    /// * `source` - Existing file path to duplicate.
+    /// * `destination` - Destination path for the duplicate copy.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(())` when the duplicate file is created.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError::Io`] if copying fails.
     fn duplicate_file(&self, source: &Path, destination: &Path) -> Result<()>;
-    /// Move an existing file.
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
+
+    /// Moves or renames an existing file (`MoveFiles` standard action).
     ///
     /// # Arguments
     ///
-    /// * `source` - The source argument.
-    /// * `destination` - The destination argument.
+    /// * `source` - Existing file path to move.
+    /// * `destination` - New destination path for the file.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(())` when the file is moved to `destination`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError::Io`] if renaming or parent directory creation fails.
     fn move_file(&self, source: &Path, destination: &Path) -> Result<()>;
-    /// Delete a file, managing `.lock` semantics on Unix or `MoveFileEx` semantics on Windows for in-use files.
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
+
+    /// Deletes a file (`RemoveFiles` standard action), ignoring `NotFound` errors.
     ///
     /// # Arguments
     ///
-    /// * `target` - The target argument.
+    /// * `target` - File path to remove.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(())` when the file is removed or already absent.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError::Io`] if file deletion fails for reasons other than `NotFound`.
     fn remove_file(&self, target: &Path) -> Result<()>;
 
-    /// Create an empty directory structure (`CreateFolders`).
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
+    /// Creates an empty directory structure (`CreateFolders` standard action).
     ///
     /// # Arguments
     ///
-    /// * `target` - The target argument.
+    /// * `target` - Directory path to create recursively.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(())` when the directory exists.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError::Io`] if directory creation fails.
     fn create_folder(&self, target: &Path) -> Result<()>;
-    /// Remove an empty directory (`RemoveFolders`).
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
+
+    /// Removes an empty directory (`RemoveFolders` standard action).
     ///
     /// # Arguments
     ///
-    /// * `target` - The target argument.
+    /// * `target` - Directory path to remove.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(())` when the directory is removed or already absent.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError::Io`] if directory removal fails for reasons other than `NotFound`.
     fn remove_folder(&self, target: &Path) -> Result<()>;
 }
 
-/// Interface for system configuration manipulation.
+/// Interface for system configuration manipulation (`WriteRegistryValues`, `WriteEnvironmentStrings`, `WriteIniValues`).
 pub trait SystemConfigOperations {
     /// Sets a registry value natively or via a virtualized hive.
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
     ///
     /// # Arguments
     ///
-    /// * `root` - The root argument.
-    /// * `key` - The key argument.
-    /// * `name` - The name argument.
-    /// * `value` - The value argument.
+    /// * `root` - Numeric registry root (`0` = `HKCR`, `1` = `HKCU`, `2` = `HKLM`, `3` = `HKU`).
+    /// * `key` - Registry subkey path.
+    /// * `name` - Registry value name (`""` for default value).
+    /// * `value` - Typed [`crate::platform::registry_store::RegistryValue`] payload.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(())` when the registry value is persisted.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError`] if the root is invalid or persistence fails.
     fn write_registry_value(
         &self,
         root: u32,
@@ -118,67 +129,73 @@ pub trait SystemConfigOperations {
         name: &str,
         value: &crate::platform::registry_store::RegistryValue,
     ) -> Result<()>;
-    /// Removes a registry value.
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
+
+    /// Removes a registry value (`RemoveRegistryValues` standard action).
     ///
     /// # Arguments
     ///
-    /// * `root` - The root argument.
-    /// * `key` - The key argument.
-    /// * `name` - The name argument.
+    /// * `root` - Numeric registry root (`0..=3`).
+    /// * `key` - Registry subkey path.
+    /// * `name` - Registry value name to delete.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(())` when the registry value is removed.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError`] if removal fails.
     fn remove_registry_value(&self, root: u32, key: &str, name: &str) -> Result<()>;
 
-    /// Updates environment variables.
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
+    /// Writes or updates an environment variable (`WriteEnvironmentStrings` standard action).
     ///
     /// # Arguments
     ///
-    /// * `name` - The name argument.
-    /// * `value` - The value argument.
-    /// * `system_wide` - The `system_wide` argument.
+    /// * `name` - Environment variable name.
+    /// * `value` - Environment variable value string.
+    /// * `system_wide` - `true` for machine-wide scope, `false` for per-user scope.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(())` when the environment variable is updated.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError`] if writing the environment configuration fails.
     fn write_environment_string(&self, name: &str, value: &str, system_wide: bool) -> Result<()>;
-    /// Removes an environment variable.
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
+
+    /// Removes an environment variable (`RemoveEnvironmentStrings` standard action).
     ///
     /// # Arguments
     ///
-    /// * `name` - The name argument.
-    /// * `system_wide` - The `system_wide` argument.
+    /// * `name` - Environment variable name to remove.
+    /// * `system_wide` - `true` for machine-wide scope, `false` for per-user scope.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(())` when the environment variable is removed.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError`] if updating the environment configuration fails.
     fn remove_environment_string(&self, name: &str, system_wide: bool) -> Result<()>;
 
-    /// Updates an INI file value.
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
+    /// Writes or updates an `.ini` configuration key-value pair (`WriteIniValues` standard action).
     ///
     /// # Arguments
     ///
-    /// * `file_path` - The `file_path` argument.
-    /// * `section` - The section argument.
-    /// * `key` - The key argument.
-    /// * `value` - The value argument.
+    /// * `file_path` - Path to the `.ini` file on disk.
+    /// * `section` - Section header name (without brackets).
+    /// * `key` - Key name within `section`.
+    /// * `value` - Value string to assign to `key`.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(())` when the `.ini` file is updated.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError::Io`] if reading or writing `file_path` fails.
     fn write_ini_value(
         &self,
         file_path: &Path,
@@ -186,171 +203,202 @@ pub trait SystemConfigOperations {
         key: &str,
         value: &str,
     ) -> Result<()>;
-    /// Removes an INI file value.
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
+
+    /// Removes a key-value pair from an `.ini` file (`RemoveIniValues` standard action).
     ///
     /// # Arguments
     ///
-    /// * `file_path` - The `file_path` argument.
-    /// * `section` - The section argument.
-    /// * `key` - The key argument.
+    /// * `file_path` - Path to the `.ini` file on disk.
+    /// * `section` - Section header name.
+    /// * `key` - Key name to remove from `section`.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(())` when the key is removed or if `file_path` does not exist.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError::Io`] if writing the updated `.ini` file fails.
     fn remove_ini_value(&self, file_path: &Path, section: &str, key: &str) -> Result<()>;
 }
 
-/// Interface for system-level services and driver installations.
+/// Interface for system-level services and driver installations (`InstallServices`, `StartServices`, `StopServices`, `DeleteServices`).
 pub trait SystemServiceOperations {
-    /// Install a background service daemon.
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
+    /// Installs a background service daemon (`InstallServices` standard action).
     ///
     /// # Arguments
     ///
-    /// * `def` - The def argument.
+    /// * `def` - Service configuration descriptor.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(())` when the service unit/registration is generated.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError`] if service registration fails.
     fn install_service(&self, def: &crate::platform::daemon::ServiceDefinition) -> Result<()>;
-    /// Control an existing background service.
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
+
+    /// Starts or stops an existing background service (`StartServices` / `StopServices` standard actions).
     ///
     /// # Arguments
     ///
-    /// * `name` - The name argument.
-    /// * `start` - The start argument.
-    /// * `stop` - The stop argument.
+    /// * `name` - Service name to control.
+    /// * `start` - `true` to start the service.
+    /// * `stop` - `true` to stop the service.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(())` when the requested state transition completes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError`] if service control fails.
     fn control_service(&self, name: &str, start: bool, stop: bool) -> Result<()>;
-    /// Delete a background service daemon.
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
+
+    /// Deletes a background service daemon (`DeleteServices` standard action).
     ///
     /// # Arguments
     ///
-    /// * `name` - The name argument.
+    /// * `name` - Service name to remove.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(())` when the service registration is removed.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError`] if service deletion fails.
     fn delete_service(&self, name: &str) -> Result<()>;
 
-    /// Install an OS kernel driver (DIFx/systemd module abstraction).
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
+    /// Installs an OS kernel driver (`DIFx` / `systemd-modules-load` abstraction).
     ///
     /// # Arguments
     ///
-    /// * `inf_path` - The `inf_path` argument.
+    /// * `inf_path` - Path to the driver `.inf` or kernel module file.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(())` when the driver is staged and registered.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError`] if driver installation fails.
     fn install_driver(&self, inf_path: &Path) -> Result<()>;
 }
 
-/// Interface for specialized COM, Desktop, and Font registrations.
+/// Interface for specialized COM, Desktop, ODBC, and Font registrations.
 pub trait SpecializedRegistrationOperations {
-    /// Register an ODBC data source.
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
+    /// Registers an ODBC data source (`InstallODBC` standard action).
     ///
     /// # Arguments
     ///
-    /// * `driver` - The driver argument.
-    /// * `attributes` - The attributes argument.
+    /// * `driver` - ODBC driver name.
+    /// * `attributes` - Semicolon-delimited DSN key-value attributes.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(())` when the DSN is registered.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError`] if ODBC registration fails.
     fn install_odbc(&self, driver: &str, attributes: &str) -> Result<()>;
-    /// Remove an ODBC data source.
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
+
+    /// Removes an ODBC data source (`RemoveODBC` standard action).
     ///
     /// # Arguments
     ///
-    /// * `driver` - The driver argument.
+    /// * `driver` - ODBC driver or DSN name to remove.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(())` when the DSN is removed.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError`] if ODBC removal fails.
     fn remove_odbc(&self, driver: &str) -> Result<()>;
 
-    /// Install an ODBC driver.
-    /// # Errors
-    /// Returns an error if operation fails.
+    /// Installs an ODBC driver definition into `odbcinst.ini` or registry.
+    ///
     /// # Arguments
-    /// * `driver` - driver config string
-    /// * `path_in` - target path
+    ///
+    /// * `driver` - Driver configuration string.
+    /// * `path_in` - Driver library target directory path.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` when the ODBC driver entry is registered.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError`] if driver registration fails.
     fn install_odbc_driver(&self, driver: &str, path_in: &str) -> Result<()>;
 
-    /// Install an ODBC translator.
-    /// # Errors
-    /// Returns an error if operation fails.
+    /// Installs an ODBC translator definition into `odbcinst.ini` or registry.
+    ///
     /// # Arguments
-    /// * `translator` - translator config string
-    /// * `path_in` - target path
+    ///
+    /// * `translator` - Translator configuration string.
+    /// * `path_in` - Translator library target directory path.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` when the ODBC translator entry is registered.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError`] if translator registration fails.
     fn install_odbc_translator(&self, translator: &str, path_in: &str) -> Result<()>;
 
-    /// Register a system font.
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
+    /// Registers a system font (`RegisterFonts` standard action).
     ///
     /// # Arguments
     ///
-    /// * `font_title` - The `font_title` argument.
-    /// * `font_file` - The `font_file` argument.
+    /// * `font_title` - Display title of the font.
+    /// * `font_file` - Path to the `.ttf` or `.otf` font file.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(())` when the font is registered.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError`] if font registration fails.
     fn register_font(&self, font_title: &str, font_file: &Path) -> Result<()>;
-    /// Unregister a system font.
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
+
+    /// Unregisters a system font (`UnregisterFonts` standard action).
     ///
     /// # Arguments
     ///
-    /// * `font_title` - The `font_title` argument.
-    /// * `font_file` - The `font_file` argument.
+    /// * `font_title` - Display title of the font to remove.
+    /// * `font_file` - Path to the font file.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(())` when the font is unregistered.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError`] if font unregistration fails.
     fn unregister_font(&self, font_title: &str, font_file: &Path) -> Result<()>;
 
-    /// Register file extension, MIME, or `ProgID` (XDG/macOS LaunchServices/HKCR).
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
+    /// Registers a file extension, MIME type, or `ProgId` (`RegisterProgIdInfo` standard action).
     ///
     /// # Arguments
     ///
-    /// * `progid` - The progid argument.
-    /// * `description` - The description argument.
-    /// * `icon` - The icon argument.
+    /// * `progid` - Programmatic identifier string.
+    /// * `description` - Human-readable description of the `ProgId`.
+    /// * `icon` - Optional icon file path.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(())` when the `ProgId` metadata is registered.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError`] if registration fails.
     fn register_progid_info(
         &self,
         progid: &str,
@@ -358,96 +406,112 @@ pub trait SpecializedRegistrationOperations {
         icon: Option<&Path>,
     ) -> Result<()>;
 
-    /// Register a type library (TLB) or COM class.
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
+    /// Registers a COM Type Library (`RegisterTypeLibraries` standard action).
     ///
     /// # Arguments
     ///
-    /// * `tlb_path` - The `tlb_path` argument.
+    /// * `tlb_path` - Path to the `.tlb` file on disk.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(())` when the type library is registered.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError`] if type library registration fails.
     fn register_typelib(&self, tlb_path: &Path) -> Result<()>;
 
-    /// Invoke self-registration on a dynamic library.
-
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
+    /// Invokes `DllRegisterServer` on a dynamic library (`SelfRegModules` standard action).
     ///
     /// # Arguments
     ///
-    /// * `dll_path` - The `dll_path` argument.
+    /// * `dll_path` - Path to the native DLL/shared library.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(())` when self-registration succeeds.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError`] if loading or invoking `DllRegisterServer` fails.
     fn self_register_module(&self, dll_path: &Path) -> Result<()>;
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
+
+    /// Invokes `DllUnregisterServer` on a dynamic library (`SelfUnregModules` standard action).
     ///
     /// # Arguments
     ///
-    /// * `dll_path` - The `dll_path` argument.
+    /// * `dll_path` - Path to the native DLL/shared library.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(())` when self-unregistration succeeds.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError`] if loading or invoking `DllUnregisterServer` fails.
     fn self_unregister_module(&self, dll_path: &Path) -> Result<()>;
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
+
+    /// Binds PE image imports (`BindImage` standard action).
     ///
     /// # Arguments
     ///
-    /// * `exe_path` - The `exe_path` argument.
+    /// * `exe_path` - Path to the PE executable or DLL on disk.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(())` when PE import binding completes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError`] if PE parsing or binding fails.
     fn bind_image(&self, exe_path: &Path) -> Result<()>;
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
+
+    /// Publishes qualified components (`PublishComponents` standard action).
     ///
     /// # Arguments
     ///
-    /// * `component_id` - The `component_id` argument.
-    /// * `qualifier` - The qualifier argument.
-    /// * `appdata` - The appdata argument.
+    /// * `component_id` - Qualified component GUID.
+    /// * `qualifier` - Qualifier string distinguishing the component instance.
+    /// * `appdata` - Application-specific data string.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(())` when the qualified component is published.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError`] if publishing fails.
     fn publish_components(&self, component_id: &str, qualifier: &str, appdata: &str) -> Result<()>;
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
+
+    /// Publishes product features (`PublishFeatures` standard action).
     ///
     /// # Arguments
     ///
-    /// * `feature_id` - The `feature_id` argument.
+    /// * `feature_id` - Feature identifier to publish.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(())` when the feature is published.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError`] if publishing fails.
     fn publish_features(&self, feature_id: &str) -> Result<()>;
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
+
+    /// Isolates shared DLL components alongside an application executable (`IsolateComponents` standard action).
     ///
     /// # Arguments
     ///
-    /// * `component_id` - The `component_id` argument.
-    /// * `app_path` - The `app_path` argument.
+    /// * `component_id` - Shared component identifier.
+    /// * `app_path` - Path to the application executable receiving the isolated copy.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(())` when component isolation completes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError`] if isolation fails.
     fn isolate_components(&self, component_id: &str, app_path: &Path) -> Result<()>;
 }
 

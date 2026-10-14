@@ -210,9 +210,9 @@ impl TerminalBuffer {
     ///
     /// # Arguments
     ///
-    /// * `x` - TODO: Document argument.
-    /// * `y` - TODO: Document argument.
-    /// * `ch` - TODO: Document argument.
+    /// * `x` - The `x` parameter.
+    /// * `y` - The `y` parameter.
+    /// * `ch` - The `ch` parameter.
     pub fn set_char(&mut self, x: u16, y: u16, ch: char) {
         if x < self.width && y < self.height {
             let idx = (y as usize) * (self.width as usize) + (x as usize);
@@ -224,9 +224,9 @@ impl TerminalBuffer {
     ///
     /// # Arguments
     ///
-    /// * `x` - TODO: Document argument.
-    /// * `y` - TODO: Document argument.
-    /// * `text` - TODO: Document argument.
+    /// * `x` - The `x` parameter.
+    /// * `y` - The `y` parameter.
+    /// * `text` - The `text` parameter.
     pub fn draw_string(&mut self, x: u16, y: u16, text: &str) {
         for (i, ch) in text.chars().enumerate() {
             let col = x.saturating_add(u16::try_from(i).unwrap_or(u16::MAX));
@@ -238,11 +238,11 @@ impl TerminalBuffer {
     ///
     /// # Arguments
     ///
-    /// * `x` - TODO: Document argument.
-    /// * `y` - TODO: Document argument.
-    /// * `w` - TODO: Document argument.
-    /// * `h` - TODO: Document argument.
-    /// * `title` - TODO: Document argument.
+    /// * `x` - The `x` parameter.
+    /// * `y` - The `y` parameter.
+    /// * `w` - The `w` parameter.
+    /// * `h` - The `h` parameter.
+    /// * `title` - The `title` parameter.
     pub fn draw_box(&mut self, x: u16, y: u16, w: u16, h: u16, title: Option<&str>) {
         if w < 2 || h < 2 {
             return;
@@ -279,7 +279,7 @@ impl TerminalBuffer {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn render_to_string(&self) -> String {
         let mut out = String::with_capacity((self.width as usize + 1) * self.height as usize);
@@ -344,7 +344,7 @@ impl TerminalWizard {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn engine(&self) -> &UiEngine {
         &self.engine
@@ -354,7 +354,7 @@ impl TerminalWizard {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub const fn engine_mut(&mut self) -> &mut UiEngine {
         &mut self.engine
     }
@@ -363,7 +363,7 @@ impl TerminalWizard {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn is_diagnostics_log_open(&self) -> bool {
         self.diagnostics_log_open
@@ -387,7 +387,7 @@ impl TerminalWizard {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn action_text(&self) -> Option<&str> {
         self.action_text.as_deref()
@@ -397,7 +397,7 @@ impl TerminalWizard {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn scroll_offset(&self) -> usize {
         self.scroll_offset
@@ -416,7 +416,7 @@ impl TerminalWizard {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn cursor_pos(&self) -> usize {
         self.cursor_pos

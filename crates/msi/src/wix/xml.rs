@@ -81,8 +81,8 @@ impl XmlNode {
     ///
     /// # Arguments
     ///
-    /// * `out` - TODO: Document argument.
-    /// * `indent` - TODO: Document argument.
+    /// * `out` - The `out` parameter.
+    /// * `indent` - The `indent` parameter.
     fn render_xml(&self, out: &mut String, indent: usize) {
         let pad = " ".repeat(indent);
         out.push_str(&pad);
@@ -413,11 +413,11 @@ impl XmlParser {
     ///
     /// # Arguments
     ///
-    /// * `content` - TODO: Document argument.
+    /// * `content` - The `content` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn parse_tag_content(&self, content: &str) -> Result<(String, HashMap<String, String>)> {
         let trimmed = content.trim_start();
         let mut parts = trimmed.split_whitespace();
@@ -495,11 +495,11 @@ impl XmlParser {
     ///
     /// # Arguments
     ///
-    /// * `val` - TODO: Document argument.
+    /// * `val` - The `val` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[allow(clippy::unused_self)]
     fn unescape_xml(&self, val: &str) -> String {
         val.replace("&quot;", "\"")

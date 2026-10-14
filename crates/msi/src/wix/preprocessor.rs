@@ -246,14 +246,14 @@ impl Preprocessor {
     ///
     /// # Arguments
     ///
-    /// * `lines` - TODO: Document argument.
-    /// * `idx` - TODO: Document argument.
-    /// * `ctx` - TODO: Document argument.
-    /// * `is_active` - TODO: Document argument.
+    /// * `lines` - The `lines` parameter.
+    /// * `idx` - The `idx` parameter.
+    /// * `ctx` - The `ctx` parameter.
+    /// * `is_active` - The `is_active` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[allow(clippy::too_many_lines)]
     fn process_lines(
         &self,
@@ -479,13 +479,13 @@ impl Preprocessor {
     ///
     /// # Arguments
     ///
-    /// * `raw_path` - TODO: Document argument.
-    /// * `ctx` - TODO: Document argument.
-    /// * `line` - TODO: Document argument.
+    /// * `raw_path` - The `raw_path` parameter.
+    /// * `ctx` - The `ctx` parameter.
+    /// * `line` - The `line` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[allow(clippy::unused_self)]
     fn resolve_include(
         &self,
@@ -541,13 +541,13 @@ impl Preprocessor {
     ///
     /// # Arguments
     ///
-    /// * `left` - TODO: Document argument.
-    /// * `op` - TODO: Document argument.
-    /// * `right` - TODO: Document argument.
+    /// * `left` - The `left` parameter.
+    /// * `op` - The `op` parameter.
+    /// * `right` - The `right` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn eval_comparison(left: &str, op: &str, right: &str) -> bool {
         let l_clean = left.trim().trim_matches('"');
         let r_clean = right.trim().trim_matches('"');
@@ -747,11 +747,11 @@ impl Preprocessor {
     ///
     /// # Arguments
     ///
-    /// * `expr` - TODO: Document argument.
+    /// * `expr` - The `expr` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn resolve_fun_macro(expr: &str) -> Result<String> {
         let Some(paren_open) = expr.find('(') else {
             return Err(MsiError::Preprocessor {
@@ -829,12 +829,12 @@ impl Preprocessor {
     ///
     /// # Arguments
     ///
-    /// * `macro_expr` - TODO: Document argument.
-    /// * `ctx` - TODO: Document argument.
+    /// * `macro_expr` - The `macro_expr` parameter.
+    /// * `ctx` - The `ctx` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[allow(clippy::unused_self)]
     fn resolve_macro(&self, macro_expr: &str, ctx: &PreprocessorContext) -> Result<String> {
         if let Some(rest) = macro_expr.strip_prefix("fun.") {

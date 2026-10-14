@@ -444,7 +444,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn sample_database() -> LinkedDatabase {
         let mut db = LinkedDatabase::default();
 

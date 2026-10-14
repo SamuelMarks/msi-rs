@@ -14,12 +14,12 @@ use crate::error::{MsiError, Result};
 ///
 /// # Arguments
 ///
-/// * `input` - TODO: Document argument.
-/// * `output_size` - TODO: Document argument.
+/// * `input` - The `input` parameter.
+/// * `output_size` - The `output_size` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 pub fn decompress_xpress(input: &[u8], output_size: usize) -> Result<Vec<u8>> {
     let mut out = Vec::with_capacity(output_size);
     let mut in_pos = 0;
@@ -129,12 +129,12 @@ pub fn decompress_xpress(input: &[u8], output_size: usize) -> Result<Vec<u8>> {
 ///
 /// # Arguments
 ///
-/// * `_input` - TODO: Document argument.
-/// * `_output_size` - TODO: Document argument.
+/// * `_input` - The `_input` parameter.
+/// * `_output_size` - The `_output_size` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 pub fn decompress_xpress_huffman(_input: &[u8], _output_size: usize) -> Result<Vec<u8>> {
     Err(MsiError::WimDecompressionError {
         algorithm: "XPRESS Huffman".to_string(),

@@ -27,11 +27,11 @@ pub trait VolumeCostOperations {
     ///
     /// # Arguments
     ///
-    /// * `path` - TODO: Document argument.
+    /// * `path` - Filesystem path or volume mount point to query.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// [`DiskCostMetrics`] containing total and available bytes on the volume.
     fn get_disk_free_space(&self, path: &Path) -> Result<DiskCostMetrics>;
 }
 
@@ -46,11 +46,11 @@ impl VolumeCostOperations for StandardCostEngine {
     ///
     /// # Arguments
     ///
-    /// * `path` - TODO: Document argument.
+    /// * `path` - Filesystem path or volume mount point to query.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// [`DiskCostMetrics`] containing total and available bytes on the volume.
     fn get_disk_free_space(&self, path: &Path) -> Result<DiskCostMetrics> {
         #[cfg(unix)]
         {

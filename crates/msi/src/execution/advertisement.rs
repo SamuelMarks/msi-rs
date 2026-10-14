@@ -46,11 +46,11 @@ impl AasParser {
     ///
     /// # Arguments
     ///
-    /// * `data` - TODO: Document argument.
+    /// * `data` - Raw `.aas` advertisement script byte slice.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Parsed [`AasParser`] containing the decoded opcodes.
     pub fn parse(data: &[u8]) -> Result<Self, MsiError> {
         if data.len() < 4 || &data[0..4] != b"AAS\0" {
             return Err(MsiError::AdvertisementError(
@@ -108,7 +108,7 @@ impl AasParser {
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// `Ok(())` when the advertisement operation completes.
 pub fn advertise_product(
     package_path: &str,
     _script_info: Option<&str>,
@@ -139,7 +139,7 @@ pub fn advertise_product(
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// `Ok(())` when the advertisement operation completes.
 pub fn advertise_script(
     script_file: &str,
     _flags: u32,
@@ -178,7 +178,7 @@ pub fn advertise_script(
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// `Ok(())` when the advertisement operation completes.
 pub fn process_advertise_script(
     script_file: &str,
     _icon_folder: Option<&str>,

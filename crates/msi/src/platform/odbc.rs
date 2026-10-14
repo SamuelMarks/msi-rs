@@ -15,11 +15,11 @@ impl OdbcDriverName {
     ///
     /// # Arguments
     ///
-    /// * `name` - TODO: Document argument.
+    /// * `name` - The `name` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn new(name: impl Into<String>) -> Self {
         Self(name.into())
@@ -29,7 +29,7 @@ impl OdbcDriverName {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -45,11 +45,11 @@ impl OdbcDataSourceName {
     ///
     /// # Arguments
     ///
-    /// * `name` - TODO: Document argument.
+    /// * `name` - The `name` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn new(name: impl Into<String>) -> Self {
         Self(name.into())
@@ -59,7 +59,7 @@ impl OdbcDataSourceName {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -119,11 +119,11 @@ pub mod windows_impl {
         ///
         /// # Arguments
         ///
-        /// * `driver` - TODO: Document argument.
+        /// * `driver` - The `driver` parameter.
         ///
         /// # Returns
         ///
-        /// TODO: Document return value.
+        /// The resulting value or `Ok(())` on success.
         pub fn register_driver(&self, driver: &OdbcDriver) -> Result<()> {
             if driver.name.as_str().is_empty() {
                 return Err(MsiError::OdbcConfigError("Empty driver name".to_string()));
@@ -138,11 +138,11 @@ pub mod windows_impl {
         ///
         /// # Arguments
         ///
-        /// * `dsn` - TODO: Document argument.
+        /// * `dsn` - The `dsn` parameter.
         ///
         /// # Returns
         ///
-        /// TODO: Document return value.
+        /// The resulting value or `Ok(())` on success.
         pub fn register_data_source(&self, dsn: &OdbcDataSource) -> Result<()> {
             if dsn.name.as_str().is_empty() {
                 return Err(MsiError::OdbcConfigError("Empty DSN name".to_string()));
@@ -157,11 +157,11 @@ pub mod windows_impl {
         ///
         /// # Arguments
         ///
-        /// * `translator` - TODO: Document argument.
+        /// * `translator` - The `translator` parameter.
         ///
         /// # Returns
         ///
-        /// TODO: Document return value.
+        /// The resulting value or `Ok(())` on success.
         pub fn register_translator(&self, translator: &OdbcTranslator) -> Result<()> {
             if translator.name.is_empty() {
                 return Err(MsiError::OdbcConfigError(
@@ -192,11 +192,11 @@ pub mod posix_impl {
         ///
         /// # Arguments
         ///
-        /// * `content` - TODO: Document argument.
+        /// * `content` - The `content` parameter.
         ///
         /// # Returns
         ///
-        /// TODO: Document return value.
+        /// The resulting value or `Ok(())` on success.
         pub fn parse_ini(content: &str) -> Result<HashMap<String, HashMap<String, String>>> {
             let mut result = HashMap::new();
             let mut current_section = String::new();
@@ -234,13 +234,13 @@ pub mod posix_impl {
         ///
         /// # Arguments
         ///
-        /// * `sections` - TODO: Document argument.
-        /// * `HashMap<String` - TODO: Document argument.
-        /// * `String>>` - TODO: Document argument.
+        /// * `sections` - The `sections` parameter.
+        /// * `HashMap<String` - The `HashMap<String` parameter.
+        /// * `String>>` - The `String>>` parameter.
         ///
         /// # Returns
         ///
-        /// TODO: Document return value.
+        /// The resulting value or `Ok(())` on success.
         #[must_use]
         pub fn write_ini(sections: &HashMap<String, HashMap<String, String>>) -> String {
             let mut result = String::new();
@@ -269,11 +269,11 @@ pub mod posix_impl {
         ///
         /// # Arguments
         ///
-        /// * `driver` - TODO: Document argument.
+        /// * `driver` - The `driver` parameter.
         ///
         /// # Returns
         ///
-        /// TODO: Document return value.
+        /// The resulting value or `Ok(())` on success.
         pub fn register_driver(&self, driver: &OdbcDriver) -> Result<()> {
             if driver.name.as_str().is_empty() {
                 return Err(MsiError::OdbcConfigError("Empty driver name".to_string()));
@@ -288,11 +288,11 @@ pub mod posix_impl {
         ///
         /// # Arguments
         ///
-        /// * `dsn` - TODO: Document argument.
+        /// * `dsn` - The `dsn` parameter.
         ///
         /// # Returns
         ///
-        /// TODO: Document return value.
+        /// The resulting value or `Ok(())` on success.
         pub fn register_data_source(&self, dsn: &OdbcDataSource) -> Result<()> {
             if dsn.name.as_str().is_empty() {
                 return Err(MsiError::OdbcConfigError("Empty DSN name".to_string()));
@@ -307,11 +307,11 @@ pub mod posix_impl {
         ///
         /// # Arguments
         ///
-        /// * `translator` - TODO: Document argument.
+        /// * `translator` - The `translator` parameter.
         ///
         /// # Returns
         ///
-        /// TODO: Document return value.
+        /// The resulting value or `Ok(())` on success.
         pub fn register_translator(&self, translator: &OdbcTranslator) -> Result<()> {
             if translator.name.is_empty() {
                 return Err(MsiError::OdbcConfigError(

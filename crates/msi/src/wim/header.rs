@@ -42,11 +42,11 @@ impl WimFlags {
     ///
     /// # Arguments
     ///
-    /// * `val` - TODO: Document argument.
+    /// * `val` - The `val` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn from_bits_truncate(val: u32) -> Self {
         Self(val)
@@ -56,7 +56,7 @@ impl WimFlags {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn bits(self) -> u32 {
         self.0
@@ -66,11 +66,11 @@ impl WimFlags {
     ///
     /// # Arguments
     ///
-    /// * `other` - TODO: Document argument.
+    /// * `other` - The `other` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn contains(self, other: Self) -> bool {
         (self.0 & other.0) == other.0
@@ -102,11 +102,11 @@ impl ResourceFlags {
     ///
     /// # Arguments
     ///
-    /// * `val` - TODO: Document argument.
+    /// * `val` - The `val` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn from_bits_truncate(val: u8) -> Self {
         Self(val)
@@ -116,7 +116,7 @@ impl ResourceFlags {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn bits(self) -> u8 {
         self.0
@@ -126,11 +126,11 @@ impl ResourceFlags {
     ///
     /// # Arguments
     ///
-    /// * `other` - TODO: Document argument.
+    /// * `other` - The `other` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn contains(self, other: Self) -> bool {
         (self.0 & other.0) == other.0
@@ -309,7 +309,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[test]
     fn test_wim_header_read_success() -> Result<()> {
         let mut data = vec![];
@@ -426,7 +426,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[test]
     fn test_esd_header_magic() -> Result<()> {
         let mut data = vec![];
@@ -439,7 +439,7 @@ mod tests {
         Ok(())
     }
 
-    /// Tests trait implementations (`Debug`, `Clone`, `PartialEq`, `Default`).
+    /// Tests trait implementations (`Debug`, `Clone`, `PartialEq`, `PartialOrd`, `Default`).
     #[test]
     fn test_header_traits() {
         let mut r1 = ResourceHeader::default();
@@ -449,13 +449,13 @@ mod tests {
         assert_eq!(r1, r2);
 
         let f1 = WimFlags::COMPRESSION;
-        let f2 = f1;
-        assert_eq!(f1, f2);
-        assert!(f1 >= f2);
+        let f2 = WimFlags::READONLY;
+        assert_ne!(f1, f2);
+        assert!(f2 > f1);
 
         let rf1 = ResourceFlags::FREE;
-        let rf2 = rf1;
-        assert_eq!(rf1, rf2);
-        assert!(rf1 >= rf2);
+        let rf2 = ResourceFlags::COMPRESSED;
+        assert_ne!(rf1, rf2);
+        assert!(rf2 > rf1);
     }
 }

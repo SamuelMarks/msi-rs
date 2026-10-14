@@ -25,7 +25,7 @@ impl BalExtension {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn new() -> Self {
         Self
@@ -38,14 +38,14 @@ impl BalExtension {
     ///
     /// # Arguments
     ///
-    /// * `node` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `node` - The `node` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[allow(clippy::unnecessary_wraps)]
     fn compile_standard_bootstrapper(
         node: &XmlNode,

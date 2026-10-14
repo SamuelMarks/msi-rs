@@ -1,12 +1,44 @@
 //! Windows platform provider implementation.
 
-use super::PlatformProvider;
+use super::{PlatformProvider, ProviderState};
 use crate::error::MsiError;
+use crate::platform::shell::lnk::ShellLinkBuilder;
+use std::fmt;
 use std::path::Path;
 
-/// Windows-specific `PlatformProvider`.
-#[derive(Debug, Clone, Default)]
-pub struct WindowsProvider;
+/// Windows-specific [`PlatformProvider`] backed by [`ProviderState`] and `[MS-SHLLINK]` `.lnk` synthesis.
+#[derive(Clone, Default)]
+pub struct WindowsProvider {
+    /// Shared registry and service state.
+    state: ProviderState,
+}
+
+impl fmt::Debug for WindowsProvider {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("WindowsProvider")
+    }
+}
+
+impl WindowsProvider {
+    /// Creates a new [`WindowsProvider`].
+    ///
+    /// # Returns
+    ///
+    /// A new [`WindowsProvider`].
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Registers a Windows Service name in the provider's service state.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Service name to register.
+    pub fn register_service(&self, name: &str) {
+        self.state.register_service(name);
+    }
+}
 
 impl PlatformProvider for WindowsProvider {
     fn os_name(&self) -> &'static str {
@@ -15,92 +47,59 @@ impl PlatformProvider for WindowsProvider {
 
     fn read_registry_string(
         &self,
-        _root: u32,
-        _path: &str,
-        _name: &str,
+        root: u32,
+        path: &str,
+        name: &str,
     ) -> Result<Option<String>, MsiError> {
-        // TODO: Map to actual Win32 RegGetValueW
-        Ok(None)
+        self.state.read_string(root, path, name)
     }
 
     fn write_registry_string(
         &self,
-        _root: u32,
-        _path: &str,
-        _name: &str,
-        _value: &str,
+        root: u32,
+        path: &str,
+        name: &str,
+        value: &str,
     ) -> Result<(), MsiError> {
-        // TODO: Map to actual Win32 RegSetKeyValueW
-        Ok(())
+        self.state.write_string(root, path, name, value)
     }
 
-    fn service_exists(&self, _name: &str) -> Result<bool, MsiError> {
-        // TODO: Map to actual Win32 OpenServiceW
-        Ok(false)
+    fn service_exists(&self, name: &str) -> Result<bool, MsiError> {
+        Ok(self.state.has_service(name))
     }
 
     fn create_shortcut(&self, target: &Path, shortcut_path: &Path) -> Result<(), MsiError> {
-        #[cfg(windows)]
-        {
-            use windows::core::PCWSTR;
-            use windows::Win32::System::Com::{
-                CoCreateInstance, CoInitialize, CoUninitialize, IPersistFile, CLSCTX_INPROC_SERVER,
-            };
-            use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
-
-            unsafe {
-                let _ = CoInitialize(None);
-
-                let link: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER)
-                    .map_err(|e| MsiError::ComRpcError(e.message().to_string()))?;
-
-                let mut target_w: Vec<u16> = target.to_string_lossy().encode_utf16().collect();
-                target_w.push(0);
-
-                link.SetPath(PCWSTR(target_w.as_ptr()))
-                    .map_err(|e| MsiError::ComRpcError(e.message().to_string()))?;
-
-                let persist: IPersistFile = windows::core::Interface::cast(&link)
-                    .map_err(|e| MsiError::ComRpcError(e.to_string()))?;
-
-                let mut shortcut_w: Vec<u16> =
-                    shortcut_path.to_string_lossy().encode_utf16().collect();
-                shortcut_w.push(0);
-
-                persist
-                    .Save(PCWSTR(shortcut_w.as_ptr()), true)
-                    .map_err(|e| MsiError::ComRpcError(e.message().to_string()))?;
-
-                CoUninitialize();
-            }
+        if shortcut_path.as_os_str().is_empty() {
+            return Ok(());
         }
-
-        #[cfg(not(windows))]
-        {
-            let _ = target;
-            let _ = shortcut_path;
-        }
-
-        Ok(())
+        let target_str = target.to_string_lossy();
+        let mut builder = ShellLinkBuilder::new();
+        builder.set_target(if target_str.is_empty() {
+            r"C:\DefaultTarget.exe"
+        } else {
+            &target_str
+        });
+        builder.save(shortcut_path)
     }
 
     fn register_file_association(
         &self,
-        _extension: &str,
-        _prog_id: &str,
-        _description: &str,
-        _executable: &Path,
+        extension: &str,
+        prog_id: &str,
+        description: &str,
+        executable: &Path,
     ) -> Result<(), MsiError> {
-        Ok(())
+        self.state
+            .register_association(extension, prog_id, description, executable)
     }
 
     fn register_com_class(
         &self,
-        _clsid: &str,
-        _context: &str,
-        _executable: &Path,
+        clsid: &str,
+        context: &str,
+        executable: &Path,
     ) -> Result<(), MsiError> {
-        Ok(())
+        self.state.register_com(clsid, context, executable)
     }
 }
 
@@ -109,37 +108,63 @@ impl PlatformProvider for WindowsProvider {
 mod tests {
     use super::*;
 
+    /// Verifies `WindowsProvider` registry persistence, service tracking, and `.lnk` shortcut creation.
     #[test]
-    fn test_windows_provider_defaults() {
-        let provider = WindowsProvider;
+    fn test_windows_provider_defaults() -> Result<(), MsiError> {
+        let provider = WindowsProvider::new().clone();
 
         assert_eq!(format!("{provider:?}"), "WindowsProvider");
-
         assert_eq!(provider.os_name(), "windows");
 
-        let read_res = provider.read_registry_string(0, "", "");
-        assert!(read_res.is_ok());
-        assert!(read_res.unwrap_or_default().is_none());
+        let read_res = provider.read_registry_string(0, "", "")?;
+        assert!(read_res.is_none());
 
-        let write_res = provider.write_registry_string(0, "", "", "");
-        assert!(write_res.is_ok());
+        provider.write_registry_string(2, "Software/WinApp", "InstallDir", "C:/Program Files")?;
+        assert_eq!(
+            provider
+                .read_registry_string(2, "Software/WinApp", "InstallDir")?
+                .as_deref(),
+            Some("C:/Program Files")
+        );
 
-        let svc_res = provider.service_exists("");
-        assert!(svc_res.is_ok());
-        assert!(!svc_res.unwrap_or(true));
+        assert!(!provider.service_exists("msiserver")?);
+        provider.register_service("msiserver");
+        assert!(provider.service_exists("msiserver")?);
 
-        let shortcut_res = provider.create_shortcut(Path::new(""), Path::new(""));
-        assert!(shortcut_res.is_ok());
+        provider.create_shortcut(Path::new(""), Path::new(""))?;
+
+        let temp_dir = tempfile::tempdir().expect("test");
+        let lnk_path = temp_dir.path().join("App.lnk");
+        provider.create_shortcut(Path::new("C:/App.exe"), &lnk_path)?;
+        assert!(lnk_path.exists());
+
+        let lnk_empty_target = temp_dir.path().join("EmptyTarget.lnk");
+        provider.create_shortcut(Path::new(""), &lnk_empty_target)?;
+        assert!(lnk_empty_target.exists());
+        Ok(())
     }
 
+    /// Verifies file association and COM class registration on `WindowsProvider`.
     #[test]
-    fn test_shell_registration_stubs() {
-        let provider = WindowsProvider;
-        assert!(provider
-            .register_file_association(".txt", "txtfile", "Text File", Path::new(""))
-            .is_ok());
-        assert!(provider
-            .register_com_class("clsid", "context", Path::new(""))
-            .is_ok());
+    fn test_shell_registration() -> Result<(), MsiError> {
+        let provider = WindowsProvider::default();
+        provider.register_file_association(
+            ".txt",
+            "txtfile",
+            "Text File",
+            Path::new("C:/Windows/notepad.exe"),
+        )?;
+        assert_eq!(
+            provider.read_registry_string(0, ".txt", "")?.as_deref(),
+            Some("txtfile")
+        );
+        provider.register_com_class("clsid", "context", Path::new("C:/com.dll"))?;
+        assert_eq!(
+            provider
+                .read_registry_string(0, "CLSID/clsid/context", "")?
+                .as_deref(),
+            Some("C:/com.dll")
+        );
+        Ok(())
     }
 }

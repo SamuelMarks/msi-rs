@@ -262,7 +262,7 @@ impl WixLibrary {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn save(&self, path: &Path) -> Result<()> {
         let bytes = self.to_bytes();
         fs::write(path, bytes)?;

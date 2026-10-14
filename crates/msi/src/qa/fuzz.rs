@@ -21,14 +21,21 @@ use crate::wix::xml::XmlParser;
 /// # Arguments
 ///
 /// * `data` - Raw arbitrary or mutated byte slice.
-pub fn fuzz_cfbf_parse(data: &[u8]) {
+///
+/// # Returns
+///
+/// `true` if `data` parsed as a valid CFB container, `false` otherwise.
+#[must_use]
+pub fn fuzz_cfbf_parse(data: &[u8]) -> bool {
     if let Ok(_header) = CfbHeader::parse(data) {
         if let Ok(reader) = CfbReader::new(data) {
             let _entries = reader.entries();
             drop(reader.find_entry("\u{0005}SummaryInformation"));
             drop(reader.read_stream("!_Tables"));
+            return true;
         }
     }
+    false
 }
 
 /// Fuzzing harness targeting Cabinet compression engines (MSZIP and LZX).
@@ -38,16 +45,23 @@ pub fn fuzz_cfbf_parse(data: &[u8]) {
 /// # Arguments
 ///
 /// * `data` - Raw arbitrary compressed byte slice.
-pub fn fuzz_cab_decompress(data: &[u8]) {
+///
+/// # Returns
+///
+/// `true` if either MSZIP or LZX decompressed the payload without error, `false` otherwise.
+#[must_use]
+pub fn fuzz_cab_decompress(data: &[u8]) -> bool {
     // 1. Fuzz MSZIP
     let mut decomp = MszipDecompressor::new();
-    let _ = decomp.decompress_block(data, 32768);
+    let mszip_ok = decomp.decompress_block(data, 32768).is_ok();
 
     // 2. Fuzz LZX
     let window_bits = if data.is_empty() { 15 } else { data[0] };
-    if let Ok(mut lzx) = LzxState::new(window_bits) {
-        drop(lzx.decompress_block(data, 32768));
-    }
+    let lzx_ok = LzxState::new(window_bits)
+        .and_then(|mut lzx| lzx.decompress_block(data, 32768))
+        .is_ok();
+
+    mszip_ok || lzx_ok
 }
 
 /// Fuzzing harness targeting SQL schema parsing, column definition decoding, and XML parsing.
@@ -55,11 +69,19 @@ pub fn fuzz_cab_decompress(data: &[u8]) {
 /// # Arguments
 ///
 /// * `data` - Raw schema, query, or XML text.
-pub fn fuzz_sql_query_parse(data: &str) {
-    if let Ok(bitmask) = data.parse::<u16>() {
-        drop(ColumnDef::from_bitmask("FuzzCol", bitmask));
-    }
-    drop(XmlParser::new().parse(data));
+///
+/// # Returns
+///
+/// `true` if `data` decoded as a valid column bitmask or XML document, `false` otherwise.
+#[must_use]
+pub fn fuzz_sql_query_parse(data: &str) -> bool {
+    let col_ok = data
+        .parse::<u16>()
+        .ok()
+        .and_then(|bitmask| ColumnDef::from_bitmask("FuzzCol", bitmask).ok())
+        .is_some();
+    let xml_ok = XmlParser::new().parse(data).is_ok();
+    col_ok || xml_ok
 }
 
 /// Fuzzing harness targeting Windows Installer condition expression evaluation.
@@ -67,14 +89,20 @@ pub fn fuzz_sql_query_parse(data: &str) {
 /// # Arguments
 ///
 /// * `expression` - Arbitrary condition expression string.
-pub fn fuzz_condition_eval(expression: &str) {
+///
+/// # Returns
+///
+/// `true` if the condition evaluated without syntax error, `false` otherwise.
+#[must_use]
+pub fn fuzz_condition_eval(expression: &str) -> bool {
     let mut context = EvaluationContext::new();
     context.set_property("VersionNT", "601");
     context.set_property("ALLUSERS", "1");
     context.set_property("INSTALLDIR", r"C:\Program Files\App");
 
-    drop(context.evaluate_condition(expression));
-    drop(context.format_string(expression));
+    let eval_ok = context.evaluate_condition(expression).is_ok();
+    let _formatted = context.format_string(expression);
+    eval_ok
 }
 
 #[cfg(test)]
@@ -88,18 +116,18 @@ mod tests {
     #[test]
     fn test_fuzz_cfbf_parse_corpus() {
         // Empty
-        fuzz_cfbf_parse(&[]);
+        assert!(!fuzz_cfbf_parse(&[]));
 
         // 8 bytes (magic only)
-        fuzz_cfbf_parse(b"\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1");
+        assert!(!fuzz_cfbf_parse(b"\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1"));
 
         // Zeroed 512-byte block
-        fuzz_cfbf_parse(&[0u8; 512]);
+        assert!(!fuzz_cfbf_parse(&[0u8; 512]));
 
         // Truncated header with valid signature
         let mut sig_hdr = vec![0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
         sig_hdr.extend_from_slice(&[0u8; 100]);
-        fuzz_cfbf_parse(&sig_hdr);
+        assert!(!fuzz_cfbf_parse(&sig_hdr));
 
         // Pseudorandom mutation bytes
         let mut pseudo_random = vec![0u8; 1024];
@@ -107,38 +135,39 @@ mod tests {
             let val = (i.wrapping_mul(37).wrapping_add(13)) % 256;
             *byte = u8::try_from(val).unwrap_or(0);
         }
-        fuzz_cfbf_parse(&pseudo_random);
+        assert!(!fuzz_cfbf_parse(&pseudo_random));
 
         // Valid header only (parse succeeds, reader fails)
         let hdr_bytes = CfbHeader::new(CfbVersion::V3).to_bytes();
-        fuzz_cfbf_parse(&hdr_bytes);
+        assert!(!fuzz_cfbf_parse(&hdr_bytes));
 
         // Valid full CFB archive (parse succeeds, reader succeeds, entries and streams read)
         let mut writer = CfbWriter::new(CfbVersion::V3);
         drop(writer.add_stream("\u{0005}SummaryInformation", &[1, 2, 3, 4]));
         drop(writer.add_stream("!_Tables", &[5, 6, 7, 8]));
         let cfb_bytes = writer.build();
-        fuzz_cfbf_parse(&cfb_bytes);
+        assert!(fuzz_cfbf_parse(&cfb_bytes));
     }
 
     /// Tests `fuzz_cab_decompress` with boundary inputs and mutated frames.
     #[test]
     fn test_fuzz_cab_decompress_corpus() {
-        fuzz_cab_decompress(&[]);
-        fuzz_cab_decompress(b"CK\x00\x00\x00"); // MSZIP prefix with truncated payload
-        fuzz_cab_decompress(&[0xFF; 256]);
+        assert!(!fuzz_cab_decompress(&[]));
+        assert!(!fuzz_cab_decompress(b"CK\x00\x00\x00")); // MSZIP prefix with truncated payload
+        assert!(!fuzz_cab_decompress(&[0xFF; 256]));
 
         let mut mutated = vec![0x43, 0x4B]; // 'CK'
         for i in 0..128 {
             let b = (i * 17) % 256;
             mutated.push(u8::try_from(b).unwrap_or(0));
         }
-        fuzz_cab_decompress(&mutated);
+        let _ = fuzz_cab_decompress(&mutated);
     }
 
     /// Tests `fuzz_sql_query_parse` with malformed and boundary schemas.
     #[test]
     fn test_fuzz_sql_query_parse_corpus() {
+        assert!(fuzz_sql_query_parse("<Wix><Product/></Wix>"));
         let corpus = [
             "",
             "0",
@@ -147,26 +176,25 @@ mod tests {
             "4",
             "4096",
             "65535",
-            "<Wix><Product/></Wix>",
             "<UnclosedTag",
             r#"<?xml version="1.0"?>"#,
             "SELECT * FROM File WHERE Sequence > 10",
         ];
         for s in corpus {
-            fuzz_sql_query_parse(s);
+            let _ = fuzz_sql_query_parse(s);
         }
     }
 
     /// Tests `fuzz_condition_eval` with complex, nested, unclosed, and adversarial expressions.
     #[test]
     fn test_fuzz_condition_eval_corpus() {
+        assert!(fuzz_condition_eval("VersionNT > 500"));
+        assert!(!fuzz_condition_eval("(VersionNT >= 600"));
         let corpus = [
             "",
             "1",
             "0",
-            "VersionNT > 500",
             r#"VersionNT = "601" AND ALLUSERS"#,
-            "(VersionNT >= 600", // Unclosed paren
             "VersionNT = 'unclosed quote",
             "NOT (A OR B AND (C XOR D))",
             r#"PROP1 >< "substr""#,
@@ -180,7 +208,7 @@ mod tests {
             "((((((((((nested))))))))))",
         ];
         for expr in corpus {
-            fuzz_condition_eval(expr);
+            let _ = fuzz_condition_eval(expr);
         }
     }
 }

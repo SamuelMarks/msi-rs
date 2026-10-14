@@ -187,7 +187,7 @@ impl OfflineChrootSandbox {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn setup_environment(&mut self) -> Result<()> {
         let dev = self.sysroot.join("dev");
         let proc = self.sysroot.join("proc");
@@ -214,7 +214,7 @@ impl OfflineChrootSandbox {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub const fn teardown(&mut self) -> Result<()> {
         self.is_active = false;
         Ok(())
@@ -407,7 +407,7 @@ impl BareMetalRollbackJournal {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn wipe_stream(
         stream: &mut dyn SeekWrite,
         start_lba: u64,
@@ -441,7 +441,7 @@ impl BareMetalRollbackJournal {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn wipe_sector_range(
         device_path: &Path,
         start_lba: u64,
@@ -513,7 +513,7 @@ impl BareMetalRollbackJournal {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn execute_rollback(&mut self) -> Result<()> {
         while let Some(action) = self.actions.pop() {
             match action {

@@ -98,7 +98,7 @@ pub fn run_app(args: &[String]) -> ExitCode {
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// Process [`ExitCode`] (`ExitCode::SUCCESS` or `ExitCode::FAILURE`).
 #[must_use = "process exit code must be handled"]
 pub fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();

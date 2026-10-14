@@ -39,13 +39,13 @@ pub trait ComObject {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn add_ref(&self) -> ULONG;
     /// Decrement reference count.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn release(&self) -> ULONG;
 }
 

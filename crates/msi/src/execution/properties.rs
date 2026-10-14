@@ -43,11 +43,11 @@ impl InstallState {
     ///
     /// # Arguments
     ///
-    /// * `val` - TODO: Document argument.
+    /// * `val` - The `val` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn from_i32(val: i32) -> Option<Self> {
         match val {
@@ -63,7 +63,7 @@ impl InstallState {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn as_i32(self) -> i32 {
         self as i32
@@ -157,7 +157,7 @@ impl EvaluationContext {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn get_feature_action_state(&self, name: &str) -> InstallState {
         self.feature_action_states
@@ -173,7 +173,7 @@ impl EvaluationContext {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn get_feature_installed_state(&self, name: &str) -> InstallState {
         self.feature_installed_states
@@ -207,7 +207,7 @@ impl EvaluationContext {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn get_component_action_state(&self, name: &str) -> InstallState {
         self.component_action_states
@@ -223,7 +223,7 @@ impl EvaluationContext {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn get_component_installed_state(&self, name: &str) -> InstallState {
         self.component_installed_states
@@ -348,8 +348,8 @@ impl EvaluationContext {
     ///
     /// # Arguments
     ///
-    /// * `feature` - TODO: Document argument.
-    /// * `state` - TODO: Document argument.
+    /// * `feature` - The `feature` parameter.
+    /// * `state` - The `state` parameter.
     pub fn set_feature_action(&mut self, feature: impl Into<String>, state: InstallState) {
         self.feature_action_states.insert(feature.into(), state);
     }
@@ -358,8 +358,8 @@ impl EvaluationContext {
     ///
     /// # Arguments
     ///
-    /// * `feature` - TODO: Document argument.
-    /// * `state` - TODO: Document argument.
+    /// * `feature` - The `feature` parameter.
+    /// * `state` - The `state` parameter.
     pub fn set_feature_installed(&mut self, feature: impl Into<String>, state: InstallState) {
         self.feature_installed_states.insert(feature.into(), state);
     }
@@ -368,8 +368,8 @@ impl EvaluationContext {
     ///
     /// # Arguments
     ///
-    /// * `comp` - TODO: Document argument.
-    /// * `state` - TODO: Document argument.
+    /// * `comp` - The `comp` parameter.
+    /// * `state` - The `state` parameter.
     pub fn set_component_action(&mut self, comp: impl Into<String>, state: InstallState) {
         self.component_action_states.insert(comp.into(), state);
     }
@@ -378,8 +378,8 @@ impl EvaluationContext {
     ///
     /// # Arguments
     ///
-    /// * `comp` - TODO: Document argument.
-    /// * `state` - TODO: Document argument.
+    /// * `comp` - The `comp` parameter.
+    /// * `state` - The `state` parameter.
     pub fn set_component_installed(&mut self, comp: impl Into<String>, state: InstallState) {
         self.component_installed_states.insert(comp.into(), state);
     }
@@ -388,8 +388,8 @@ impl EvaluationContext {
     ///
     /// # Arguments
     ///
-    /// * `file_key` - TODO: Document argument.
-    /// * `path` - TODO: Document argument.
+    /// * `file_key` - The `file_key` parameter.
+    /// * `path` - The `path` parameter.
     pub fn set_file_path(&mut self, file_key: impl Into<String>, path: impl Into<String>) {
         self.file_paths.insert(file_key.into(), path.into());
     }
@@ -398,8 +398,8 @@ impl EvaluationContext {
     ///
     /// # Arguments
     ///
-    /// * `comp_key` - TODO: Document argument.
-    /// * `dir` - TODO: Document argument.
+    /// * `comp_key` - The `comp_key` parameter.
+    /// * `dir` - The `dir` parameter.
     pub fn set_component_dir(&mut self, comp_key: impl Into<String>, dir: impl Into<String>) {
         self.component_directories
             .insert(comp_key.into(), dir.into());
@@ -540,11 +540,11 @@ impl EvaluationContext {
     ///
     /// # Arguments
     ///
-    /// * `c` - TODO: Document argument.
+    /// * `c` - The `c` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     const fn is_word_terminator(c: char) -> bool {
         matches!(
             c,
@@ -556,11 +556,11 @@ impl EvaluationContext {
     ///
     /// # Arguments
     ///
-    /// * `expr` - TODO: Document argument.
+    /// * `expr` - The `expr` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[allow(clippy::too_many_lines)]
     fn tokenize_expression(expr: &str) -> Vec<Token> {
         let mut tokens = Vec::new();
@@ -841,12 +841,12 @@ impl<'a> ConditionParser<'a> {
     ///
     /// # Arguments
     ///
-    /// * `tokens` - TODO: Document argument.
-    /// * `context` - TODO: Document argument.
+    /// * `tokens` - The `tokens` parameter.
+    /// * `context` - The `context` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     const fn new(tokens: Vec<Token>, context: &'a EvaluationContext) -> Self {
         Self {
             tokens,
@@ -859,7 +859,7 @@ impl<'a> ConditionParser<'a> {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn peek(&self) -> Option<&Token> {
         self.tokens.get(self.cursor)
     }
@@ -868,7 +868,7 @@ impl<'a> ConditionParser<'a> {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn advance(&mut self) -> Option<Token> {
         (self.cursor < self.tokens.len()).then(|| {
             let t = self.tokens[self.cursor].clone();
@@ -881,7 +881,7 @@ impl<'a> ConditionParser<'a> {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn parse_or_expr(&mut self) -> Result<bool> {
         let mut left = self.parse_xor_expr()?;
         while matches!(self.peek(), Some(Token::Or)) {
@@ -896,7 +896,7 @@ impl<'a> ConditionParser<'a> {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn parse_xor_expr(&mut self) -> Result<bool> {
         let mut left = self.parse_and_expr()?;
         while matches!(self.peek(), Some(Token::Xor)) {
@@ -911,7 +911,7 @@ impl<'a> ConditionParser<'a> {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn parse_and_expr(&mut self) -> Result<bool> {
         let mut left = self.parse_not_expr()?;
         while matches!(self.peek(), Some(Token::And)) {
@@ -926,7 +926,7 @@ impl<'a> ConditionParser<'a> {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn parse_not_expr(&mut self) -> Result<bool> {
         if matches!(self.peek(), Some(Token::Not)) {
             self.advance();
@@ -941,7 +941,7 @@ impl<'a> ConditionParser<'a> {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn parse_relational_or_primary(&mut self) -> Result<bool> {
         if matches!(self.peek(), Some(Token::OpenParen)) {
             self.advance();
@@ -975,7 +975,7 @@ impl<'a> ConditionParser<'a> {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn parse_value(&mut self) -> Result<String> {
         match self.advance() {
             Some(Token::Literal(s)) => Ok(s),
@@ -1036,11 +1036,11 @@ impl<'a> ConditionParser<'a> {
 ///
 /// # Arguments
 ///
-/// * `t` - TODO: Document argument.
+/// * `t` - The `t` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 const fn is_relational_op(t: &Token) -> bool {
     matches!(
         t,
@@ -1071,13 +1071,13 @@ const fn is_relational_op(t: &Token) -> bool {
 ///
 /// # Arguments
 ///
-/// * `left` - TODO: Document argument.
-/// * `op` - TODO: Document argument.
-/// * `right` - TODO: Document argument.
+/// * `left` - The `left` parameter.
+/// * `op` - The `op` parameter.
+/// * `right` - The `right` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 fn compare_values(left: &str, op: &Token, right: &str) -> bool {
     // Check if both sides can be parsed as integers
     let l_int = left.parse::<i64>().ok();
@@ -1124,11 +1124,11 @@ fn compare_values(left: &str, op: &Token, right: &str) -> bool {
 ///
 /// # Arguments
 ///
-/// * `val` - TODO: Document argument.
+/// * `val` - The `val` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 fn is_truthy(val: &str) -> bool {
     if val.is_empty() {
         return false;

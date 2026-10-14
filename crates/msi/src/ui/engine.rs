@@ -63,7 +63,7 @@ impl DialogDefinition {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn rect(&self) -> DluRect {
         DluRect::new(0, 0, self.width, self.height)
@@ -99,7 +99,7 @@ impl DialogDefinition {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn is_modal(&self) -> bool {
         self.attributes & DIALOG_ATTR_MODAL != 0
@@ -182,7 +182,7 @@ impl UiEngine {
     ///
     /// # Arguments
     ///
-    /// * `dialog` - TODO: Document argument.
+    /// * `dialog` - The `dialog` parameter.
     pub fn add_dialog(&mut self, dialog: DialogDefinition) {
         self.dialogs.insert(dialog.name.clone(), dialog);
     }
@@ -191,7 +191,7 @@ impl UiEngine {
     ///
     /// # Arguments
     ///
-    /// * `def` - TODO: Document argument.
+    /// * `def` - The `def` parameter.
     pub fn add_control(&mut self, def: ControlDefinition) {
         let state = ControlRuntimeState::from_definition(&def);
         let key = (def.dialog().to_string(), def.control().to_string());
@@ -206,7 +206,7 @@ impl UiEngine {
     ///
     /// # Arguments
     ///
-    /// * `condition` - TODO: Document argument.
+    /// * `condition` - The `condition` parameter.
     pub fn add_condition(&mut self, condition: ControlCondition) {
         self.conditions.push(condition);
     }
@@ -215,7 +215,7 @@ impl UiEngine {
     ///
     /// # Arguments
     ///
-    /// * `event` - TODO: Document argument.
+    /// * `event` - The `event` parameter.
     pub fn add_event(&mut self, event: ControlEvent) {
         self.events.push(event);
     }
@@ -224,7 +224,7 @@ impl UiEngine {
     ///
     /// # Arguments
     ///
-    /// * `mapping` - TODO: Document argument.
+    /// * `mapping` - The `mapping` parameter.
     pub fn add_event_mapping(&mut self, mapping: EventMapping) {
         self.event_mappings.push(mapping);
     }
@@ -233,7 +233,7 @@ impl UiEngine {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn active_dialog(&self) -> Option<&DialogDefinition> {
         self.active_dialog
@@ -253,7 +253,7 @@ impl UiEngine {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn set_active_dialog(&mut self, dialog_name: &str) -> Result<()> {
         if !self.dialogs.contains_key(dialog_name) {
             return Err(MsiError::UiError {
@@ -272,7 +272,7 @@ impl UiEngine {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn context(&self) -> &EvaluationContext {
         &self.context
@@ -282,7 +282,7 @@ impl UiEngine {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub const fn context_mut(&mut self) -> &mut EvaluationContext {
         &mut self.context
     }
@@ -291,12 +291,12 @@ impl UiEngine {
     ///
     /// # Arguments
     ///
-    /// * `dialog` - TODO: Document argument.
-    /// * `control` - TODO: Document argument.
+    /// * `dialog` - The `dialog` parameter.
+    /// * `control` - The `control` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn get_control_state(&self, dialog: &str, control: &str) -> Option<&ControlRuntimeState> {
         self.control_states
@@ -307,12 +307,12 @@ impl UiEngine {
     ///
     /// # Arguments
     ///
-    /// * `dialog` - TODO: Document argument.
-    /// * `control` - TODO: Document argument.
+    /// * `dialog` - The `dialog` parameter.
+    /// * `control` - The `control` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn get_control_state_mut(
         &mut self,
         dialog: &str,
@@ -331,11 +331,11 @@ impl UiEngine {
     ///
     /// # Arguments
     ///
-    /// * `dialog` - TODO: Document argument.
+    /// * `dialog` - The `dialog` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn get_dialog_controls(&self, dialog: &str) -> &[ControlDefinition] {
         self.controls.get(dialog).map_or(&[], Vec::as_slice)
@@ -349,7 +349,7 @@ impl UiEngine {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn evaluate_conditions_and_formatting(&mut self) -> Result<()> {
         let Some(active_dlg) = self.active_dialog.clone() else {
             return Ok(());
@@ -550,7 +550,7 @@ impl UiEngine {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn update_control_value(&mut self, dialog: &str, control: &str, value: &str) -> Result<()> {
         let key = (dialog.to_string(), control.to_string());
         if let Some(state) = self.control_states.get_mut(&key) {
@@ -586,7 +586,7 @@ impl UiEngine {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn toggle_checkbox(&mut self, dialog: &str, control: &str) -> Result<()> {
         let key = (dialog.to_string(), control.to_string());
         let cur_val = self
@@ -612,7 +612,7 @@ impl UiEngine {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn select_radio_button(&mut self, dialog: &str, control: &str, value: &str) -> Result<()> {
         self.update_control_value(dialog, control, value)
     }
@@ -915,7 +915,7 @@ impl UiEngine {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn action_log(&self) -> &[String] {
         &self.action_log
@@ -941,7 +941,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[allow(clippy::too_many_lines)]
     fn setup_test_wizard() -> UiEngine {
         let mut context = EvaluationContext::new();

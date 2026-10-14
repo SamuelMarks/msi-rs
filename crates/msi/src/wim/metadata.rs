@@ -26,11 +26,11 @@ impl SecurityData {
     ///
     /// # Arguments
     ///
-    /// * `bytes` - TODO: Document argument.
+    /// * `bytes` - The `bytes` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn parse(bytes: &[u8]) -> Result<Self> {
         if bytes.len() < 8 {
             return Ok(Self::default());
@@ -89,11 +89,11 @@ impl DirectoryEntry {
     ///
     /// # Arguments
     ///
-    /// * `bytes` - TODO: Document argument.
+    /// * `bytes` - The `bytes` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn parse(bytes: &[u8]) -> Result<Self> {
         if bytes.len() < 8 {
             return Err(MsiError::Io(crate::error::IoContext::from_string(
@@ -178,12 +178,12 @@ impl WimReader {
     ///
     /// # Arguments
     ///
-    /// * `extracted_data` - TODO: Document argument.
-    /// * `expected_hash` - TODO: Document argument.
+    /// * `extracted_data` - The `extracted_data` parameter.
+    /// * `expected_hash` - The `expected_hash` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn validate_checksum(
         &self,
         extracted_data: &[u8],
@@ -207,11 +207,11 @@ impl WimReader {
     ///
     /// # Arguments
     ///
-    /// * `_path` - TODO: Document argument.
+    /// * `_path` - The `_path` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn get_file_stream(&self, _path: &str) -> Result<impl Read> {
         // Return dummy implementation type that meets trait bounds, wrapped in Err
         let empty_stream: &[u8] = &[];

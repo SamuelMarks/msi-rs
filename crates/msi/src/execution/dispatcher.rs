@@ -19,7 +19,7 @@ impl<'a> ActionDispatcher<'a> {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn new(transaction: &'a mut Transaction<Uninitialized>) -> Self {
         Self { transaction }
@@ -29,11 +29,11 @@ impl<'a> ActionDispatcher<'a> {
     ///
     /// # Arguments
     ///
-    /// * `sequence` - TODO: Document argument.
+    /// * `sequence` - The `sequence` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     /// # Errors
     ///
     /// Returns an error if the sequence table is malformed or if an action fails.
@@ -106,11 +106,11 @@ impl<'a> ActionDispatcher<'a> {
     ///
     /// # Arguments
     ///
-    /// * `action_name` - TODO: Document argument.
+    /// * `action_name` - The `action_name` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     /// # Errors
     ///
     /// Returns an error if the action cannot be dispatched or fails during execution.

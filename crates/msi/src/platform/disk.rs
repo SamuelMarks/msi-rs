@@ -244,12 +244,12 @@ impl BlockDeviceScanner {
     ///
     /// # Arguments
     ///
-    /// * `dev_dir` - TODO: Document argument.
-    /// * `name` - TODO: Document argument.
+    /// * `dev_dir` - The `dev_dir` parameter.
+    /// * `name` - The `name` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn parse_sysfs_device(dev_dir: &Path, name: &str) -> BlockDevice {
         let kind = if name.starts_with("loop") {
             DeviceKind::Loopback

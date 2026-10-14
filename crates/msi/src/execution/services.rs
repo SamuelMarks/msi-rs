@@ -54,7 +54,7 @@ impl ServiceEvaluator {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// `Ok(())` if the service install configuration is valid for `target_os`.
     pub fn validate_service_install(
         &self,
         row: &ServiceInstallRow,
@@ -95,7 +95,7 @@ impl ServiceEvaluator {
     ///
     /// # Arguments
     ///
-    /// * `row` - The `ServiceControl` definition.
+    /// * `_row` - The `ServiceControl` definition.
     /// * `target_os` - The target operating system.
     ///
     /// # Errors
@@ -103,7 +103,7 @@ impl ServiceEvaluator {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// `Ok(())` if `ServiceControl` is supported on `target_os`.
     pub fn validate_service_control(
         &self,
         _row: &ServiceControlRow,
@@ -126,11 +126,11 @@ impl ServiceEvaluator {
     ///
     /// # Arguments
     ///
-    /// * `row` - TODO: Document argument.
+    /// * `row` - [`ServiceInstallRow`] describing the Windows service to install.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// `Ok(())` if the service definition is valid.
     #[cfg(windows)]
     pub fn evaluate_scm_install(&self, row: &ServiceInstallRow) -> Result<()> {
         // Native SCM interaction placeholder using Windows APIs.

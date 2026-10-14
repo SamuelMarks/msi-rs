@@ -189,11 +189,11 @@ pub const fn map_msi_error(err: &msi::MsiError) -> i32 {
 ///
 /// # Arguments
 ///
-/// * `code` - TODO: Document argument.
+/// * `code` - The `code` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 fn handle_success(code: i32) -> i32 {
     clear_last_error();
     code
@@ -203,12 +203,12 @@ fn handle_success(code: i32) -> i32 {
 ///
 /// # Arguments
 ///
-/// * `code` - TODO: Document argument.
-/// * `msg` - TODO: Document argument.
+/// * `code` - The `code` parameter.
+/// * `msg` - The `msg` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 fn handle_error(code: i32, msg: String) -> i32 {
     set_last_error(code, msg);
     code
@@ -219,11 +219,11 @@ fn handle_error(code: i32, msg: String) -> i32 {
 ///
 /// # Arguments
 ///
-/// * `panic_payload` - TODO: Document argument.
+/// * `panic_payload` - The `panic_payload` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 fn handle_panic(panic_payload: &(dyn std::any::Any + Send + 'static)) -> i32 {
     let msg = panic_payload.downcast_ref::<&str>().map_or_else(
         || {
@@ -254,11 +254,11 @@ unsafe fn trampoline<F: FnOnce() -> Result<i32, (i32, String)>>(
 ///
 /// # Arguments
 ///
-/// * `caller` - TODO: Document argument.
+/// * `caller` - The `caller` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 fn ffi_boundary_impl(caller: fn(*mut ()) -> Result<i32, (i32, String)>, data: *mut ()) -> i32 {
     let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| caller(data)));
     match res {

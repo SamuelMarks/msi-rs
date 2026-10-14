@@ -24,6 +24,7 @@ impl PyPackage {
     ///
     /// # Arguments
     ///
+    /// * `py` - Python GIL token.
     /// * `path` - Filesystem path to the `.msi` file.
     ///
     /// # Errors
@@ -32,7 +33,7 @@ impl PyPackage {
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// Loaded [`PyPackage`] instance.
     #[staticmethod]
     pub fn open(py: Python<'_>, path: &str) -> PyResult<Self> {
         let p = path.to_string();
@@ -46,6 +47,7 @@ impl PyPackage {
     ///
     /// # Arguments
     ///
+    /// * `py` - Python GIL token.
     /// * `bytes` - Raw Compound File Binary bytes.
     ///
     /// # Errors
@@ -54,7 +56,7 @@ impl PyPackage {
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// Deserialized [`PyPackage`] instance.
     #[staticmethod]
     pub fn from_bytes(py: Python<'_>, bytes: &[u8]) -> PyResult<Self> {
         let b = bytes.to_vec();
@@ -68,6 +70,7 @@ impl PyPackage {
     ///
     /// # Arguments
     ///
+    /// * `py` - Python GIL token.
     /// * `path` - Destination file path.
     ///
     /// # Errors
@@ -76,7 +79,7 @@ impl PyPackage {
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// `Ok(())` when the package is written to disk.
     pub fn save(&self, py: Python<'_>, path: &str) -> PyResult<()> {
         let pkg = self.inner.clone();
         let p = path.to_string();
@@ -93,11 +96,11 @@ impl PyPackage {
     ///
     /// # Arguments
     ///
-    /// * `py` - The argument parameter.
+    /// * `py` - Python GIL token.
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// Serialized Compound File Binary byte vector.
     pub fn to_bytes(&self, py: Python<'_>) -> PyResult<Vec<u8>> {
         let pkg = self.inner.clone();
         let bytes = py
@@ -114,7 +117,7 @@ impl PyPackage {
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// `Some(String)` if the property exists, or `None` if not defined.
     #[must_use]
     pub fn get_property(&self, name: &str) -> Option<String> {
         match name {
@@ -143,7 +146,7 @@ impl PyPackage {
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// Map of property names to string values.
     #[getter]
     #[must_use]
     pub fn properties(&self) -> HashMap<String, String> {
@@ -182,7 +185,7 @@ impl PyPackage {
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// Alphabetically sorted vector of table names.
     #[getter]
     #[must_use]
     pub fn table_names(&self) -> Vec<String> {
@@ -300,12 +303,11 @@ impl PyPackage {
     ///
     /// # Arguments
     ///
-    /// * `slf` - The argument parameter.
-    /// * `Self>` - The argument parameter.
+    /// * `slf` - Bound reference to the [`PyPackage`] instance.
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// The same [`PyRef`] handle for use in a Python `with` block.
     const fn __enter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf
     }
@@ -314,16 +316,13 @@ impl PyPackage {
     ///
     /// # Arguments
     ///
-    /// * `_exc_type` - The argument parameter.
-    /// * `PyAny>>` - The argument parameter.
-    /// * `_exc_val` - The argument parameter.
-    /// * `PyAny>>` - The argument parameter.
-    /// * `_exc_tb` - The argument parameter.
-    /// * `PyAny>>` - The argument parameter.
+    /// * `_exc_type` - Optional exception type raised inside the `with` block.
+    /// * `_exc_val` - Optional exception value raised inside the `with` block.
+    /// * `_exc_tb` - Optional traceback object raised inside the `with` block.
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// `false` so any raised exception propagates normally.
     #[allow(clippy::unused_self)]
     #[pyo3(signature = (_exc_type=None, _exc_val=None, _exc_tb=None))]
     const fn __exit__(
@@ -437,12 +436,11 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `res` - The argument parameter.
-    /// * `msi` - The argument parameter.
+    /// * `res` - Result of constructing the test [`PyPackage`].
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// `true` if `res` is `Ok` and all property and table assertions pass, `false` otherwise.
     #[allow(clippy::redundant_clone)]
     fn check_package_properties(res: Result<PyPackage, msi::MsiError>) -> bool {
         res.is_ok_and(|py_pkg| {
@@ -562,12 +560,11 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `res` - The argument parameter.
-    /// * `msi` - The argument parameter.
+    /// * `res` - Result of constructing the test [`PyPackage`].
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// `true` if `res` is `Ok` and all table row assertions pass, `false` otherwise.
     #[allow(dead_code)]
     fn check_package_get_table(res: Result<PyPackage, msi::MsiError>) -> bool {
         res.is_ok_and(|py_pkg| {
@@ -631,12 +628,11 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `res` - The argument parameter.
-    /// * `msi` - The argument parameter.
+    /// * `res` - Result of constructing the test [`PyPackage`].
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// `true` if `res` is `Ok` and all cabinet extraction assertions pass, `false` otherwise.
     fn check_package_extract_cabinet(res: Result<PyPackage, msi::MsiError>) -> bool {
         res.is_ok_and(|py_pkg| {
             Python::with_gil(|py| {
@@ -730,12 +726,11 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `res` - The argument parameter.
-    /// * `msi` - The argument parameter.
+    /// * `res` - Result of constructing the test [`PyPackage`].
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// `true` if `res` is `Ok` and all I/O assertions pass, `false` otherwise.
     fn check_package_io_and_bytes(res: Result<PyPackage, msi::MsiError>) -> bool {
         res.is_ok_and(|py_pkg| {
             Python::with_gil(|py| {
@@ -800,13 +795,12 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `res` - The argument parameter.
-    /// * `PyModule>>` - The argument parameter.
-    /// * `py_pkg` - The argument parameter.
+    /// * `res` - Result of constructing the test Python module.
+    /// * `py_pkg` - Test [`PyPackage`] instance to exercise in Python.
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// `true` if `res` is `Ok` and the Python script succeeds, `false` otherwise.
     fn run_pkg_script(res: PyResult<Bound<'_, PyModule>>, py_pkg: &PyPackage) -> bool {
         res.is_ok_and(|m| {
             let py = m.py();
@@ -874,12 +868,11 @@ with m.Package.from_bytes(bytes(pkg_bytes)) as p:
     ///
     /// # Arguments
     ///
-    /// * `res` - The argument parameter.
-    /// * `msi` - The argument parameter.
+    /// * `res` - Result of constructing the test [`PyPackage`].
     ///
     /// # Returns
     ///
-    /// Returns the result of the operation.
+    /// `true` if `res` is `Ok` and the context manager script passes, `false` otherwise.
     fn check_package_context_manager(res: Result<PyPackage, msi::MsiError>) -> bool {
         res.is_ok_and(|py_pkg| {
             Python::with_gil(|py| {

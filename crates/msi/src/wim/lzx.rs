@@ -31,12 +31,12 @@ pub fn translate_e8_instructions(data: &mut [u8], file_offset: usize) {
 ///
 /// # Arguments
 ///
-/// * `input` - TODO: Document argument.
-/// * `output_size` - TODO: Document argument.
+/// * `input` - The `input` parameter.
+/// * `output_size` - The `output_size` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 pub fn decompress_lzx(input: &[u8], output_size: usize) -> Result<Vec<u8>> {
     decompress_lzx_internal(input, output_size, 15)
 }
@@ -44,13 +44,13 @@ pub fn decompress_lzx(input: &[u8], output_size: usize) -> Result<Vec<u8>> {
 ///
 /// # Arguments
 ///
-/// * `input` - TODO: Document argument.
-/// * `output_size` - TODO: Document argument.
-/// * `window_bits` - TODO: Document argument.
+/// * `input` - The `input` parameter.
+/// * `output_size` - The `output_size` parameter.
+/// * `window_bits` - The `window_bits` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 fn decompress_lzx_internal(input: &[u8], output_size: usize, window_bits: u8) -> Result<Vec<u8>> {
     if input.is_empty() && output_size > 0 {
         return Err(MsiError::WimDecompressionError {

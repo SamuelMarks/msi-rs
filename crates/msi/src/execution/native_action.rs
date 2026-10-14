@@ -164,7 +164,7 @@ impl NativeLibraryLoader {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn library_format(&self) -> BinaryFormat {
         self.library_format
@@ -174,7 +174,7 @@ impl NativeLibraryLoader {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn wine_executable(&self) -> Option<&Path> {
         self.wine_executable.as_deref()
@@ -294,11 +294,11 @@ impl NativeLibraryLoader {
     ///
     /// # Arguments
     ///
-    /// * `err_ptr` - TODO: Document argument.
+    /// * `err_ptr` - The `err_ptr` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn format_dlerror(err_ptr: *mut std::os::raw::c_char) -> String {
         std::ptr::NonNull::new(err_ptr).map_or_else(
             || "unknown dlopen error".to_string(),
@@ -315,7 +315,7 @@ impl NativeLibraryLoader {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn resolve_wine(&self) -> Option<PathBuf> {
         match self.wine_mode {
@@ -374,7 +374,7 @@ impl NativeLibraryLoader {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn load_library(&mut self, path: &Path) -> Result<()> {
         if let Ok(header) = fs::read(path) {
             let format = BinaryFormat::detect(&header);
@@ -635,7 +635,7 @@ impl SubprocessRunner {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn new() -> Self {
         Self {
@@ -647,11 +647,11 @@ impl SubprocessRunner {
     ///
     /// # Arguments
     ///
-    /// * `timeout_ms` - TODO: Document argument.
+    /// * `timeout_ms` - The `timeout_ms` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn with_timeout(mut self, timeout_ms: u64) -> Self {
         self.timeout_ms = timeout_ms;
@@ -662,11 +662,11 @@ impl SubprocessRunner {
     ///
     /// # Arguments
     ///
-    /// * `raw_code` - TODO: Document argument.
+    /// * `raw_code` - The `raw_code` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn map_exit_code(raw_code: i32) -> u32 {
         if raw_code == 0 {
@@ -896,7 +896,7 @@ impl Default for SqlProvisionerConfig {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn default() -> Self {
         Self {
             host: "127.0.0.1".to_string(),
@@ -1137,7 +1137,7 @@ impl SqlProvisionerClient {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[allow(clippy::too_many_lines)]
     pub fn execute_wire_session(
         &self,
@@ -1816,11 +1816,11 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `addr` - TODO: Document argument.
+    /// * `addr` - The `addr` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn make_test_listener(addr: &str) -> (Option<std::net::TcpListener>, u16) {
         std::net::TcpListener::bind(addr).map_or_else(
             |_| (None, 0),
@@ -2075,11 +2075,11 @@ mod tests {
         ///
         /// # Arguments
         ///
-        /// * `bytes` - TODO: Document argument.
+        /// * `bytes` - The `bytes` parameter.
         ///
         /// # Returns
         ///
-        /// TODO: Document return value.
+        /// The resulting value or `Ok(())` on success.
         fn with_bytes(bytes: &[u8]) -> Self {
             let mut read_bytes = std::collections::VecDeque::with_capacity(bytes.len());
             read_bytes.extend(bytes.iter().copied());

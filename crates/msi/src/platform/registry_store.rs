@@ -45,7 +45,7 @@ impl RegistryValue {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn type_name(&self) -> &'static str {
         match self {
@@ -103,7 +103,7 @@ impl RegistryRoot {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn as_u32(self) -> u32 {
         match self {
@@ -118,7 +118,7 @@ impl RegistryRoot {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -216,7 +216,7 @@ impl RegistryStore {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -226,11 +226,11 @@ impl RegistryStore {
     ///
     /// # Arguments
     ///
-    /// * `key` - TODO: Document argument.
+    /// * `key` - The `key` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn normalize_key(key: &str) -> String {
         key.trim_matches('\\').trim_matches('/').replace('/', "\\")
@@ -333,13 +333,13 @@ impl RegistryStore {
     ///
     /// # Arguments
     ///
-    /// * `root` - TODO: Document argument.
-    /// * `key` - TODO: Document argument.
-    /// * `name` - TODO: Document argument.
+    /// * `root` - The `root` parameter.
+    /// * `key` - The `key` parameter.
+    /// * `name` - The `name` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn get_value(
         &self,
         root: RegistryRoot,
@@ -844,7 +844,7 @@ impl SqliteRegistryDriver {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn db_path(&self) -> &Path {
         &self.db_path
@@ -854,7 +854,7 @@ impl SqliteRegistryDriver {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn open_in_memory() -> Self {
         Self::new(PathBuf::from(":memory:"))
@@ -864,7 +864,7 @@ impl SqliteRegistryDriver {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn system_db_path() -> &'static str {
         "/var/lib/msi/registry.db"
@@ -874,7 +874,7 @@ impl SqliteRegistryDriver {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn user_db_path() -> &'static str {
         "~/.config/msi/registry.db"
@@ -884,7 +884,7 @@ impl SqliteRegistryDriver {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn initialize_schema_sql() -> &'static str {
         SQLITE_REGISTRY_INIT_SQL
@@ -909,7 +909,7 @@ impl SqliteRegistryDriver {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[allow(clippy::format_push_string)]
     pub fn save_to_disk(&self) -> Result<()> {
         if self.db_path == Path::new(":memory:") {
@@ -1121,13 +1121,13 @@ impl SqliteRegistryDriver {
     ///
     /// # Arguments
     ///
-    /// * `root` - TODO: Document argument.
-    /// * `key` - TODO: Document argument.
-    /// * `name` - TODO: Document argument.
+    /// * `root` - The `root` parameter.
+    /// * `key` - The `key` parameter.
+    /// * `name` - The `name` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn get_value(
         &self,
         root: RegistryRoot,

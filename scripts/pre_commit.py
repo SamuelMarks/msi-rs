@@ -9,8 +9,9 @@ Performs:
 5. Doc & test coverage calculation and shield updates in README.md
 """
 
+from __future__ import annotations
+
 import argparse
-import glob
 import json
 import os
 import re
@@ -25,7 +26,7 @@ def get_repo_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
-def get_augmented_env() -> dict:
+def get_augmented_env() -> dict[str, str]:
     """Returns os.environ augmented with standard cargo and toolchain paths."""
     env = dict(os.environ)
     cargo_bin = Path.home() / ".cargo" / "bin"
@@ -46,8 +47,11 @@ def get_augmented_env() -> dict:
 
 
 def run_command(
-    cmd: list, cwd: Path, env: dict = None, capture_output: bool = False
-) -> subprocess.CompletedProcess:
+    cmd: list[str],
+    cwd: Path,
+    env: dict[str, str] | None = None,
+    capture_output: bool = False,
+) -> subprocess.CompletedProcess[str]:
     """Runs a shell command cross-platform and handles errors."""
     if env is None:
         env = get_augmented_env()
@@ -68,7 +72,9 @@ def run_command(
     )
 
 
-def re_stage_git_files(repo_root: Path, file_paths: list = None):
+def re_stage_git_files(
+    repo_root: Path, file_paths: list[Path] | None = None
+) -> None:
     """Re-stages files in git index if git repository is present."""
     git_bin = shutil.which("git", path=get_augmented_env().get("PATH"))
     if not git_bin:

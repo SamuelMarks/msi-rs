@@ -439,15 +439,15 @@ pub fn execute_statement(
 ///
 /// # Arguments
 ///
-/// * `val` - TODO: Document argument.
-/// * `params` - TODO: Document argument.
-/// * `param_idx` - TODO: Document argument.
-/// * `record` - TODO: Document argument.
-/// * `schemas` - TODO: Document argument.
+/// * `val` - AST [`SqlValue`] literal, column reference, or parameter placeholder.
+/// * `params` - Bound query parameter slice.
+/// * `param_idx` - Mutable index into `params` incremented when consuming a `?` placeholder.
+/// * `record` - Optional current row [`Record`] for resolving column references.
+/// * `schemas` - Optional table schemas for resolving column names to field indices.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// Resolved [`FieldValue`].
 fn resolve_sql_value(
     val: &SqlValue,
     params: &[FieldValue],
@@ -492,12 +492,12 @@ fn resolve_sql_value(
 ///
 /// # Arguments
 ///
-/// * `schemas` - TODO: Document argument.
-/// * `col_ref` - TODO: Document argument.
+/// * `schemas` - Slice of joined [`TableSchema`] references.
+/// * `col_ref` - Column name or `Table.Column` qualified reference.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// Zero-based field index in the joined record.
 fn find_column_index(schemas: &[&TableSchema], col_ref: &str) -> Result<usize> {
     let mut match_idx = None;
     let mut current_offset = 0;
@@ -577,13 +577,13 @@ fn eval_expression(
 ///
 /// # Arguments
 ///
-/// * `left` - TODO: Document argument.
-/// * `op` - TODO: Document argument.
-/// * `right` - TODO: Document argument.
+/// * `left` - Left-hand [`FieldValue`].
+/// * `op` - Relational [`BinaryOp`] operator.
+/// * `right` - Right-hand [`FieldValue`].
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// `true` if the comparison holds, `false` otherwise.
 fn eval_binary_op(left: &FieldValue, op: BinaryOp, right: &FieldValue) -> bool {
     match (left, right) {
         (FieldValue::Null, FieldValue::Null) => op == BinaryOp::Equal,
@@ -611,13 +611,13 @@ fn eval_binary_op(left: &FieldValue, op: BinaryOp, right: &FieldValue) -> bool {
 ///
 /// # Arguments
 ///
-/// * `n1` - TODO: Document argument.
-/// * `op` - TODO: Document argument.
-/// * `n2` - TODO: Document argument.
+/// * `n1` - Left-hand 32-bit signed integer.
+/// * `op` - Relational [`BinaryOp`] operator.
+/// * `n2` - Right-hand 32-bit signed integer.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// `true` if `n1 op n2` holds, `false` otherwise.
 const fn eval_num_op(n1: i32, op: BinaryOp, n2: i32) -> bool {
     match op {
         BinaryOp::Equal => n1 == n2,
@@ -634,12 +634,12 @@ const fn eval_num_op(n1: i32, op: BinaryOp, n2: i32) -> bool {
 ///
 /// # Arguments
 ///
-/// * `text` - TODO: Document argument.
-/// * `pattern` - TODO: Document argument.
+/// * `text` - Input string to test.
+/// * `pattern` - SQL `LIKE` pattern containing `%` or `_` wildcards.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// `true` if `text` matches `pattern`, `false` otherwise.
 fn match_like_pattern(text: &str, pattern: &str) -> bool {
     let mut text_chars = text.chars();
     let mut pattern_chars = pattern.chars().peekable();
@@ -679,9 +679,9 @@ fn match_like_pattern(text: &str, pattern: &str) -> bool {
 ///
 /// # Arguments
 ///
-/// * `records` - TODO: Document argument.
-/// * `order_by` - TODO: Document argument.
-/// * `schemas` - TODO: Document argument.
+/// * `records` - Mutable slice of [`Record`] rows to sort.
+/// * `order_by` - Slice of [`OrderByTerm`] sort keys and directions.
+/// * `schemas` - Slice of [`TableSchema`] definitions for column lookup.
 fn sort_records(records: &mut [Record], order_by: &[OrderByTerm], schemas: &[&TableSchema]) {
     let order_indices: Vec<(usize, OrderDirection)> = order_by
         .iter()

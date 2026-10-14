@@ -20,7 +20,7 @@ pub mod reader;
 pub mod split;
 pub mod writer;
 
-pub use csum::csum_compute;
+pub use csum::{compute_crc32, csum_compute};
 pub use data::{CfData, CAB_BLOCK_MAX_SIZE};
 pub use file::{
     decode_dos_date, decode_dos_time, encode_dos_date, encode_dos_time, CfFile, FileAttributes,

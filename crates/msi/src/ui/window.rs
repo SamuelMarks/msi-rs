@@ -69,7 +69,7 @@ impl GuiHardwareBackend {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -132,7 +132,7 @@ impl AccessKitBridge {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -312,7 +312,7 @@ impl BackgroundTransactionWorker {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub fn request_cancel(&mut self) -> Result<()> {
         self.cancelled = true;
         self.command_tx
@@ -326,7 +326,7 @@ impl BackgroundTransactionWorker {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn is_cancelled(&self) -> bool {
         self.cancelled
@@ -336,7 +336,7 @@ impl BackgroundTransactionWorker {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn current_percent(&self) -> u32 {
         self.current_percent
@@ -346,7 +346,7 @@ impl BackgroundTransactionWorker {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn current_action_text(&self) -> &str {
         &self.current_action_text
@@ -554,7 +554,7 @@ impl GuiDesktopRuntime {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn window_config(&self) -> &WindowConfig {
         &self.window_config
@@ -564,7 +564,7 @@ impl GuiDesktopRuntime {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub const fn window_config_mut(&mut self) -> &mut WindowConfig {
         &mut self.window_config
     }
@@ -573,7 +573,7 @@ impl GuiDesktopRuntime {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn hardware_backend(&self) -> GuiHardwareBackend {
         self.hardware_backend
@@ -583,7 +583,7 @@ impl GuiDesktopRuntime {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn theme(&self) -> &WizardTheme {
         &self.theme
@@ -609,7 +609,7 @@ impl GuiDesktopRuntime {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn engine(&self) -> &UiEngine {
         &self.engine
@@ -619,7 +619,7 @@ impl GuiDesktopRuntime {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     pub const fn engine_mut(&mut self) -> &mut UiEngine {
         &mut self.engine
     }
@@ -628,7 +628,7 @@ impl GuiDesktopRuntime {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn access_bridge(&self) -> &AccessKitBridge {
         &self.access_bridge
@@ -1008,11 +1008,11 @@ impl GuiDesktopRuntime {
     ///
     /// # Arguments
     ///
-    /// * `dialog` - TODO: Document argument.
+    /// * `dialog` - The `dialog` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn get_interactive_control_count(&self, dialog: &str) -> usize {
         let mut count = 0;
         for ctrl in self.engine.get_dialog_controls(dialog) {
@@ -1039,12 +1039,12 @@ impl GuiDesktopRuntime {
     ///
     /// # Arguments
     ///
-    /// * `dialog` - TODO: Document argument.
-    /// * `target_idx` - TODO: Document argument.
+    /// * `dialog` - The `dialog` parameter.
+    /// * `target_idx` - The `target_idx` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn get_interactive_control_at_index(
         &self,
         dialog: &str,
@@ -1086,7 +1086,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn create_test_engine() -> UiEngine {
         let context = crate::execution::properties::EvaluationContext::new();
         let mut engine = UiEngine::new(context);

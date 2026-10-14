@@ -139,11 +139,11 @@ impl<'a> ArithmeticReader<'a> {
     ///
     /// # Arguments
     ///
-    /// * `bytes` - TODO: Document argument.
+    /// * `bytes` - Compressed Quantum bitstream slice.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Initialized [`ArithmeticReader`].
     const fn new(bytes: &'a [u8]) -> Self {
         Self {
             bytes,
@@ -157,7 +157,7 @@ impl<'a> ArithmeticReader<'a> {
     ///
     /// # Arguments
     ///
-    /// * `needed` - TODO: Document argument.
+    /// * `needed` - Minimum number of valid bits required in `bit_buf`.
     fn ensure_bits(&mut self, needed: u8) {
         while self.bits_in_buf < needed && self.offset < self.bytes.len() {
             let next_byte = self.bytes[self.offset];
@@ -171,11 +171,11 @@ impl<'a> ArithmeticReader<'a> {
     ///
     /// # Arguments
     ///
-    /// * `count` - TODO: Document argument.
+    /// * `count` - Number of bits to read (`0..=16`).
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Unsigned integer value of the extracted bits.
     fn read_bits(&mut self, count: u8) -> Result<u32> {
         if count == 0 {
             return Ok(0);
@@ -210,7 +210,7 @@ impl ArithmeticWriter {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Empty [`ArithmeticWriter`].
     fn new() -> Self {
         Self::default()
     }
@@ -219,8 +219,8 @@ impl ArithmeticWriter {
     ///
     /// # Arguments
     ///
-    /// * `val` - TODO: Document argument.
-    /// * `count` - TODO: Document argument.
+    /// * `val` - Bit pattern to append.
+    /// * `count` - Number of low-order bits from `val` to write.
     fn write_bits(&mut self, val: u32, count: u8) {
         let mask = (1u32 << count) - 1;
         self.bit_buf |= (val & mask) << self.bits_in_buf;
@@ -237,7 +237,7 @@ impl ArithmeticWriter {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Packed output byte vector.
     fn finish(mut self) -> Vec<u8> {
         if self.bits_in_buf > 0 {
             #[allow(clippy::cast_possible_truncation)]
@@ -360,7 +360,7 @@ impl RangeEncoder {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Initialized instance or encoded output value.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -420,7 +420,7 @@ impl RangeEncoder {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Initialized instance or encoded output value.
     #[must_use]
     pub fn finish(mut self) -> Vec<u8> {
         self.underflow_bits += 1;
@@ -467,7 +467,7 @@ impl Default for QuantumDecompressor {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Initialized instance or encoded output value.
     fn default() -> Self {
         Self {
             window_bits: QUANTUM_DEFAULT_WINDOW_BITS,
@@ -495,7 +495,7 @@ impl QuantumDecompressor {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Initialized instance or encoded output value.
     pub fn new(window_bits: u8) -> Result<Self> {
         if !(QUANTUM_MIN_WINDOW_BITS..=QUANTUM_MAX_WINDOW_BITS).contains(&window_bits) {
             return Err(MsiError::InvalidCabData {
@@ -522,7 +522,7 @@ impl QuantumDecompressor {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Initialized instance or encoded output value.
     #[must_use]
     pub const fn window_bits(&self) -> u8 {
         self.window_bits
@@ -633,11 +633,11 @@ impl QuantumDecompressor {
 ///
 /// # Arguments
 ///
-/// * `slot` - TODO: Document argument.
+/// * `slot` - Position slot index (`0..NUM_POSITION_SLOTS`).
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// Tuple of `(extra_bits, base_offset)`.
 #[allow(clippy::cast_possible_truncation)]
 const fn position_slot_info(slot: usize) -> (u8, usize) {
     if slot < 4 {
@@ -655,11 +655,11 @@ const fn position_slot_info(slot: usize) -> (u8, usize) {
 ///
 /// # Arguments
 ///
-/// * `offset` - TODO: Document argument.
+/// * `offset` - 1-based backward match distance.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// 3-tuple of `(slot_index, extra_bits_count, extra_bits_value)`.
 fn find_position_slot(offset: usize) -> (usize, u8, usize) {
     for slot in 0..NUM_POSITION_SLOTS {
         let (extra_bits, base) = position_slot_info(slot);
@@ -685,7 +685,7 @@ impl Default for QuantumCompressor {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Initialized instance or encoded output value.
     fn default() -> Self {
         Self {
             window_bits: QUANTUM_DEFAULT_WINDOW_BITS,
@@ -706,7 +706,7 @@ impl QuantumCompressor {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Initialized instance or encoded output value.
     pub fn new(window_bits: u8) -> Result<Self> {
         if !(QUANTUM_MIN_WINDOW_BITS..=QUANTUM_MAX_WINDOW_BITS).contains(&window_bits) {
             return Err(MsiError::InvalidCabData {
@@ -720,7 +720,7 @@ impl QuantumCompressor {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Initialized instance or encoded output value.
     #[must_use]
     pub const fn window_bits(&self) -> u8 {
         self.window_bits

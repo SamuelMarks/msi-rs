@@ -25,7 +25,7 @@ impl SqlExtension {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn new() -> Self {
         Self
@@ -38,14 +38,14 @@ impl SqlExtension {
     ///
     /// # Arguments
     ///
-    /// * `node` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `node` - The `node` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn compile_sql_database(
         node: &XmlNode,
         parent_id: Option<&str>,
@@ -89,14 +89,14 @@ impl SqlExtension {
     ///
     /// # Arguments
     ///
-    /// * `node` - TODO: Document argument.
-    /// * `parent_id` - TODO: Document argument.
-    /// * `tables` - TODO: Document argument.
-    /// * `IntermediateTable>` - TODO: Document argument.
+    /// * `node` - The `node` parameter.
+    /// * `parent_id` - The `parent_id` parameter.
+    /// * `tables` - The `tables` parameter.
+    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn compile_sql_script(
         node: &XmlNode,
         parent_id: Option<&str>,
@@ -182,9 +182,9 @@ impl WixExtension for SqlExtension {
                 "CustomAction",
                 Record::with_fields(vec![
                     FieldValue::String(ca_name.clone()),
-                    FieldValue::Long(38),
-                    FieldValue::String(String::new()),
-                    FieldValue::String("WScript.Quit 0".to_string()),
+                    FieldValue::Long(1),
+                    FieldValue::String("WixSqlCA".to_string()),
+                    FieldValue::String(ca_name.clone()),
                 ]),
             );
         }

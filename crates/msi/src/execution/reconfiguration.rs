@@ -36,7 +36,7 @@ pub struct ReinstallMode(pub u32);
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 pub fn configure_product(
     product_code: &str,
     _level: InstallLevel,
@@ -102,7 +102,7 @@ pub fn configure_product(
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 pub fn reinstall_product(product_code: &str, _mode: ReinstallMode) -> Result<(), MsiError> {
     if product_code.is_empty() {
         return Err(MsiError::InvalidArgument {

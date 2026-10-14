@@ -113,7 +113,7 @@ impl ColumnDef {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Updated [`ColumnDef`] with `nullable = true`.
     #[must_use]
     pub const fn nullable(mut self) -> Self {
         self.nullable = true;
@@ -124,7 +124,7 @@ impl ColumnDef {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Updated [`ColumnDef`] with `primary_key = true`.
     #[must_use]
     pub const fn primary_key(mut self) -> Self {
         self.primary_key = true;
@@ -135,7 +135,7 @@ impl ColumnDef {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// Updated [`ColumnDef`] with `localizable = true`.
     #[must_use]
     pub const fn localizable(mut self) -> Self {
         self.localizable = true;

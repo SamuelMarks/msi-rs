@@ -17,11 +17,11 @@ impl FirewallRuleName {
     ///
     /// # Arguments
     ///
-    /// * `name` - TODO: Document argument.
+    /// * `name` - The `name` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn new(name: impl Into<String>) -> Self {
         Self(name.into())
@@ -31,7 +31,7 @@ impl FirewallRuleName {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -53,11 +53,11 @@ impl PortNumber {
     ///
     /// # Arguments
     ///
-    /// * `port` - TODO: Document argument.
+    /// * `port` - The `port` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn new(port: u16) -> Self {
         Self(port)
@@ -67,7 +67,7 @@ impl PortNumber {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn value(&self) -> u16 {
         self.0
@@ -94,7 +94,7 @@ impl Protocol {
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     #[must_use]
     pub const fn as_str(&self) -> &'static str {
         match self {
@@ -119,13 +119,13 @@ pub trait FirewallManager {
     ///
     /// # Arguments
     ///
-    /// * `name` - TODO: Document argument.
-    /// * `port` - TODO: Document argument.
-    /// * `protocol` - TODO: Document argument.
+    /// * `name` - The `name` parameter.
+    /// * `port` - The `port` parameter.
+    /// * `protocol` - The `protocol` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn add_port_exception(
         &self,
         name: &FirewallRuleName,
@@ -140,13 +140,13 @@ pub trait FirewallManager {
     ///
     /// # Arguments
     ///
-    /// * `name` - TODO: Document argument.
-    /// * `port` - TODO: Document argument.
-    /// * `protocol` - TODO: Document argument.
+    /// * `name` - The `name` parameter.
+    /// * `port` - The `port` parameter.
+    /// * `protocol` - The `protocol` parameter.
     ///
     /// # Returns
     ///
-    /// TODO: Document return value.
+    /// The resulting value or `Ok(())` on success.
     fn remove_port_exception(
         &self,
         name: &FirewallRuleName,

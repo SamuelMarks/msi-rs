@@ -181,7 +181,7 @@ impl PatchDecoder {
     /// The return value.
     pub fn apply(&self, source_data: &[u8]) -> Result<Vec<u8>> {
         // Compute checksum of source_data (simulated here for tests)
-        let actual_src_checksum = self.compute_crc32(source_data);
+        let actual_src_checksum = crate::cab::csum::compute_crc32(source_data);
         if actual_src_checksum != self.header.source_checksum.as_u32()
             && self.header.source_checksum.as_u32() != 0
         {
@@ -217,8 +217,7 @@ impl PatchDecoder {
 
         Ok(target)
     }
-    #[allow(clippy::unused_self)]
-    #[allow(clippy::missing_docs_in_private_items)]
+
     /// Applies the patch instructions to a source file and writes the target file.
     ///
     /// # Errors
@@ -226,12 +225,12 @@ impl PatchDecoder {
     ///
     /// # Arguments
     ///
-    /// * `source_path` - The `source_path` argument.
-    /// * `target_path` - The `target_path` argument.
+    /// * `source_path` - Path to the baseline source file on disk.
+    /// * `target_path` - Path where the patched target file will be written.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(())` when the delta patch is applied and written to `target_path`.
     pub fn apply_to_file(
         &self,
         source_path: &std::path::Path,
@@ -243,21 +242,6 @@ impl PatchDecoder {
         std::fs::write(target_path, target_data)
             .map_err(|e| MsiError::Io(crate::error::IoContext::from_string(e.to_string())))?;
         Ok(())
-    }
-
-    #[allow(clippy::unused_self)]
-    #[allow(clippy::missing_docs_in_private_items)]
-    fn compute_crc32(&self, data: &[u8]) -> u32 {
-        let mut crc = 0xFFFF_FFFF_u32;
-        for byte in data {
-            crc ^= u32::from(*byte);
-            for _ in 0..8 {
-                #[allow(clippy::cast_sign_loss)]
-                let mask = -((crc & 1) as i32) as u32;
-                crc = (crc >> 1) ^ (0xEDB8_8320 & mask);
-            }
-        }
-        !crc
     }
 }
 
@@ -384,13 +368,8 @@ mod tests {
     }
     #[test]
     fn test_patch_decoder_apply_matching_checksum() {
-        let mut data = vec![b'P', b'A', b'3', b'0'];
-        data.extend(0u32.to_le_bytes()); // placeholder
-        data.extend(0u32.to_le_bytes());
-        data.extend(16u32.to_le_bytes());
-        let decoder_tmp = PatchDecoder::new(&data).unwrap();
         let source = b"dummy source";
-        let correct_crc = decoder_tmp.compute_crc32(source);
+        let correct_crc = crate::cab::csum::compute_crc32(source);
 
         let mut data2 = vec![b'P', b'A', b'3', b'0'];
         data2.extend(correct_crc.to_le_bytes()); // Src (exact match)

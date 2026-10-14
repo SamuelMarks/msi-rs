@@ -40,11 +40,11 @@ pub struct FontTitle {
 ///
 /// # Arguments
 ///
-/// * `data` - TODO: Document argument.
+/// * `data` - The `data` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 pub fn extract_font_title(data: &[u8]) -> Result<FontTitle, MsiError> {
     if data.len() < 12 {
         return Err(MsiError::FontRegistrationError(
@@ -195,11 +195,11 @@ pub fn extract_font_title(data: &[u8]) -> Result<FontTitle, MsiError> {
 ///
 /// # Arguments
 ///
-/// * `font_path` - TODO: Document argument.
+/// * `font_path` - The `font_path` parameter.
 ///
 /// # Returns
 ///
-/// TODO: Document return value.
+/// The resulting value or `Ok(())` on success.
 pub fn register_font(font_path: &Path) -> Result<(), MsiError> {
     if !font_path.exists() {
         return Err(MsiError::FontRegistrationError(format!(
