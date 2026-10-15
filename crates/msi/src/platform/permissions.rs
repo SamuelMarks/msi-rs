@@ -1399,11 +1399,12 @@ mod tests {
         // apply_mode failure on existing device/root path without root permissions
         #[cfg(unix)]
         {
+            use std::os::unix::fs::PermissionsExt;
             let dev_null = Path::new("/dev/null");
             let err_res = live_applier.apply_mode(dev_null, PosixMode::from_octal(0o666));
-            // SAFETY: geteuid is a thread-safe POSIX syscall with no preconditions.
-            let is_root = unsafe { libc::geteuid() == 0 };
-            assert_eq!(err_res.is_ok(), is_root);
+            let expected_ok =
+                fs::set_permissions(dev_null, fs::Permissions::from_mode(0o666)).is_ok();
+            assert_eq!(err_res.is_ok(), expected_ok);
         }
 
         let _ = fs::remove_file(&temp_file);

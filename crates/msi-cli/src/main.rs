@@ -1093,8 +1093,11 @@ mod tests {
                     log: None,
                 }),
             };
-            let is_root = msi::platform::users::is_elevated();
-            assert_eq!(run(&ro_patch_cli).is_ok(), is_root);
+            let can_write_readonly = std::fs::OpenOptions::new()
+                .write(true)
+                .open(&readonly_msi)
+                .is_ok();
+            assert_eq!(run(&ro_patch_cli).is_ok(), can_write_readonly);
             let _ = std::fs::set_permissions(&readonly_msi, std::fs::Permissions::from_mode(0o644));
         }
 

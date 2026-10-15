@@ -40,26 +40,28 @@ pub extern "system" fn MsiDatabaseGenerateTransformW(
             return ERROR_INVALID_PARAMETER;
         };
 
-        with_handle(hDatabase, |obj| {
+        let Some(Ok(db1_inner)) = with_handle(hDatabase, |obj| {
             if let MsiObject::Database(db1) = obj {
-                with_handle(hDatabaseReference, |obj2| {
-                    if let MsiObject::Database(db2) = obj2 {
-                        let mut transform = msi::database::transform::DatabaseTransform::diff(
-                            &db2.inner, &db1.inner,
-                        )
+                Ok(db1.inner.clone())
+            } else {
+                Err(ERROR_INVALID_HANDLE)
+            }
+        }) else {
+            return ERROR_INVALID_HANDLE;
+        };
+
+        with_handle(hDatabaseReference, |obj2| {
+            if let MsiObject::Database(db2) = obj2 {
+                let mut transform =
+                    msi::database::transform::DatabaseTransform::diff(&db2.inner, &db1_inner)
                         .unwrap_or_default();
-                        transform.summary_info.word_count = Some(iValidation);
-                        transform.validation_flags = u32::from_ne_bytes(iValidation.to_ne_bytes());
-                        let bytes = transform.to_bytes().unwrap_or_default();
-                        match std::fs::write(&path, bytes) {
-                            Ok(()) => ERROR_SUCCESS,
-                            Err(_) => ERROR_INSTALL_FAILURE,
-                        }
-                    } else {
-                        ERROR_INVALID_HANDLE
-                    }
-                })
-                .unwrap_or(ERROR_INVALID_HANDLE)
+                transform.summary_info.word_count = Some(iValidation);
+                transform.validation_flags = u32::from_ne_bytes(iValidation.to_ne_bytes());
+                let bytes = transform.to_bytes().unwrap_or_default();
+                match std::fs::write(&path, bytes) {
+                    Ok(()) => ERROR_SUCCESS,
+                    Err(_) => ERROR_INSTALL_FAILURE,
+                }
             } else {
                 ERROR_INVALID_HANDLE
             }
@@ -91,26 +93,28 @@ pub extern "system" fn MsiDatabaseGenerateTransformA(
             return ERROR_INVALID_PARAMETER;
         };
 
-        with_handle(hDatabase, |obj| {
+        let Some(Ok(db1_inner)) = with_handle(hDatabase, |obj| {
             if let MsiObject::Database(db1) = obj {
-                with_handle(hDatabaseReference, |obj2| {
-                    if let MsiObject::Database(db2) = obj2 {
-                        let mut transform = msi::database::transform::DatabaseTransform::diff(
-                            &db2.inner, &db1.inner,
-                        )
+                Ok(db1.inner.clone())
+            } else {
+                Err(ERROR_INVALID_HANDLE)
+            }
+        }) else {
+            return ERROR_INVALID_HANDLE;
+        };
+
+        with_handle(hDatabaseReference, |obj2| {
+            if let MsiObject::Database(db2) = obj2 {
+                let mut transform =
+                    msi::database::transform::DatabaseTransform::diff(&db2.inner, &db1_inner)
                         .unwrap_or_default();
-                        transform.summary_info.word_count = Some(iValidation);
-                        transform.validation_flags = u32::from_ne_bytes(iValidation.to_ne_bytes());
-                        let bytes = transform.to_bytes().unwrap_or_default();
-                        match std::fs::write(&path, bytes) {
-                            Ok(()) => ERROR_SUCCESS,
-                            Err(_) => ERROR_INSTALL_FAILURE,
-                        }
-                    } else {
-                        ERROR_INVALID_HANDLE
-                    }
-                })
-                .unwrap_or(ERROR_INVALID_HANDLE)
+                transform.summary_info.word_count = Some(iValidation);
+                transform.validation_flags = u32::from_ne_bytes(iValidation.to_ne_bytes());
+                let bytes = transform.to_bytes().unwrap_or_default();
+                match std::fs::write(&path, bytes) {
+                    Ok(()) => ERROR_SUCCESS,
+                    Err(_) => ERROR_INSTALL_FAILURE,
+                }
             } else {
                 ERROR_INVALID_HANDLE
             }

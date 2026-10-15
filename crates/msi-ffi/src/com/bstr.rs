@@ -13,7 +13,7 @@ use std::ptr;
 pub type BSTR = *mut u16;
 
 /// Allocates a new BSTR from a null-terminated UTF-16 string.
-#[cfg_attr(not(test), no_mangle)]
+#[cfg_attr(all(not(test), not(windows)), no_mangle)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[must_use]
 pub extern "C" fn SysAllocString(s: *const u16) -> BSTR {
@@ -36,7 +36,7 @@ pub extern "C" fn SysAllocString(s: *const u16) -> BSTR {
 const MAX_BSTR_CHARS: u32 = (u32::MAX - 6) / 2 - 4;
 
 /// Allocates a new BSTR of a specific length.
-#[cfg_attr(not(test), no_mangle)]
+#[cfg_attr(all(not(test), not(windows)), no_mangle)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[must_use]
 pub extern "C" fn SysAllocStringLen(s: *const u16, len: u32) -> BSTR {
@@ -67,7 +67,7 @@ pub extern "C" fn SysAllocStringLen(s: *const u16, len: u32) -> BSTR {
 }
 
 /// Frees a previously allocated BSTR.
-#[cfg_attr(not(test), no_mangle)]
+#[cfg_attr(all(not(test), not(windows)), no_mangle)]
 pub extern "C" fn SysFreeString(bstr: BSTR) {
     if bstr.is_null() {
         return;
@@ -85,7 +85,7 @@ pub extern "C" fn SysFreeString(bstr: BSTR) {
 }
 
 /// Retrieves the length of a BSTR in characters.
-#[cfg_attr(not(test), no_mangle)]
+#[cfg_attr(all(not(test), not(windows)), no_mangle)]
 pub const extern "C" fn SysStringLen(bstr: BSTR) -> u32 {
     if bstr.is_null() {
         return 0;

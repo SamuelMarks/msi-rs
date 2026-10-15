@@ -218,11 +218,11 @@ impl PatchEngine {
             use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
 
             type ApplyPatchToFileByBuffersFn = unsafe extern "system" fn(
-                PatchFileBuffers: *const u8,
-                PatchFileSize: u32,
-                OldFileName: PCWSTR,
-                NewFileName: PCWSTR,
-                ApplyOptionFlags: u32,
+                patch_file_buffers: *const u8,
+                patch_file_size: u32,
+                old_file_name: PCWSTR,
+                new_file_name: PCWSTR,
+                apply_option_flags: u32,
             )
                 -> windows::core::BOOL;
 
