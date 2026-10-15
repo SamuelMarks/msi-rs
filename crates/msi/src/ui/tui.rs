@@ -871,28 +871,31 @@ impl TerminalWizard {
 
             match ctrl.control_type() {
                 ControlType::PushButton => {
+                    let clean_text = crate::ui::font_rasterizer::strip_accelerator(&text);
                     let btn_str = if is_focused {
-                        format!("[> {text} <]")
+                        format!("[> {clean_text} <]")
                     } else {
-                        format!("[ {text} ]")
+                        format!("[ {clean_text} ]")
                     };
                     buf.draw_string(col_x, row_y, &btn_str);
                     line_offset += 2;
                 }
                 ControlType::CheckBox => {
+                    let clean_text = crate::ui::font_rasterizer::strip_accelerator(&text);
                     let checked = state.is_some_and(|s| s.bound_value.as_deref() == Some("1"));
                     let mark = if checked { 'X' } else { ' ' };
                     let focus_cursor = if is_focused { '>' } else { ' ' };
-                    let check_str = format!("{focus_cursor} [{mark}] {text}");
+                    let check_str = format!("{focus_cursor} [{mark}] {clean_text}");
                     buf.draw_string(col_x, row_y, &check_str);
                     line_offset += 2;
                 }
                 ControlType::RadioButtonGroup => {
+                    let clean_text = crate::ui::font_rasterizer::strip_accelerator(&text);
                     let is_selected =
                         state.is_some_and(|s| s.bound_value.as_deref() == Some(&text));
                     let mark = if is_selected { "(•)" } else { "( )" };
                     let focus_cursor = if is_focused { '>' } else { ' ' };
-                    let radio_str = format!("{focus_cursor} {mark} {text}");
+                    let radio_str = format!("{focus_cursor} {mark} {clean_text}");
                     buf.draw_string(col_x, row_y, &radio_str);
                     line_offset += 2;
                 }
@@ -916,7 +919,8 @@ impl TerminalWizard {
                     line_offset += 2;
                 }
                 ControlType::ScrollableText => {
-                    let all_lines: Vec<&str> = text.lines().collect();
+                    let clean_doc = crate::ui::font_rasterizer::strip_rtf_to_plaintext(&text);
+                    let all_lines: Vec<&str> = clean_doc.lines().collect();
                     let total_lines = all_lines.len();
                     let max_display_lines = (box_h.saturating_sub(line_offset + 3)) as usize;
                     let start = self.scroll_offset.min(total_lines.saturating_sub(1));
@@ -968,20 +972,69 @@ impl TerminalWizard {
                     }
                     line_offset += 1;
                 }
+                ControlType::Bitmap | ControlType::Line => {}
                 ControlType::Text
                 | ControlType::ComboBox
                 | ControlType::ListBox
                 | ControlType::ListView
-                | ControlType::Bitmap
-                | ControlType::Line
                 | ControlType::VolumeCostList => {
-                    buf.draw_string(col_x, row_y, &text);
-                    line_offset += 1;
+                    let (clean_text, _, _) = crate::ui::font_rasterizer::strip_wix_font_tags(&text);
+                    Self::draw_wrapped_text(
+                        &mut buf,
+                        col_x,
+                        box_y,
+                        box_w,
+                        box_h,
+                        &mut line_offset,
+                        &clean_text,
+                    );
                 }
             }
         }
 
         buf
+    }
+
+    /// Word-wraps and draws a static text block inside the terminal box bounds.
+    ///
+    /// # Arguments
+    ///
+    /// * `buf` - Target terminal buffer.
+    /// * `col_x` - Starting column coordinate.
+    /// * `box_y` - Top row coordinate of the dialog box.
+    /// * `box_w` - Width of the dialog box in columns.
+    /// * `box_h` - Height of the dialog box in rows.
+    /// * `line_offset` - Mutable vertical line offset counter inside the box.
+    /// * `text` - Cleaned text string to wrap and draw.
+    fn draw_wrapped_text(
+        buf: &mut TerminalBuffer,
+        col_x: u16,
+        box_y: u16,
+        box_w: u16,
+        box_h: u16,
+        line_offset: &mut u16,
+        text: &str,
+    ) {
+        let max_w = (box_w.saturating_sub(8) as usize).max(16);
+        let mut cur_line = String::new();
+        for word in text.split_whitespace() {
+            if !cur_line.is_empty() && cur_line.len() + 1 + word.len() > max_w {
+                if *line_offset < box_h - 1 {
+                    buf.draw_string(col_x, box_y + *line_offset, &cur_line);
+                    *line_offset += 1;
+                }
+                cur_line = word.to_string();
+            } else {
+                if !cur_line.is_empty() {
+                    cur_line.push(' ');
+                }
+                cur_line.push_str(word);
+            }
+        }
+        if !cur_line.is_empty() && *line_offset < box_h - 1 {
+            buf.draw_string(col_x, box_y + *line_offset, &cur_line);
+            *line_offset += 1;
+        }
     }
 
     /// Renders an exit summary screen displaying final installation status, ports, and services.
@@ -2199,6 +2252,23 @@ mod tests {
             3,
         );
         wizard.engine_mut().add_control(next_first_btn);
+        wizard.engine_mut().add_control(
+            ControlDefinition::new(
+                "NextDlg",
+                "LongDesc",
+                ControlType::Text,
+                DluRect::new(10, 30, 300, 40),
+                3,
+            )
+            .text("This is a very long description sentence that exceeds the width of the terminal dialog box and wraps onto a second line."),
+        );
+        wizard.engine_mut().add_control(ControlDefinition::new(
+            "NextDlg",
+            "BmpCtrl",
+            ControlType::Bitmap,
+            DluRect::new(0, 0, 100, 40),
+            3,
+        ));
 
         let nav_btn = ControlDefinition::new(
             "RichDlg",

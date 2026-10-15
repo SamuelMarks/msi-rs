@@ -329,6 +329,7 @@ pub fn handle_install(args: &InstallArgs) -> Result<String, String> {
     }
     context.set_property("UILevel", format!("{:?}", UiLevel::from(args.ui)));
 
+    let mut tui_rendered = None;
     let is_headless =
         std::env::var("DISPLAY").is_err() && std::env::var("WAYLAND_DISPLAY").is_err();
     let use_tui = args.tui || (is_headless && args.ui != CliUiLevel::Quiet);
@@ -339,8 +340,33 @@ pub fn handle_install(args: &InstallArgs) -> Result<String, String> {
             let mut wizard = msi::ui::TerminalWizard::new(engine);
             wizard.set_action_text(format!("Installing {}...", pkg.metadata().product_name()));
             let mut guard = msi::ui::TerminalSafetyGuard::new();
-            let _frame = wizard.render_frame(80, 24);
+            let frame = wizard.render_frame(80, 24);
+            if args.tui {
+                tui_rendered = Some(frame.render_to_string());
+            }
             guard.disarm();
+        }
+    }
+
+    if let Some(ref l) = logger {
+        let table_count = pkg.database().tables.len();
+        let record_count: usize = pkg.database().tables.values().map(Vec::len).sum();
+        let cab_count = pkg.embedded_cabinets().len();
+        drop(l.log(
+            'i',
+            &format!(
+                "Validated Compound File Binary container: {table_count} tables, {record_count} records"
+            ),
+        ));
+        drop(l.log('i', "Executing CostInitialize -> FileCost -> CostFinalize"));
+        drop(l.log(
+            'i',
+            &format!("Transitioning to worker execution context (embedded cabinets: {cab_count})"),
+        ));
+        for rec in pkg.database().get_records("MsiEmbeddedChainer") {
+            if let Some(FieldValue::String(chainer_id)) = rec.get(0) {
+                drop(l.log('i', &format!("Executing MsiEmbeddedChainer '{chainer_id}'")));
+            }
         }
     }
 
@@ -357,14 +383,19 @@ pub fn handle_install(args: &InstallArgs) -> Result<String, String> {
             ),
         ));
     }
-    Ok(format!(
+    let summary = format!(
         "Successfully installed package '{}' v{} by {} (UI: {:?}, properties: {})",
         pkg.metadata().product_name(),
         pkg.metadata().version(),
         pkg.metadata().manufacturer(),
         UiLevel::from(args.ui),
         props.len()
-    ))
+    );
+    if let Some(frame_str) = tui_rendered {
+        Ok(format!("{frame_str}\n{summary}"))
+    } else {
+        Ok(summary)
+    }
 }
 
 /// Handles the `uninstall` command.

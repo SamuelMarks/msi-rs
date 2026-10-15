@@ -229,17 +229,237 @@ pub fn create_package_runtime(
     runtime
 }
 
-/// Executes the GUI desktop runtime in headless or software framebuffer verification mode.
+/// Optional dialog selection, state telemetry, and screenshot export configuration for `msi-gui`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GuiCaptureOptions {
+    /// Optional dialog identifier to activate (e.g., `WelcomeDlg`, `CustomizeDlg`, `ProgressDlg`).
+    pub dialog: Option<String>,
+    /// Optional progress percentage (`0..=100`).
+    pub progress: Option<u32>,
+    /// Optional `ActionText` status line override.
+    pub action_text: Option<String>,
+    /// Optional action log entries (newline-separated when read from `MSI_GUI_ACTION_LOG`).
+    pub action_logs: Vec<String>,
+    /// Optional output PNG file path for saving the rendered [`msi::ui::SoftwareBuffer`].
+    pub screenshot_path: Option<PathBuf>,
+    /// Optional output file path for exporting the live evaluated dialog and control state.
+    pub dump_state_path: Option<PathBuf>,
+}
+
+impl GuiCaptureOptions {
+    /// Reads capture options from `MSI_GUI_*` environment variables.
+    ///
+    /// # Returns
+    ///
+    /// Populated [`GuiCaptureOptions`].
+    #[must_use]
+    pub fn from_env() -> Self {
+        let dialog = std::env::var("MSI_GUI_DIALOG")
+            .ok()
+            .filter(|s| !s.is_empty());
+        let progress = std::env::var("MSI_GUI_PROGRESS")
+            .ok()
+            .and_then(|s| s.parse::<u32>().ok());
+        let action_text = std::env::var("MSI_GUI_ACTION_TEXT")
+            .ok()
+            .filter(|s| !s.is_empty());
+        let raw_logs = std::env::var("MSI_GUI_ACTION_LOG").unwrap_or_default();
+        let action_logs = raw_logs
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .map(ToString::to_string)
+            .collect();
+        let screenshot_path = std::env::var_os("MSI_GUI_SCREENSHOT")
+            .filter(|s| !s.is_empty())
+            .map(PathBuf::from);
+        let dump_state_path = std::env::var_os("MSI_GUI_DUMP_STATE")
+            .filter(|s| !s.is_empty())
+            .map(PathBuf::from);
+
+        Self {
+            dialog,
+            progress,
+            action_text,
+            action_logs,
+            screenshot_path,
+            dump_state_path,
+        }
+    }
+}
+
+/// Formats the live evaluated dialog, control, feature tree, and property state of a [`GuiDesktopRuntime`].
+///
+/// # Arguments
+///
+/// * `runtime` - Active GUI desktop runtime.
+///
+/// # Returns
+///
+/// Multi-line structured state report.
+#[must_use]
+pub fn export_runtime_state(runtime: &GuiDesktopRuntime) -> String {
+    use std::fmt::Write;
+
+    let mut out = String::new();
+    let engine = runtime.engine();
+    let ctx = engine.context();
+
+    let product_name = ctx
+        .get_property("ProductName")
+        .unwrap_or("Sample Application");
+    let _ = writeln!(out, "WINDOW_TITLE={product_name} Setup - msi-gui");
+    let _ = writeln!(out, "THEME_STYLE={:?}", runtime.theme().style);
+
+    for key in [
+        "ProductName",
+        "ProductVersion",
+        "Manufacturer",
+        "ProductCode",
+        "SelectionDescription",
+        "SelectionSize",
+    ] {
+        if let Some(val) = ctx.get_property(key) {
+            let _ = writeln!(out, "PROP:{key}={val}");
+        }
+    }
+
+    if let Some(dlg) = engine.active_dialog() {
+        let dlg_name = dlg.name.clone();
+        let raw_title = dlg.title.as_deref().unwrap_or(&dlg_name);
+        let formatted_title = ctx.format_string(raw_title).unwrap_or_default();
+        let _ = writeln!(out, "ACTIVE_DIALOG={dlg_name}");
+        let _ = writeln!(out, "DIALOG_TITLE={formatted_title}");
+
+        for def in engine.get_dialog_controls(&dlg_name) {
+            let state = engine.get_control_state(&dlg_name, def.control());
+            let mut vis = def.is_visible_by_default();
+            let mut en = def.is_enabled_by_default();
+            let mut def_btn = false;
+            let mut pct = 0;
+            let mut txt = def.text_template().unwrap_or("").to_string();
+            if let Some(s) = state {
+                vis = s.is_visible;
+                en = s.is_enabled;
+                def_btn = s.is_default;
+                pct = s.progress_percent;
+                txt.clone_from(&s.current_text);
+            }
+            let r = def.rect();
+            let escaped_txt = txt.replace('\r', "").replace('\n', "\\n");
+            let _ = writeln!(
+                out,
+                "CONTROL:{}|{}|{},{},{},{}|visible={vis}|enabled={en}|default={def_btn}|progress={pct}|text={escaped_txt}",
+                def.control(),
+                def.control_type().as_str(),
+                r.x,
+                r.y,
+                r.width,
+                r.height
+            );
+            if let Some(st) = state {
+                for node in &st.tree_nodes {
+                    let desc = node.description.as_deref().unwrap_or("");
+                    let _ = writeln!(
+                        out,
+                        "TREE_NODE:0|{}|{}|{}|{:?}|{desc}",
+                        node.feature, node.title, node.size_bytes, node.install_state
+                    );
+                    for child in &node.children {
+                        let cdesc = child.description.as_deref().unwrap_or("");
+                        let _ = writeln!(
+                            out,
+                            "TREE_NODE:1|{}|{}|{}|{:?}|{cdesc}",
+                            child.feature, child.title, child.size_bytes, child.install_state
+                        );
+                    }
+                }
+                for vol in &st.volume_entries {
+                    let _ = writeln!(
+                        out,
+                        "VOLUME_COST:{}|{}|{}|{}|{}",
+                        vol.volume,
+                        vol.drive_type,
+                        vol.volume_size,
+                        vol.required_space,
+                        vol.free_space
+                    );
+                }
+            }
+        }
+    }
+
+    for entry in engine.action_log() {
+        let _ = writeln!(out, "ACTION_LOG:{entry}");
+    }
+
+    out
+}
+
+/// Applies [`GuiCaptureOptions`] to a [`GuiDesktopRuntime`], updating dialog selection,
+/// progress state, state export, and PNG screenshot output.
+///
+/// # Arguments
+///
+/// * `runtime` - Target GUI desktop runtime.
+/// * `opts` - Capture options to apply.
+///
+/// # Errors
+///
+/// Returns [`msi::MsiError`] if dialog selection, state writing, or PNG export fails.
+pub fn apply_capture_options(
+    runtime: &mut GuiDesktopRuntime,
+    opts: &GuiCaptureOptions,
+) -> msi::Result<()> {
+    if let Some(ref dlg_name) = opts.dialog {
+        runtime.engine_mut().set_active_dialog(dlg_name)?;
+    }
+    if let Some(pct) = opts.progress {
+        runtime.engine_mut().update_progress(pct);
+    }
+    if let Some(ref act_txt) = opts.action_text {
+        if let Some(dlg) = runtime.engine().active_dialog() {
+            let dlg_name = dlg.name.clone();
+            if let Some(st) = runtime
+                .engine_mut()
+                .get_control_state_mut(&dlg_name, "ActionText")
+            {
+                st.current_text.clone_from(act_txt);
+            }
+        }
+    }
+    for log_entry in &opts.action_logs {
+        runtime.engine_mut().append_action_log(log_entry.clone());
+    }
+    if let Some(ref dump_path) = opts.dump_state_path {
+        let state_report = export_runtime_state(runtime);
+        std::fs::write(dump_path, state_report)?;
+    }
+    if let Some(ref png_path) = opts.screenshot_path {
+        let (_bounds, _widgets, draws) = runtime.render_frame();
+        let mut buf = msi::ui::SoftwareBuffer::new(
+            runtime.window_config().width,
+            runtime.window_config().height,
+        );
+        buf.clear(runtime.theme().window_bg);
+        buf.render_commands(&draws);
+        buf.save_png(png_path)?;
+    }
+    Ok(())
+}
+
+/// Executes the GUI desktop runtime with explicit [`GuiCaptureOptions`].
 ///
 /// # Arguments
 ///
 /// * `cli` - Parsed CLI options.
+/// * `capture` - Capture options for dialog targeting, state dumping, and PNG output.
 ///
 /// # Returns
 ///
 /// Process exit code (`ExitCode::SUCCESS` on clean exit).
 #[must_use = "process exit code must be handled"]
-pub fn run_gui(cli: &GuiCli) -> ExitCode {
+pub fn run_gui_with_options(cli: &GuiCli, capture: &GuiCaptureOptions) -> ExitCode {
     let resolved_backend =
         GuiDesktopRuntime::select_backend_with_fallback(cli.backend.into(), true, true);
 
@@ -265,6 +485,14 @@ pub fn run_gui(cli: &GuiCli) -> ExitCode {
     );
     let (_constrained_w, _constrained_h) = runtime.enforce_window_constraints(req_w, req_h);
 
+    if apply_capture_options(&mut runtime, capture).is_err() {
+        return ExitCode::FAILURE;
+    }
+
+    if capture.screenshot_path.is_some() || capture.dump_state_path.is_some() {
+        return ExitCode::SUCCESS;
+    }
+
     // Interactive immediate-mode desktop event loop
     let events = [
         GuiInputEvent::TabNext,
@@ -277,6 +505,21 @@ pub fn run_gui(cli: &GuiCli) -> ExitCode {
         Ok(_) => ExitCode::SUCCESS,
         Err(_) => ExitCode::FAILURE,
     }
+}
+
+/// Executes the GUI desktop runtime in headless or software framebuffer verification mode.
+///
+/// # Arguments
+///
+/// * `cli` - Parsed CLI options.
+///
+/// # Returns
+///
+/// Process exit code (`ExitCode::SUCCESS` on clean exit).
+#[must_use = "process exit code must be handled"]
+pub fn run_gui(cli: &GuiCli) -> ExitCode {
+    let capture = GuiCaptureOptions::from_env();
+    run_gui_with_options(cli, &capture)
 }
 
 /// Internal non-generic CLI argument parser and runner to ensure complete branch coverage.
@@ -745,5 +988,162 @@ mod tests {
         assert_eq!(cli_parsed.is_ok(), cli_parsed2.is_ok());
         let debug_str = format!("{cli_parsed:?}");
         assert!(!debug_str.is_empty());
+    }
+
+    /// Tests `GuiCaptureOptions`, `export_runtime_state`, `apply_capture_options`, and `run_gui_with_options`.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_gui_capture_options_and_state_export() {
+        let temp_dir = std::env::temp_dir().join("msi_gui_capture_test");
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let png_path = temp_dir.join("out.png");
+        let dump_path = temp_dir.join("state.txt");
+
+        let mut runtime = create_standalone_runtime(
+            WizardStyle::Mondo,
+            GuiHardwareBackend::SoftbufferHeadlessRasterizer,
+            Some(540),
+            Some(420),
+        );
+        runtime.engine_mut().add_control(
+            msi::ui::ControlDefinition::new(
+                "WelcomeDlg",
+                "ActionText",
+                msi::ui::ControlType::Text,
+                msi::ui::DluRect::new(10, 10, 200, 15),
+                3,
+            )
+            .text("Initial"),
+        );
+        runtime
+            .engine_mut()
+            .add_control(msi::ui::ControlDefinition::new(
+                "WelcomeDlg",
+                "Tree",
+                msi::ui::ControlType::SelectionTree,
+                msi::ui::DluRect::new(10, 30, 150, 80),
+                3,
+            ));
+        runtime
+            .engine_mut()
+            .add_control(msi::ui::ControlDefinition::new(
+                "WelcomeDlg",
+                "VolList",
+                msi::ui::ControlType::VolumeCostList,
+                msi::ui::DluRect::new(10, 120, 150, 40),
+                3,
+            ));
+        let _ = runtime.engine_mut().set_active_dialog("WelcomeDlg");
+
+        if let Some(st) = runtime
+            .engine_mut()
+            .get_control_state_mut("WelcomeDlg", "Tree")
+        {
+            let mut root =
+                msi::ui::SelectionTreeNode::new("Root", "Root Feat", 2048).description("Root Desc");
+            let child = msi::ui::SelectionTreeNode::new("Child", "Child Feat", 1024);
+            root.add_child(child);
+            st.tree_nodes = vec![root];
+        }
+        if let Some(st) = runtime
+            .engine_mut()
+            .get_control_state_mut("WelcomeDlg", "VolList")
+        {
+            st.volume_entries = vec![msi::ui::VolumeCostEntry {
+                volume: "/".to_string(),
+                drive_type: "Fixed Disk".to_string(),
+                volume_size: 1000,
+                required_space: 100,
+                free_space: 900,
+            }];
+        }
+
+        let opts = GuiCaptureOptions {
+            dialog: Some("WelcomeDlg".to_string()),
+            progress: Some(75),
+            action_text: Some("Installing services...".to_string()),
+            action_logs: vec!["Step 1: Costing".to_string()],
+            screenshot_path: Some(png_path.clone()),
+            dump_state_path: Some(dump_path.clone()),
+        };
+
+        #[allow(clippy::redundant_clone)]
+        let cloned_opts = opts.clone();
+        assert_eq!(opts, cloned_opts);
+        let opts_dbg = format!("{opts:?}");
+        assert!(!opts_dbg.is_empty());
+
+        assert!(apply_capture_options(&mut runtime, &opts).is_ok());
+        assert!(png_path.exists());
+        assert!(dump_path.exists());
+
+        let bad_dump_opts = GuiCaptureOptions {
+            dump_state_path: Some(PathBuf::from("/nonexistent_dir_msi_gui_999/state.txt")),
+            ..GuiCaptureOptions::default()
+        };
+        assert!(apply_capture_options(&mut runtime, &bad_dump_opts).is_err());
+
+        let bad_png_opts = GuiCaptureOptions {
+            screenshot_path: Some(PathBuf::from("/nonexistent_dir_msi_gui_999/out.png")),
+            ..GuiCaptureOptions::default()
+        };
+        assert!(apply_capture_options(&mut runtime, &bad_png_opts).is_err());
+
+        // Test export_runtime_state when control states are cleared (None state fallback)
+        runtime.engine_mut().clear_control_states();
+        let cleared_state = export_runtime_state(&runtime);
+        assert!(cleared_state.contains("ACTIVE_DIALOG=WelcomeDlg"));
+
+        // Test export_runtime_state and apply_capture_options when no active dialog is set
+        let mut empty_runtime = GuiDesktopRuntime::new(
+            msi::ui::UiEngine::new(EvaluationContext::new()),
+            WizardTheme::mondo(),
+            GuiHardwareBackend::SoftbufferHeadlessRasterizer,
+        );
+        let empty_state = export_runtime_state(&empty_runtime);
+        assert!(empty_state.contains("WINDOW_TITLE="));
+        let act_only_opts = GuiCaptureOptions {
+            action_text: Some("No dialog active".to_string()),
+            ..GuiCaptureOptions::default()
+        };
+        assert!(apply_capture_options(&mut empty_runtime, &act_only_opts).is_ok());
+
+        // Test run_gui_with_options with screenshot/dump paths and invalid dialog error
+        let cli = GuiCli {
+            package: None,
+            theme: CliTheme::Mondo,
+            backend: CliBackend::Softbuffer,
+            width: Some(500),
+            height: Some(380),
+        };
+        assert_eq!(run_gui_with_options(&cli, &opts), ExitCode::SUCCESS);
+
+        let err_opts = GuiCaptureOptions {
+            dialog: Some("NonExistentDialog".to_string()),
+            ..GuiCaptureOptions::default()
+        };
+        assert_eq!(run_gui_with_options(&cli, &err_opts), ExitCode::FAILURE);
+
+        // Test GuiCaptureOptions::from_env
+        std::env::set_var("MSI_GUI_DIALOG", "WelcomeDlg");
+        std::env::set_var("MSI_GUI_PROGRESS", "50");
+        std::env::set_var("MSI_GUI_ACTION_TEXT", "Status text");
+        std::env::set_var("MSI_GUI_ACTION_LOG", "Log A\n\nLog B");
+        std::env::set_var("MSI_GUI_SCREENSHOT", &png_path);
+        std::env::set_var("MSI_GUI_DUMP_STATE", &dump_path);
+        let env_opts = GuiCaptureOptions::from_env();
+        assert_eq!(env_opts.dialog.as_deref(), Some("WelcomeDlg"));
+        assert_eq!(env_opts.progress, Some(50));
+        assert_eq!(env_opts.action_logs.len(), 2);
+        std::env::remove_var("MSI_GUI_DIALOG");
+        std::env::remove_var("MSI_GUI_PROGRESS");
+        std::env::remove_var("MSI_GUI_ACTION_TEXT");
+        std::env::remove_var("MSI_GUI_ACTION_LOG");
+        std::env::remove_var("MSI_GUI_SCREENSHOT");
+        std::env::remove_var("MSI_GUI_DUMP_STATE");
+
+        let _ = std::fs::remove_file(&png_path);
+        let _ = std::fs::remove_file(&dump_path);
+        let _ = std::fs::remove_dir(&temp_dir);
     }
 }

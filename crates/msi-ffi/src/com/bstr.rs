@@ -32,36 +32,25 @@ pub extern "C" fn SysAllocString(s: *const u16) -> BSTR {
     SysAllocStringLen(s, len as u32)
 }
 
-/// Allocates raw 4-byte-aligned heap memory for a `BSTR` buffer of `total_alloc` bytes.
-#[inline]
-fn alloc_bstr_memory(total_alloc: u32) -> *mut u8 {
-    #[cfg(test)]
-    if total_alloc == u32::MAX - 3 {
-        return ptr::null_mut();
-    }
-    let layout = unsafe { Layout::from_size_align_unchecked(total_alloc as usize, 4) };
-    unsafe { alloc(layout) }
-}
+/// Maximum character count supported for a [`BSTR`] allocation without `u32` byte-length overflow.
+const MAX_BSTR_CHARS: u32 = (u32::MAX - 6) / 2 - 4;
 
 /// Allocates a new BSTR of a specific length.
 #[cfg_attr(not(test), no_mangle)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[must_use]
 pub extern "C" fn SysAllocStringLen(s: *const u16, len: u32) -> BSTR {
-    let Some(byte_len) = len.checked_mul(2) else {
-        return ptr::null_mut();
-    };
-    let Some(total_alloc) = byte_len.checked_add(6) else {
-        return ptr::null_mut();
-    };
-
-    // total_alloc is at most u32::MAX, which fits in isize::MAX on both 32-bit and 64-bit platforms.
-    // Alignment 4 is a power of 2.
-    let ptr = alloc_bstr_memory(total_alloc);
-
-    if ptr.is_null() {
+    if len > MAX_BSTR_CHARS {
         return ptr::null_mut();
     }
+    let byte_len = len * 2;
+    let total_alloc = (byte_len + 6) as usize;
+
+    // SAFETY: `total_alloc` is non-zero (>= 6), fits in `isize::MAX`, and alignment 4 is a power of 2.
+    let ptr = unsafe {
+        let layout = Layout::from_size_align_unchecked(total_alloc, 4);
+        alloc(layout)
+    };
 
     unsafe {
         ptr::write(ptr.cast::<u8>().cast::<u32>(), byte_len);

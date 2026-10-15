@@ -595,7 +595,10 @@ impl LiveSecurityApplier {
             };
             if ret != 0 {
                 let err = std::io::Error::last_os_error();
-                if matches!(err.raw_os_error(), Some(libc::ENOTSUP | libc::EPERM)) {
+                if matches!(
+                    err.raw_os_error(),
+                    Some(libc::ENOTSUP | libc::EPERM | libc::EACCES)
+                ) {
                     return Ok(());
                 }
                 return Err(MsiError::Io(crate::error::IoContext::from_string(format!(
@@ -620,7 +623,10 @@ impl LiveSecurityApplier {
             };
             if ret != 0 {
                 let err = std::io::Error::last_os_error();
-                if matches!(err.raw_os_error(), Some(libc::ENOTSUP | libc::EPERM)) {
+                if matches!(
+                    err.raw_os_error(),
+                    Some(libc::ENOTSUP | libc::EPERM | libc::EACCES)
+                ) {
                     return Ok(());
                 }
                 return Err(MsiError::Io(crate::error::IoContext::from_string(format!(

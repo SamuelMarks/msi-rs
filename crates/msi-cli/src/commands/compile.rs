@@ -199,8 +199,36 @@ pub fn handle_pack(args: &PackArgs) -> Result<String, String> {
     let opts = msi::wix::toolchain::WixBuildOptions::parse(&raw_args).map_err(err_to_string)?;
     let out_path = opts.execute().map_err(err_to_string)?;
 
-    Ok(format!(
+    let mut summary = format!(
         "Successfully compiled and linked MSI package: '{}'",
         out_path.display()
-    ))
+    );
+    if args.verbose {
+        let pkg = msi::Package::open(&out_path).map_err(err_to_string)?;
+        let media_recs = pkg.database().get_records("Media");
+        let file_count = pkg.database().get_records("File").len();
+        let chainer_count = pkg.database().get_records("MsiEmbeddedChainer").len();
+        let _ = std::fmt::Write::write_fmt(
+            &mut summary,
+            format_args!(
+                "\n[INFO] Media cabinets: {}, Files: {file_count}, EmbeddedChainers: {chainer_count}",
+                media_recs.len()
+            ),
+        );
+        for rec in media_recs {
+            if let (
+                Some(msi::database::tables::record::FieldValue::Short(disk_id)),
+                Some(msi::database::tables::record::FieldValue::Long(last_seq)),
+                Some(msi::database::tables::record::FieldValue::String(cab_name)),
+            ) = (rec.get(0), rec.get(1), rec.get(3))
+            {
+                let _ = std::fmt::Write::write_fmt(
+                    &mut summary,
+                    format_args!("\n  * DiskId {disk_id}: {cab_name} (LastSequence: {last_seq})"),
+                );
+            }
+        }
+    }
+
+    Ok(summary)
 }

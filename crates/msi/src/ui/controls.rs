@@ -102,10 +102,10 @@ impl ControlType {
             "PushButton" => Ok(Self::PushButton),
             "RadioButtonGroup" => Ok(Self::RadioButtonGroup),
             "CheckBox" => Ok(Self::CheckBox),
-            "Edit" => Ok(Self::Edit),
-            "Text" => Ok(Self::Text),
-            "ComboBox" => Ok(Self::ComboBox),
-            "ListBox" => Ok(Self::ListBox),
+            "Edit" | "PathEdit" => Ok(Self::Edit),
+            "Text" | "GroupBox" => Ok(Self::Text),
+            "ComboBox" | "DirectoryCombo" => Ok(Self::ComboBox),
+            "ListBox" | "DirectoryList" => Ok(Self::ListBox),
             "ListView" => Ok(Self::ListView),
             "ProgressBar" => Ok(Self::ProgressBar),
             "Bitmap" => Ok(Self::Bitmap),
@@ -568,6 +568,17 @@ mod tests {
             assert_eq!(parsed, Ok(expected));
             assert_eq!(expected.as_str(), name);
         }
+
+        assert_eq!(ControlType::from_name("PathEdit"), Ok(ControlType::Edit));
+        assert_eq!(ControlType::from_name("GroupBox"), Ok(ControlType::Text));
+        assert_eq!(
+            ControlType::from_name("DirectoryCombo"),
+            Ok(ControlType::ComboBox)
+        );
+        assert_eq!(
+            ControlType::from_name("DirectoryList"),
+            Ok(ControlType::ListBox)
+        );
 
         assert!(ControlType::from_name("InvalidControl").is_err());
     }

@@ -85,6 +85,8 @@ pub fn handle_patch(args: &PatchArgs) -> Result<String, String> {
     if let Ok(cab_bytes) = cfb.read_stream("#patch.cab") {
         pkg.add_embedded_cabinet("#patch.cab", cab_bytes);
     }
+    drop(cfb);
+    drop(patch_bytes);
 
     pkg.save(pkg_path)
         .map_err(|e| format!("Failed saving patched package: {e}"))?;

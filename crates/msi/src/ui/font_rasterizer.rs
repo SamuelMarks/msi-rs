@@ -291,7 +291,221 @@ pub fn blend_pixel(bg: Color32, fg: Color32, alpha_coverage: u8) -> Color32 {
     Color32::from_rgba(r, g, b, out_a)
 }
 
-/// 8x8 font bitmap patterns for basic ASCII characters (32..=126).
+/// Strips Win32 mnemonic `&` accelerators from control labels (preserving `&&` as `&`).
+///
+/// # Arguments
+///
+/// * `text` - Input control label text.
+///
+/// # Returns
+///
+/// Cleaned string with single `&` accelerators removed.
+#[must_use]
+pub fn strip_accelerator(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '&' {
+            if let Some(&next_c) = chars.peek() {
+                out.push(next_c);
+                let _ = chars.next();
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// Strips leading `WiX` or MSI font style prefixes (such as `{\WixUI_Font_Bigger}`,
+/// `{\WixUI_Font_Title}`, `{\DlgFontBold8}`) and returns the cleaned string, bold flag,
+/// and optional font size override.
+///
+/// # Arguments
+///
+/// * `text` - Input control text string.
+///
+/// # Returns
+///
+/// Tuple of `(cleaned_text, is_bold, optional_font_size)`.
+#[must_use]
+pub fn strip_wix_font_tags(text: &str) -> (String, bool, Option<f32>) {
+    let trimmed = text.trim_start();
+    if let Some(after_open) = trimmed.strip_prefix(r"{\") {
+        if let Some(end_brace) = after_open.find('}') {
+            let tag = &after_open[..end_brace];
+            let rest = &after_open[end_brace + 1..];
+            let is_bigger = tag.contains("Bigger");
+            let is_title = tag.contains("Title");
+            let is_bold = is_bigger || is_title || tag.contains("Bold");
+            let size = if is_bigger {
+                Some(16.0)
+            } else if is_title {
+                Some(14.0)
+            } else {
+                None
+            };
+            return (rest.to_string(), is_bold, size);
+        }
+    }
+    (text.to_string(), false, None)
+}
+
+/// Converts Rich Text Format (`{\rtf1...}`) strings into multi-line plain text.
+///
+/// If the input does not begin with `{\rtf`, returns the input unchanged.
+///
+/// # Arguments
+///
+/// * `text` - Raw RTF or plain text string.
+///
+/// # Returns
+///
+/// Plain text string with paragraphs converted to newlines.
+#[must_use]
+pub fn strip_rtf_to_plaintext(text: &str) -> String {
+    let trimmed = text.trim_start();
+    if !trimmed.starts_with(r"{\rtf") {
+        return text.to_string();
+    }
+
+    let mut out = String::new();
+    let chars: Vec<char> = trimmed.chars().collect();
+    let mut i = 0;
+    let mut brace_depth: i32 = 0;
+    let mut skip_group_depth: Option<i32> = None;
+
+    while i < chars.len() {
+        let ch = chars[i];
+        if ch == '{' {
+            brace_depth += 1;
+            if skip_group_depth.is_none() && i + 1 < chars.len() && chars[i + 1] == '\\' {
+                let mut j = i + 2;
+                if j < chars.len() && chars[j] == '*' {
+                    skip_group_depth = Some(brace_depth);
+                } else {
+                    while j < chars.len() && chars[j].is_ascii_alphabetic() {
+                        j += 1;
+                    }
+                    let word: String = chars[i + 2..j].iter().collect();
+                    if matches!(
+                        word.as_str(),
+                        "fonttbl" | "colortbl" | "stylesheet" | "info" | "pict"
+                    ) {
+                        skip_group_depth = Some(brace_depth);
+                    }
+                }
+            }
+            i += 1;
+            continue;
+        }
+        if ch == '}' {
+            if skip_group_depth == Some(brace_depth) {
+                skip_group_depth = None;
+            }
+            brace_depth = (brace_depth - 1).max(0);
+            i += 1;
+            continue;
+        }
+        if skip_group_depth.is_some() {
+            i += 1;
+            continue;
+        }
+        if ch == '\\' {
+            if i + 1 < chars.len() {
+                let next_c = chars[i + 1];
+                if matches!(next_c, '\\' | '{' | '}') {
+                    out.push(next_c);
+                    i += 2;
+                    continue;
+                }
+                let mut j = i + 1;
+                while j < chars.len() && chars[j].is_ascii_alphabetic() {
+                    j += 1;
+                }
+                let word: String = chars[i + 1..j].iter().collect();
+                while j < chars.len() && (chars[j].is_ascii_digit() || chars[j] == '-') {
+                    j += 1;
+                }
+                if j < chars.len() && chars[j] == ' ' {
+                    j += 1;
+                }
+                if matches!(word.as_str(), "par" | "line") {
+                    out.push('\n');
+                }
+                i = j.max(i + 1);
+                continue;
+            }
+            i += 1;
+            continue;
+        }
+        if ch != '\r' && ch != '\n' {
+            out.push(ch);
+        }
+        i += 1;
+    }
+
+    out.trim().to_string()
+}
+
+/// 8x8 font bitmap patterns for punctuation and box-drawing glyphs.
+///
+/// # Arguments
+///
+/// * `ch` - Character to look up.
+///
+/// # Returns
+///
+/// 8-row bitmap pattern.
+#[must_use]
+const fn get_punctuation_glyph_8x8(ch: char) -> [u8; 8] {
+    match ch {
+        '.' => [0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x18, 0x00],
+        ',' => [0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x18, 0x30],
+        '!' => [0x18, 0x18, 0x18, 0x18, 0x18, 0x00, 0x18, 0x00],
+        '?' => [0x3C, 0x42, 0x02, 0x0C, 0x18, 0x00, 0x18, 0x00],
+        '-' | '─' => [0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0x00],
+        '+' | '┼' => [0x18, 0x18, 0x18, 0xFF, 0x18, 0x18, 0x18, 0x00],
+        ':' => [0x00, 0x18, 0x18, 0x00, 0x18, 0x18, 0x00, 0x00],
+        ';' => [0x00, 0x18, 0x18, 0x00, 0x18, 0x18, 0x30, 0x00],
+        '(' => [0x0C, 0x18, 0x30, 0x30, 0x30, 0x18, 0x0C, 0x00],
+        ')' => [0x30, 0x18, 0x0C, 0x0C, 0x0C, 0x18, 0x30, 0x00],
+        '[' => [0x3C, 0x30, 0x30, 0x30, 0x30, 0x30, 0x3C, 0x00],
+        ']' => [0x3C, 0x0C, 0x0C, 0x0C, 0x0C, 0x0C, 0x3C, 0x00],
+        '{' => [0x0E, 0x18, 0x18, 0x70, 0x18, 0x18, 0x0E, 0x00],
+        '}' => [0x70, 0x18, 0x18, 0x0E, 0x18, 0x18, 0x70, 0x00],
+        '<' => [0x06, 0x18, 0x60, 0x80, 0x60, 0x18, 0x06, 0x00],
+        '>' | '▸' => [0x60, 0x18, 0x06, 0x01, 0x06, 0x18, 0x60, 0x00],
+        '▾' => [0x00, 0x7E, 0x3C, 0x18, 0x00, 0x00, 0x00, 0x00],
+        '_' => [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x00],
+        '=' => [0x00, 0x00, 0x7E, 0x00, 0x7E, 0x00, 0x00, 0x00],
+        '*' => [0x00, 0x24, 0x18, 0x7E, 0x18, 0x24, 0x00, 0x00],
+        '&' => [0x38, 0x44, 0x38, 0x56, 0x44, 0x4C, 0x3A, 0x00],
+        '%' => [0x62, 0x64, 0x08, 0x10, 0x26, 0x46, 0x00, 0x00],
+        '$' => [0x18, 0x3E, 0x60, 0x3C, 0x06, 0x7C, 0x18, 0x00],
+        '#' => [0x24, 0x7E, 0x24, 0x24, 0x7E, 0x24, 0x00, 0x00],
+        '"' => [0x66, 0x66, 0x24, 0x00, 0x00, 0x00, 0x00, 0x00],
+        '\'' | '`' => [0x18, 0x18, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00],
+        '@' => [0x3C, 0x42, 0x5E, 0x52, 0x5E, 0x40, 0x3C, 0x00],
+        '|' | '│' => [0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18],
+        '┌' => [0x00, 0x00, 0x00, 0x1F, 0x18, 0x18, 0x18, 0x18],
+        '┐' => [0x00, 0x00, 0x00, 0xF8, 0x18, 0x18, 0x18, 0x18],
+        '└' => [0x18, 0x18, 0x18, 0x1F, 0x00, 0x00, 0x00, 0x00],
+        '┘' => [0x18, 0x18, 0x18, 0xF8, 0x00, 0x00, 0x00, 0x00],
+        '├' => [0x18, 0x18, 0x18, 0x1F, 0x18, 0x18, 0x18, 0x18],
+        '┤' => [0x18, 0x18, 0x18, 0xF8, 0x18, 0x18, 0x18, 0x18],
+        '█' => [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+        '░' => [0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55],
+        '•' => [0x00, 0x00, 0x18, 0x3C, 0x3C, 0x18, 0x00, 0x00],
+        '~' => [0x00, 0x32, 0x4C, 0x00, 0x00, 0x00, 0x00, 0x00],
+        '^' => [0x18, 0x24, 0x42, 0x00, 0x00, 0x00, 0x00, 0x00],
+        '/' => [0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x00],
+        '\\' => [0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x00],
+        _ => [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    }
+}
+
+/// 8x8 font bitmap patterns for basic ASCII characters (32..=126) and box-drawing glyphs.
 ///
 /// # Arguments
 ///
@@ -365,20 +579,7 @@ pub const fn get_glyph_bitmap_8x8(ch: char) -> [u8; 8] {
         '7' => [0x7E, 0x02, 0x04, 0x08, 0x10, 0x10, 0x10, 0x00],
         '8' => [0x3C, 0x42, 0x42, 0x3C, 0x42, 0x42, 0x3C, 0x00],
         '9' => [0x3C, 0x42, 0x42, 0x3E, 0x02, 0x04, 0x38, 0x00],
-        '.' => [0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x18, 0x00],
-        ',' => [0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x18, 0x30],
-        '!' => [0x18, 0x18, 0x18, 0x18, 0x18, 0x00, 0x18, 0x00],
-        '?' => [0x3C, 0x42, 0x02, 0x0C, 0x18, 0x00, 0x18, 0x00],
-        '-' => [0x00, 0x00, 0x00, 0x7E, 0x00, 0x00, 0x00, 0x00],
-        '+' => [0x00, 0x08, 0x08, 0x3E, 0x08, 0x08, 0x00, 0x00],
-        ':' => [0x00, 0x18, 0x18, 0x00, 0x18, 0x18, 0x00, 0x00],
-        '(' => [0x0C, 0x18, 0x30, 0x30, 0x30, 0x18, 0x0C, 0x00],
-        ')' => [0x30, 0x18, 0x0C, 0x0C, 0x0C, 0x18, 0x30, 0x00],
-        '[' => [0x3C, 0x30, 0x30, 0x30, 0x30, 0x30, 0x3C, 0x00],
-        ']' => [0x3C, 0x0C, 0x0C, 0x0C, 0x0C, 0x0C, 0x3C, 0x00],
-        '/' => [0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x00],
-        '\\' => [0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x00],
-        _ => [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        other => get_punctuation_glyph_8x8(other),
     }
 }
 
@@ -627,7 +828,7 @@ mod tests {
     #[test]
     fn test_all_ascii_glyph_bitmaps() {
         let all_chars =
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,!?-+:()[]/\\~";
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,!?-+:;()[]{}<>_=&*%$#\"'`@|~^/\\─┼▸▾│┌┐└┘├┤█░• ";
         for ch in all_chars.chars() {
             let _bitmap = get_glyph_bitmap_8x8(ch);
         }
@@ -653,6 +854,57 @@ mod tests {
         let mono_style = TextStyleDefinition::new("Liberation Mono", 12.0, Color32::BLACK, 0);
         let (mono_rect, _) = TextLayoutEngine::layout_text("MonoTest", &mono_style, 0, 0, None);
         assert!(mono_rect.width > 0);
+    }
+
+    /// Tests accelerator and `WiX` font tag stripping helpers.
+    #[test]
+    fn test_text_stripping_helpers() {
+        assert_eq!(strip_accelerator("< &Back"), "< Back");
+        assert_eq!(strip_accelerator("A && B &C&"), "A & B C");
+
+        let (t1, b1, s1) = strip_wix_font_tags(r"{\WixUI_Font_Bigger}Welcome");
+        assert_eq!(t1, "Welcome");
+        assert!(b1);
+        assert_eq!(s1, Some(16.0));
+
+        let (t2, b2, s2) = strip_wix_font_tags(r"{\WixUI_Font_Title}Custom Setup");
+        assert_eq!(t2, "Custom Setup");
+        assert!(b2);
+        assert_eq!(s2, Some(14.0));
+
+        let (t3, b3, s3) = strip_wix_font_tags(r"{\DlgFontBold8}Bold Label");
+        assert_eq!(t3, "Bold Label");
+        assert!(b3);
+        assert_eq!(s3, None);
+
+        let (t4, b4, s4) = strip_wix_font_tags(r"{\WixUI_Font_Normal}Normal Label");
+        assert_eq!(t4, "Normal Label");
+        assert!(!b4);
+        assert_eq!(s4, None);
+
+        let (t5, b5, s5) = strip_wix_font_tags("{\\Unclosed");
+        assert_eq!(t5, "{\\Unclosed");
+        assert!(!b5);
+        assert_eq!(s5, None);
+
+        let (t6, b6, s6) = strip_wix_font_tags("Plain Text");
+        assert_eq!(t6, "Plain Text");
+        assert!(!b6);
+        assert_eq!(s6, None);
+    }
+
+    /// Tests RTF document to plain-text stripping helper.
+    #[test]
+    fn test_rtf_stripping_helpers() {
+        assert_eq!(strip_rtf_to_plaintext("Plain License"), "Plain License");
+        let rtf = "{\\rtf1\\ansi{\\fonttbl{\\f0 Arial;}}{\\*\\generator msi;}{\\other grp}\\fs20\\cf-1 Line 1\\\\slash \\{B\\}\\par Line 2\\line Line 3\r\n\\}";
+        let plain = strip_rtf_to_plaintext(rtf);
+        assert!(plain.contains("Line 1\\slash "));
+        assert!(plain.contains("Line 2\nLine 3"));
+        let trailing_bs = strip_rtf_to_plaintext(r"{\rtf1 Test\");
+        assert_eq!(trailing_bs, "Test");
+        let lone_bs = strip_rtf_to_plaintext(r"{\rtf1 A\.B}");
+        assert_eq!(lone_bs, "A.B");
     }
 
     #[test]

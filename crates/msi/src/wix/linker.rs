@@ -939,8 +939,6 @@ impl Linker {
 
         let mut cab_writers: HashMap<String, crate::cab::writer::CabinetWriter> = HashMap::new();
 
-        println!("DEBUG: disk_to_cab: {disk_to_cab:?}");
-
         for (disk_id, cab_name) in &disk_to_cab {
             let comp_type = disk_compression
                 .get(disk_id)

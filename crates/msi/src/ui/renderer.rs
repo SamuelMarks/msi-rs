@@ -311,24 +311,42 @@ impl EguiLayoutMapper {
 
             let widget = match def.control_type() {
                 ControlType::PushButton => {
+                    let clean_label = crate::ui::font_rasterizer::strip_accelerator(&current_text);
+                    let is_default = state.is_some_and(|s| s.is_default);
+                    let (bg_col, border_col, txt_col) = if !is_enabled {
+                        (
+                            Color32::from_rgb(240, 242, 246),
+                            Color32::LINE_GRAY,
+                            Color32::from_rgb(155, 162, 174),
+                        )
+                    } else if is_default {
+                        (Color32::ACCENT_BLUE, Color32::ACCENT_BLUE, Color32::WHITE)
+                    } else {
+                        (Color32::WHITE, Color32::LINE_GRAY, Color32::BLACK)
+                    };
+                    draws.push(DrawCommand::FillRect {
+                        rect: ctrl_bounds,
+                        color: bg_col,
+                    });
                     draws.push(DrawCommand::StrokeRect {
                         rect: ctrl_bounds,
-                        color: Color32::LINE_GRAY,
+                        color: border_col,
                         width: 1.0,
                     });
                     draws.push(DrawCommand::DrawText {
                         pos: (ctrl_bounds.x + 8, ctrl_bounds.y + 4),
-                        text: current_text.clone(),
-                        color: Color32::BLACK,
+                        text: clean_label.clone(),
+                        color: txt_col,
                         font_size: self.theme.base_font_size,
                     });
                     UiWidget::Button {
-                        text: current_text,
-                        is_default: state.is_some_and(|s| s.is_default),
+                        text: clean_label,
+                        is_default,
                         is_enabled,
                     }
                 }
                 ControlType::CheckBox => {
+                    let clean_label = crate::ui::font_rasterizer::strip_accelerator(&current_text);
                     let checked = state.is_some_and(|s| s.bound_value.as_deref() == Some("1"));
                     let check_box_rect = PixelRect::new(ctrl_bounds.x, ctrl_bounds.y + 2, 12, 12);
                     draws.push(DrawCommand::StrokeRect {
@@ -344,12 +362,12 @@ impl EguiLayoutMapper {
                     }
                     draws.push(DrawCommand::DrawText {
                         pos: (ctrl_bounds.x + 16, ctrl_bounds.y + 2),
-                        text: current_text.clone(),
+                        text: clean_label.clone(),
                         color: self.theme.text_color,
                         font_size: self.theme.base_font_size,
                     });
                     UiWidget::CheckBox {
-                        text: current_text,
+                        text: clean_label,
                         checked,
                         is_enabled,
                     }
@@ -357,6 +375,10 @@ impl EguiLayoutMapper {
                 ControlType::Edit => {
                     let is_path_edit = def.property_name().is_some_and(|p| {
                         p.ends_with("DIR") || p.ends_with("FOLDER") || p.ends_with("PATH")
+                    });
+                    draws.push(DrawCommand::FillRect {
+                        rect: ctrl_bounds,
+                        color: Color32::WHITE,
                     });
                     if is_path_edit {
                         draws.push(DrawCommand::StrokeRect {
@@ -402,6 +424,10 @@ impl EguiLayoutMapper {
                 ControlType::ProgressBar => {
                     let pct = state.map_or(0, |s| s.progress_percent);
                     let frac = f32::from(u16::try_from(pct).unwrap_or(0)) / 100.0;
+                    draws.push(DrawCommand::FillRect {
+                        rect: ctrl_bounds,
+                        color: Color32::from_rgb(230, 234, 240),
+                    });
                     draws.push(DrawCommand::StrokeRect {
                         rect: ctrl_bounds,
                         color: Color32::LINE_GRAY,
@@ -420,18 +446,100 @@ impl EguiLayoutMapper {
                             color: Color32::ACCENT_BLUE,
                         });
                     }
+                    if !engine.action_log().is_empty() {
+                        let log_box = PixelRect::new(
+                            ctrl_bounds.x,
+                            ctrl_bounds.y + ctrl_bounds.height + 24,
+                            ctrl_bounds.width,
+                            110,
+                        );
+                        draws.push(DrawCommand::FillRect {
+                            rect: log_box,
+                            color: Color32::WHITE,
+                        });
+                        draws.push(DrawCommand::StrokeRect {
+                            rect: log_box,
+                            color: Color32::LINE_GRAY,
+                            width: 1.0,
+                        });
+                        for (idx, entry) in engine.action_log().iter().take(5).enumerate() {
+                            draws.push(DrawCommand::DrawText {
+                                pos: (log_box.x + 8, log_box.y + 6 + (idx as i32 * 18)),
+                                text: entry.clone(),
+                                color: self.theme.text_color,
+                                font_size: self.theme.base_font_size,
+                            });
+                        }
+                    }
                     UiWidget::ProgressBar { fraction: frac }
                 }
-                ControlType::Line => UiWidget::Separator {
-                    color: Color32::LINE_GRAY,
-                },
-                ControlType::Bitmap => UiWidget::Image {
-                    width: u32::try_from(ctrl_bounds.width).unwrap_or(0),
-                    height: u32::try_from(ctrl_bounds.height).unwrap_or(0),
-                },
+                ControlType::Line => {
+                    draws.push(DrawCommand::DrawLine {
+                        start: (ctrl_bounds.x, ctrl_bounds.y),
+                        end: (
+                            ctrl_bounds.x + ctrl_bounds.width,
+                            ctrl_bounds.y + ctrl_bounds.height,
+                        ),
+                        color: Color32::LINE_GRAY,
+                        width: 1.0,
+                    });
+                    UiWidget::Separator {
+                        color: Color32::LINE_GRAY,
+                    }
+                }
+                ControlType::Bitmap => {
+                    if def.property_name() == Some("WixUI_Bmp_Dialog") || ctrl_bounds.height > 200 {
+                        let sidebar_w = 180.min(dialog_bounds.width / 3);
+                        let sidebar_h = (dialog_bounds.height - 46).max(60);
+                        draws.push(DrawCommand::FillRect {
+                            rect: PixelRect::new(
+                                dialog_bounds.x,
+                                dialog_bounds.y,
+                                sidebar_w,
+                                sidebar_h,
+                            ),
+                            color: Color32::from_rgb(11, 50, 112),
+                        });
+                        draws.push(DrawCommand::FillRect {
+                            rect: PixelRect::new(
+                                dialog_bounds.x,
+                                dialog_bounds.y,
+                                sidebar_w,
+                                sidebar_h / 3,
+                            ),
+                            color: Color32::from_rgb(82, 148, 226),
+                        });
+                        draws.push(DrawCommand::DrawText {
+                            pos: (dialog_bounds.x + 16, dialog_bounds.y + (sidebar_h / 3) + 20),
+                            text: "msi-rs".to_string(),
+                            color: Color32::WHITE,
+                            font_size: self.theme.title_font_size,
+                        });
+                    } else {
+                        let icon_rect = PixelRect::new(
+                            dialog_bounds.x + dialog_bounds.width - 52,
+                            dialog_bounds.y + 12,
+                            34,
+                            34,
+                        );
+                        draws.push(DrawCommand::FillRect {
+                            rect: icon_rect,
+                            color: Color32::ACCENT_BLUE,
+                        });
+                    }
+                    UiWidget::Image {
+                        width: u32::try_from(ctrl_bounds.width).unwrap_or(0),
+                        height: u32::try_from(ctrl_bounds.height).unwrap_or(0),
+                    }
+                }
                 ControlType::ScrollableText => {
                     let is_rtf = current_text.starts_with(r"{\rtf");
-                    let total_lines = current_text.lines().count();
+                    let clean_doc = if is_rtf {
+                        crate::ui::font_rasterizer::strip_rtf_to_plaintext(&current_text)
+                    } else {
+                        current_text.clone()
+                    };
+                    let total_lines = clean_doc.lines().count();
                     draws.push(DrawCommand::FillRect {
                         rect: ctrl_bounds,
                         color: Color32::WHITE,
@@ -441,7 +549,7 @@ impl EguiLayoutMapper {
                         color: Color32::LINE_GRAY,
                         width: 1.0,
                     });
-                    for (line_idx, line) in current_text
+                    for (line_idx, line) in clean_doc
                         .lines()
                         .take(ctrl_bounds.height as usize / 16)
                         .enumerate()
@@ -457,7 +565,7 @@ impl EguiLayoutMapper {
                         });
                     }
                     UiWidget::ScrollableText {
-                        text: current_text,
+                        text: clean_doc,
                         scroll_offset: 0,
                         total_lines,
                         is_rtf,
@@ -474,14 +582,30 @@ impl EguiLayoutMapper {
                         width: 1.0,
                     });
                     let nodes = state.map_or_else(Vec::new, |s| s.tree_nodes.clone());
-                    for (i, node) in nodes
-                        .iter()
-                        .take(ctrl_bounds.height as usize / 20)
-                        .enumerate()
+                    let max_rows = (ctrl_bounds.height as usize / 20).max(1);
+                    let mut flat_rows = Vec::new();
+                    for node in &nodes {
+                        flat_rows.push((0i32, node));
+                        for child in &node.children {
+                            flat_rows.push((14i32, child));
+                        }
+                    }
+                    for (row_idx, (indent, item)) in
+                        flat_rows.into_iter().take(max_rows).enumerate()
                     {
+                        let mark = if item.install_state
+                            == crate::execution::properties::InstallState::Local
+                        {
+                            "[X]"
+                        } else {
+                            "[ ]"
+                        };
                         draws.push(DrawCommand::DrawText {
-                            pos: (ctrl_bounds.x + 8, ctrl_bounds.y + 4 + (i as i32 * 20)),
-                            text: format!("├─ [X] {}", node.title),
+                            pos: (
+                                ctrl_bounds.x + 8 + indent,
+                                ctrl_bounds.y + 4 + (row_idx as i32 * 20),
+                            ),
+                            text: format!("├─ {mark} {}", item.title),
                             color: Color32::BLACK,
                             font_size: self.theme.base_font_size,
                         });
@@ -508,36 +632,55 @@ impl EguiLayoutMapper {
                     UiWidget::VolumeCostList { entries }
                 }
                 ControlType::RadioButtonGroup => {
-                    let is_selected =
-                        state.is_some_and(|s| s.bound_value.as_deref() == Some(&current_text));
+                    let clean_label = if current_text.is_empty()
+                        && def.property_name() == Some("LicenseAccepted")
+                    {
+                        "I accept the terms in the License Agreement".to_string()
+                    } else {
+                        crate::ui::font_rasterizer::strip_accelerator(&current_text)
+                    };
+                    let is_selected = state.is_some_and(|s| {
+                        s.bound_value.as_deref() == Some(&current_text)
+                            || s.bound_value.as_deref() == Some("1")
+                    });
                     let radio_mark = if is_selected { "(•) " } else { "( ) " };
                     draws.push(DrawCommand::DrawText {
                         pos: (ctrl_bounds.x, ctrl_bounds.y + 2),
-                        text: format!("{radio_mark}{current_text}"),
+                        text: format!("{radio_mark}{clean_label}"),
                         color: self.theme.text_color,
                         font_size: self.theme.base_font_size,
                     });
                     UiWidget::RadioButton {
-                        text: current_text.clone(),
+                        text: clean_label.clone(),
                         selected: is_selected,
                         is_enabled,
                         group: def.control().to_string(),
-                        value: current_text,
+                        value: clean_label,
                     }
                 }
                 ControlType::Text
                 | ControlType::ComboBox
                 | ControlType::ListBox
                 | ControlType::ListView => {
+                    let (clean_text, _is_bold, size_override) =
+                        crate::ui::font_rasterizer::strip_wix_font_tags(&current_text);
+                    let font_size = size_override.unwrap_or(self.theme.base_font_size);
+                    if def.control() == "Box" {
+                        draws.push(DrawCommand::StrokeRect {
+                            rect: ctrl_bounds,
+                            color: Color32::LINE_GRAY,
+                            width: 1.0,
+                        });
+                    }
                     draws.push(DrawCommand::DrawText {
                         pos: (ctrl_bounds.x, ctrl_bounds.y + 2),
-                        text: current_text.clone(),
+                        text: clean_text.clone(),
                         color: self.theme.text_color,
-                        font_size: self.theme.base_font_size,
+                        font_size,
                     });
                     UiWidget::Label {
-                        text: current_text,
-                        font_size: self.theme.base_font_size,
+                        text: clean_text,
+                        font_size,
                         color: self.theme.text_color,
                     }
                 }
@@ -685,6 +828,84 @@ impl SoftwareBuffer {
             }
         }
     }
+
+    /// Encodes the software buffer into a standard 8-bit RGBA PNG image byte vector.
+    ///
+    /// # Returns
+    ///
+    /// Encoded PNG bytes on success.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::MsiError`] if zlib compression fails.
+    #[must_use]
+    #[allow(clippy::cast_possible_truncation)]
+    pub fn to_png_bytes(&self) -> Vec<u8> {
+        let mut out = Vec::new();
+        out.extend_from_slice(b"\x89PNG\r\n\x1a\n");
+
+        let mut ihdr = Vec::with_capacity(13);
+        ihdr.extend_from_slice(&self.width.to_be_bytes());
+        ihdr.extend_from_slice(&self.height.to_be_bytes());
+        ihdr.extend_from_slice(&[8, 6, 0, 0, 0]);
+        write_png_chunk(&mut out, *b"IHDR", &ihdr);
+
+        let row_bytes = (self.width as usize) * 4 + 1;
+        let mut raw_data = Vec::with_capacity(row_bytes * (self.height as usize));
+        for y in 0..self.height {
+            raw_data.push(0); // Filter type 0 (None)
+            for x in 0..self.width {
+                let idx = (y as usize) * (self.width as usize) + (x as usize);
+                let px = self
+                    .pixels
+                    .get(idx)
+                    .copied()
+                    .unwrap_or(Color32::TRANSPARENT);
+                raw_data.extend_from_slice(&[px.r, px.g, px.b, px.a]);
+            }
+        }
+
+        let compressed = miniz_oxide::deflate::compress_to_vec_zlib(&raw_data, 6);
+        write_png_chunk(&mut out, *b"IDAT", &compressed);
+        write_png_chunk(&mut out, *b"IEND", &[]);
+
+        out
+    }
+
+    /// Writes the software buffer directly to a PNG file on disk.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Destination file path.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::MsiError`] if file I/O fails.
+    pub fn save_png(&self, path: impl AsRef<std::path::Path>) -> crate::error::Result<()> {
+        let bytes = self.to_png_bytes();
+        std::fs::write(path, bytes)?;
+        Ok(())
+    }
+}
+
+/// Writes a single PNG chunk (`length || type || data || crc32`) to `out`.
+///
+/// # Arguments
+///
+/// * `out` - Output buffer.
+/// * `chunk_type` - 4-byte ASCII chunk identifier.
+/// * `data` - Chunk payload bytes.
+#[allow(clippy::cast_possible_truncation)]
+fn write_png_chunk(out: &mut Vec<u8>, chunk_type: [u8; 4], data: &[u8]) {
+    let len = data.len() as u32;
+    out.extend_from_slice(&len.to_be_bytes());
+    out.extend_from_slice(&chunk_type);
+    out.extend_from_slice(data);
+    let mut crc_buf = Vec::with_capacity(4 + data.len());
+    crc_buf.extend_from_slice(&chunk_type);
+    crc_buf.extend_from_slice(data);
+    let crc = crate::cab::csum::compute_crc32(&crc_buf);
+    out.extend_from_slice(&crc.to_be_bytes());
 }
 
 #[cfg(test)]
@@ -1172,6 +1393,144 @@ mod tests {
         assert_eq!(buffer.get_pixel(200, 200), None); // Out of bounds X and Y
         assert_eq!(buffer.get_pixel(10, 200), None); // In bounds X, out of bounds Y
         assert_eq!(buffer.get_pixel(200, 10), None); // Out of bounds X, in bounds Y
+
+        let png = buffer.to_png_bytes();
+        assert_eq!(&png[0..8], b"\x89PNG\r\n\x1a\n");
+
+        let temp_path = std::env::temp_dir().join("msi_rs_test_buffer.png");
+        assert!(buffer.save_png(&temp_path).is_ok());
+        let _ = std::fs::remove_file(&temp_path);
+        assert!(buffer
+            .save_png("/nonexistent_dir_msi_rs_9999/test.png")
+            .is_err());
+    }
+
+    /// Tests extended layout mapper branches for sidebar bitmaps, disabled buttons,
+    /// RTF scrollable text, hierarchical selection trees, radio defaults, and action logs.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_layout_mapper_extended_controls() {
+        use crate::execution::properties::InstallState;
+        use crate::ui::controls::SelectionTreeNode;
+
+        let mut engine = UiEngine::new(EvaluationContext::new());
+        engine.add_dialog(DialogDefinition {
+            name: "ExtDlg".to_string(),
+            h_centering: 50,
+            v_centering: 50,
+            width: 370,
+            height: 270,
+            attributes: DIALOG_ATTR_VISIBLE,
+            title: Some("Extended Dialog".to_string()),
+            control_first: "DisabledBtn".to_string(),
+            control_default: None,
+            control_cancel: None,
+        });
+        engine.add_control(
+            ControlDefinition::new(
+                "ExtDlg",
+                "DisabledBtn",
+                ControlType::PushButton,
+                DluRect::new(10, 10, 56, 17),
+                1, // Visible, not enabled
+            )
+            .text("&Disabled"),
+        );
+        engine.add_control(
+            ControlDefinition::new(
+                "ExtDlg",
+                "DialogBmp",
+                ControlType::Bitmap,
+                DluRect::new(0, 0, 493, 312),
+                1,
+            )
+            .property("WixUI_Bmp_Dialog"),
+        );
+        engine.add_control(
+            ControlDefinition::new(
+                "ExtDlg",
+                "RtfScroll",
+                ControlType::ScrollableText,
+                DluRect::new(140, 20, 200, 60),
+                3,
+            )
+            .text(r"{\rtf1\ansi Line A\par Line B}"),
+        );
+        engine.add_control(
+            ControlDefinition::new(
+                "ExtDlg",
+                "LicRadio",
+                ControlType::RadioButtonGroup,
+                DluRect::new(140, 90, 200, 20),
+                3,
+            )
+            .property("LicenseAccepted"),
+        );
+        engine.add_control(
+            ControlDefinition::new(
+                "ExtDlg",
+                "Box",
+                ControlType::Text,
+                DluRect::new(210, 120, 140, 60),
+                3,
+            )
+            .text(r"{\WixUI_Font_Title}Feature Description"),
+        );
+        engine.add_control(ControlDefinition::new(
+            "ExtDlg",
+            "Tree",
+            ControlType::SelectionTree,
+            DluRect::new(20, 120, 175, 45),
+            3,
+        ));
+        engine.add_control(ControlDefinition::new(
+            "ExtDlg",
+            "Prog",
+            ControlType::ProgressBar,
+            DluRect::new(20, 200, 300, 10),
+            3,
+        ));
+
+        engine.context_mut().set_property("LicenseAccepted", "1");
+        engine.append_action_log("Action 1: CostInitialize");
+        assert!(engine.set_active_dialog("ExtDlg").is_ok());
+
+        let mut root_local = SelectionTreeNode::new("Root1", "Root Local", 1024);
+        let mut child_local = SelectionTreeNode::new("Child1", "Child Local", 512);
+        child_local.install_state = InstallState::Local;
+        let mut child_absent = SelectionTreeNode::new("Child2", "Child Absent", 512);
+        child_absent.install_state = InstallState::Absent;
+        let child_overflow = SelectionTreeNode::new("Child3", "Child Overflow", 512);
+        root_local.add_child(child_local);
+        root_local.add_child(child_absent);
+        root_local.add_child(child_overflow);
+
+        let mut root_absent = SelectionTreeNode::new("Root2", "Root Absent", 1024);
+        root_absent.install_state = InstallState::Absent;
+        let root_overflow = SelectionTreeNode::new("Root3", "Root Overflow", 1024);
+
+        if let Some(st) = engine.get_control_state_mut("ExtDlg", "Tree") {
+            st.tree_nodes = vec![root_local, root_absent, root_overflow];
+        }
+        let mapper = EguiLayoutMapper::new(WizardTheme::mondo(), FontMetrics::default());
+        let (_bounds, widgets, draws) = mapper.map_active_dialog(&engine, 800, 600);
+        assert_eq!(widgets.len(), 7);
+        assert!(draws.iter().any(|d| match d {
+            DrawCommand::DrawText { text, .. } => text.contains("Action 1: CostInitialize"),
+            _ => false,
+        }));
+
+        // Also test SelectionTree when root_absent is first and fits within max_rows
+        if let Some(st) = engine.get_control_state_mut("ExtDlg", "Tree") {
+            let mut r_abs = SelectionTreeNode::new("R_Abs", "Absent First", 512);
+            r_abs.install_state = InstallState::Absent;
+            st.tree_nodes = vec![r_abs];
+        }
+        let (_b2, _w2, draws2) = mapper.map_active_dialog(&engine, 800, 600);
+        assert!(draws2.iter().any(|d| match d {
+            DrawCommand::DrawText { text, .. } => text.contains("[ ] Absent First"),
+            _ => false,
+        }));
     }
 
     /// Tests trait implementations for renderer types.

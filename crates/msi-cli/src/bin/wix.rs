@@ -798,7 +798,9 @@ mod tests {
         run_wix_msi_decompile_cases(&temp_dir, &msi_file);
         run_wix_msi_validate_and_diff_cases(&temp_dir, &msi_file, &second_msi_file);
 
-        let invalid_out = Path::new("/nonexistent_root_dir_12345/sub/test.xml");
+        let blocker_file = temp_dir.join("blocker_out_file");
+        assert!(fs::write(&blocker_file, "blocker").is_ok());
+        let invalid_out = blocker_file.join("test.xml");
         assert_eq!(
             run(&[
                 "harvest".to_string(),

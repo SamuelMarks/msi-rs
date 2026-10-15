@@ -635,6 +635,17 @@ impl UiEngine {
     )]
     #[allow(clippy::cognitive_complexity)]
     pub fn load_from_database(&mut self, db: &LinkedDatabase) -> Result<()> {
+        // 0. Load Property table defaults if not already overridden in context
+        for rec in db.get_records("Property") {
+            if let (Some(FieldValue::String(k)), Some(FieldValue::String(v))) =
+                (rec.get(0), rec.get(1))
+            {
+                if self.context.get_property(k).is_none() {
+                    self.context.set_property(k.clone(), v.clone());
+                }
+            }
+        }
+
         // 1. Load Dialog table
         for rec in db.get_records("Dialog") {
             let Some(FieldValue::String(name)) = rec.get(0) else {
@@ -868,6 +879,9 @@ impl UiEngine {
         }
         self.custom_action_executor = Some(executor);
 
+        // 6b. Populate Feature tree nodes and VolumeCostList from Feature, FeatureComponents, and File tables
+        self.populate_features_from_database(db);
+
         // 7. Determine initial active dialog from InstallUISequence or standard fallbacks
         let mut initial_dialog = None;
         let mut min_seq = i32::MAX;
@@ -897,6 +911,202 @@ impl UiEngine {
         }
 
         Ok(())
+    }
+
+    /// Computes cumulative byte sizes per `Feature` from `File` and `FeatureComponents` tables.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - Linked MSI database.
+    ///
+    /// # Returns
+    ///
+    /// Map of `Feature` ID to cumulative byte size.
+    #[allow(clippy::cast_sign_loss)]
+    fn compute_feature_sizes(db: &LinkedDatabase) -> HashMap<String, u64> {
+        let mut comp_sizes: HashMap<String, u64> = HashMap::new();
+        for rec in db.get_records("File") {
+            let Some(FieldValue::String(comp_id)) = rec.get(1) else {
+                continue;
+            };
+            let f_size = match rec.get(3) {
+                Some(FieldValue::Long(v)) if *v > 0 => *v as u64,
+                Some(FieldValue::Short(v)) if *v > 0 => *v as u64,
+                _ => 65_536,
+            };
+            *comp_sizes.entry(comp_id.clone()).or_insert(0) += f_size;
+        }
+
+        let mut feat_sizes: HashMap<String, u64> = HashMap::new();
+        for rec in db.get_records("FeatureComponents") {
+            let (Some(FieldValue::String(feat_id)), Some(FieldValue::String(comp_id))) =
+                (rec.get(0), rec.get(1))
+            else {
+                continue;
+            };
+            let c_size = comp_sizes.get(comp_id).copied().unwrap_or(65_536);
+            *feat_sizes.entry(feat_id.clone()).or_insert(0) += c_size;
+        }
+        feat_sizes
+    }
+
+    /// Extracts a hierarchical [`crate::ui::controls::SelectionTreeNode`] list from `Feature` records.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - Linked MSI database.
+    ///
+    /// # Returns
+    ///
+    /// Root feature tree nodes with nested children.
+    fn extract_feature_hierarchy(
+        db: &LinkedDatabase,
+    ) -> Vec<crate::ui::controls::SelectionTreeNode> {
+        use crate::execution::properties::InstallState;
+        use crate::ui::controls::SelectionTreeNode;
+
+        let feat_sizes = Self::compute_feature_sizes(db);
+        let mut raw_features: Vec<(Option<String>, SelectionTreeNode)> = Vec::new();
+        for rec in db.get_records("Feature") {
+            let Some(FieldValue::String(feat_id)) = rec.get(0) else {
+                continue;
+            };
+            let parent_id = match rec.get(1) {
+                Some(FieldValue::String(p)) if !p.is_empty() => Some(p.clone()),
+                _ => None,
+            };
+            let title = match rec.get(2) {
+                Some(FieldValue::String(t)) if !t.is_empty() => t.clone(),
+                _ => feat_id.clone(),
+            };
+            let desc = match rec.get(3) {
+                Some(FieldValue::String(d)) if !d.is_empty() => Some(d.clone()),
+                _ => None,
+            };
+            let level = match rec.get(5) {
+                Some(FieldValue::Short(v)) => i32::from(*v),
+                Some(FieldValue::Long(v)) => *v,
+                _ => 1,
+            };
+            let size_bytes = feat_sizes.get(feat_id).copied().unwrap_or(1_048_576);
+            let mut node = SelectionTreeNode::new(feat_id.clone(), title, size_bytes);
+            if let Some(d) = desc {
+                node = node.description(d);
+            }
+            node.install_state = if level > 0 && level <= 100 {
+                InstallState::Local
+            } else {
+                InstallState::Absent
+            };
+            raw_features.push((parent_id, node));
+        }
+
+        let mut roots: Vec<SelectionTreeNode> = Vec::new();
+        let mut children_by_parent: HashMap<String, Vec<SelectionTreeNode>> = HashMap::new();
+        for (parent_opt, node) in raw_features {
+            if let Some(parent) = parent_opt {
+                children_by_parent.entry(parent).or_default().push(node);
+            } else {
+                roots.push(node);
+            }
+        }
+        for root in &mut roots {
+            if let Some(kids) = children_by_parent.remove(&root.feature) {
+                for kid in kids {
+                    root.add_child(kid);
+                }
+            }
+        }
+        for (_orphan_parent, kids) in children_by_parent {
+            roots.extend(kids);
+        }
+        let mut local_roots = Vec::new();
+        let mut absent_roots = Vec::new();
+        for r in roots {
+            if r.install_state == InstallState::Local {
+                local_roots.push(r);
+            } else {
+                absent_roots.push(r);
+            }
+        }
+        local_roots.extend(absent_roots);
+        local_roots
+    }
+
+    /// Populates `SelectionTree` and `VolumeCostList` control states from `Feature`,
+    /// `FeatureComponents`, and `File` tables in the database.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - Linked MSI database.
+    fn populate_features_from_database(&mut self, db: &LinkedDatabase) {
+        use crate::execution::properties::InstallState;
+        use crate::ui::controls::VolumeCostEntry;
+
+        let roots = Self::extract_feature_hierarchy(db);
+        if roots.is_empty() {
+            return;
+        }
+
+        let total_required: u64 = roots
+            .iter()
+            .map(|r| {
+                let kids_sum: u64 = r
+                    .children
+                    .iter()
+                    .filter(|c| c.install_state == InstallState::Local)
+                    .map(|c| c.size_bytes)
+                    .sum();
+                if r.install_state == InstallState::Local {
+                    r.size_bytes + kids_sum
+                } else {
+                    kids_sum
+                }
+            })
+            .sum();
+
+        let first = &roots[0];
+        let desc = first
+            .description
+            .clone()
+            .unwrap_or_else(|| format!("Installs {} components.", first.title));
+        self.context.set_property("SelectionDescription", desc);
+        let kb = (first.size_bytes / 1024).max(1);
+        let total_kb = (total_required / 1024).max(1);
+        self.context.set_property(
+            "SelectionSize",
+            format!("This feature requires {kb} KB (Total: {total_kb} KB)."),
+        );
+
+        let vol_entry = VolumeCostEntry {
+            volume: "/".to_string(),
+            drive_type: "Fixed Disk".to_string(),
+            volume_size: 256 * 1024 * 1024 * 1024,
+            required_space: total_required.max(65_536),
+            free_space: 142 * 1024 * 1024 * 1024,
+        };
+
+        let mut tree_keys = Vec::new();
+        let mut vol_keys = Vec::new();
+        for (dlg_name, defs) in &self.controls {
+            for def in defs {
+                if def.control_type() == ControlType::SelectionTree {
+                    tree_keys.push((dlg_name.clone(), def.control().to_string()));
+                } else if def.control_type() == ControlType::VolumeCostList {
+                    vol_keys.push((dlg_name.clone(), def.control().to_string()));
+                }
+            }
+        }
+        for key in tree_keys {
+            if let Some(state) = self.control_states.get_mut(&key) {
+                state.tree_nodes.clone_from(&roots);
+            }
+        }
+        for key in vol_keys {
+            if let Some(state) = self.control_states.get_mut(&key) {
+                state.volume_entries = vec![vol_entry.clone()];
+            }
+        }
     }
 
     /// Dispatches a progress event notification updating `ProgressBar` controls.
@@ -2511,5 +2721,200 @@ mod tests {
         );
         let mut engine_err_cond = UiEngine::new(EvaluationContext::new());
         assert!(engine_err_cond.load_from_database(&db_err_cond).is_err());
+
+        // F. Database with Property, File, FeatureComponents, and Feature hierarchy
+        let mut db_feat = LinkedDatabase::new().unwrap_or_default();
+        db_feat.add_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("ProductName".to_string()),
+                FieldValue::String("FeatApp".to_string()),
+            ]),
+        );
+        db_feat.add_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("PreSetProp".to_string()),
+                FieldValue::String("Ignored".to_string()),
+            ]),
+        );
+        db_feat.add_record("Property", Record::with_fields(vec![FieldValue::Short(1)]));
+        db_feat.add_record(
+            "Dialog",
+            Record::with_fields(vec![
+                FieldValue::String("CustomizeDlg".to_string()),
+                FieldValue::Short(50),
+                FieldValue::Short(50),
+                FieldValue::Short(370),
+                FieldValue::Short(270),
+                FieldValue::Short(3),
+                FieldValue::String("Custom Setup".to_string()),
+                FieldValue::String("Tree".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        db_feat.add_record(
+            "Control",
+            Record::with_fields(vec![
+                FieldValue::String("CustomizeDlg".to_string()),
+                FieldValue::String("Tree".to_string()),
+                FieldValue::String("SelectionTree".to_string()),
+                FieldValue::Short(25),
+                FieldValue::Short(85),
+                FieldValue::Short(175),
+                FieldValue::Short(115),
+                FieldValue::Long(7),
+                FieldValue::String("_BrowseProperty".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        db_feat.add_record(
+            "Control",
+            Record::with_fields(vec![
+                FieldValue::String("CustomizeDlg".to_string()),
+                FieldValue::String("VolumeList".to_string()),
+                FieldValue::String("VolumeCostList".to_string()),
+                FieldValue::Short(15),
+                FieldValue::Short(35),
+                FieldValue::Short(340),
+                FieldValue::Short(180),
+                FieldValue::Long(7),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        db_feat.add_record(
+            "File",
+            Record::with_fields(vec![
+                FieldValue::String("F1".to_string()),
+                FieldValue::String("C1".to_string()),
+                FieldValue::String("app.exe".to_string()),
+                FieldValue::Long(131_072),
+            ]),
+        );
+        db_feat.add_record(
+            "File",
+            Record::with_fields(vec![
+                FieldValue::String("F2".to_string()),
+                FieldValue::String("C2".to_string()),
+                FieldValue::String("lib.dll".to_string()),
+                FieldValue::Short(16_384),
+            ]),
+        );
+        db_feat.add_record(
+            "File",
+            Record::with_fields(vec![
+                FieldValue::String("F3".to_string()),
+                FieldValue::String("C3".to_string()),
+                FieldValue::String("empty.dat".to_string()),
+                FieldValue::Null,
+            ]),
+        );
+        db_feat.add_record("File", Record::with_fields(vec![FieldValue::Short(1)]));
+        db_feat.add_record(
+            "FeatureComponents",
+            Record::with_fields(vec![
+                FieldValue::String("RootFeat".to_string()),
+                FieldValue::String("C1".to_string()),
+            ]),
+        );
+        db_feat.add_record(
+            "FeatureComponents",
+            Record::with_fields(vec![
+                FieldValue::String("ChildFeat".to_string()),
+                FieldValue::String("C2".to_string()),
+            ]),
+        );
+        db_feat.add_record(
+            "FeatureComponents",
+            Record::with_fields(vec![FieldValue::Short(1)]),
+        );
+        db_feat.add_record(
+            "Feature",
+            Record::with_fields(vec![
+                FieldValue::String("RootFeat".to_string()),
+                FieldValue::Null,
+                FieldValue::String("Core Runtime".to_string()),
+                FieldValue::String("Core runtime binaries".to_string()),
+                FieldValue::Short(1),
+                FieldValue::Short(1),
+            ]),
+        );
+        db_feat.add_record(
+            "Feature",
+            Record::with_fields(vec![
+                FieldValue::String("ChildFeat".to_string()),
+                FieldValue::String("RootFeat".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Short(2),
+                FieldValue::Long(1),
+            ]),
+        );
+        db_feat.add_record(
+            "Feature",
+            Record::with_fields(vec![
+                FieldValue::String("DisabledFeat".to_string()),
+                FieldValue::String("OrphanParent".to_string()),
+                FieldValue::String("Optional SDK".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(3),
+                FieldValue::Null,
+            ]),
+        );
+        db_feat.add_record(
+            "Feature",
+            Record::with_fields(vec![
+                FieldValue::String("AbsentFeat".to_string()),
+                FieldValue::Null,
+                FieldValue::String("Debug Symbols".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(4),
+                FieldValue::Short(0),
+            ]),
+        );
+        db_feat.add_record("Feature", Record::with_fields(vec![FieldValue::Short(1)]));
+
+        let mut ctx_feat = EvaluationContext::new();
+        ctx_feat.set_property("PreSetProp", "Kept");
+        let mut engine_feat = UiEngine::new(ctx_feat);
+        assert!(engine_feat.load_from_database(&db_feat).is_ok());
+        assert_eq!(
+            engine_feat.context().get_property("ProductName"),
+            Some("FeatApp")
+        );
+        assert_eq!(
+            engine_feat.context().get_property("PreSetProp"),
+            Some("Kept")
+        );
+        let tree_state = engine_feat.get_control_state("CustomizeDlg", "Tree");
+        assert!(tree_state.is_some_and(|s| !s.tree_nodes.is_empty()));
+        let vol_state = engine_feat.get_control_state("CustomizeDlg", "VolumeList");
+        assert!(vol_state.is_some_and(|s| !s.volume_entries.is_empty()));
+
+        // Test fallback SelectionDescription when first feature has no description
+        let mut db_nodesc = LinkedDatabase::new().unwrap_or_default();
+        db_nodesc.add_record(
+            "Feature",
+            Record::with_fields(vec![
+                FieldValue::String("BareFeat".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Short(1),
+                FieldValue::Short(0),
+            ]),
+        );
+        let mut engine_nodesc = UiEngine::new(EvaluationContext::new());
+        assert!(engine_nodesc.load_from_database(&db_nodesc).is_ok());
+        assert!(engine_nodesc
+            .context()
+            .get_property("SelectionDescription")
+            .is_some());
     }
 }

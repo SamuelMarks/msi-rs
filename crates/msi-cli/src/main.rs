@@ -1263,6 +1263,7 @@ mod tests {
             "{12345678-1234-1234-1234-1234567890AB}",
         ];
         assert_eq!(run_with_args(to_os(&success_args)), ExitCode::SUCCESS);
+        let _ = std::fs::remove_file("Sample App.msi");
 
         let error_args = [
             "msi",
@@ -1430,6 +1431,16 @@ mod tests {
             control_cancel: Some("CancelButton".to_string()),
         };
         pkg.database_mut().add_record("Dialog", dlg_row.to_record());
+        pkg.database_mut().add_record(
+            "MsiEmbeddedChainer",
+            msi::database::tables::record::Record::with_fields(vec![
+                FieldValue::String("Chainer1".to_string()),
+                FieldValue::String("1".to_string()),
+                FieldValue::String("/q".to_string()),
+                FieldValue::String("Src".to_string()),
+                FieldValue::Short(0),
+            ]),
+        );
 
         assert!(pkg.save(&pkg_path).is_ok());
 
@@ -2790,6 +2801,7 @@ mod tests {
         ];
         assert_eq!(run_with_args(to_os(&args)), ExitCode::SUCCESS);
         assert!(Path::new("App.msi").exists());
+        let _ = std::fs::remove_file("App.msi");
 
         // Invalid version
         let args_invalid = [

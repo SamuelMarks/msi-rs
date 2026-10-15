@@ -469,7 +469,7 @@ pub fn inject_ui_library(
         ("LicenseAgreementDlg", "LicenseText", "ScrollableText", 20, 60, 330, 140, 7, Some("WixUILicenseRtf"), None),
         ("LicenseAgreementDlg", "Buttons", "RadioButtonGroup", 20, 205, 330, 25, 3, Some("LicenseAccepted"), None),
         ("LicenseAgreementDlg", "Back", "PushButton", 180, 243, 56, 17, 3, None, Some("< &Back")),
-        ("LicenseAgreementDlg", "Next", "PushButton", 236, 243, 56, 17, 3, None, Some("&Next")),
+        ("LicenseAgreementDlg", "Next", "PushButton", 236, 243, 56, 17, 3, None, Some("I &agree")),
         ("LicenseAgreementDlg", "Cancel", "PushButton", 304, 243, 56, 17, 3, None, Some("Cancel")),
         ("LicenseAgreementDlg", "BottomLine", "Line", 0, 234, 370, 0, 1, None, None),
 
