@@ -1639,10 +1639,12 @@ mod tests {
             executor.install_service(&svc_dir, SupervisorType::Systemd, Some(&temp_dir));
         assert!(res_write_err.is_err());
 
-        // Failure when installing with root_prefix = None without write permissions to /lib
+        // Failure when installing with root_prefix = None onto a non-directory parent (/dev/null)
         #[cfg(unix)]
         {
-            let res_no_prefix = executor.install_service(&svc, SupervisorType::Systemd, None);
+            let bad_root_svc = ServiceDefinition::new("/dev/null/bad_svc", "/usr/bin/bad_svc");
+            let res_no_prefix =
+                executor.install_service(&bad_root_svc, SupervisorType::Systemd, None);
             assert!(res_no_prefix.is_err());
         }
 

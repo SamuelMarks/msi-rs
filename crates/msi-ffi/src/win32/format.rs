@@ -5,7 +5,6 @@ use crate::win32::strings::{string_to_lpstr, string_to_lpwstr};
 use crate::win32::{Dword, Lpstr, Lpwstr, Uint, ERROR_INSTALL_FAILURE, ERROR_INVALID_HANDLE};
 
 /// Formats a record using a format string (Unicode).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -42,7 +41,6 @@ pub extern "system" fn MsiFormatRecordW(
 }
 
 /// Formats a record using a format string (ANSI).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]

@@ -394,19 +394,11 @@ mod tests {
             .write_file_atomic(&new_target, b"new", None)
             .is_err());
 
-        // 4. Error in commit when quarantine_dir cannot be deleted
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let unremovable_quar = temp_dir.join("unremovable_quar");
-            let _ = fs::create_dir_all(&unremovable_quar);
-            let sub_file = unremovable_quar.join("dummy.rbf");
-            let _ = fs::write(&sub_file, b"dummy");
-            let _ = fs::set_permissions(&unremovable_quar, fs::Permissions::from_mode(0o555));
-            let mut exec_commit_err = LiveWorkerExecutor::new(&unremovable_quar, "s4");
-            assert!(exec_commit_err.commit().is_err());
-            let _ = fs::set_permissions(&unremovable_quar, fs::Permissions::from_mode(0o755));
-        }
+        // 4. Error in commit when quarantine_dir cannot be deleted (quarantine_dir is a regular file)
+        let unremovable_quar = temp_dir.join("unremovable_quar");
+        let _ = fs::write(&unremovable_quar, b"not_a_directory");
+        let mut exec_commit_err = LiveWorkerExecutor::new(&unremovable_quar, "s4");
+        assert!(exec_commit_err.commit().is_err());
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
@@ -515,7 +507,7 @@ mod tests {
         // Test failure path: write_file_atomic to a target without parent or invalid destination path
         #[cfg(unix)]
         {
-            let invalid_path = Path::new("/proc/non_existent_sys/invalid/path.dat");
+            let invalid_path = Path::new("/dev/null/non_existent_sys/invalid/path.dat");
             assert!(executor
                 .write_file_atomic(invalid_path, b"data", None)
                 .is_err());
@@ -534,7 +526,10 @@ mod worker_executor_additional_tests {
         let temp_dir = tempfile::tempdir()?;
         let q_dir = temp_dir.path().join("quarantine");
         assert!(fs::create_dir_all(&q_dir).is_ok());
-        let mut exec = LiveWorkerExecutor::new(&q_dir, "test");
+        // 4. remove_dir_all fails on quarantine_dir when quarantine_dir is a regular file
+        let q_file = temp_dir.path().join("quarantine_file");
+        assert!(fs::write(&q_file, b"not_a_dir").is_ok());
+        let mut exec = LiveWorkerExecutor::new(&q_file, "test");
 
         // 1. NewlyCreated fails (try to remove_file on a directory)
         let dir_as_file = temp_dir.path().join("dir_as_file");
@@ -568,17 +563,10 @@ mod worker_executor_additional_tests {
         assert!(fs::write(non_empty_dir.join("file"), "data").is_ok());
         exec.created_directories.push(non_empty_dir);
 
-        // 3.c remove_dir fails because parent is read-only
+        // 3.c remove_dir fails on empty directory ending in `.` (EINVAL on all OSes even as root)
         let unremovable_child = q_dir.join("unremovable_child");
         assert!(fs::create_dir_all(&unremovable_child).is_ok());
-        exec.created_directories.push(unremovable_child);
-
-        // 4. remove_dir_all fails on quarantine_dir (make parent read-only)
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            assert!(fs::set_permissions(&q_dir, fs::Permissions::from_mode(0o500)).is_ok());
-        }
+        exec.created_directories.push(unremovable_child.join("."));
 
         let res = exec.rollback();
         assert!(res.is_err());
@@ -586,13 +574,7 @@ mod worker_executor_additional_tests {
         assert!(err_msg.contains("remove newly created file"));
         assert!(err_msg.contains("restore quarantined file"));
         assert!(err_msg.contains("remove created directory"));
-
-        #[cfg(unix)]
-        {
-            // Restore permissions so cleanup can happen
-            use std::os::unix::fs::PermissionsExt;
-            assert!(fs::set_permissions(&q_dir, fs::Permissions::from_mode(0o755)).is_ok());
-        }
+        assert!(err_msg.contains("purge quarantine directory"));
         Ok(())
     }
 

@@ -45,7 +45,6 @@ use std::path::Path;
 ///
 /// All string pointers must be valid null-terminated C strings.
 /// `out_builder` must point to valid writable memory.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "C" fn msi_package_builder_create(
@@ -99,7 +98,6 @@ pub unsafe extern "C" fn msi_package_builder_create(
 ///
 /// `builder` must be a valid pointer obtained from `msi_package_builder_create`.
 /// `name` must be a valid null-terminated C string.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "C" fn msi_package_builder_set_product_name(
@@ -136,7 +134,6 @@ pub unsafe extern "C" fn msi_package_builder_set_product_name(
 ///
 /// `builder` must be a valid pointer obtained from `msi_package_builder_create`.
 /// `manufacturer` must be a valid null-terminated C string.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "C" fn msi_package_builder_set_manufacturer(
@@ -174,7 +171,6 @@ pub unsafe extern "C" fn msi_package_builder_set_manufacturer(
 /// # Safety
 ///
 /// `builder` must be a valid pointer obtained from `msi_package_builder_create`.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "C" fn msi_package_builder_set_version(
@@ -213,7 +209,6 @@ pub unsafe extern "C" fn msi_package_builder_set_version(
 ///
 /// `builder` must be a valid pointer obtained from `msi_package_builder_create`.
 /// `product_code` must be a valid null-terminated C string.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "C" fn msi_package_builder_set_product_code(
@@ -250,7 +245,6 @@ pub unsafe extern "C" fn msi_package_builder_set_product_code(
 ///
 /// `builder` must be a valid pointer obtained from `msi_package_builder_create`.
 /// `upgrade_code` must be a valid null-terminated C string.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "C" fn msi_package_builder_set_upgrade_code(
@@ -288,7 +282,6 @@ pub unsafe extern "C" fn msi_package_builder_set_upgrade_code(
 ///
 /// `builder` must be a valid pointer obtained from `msi_package_builder_create`.
 /// `name` and `value` must be valid null-terminated C strings.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "C" fn msi_package_builder_add_property(
@@ -329,7 +322,6 @@ pub unsafe extern "C" fn msi_package_builder_add_property(
 /// # Safety
 ///
 /// All non-null string pointers must be valid null-terminated C strings.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "C" fn msi_package_builder_add_directory(
@@ -391,7 +383,6 @@ pub unsafe extern "C" fn msi_package_builder_add_directory(
 /// # Safety
 ///
 /// All non-null string pointers must be valid null-terminated C strings.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "C" fn msi_package_builder_add_component(
@@ -466,7 +457,6 @@ pub unsafe extern "C" fn msi_package_builder_add_component(
 /// # Safety
 ///
 /// All non-null string pointers must be valid null-terminated C strings.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(clippy::too_many_arguments)]
@@ -545,7 +535,6 @@ pub unsafe extern "C" fn msi_package_builder_add_feature(
 /// # Safety
 ///
 /// All string pointers must be valid null-terminated C strings.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "C" fn msi_package_builder_add_feature_component(
@@ -598,7 +587,6 @@ pub unsafe extern "C" fn msi_package_builder_add_feature_component(
 /// # Safety
 ///
 /// All non-null string pointers must be valid null-terminated C strings.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(clippy::too_many_arguments)]
@@ -668,7 +656,6 @@ pub unsafe extern "C" fn msi_package_builder_add_file(
 /// # Safety
 ///
 /// All non-null string pointers must be valid null-terminated C strings.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "C" fn msi_package_builder_add_media(
@@ -725,7 +712,6 @@ pub unsafe extern "C" fn msi_package_builder_add_media(
 ///
 /// `cab_name` must be a valid null-terminated C string.
 /// `cab_data` must point to valid memory of at least `cab_len` bytes.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "C" fn msi_package_builder_add_embedded_cabinet(
@@ -783,7 +769,6 @@ pub unsafe extern "C" fn msi_package_builder_add_embedded_cabinet(
 /// # Safety
 ///
 /// All array pointers must point to arrays of at least `file_count` valid null-terminated C strings.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(clippy::too_many_lines)]
@@ -934,7 +919,6 @@ pub unsafe extern "C" fn msi_package_builder_pack_files_from_disk(
 ///
 /// `builder` must be a valid pointer obtained from `msi_package_builder_create`.
 /// `out_package` must point to valid writable memory.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "C" fn msi_package_builder_build(

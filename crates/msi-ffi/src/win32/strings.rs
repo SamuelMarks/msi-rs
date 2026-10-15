@@ -202,7 +202,6 @@ pub fn string_to_lpstr(value: &str, buffer: Lpstr, pcch: *mut Dword) -> u32 {
 }
 
 /// Load localized string from resources (Unicode).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -222,7 +221,6 @@ pub extern "system" fn MsiLoadStringW(
 }
 
 /// Load localized string from resources (ANSI).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -247,7 +245,6 @@ mod tests {
         clippy::too_many_lines,
         clippy::cognitive_complexity,
         clippy::similar_names,
-        clippy::too_many_lines,
         clippy::shadow_unrelated,
         clippy::borrow_as_ptr
     )]

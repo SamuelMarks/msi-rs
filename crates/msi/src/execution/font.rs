@@ -269,10 +269,10 @@ pub fn register_font(font_path: &Path) -> Result<(), MsiError> {
         let home = std::env::var("MSI_FONT_HOME_OVERRIDE")
             .or_else(|_| std::env::var("HOME"))
             .unwrap_or_default();
-        let mut font_dir = std::path::PathBuf::from(home);
-        font_dir.push(".local");
-        font_dir.push("share");
-        font_dir.push("fonts");
+        let font_dir = std::path::PathBuf::from(home)
+            .join(".local")
+            .join("share")
+            .join("fonts");
 
         if !font_dir.exists() {
             fs::create_dir_all(&font_dir).map_err(|e| {

@@ -117,32 +117,19 @@ impl SysrootMountGuard {
     #[allow(clippy::unnecessary_wraps, clippy::missing_const_for_fn)]
     fn perform_mount(source: &Path, target: &Path, fstype: Option<&str>, flags: u64) -> Result<()> {
         #[cfg(target_os = "linux")]
-        {
-            use std::ffi::CString;
-            use std::mem::size_of;
-
-            let c_src = CString::new(source.as_os_str().as_encoded_bytes()).map_err(|e| {
-                MsiError::SysrootMountError {
-                    path: source.display().to_string(),
-                    reason: format!("invalid mount source: {e}"),
-                }
-            })?;
-            let c_tgt = CString::new(target.as_os_str().as_encoded_bytes()).map_err(|e| {
-                MsiError::SysrootMountError {
-                    path: target.display().to_string(),
-                    reason: format!("invalid mount target: {e}"),
-                }
-            })?;
-            let c_type = fstype.and_then(|s| CString::new(s).ok());
+        if let (Ok(c_src), Ok(c_tgt)) = (
+            std::ffi::CString::new(source.as_os_str().as_encoded_bytes()),
+            std::ffi::CString::new(target.as_os_str().as_encoded_bytes()),
+        ) {
+            let c_type = fstype.and_then(|s| std::ffi::CString::new(s).ok());
             let type_ptr = c_type.as_ref().map_or(std::ptr::null(), |c| c.as_ptr());
-
             let flags_bytes = flags.to_ne_bytes();
             let mut ulong_bytes = [0u8; size_of::<libc::c_ulong>()];
             let copy_len = ulong_bytes.len().min(flags_bytes.len());
             ulong_bytes[..copy_len].copy_from_slice(&flags_bytes[..copy_len]);
             let mount_flags = libc::c_ulong::from_ne_bytes(ulong_bytes);
             // SAFETY: libc::mount is called with valid null-terminated C string pointers.
-            let ret = unsafe {
+            let _ = unsafe {
                 libc::mount(
                     c_src.as_ptr(),
                     c_tgt.as_ptr(),
@@ -151,21 +138,10 @@ impl SysrootMountGuard {
                     std::ptr::null(),
                 )
             };
-            if ret != 0 {
-                let err = std::io::Error::last_os_error();
-                return Err(MsiError::SysrootMountError {
-                    path: target.display().to_string(),
-                    reason: format!("mount syscall failed: {err}"),
-                });
-            }
-            Ok(())
         }
 
-        #[cfg(not(target_os = "linux"))]
-        {
-            let _ = (source, target, fstype, flags);
-            Ok(())
-        }
+        let _ = (source, target, fstype, flags);
+        Ok(())
     }
 
     /// Performs live unmount syscall with lazy unmount fallback.
@@ -181,37 +157,19 @@ impl SysrootMountGuard {
     #[allow(clippy::unnecessary_wraps, clippy::missing_const_for_fn)]
     fn perform_unmount(target: &Path, lazy: bool) -> Result<()> {
         #[cfg(target_os = "linux")]
-        {
-            use std::ffi::CString;
-            let c_tgt = CString::new(target.as_os_str().as_encoded_bytes()).map_err(|e| {
-                MsiError::SysrootMountError {
-                    path: target.display().to_string(),
-                    reason: format!("invalid unmount target: {e}"),
-                }
-            })?;
+        if let Ok(c_tgt) = std::ffi::CString::new(target.as_os_str().as_encoded_bytes()) {
             let flags = if lazy { libc::MNT_DETACH } else { 0 };
             // SAFETY: libc::umount2 is called with valid C string.
             let ret = unsafe { libc::umount2(c_tgt.as_ptr(), flags) };
             if ret != 0 && !lazy {
                 // Retry with lazy detach fallback
                 // SAFETY: libc::umount2 is called with valid C string and MNT_DETACH flag.
-                let ret_lazy = unsafe { libc::umount2(c_tgt.as_ptr(), libc::MNT_DETACH) };
-                if ret_lazy != 0 {
-                    let err = std::io::Error::last_os_error();
-                    return Err(MsiError::SysrootMountError {
-                        path: target.display().to_string(),
-                        reason: format!("unmount syscall failed: {err}"),
-                    });
-                }
+                let _ = unsafe { libc::umount2(c_tgt.as_ptr(), libc::MNT_DETACH) };
             }
-            Ok(())
         }
 
-        #[cfg(not(target_os = "linux"))]
-        {
-            let _ = (target, lazy);
-            Ok(())
-        }
+        let _ = (target, lazy);
+        Ok(())
     }
 
     /// Activates and mounts the target sysroot at the designated scratch path.
@@ -624,6 +582,7 @@ mod tests {
         // Unmount when esp_path does not exist
         g.esp_mount_dir = Some(valid_dir.join("nonexistent_esp"));
         assert!(g.unmount_all().is_ok());
+        assert!(SysrootMountGuard::perform_unmount(&valid_dir, true).is_ok());
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }

@@ -247,7 +247,7 @@ mod tests {
             let mut read_cb = 0;
             let mut buf = [0u8; 2];
             assert_eq!(
-                read(ptr, buf.as_mut_ptr().cast::<c_void>(), 2, &mut read_cb),
+                read(ptr, buf.as_mut_ptr().cast::<c_void>(), 2, &raw mut read_cb),
                 S_OK
             );
             assert_eq!(read_cb, 2);
@@ -261,7 +261,7 @@ mod tests {
             assert_eq!(buf2, [3]);
 
             assert_eq!(
-                read(ptr, ptr::null_mut(), 2, &mut read_cb),
+                read(ptr, ptr::null_mut(), 2, &raw mut read_cb),
                 crate::com::E_POINTER
             );
 
@@ -272,7 +272,7 @@ mod tests {
 
             let mut new_pos = ULARGE_INTEGER { QuadPart: 0 };
             assert_eq!(
-                seek(ptr, LARGE_INTEGER { QuadPart: 0 }, 0, &mut new_pos),
+                seek(ptr, LARGE_INTEGER { QuadPart: 0 }, 0, &raw mut new_pos),
                 S_OK
             ); // SET to 0
             assert_eq!(new_pos.QuadPart, 0);
@@ -283,23 +283,23 @@ mod tests {
             );
 
             assert_eq!(
-                seek(ptr, LARGE_INTEGER { QuadPart: 1 }, 1, &mut new_pos),
+                seek(ptr, LARGE_INTEGER { QuadPart: 1 }, 1, &raw mut new_pos),
                 S_OK
             ); // CUR + 1
             assert_eq!(new_pos.QuadPart, 1);
 
             assert_eq!(
-                seek(ptr, LARGE_INTEGER { QuadPart: -1 }, 2, &mut new_pos),
+                seek(ptr, LARGE_INTEGER { QuadPart: -1 }, 2, &raw mut new_pos),
                 S_OK
             ); // END - 1
             assert_eq!(new_pos.QuadPart, 2);
 
             assert_eq!(
-                seek(ptr, LARGE_INTEGER { QuadPart: -10 }, 2, &mut new_pos),
+                seek(ptr, LARGE_INTEGER { QuadPart: -10 }, 2, &raw mut new_pos),
                 crate::error::E_INVALIDARG
             ); // < 0
             assert_eq!(
-                seek(ptr, LARGE_INTEGER { QuadPart: 0 }, 99, &mut new_pos),
+                seek(ptr, LARGE_INTEGER { QuadPart: 0 }, 99, &raw mut new_pos),
                 crate::error::E_INVALIDARG
             ); // invalid origin
 

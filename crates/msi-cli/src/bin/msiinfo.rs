@@ -619,22 +619,31 @@ mod tests {
         assert_eq!(run(&edit_args), 0);
         assert_eq!(run_app(&edit_args), ExitCode::SUCCESS);
 
+        let ro_msi = temp_dir.join("readonly.msi");
+        assert!(fs::copy(msi_file, &ro_msi).is_ok());
+        assert!(fs::metadata(&ro_msi).is_ok_and(|m| {
+            let mut perms = m.permissions();
+            perms.set_readonly(true);
+            fs::set_permissions(&ro_msi, perms).is_ok()
+        }));
         #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let ro_msi = temp_dir.join("readonly.msi");
-            assert!(fs::copy(msi_file, &ro_msi).is_ok());
-            assert!(fs::set_permissions(&ro_msi, fs::Permissions::from_mode(0o400)).is_ok());
-            assert_eq!(
-                run(&[
-                    ro_msi.to_string_lossy().to_string(),
-                    "-t".to_string(),
-                    "FailTitle".to_string(),
-                ]),
-                1
-            );
-            assert!(fs::set_permissions(&ro_msi, fs::Permissions::from_mode(0o644)).is_ok());
-        }
+        let is_root = msi::platform::users::is_elevated();
+        #[cfg(not(unix))]
+        let is_root = false;
+        assert_eq!(
+            run(&[
+                ro_msi.to_string_lossy().to_string(),
+                "-t".to_string(),
+                "FailTitle".to_string(),
+            ]),
+            i32::from(!is_root)
+        );
+        assert!(fs::metadata(&ro_msi).is_ok_and(|m| {
+            let mut restore_perms = m.permissions();
+            #[allow(clippy::permissions_set_readonly_false)]
+            restore_perms.set_readonly(false);
+            fs::set_permissions(&ro_msi, restore_perms).is_ok()
+        }));
     }
 
     /// Tests all branches and error handling of `msiinfo` binary execution.

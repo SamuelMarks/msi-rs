@@ -40,7 +40,6 @@ pub struct ScriptContext(pub *mut c_void);
 /// The provided string pointers must be null-terminated if they are not null.
 /// # Panics
 /// Panics if `lgid_language` is 9999.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
@@ -95,7 +94,6 @@ pub unsafe extern "system" fn MsiAdvertiseProductA(
 /// The provided string pointers must be null-terminated if they are not null.
 /// # Panics
 /// Panics if `lgid_language` is 9999.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
@@ -236,7 +234,6 @@ pub unsafe extern "system" fn MsiAdvertiseProductExW(
 /// The provided string pointer must be null-terminated if it is not null.
 /// # Panics
 /// Panics if `_f_remove_items` is -99.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiAdvertiseScriptA(
@@ -280,7 +277,6 @@ pub unsafe extern "system" fn MsiAdvertiseScriptA(
 ///
 /// # Safety
 /// The provided string pointer must be null-terminated if it is not null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiAdvertiseScriptW(
@@ -325,7 +321,6 @@ pub unsafe extern "system" fn MsiAdvertiseScriptW(
 ///
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
@@ -375,7 +370,6 @@ pub unsafe extern "system" fn MsiProcessAdvertiseScriptA(
 ///
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]

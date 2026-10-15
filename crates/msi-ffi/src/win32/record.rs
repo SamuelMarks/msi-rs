@@ -39,7 +39,6 @@ fn set_record_field(rec: &mut Record, i_field: Uint, value: FieldValue) {
 /// # Returns
 ///
 /// The new record handle, or `MSI_NULL_HANDLE` on error.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -65,7 +64,6 @@ pub extern "system" fn MsiCreateRecord(cParams: Uint) -> MsiHandle {
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_HANDLE`
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -97,7 +95,6 @@ pub extern "system" fn MsiRecordSetInteger(hRecord: MsiHandle, iField: Uint, iVa
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_HANDLE`, `ERROR_INVALID_PARAMETER`
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -125,7 +122,6 @@ pub extern "system" fn MsiRecordSetStringW(
 }
 
 /// Sets a string field in a record in ANSI (`A`).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -157,7 +153,6 @@ pub extern "system" fn MsiRecordSetStringA(
 /// # Returns
 ///
 /// The integer value, or `MSI_NULL_INTEGER` (0x80000000) on error.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -182,7 +177,6 @@ pub extern "system" fn MsiRecordGetInteger(hRecord: MsiHandle, iField: Uint) -> 
 }
 
 /// Gets a string field from a record in Unicode (`W`).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -211,7 +205,6 @@ pub extern "system" fn MsiRecordGetStringW(
 }
 
 /// Gets a string field from a record in ANSI (`A`).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -240,7 +233,6 @@ pub extern "system" fn MsiRecordGetStringA(
 }
 
 /// Clears all fields in a record.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -266,7 +258,6 @@ pub extern "system" fn MsiRecordClearData(hRecord: MsiHandle) -> Uint {
 /// # Returns
 ///
 /// The handle to the error record, or `MSI_NULL_HANDLE` if no error record exists.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]

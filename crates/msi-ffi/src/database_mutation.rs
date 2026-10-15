@@ -61,7 +61,6 @@ pub type TransformErrorCondition = TransformErrorFlags;
 /// # Safety
 ///
 /// Pointers must be valid or null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
@@ -128,7 +127,6 @@ pub unsafe extern "system" fn MsiDatabaseMergeW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
@@ -194,7 +192,6 @@ pub unsafe extern "system" fn MsiDatabaseMergeA(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
@@ -228,7 +225,6 @@ pub unsafe extern "system" fn MsiDatabaseImportW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
@@ -264,7 +260,6 @@ pub unsafe extern "system" fn MsiDatabaseImportA(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
@@ -339,7 +334,6 @@ pub unsafe extern "system" fn MsiDatabaseExportW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
@@ -412,7 +406,6 @@ pub unsafe extern "system" fn MsiDatabaseExportA(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
@@ -481,7 +474,6 @@ pub unsafe extern "system" fn MsiDatabaseApplyTransformW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]

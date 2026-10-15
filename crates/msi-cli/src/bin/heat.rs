@@ -324,6 +324,8 @@ mod tests {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
+            let is_root = msi::platform::users::is_elevated();
+            let expected_code = i32::from(!is_root);
             let unreadable_parent = temp_dir.join("unreadable_harvest");
             let unreadable_sub = unreadable_parent.join("no_perm");
             assert!(fs::create_dir_all(&unreadable_sub).is_ok());
@@ -337,7 +339,7 @@ mod tests {
                     "dir".to_string(),
                     unreadable_parent.to_string_lossy().to_string(),
                 ]),
-                1
+                expected_code
             );
             assert_eq!(
                 run(&[
@@ -345,7 +347,7 @@ mod tests {
                     "perf".to_string(),
                     unreadable_parent.to_string_lossy().to_string(),
                 ]),
-                1
+                expected_code
             );
 
             assert!(

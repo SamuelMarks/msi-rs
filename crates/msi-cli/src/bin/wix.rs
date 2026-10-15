@@ -512,6 +512,8 @@ mod tests {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
+            let is_root = msi::platform::users::is_elevated();
+            let expected_code = i32::from(!is_root);
             let unreadable_parent = temp_dir.join("unreadable_harvest");
             let unreadable_sub = unreadable_parent.join("no_perm");
             assert!(fs::create_dir_all(&unreadable_sub).is_ok());
@@ -524,7 +526,7 @@ mod tests {
                     "dir".to_string(),
                     unreadable_parent.to_string_lossy().to_string(),
                 ]),
-                1,
+                expected_code,
             );
             assert!(
                 fs::set_permissions(&unreadable_sub, fs::Permissions::from_mode(0o755)).is_ok()
@@ -724,18 +726,27 @@ mod tests {
             1,
         );
 
+        let ro_wxs = temp_dir.join("readonly.wxs");
+        assert!(fs::write(&ro_wxs, wxs).is_ok());
+        assert!(fs::metadata(&ro_wxs).is_ok_and(|m| {
+            let mut perms = m.permissions();
+            perms.set_readonly(true);
+            fs::set_permissions(&ro_wxs, perms).is_ok()
+        }));
         #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let ro_wxs = temp_dir.join("readonly.wxs");
-            assert!(fs::write(&ro_wxs, wxs).is_ok());
-            assert!(fs::set_permissions(&ro_wxs, fs::Permissions::from_mode(0o400)).is_ok());
-            assert_eq!(
-                run(&["format".to_string(), ro_wxs.to_string_lossy().to_string()]),
-                1,
-            );
-            assert!(fs::set_permissions(&ro_wxs, fs::Permissions::from_mode(0o644)).is_ok());
-        }
+        let is_root = msi::platform::users::is_elevated();
+        #[cfg(not(unix))]
+        let is_root = false;
+        assert_eq!(
+            run(&["format".to_string(), ro_wxs.to_string_lossy().to_string()]),
+            i32::from(!is_root),
+        );
+        assert!(fs::metadata(&ro_wxs).is_ok_and(|m| {
+            let mut restore_perms = m.permissions();
+            #[allow(clippy::permissions_set_readonly_false)]
+            restore_perms.set_readonly(false);
+            fs::set_permissions(&ro_wxs, restore_perms).is_ok()
+        }));
     }
 
     /// Tests all branches and error handling of `wix` binary execution.

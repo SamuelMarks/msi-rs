@@ -2258,6 +2258,9 @@ mod native_action_additional_tests {
             std::env::set_var("PATH", path);
         }
 
+        #[cfg(windows)]
+        let _ = res;
+
         #[cfg(not(windows))]
         {
             let err_msg = res.err().unwrap_or_default().to_string();

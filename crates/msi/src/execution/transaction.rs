@@ -7442,16 +7442,8 @@ mod tests {
 
         // Child commit failure (line 1860)
         let temp_child_q = std::env::temp_dir().join(format!("child_q_{}", std::process::id()));
-        let _ = std::fs::create_dir_all(&temp_child_q);
-        let sub = temp_child_q.join("sub");
-        let _ = std::fs::create_dir_all(&sub);
-        let _ = std::fs::write(sub.join("f.rbf"), b"x");
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&sub, std::fs::Permissions::from_mode(0o555));
-            let _ = std::fs::set_permissions(&temp_child_q, std::fs::Permissions::from_mode(0o555));
-        }
+        let _ = std::fs::remove_dir_all(&temp_child_q);
+        let _ = std::fs::write(&temp_child_q, b"file_blocking_remove_dir_all");
         let live_q = crate::execution::worker::LiveWorkerExecutor::new(&temp_child_q, "child_q");
         let mut mgr_commit_fail = unwrap_result(MultiPackageTransactionManager::begin_transaction(
             "ChildCommitFail",
@@ -7466,30 +7458,18 @@ mod tests {
                 FieldValue::Short(800),
             ]),
         );
-        #[cfg(unix)]
         let empty_child_pkg = Package::from_database(empty_seq_db, HashMap::new());
-        #[cfg(unix)]
         assert!(mgr_commit_fail
             .install_child_package(&empty_child_pkg, "")
             .is_err());
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&temp_child_q, std::fs::Permissions::from_mode(0o755));
-            let _ = std::fs::set_permissions(&sub, std::fs::Permissions::from_mode(0o755));
-        }
-        let _ = std::fs::remove_dir_all(&temp_child_q);
+        let _ = std::fs::remove_file(&temp_child_q);
 
         // 5. Bare metal journal rollback failure
         #[cfg(unix)]
         {
             let temp_ro_disk = std::env::temp_dir().join(format!("ro_disk_{}", std::process::id()));
-            let _ = std::fs::write(&temp_ro_disk, b"dummy disk content");
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let _ =
-                    std::fs::set_permissions(&temp_ro_disk, std::fs::Permissions::from_mode(0o444));
-            }
+            let _ = std::fs::remove_file(&temp_ro_disk);
+            let _ = std::fs::create_dir_all(&temp_ro_disk);
 
             let mut worker_bm = WorkerContext::new();
             let mut bm_journal = crate::execution::bare_metal::BareMetalRollbackJournal::new();
@@ -7543,7 +7523,7 @@ mod tests {
                 _state: PhantomData::<Executed>,
             };
             assert!(tx_bm_exec.rollback(&mut worker_bm2).is_err());
-            let _ = std::fs::remove_file(&temp_ro_disk);
+            let _ = std::fs::remove_dir_all(&temp_ro_disk);
         }
 
         // 6. Commit failure via live executor quarantine deletion failure
@@ -7551,20 +7531,8 @@ mod tests {
         {
             let temp_quarantine_dir =
                 std::env::temp_dir().join(format!("msi_tx_quarantine_fail_{}", std::process::id()));
-            let _ = std::fs::create_dir_all(&temp_quarantine_dir);
-            let inner_dir = temp_quarantine_dir.join("locked_subdir");
-            let _ = std::fs::create_dir_all(&inner_dir);
-            let dummy_file = inner_dir.join("dummy.rbf");
-            let _ = std::fs::write(&dummy_file, b"data");
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let _ =
-                    std::fs::set_permissions(&inner_dir, std::fs::Permissions::from_mode(0o555));
-                let _ = std::fs::set_permissions(
-                    &temp_quarantine_dir,
-                    std::fs::Permissions::from_mode(0o555),
-                );
-            }
+            let _ = std::fs::remove_dir_all(&temp_quarantine_dir);
+            let _ = std::fs::write(&temp_quarantine_dir, b"not_a_directory");
             let live_exec = crate::execution::worker::LiveWorkerExecutor::new(
                 &temp_quarantine_dir,
                 "session_test",
@@ -7584,16 +7552,7 @@ mod tests {
             };
             assert!(tx_commit_fail.commit(&mut worker_commit_fail).is_err());
 
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let _ = std::fs::set_permissions(
-                    &temp_quarantine_dir,
-                    std::fs::Permissions::from_mode(0o755),
-                );
-                let _ =
-                    std::fs::set_permissions(&inner_dir, std::fs::Permissions::from_mode(0o755));
-            }
-            let _ = std::fs::remove_dir_all(&temp_quarantine_dir);
+            let _ = std::fs::remove_file(&temp_quarantine_dir);
         }
 
         // install_child_package_from_path errors (line 1892)

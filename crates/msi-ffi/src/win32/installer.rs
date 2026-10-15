@@ -22,7 +22,6 @@ use crate::win32::{
 /// # Returns
 ///
 /// `ERROR_SUCCESS` or `ERROR_INVALID_PARAMETER`.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -59,7 +58,6 @@ pub extern "system" fn MsiOpenPackageW(szPackagePath: Lpcwstr, hProduct: *mut Ms
 }
 
 /// Opens a Windows Installer package with advanced options (Unicode).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -105,7 +103,6 @@ pub extern "system" fn MsiOpenPackageExW(
 /// # Returns
 ///
 /// `ERROR_SUCCESS` or `ERROR_INVALID_PARAMETER`.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -139,7 +136,6 @@ pub extern "system" fn MsiOpenPackageA(szPackagePath: Lpcstr, hProduct: *mut Msi
 }
 
 /// Opens a Windows Installer package with advanced options (ANSI).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -185,7 +181,6 @@ pub extern "system" fn MsiOpenPackageExA(
 /// # Returns
 ///
 /// `ERROR_SUCCESS` or `ERROR_INVALID_PARAMETER`.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -229,7 +224,6 @@ pub extern "system" fn MsiOpenProductW(szProduct: Lpcwstr, hProduct: *mut MsiHan
 /// # Returns
 ///
 /// `ERROR_SUCCESS` or `ERROR_INVALID_PARAMETER`.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -264,7 +258,6 @@ pub extern "system" fn MsiOpenProductA(szProduct: Lpcstr, hProduct: *mut MsiHand
 }
 
 /// Begins a transaction (Unicode).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -308,7 +301,6 @@ pub extern "system" fn MsiBeginTransactionW(
 }
 
 /// Begins a transaction (ANSI).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -352,7 +344,6 @@ pub extern "system" fn MsiBeginTransactionA(
 }
 
 /// Joins a transaction.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -384,7 +375,6 @@ pub extern "system" fn MsiJoinTransaction(
 }
 
 /// Ends a transaction.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -407,7 +397,6 @@ pub extern "system" fn MsiEndTransaction(dwTransactionState: Dword) -> Uint {
 /// # Returns
 ///
 /// A language ID (`LANGID`), or 0 on error.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -430,7 +419,6 @@ pub extern "system" fn MsiGetLanguage(hInstall: MsiHandle) -> u16 {
 /// # Returns
 ///
 /// `ERROR_SUCCESS` or an error code.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -462,7 +450,6 @@ pub struct MsiFileHashInfo {
 /// * `szFilePath` - Path to the file.
 /// * `dwOptions` - Reserved, must be 0.
 /// * `pHash` - Pointer to receive the hash info.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -493,7 +480,6 @@ pub extern "system" fn MsiGetFileHashW(
 }
 
 /// Returns the 128-bit MD5 hash of a file (ANSI).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -524,7 +510,6 @@ pub extern "system" fn MsiGetFileHashA(
 }
 
 /// Extracts a digital signature and related information from a file (Unicode).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -554,7 +539,6 @@ pub extern "system" fn MsiGetFileSignatureInformationW(
 }
 
 /// Extracts a digital signature and related information from a file (ANSI).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -584,7 +568,6 @@ pub extern "system" fn MsiGetFileSignatureInformationA(
 }
 
 /// Validates a package against the original install package (Unicode).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -609,7 +592,6 @@ pub extern "system" fn MsiVerifyPackageW(szPackagePath: Lpcwstr) -> Uint {
 }
 
 /// Validates a package against the original install package (ANSI).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -710,7 +692,6 @@ fn execute_install(path_str: &str, cmd_str: Option<&str>) -> Uint {
 }
 
 /// Installs or uninstalls a product (Unicode).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -739,7 +720,6 @@ pub extern "system" fn MsiInstallProductW(szPackagePath: Lpcwstr, szCommandLine:
 }
 
 /// Installs or uninstalls a product (ANSI).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -768,7 +748,6 @@ pub extern "system" fn MsiInstallProductA(szPackagePath: Lpcstr, szCommandLine: 
 }
 
 /// Installs or uninstalls a product with advanced options (Unicode).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -806,7 +785,6 @@ pub extern "system" fn MsiConfigureProductExW(
 }
 
 /// Installs or uninstalls a product with advanced options (ANSI).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -844,7 +822,6 @@ pub extern "system" fn MsiConfigureProductExA(
 }
 
 /// Retrieves the full source path for a folder in the Directory table (Unicode).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -866,7 +843,6 @@ pub extern "system" fn MsiGetSourcePathW(
 }
 
 /// Retrieves the full source path for a folder in the Directory table (ANSI).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -888,7 +864,6 @@ pub extern "system" fn MsiGetSourcePathA(
 }
 
 /// Retrieves the full target path for a folder in the Directory table (Unicode).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -910,7 +885,6 @@ pub extern "system" fn MsiGetTargetPathW(
 }
 
 /// Retrieves the full target path for a folder in the Directory table (ANSI).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -932,7 +906,6 @@ pub extern "system" fn MsiGetTargetPathA(
 }
 
 /// Sets the full target path for a folder in the Directory table (Unicode).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -954,7 +927,6 @@ pub extern "system" fn MsiSetTargetPathW(
 }
 
 /// Sets the full target path for a folder in the Directory table (ANSI).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -981,7 +953,6 @@ mod tests {
         clippy::too_many_lines,
         clippy::cognitive_complexity,
         clippy::similar_names,
-        clippy::too_many_lines,
         clippy::shadow_unrelated,
         clippy::borrow_as_ptr
     )]
@@ -1801,7 +1772,6 @@ mod tests {
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
@@ -1826,7 +1796,6 @@ pub extern "system" fn MsiDeleteUserDataA(
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
@@ -1850,7 +1819,6 @@ pub extern "system" fn MsiDeleteUserDataW(
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
@@ -1872,7 +1840,6 @@ pub extern "system" fn MsiGetProductCodeFromPackageCodeA(
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
@@ -1900,7 +1867,6 @@ pub extern "system" fn MsiGetProductCodeFromPackageCodeW(
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
@@ -1934,7 +1900,6 @@ pub extern "system" fn MsiGetProductInfoFromScriptA(
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
@@ -1962,7 +1927,6 @@ pub extern "system" fn MsiGetProductInfoFromScriptW(
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
@@ -1982,7 +1946,6 @@ pub extern "system" fn MsiInstallMissingFileA(szProduct: Lpcstr, szFile: Lpcstr)
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
@@ -2002,7 +1965,6 @@ pub extern "system" fn MsiInstallMissingFileW(szProduct: Lpcwstr, szFile: Lpcwst
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
@@ -2022,7 +1984,6 @@ pub extern "system" fn MsiNotifySidChangeA(_pOldSid: Lpcstr, _pNewSid: Lpcstr) -
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
@@ -2042,7 +2003,6 @@ pub extern "system" fn MsiNotifySidChangeW(_pOldSid: Lpcwstr, _pNewSid: Lpcwstr)
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
@@ -2061,7 +2021,6 @@ pub extern "system" fn MsiSetOfflineContextW(dwFlags: Dword, szDirectory: Lpcwst
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
@@ -2081,7 +2040,6 @@ pub extern "system" fn MsiVerifyDiskSpace(hInstall: MsiHandle) -> Uint {
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]

@@ -95,92 +95,21 @@ pub struct OdbcTranslator {
     pub path: String,
 }
 
-#[cfg(windows)]
-pub use self::windows_impl::OdbcManager;
-
-#[cfg(not(windows))]
 pub use self::posix_impl::OdbcManager;
 
 #[cfg(windows)]
 pub mod windows_impl {
     //! Native Windows ODBC registration.
-    use super::{OdbcDataSource, OdbcDriver, OdbcTranslator};
-    use crate::error::{MsiError, Result};
-
-    /// Manages ODBC registrations via native `SQLInstallDriverExW` APIs.
-    #[derive(Debug, Clone, Default)]
-    pub struct OdbcManager;
-
-    impl OdbcManager {
-        /// Registers a driver natively.
-        ///
-        /// # Errors
-        /// Returns `OdbcConfigError` if installation fails.
-        ///
-        /// # Arguments
-        ///
-        /// * `driver` - The `driver` parameter.
-        ///
-        /// # Returns
-        ///
-        /// The resulting value or `Ok(())` on success.
-        pub fn register_driver(&self, driver: &OdbcDriver) -> Result<()> {
-            if driver.name.as_str().is_empty() {
-                return Err(MsiError::OdbcConfigError("Empty driver name".to_string()));
-            }
-            Ok(())
-        }
-
-        /// Registers a data source natively.
-        ///
-        /// # Errors
-        /// Returns `OdbcConfigError` if configuration fails.
-        ///
-        /// # Arguments
-        ///
-        /// * `dsn` - The `dsn` parameter.
-        ///
-        /// # Returns
-        ///
-        /// The resulting value or `Ok(())` on success.
-        pub fn register_data_source(&self, dsn: &OdbcDataSource) -> Result<()> {
-            if dsn.name.as_str().is_empty() {
-                return Err(MsiError::OdbcConfigError("Empty DSN name".to_string()));
-            }
-            Ok(())
-        }
-
-        /// Registers a translator natively.
-        ///
-        /// # Errors
-        /// Returns `OdbcConfigError` if installation fails.
-        ///
-        /// # Arguments
-        ///
-        /// * `translator` - The `translator` parameter.
-        ///
-        /// # Returns
-        ///
-        /// The resulting value or `Ok(())` on success.
-        pub fn register_translator(&self, translator: &OdbcTranslator) -> Result<()> {
-            if translator.name.is_empty() {
-                return Err(MsiError::OdbcConfigError(
-                    "Empty translator name".to_string(),
-                ));
-            }
-            Ok(())
-        }
-    }
+    pub use super::posix_impl::OdbcManager;
 }
 
-#[cfg(not(windows))]
 pub mod posix_impl {
-    //! POSIX `unixODBC` registration.
+    //! Cross-platform and POSIX `unixODBC` registration and INI configuration helpers.
     use super::{OdbcDataSource, OdbcDriver, OdbcTranslator};
     use crate::error::{MsiError, Result};
     use std::collections::HashMap;
 
-    /// Manages ODBC registrations by mutating `unixODBC` `.ini` files.
+    /// Manages ODBC registrations and `.ini` configuration sections.
     #[derive(Debug, Clone, Default)]
     pub struct OdbcManager;
 
@@ -342,50 +271,6 @@ mod tests {
         assert_eq!(name.as_str(), "MyDSN");
     }
 
-    #[cfg(windows)]
-    #[test]
-    fn test_windows_odbc_manager() {
-        let mgr = OdbcManager::default();
-        let driver = OdbcDriver {
-            name: OdbcDriverName::new("D"),
-            attributes: HashMap::new(),
-        };
-        assert!(mgr.register_driver(&driver).is_ok());
-
-        let bad_driver = OdbcDriver {
-            name: OdbcDriverName::new(""),
-            attributes: HashMap::new(),
-        };
-        assert!(mgr.register_driver(&bad_driver).is_err());
-
-        let dsn = OdbcDataSource {
-            name: OdbcDataSourceName::new("MyDSN"),
-            driver: OdbcDriverName::new("D"),
-            attributes: HashMap::new(),
-        };
-        assert!(mgr.register_data_source(&dsn).is_ok());
-
-        let bad_dsn = OdbcDataSource {
-            name: OdbcDataSourceName::new(""),
-            driver: OdbcDriverName::new("D"),
-            attributes: HashMap::new(),
-        };
-        assert!(mgr.register_data_source(&bad_dsn).is_err());
-
-        let trans = OdbcTranslator {
-            name: "MyTrans".to_string(),
-            path: "path".to_string(),
-        };
-        assert!(mgr.register_translator(&trans).is_ok());
-
-        let bad_trans = OdbcTranslator {
-            name: String::new(),
-            path: "".to_string(),
-        };
-        assert!(mgr.register_translator(&bad_trans).is_err());
-    }
-
-    #[cfg(not(windows))]
     #[test]
     fn test_posix_odbc_manager() {
         #[allow(clippy::default_constructed_unit_structs)]
@@ -431,7 +316,6 @@ mod tests {
         assert!(mgr.register_translator(&bad_trans).is_err());
     }
 
-    #[cfg(not(windows))]
     #[test]
     fn test_posix_ini_parser() -> Result<(), Box<dyn std::error::Error>> {
         let content =

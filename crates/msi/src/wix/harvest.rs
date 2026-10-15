@@ -1159,12 +1159,17 @@ mod tests {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
+            // SAFETY: geteuid is a thread-safe POSIX syscall with no preconditions.
+            let is_root = unsafe { libc::geteuid() == 0 };
             let unreadable_sub = temp_dir.join("unreadable_dir");
             let _ = fs::create_dir_all(&unreadable_sub);
             let _ = fs::set_permissions(&unreadable_sub, fs::Permissions::from_mode(0o000));
-            assert!(harvester
-                .harvest_directory(&temp_dir, "FailGroup", "INSTALLFOLDER")
-                .is_err());
+            assert_eq!(
+                harvester
+                    .harvest_directory(&temp_dir, "FailGroup", "INSTALLFOLDER")
+                    .is_ok(),
+                is_root
+            );
             let _ = fs::set_permissions(&unreadable_sub, fs::Permissions::from_mode(0o755));
         }
 
@@ -1677,17 +1682,19 @@ LineWithoutEquals
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
+            // SAFETY: geteuid is a thread-safe POSIX syscall with no preconditions.
+            let is_root = unsafe { libc::geteuid() == 0 };
             let unreadable_sub = src_dir.join("unreadable_sub");
             assert!(fs::create_dir_all(&unreadable_sub).is_ok());
             assert!(
                 fs::set_permissions(&unreadable_sub, fs::Permissions::from_mode(0o000)).is_ok()
             );
 
-            assert!(harvester.generate_manifest(&src_dir).is_err());
+            assert_eq!(harvester.generate_manifest(&src_dir).is_ok(), is_root);
             let out_mf = temp_dir.join("fail_manifest.txt");
-            assert!(harvester.write_manifest(&src_dir, &out_mf).is_err());
+            assert_eq!(harvester.write_manifest(&src_dir, &out_mf).is_ok(), is_root);
             let out_copy = temp_dir.join("fail_copy");
-            assert!(harvester.copy_payload(&src_dir, &out_copy).is_err());
+            assert_eq!(harvester.copy_payload(&src_dir, &out_copy).is_ok(), is_root);
 
             let _ = fs::set_permissions(&unreadable_sub, fs::Permissions::from_mode(0o755));
             let _ = fs::remove_dir_all(&unreadable_sub);
@@ -1833,6 +1840,8 @@ LineWithoutEquals
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
+            // SAFETY: geteuid is a thread-safe POSIX syscall with no preconditions.
+            let is_root = unsafe { libc::geteuid() == 0 };
             let unreadable_sub = temp_dir.join("src/unreadable");
             assert!(fs::create_dir_all(&unreadable_sub).is_ok());
             assert!(
@@ -1840,9 +1849,12 @@ LineWithoutEquals
             );
 
             // Fails in harvest_directory
-            assert!(harvester
-                .harvest_payload(&temp_dir.join("src"), &minimal_opts)
-                .is_err());
+            assert_eq!(
+                harvester
+                    .harvest_payload(&temp_dir.join("src"), &minimal_opts)
+                    .is_ok(),
+                is_root
+            );
 
             assert!(
                 fs::set_permissions(&unreadable_sub, fs::Permissions::from_mode(0o755)).is_ok()
@@ -1860,9 +1872,12 @@ LineWithoutEquals
                 include_cache: Some(cache_dir.clone()),
                 ..HarvestPayloadOptions::new()
             };
-            assert!(harvester
-                .harvest_payload(&temp_dir.join("src"), &bad_cache_manifest)
-                .is_err());
+            assert_eq!(
+                harvester
+                    .harvest_payload(&temp_dir.join("src"), &bad_cache_manifest)
+                    .is_ok(),
+                is_root
+            );
 
             // Fails in copy_payload(cache_dir)
             let bad_cache_copy = HarvestPayloadOptions {
@@ -1870,9 +1885,12 @@ LineWithoutEquals
                 output_dir: Some(temp_dir.join("valid_out")),
                 ..HarvestPayloadOptions::new()
             };
-            assert!(harvester
-                .harvest_payload(&temp_dir.join("src"), &bad_cache_copy)
-                .is_err());
+            assert_eq!(
+                harvester
+                    .harvest_payload(&temp_dir.join("src"), &bad_cache_copy)
+                    .is_ok(),
+                is_root
+            );
 
             let _ = fs::set_permissions(cache_dir.join("sub"), fs::Permissions::from_mode(0o755));
             let _ = fs::remove_dir_all(&cache_dir);

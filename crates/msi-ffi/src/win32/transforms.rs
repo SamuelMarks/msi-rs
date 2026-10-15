@@ -20,7 +20,6 @@ use crate::win32::{
 /// # Returns
 ///
 /// `ERROR_SUCCESS` or `ERROR_INVALID_PARAMETER`.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -72,7 +71,6 @@ pub extern "system" fn MsiDatabaseGenerateTransformW(
 }
 
 /// Generates a transform between two databases (ANSI).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -124,7 +122,6 @@ pub extern "system" fn MsiDatabaseGenerateTransformA(
 }
 
 /// Creates summary information for a transform file.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -152,7 +149,6 @@ pub extern "system" fn MsiCreateTransformSummaryInfoW(
 }
 
 /// Creates summary information for a transform file (ANSI).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -180,7 +176,6 @@ pub extern "system" fn MsiCreateTransformSummaryInfoA(
 }
 
 /// Gets the primary keys of a table.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -218,7 +213,6 @@ pub extern "system" fn MsiDatabaseGetPrimaryKeysW(
 }
 
 /// Gets the primary keys of a table (ANSI).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -256,7 +250,6 @@ pub extern "system" fn MsiDatabaseGetPrimaryKeysA(
 }
 
 /// Returns the persistent state of a table.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -288,7 +281,6 @@ pub extern "system" fn MsiDatabaseIsTablePersistentW(
 }
 
 /// Returns the persistent state of a table (ANSI).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -320,7 +312,6 @@ pub extern "system" fn MsiDatabaseIsTablePersistentA(
 }
 
 /// Retrieves a handle to the active database for the installation.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]

@@ -220,6 +220,26 @@ pub unsafe extern "C" fn msi_buffer_free(ptr: *mut u8, len: usize) {
     }
 }
 
+/// Opaque wrapper for a relational database view.
+#[derive(Debug)]
+pub struct MsiViewHandle {
+    /// The database handle this view belongs to.
+    pub database_handle: crate::handles::MsiHandle,
+    /// The original SQL query.
+    pub query: String,
+    /// Records fetched by `MsiViewExecute` but not yet retrieved by `MsiViewFetch`.
+    pub fetched_records: std::collections::VecDeque<msi::database::tables::record::Record>,
+    /// The name of the column that caused the last validation error.
+    pub last_error_column: Option<String>,
+}
+
+/// Opaque wrapper for a headless UI preview session.
+#[derive(Debug)]
+pub struct MsiUiPreviewHandle {
+    /// Inner UI engine instance.
+    pub inner: std::sync::Mutex<msi::ui::engine::UiEngine>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -370,24 +390,4 @@ mod tests {
         };
         assert_ne!(buf, buf_other);
     }
-}
-
-/// Opaque wrapper for a relational database view.
-#[derive(Debug)]
-pub struct MsiViewHandle {
-    /// The database handle this view belongs to.
-    pub database_handle: crate::handles::MsiHandle,
-    /// The original SQL query.
-    pub query: String,
-    /// Records fetched by `MsiViewExecute` but not yet retrieved by `MsiViewFetch`.
-    pub fetched_records: std::collections::VecDeque<msi::database::tables::record::Record>,
-    /// The name of the column that caused the last validation error.
-    pub last_error_column: Option<String>,
-}
-
-/// Opaque wrapper for a headless UI preview session.
-#[derive(Debug)]
-pub struct MsiUiPreviewHandle {
-    /// Inner UI engine instance.
-    pub inner: std::sync::Mutex<msi::ui::engine::UiEngine>,
 }

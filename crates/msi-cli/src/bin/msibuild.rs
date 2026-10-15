@@ -248,6 +248,12 @@ mod tests {
             fs::set_permissions(&ro_msi, perms).is_ok()
         }));
 
+        #[cfg(unix)]
+        let is_root = msi::platform::users::is_elevated();
+        #[cfg(not(unix))]
+        let is_root = false;
+        let expected_code = i32::from(!is_root);
+
         assert_eq!(
             run(&[
                 ro_msi.to_string_lossy().to_string(),
@@ -255,7 +261,7 @@ mod tests {
                 "RoStream".to_string(),
                 sample_txt.to_string_lossy().to_string(),
             ]),
-            1
+            expected_code
         );
         assert_eq!(
             run(&[
@@ -263,7 +269,7 @@ mod tests {
                 "-s".to_string(),
                 "RoStream".to_string(),
             ]),
-            1
+            expected_code
         );
 
         assert!(fs::metadata(&ro_msi).is_ok_and(|m| {

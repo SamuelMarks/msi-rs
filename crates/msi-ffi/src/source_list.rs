@@ -45,7 +45,6 @@ pub struct ResolutionMode(pub u32);
 /// # Safety
 ///
 /// Pointers must be valid or null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
@@ -117,7 +116,6 @@ pub unsafe extern "system" fn MsiSourceListAddSourceW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
@@ -188,7 +186,6 @@ pub unsafe extern "system" fn MsiSourceListAddSourceA(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
@@ -233,7 +230,6 @@ pub unsafe extern "system" fn MsiSourceListClearAllW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
@@ -281,7 +277,6 @@ pub unsafe extern "system" fn MsiSourceListClearAllA(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
@@ -350,7 +345,6 @@ pub unsafe extern "system" fn MsiSourceListAddMediaDiskW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
@@ -420,7 +414,6 @@ pub unsafe extern "system" fn MsiSourceListAddMediaDiskA(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiSourceListGetInfoW(
@@ -501,7 +494,6 @@ pub unsafe extern "system" fn MsiSourceListGetInfoW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiSourceListGetInfoA(
@@ -1378,7 +1370,7 @@ mod additional_tests {
     #[test]
     fn test_source_list_ex_stubs() {
         let dummy_w = [u16::from(b'B'), 0];
-        let dummy_a = [i8::from_ne_bytes([b'B']), 0];
+        let dummy_a = [i8::from_ne_bytes(*b"B"), 0];
 
         assert_eq!(
             MsiSourceListAddSourceExW(ptr::null(), ptr::null(), 0, 0, ptr::null(), 0),
@@ -1598,7 +1590,6 @@ mod additional_tests {
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_PARAMETER` or `ERROR_UNKNOWN_PRODUCT`.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -1650,7 +1641,6 @@ pub extern "system" fn MsiSourceListClearMediaDiskA(
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_PARAMETER` or `ERROR_UNKNOWN_PRODUCT`.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -1701,7 +1691,6 @@ pub extern "system" fn MsiSourceListClearMediaDiskW(
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_PARAMETER` or `ERROR_UNKNOWN_PRODUCT`.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -1745,7 +1734,6 @@ pub extern "system" fn MsiSourceListForceResolutionExA(
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_PARAMETER` or `ERROR_UNKNOWN_PRODUCT`.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -1825,7 +1813,7 @@ fn final_clear_all_test() {
                 ResolutionMode(0),
                 prop_last_w.as_ptr(),
                 std::ptr::null_mut(),
-                &mut dummy_sz
+                &raw mut dummy_sz
             ),
             1610
         );
@@ -2215,7 +2203,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 unknown_w.as_ptr(),
                 val_w.as_mut_ptr(),
-                &mut sz,
+                &raw mut sz,
             );
             let _ = MsiSourceListGetInfoA(
                 ProductCodeA(good_a.as_ptr()),
@@ -2224,7 +2212,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 unknown_a.as_ptr(),
                 val_a.as_mut_ptr().cast(),
-                &mut sz,
+                &raw mut sz,
             );
 
             let _ = MsiSourceListGetInfoW(
@@ -2234,7 +2222,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 bad_w.as_ptr(),
                 val_w.as_mut_ptr(),
-                &mut sz,
+                &raw mut sz,
             );
             let _ = MsiSourceListGetInfoA(
                 ProductCodeA(good_a.as_ptr()),
@@ -2243,7 +2231,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 bad_a.as_ptr().cast(),
                 val_a.as_mut_ptr().cast(),
-                &mut sz,
+                &raw mut sz,
             );
 
             // Unknown product
@@ -2267,7 +2255,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 last_source_w.as_ptr(),
                 val_w.as_mut_ptr(),
-                &mut sz,
+                &raw mut sz,
             );
             let _ = MsiSourceListGetInfoA(
                 ProductCodeA(unk_prod_a.as_ptr()),
@@ -2276,7 +2264,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 last_source_a.as_ptr(),
                 val_a.as_mut_ptr().cast(),
-                &mut sz,
+                &raw mut sz,
             );
 
             // EnumMediaDisks and EnumSources missing None cache hit
@@ -2352,7 +2340,7 @@ mod tests_final_cov {
                 0,
                 0,
                 val_w.as_mut_ptr(),
-                &mut sz_val,
+                &raw mut sz_val,
             );
             let _ = MsiSourceListEnumSourcesA(
                 good_a.as_ptr(),
@@ -2361,7 +2349,7 @@ mod tests_final_cov {
                 0,
                 0,
                 val_a.as_mut_ptr().cast(),
-                &mut sz_val,
+                &raw mut sz_val,
             );
             let _ = MsiSourceListEnumMediaDisksW(
                 good_w.as_ptr(),
@@ -2369,11 +2357,11 @@ mod tests_final_cov {
                 0,
                 0,
                 0,
-                &mut id,
+                &raw mut id,
                 val_w.as_mut_ptr(),
-                &mut sz_val,
+                &raw mut sz_val,
                 val_w2.as_mut_ptr(),
-                &mut sz_val,
+                &raw mut sz_val,
             );
             let _ = MsiSourceListEnumMediaDisksA(
                 good_a.as_ptr(),
@@ -2381,11 +2369,11 @@ mod tests_final_cov {
                 0,
                 0,
                 0,
-                &mut id,
+                &raw mut id,
                 val_a.as_mut_ptr().cast(),
-                &mut sz_val,
+                &raw mut sz_val,
                 buf_a2.as_mut_ptr().cast(),
-                &mut sz_val,
+                &raw mut sz_val,
             );
             let _ = MsiSourceListEnumMediaDisksW(
                 good_w.as_ptr(),
@@ -2393,11 +2381,11 @@ mod tests_final_cov {
                 0,
                 0,
                 100,
-                &mut id,
+                &raw mut id,
                 val_w.as_mut_ptr(),
-                &mut sz_val,
+                &raw mut sz_val,
                 val_w2.as_mut_ptr(),
-                &mut sz_val,
+                &raw mut sz_val,
             );
 
             // ClearMediaDisk that actually removes a disk (id == dwDiskId)
@@ -2463,11 +2451,11 @@ mod tests_final_cov {
                 0,
                 0,
                 0,
-                &mut id,
+                &raw mut id,
                 val_w.as_mut_ptr(),
-                &mut small_sz,
+                &raw mut small_sz,
                 val_w2.as_mut_ptr(),
-                &mut sz2,
+                &raw mut sz2,
             );
             let _ = MsiSourceListEnumMediaDisksA(
                 good_a.as_ptr(),
@@ -2475,11 +2463,11 @@ mod tests_final_cov {
                 0,
                 0,
                 0,
-                &mut id,
+                &raw mut id,
                 val_a.as_mut_ptr().cast(),
-                &mut small_sz,
+                &raw mut small_sz,
                 buf_a2.as_mut_ptr().cast(),
-                &mut sz2,
+                &raw mut sz2,
             );
             let mut small_sz2 = 1;
             let _ = MsiSourceListEnumMediaDisksW(
@@ -2488,11 +2476,11 @@ mod tests_final_cov {
                 0,
                 0,
                 0,
-                &mut id,
+                &raw mut id,
                 val_w.as_mut_ptr(),
-                &mut sz,
+                &raw mut sz,
                 val_w2.as_mut_ptr(),
-                &mut small_sz2,
+                &raw mut small_sz2,
             );
             let _ = MsiSourceListEnumMediaDisksA(
                 good_a.as_ptr(),
@@ -2500,11 +2488,11 @@ mod tests_final_cov {
                 0,
                 0,
                 0,
-                &mut id,
+                &raw mut id,
                 val_a.as_mut_ptr().cast(),
-                &mut sz,
+                &raw mut sz,
                 buf_a2.as_mut_ptr().cast(),
-                &mut small_sz2,
+                &raw mut small_sz2,
             );
         }
     }
@@ -2547,7 +2535,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 last_source_w.as_ptr(),
                 val_w.as_mut_ptr(),
-                &mut sz,
+                &raw mut sz,
             );
             let _ = MsiSourceListGetInfoW(
                 ProductCodeW(good_w.as_ptr()),
@@ -2556,7 +2544,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 last_type_w.as_ptr(),
                 val_w.as_mut_ptr(),
-                &mut sz,
+                &raw mut sz,
             );
 
             let _ = MsiSourceListGetInfoA(
@@ -2566,7 +2554,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 last_source_a.as_ptr(),
                 val_a.as_mut_ptr().cast(),
-                &mut sz,
+                &raw mut sz,
             );
             let _ = MsiSourceListGetInfoA(
                 ProductCodeA(good_a.as_ptr()),
@@ -2575,7 +2563,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 last_type_a.as_ptr(),
                 val_a.as_mut_ptr().cast(),
-                &mut sz,
+                &raw mut sz,
             );
         }
 
@@ -2605,7 +2593,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 last_source_w.as_ptr(),
                 val_w.as_mut_ptr(),
-                &mut sz,
+                &raw mut sz,
             );
             let _ = MsiSourceListGetInfoW(
                 ProductCodeW(good_w.as_ptr()),
@@ -2614,7 +2602,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 last_type_w.as_ptr(),
                 val_w.as_mut_ptr(),
-                &mut sz,
+                &raw mut sz,
             );
             let _ = MsiSourceListGetInfoA(
                 ProductCodeA(good_a.as_ptr()),
@@ -2623,7 +2611,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 last_source_a.as_ptr(),
                 val_a.as_mut_ptr().cast(),
-                &mut sz,
+                &raw mut sz,
             );
             let _ = MsiSourceListGetInfoA(
                 ProductCodeA(good_a.as_ptr()),
@@ -2632,7 +2620,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 last_type_a.as_ptr(),
                 val_a.as_mut_ptr().cast(),
-                &mut sz,
+                &raw mut sz,
             );
         }
 
@@ -2658,7 +2646,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 last_source_w.as_ptr(),
                 val_w.as_mut_ptr(),
-                &mut sz,
+                &raw mut sz,
             );
             let _ = MsiSourceListGetInfoW(
                 ProductCodeW(good_w.as_ptr()),
@@ -2667,7 +2655,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 last_type_w.as_ptr(),
                 val_w.as_mut_ptr(),
-                &mut sz,
+                &raw mut sz,
             );
             let _ = MsiSourceListGetInfoA(
                 ProductCodeA(good_a.as_ptr()),
@@ -2676,7 +2664,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 last_source_a.as_ptr(),
                 val_a.as_mut_ptr().cast(),
-                &mut sz,
+                &raw mut sz,
             );
             let _ = MsiSourceListGetInfoA(
                 ProductCodeA(good_a.as_ptr()),
@@ -2685,7 +2673,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 last_type_a.as_ptr(),
                 val_a.as_mut_ptr().cast(),
-                &mut sz,
+                &raw mut sz,
             );
         }
 
@@ -2711,7 +2699,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 last_source_w.as_ptr(),
                 val_w.as_mut_ptr(),
-                &mut sz,
+                &raw mut sz,
             );
             let _ = MsiSourceListGetInfoW(
                 ProductCodeW(good_w.as_ptr()),
@@ -2720,7 +2708,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 last_type_w.as_ptr(),
                 val_w.as_mut_ptr(),
-                &mut sz,
+                &raw mut sz,
             );
             let _ = MsiSourceListGetInfoA(
                 ProductCodeA(good_a.as_ptr()),
@@ -2729,7 +2717,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 last_source_a.as_ptr(),
                 val_a.as_mut_ptr().cast(),
-                &mut sz,
+                &raw mut sz,
             );
             let _ = MsiSourceListGetInfoA(
                 ProductCodeA(good_a.as_ptr()),
@@ -2738,7 +2726,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 last_type_a.as_ptr(),
                 val_a.as_mut_ptr().cast(),
-                &mut sz,
+                &raw mut sz,
             );
         }
 
@@ -2761,7 +2749,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 last_source_w.as_ptr(),
                 val_w.as_mut_ptr(),
-                &mut sz,
+                &raw mut sz,
             );
             let _ = MsiSourceListGetInfoW(
                 ProductCodeW(good_w.as_ptr()),
@@ -2770,7 +2758,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 last_type_w.as_ptr(),
                 val_w.as_mut_ptr(),
-                &mut sz,
+                &raw mut sz,
             );
             let _ = MsiSourceListGetInfoA(
                 ProductCodeA(good_a.as_ptr()),
@@ -2779,7 +2767,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 last_source_a.as_ptr(),
                 val_a.as_mut_ptr().cast(),
-                &mut sz,
+                &raw mut sz,
             );
             let _ = MsiSourceListGetInfoA(
                 ProductCodeA(good_a.as_ptr()),
@@ -2788,7 +2776,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 last_type_a.as_ptr(),
                 val_a.as_mut_ptr().cast(),
-                &mut sz,
+                &raw mut sz,
             );
 
             // Empty value
@@ -2800,7 +2788,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 last_source_w.as_ptr(),
                 ptr::null_mut(),
-                &mut sz2,
+                &raw mut sz2,
             );
             let _ = MsiSourceListGetInfoA(
                 ProductCodeA(good_a.as_ptr()),
@@ -2809,7 +2797,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 last_source_a.as_ptr(),
                 ptr::null_mut(),
-                &mut sz2,
+                &raw mut sz2,
             );
 
             let bad_w = [0xD800, 0];
@@ -2828,7 +2816,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 unknown_w.as_ptr(),
                 val_w.as_mut_ptr(),
-                &mut sz,
+                &raw mut sz,
             );
             let _ = MsiSourceListGetInfoA(
                 ProductCodeA(good_a.as_ptr()),
@@ -2837,7 +2825,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 unknown_a.as_ptr(),
                 val_a.as_mut_ptr().cast(),
-                &mut sz,
+                &raw mut sz,
             );
 
             let _ = MsiSourceListGetInfoW(
@@ -2847,7 +2835,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 bad_w.as_ptr(),
                 val_w.as_mut_ptr(),
-                &mut sz,
+                &raw mut sz,
             );
             let _ = MsiSourceListGetInfoA(
                 ProductCodeA(good_a.as_ptr()),
@@ -2856,7 +2844,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 bad_a.as_ptr().cast(),
                 val_a.as_mut_ptr().cast(),
-                &mut sz,
+                &raw mut sz,
             );
 
             // Unknown product
@@ -2874,7 +2862,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 last_source_w.as_ptr(),
                 val_w.as_mut_ptr(),
-                &mut sz,
+                &raw mut sz,
             );
             let _ = MsiSourceListGetInfoA(
                 ProductCodeA(unk_prod_a.as_ptr()),
@@ -2883,7 +2871,7 @@ mod tests_final_cov {
                 ResolutionMode(0),
                 last_source_a.as_ptr(),
                 val_a.as_mut_ptr().cast(),
-                &mut sz,
+                &raw mut sz,
             );
 
             // EnumMediaDisks and EnumSources missing None cache hit
@@ -2983,7 +2971,7 @@ mod tests_remaining_cov {
                 ResolutionMode(0),
                 prop_w.as_ptr(),
                 val_w.as_mut_ptr(),
-                &mut sz,
+                &raw mut sz,
             );
             let _ = MsiSourceListGetInfoA(
                 ProductCodeA(bad_a.as_ptr().cast()),
@@ -2992,7 +2980,7 @@ mod tests_remaining_cov {
                 ResolutionMode(0),
                 prop_a.as_ptr(),
                 val_a.as_mut_ptr().cast(),
-                &mut sz,
+                &raw mut sz,
             );
 
             // SetInfo bad product
@@ -3050,7 +3038,7 @@ mod tests_remaining_cov {
                 ResolutionMode(0),
                 prop_last_w.as_ptr(),
                 val_w.as_mut_ptr(),
-                &mut sz,
+                &raw mut sz,
             );
 
             let _ = MsiSourceListSetInfoA(
@@ -3068,7 +3056,7 @@ mod tests_remaining_cov {
                 ResolutionMode(0),
                 prop_last_a.as_ptr(),
                 val_a.as_mut_ptr().cast(),
-                &mut sz,
+                &raw mut sz,
             );
 
             let _ = MsiSourceListSetInfoW(
@@ -3086,7 +3074,7 @@ mod tests_remaining_cov {
                 ResolutionMode(0),
                 prop_last_w.as_ptr(),
                 val_w.as_mut_ptr(),
-                &mut sz,
+                &raw mut sz,
             );
 
             let _ = MsiSourceListSetInfoA(
@@ -3104,7 +3092,7 @@ mod tests_remaining_cov {
                 ResolutionMode(0),
                 prop_last_a.as_ptr(),
                 val_a.as_mut_ptr().cast(),
-                &mut sz,
+                &raw mut sz,
             );
 
             let _ = MsiSourceListSetInfoW(
@@ -3122,7 +3110,7 @@ mod tests_remaining_cov {
                 ResolutionMode(0),
                 prop_last_w.as_ptr(),
                 val_w.as_mut_ptr(),
-                &mut sz,
+                &raw mut sz,
             );
 
             let _ = MsiSourceListSetInfoA(
@@ -3140,7 +3128,7 @@ mod tests_remaining_cov {
                 ResolutionMode(0),
                 prop_last_a.as_ptr(),
                 val_a.as_mut_ptr().cast(),
-                &mut sz,
+                &raw mut sz,
             );
 
             // ClearAll bad product
@@ -3367,11 +3355,11 @@ mod tests_remaining_cov {
                     0,
                     0,
                     0,
-                    &mut disk_id_out,
+                    &raw mut disk_id_out,
                     label_buf_w.as_mut_ptr(),
-                    &mut vol_len,
+                    &raw mut vol_len,
                     prompt_buf_w.as_mut_ptr(),
-                    &mut prompt_len,
+                    &raw mut prompt_len,
                 ),
                 0
             );
@@ -3386,11 +3374,11 @@ mod tests_remaining_cov {
                     0,
                     0,
                     0,
-                    &mut disk_id_out,
+                    &raw mut disk_id_out,
                     label_buf_a.as_mut_ptr().cast(),
-                    &mut vol_len,
+                    &raw mut vol_len,
                     prompt_buf_a.as_mut_ptr().cast(),
-                    &mut prompt_len,
+                    &raw mut prompt_len,
                 ),
                 0
             );
@@ -3437,11 +3425,11 @@ mod tests_remaining_cov {
                     0,
                     0,
                     0,
-                    &mut disk_id_out,
+                    &raw mut disk_id_out,
                     label_buf_w.as_mut_ptr(),
-                    &mut tiny_vol,
+                    &raw mut tiny_vol,
                     prompt_buf_w.as_mut_ptr(),
-                    &mut tiny_prompt,
+                    &raw mut tiny_prompt,
                 ),
                 234
             );
@@ -3454,11 +3442,11 @@ mod tests_remaining_cov {
                     0,
                     0,
                     0,
-                    &mut disk_id_out,
+                    &raw mut disk_id_out,
                     label_buf_a.as_mut_ptr().cast(),
-                    &mut tiny_vol,
+                    &raw mut tiny_vol,
                     prompt_buf_a.as_mut_ptr().cast(),
-                    &mut tiny_prompt,
+                    &raw mut tiny_prompt,
                 ),
                 234
             );

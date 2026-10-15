@@ -30,7 +30,6 @@ use std::ptr;
 ///
 /// `package` must be a valid pointer obtained from `msi_package_builder_build` or `msi_package_open`.
 /// `output_path` must be a valid null-terminated C string.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
@@ -74,7 +73,6 @@ pub unsafe extern "C" fn msi_package_save(
 ///
 /// `package` must be a valid pointer obtained from `msi_package_builder_build` or `msi_package_open`.
 /// `out_bytes` and `out_len` must point to valid writable memory.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "C" fn msi_package_to_bytes(
@@ -128,7 +126,6 @@ pub unsafe extern "C" fn msi_package_to_bytes(
 ///
 /// `path` must be a valid null-terminated C string.
 /// `out_package` must point to valid writable memory.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "C" fn msi_package_open(
@@ -174,7 +171,6 @@ pub unsafe extern "C" fn msi_package_open(
 /// `package` must be a valid pointer.
 /// `property_name` must be a valid null-terminated C string.
 /// `buffer` and `out_written` must point to valid memory if non-null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "C" fn msi_package_get_property(
@@ -257,7 +253,6 @@ pub unsafe extern "C" fn msi_package_get_property(
 ///
 /// `package` must be a valid pointer.
 /// `cabinet_name` and `dest_dir` must be valid null-terminated C strings.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]

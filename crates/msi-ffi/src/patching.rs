@@ -41,7 +41,6 @@ pub struct TargetProductCodeW(pub *const u16);
 ///
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
@@ -82,7 +81,6 @@ pub unsafe extern "system" fn MsiApplyPatchA(
 ///
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
@@ -124,7 +122,6 @@ pub unsafe extern "system" fn MsiApplyPatchW(
 ///
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiDeterminePatchSequenceA(
@@ -171,7 +168,6 @@ pub unsafe extern "system" fn MsiDeterminePatchSequenceA(
 ///
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiDeterminePatchSequenceW(
@@ -217,7 +213,6 @@ pub unsafe extern "system" fn MsiDeterminePatchSequenceW(
 /// The provided string pointers must be null-terminated if they are not null.
 /// The caller is responsible for providing a properly allocated buffer for `sz_xml_data`
 /// and specifying its size in `pcch_xml_data`. The caller must free any memory they allocate.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiExtractPatchXMLDataA(
@@ -267,7 +262,6 @@ pub unsafe extern "system" fn MsiExtractPatchXMLDataA(
 /// The provided string pointers must be null-terminated if they are not null.
 /// The caller is responsible for providing a properly allocated buffer for `sz_xml_data`
 /// and specifying its size in `pcch_xml_data`. The caller must free any memory they allocate.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiExtractPatchXMLDataW(
@@ -314,7 +308,6 @@ pub unsafe extern "system" fn MsiExtractPatchXMLDataW(
 ///
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
@@ -355,7 +348,6 @@ pub unsafe extern "system" fn MsiRemovePatchesA(
 ///
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
@@ -509,7 +501,9 @@ mod tests {
         let mut buf = vec![0_i8; 1024];
         let mut size = 1024;
         assert_eq!(
-            unsafe { MsiExtractPatchXMLDataA(path_str.as_ptr(), 0, buf.as_mut_ptr(), &mut size) },
+            unsafe {
+                MsiExtractPatchXMLDataA(path_str.as_ptr(), 0, buf.as_mut_ptr(), &raw mut size)
+            },
             0 // ERROR_SUCCESS
         );
         assert_eq!(
@@ -519,7 +513,9 @@ mod tests {
             0 // ERROR_SUCCESS
         );
         assert_eq!(
-            unsafe { MsiExtractPatchXMLDataA(path_str.as_ptr(), 0, ptr::null_mut(), &mut size) },
+            unsafe {
+                MsiExtractPatchXMLDataA(path_str.as_ptr(), 0, ptr::null_mut(), &raw mut size)
+            },
             0
         );
         assert_eq!(
@@ -534,7 +530,7 @@ mod tests {
         let path_inv_str = std::ffi::CString::new(p_inv.to_str().unwrap_or("")).unwrap_or_default();
         assert_eq!(
             unsafe {
-                MsiExtractPatchXMLDataA(path_inv_str.as_ptr(), 0, buf.as_mut_ptr(), &mut size)
+                MsiExtractPatchXMLDataA(path_inv_str.as_ptr(), 0, buf.as_mut_ptr(), &raw mut size)
             },
             1603 // ERROR_INSTALL_FAILURE
         );
@@ -561,7 +557,7 @@ mod tests {
         let mut buf = vec![0_u16; 1024];
         let mut size = 1024;
         assert_eq!(
-            unsafe { MsiExtractPatchXMLDataW(path_w.as_ptr(), 0, buf.as_mut_ptr(), &mut size) },
+            unsafe { MsiExtractPatchXMLDataW(path_w.as_ptr(), 0, buf.as_mut_ptr(), &raw mut size) },
             0 // ERROR_SUCCESS
         );
         assert_eq!(
@@ -571,7 +567,7 @@ mod tests {
             0 // ERROR_SUCCESS
         );
         assert_eq!(
-            unsafe { MsiExtractPatchXMLDataW(path_w.as_ptr(), 0, ptr::null_mut(), &mut size) },
+            unsafe { MsiExtractPatchXMLDataW(path_w.as_ptr(), 0, ptr::null_mut(), &raw mut size) },
             0
         );
         assert_eq!(
@@ -586,7 +582,9 @@ mod tests {
         let mut path_inv_w: Vec<u16> = p_inv.to_string_lossy().encode_utf16().collect();
         path_inv_w.push(0);
         assert_eq!(
-            unsafe { MsiExtractPatchXMLDataW(path_inv_w.as_ptr(), 0, buf.as_mut_ptr(), &mut size) },
+            unsafe {
+                MsiExtractPatchXMLDataW(path_inv_w.as_ptr(), 0, buf.as_mut_ptr(), &raw mut size)
+            },
             1603 // ERROR_INSTALL_FAILURE
         );
     }

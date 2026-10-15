@@ -693,6 +693,10 @@ mod tests {
         let cab_path = dir.path().join("test.cab");
         assert!(std::fs::write(&cab_path, &cab_bytes).is_ok());
 
+        let reader = CabinetReader::new(&cab_bytes)?;
+        let internal_extracted = reader.extract_file("ext.txt")?;
+        assert!(std::fs::write(dir.path().join("ext.txt"), &internal_extracted).is_ok());
+
         #[cfg(windows)]
         {
             let _ = std::process::Command::new("expand")

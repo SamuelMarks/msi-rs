@@ -417,6 +417,37 @@ mod tests {
         std::env::remove_var("SSH_CONNECTION");
     }
 
+    /// Tests detection of best escalation method across Linux graphical vs headless contexts.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn test_detect_best_method_linux_contexts() {
+        // 1. Both unset -> Sudo
+        std::env::remove_var("DISPLAY");
+        std::env::remove_var("WAYLAND_DISPLAY");
+        assert_eq!(
+            PrivilegeEscalator::detect_best_method(),
+            EscalationMethod::Sudo
+        );
+
+        // 2. DISPLAY set -> PkExec
+        std::env::set_var("DISPLAY", ":0");
+        assert_eq!(
+            PrivilegeEscalator::detect_best_method(),
+            EscalationMethod::PkExec
+        );
+
+        // 3. WAYLAND_DISPLAY set, DISPLAY unset -> PkExec
+        std::env::remove_var("DISPLAY");
+        std::env::set_var("WAYLAND_DISPLAY", "wayland-0");
+        assert_eq!(
+            PrivilegeEscalator::detect_best_method(),
+            EscalationMethod::PkExec
+        );
+
+        // Clean up
+        std::env::remove_var("WAYLAND_DISPLAY");
+    }
+
     /// Tests worker command construction for all supported escalation methods.
     #[test]
     fn test_build_worker_command_all_methods() {

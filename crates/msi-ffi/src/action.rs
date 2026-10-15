@@ -62,7 +62,6 @@ pub struct ReinstallMode(pub u32);
 /// # Safety
 ///
 /// Pointers must point to valid null-terminated strings or be NULL.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
@@ -120,7 +119,6 @@ pub unsafe extern "system" fn MsiDoActionW(h_install: MSIHANDLE, sz_action: Acti
 /// # Safety
 ///
 /// Pointers must point to valid null-terminated strings or be NULL.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
@@ -179,7 +177,6 @@ pub unsafe extern "system" fn MsiDoActionA(h_install: MSIHANDLE, sz_action: Acti
 /// # Safety
 ///
 /// Pointers must be valid or null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
@@ -244,7 +241,6 @@ pub unsafe extern "system" fn MsiSequenceW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
@@ -309,7 +305,6 @@ pub unsafe extern "system" fn MsiSequenceA(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
@@ -362,7 +357,6 @@ pub unsafe extern "system" fn MsiConfigureProductW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
@@ -414,7 +408,6 @@ pub unsafe extern "system" fn MsiConfigureProductA(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
@@ -459,7 +452,6 @@ pub unsafe extern "system" fn MsiReinstallProductW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]

@@ -24,9 +24,9 @@ pub use csum::{compute_crc32, csum_compute};
 pub use data::{CfData, CAB_BLOCK_MAX_SIZE};
 pub use file::{
     decode_dos_date, decode_dos_time, encode_dos_date, encode_dos_time, CfFile, FileAttributes,
-    FolderIndex, IFOLDER_NEXT, IFOLDER_PREV, IFOLDER_SPANS, _A_ARCH, _A_EXEC, _A_HIDDEN,
-    _A_NAME_IS_UTF, _A_RDONLY, _A_SYSTEM,
+    FolderIndex, IFOLDER_NEXT, IFOLDER_PREV, IFOLDER_SPANS,
 };
+pub use file::{_A_ARCH, _A_EXEC, _A_HIDDEN, _A_NAME_IS_UTF, _A_RDONLY, _A_SYSTEM};
 pub use folder::{
     CfFolder, CompressionType, TCOMP_MASK_TYPE, TCOMP_MASK_WINDOW, TCOMP_SHIFT_WINDOW,
     TCOMP_TYPE_LZX, TCOMP_TYPE_MSZIP, TCOMP_TYPE_NONE, TCOMP_TYPE_QUANTUM,

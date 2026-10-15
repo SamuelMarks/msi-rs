@@ -192,12 +192,12 @@ mod tests {
         assert!(matches!(err, MsiError::WimDecompressionError { .. }));
 
         // Stored block (input.len() == output_size, non-zero header)
-        let stored = [b'W', b'I', b'M', b'!'];
+        let stored = *b"WIM!";
         let out_stored = decompress_lzms(&stored, 4, 1024)?;
         assert_eq!(out_stored, b"WIM!");
 
         // Literal-prefixed range block (0xFFFF_FFFF + payload)
-        let literal_block = [0xFF, 0xFF, 0xFF, 0xFF, b'D', b'A', b'T', b'A'];
+        let literal_block = [0xFF, 0xFF, 0xFF, 0xFF, 0x44, 0x41, 0x54, 0x41];
         let out_lit = decompress_lzms(&literal_block, 4, 1024)?;
         assert_eq!(out_lit, b"DATA");
         Ok(())

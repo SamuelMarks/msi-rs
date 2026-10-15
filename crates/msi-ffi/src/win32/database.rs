@@ -35,7 +35,6 @@ pub const MSIDBOPEN_CREATEDIRECT: Lpcwstr = 4 as Lpcwstr;
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_PARAMETER`
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -94,7 +93,6 @@ pub extern "system" fn MsiOpenDatabaseW(
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_PARAMETER`
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -153,7 +151,6 @@ pub extern "system" fn MsiOpenDatabaseA(
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_HANDLE`, `ERROR_INVALID_PARAMETER`
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -205,7 +202,6 @@ pub extern "system" fn MsiDatabaseOpenViewW(
 /// # Returns
 ///
 /// `ERROR_SUCCESS`, `ERROR_INVALID_HANDLE`, `ERROR_INVALID_PARAMETER`
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -265,7 +261,6 @@ pub const MSIDBSTATE_WRITE: Msidbstate = 1;
 /// # Returns
 ///
 /// The database state as `MSIDBSTATE_READ` or `MSIDBSTATE_WRITE`, or `MSIDBSTATE_ERROR` on failure.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]

@@ -1418,8 +1418,19 @@ mod tests {
             .permissions();
         perms.set_readonly(true);
         fs::set_permissions(&ro_ini, perms).map_err(crate::error::IoContext)?;
-        assert!(engine.write_ini_value(&ro_ini, "Sec", "K2", "V2").is_err());
-        assert!(engine.remove_ini_value(&ro_ini, "Sec", "K").is_err());
+        #[cfg(unix)]
+        // SAFETY: geteuid is a thread-safe POSIX syscall with no preconditions.
+        let is_root = unsafe { libc::geteuid() == 0 };
+        #[cfg(not(unix))]
+        let is_root = false;
+        assert_eq!(
+            engine.write_ini_value(&ro_ini, "Sec", "K2", "V2").is_ok(),
+            is_root
+        );
+        assert_eq!(
+            engine.remove_ini_value(&ro_ini, "Sec", "K").is_ok(),
+            is_root
+        );
         let mut restore_perms = fs::metadata(&ro_ini)
             .map_err(crate::error::IoContext)?
             .permissions();

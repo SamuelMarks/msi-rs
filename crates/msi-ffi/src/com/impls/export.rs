@@ -50,7 +50,7 @@ mod tests {
         // Bad data (fails CFB parsing)
         let data = [0u8; 10];
         let res_bad =
-            unsafe { msi_create_storage_from_memory(data.as_ptr(), data.len(), &mut stg) };
+            unsafe { msi_create_storage_from_memory(data.as_ptr(), data.len(), &raw mut stg) };
         assert_eq!(res_bad, crate::error::E_FAIL);
 
         // Good CFB data
@@ -59,8 +59,9 @@ mod tests {
             assert!(writer.add_stream("TestStream", b"content").is_ok());
             writer.build()
         };
-        let res_ok =
-            unsafe { msi_create_storage_from_memory(cfb_data.as_ptr(), cfb_data.len(), &mut stg) };
+        let res_ok = unsafe {
+            msi_create_storage_from_memory(cfb_data.as_ptr(), cfb_data.len(), &raw mut stg)
+        };
         assert_eq!(res_ok, crate::com::S_OK);
 
         unsafe {
@@ -69,7 +70,8 @@ mod tests {
 
         let mut stg2: *mut IStorage = ptr::null_mut();
         // Null data
-        let res_null_data = unsafe { msi_create_storage_from_memory(ptr::null(), 0, &mut stg2) };
+        let res_null_data =
+            unsafe { msi_create_storage_from_memory(ptr::null(), 0, &raw mut stg2) };
         assert_eq!(res_null_data, crate::com::E_POINTER);
 
         // Null out pointer

@@ -17,7 +17,6 @@ use std::panic;
 /// # Returns
 ///
 /// `ERROR_SUCCESS` or `ERROR_INVALID_PARAMETER`.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -46,7 +45,6 @@ pub extern "system" fn MsiIsProductElevatedW(szProduct: Lpcwstr, pfElevated: *mu
 }
 
 /// Determines whether the product is installed with elevated privileges (ANSI).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -82,7 +80,6 @@ pub extern "system" fn MsiIsProductElevatedA(szProduct: Lpcstr, pfElevated: *mut
 /// # Returns
 ///
 /// `TRUE` if the mode is set, `FALSE` otherwise.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -108,7 +105,6 @@ pub extern "system" fn MsiGetMode(hInstall: crate::handles::MsiHandle, eRunMode:
 /// # Returns
 ///
 /// `ERROR_SUCCESS` on success, or an error code.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -128,7 +124,6 @@ pub extern "system" fn MsiSetMode(
 }
 
 /// Sets the installation level for a full product installation.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -143,7 +138,6 @@ pub extern "system" fn MsiSetInstallLevel(
 }
 
 /// Configures the installed state for a product feature (Unicode).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -170,7 +164,6 @@ pub extern "system" fn MsiConfigureFeatureW(
 }
 
 /// Configures the installed state for a product feature (ANSI).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -197,7 +190,6 @@ pub extern "system" fn MsiConfigureFeatureA(
 }
 
 /// Reinstalls a feature (Unicode).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -224,7 +216,6 @@ pub extern "system" fn MsiReinstallFeatureW(
 }
 
 /// Reinstalls a feature (ANSI).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -251,7 +242,6 @@ pub extern "system" fn MsiReinstallFeatureA(
 }
 
 /// Modifies the runtime attributes of a feature (Unicode).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -275,7 +265,6 @@ pub extern "system" fn MsiSetFeatureAttributesW(
 }
 
 /// Modifies the runtime attributes of a feature (ANSI).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -299,7 +288,6 @@ pub extern "system" fn MsiSetFeatureAttributesA(
 }
 
 /// Sets the installed state for a product feature (Unicode).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -323,7 +311,6 @@ pub extern "system" fn MsiSetFeatureStateW(
 }
 
 /// Sets the installed state for a product feature (ANSI).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -359,7 +346,6 @@ pub extern "system" fn MsiSetFeatureStateA(
 /// # Returns
 ///
 /// `ERROR_SUCCESS` or `ERROR_INVALID_PARAMETER`.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -397,7 +383,6 @@ pub extern "system" fn MsiQueryComponentStateW(
 }
 
 /// Queries the installed state of a component (ANSI).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -434,7 +419,6 @@ pub extern "system" fn MsiQueryComponentStateA(
 }
 
 /// Sets the installed state of a component.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -461,7 +445,6 @@ pub extern "system" fn MsiSetComponentStateW(
 }
 
 /// Sets the installed state of a component (ANSI).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -488,7 +471,6 @@ pub extern "system" fn MsiSetComponentStateA(
 }
 
 /// Retrieves the usage metrics for a product feature.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -532,7 +514,6 @@ pub extern "system" fn MsiGetFeatureUsageW(
 }
 
 /// Retrieves the usage metrics for a product feature (ANSI).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -576,7 +557,6 @@ pub extern "system" fn MsiGetFeatureUsageA(
 }
 
 /// Increments the usage count for a particular feature and returns the installation state.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -608,7 +588,6 @@ pub extern "system" fn MsiUseFeatureExW(
 }
 
 /// Increments the usage count for a particular feature and returns the installation state (ANSI).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -640,7 +619,6 @@ pub extern "system" fn MsiUseFeatureExA(
 }
 
 /// Installs files that are unexpectedly missing.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -671,7 +649,6 @@ pub extern "system" fn MsiInstallMissingComponentW(
 }
 
 /// Installs files that are unexpectedly missing (ANSI).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -714,7 +691,12 @@ mod tests {
         let mut date: u16 = 456;
 
         assert_eq!(
-            MsiGetFeatureUsageW(dummy_w.as_ptr(), dummy_w.as_ptr(), &mut count, &mut date),
+            MsiGetFeatureUsageW(
+                dummy_w.as_ptr(),
+                dummy_w.as_ptr(),
+                &raw mut count,
+                &raw mut date
+            ),
             ERROR_SUCCESS
         );
         assert_eq!(count, 0);
@@ -723,7 +705,12 @@ mod tests {
         count = 123;
         date = 456;
         assert_eq!(
-            MsiGetFeatureUsageA(dummy_a.as_ptr(), dummy_a.as_ptr(), &mut count, &mut date),
+            MsiGetFeatureUsageA(
+                dummy_a.as_ptr(),
+                dummy_a.as_ptr(),
+                &raw mut count,
+                &raw mut date
+            ),
             ERROR_SUCCESS
         );
         assert_eq!(count, 0);
@@ -742,7 +729,7 @@ mod tests {
             MsiGetFeatureUsageW(
                 dummy_w.as_ptr(),
                 dummy_w.as_ptr(),
-                &mut count,
+                &raw mut count,
                 std::ptr::null_mut()
             ),
             ERROR_SUCCESS
@@ -752,7 +739,7 @@ mod tests {
                 dummy_w.as_ptr(),
                 dummy_w.as_ptr(),
                 std::ptr::null_mut(),
-                &mut date
+                &raw mut date
             ),
             ERROR_SUCCESS
         );
@@ -770,7 +757,7 @@ mod tests {
             MsiGetFeatureUsageA(
                 dummy_a.as_ptr(),
                 dummy_a.as_ptr(),
-                &mut count,
+                &raw mut count,
                 std::ptr::null_mut()
             ),
             ERROR_SUCCESS
@@ -780,7 +767,7 @@ mod tests {
                 dummy_a.as_ptr(),
                 dummy_a.as_ptr(),
                 std::ptr::null_mut(),
-                &mut date
+                &raw mut date
             ),
             ERROR_SUCCESS
         );
@@ -1013,12 +1000,12 @@ mod tests {
         );
 
         assert_eq!(
-            MsiIsProductElevatedW(valid_w.as_ptr(), &mut elevated),
+            MsiIsProductElevatedW(valid_w.as_ptr(), &raw mut elevated),
             ERROR_SUCCESS
         );
         assert_eq!(elevated, FALSE);
         assert_eq!(
-            MsiIsProductElevatedA(valid_a.as_ptr().cast(), &mut elevated),
+            MsiIsProductElevatedA(valid_a.as_ptr().cast(), &raw mut elevated),
             ERROR_SUCCESS
         );
         assert_eq!(elevated, FALSE);
@@ -1027,11 +1014,11 @@ mod tests {
         let invalid_utf8 = [0xFF_u8, 0x00];
 
         assert_eq!(
-            MsiIsProductElevatedW(invalid_utf16.as_ptr(), &mut elevated),
+            MsiIsProductElevatedW(invalid_utf16.as_ptr(), &raw mut elevated),
             ERROR_INVALID_PARAMETER
         );
         assert_eq!(
-            MsiIsProductElevatedA(invalid_utf8.as_ptr().cast(), &mut elevated),
+            MsiIsProductElevatedA(invalid_utf8.as_ptr().cast(), &raw mut elevated),
             ERROR_INVALID_PARAMETER
         );
 
@@ -1042,7 +1029,7 @@ mod tests {
                 valid_w.as_ptr(),
                 0,
                 valid_w.as_ptr(),
-                &mut st
+                &raw mut st
             ),
             ERROR_SUCCESS
         );
@@ -1052,7 +1039,7 @@ mod tests {
                 valid_a.as_ptr().cast(),
                 0,
                 valid_a.as_ptr().cast(),
-                &mut st
+                &raw mut st
             ),
             ERROR_SUCCESS
         );
@@ -1062,7 +1049,7 @@ mod tests {
                 valid_w.as_ptr(),
                 0,
                 valid_w.as_ptr(),
-                &mut st
+                &raw mut st
             ),
             ERROR_INVALID_PARAMETER
         );
@@ -1072,7 +1059,7 @@ mod tests {
                 valid_a.as_ptr().cast(),
                 0,
                 valid_a.as_ptr().cast(),
-                &mut st
+                &raw mut st
             ),
             ERROR_INVALID_PARAMETER
         );
@@ -1082,7 +1069,7 @@ mod tests {
                 valid_w.as_ptr(),
                 0,
                 invalid_utf16.as_ptr(),
-                &mut st
+                &raw mut st
             ),
             ERROR_INVALID_PARAMETER
         );
@@ -1092,7 +1079,7 @@ mod tests {
                 valid_a.as_ptr().cast(),
                 0,
                 invalid_utf8.as_ptr().cast(),
-                &mut st
+                &raw mut st
             ),
             ERROR_INVALID_PARAMETER
         );
@@ -1102,7 +1089,7 @@ mod tests {
                 valid_w.as_ptr(),
                 0,
                 valid_w.as_ptr(),
-                &mut st
+                &raw mut st
             ),
             ERROR_INVALID_PARAMETER
         );
@@ -1112,7 +1099,7 @@ mod tests {
                 valid_a.as_ptr().cast(),
                 0,
                 valid_a.as_ptr().cast(),
-                &mut st
+                &raw mut st
             ),
             ERROR_INVALID_PARAMETER
         );
@@ -1132,8 +1119,8 @@ mod tests {
             MsiGetFeatureUsageW(
                 valid_w.as_ptr(),
                 valid_w.as_ptr(),
-                &mut use_count,
-                &mut date_used
+                &raw mut use_count,
+                &raw mut date_used
             ),
             ERROR_SUCCESS
         );
@@ -1141,8 +1128,8 @@ mod tests {
             MsiGetFeatureUsageA(
                 valid_a.as_ptr().cast(),
                 valid_a.as_ptr().cast(),
-                &mut use_count,
-                &mut date_used
+                &raw mut use_count,
+                &raw mut date_used
             ),
             ERROR_SUCCESS
         );
@@ -1384,7 +1371,6 @@ mod tests {
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
@@ -1409,7 +1395,6 @@ pub extern "system" fn MsiConfigureFeatureFromDescriptorA(
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
@@ -1428,7 +1413,6 @@ pub extern "system" fn MsiConfigureFeatureFromDescriptorW(
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
@@ -1448,7 +1432,6 @@ pub extern "system" fn MsiInvalidateFeatureCache() -> Uint {
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
@@ -1470,7 +1453,6 @@ pub extern "system" fn MsiQueryFeatureStateFromDescriptorA(
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
@@ -1492,7 +1474,6 @@ pub extern "system" fn MsiQueryFeatureStateFromDescriptorW(
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
@@ -1515,7 +1496,6 @@ pub extern "system" fn MsiReinstallFeatureFromDescriptorA(
 /// # Returns
 ///
 /// Always returns `ERROR_CALL_NOT_IMPLEMENTED`.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]

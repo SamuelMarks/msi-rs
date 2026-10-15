@@ -665,12 +665,14 @@ mod tests {
 
         #[cfg(not(windows))]
         {
+            std::env::set_var("MSI_CHROOT_PATH", "NONE");
             let res = sandbox.execute_command("/bin/echo", &["hello".to_string()]);
             assert!(res.is_ok());
             let err_res = sandbox.execute_command("/nonexistent/bin/does_not_exist", &[]);
             assert!(err_res.is_err());
 
             // Test privileged root path
+            std::env::remove_var("MSI_CHROOT_PATH");
             let _ = sandbox.execute_command_internal("/bin/echo", &["test".to_string()], true);
 
             // Test privileged root path with failing chroot binary
@@ -690,7 +692,6 @@ mod tests {
             assert!(sandbox
                 .execute_command_internal("/bin/echo", &[], true)
                 .is_ok());
-            std::env::remove_var("MSI_CHROOT_PATH");
 
             // Test relative program path existing inside sysroot
             let test_script = temp_dir.join("test_prog");
@@ -702,6 +703,7 @@ mod tests {
                     std::fs::set_permissions(&test_script, std::fs::Permissions::from_mode(0o755));
             }
             assert!(sandbox.execute_command("test_prog", &[]).is_ok());
+            std::env::remove_var("MSI_CHROOT_PATH");
         }
 
         assert!(sandbox.teardown().is_ok());

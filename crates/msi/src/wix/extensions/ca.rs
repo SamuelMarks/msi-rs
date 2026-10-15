@@ -157,13 +157,12 @@ impl CustomActionCompiler {
 #[cfg(test)]
 #[allow(clippy::redundant_clone)]
 mod tests {
-    use super::*;
-    use std::fs;
-
     /// Tests `CustomActionCompiler` creation, traits, compilation, and database injection.
     #[test]
     #[cfg(unix)]
     fn test_custom_action_compiler() {
+        use super::*;
+        use std::fs;
         use std::os::unix::fs::PermissionsExt;
 
         let temp_dir =

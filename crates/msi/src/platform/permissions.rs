@@ -569,20 +569,19 @@ impl LiveSecurityApplier {
     /// The resulting value or `Ok(())` on success.
     #[allow(clippy::missing_const_for_fn)]
     pub fn set_xattr(path: &Path, name: &str, value: &[u8]) -> Result<()> {
+        let c_path = std::ffi::CString::new(path.as_os_str().as_encoded_bytes()).map_err(|e| {
+            MsiError::Io(crate::error::IoContext::from_string(format!(
+                "Invalid path for xattr: {e}"
+            )))
+        })?;
+        let c_name = std::ffi::CString::new(name).map_err(|e| {
+            MsiError::Io(crate::error::IoContext::from_string(format!(
+                "Invalid xattr name: {e}"
+            )))
+        })?;
+
         #[cfg(target_os = "macos")]
         {
-            use std::ffi::CString;
-            let c_path = CString::new(path.as_os_str().as_encoded_bytes()).map_err(|e| {
-                MsiError::Io(crate::error::IoContext::from_string(format!(
-                    "Invalid path for xattr: {e}"
-                )))
-            })?;
-            let c_name = CString::new(name).map_err(|e| {
-                MsiError::Io(crate::error::IoContext::from_string(format!(
-                    "Invalid xattr name: {e}"
-                )))
-            })?;
-
             // SAFETY: Valid null-terminated C strings and byte buffer pointers passed to setxattr.
             let ret = unsafe {
                 libc::setxattr(
@@ -609,18 +608,6 @@ impl LiveSecurityApplier {
 
         #[cfg(target_os = "linux")]
         {
-            use std::ffi::CString;
-            let c_path = CString::new(path.as_os_str().as_encoded_bytes()).map_err(|e| {
-                MsiError::Io(crate::error::IoContext::from_string(format!(
-                    "Invalid path for xattr: {e}"
-                )))
-            })?;
-            let c_name = CString::new(name).map_err(|e| {
-                MsiError::Io(crate::error::IoContext::from_string(format!(
-                    "Invalid xattr name: {e}"
-                )))
-            })?;
-
             // SAFETY: Valid null-terminated C strings and byte buffer pointers passed to setxattr.
             let ret = unsafe {
                 libc::setxattr(
@@ -646,7 +633,7 @@ impl LiveSecurityApplier {
 
         #[cfg(not(any(target_os = "macos", target_os = "linux")))]
         {
-            let _ = (name, value);
+            let _ = (&c_path, &c_name, value);
             if !path.exists() {
                 return Err(MsiError::Io(crate::error::IoContext::from_string(format!(
                     "Failed to set xattr '{name}' on {}: No such file or directory",
@@ -673,20 +660,19 @@ impl LiveSecurityApplier {
     /// Returns [`MsiError::Io`] on unexpected syscall failure.
     #[allow(clippy::missing_const_for_fn)]
     pub fn get_xattr(path: &Path, name: &str) -> Result<Option<Vec<u8>>> {
+        let c_path = std::ffi::CString::new(path.as_os_str().as_encoded_bytes()).map_err(|e| {
+            MsiError::Io(crate::error::IoContext::from_string(format!(
+                "Invalid path for xattr: {e}"
+            )))
+        })?;
+        let c_name = std::ffi::CString::new(name).map_err(|e| {
+            MsiError::Io(crate::error::IoContext::from_string(format!(
+                "Invalid xattr name: {e}"
+            )))
+        })?;
+
         #[cfg(target_os = "macos")]
         {
-            use std::ffi::CString;
-            let c_path = CString::new(path.as_os_str().as_encoded_bytes()).map_err(|e| {
-                MsiError::Io(crate::error::IoContext::from_string(format!(
-                    "Invalid path for xattr: {e}"
-                )))
-            })?;
-            let c_name = CString::new(name).map_err(|e| {
-                MsiError::Io(crate::error::IoContext::from_string(format!(
-                    "Invalid xattr name: {e}"
-                )))
-            })?;
-
             // SAFETY: Null buffer passed to query required attribute length.
             let size = unsafe {
                 libc::getxattr(
@@ -723,18 +709,6 @@ impl LiveSecurityApplier {
 
         #[cfg(target_os = "linux")]
         {
-            use std::ffi::CString;
-            let c_path = CString::new(path.as_os_str().as_encoded_bytes()).map_err(|e| {
-                MsiError::Io(crate::error::IoContext::from_string(format!(
-                    "Invalid path for xattr: {e}"
-                )))
-            })?;
-            let c_name = CString::new(name).map_err(|e| {
-                MsiError::Io(crate::error::IoContext::from_string(format!(
-                    "Invalid xattr name: {e}"
-                )))
-            })?;
-
             // SAFETY: Null buffer passed to query required attribute length.
             let size = unsafe {
                 libc::getxattr(c_path.as_ptr(), c_name.as_ptr(), std::ptr::null_mut(), 0)
@@ -762,7 +736,7 @@ impl LiveSecurityApplier {
 
         #[cfg(not(any(target_os = "macos", target_os = "linux")))]
         {
-            let _ = (path, name);
+            let _ = (&c_path, &c_name, path);
             Ok(None)
         }
     }
@@ -1178,22 +1152,13 @@ mod tests {
         assert!(!live_applier.is_dry_run());
 
         // Test set_xattr and get_xattr roundtrip
-        #[cfg(unix)]
-        {
-            let xattr_res =
-                LiveSecurityApplier::set_xattr(&temp_file, "user.msi_test", b"hello_msi");
-            assert!(xattr_res.is_ok());
-            let read_back = LiveSecurityApplier::get_xattr(&temp_file, "user.msi_test");
-            assert_eq!(read_back, Ok(Some(b"hello_msi".to_vec())));
-        }
-        #[cfg(not(unix))]
-        {
-            let xattr_res =
-                LiveSecurityApplier::set_xattr(&temp_file, "user.msi_test", b"hello_msi");
-            assert!(xattr_res.is_ok());
-            let read_back = LiveSecurityApplier::get_xattr(&temp_file, "user.msi_test");
-            assert_eq!(read_back, Ok(None));
-        }
+        let xattr_res = LiveSecurityApplier::set_xattr(&temp_file, "user.msi_test", b"hello_msi");
+        assert!(xattr_res.is_ok());
+        let read_back = LiveSecurityApplier::get_xattr(&temp_file, "user.msi_test");
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        assert_eq!(read_back, Ok(Some(b"hello_msi".to_vec())));
+        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        assert_eq!(read_back, Ok(None));
 
         // Live applier apply_extended_attribute
         let mut live_applier_mut = live_applier;
@@ -1429,8 +1394,10 @@ mod tests {
         #[cfg(unix)]
         {
             let dev_null = Path::new("/dev/null");
-            let err_res = live_applier.apply_mode(dev_null, PosixMode::from_octal(0o777));
-            assert!(err_res.is_err());
+            let err_res = live_applier.apply_mode(dev_null, PosixMode::from_octal(0o666));
+            // SAFETY: geteuid is a thread-safe POSIX syscall with no preconditions.
+            let is_root = unsafe { libc::geteuid() == 0 };
+            assert_eq!(err_res.is_ok(), is_root);
         }
 
         let _ = fs::remove_file(&temp_file);

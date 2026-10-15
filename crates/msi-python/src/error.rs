@@ -91,7 +91,7 @@ define_py_exception!(
     "_msi",
     WixError,
     MsiError,
-    "WiX preprocessor, XML parser, compiler, or linker failure."
+    "`WiX` preprocessor, XML parser, compiler, or linker failure."
 );
 
 /// Converts an internal [`msi::MsiError`] reference into a corresponding [`PyErr`].

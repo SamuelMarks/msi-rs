@@ -760,6 +760,7 @@ mod tests {
             renderer.create_window("Test", 800, 0),
             Err(MsiError::User32RenderError(_))
         ));
+        Ok(())
     }
 
     #[cfg(not(windows))]

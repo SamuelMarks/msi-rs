@@ -401,7 +401,7 @@ mod tests {
                     std::ptr::null_mut(),
                     0,
                     0,
-                    &mut pstm
+                    &raw mut pstm
                 ),
                 S_OK
             );
@@ -410,7 +410,14 @@ mod tests {
 
             // test null pointers
             assert_eq!(
-                open_stream(ptr, std::ptr::null(), std::ptr::null_mut(), 0, 0, &mut pstm),
+                open_stream(
+                    ptr,
+                    std::ptr::null(),
+                    std::ptr::null_mut(),
+                    0,
+                    0,
+                    &raw mut pstm
+                ),
                 crate::com::E_POINTER
             );
             assert_eq!(
@@ -433,7 +440,7 @@ mod tests {
                     std::ptr::null_mut(),
                     0,
                     0,
-                    &mut pstm
+                    &raw mut pstm
                 ),
                 STG_E_FILENOTFOUND
             );

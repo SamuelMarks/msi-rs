@@ -35,7 +35,6 @@ pub struct ComponentState(pub i32);
 /// # Safety
 ///
 /// Pointers must be valid or null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideComponentW(
@@ -90,7 +89,6 @@ pub unsafe extern "system" fn MsiProvideComponentW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideComponentA(
@@ -144,7 +142,6 @@ pub unsafe extern "system" fn MsiProvideComponentA(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideAssemblyW(
@@ -192,7 +189,6 @@ pub unsafe extern "system" fn MsiProvideAssemblyW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideAssemblyA(
@@ -295,7 +291,6 @@ pub unsafe extern "system" fn MsiLocateComponentW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -563,7 +558,6 @@ pub unsafe extern "system" fn MsiUseFeatureA(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiGetShortcutTargetW(
@@ -599,7 +593,6 @@ pub unsafe extern "system" fn MsiGetShortcutTargetW(
 /// # Safety
 ///
 /// Pointers must be valid or null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiGetShortcutTargetA(
@@ -635,7 +628,7 @@ mod tests {
                     dummy_a.as_ptr(),
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -646,7 +639,7 @@ mod tests {
                     dummy_a.as_ptr(),
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -657,7 +650,7 @@ mod tests {
                     std::ptr::null(),
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -667,7 +660,7 @@ mod tests {
                 dummy_a.as_ptr(),
                 0,
                 std::ptr::null_mut(),
-                &mut sz,
+                &raw mut sz,
             );
             assert_eq!(
                 MsiProvideComponentW(
@@ -676,7 +669,7 @@ mod tests {
                     dummy_w.as_ptr(),
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -687,7 +680,7 @@ mod tests {
                     dummy_w.as_ptr(),
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -698,7 +691,7 @@ mod tests {
                     std::ptr::null(),
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -708,7 +701,7 @@ mod tests {
                 dummy_w.as_ptr(),
                 0,
                 std::ptr::null_mut(),
-                &mut sz,
+                &raw mut sz,
             );
             let _ = MsiProvideAssemblyA(
                 dummy_a.as_ptr(),
@@ -716,7 +709,7 @@ mod tests {
                 0,
                 0,
                 std::ptr::null_mut(),
-                &mut sz,
+                &raw mut sz,
             );
             let _ = MsiProvideAssemblyW(
                 dummy_w.as_ptr(),
@@ -724,22 +717,22 @@ mod tests {
                 0,
                 0,
                 std::ptr::null_mut(),
-                &mut sz,
+                &raw mut sz,
             );
-            let _ = MsiLocateComponentA(dummy_a.as_ptr(), std::ptr::null_mut(), &mut sz);
-            let _ = MsiLocateComponentW(dummy_w.as_ptr(), std::ptr::null_mut(), &mut sz);
+            let _ = MsiLocateComponentA(dummy_a.as_ptr(), std::ptr::null_mut(), &raw mut sz);
+            let _ = MsiLocateComponentW(dummy_w.as_ptr(), std::ptr::null_mut(), &raw mut sz);
             let mut offset = 0;
             let _ = MsiProvideComponentFromDescriptorA(
                 dummy_a.as_ptr(),
                 std::ptr::null_mut(),
-                &mut sz,
-                &mut offset,
+                &raw mut sz,
+                &raw mut offset,
             );
             let _ = MsiProvideComponentFromDescriptorW(
                 dummy_w.as_ptr(),
                 std::ptr::null_mut(),
-                &mut sz,
-                &mut offset,
+                &raw mut sz,
+                &raw mut offset,
             );
             assert_eq!(
                 MsiProvideQualifiedComponentA(
@@ -747,7 +740,7 @@ mod tests {
                     dummy_a.as_ptr(),
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -757,7 +750,7 @@ mod tests {
                     std::ptr::null(),
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -766,7 +759,7 @@ mod tests {
                 dummy_a.as_ptr(),
                 0,
                 std::ptr::null_mut(),
-                &mut sz,
+                &raw mut sz,
             );
             assert_eq!(
                 MsiProvideQualifiedComponentW(
@@ -774,7 +767,7 @@ mod tests {
                     dummy_w.as_ptr(),
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -784,7 +777,7 @@ mod tests {
                     std::ptr::null(),
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -793,7 +786,7 @@ mod tests {
                 dummy_w.as_ptr(),
                 0,
                 std::ptr::null_mut(),
-                &mut sz,
+                &raw mut sz,
             );
             assert_eq!(
                 MsiProvideQualifiedComponentExA(
@@ -804,7 +797,7 @@ mod tests {
                     0,
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -817,7 +810,7 @@ mod tests {
                     0,
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -829,7 +822,7 @@ mod tests {
                 0,
                 0,
                 std::ptr::null_mut(),
-                &mut sz,
+                &raw mut sz,
             );
             assert_eq!(
                 MsiProvideQualifiedComponentExW(
@@ -840,7 +833,7 @@ mod tests {
                     0,
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -853,7 +846,7 @@ mod tests {
                     0,
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -865,7 +858,7 @@ mod tests {
                 0,
                 0,
                 std::ptr::null_mut(),
-                &mut sz,
+                &raw mut sz,
             );
             let mut attr = 0;
             assert_eq!(
@@ -883,9 +876,9 @@ mod tests {
             let _ = MsiGetFeatureInfoA(
                 0,
                 dummy_a.as_ptr(),
-                &mut attr,
+                &raw mut attr,
                 std::ptr::null_mut(),
-                &mut sz,
+                &raw mut sz,
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
             );
@@ -904,9 +897,9 @@ mod tests {
             let _ = MsiGetFeatureInfoW(
                 0,
                 dummy_w.as_ptr(),
-                &mut attr,
+                &raw mut attr,
                 std::ptr::null_mut(),
-                &mut sz,
+                &raw mut sz,
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
             );
@@ -960,7 +953,7 @@ mod tests {
                     empty_a.as_ptr(),
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -971,7 +964,7 @@ mod tests {
                     empty_w.as_ptr(),
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -983,7 +976,7 @@ mod tests {
                     0,
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -994,7 +987,7 @@ mod tests {
                     0,
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -1007,7 +1000,7 @@ mod tests {
                     dummy_a.as_ptr(),
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -1018,7 +1011,7 @@ mod tests {
                     dummy_a.as_ptr(),
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -1029,7 +1022,7 @@ mod tests {
                     std::ptr::null(),
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -1041,7 +1034,7 @@ mod tests {
                     dummy_w.as_ptr(),
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -1052,7 +1045,7 @@ mod tests {
                     dummy_w.as_ptr(),
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -1063,7 +1056,7 @@ mod tests {
                     std::ptr::null(),
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -1076,7 +1069,7 @@ mod tests {
                     0,
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -1087,7 +1080,7 @@ mod tests {
                     0,
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -1097,8 +1090,8 @@ mod tests {
                 MsiProvideComponentFromDescriptorA(
                     std::ptr::null(),
                     std::ptr::null_mut(),
-                    &mut sz,
-                    &mut offset
+                    &raw mut sz,
+                    &raw mut offset
                 ),
                 87
             );
@@ -1106,8 +1099,8 @@ mod tests {
                 MsiProvideComponentFromDescriptorW(
                     std::ptr::null(),
                     std::ptr::null_mut(),
-                    &mut sz,
-                    &mut offset
+                    &raw mut sz,
+                    &raw mut offset
                 ),
                 87
             );
@@ -1119,7 +1112,7 @@ mod tests {
                     dummy_a.as_ptr(),
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -1129,7 +1122,7 @@ mod tests {
                     std::ptr::null(),
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -1139,7 +1132,7 @@ mod tests {
                     dummy_w.as_ptr(),
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -1149,7 +1142,7 @@ mod tests {
                     std::ptr::null(),
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -1164,7 +1157,7 @@ mod tests {
                     0,
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -1177,7 +1170,7 @@ mod tests {
                     0,
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -1190,7 +1183,7 @@ mod tests {
                     0,
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -1203,18 +1196,18 @@ mod tests {
                     0,
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
 
             // MsiLocateComponent null checks
             assert_eq!(
-                MsiLocateComponentA(std::ptr::null(), std::ptr::null_mut(), &mut sz),
+                MsiLocateComponentA(std::ptr::null(), std::ptr::null_mut(), &raw mut sz),
                 -2
             );
             assert_eq!(
-                MsiLocateComponentW(std::ptr::null(), std::ptr::null_mut(), &mut sz),
+                MsiLocateComponentW(std::ptr::null(), std::ptr::null_mut(), &raw mut sz),
                 -2
             );
 
@@ -1224,7 +1217,7 @@ mod tests {
                     std::ptr::null(),
                     dummy_a.as_ptr(),
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 -1
             );
@@ -1233,7 +1226,7 @@ mod tests {
                     p_a.0,
                     std::ptr::null(),
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 -1
             );
@@ -1242,7 +1235,7 @@ mod tests {
                     std::ptr::null(),
                     dummy_w.as_ptr(),
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 -1
             );
@@ -1251,7 +1244,7 @@ mod tests {
                     p_w.0,
                     std::ptr::null(),
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 -1
             );
@@ -1264,7 +1257,7 @@ mod tests {
                     std::ptr::null(),
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -1275,7 +1268,7 @@ mod tests {
                     std::ptr::null(),
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -1286,7 +1279,7 @@ mod tests {
                     std::ptr::null(),
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -1297,7 +1290,7 @@ mod tests {
                     std::ptr::null(),
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -1412,25 +1405,25 @@ mod tests {
                 .collect();
 
             assert_eq!(
-                MsiLocateComponentA(valid_a.as_ptr(), std::ptr::null_mut(), &mut sz),
+                MsiLocateComponentA(valid_a.as_ptr(), std::ptr::null_mut(), &raw mut sz),
                 1
             );
             assert_eq!(
-                MsiLocateComponentW(valid_w.as_ptr(), std::ptr::null_mut(), &mut sz),
+                MsiLocateComponentW(valid_w.as_ptr(), std::ptr::null_mut(), &raw mut sz),
                 1
             );
 
             let mut out_a = [0_i8; 100];
             let mut out_sz = u32::try_from(out_a.len()).unwrap_or(100);
             assert_eq!(
-                MsiLocateComponentA(valid_a.as_ptr(), out_a.as_mut_ptr(), &mut out_sz),
+                MsiLocateComponentA(valid_a.as_ptr(), out_a.as_mut_ptr(), &raw mut out_sz),
                 1
             );
 
             let mut out_w = [0_u16; 100];
             let mut out_sz_w = u32::try_from(out_w.len()).unwrap_or(100);
             assert_eq!(
-                MsiLocateComponentW(valid_w.as_ptr(), out_w.as_mut_ptr(), &mut out_sz_w),
+                MsiLocateComponentW(valid_w.as_ptr(), out_w.as_mut_ptr(), &raw mut out_sz_w),
                 1
             );
 
@@ -1495,11 +1488,11 @@ mod tests {
         // null pointers
         let mut sz = 0;
         assert_eq!(
-            unsafe { MsiLocateComponentA(std::ptr::null(), std::ptr::null_mut(), &mut sz) },
+            unsafe { MsiLocateComponentA(std::ptr::null(), std::ptr::null_mut(), &raw mut sz) },
             -2
         );
         assert_eq!(
-            unsafe { MsiLocateComponentW(std::ptr::null(), std::ptr::null_mut(), &mut sz) },
+            unsafe { MsiLocateComponentW(std::ptr::null(), std::ptr::null_mut(), &raw mut sz) },
             -2
         );
 
@@ -1507,11 +1500,11 @@ mod tests {
         let empty_a = std::ffi::CString::new("").unwrap_or_default();
         let empty_w: Vec<u16> = vec![0];
         assert_eq!(
-            unsafe { MsiLocateComponentA(empty_a.as_ptr(), std::ptr::null_mut(), &mut sz) },
+            unsafe { MsiLocateComponentA(empty_a.as_ptr(), std::ptr::null_mut(), &raw mut sz) },
             -2
         );
         assert_eq!(
-            unsafe { MsiLocateComponentW(empty_w.as_ptr(), std::ptr::null_mut(), &mut sz) },
+            unsafe { MsiLocateComponentW(empty_w.as_ptr(), std::ptr::null_mut(), &raw mut sz) },
             -2
         );
         let err_a =
@@ -1521,11 +1514,11 @@ mod tests {
             .chain(std::iter::once(0))
             .collect();
         assert_eq!(
-            unsafe { MsiLocateComponentA(err_a.as_ptr(), std::ptr::null_mut(), &mut sz) },
+            unsafe { MsiLocateComponentA(err_a.as_ptr(), std::ptr::null_mut(), &raw mut sz) },
             -1
         );
         assert_eq!(
-            unsafe { MsiLocateComponentW(err_w.as_ptr(), std::ptr::null_mut(), &mut sz) },
+            unsafe { MsiLocateComponentW(err_w.as_ptr(), std::ptr::null_mut(), &raw mut sz) },
             -1
         );
     }
@@ -1550,7 +1543,7 @@ mod tests {
                     dummy_a.as_ptr(),
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -1561,7 +1554,7 @@ mod tests {
                     dummy_a.as_ptr(),
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -1572,7 +1565,7 @@ mod tests {
                     invalid_a.as_ptr().cast(),
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -1585,7 +1578,7 @@ mod tests {
                     dummy_w.as_ptr(),
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -1596,7 +1589,7 @@ mod tests {
                     dummy_w.as_ptr(),
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -1607,7 +1600,7 @@ mod tests {
                     invalid_w.as_ptr(),
                     0,
                     std::ptr::null_mut(),
-                    &mut sz
+                    &raw mut sz
                 ),
                 87
             );
@@ -1615,14 +1608,16 @@ mod tests {
 
         let mut buf_w = [0u16; 256];
         let mut buf_size_w = 256;
-        let res_w =
-            unsafe { MsiLocateComponentW(invalid_w.as_ptr(), buf_w.as_mut_ptr(), &mut buf_size_w) };
+        let res_w = unsafe {
+            MsiLocateComponentW(invalid_w.as_ptr(), buf_w.as_mut_ptr(), &raw mut buf_size_w)
+        };
         assert_eq!(res_w, -2); // INSTALLSTATE_INVALIDARG
 
         let mut buf_a = [0i8; 256];
         let mut buf_size_a = 256;
-        let res_a =
-            unsafe { MsiLocateComponentA(invalid_a.as_ptr(), buf_a.as_mut_ptr(), &mut buf_size_a) };
+        let res_a = unsafe {
+            MsiLocateComponentA(invalid_a.as_ptr(), buf_a.as_mut_ptr(), &raw mut buf_size_a)
+        };
         assert_eq!(res_a, -2); // INSTALLSTATE_INVALIDARG
     }
 }

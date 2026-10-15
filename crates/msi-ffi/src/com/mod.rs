@@ -175,17 +175,19 @@ mod tests {
             Release: mock_release,
         };
 
-        let mut obj = IUnknown { lpVtbl: &vtbl };
+        let mut obj = IUnknown {
+            lpVtbl: &raw const vtbl,
+        };
         let iid = GUID::new(0, 0, 0, [0xC0, 0, 0, 0, 0, 0, 0, 0x46]);
 
         unsafe {
             let mut out: *mut c_void = std::ptr::null_mut();
             assert_eq!(
-                ((*obj.lpVtbl).QueryInterface)(&mut obj, &iid, &mut out),
+                ((*obj.lpVtbl).QueryInterface)(&raw mut obj, &raw const iid, &raw mut out),
                 S_OK
             );
-            assert_eq!(((*obj.lpVtbl).AddRef)(&mut obj), 2);
-            assert_eq!(((*obj.lpVtbl).Release)(&mut obj), 1);
+            assert_eq!(((*obj.lpVtbl).AddRef)(&raw mut obj), 2);
+            assert_eq!(((*obj.lpVtbl).Release)(&raw mut obj), 1);
         }
     }
 }
