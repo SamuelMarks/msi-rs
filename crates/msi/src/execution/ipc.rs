@@ -244,6 +244,7 @@ impl IpcRouter {
     /// # Returns
     ///
     /// The resulting value or `Ok(())` on success.
+    #[allow(clippy::missing_const_for_fn)]
     pub fn apply_impersonation(&self, no_impersonate: bool) -> Result<()> {
         if no_impersonate {
             // Leave elevated privileges intact

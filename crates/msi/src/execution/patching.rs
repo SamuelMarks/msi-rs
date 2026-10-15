@@ -227,6 +227,7 @@ impl PatchEngine {
                 -> windows::core::BOOL;
 
             let mut applied = false;
+            // SAFETY: Loading mspatcha.dll and invoking ApplyPatchToFileByBuffers with valid buffer and UTF-16 path pointers.
             unsafe {
                 if let Ok(module) = LoadLibraryW(w!("mspatcha.dll")) {
                     if let Some(proc) = GetProcAddress(module, s!("ApplyPatchToFileByBuffers")) {
@@ -240,9 +241,10 @@ impl PatchEngine {
                             target_path.to_string_lossy().encode_utf16().collect();
                         new_name_u16.push(0);
 
+                        let patch_len = u32::try_from(patch_data.len()).unwrap_or(u32::MAX);
                         let res = apply_patch(
                             patch_data.as_ptr(),
-                            patch_data.len() as u32,
+                            patch_len,
                             PCWSTR::from_raw(old_name_u16.as_ptr()),
                             PCWSTR::from_raw(new_name_u16.as_ptr()),
                             0, // APPLY_OPTION_FAIL_IF_EXACT

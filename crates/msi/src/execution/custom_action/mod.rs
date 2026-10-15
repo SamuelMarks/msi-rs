@@ -1762,13 +1762,11 @@ mod tests {
             let logs = executor.execution_logs();
             assert!(
                 logs.iter().any(|l| l.contains("STDERR: err_msg")),
-                "Logs did not contain STDERR: {:#?}",
-                logs
+                "Logs did not contain STDERR: {logs:#?}"
             );
             assert!(
                 logs.iter().any(|l| l.contains("STDOUT: out_msg")),
-                "Logs did not contain STDOUT: {:#?}",
-                logs
+                "Logs did not contain STDOUT: {logs:#?}"
             );
 
             let type_fail = unwrap_result(CustomActionDefinition::parse(
@@ -2627,10 +2625,7 @@ mod tests {
                 "CMD_EXE",
                 "dummy /c \"echo custom_error_msg 1>&2\"",
             ));
-            let comspec = match std::env::var("COMSPEC") {
-                Ok(val) => val,
-                Err(_) => "cmd.exe".to_string(),
-            };
+            let comspec = std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string());
             ctx.set_property("CMD_EXE", &comspec);
             let res = fresh_executor.execute(&stderr_action, &mut ctx);
             assert_eq!(res, Ok(ERROR_SUCCESS));

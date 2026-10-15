@@ -731,6 +731,7 @@ mod tests {
             style: 0,
         };
 
+        #[allow(clippy::default_constructed_unit_structs)]
         let mut renderer = windows_impl::WindowsRenderer::default();
         let mut win = renderer.create_window("Test", 800, 600)?;
         assert!(win.handle().as_raw() > 0);

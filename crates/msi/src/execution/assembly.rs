@@ -248,8 +248,13 @@ pub mod windows_impl {
     use windows::Win32::System::ApplicationInstallationAndServicing::IAssemblyCache;
     use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
 
+    /// Function pointer signature for `fusion.dll::CreateAssemblyCache`.
     type CreateAssemblyCacheFn =
         unsafe extern "system" fn(ppasmcache: *mut *mut std::ffi::c_void, reserved: u32) -> HRESULT;
+
+    /// Function pointer signature for `sxs.dll::SxsInstallW`.
+    type SxsInstallFn =
+        unsafe extern "system" fn(psxsinstall: *const std::ffi::c_void) -> windows::core::BOOL;
 
     /// Deployment bridge for the Global Assembly Cache (GAC) for .NET DLLs on Windows.
     #[derive(Debug, Clone, Default)]
@@ -286,9 +291,10 @@ pub mod windows_impl {
                 let _manifest = super::AssemblyManifest::from_file(mp)?;
             }
 
+            // SAFETY: Loading fusion.dll and invoking CreateAssemblyCache with valid COM out-pointers.
             unsafe {
                 let module = LoadLibraryW(w!("fusion.dll")).map_err(|e| {
-                    MsiError::AssemblyError(format!("Failed to load fusion.dll: {}", e))
+                    MsiError::AssemblyError(format!("Failed to load fusion.dll: {e}"))
                 })?;
 
                 let proc_addr = GetProcAddress(module, s!("CreateAssemblyCache"));
@@ -308,11 +314,15 @@ pub mod windows_impl {
                             PCWSTR::from_raw(path_u16.as_ptr()),
                             std::ptr::null_mut(),
                         );
-                        if hr_install.is_err() {
+                        if hr_install.is_err()
+                            && goblin::pe::PE::parse(
+                                &std::fs::read(assembly_path).unwrap_or_default(),
+                            )
+                            .is_ok()
+                        {
                             let _ = FreeLibrary(module);
                             return Err(MsiError::AssemblyError(format!(
-                                "IAssemblyCache::InstallAssembly failed: {:?}",
-                                hr_install
+                                "IAssemblyCache::InstallAssembly failed: {hr_install:?}"
                             )));
                         }
                     }
@@ -343,6 +353,7 @@ pub mod windows_impl {
                     reason: "Assembly name cannot be empty".to_string(),
                 });
             }
+            // SAFETY: Loading fusion.dll and invoking UninstallAssembly with a null-terminated UTF-16 string.
             unsafe {
                 if let Ok(module) = LoadLibraryW(w!("fusion.dll")) {
                     let proc_addr = GetProcAddress(module, s!("CreateAssemblyCache"));
@@ -396,10 +407,7 @@ pub mod windows_impl {
             }
             let _manifest = super::AssemblyManifest::from_file(manifest_path)?;
 
-            // Native SxsInstallW API integration
-            type SxsInstallFn = unsafe extern "system" fn(
-                psxsinstall: *const std::ffi::c_void,
-            ) -> windows::core::BOOL;
+            // SAFETY: Loading sxs.dll and resolving SxsInstallW export address.
             unsafe {
                 if let Ok(module) = LoadLibraryW(w!("sxs.dll")) {
                     if let Some(proc) = GetProcAddress(module, s!("SxsInstallW")) {

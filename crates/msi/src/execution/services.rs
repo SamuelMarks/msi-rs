@@ -271,7 +271,7 @@ mod tests {
             error_control: 1,
         };
         assert!(evaluator.evaluate_scm_install(&row).is_ok());
-        row.name = "".to_string();
+        row.name = String::new();
         assert!(evaluator.evaluate_scm_install(&row).is_err());
     }
 }

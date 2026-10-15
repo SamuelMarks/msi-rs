@@ -148,7 +148,7 @@ pub mod windows_impl {
             // SAFETY: Thread-safe COM initialization.
             unsafe {
                 let hr = CoInitializeEx(None, COINIT_MULTITHREADED);
-                if hr.is_err() && hr != windows::core::HRESULT(0x00000001) {
+                if hr.is_err() && hr != windows::core::HRESULT(0x0000_0001) {
                     return Err(MsiError::ComRpcError(format!(
                         "CoInitializeEx failed: {hr:?}"
                     )));
@@ -161,7 +161,9 @@ pub mod windows_impl {
         fn disconnect(&mut self) -> Result<()> {
             if self.state == RpcConnectionState::Connected {
                 // SAFETY: CoUninitialize matches CoInitializeEx.
-                unsafe { CoUninitialize() };
+                unsafe {
+                    CoUninitialize();
+                }
             }
             self.state = RpcConnectionState::Disconnected;
             Ok(())

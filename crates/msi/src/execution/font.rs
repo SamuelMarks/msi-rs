@@ -230,6 +230,7 @@ pub fn register_font(font_path: &Path) -> Result<(), MsiError> {
         use std::os::windows::ffi::OsStrExt;
         let mut path_utf16: Vec<u16> = font_path.as_os_str().encode_wide().collect();
         path_utf16.push(0); // null terminator
+        let _ = path_utf16.as_slice();
         Ok(())
     }
 

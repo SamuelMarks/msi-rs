@@ -207,7 +207,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn test_windows_dispatch() -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let resolver = NativeDispatchResolver::default();
+        let resolver = NativeDispatchResolver;
         let obj = resolver.create_object("TestObject")?;
         assert_eq!(
             obj.invoke("Method", &DispParams::default())?,

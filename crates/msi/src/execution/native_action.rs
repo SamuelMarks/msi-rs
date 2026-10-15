@@ -1544,6 +1544,34 @@ mod tests {
             // Symbol with interior null
             assert!(dl_loader.invoke_action("invalid\0symbol", 0).is_err());
         }
+
+        #[cfg(all(unix, not(target_os = "macos")))]
+        {
+            let lib_candidates = [
+                Path::new("libc.so.6"),
+                Path::new("/lib/x86_64-linux-gnu/libc.so.6"),
+                Path::new("/lib64/libc.so.6"),
+                Path::new("libm.so.6"),
+                Path::new("libc.so.7"),
+                Path::new("libc.so"),
+            ];
+            if let Some(lib_sys) = lib_candidates
+                .into_iter()
+                .find(|p| dl_loader.load_library(p).is_ok())
+            {
+                // Loading another library when handle is Some covers closing previous handle:
+                assert!(dl_loader.load_library(lib_sys).is_ok());
+
+                // Symbol that exists in libc and returns 0 for char 'A' (65): isspace('A') == 0
+                assert_eq!(dl_loader.invoke_action("isspace", 65), Ok(ERROR_SUCCESS));
+                // Symbol that does not exist
+                assert!(dl_loader
+                    .invoke_action("non_existent_symbol_xyz", 0)
+                    .is_err());
+                // Symbol with interior null
+                assert!(dl_loader.invoke_action("invalid\0symbol", 0).is_err());
+            }
+        }
     }
 
     /// Tests `SubprocessRunner` executing a basic command, capturing output, and handling errors.
