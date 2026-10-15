@@ -46,7 +46,7 @@ impl<T: Read + Write + std::fmt::Debug> IpcConnection<T> {
     /// The resulting value or `Ok(())` on success.
     pub fn send_message(&mut self, message: &RpcMessage) -> Result<()> {
         let data = message.to_bytes();
-        let len = data.len() as u32;
+        let len = u32::try_from(data.len()).unwrap_or(u32::MAX);
         self.stream
             .write_all(&len.to_le_bytes())
             .map_err(|e| MsiError::WorkerIpcError {
@@ -327,14 +327,6 @@ mod tests {
             }
         }
 
-        let mut bs = BadStream;
-        let _ = bs.flush(); // cover flush
-        let mut conn = IpcConnection::new(bs);
-        let err1 = conn.send_message(&RpcMessage::Ping).unwrap_err();
-        assert!(err1.to_string().contains("Failed to write length"));
-        let err2 = conn.receive_message().unwrap_err();
-        assert!(err2.to_string().contains("Failed to read length"));
-
         #[derive(Debug)]
         struct BadFlushStream;
         impl Read for BadFlushStream {
@@ -350,11 +342,6 @@ mod tests {
                 Err(Error::other("flush error"))
             }
         }
-        let mut conn2 = IpcConnection::new(BadFlushStream);
-        let err1 = conn2.send_message(&RpcMessage::Ping).unwrap_err();
-        assert!(err1.to_string().contains("Failed to flush"));
-        let err2 = conn2.receive_message().unwrap_err(); // cover read
-        assert!(err2.to_string().contains("Failed to read length"));
 
         #[derive(Debug)]
         struct PartialReadStream;
@@ -376,10 +363,36 @@ mod tests {
                 Ok(())
             }
         }
+
+        let mut bs = BadStream;
+        let _ = bs.flush(); // cover flush
+        let mut conn = IpcConnection::new(bs);
+        let err1 = conn
+            .send_message(&RpcMessage::Ping)
+            .err()
+            .unwrap_or_default();
+        assert!(err1.to_string().contains("Failed to write length"));
+        let err2 = conn.receive_message().err().unwrap_or_default();
+        assert!(err2.to_string().contains("Failed to read length"));
+
+        let mut conn2 = IpcConnection::new(BadFlushStream);
+        let flush_err = conn2
+            .send_message(&RpcMessage::Ping)
+            .err()
+            .unwrap_or_default();
+        assert!(flush_err.to_string().contains("Failed to flush"));
+        let flush_read_err = conn2.receive_message().err().unwrap_or_default(); // cover read
+        assert!(flush_read_err.to_string().contains("Failed to read length"));
+
         let mut conn3 = IpcConnection::new(PartialReadStream);
-        let err3 = conn3.receive_message().unwrap_err();
+        let err3 = conn3.receive_message().err().unwrap_or_default();
         assert!(err3.to_string().contains("Failed to read payload"));
         assert!(conn3.send_message(&RpcMessage::Ping).is_ok()); // cover write
+    }
+
+    #[test]
+    fn test_ipc_partial_write_error() {
+        use std::io::{Error, Read, Write};
 
         #[derive(Debug)]
         struct PartialWriteStream;
@@ -400,30 +413,38 @@ mod tests {
                 Ok(())
             }
         }
+
         let mut pws = PartialWriteStream;
         let _ = pws.flush(); // cover flush
         let mut conn4 = IpcConnection::new(pws);
-        let err4a = conn4.send_message(&RpcMessage::Ping).unwrap_err();
-        assert!(err4a.to_string().contains("Failed to write payload"));
-        let err4b = conn4.receive_message().unwrap_err(); // cover read
-        assert!(err4b.to_string().contains("Failed to read length"));
+        let write_payload_err = conn4
+            .send_message(&RpcMessage::Ping)
+            .err()
+            .unwrap_or_default();
+        assert!(write_payload_err
+            .to_string()
+            .contains("Failed to write payload"));
+        let read_len_err = conn4.receive_message().err().unwrap_or_default(); // cover read
+        assert!(read_len_err.to_string().contains("Failed to read length"));
     }
 
     #[test]
-    fn test_ipc_spawn_daemon_remove_error() {
-        let dir = tempdir().expect("test");
+    fn test_ipc_spawn_daemon_remove_error() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let path = dir.path().join("dir_as_file");
-        std::fs::create_dir_all(&path).expect("test"); // create directory
+        assert!(std::fs::create_dir_all(&path).is_ok()); // create directory
 
         let router = IpcRouter;
         let err = router
             .spawn_daemon(&IpcEndpoint::UnixSocket(path))
-            .unwrap_err();
+            .err()
+            .unwrap_or_default();
         assert!(err.to_string().contains("Failed to clean socket"));
+        Ok(())
     }
 
     #[test]
-    fn test_ipc_connection_send_recv() {
+    fn test_ipc_connection_send_recv() -> std::result::Result<(), Box<dyn std::error::Error>> {
         use std::io::Cursor;
         let mut buf = Cursor::new(Vec::new());
 
@@ -434,24 +455,25 @@ mod tests {
 
         {
             let mut conn = IpcConnection::new(&mut buf);
-            conn.send_message(&invoke).expect("test");
+            assert!(conn.send_message(&invoke).is_ok());
         }
 
         buf.set_position(0);
         {
             let mut conn = IpcConnection::new(&mut buf);
-            let received = conn.receive_message().expect("test");
+            let received = conn.receive_message()?;
             assert_eq!(received, invoke);
         }
 
         // Test over size limit
         buf.set_position(0);
         let oversized_len = (1024 * 1024 + 1) as u32;
-        buf.write_all(&oversized_len.to_le_bytes()).expect("test");
+        assert!(buf.write_all(&oversized_len.to_le_bytes()).is_ok());
         buf.set_position(0);
         let mut conn = IpcConnection::new(&mut buf);
-        let err = conn.receive_message().unwrap_err();
+        let err = conn.receive_message().err().unwrap_or_default();
         assert!(err.to_string().contains("exceeds maximum allowed"));
+        Ok(())
     }
 
     #[test]
@@ -468,16 +490,16 @@ mod tests {
             return_code: 0,
             error_message: None,
         };
-        let bytes = result.to_bytes();
-        assert_eq!(RpcMessage::from_bytes(&bytes), Ok(result));
+        let res_bytes = result.to_bytes();
+        assert_eq!(RpcMessage::from_bytes(&res_bytes), Ok(result));
 
         let result_err = RpcMessage::ActionResult {
             action_name: "MyAction".to_string(),
             return_code: 1603,
             error_message: Some("Failed".to_string()),
         };
-        let bytes = result_err.to_bytes();
-        assert_eq!(RpcMessage::from_bytes(&bytes), Ok(result_err));
+        let err_bytes = result_err.to_bytes();
+        assert_eq!(RpcMessage::from_bytes(&err_bytes), Ok(result_err));
 
         assert_eq!(
             RpcMessage::from_bytes(&RpcMessage::Ping.to_bytes()),
@@ -491,13 +513,21 @@ mod tests {
 
     #[test]
     fn test_rpc_message_errors() {
-        let err1 = RpcMessage::from_bytes(b"INVALID\x00").unwrap_err();
+        let err1 = RpcMessage::from_bytes(b"INVALID\x00")
+            .err()
+            .unwrap_or_default();
         assert!(err1.to_string().contains("Unknown RPC payload"));
-        let err2 = RpcMessage::from_bytes(&[0xFF, 0xFE, 0xFD]).unwrap_err();
+        let err2 = RpcMessage::from_bytes(&[0xFF, 0xFE, 0xFD])
+            .err()
+            .unwrap_or_default();
         assert!(err2.to_string().contains("Invalid UTF-8"));
-        let err3 = RpcMessage::from_bytes(b"INVOKE\x00Name").unwrap_err(); // Missing entry point
+        let err3 = RpcMessage::from_bytes(b"INVOKE\x00Name")
+            .err()
+            .unwrap_or_default(); // Missing entry point
         assert!(err3.to_string().contains("Unknown RPC payload"));
-        let err4 = RpcMessage::from_bytes(b"RESULT\x00Name\x001603").unwrap_err(); // Missing error field
+        let err4 = RpcMessage::from_bytes(b"RESULT\x00Name\x001603")
+            .err()
+            .unwrap_or_default(); // Missing error field
         assert!(err4.to_string().contains("Unknown RPC payload"));
     }
 
@@ -537,7 +567,8 @@ mod tests {
         );
 
         let endpoint = IpcRouter::new_endpoint("test-session");
-        assert!(format!("{endpoint:?}").contains("test-session"));
+        let ep_dbg = format!("{endpoint:?}");
+        assert!(ep_dbg.contains("test-session"));
     }
 
     #[test]
@@ -566,7 +597,10 @@ mod additional_ipc_tests {
         std::fs::create_dir_all(&dir_path).unwrap_or(());
         let sock_endpoint = IpcEndpoint::UnixSocket(dir_path.clone());
 
-        let err = router.spawn_daemon(&sock_endpoint).unwrap_err();
+        let err = router
+            .spawn_daemon(&sock_endpoint)
+            .err()
+            .unwrap_or_default();
         assert!(err.to_string().contains("Failed to clean socket"));
 
         std::fs::remove_dir_all(&dir_path).unwrap_or(());

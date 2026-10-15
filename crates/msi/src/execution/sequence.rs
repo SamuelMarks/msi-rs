@@ -54,11 +54,11 @@ mod tests {
 
     #[test]
     fn test_sequence_name_from_str() {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::Hash;
         let name: SequenceName = "InstallUISequence".into();
         let _ = format!("{name:?}");
 
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::Hash;
         let mut hasher = DefaultHasher::new();
         name.hash(&mut hasher);
 

@@ -158,6 +158,9 @@ mod tests {
         store.register_component_client("COMP-CUSTOM", "PROD-1", Some("/custom/bin/app"))?;
         let cached = provide_component_with_store(&mut store, "PROD-1", "Feat", "COMP-CUSTOM")?;
         assert_eq!(cached, "/custom/bin/app");
+        store.register_component_client("COMP-EMPTY", "PROD-1", None)?;
+        let fallback = provide_component_with_store(&mut store, "PROD-1", "Feat", "COMP-EMPTY")?;
+        assert_eq!(fallback, "/path/to/installed_component.dll");
 
         assert!(provide_component("", "Feat", "COMP-1").is_err());
         assert!(provide_component("PROD-1", "Feat", "").is_err());
@@ -184,7 +187,7 @@ mod tests {
         let structured_no_feat = resolve_darwin_descriptor("12345678901234567890>COMP-99")?;
         assert_eq!(structured_no_feat, "/path/to/installed_component.dll");
 
-        let err = resolve_darwin_descriptor("short").unwrap_err();
+        let err = resolve_darwin_descriptor("short").err().unwrap_or_default();
         assert!(err.to_string().contains("Invalid"));
         Ok(())
     }

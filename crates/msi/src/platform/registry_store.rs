@@ -118,7 +118,7 @@ impl RegistryRoot {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Canonical prefix string (`"HKCR"`, `"HKCU"`, `"HKLM"`, or `"HKU"`).
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -126,6 +126,31 @@ impl RegistryRoot {
             Self::CurrentUser => "HKCU",
             Self::LocalMachine => "HKLM",
             Self::Users => "HKU",
+        }
+    }
+}
+
+impl TryFrom<u32> for RegistryRoot {
+    type Error = MsiError;
+
+    fn try_from(value: u32) -> Result<Self> {
+        Self::from_u32(value)
+    }
+}
+
+impl TryFrom<i32> for RegistryRoot {
+    type Error = MsiError;
+
+    fn try_from(value: i32) -> Result<Self> {
+        match value {
+            -1 | 2 => Ok(Self::LocalMachine),
+            0 => Ok(Self::ClassesRoot),
+            1 => Ok(Self::CurrentUser),
+            3 => Ok(Self::Users),
+            other => Err(MsiError::InvalidArgument {
+                argument: "Registry.Root".to_string(),
+                reason: format!("Unknown signed registry root index {other}"),
+            }),
         }
     }
 }
@@ -1100,15 +1125,16 @@ impl SqliteRegistryDriver {
     ///
     /// # Arguments
     ///
+    /// Checks if a key exists in the registry.
+    ///
+    /// # Arguments
+    ///
     /// * `root` - Root key enum.
     /// * `key` - Subkey path.
-    /// * `name` - Value name.
     ///
     /// # Returns
     ///
-    /// Optional [`RegistryValue`].
-
-    /// Checks if a key exists in the registry.
+    /// `true` if the key exists.
     #[must_use]
     pub fn has_key(&self, root: RegistryRoot, key: &str) -> bool {
         let root_id = root.as_u32();
@@ -2498,49 +2524,51 @@ INSERT OR REPLACE INTO values VALUES (10, 'Fallback', 'REG_CUSTOM_TYPE', 'raw_te
             Some(&RegistryValue::Sz("localhost".to_string()))
         );
     }
-}
-
-#[cfg(test)]
-mod additional_squid_tests {
-    use super::*;
 
     #[test]
-    fn test_registry_squid_paths() {
-        let p1 = RegistryStore::get_machine_product_path("{01234567-89AB-CDEF-0123-456789ABCDEF}")
-            .unwrap();
+    fn test_registry_root_try_from() -> Result<()> {
+        assert_eq!(RegistryRoot::try_from(0u32)?, RegistryRoot::ClassesRoot);
+        assert_eq!(RegistryRoot::try_from(-1i32)?, RegistryRoot::LocalMachine);
+        assert_eq!(RegistryRoot::try_from(0i32)?, RegistryRoot::ClassesRoot);
+        assert_eq!(RegistryRoot::try_from(1i32)?, RegistryRoot::CurrentUser);
+        assert_eq!(RegistryRoot::try_from(2i32)?, RegistryRoot::LocalMachine);
+        assert_eq!(RegistryRoot::try_from(3i32)?, RegistryRoot::Users);
+        assert!(RegistryRoot::try_from(99i32).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn test_registry_squid_paths() -> Result<()> {
+        let p1 = RegistryStore::get_machine_product_path("{01234567-89AB-CDEF-0123-456789ABCDEF}")?;
         assert!(p1.contains("S-1-5-18"));
         assert!(p1.contains("Products"));
         assert!(p1.contains("76543210BA98FEDC1032547698BADCFE"));
 
         let p2 =
-            RegistryStore::get_machine_component_path("{01234567-89AB-CDEF-0123-456789ABCDEF}")
-                .unwrap();
+            RegistryStore::get_machine_component_path("{01234567-89AB-CDEF-0123-456789ABCDEF}")?;
         assert!(p2.contains("S-1-5-18"));
         assert!(p2.contains("Components"));
         assert!(p2.contains("76543210BA98FEDC1032547698BADCFE"));
 
-        let p3 = RegistryStore::get_machine_upgrade_path("{01234567-89AB-CDEF-0123-456789ABCDEF}")
-            .unwrap();
+        let p3 = RegistryStore::get_machine_upgrade_path("{01234567-89AB-CDEF-0123-456789ABCDEF}")?;
         assert!(!p3.contains("S-1-5-18"));
         assert!(p3.contains("UpgradeCodes"));
         assert!(p3.contains("76543210BA98FEDC1032547698BADCFE"));
 
-        let p4 =
-            RegistryStore::get_user_product_path("{01234567-89AB-CDEF-0123-456789ABCDEF}").unwrap();
+        let p4 = RegistryStore::get_user_product_path("{01234567-89AB-CDEF-0123-456789ABCDEF}")?;
         assert!(!p4.contains("S-1-5-18"));
         assert!(p4.contains("Installer\\\\Products"));
         assert!(p4.contains("76543210BA98FEDC1032547698BADCFE"));
 
-        let p5 =
-            RegistryStore::get_user_feature_path("{01234567-89AB-CDEF-0123-456789ABCDEF}").unwrap();
+        let p5 = RegistryStore::get_user_feature_path("{01234567-89AB-CDEF-0123-456789ABCDEF}")?;
         assert!(!p5.contains("S-1-5-18"));
         assert!(p5.contains("Installer\\\\Features"));
         assert!(p5.contains("76543210BA98FEDC1032547698BADCFE"));
 
-        let p6 =
-            RegistryStore::get_user_upgrade_path("{01234567-89AB-CDEF-0123-456789ABCDEF}").unwrap();
+        let p6 = RegistryStore::get_user_upgrade_path("{01234567-89AB-CDEF-0123-456789ABCDEF}")?;
         assert!(!p6.contains("S-1-5-18"));
         assert!(p6.contains("Installer\\\\UpgradeCodes"));
         assert!(p6.contains("76543210BA98FEDC1032547698BADCFE"));
+        Ok(())
     }
 }

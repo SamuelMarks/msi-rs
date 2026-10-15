@@ -1221,12 +1221,8 @@ mod tests {
         // Invalid UTF-8 include file test (triggers read_to_string failure even when running as root)
         let invalid_utf8_inc = temp_dir.join("invalid_utf8.wxi");
         assert!(std::fs::write(&invalid_utf8_inc, [0xFF, 0xFE, 0xFD]).is_ok());
-        assert!(prep
-            .process(
-                &format!("<?include \"{}\"?>", invalid_utf8_inc.display()),
-                &mut ctx
-            )
-            .is_err());
+        let inc_expr = format!("<?include \"{}\"?>", invalid_utf8_inc.display());
+        assert!(prep.process(&inc_expr, &mut ctx).is_err());
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }

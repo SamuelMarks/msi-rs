@@ -144,8 +144,6 @@ pub fn decompress_xpress_huffman(_input: &[u8], _output_size: usize) -> Result<V
 
 #[cfg(test)]
 #[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
     clippy::field_reassign_with_default,
     clippy::shadow_unrelated,
     clippy::unreadable_literal,
@@ -220,21 +218,21 @@ mod tests {
     #[test]
     fn test_xpress_errors() {
         // Truncated tag
-        let err = decompress_xpress(&[0x00], 5).unwrap_err();
+        let err = decompress_xpress(&[0x00], 5).err().unwrap_or_default();
         assert!(matches!(err, MsiError::WimDecompressionError { .. }));
 
         // Truncated match info
         let mut input = vec![0x02, 0x00, 0x00, 0x00];
         input.push(b'A');
         input.push(0x00); // Only 1 byte of match info
-        let err = decompress_xpress(&input, 5).unwrap_err();
+        let err = decompress_xpress(&input, 5).err().unwrap_or_default();
         assert!(matches!(err, MsiError::WimDecompressionError { .. }));
 
         // Truncated match length
         let mut input = vec![0x02, 0x00, 0x00, 0x00];
         input.push(b'A');
         input.extend_from_slice(&7u16.to_le_bytes());
-        let err = decompress_xpress(&input, 15).unwrap_err();
+        let err = decompress_xpress(&input, 15).err().unwrap_or_default();
         assert!(matches!(err, MsiError::WimDecompressionError { .. }));
 
         // Truncated extended match length
@@ -243,25 +241,25 @@ mod tests {
         input.extend_from_slice(&7u16.to_le_bytes());
         input.push(255);
         input.push(0x00); // Only 1 byte of extra2
-        let err = decompress_xpress(&input, 300).unwrap_err();
+        let err = decompress_xpress(&input, 300).err().unwrap_or_default();
         assert!(matches!(err, MsiError::WimDecompressionError { .. }));
 
         // Invalid match offset
         let mut input = vec![0x02, 0x00, 0x00, 0x00];
         input.push(b'A');
         input.extend_from_slice(&(100u16 << 3).to_le_bytes()); // offset 101
-        let err = decompress_xpress(&input, 5).unwrap_err();
+        let err = decompress_xpress(&input, 5).err().unwrap_or_default();
         assert!(matches!(err, MsiError::WimDecompressionError { .. }));
 
         // Output size mismatch
         let input = vec![0x00, 0x00, 0x00, 0x00, b'A'];
-        let err = decompress_xpress(&input, 5).unwrap_err();
+        let err = decompress_xpress(&input, 5).err().unwrap_or_default();
         assert!(matches!(err, MsiError::WimDecompressionError { .. }));
     }
 
     #[test]
     fn test_xpress_huffman_not_implemented() {
-        let err = decompress_xpress_huffman(&[], 0).unwrap_err();
+        let err = decompress_xpress_huffman(&[], 0).err().unwrap_or_default();
         assert!(matches!(err, MsiError::WimDecompressionError { .. }));
     }
 }

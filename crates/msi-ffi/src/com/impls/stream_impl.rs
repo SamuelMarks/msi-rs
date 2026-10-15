@@ -69,17 +69,19 @@ unsafe extern "system" fn read(
     }
 
     let remaining = obj.data.len() as u64 - obj.offset;
-    let to_read = std::cmp::min(u64::from(cb), remaining) as usize;
+    let to_read = usize::try_from(std::cmp::min(u64::from(cb), remaining)).unwrap_or(0);
 
     ptr::copy_nonoverlapping(
-        obj.data.as_ptr().add(obj.offset as usize),
+        obj.data
+            .as_ptr()
+            .add(usize::try_from(obj.offset).unwrap_or(0)),
         pv.cast::<u8>(),
         to_read,
     );
     obj.offset += to_read as u64;
 
     if !pcb_read.is_null() {
-        *pcb_read = to_read as u32;
+        *pcb_read = u32::try_from(to_read).unwrap_or(u32::MAX);
     }
     S_OK
 }
@@ -103,16 +105,20 @@ unsafe extern "system" fn seek(
 ) -> HRESULT {
     let obj = &mut *(this.cast::<NativeStream>());
     let new_pos = match dw_origin {
-        0 => dlib_move.QuadPart,                         // STREAM_SEEK_SET
-        1 => obj.offset as i64 + dlib_move.QuadPart,     // STREAM_SEEK_CUR
-        2 => obj.data.len() as i64 + dlib_move.QuadPart, // STREAM_SEEK_END
+        0 => dlib_move.QuadPart, // STREAM_SEEK_SET
+        1 => i64::try_from(obj.offset)
+            .unwrap_or(i64::MAX)
+            .saturating_add(dlib_move.QuadPart), // STREAM_SEEK_CUR
+        2 => i64::try_from(obj.data.len())
+            .unwrap_or(i64::MAX)
+            .saturating_add(dlib_move.QuadPart), // STREAM_SEEK_END
         _ => return crate::error::E_INVALIDARG,
     };
 
     if new_pos < 0 {
         return crate::error::E_INVALIDARG;
     }
-    obj.offset = new_pos as u64;
+    obj.offset = u64::try_from(new_pos).unwrap_or(0);
 
     if !plib_new_position.is_null() {
         (*plib_new_position).QuadPart = obj.offset;
@@ -213,6 +219,7 @@ static NATIVE_STREAM_VTBL: IStreamVtbl = IStreamVtbl {
 };
 
 #[cfg(test)]
+#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 mod tests {
     use super::*;
     use crate::com::util::ComObject;
@@ -229,6 +236,9 @@ mod tests {
         assert_eq!(stream.release(), 0);
 
         unsafe {
+            assert_eq!(((*stream.lp_vtbl).parent.AddRef)(unk), 1);
+            assert_eq!(((*stream.lp_vtbl).parent.AddRef)(unk), 2);
+            assert_eq!(((*stream.lp_vtbl).parent.Release)(unk), 1);
             assert_eq!(
                 query_interface(unk, ptr::null(), ptr::null_mut()),
                 crate::com::E_NOINTERFACE

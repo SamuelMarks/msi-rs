@@ -1,5 +1,3 @@
-#![allow(clippy::unreachable)]
-
 //! High-level MSI package types, binary I/O, and builder.
 //!
 //! Provides end-to-end package reading, writing, and fluent building:
@@ -576,7 +574,6 @@ impl Package {
             }
 
             let (decoded_name, is_table) = decode_msi_stream_name(entry_name).unwrap_or_default();
-            println!("ENTRY: {entry_name:?} -> decoded: {decoded_name:?}, is_table: {is_table:?}");
             if decoded_name == "_StringPool" {
                 let st_data = reader.read_stream(entry_name)?;
                 pool_bytes = Some(st_data);
@@ -599,8 +596,10 @@ impl Package {
             _ => StringPool::new(crate::database::string_pool::CODEPAGE_ANSI_1252),
         };
 
-        let mut database = LinkedDatabase::default();
-        database.embedded_storages = embedded_storages;
+        let mut database = LinkedDatabase {
+            embedded_storages,
+            ..LinkedDatabase::default()
+        };
 
         if let Some((_, columns_stream_name)) = table_streams
             .iter()
@@ -659,9 +658,7 @@ impl Package {
                 for (_, col_def) in cols {
                     schema = schema.with_column(col_def);
                 }
-                if let Err(e) = database.catalog.add_table(schema.clone()) {
-                    println!("ADD TABLE ERROR {}: {}", schema.name, e);
-                }
+                let _ = database.catalog.add_table(schema);
             }
         } else {
             // No _Columns catalog stream found
@@ -821,9 +818,6 @@ impl Package {
                 if let Some(schema) = self.database.catalog.get_table(tbl) {
                     for (idx, col) in schema.columns.iter().enumerate() {
                         let bitmask = col.to_bitmask();
-                        if tbl == "Component" {
-                            println!("COMPONENT BITMASK: {bitmask}");
-                        }
                         let column_number = (idx + 1) as i16;
                         let rec = Record::with_fields(vec![
                             FieldValue::String(tbl.clone()),
@@ -831,9 +825,6 @@ impl Package {
                             FieldValue::String(col.name.clone()),
                             FieldValue::Short(bitmask as i16),
                         ]);
-                        if tbl == "Component" {
-                            println!("DEBUG _Columns push: {:?}", rec.fields());
-                        }
                         col_records.push(rec);
                     }
                 }
@@ -1368,7 +1359,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_package_empty_stream_name_fallback() {
+    fn test_package_empty_stream_name_fallback(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         use crate::cfb::header::CfbVersion;
         use crate::cfb::writer::CfbWriter;
         let mut w = CfbWriter::new(CfbVersion::V3);
@@ -1381,22 +1373,24 @@ mod tests {
         // No, `unwrap_or_default()` returns `("", false)`.
         // So a string that fails to parse will map to `("", false)`.
         let invalid_encoded = "\u{10000}"; // some invalid encoded string
-        w.add_stream(invalid_encoded, &[1, 2, 3]).unwrap();
+        assert!(w.add_stream(invalid_encoded, &[1, 2, 3]).is_ok());
 
         let cfb_bytes = w.build();
-        let pkg = Package::from_bytes(&cfb_bytes).expect("test");
+        let pkg = Package::from_bytes(&cfb_bytes)?;
         assert!(pkg.get_embedded_cabinet(invalid_encoded).is_some());
+        Ok(())
     }
 
     #[test]
-    fn test_package_sub_storage_extraction() {
+    fn test_package_sub_storage_extraction() -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
         use crate::cfb::header::CfbVersion;
         use crate::cfb::writer::CfbWriter;
         let mut builder = CfbWriter::new(CfbVersion::V3);
-        builder.add_stream("SubStorage", b"dummy").expect("test");
+        assert!(builder.add_stream("SubStorage", b"dummy").is_ok());
         let mut bytes = builder.build();
 
-        let root_dir_sec = u32::from_le_bytes(bytes[48..52].try_into().expect("test")) as usize;
+        let root_dir_sec = u32::from_le_bytes(bytes[48..52].try_into()?) as usize;
         let offset = (root_dir_sec + 1) * 512;
         for i in 1..4 {
             let entry_off = offset + i * 128;
@@ -1405,19 +1399,21 @@ mod tests {
             }
         }
 
-        let temp_dir = tempfile::tempdir().expect("test");
+        let temp_dir = tempfile::tempdir()?;
         let path = temp_dir.path().join("substorage.msi");
-        fs::write(&path, &bytes).expect("test");
+        assert!(fs::write(&path, &bytes).is_ok());
 
         // Let's ignore the error, just make sure it executes line 588
         let _ = Package::open(&path);
+        Ok(())
     }
 
     #[test]
-    fn test_package_open_with_malformed_columns() {
+    fn test_package_open_with_malformed_columns(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        use crate::database::tables::record::{FieldValue, Record};
         let mut pkg = Package::default();
         // Insert a malformed _Columns record directly.
-        use crate::database::tables::record::{FieldValue, Record};
         let rows = vec![Record::with_fields(vec![
             FieldValue::Long(1),
             FieldValue::Long(2),
@@ -1426,11 +1422,12 @@ mod tests {
         ])];
         pkg.database.tables.insert("_Columns".to_string(), rows);
 
-        let temp_dir = tempfile::tempdir().expect("test");
+        let temp_dir = tempfile::tempdir()?;
         let path = temp_dir.path().join("test.msi");
-        fs::write(&path, pkg.to_bytes().expect("test")).expect("test");
+        assert!(fs::write(&path, pkg.to_bytes()?).is_ok());
 
         assert!(Package::open(&path).is_err());
+        Ok(())
     }
 
     use crate::database::tables::types::{ComponentName, DirectoryId, FeatureName, FileKey};
@@ -1618,7 +1615,8 @@ mod tests {
 
     /// Tests package end-to-end binary roundtrip serialization and deserialization.
     #[test]
-    fn test_package_metadata_and_builder_derives() {
+    fn test_package_metadata_and_builder_derives(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let m = PackageMetadata::new(
             "Name",
             "Manufacturer",
@@ -1632,8 +1630,7 @@ mod tests {
             .manufacturer("Manufacturer")
             .version(ProductVersion::new(1, 0, 0))
             .product_code("{00000000-0000-0000-0000-000000000000}")
-            .build()
-            .unwrap();
+            .build()?;
 
         // cover mut accessors
         pkg.metadata_mut().product_name = "New Name".to_string();
@@ -1642,6 +1639,7 @@ mod tests {
 
         let pb = Package::builder();
         let _ = format!("{pb:?}");
+        Ok(())
     }
 
     #[test]
@@ -1651,8 +1649,8 @@ mod tests {
         clippy::manual_flatten,
         clippy::redundant_clone
     )]
-    fn test_package_binary_roundtrip() {
-        let target_dir = DirectoryId::new("TARGETDIR").unwrap();
+    fn test_package_binary_roundtrip() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let target_dir = DirectoryId::new("TARGETDIR")?;
 
         let builder = Package::builder()
             .product_name("Roundtrip Product")
@@ -1667,9 +1665,9 @@ mod tests {
             })
             .add_embedded_cabinet("#test.cab", vec![0x4D, 0x53, 0x43, 0x46, 0x00, 0x00]);
 
-        let pkg = builder.build().expect("test");
-        let bytes = pkg.to_bytes().expect("test");
-        let restored = Package::from_bytes(&bytes).expect("test");
+        let pkg = builder.build()?;
+        let bytes = pkg.to_bytes()?;
+        let restored = Package::from_bytes(&bytes)?;
 
         assert_eq!(restored.metadata().product_name(), "Roundtrip Product");
         assert_eq!(restored.metadata().manufacturer(), "Roundtrip Vendor");
@@ -1697,7 +1695,7 @@ mod tests {
         let file_path = temp_dir.join("test_save_open.msi");
 
         assert!(pkg.save(&file_path).is_ok());
-        let from_file = Package::open(&file_path).expect("test");
+        let from_file = Package::open(&file_path)?;
         assert_eq!(from_file.metadata().product_name(), "Roundtrip Product");
         assert!(Package::open(Path::new("/bad/path.msi")).is_err());
 
@@ -1708,6 +1706,7 @@ mod tests {
         let _ = DirectoryId::new(""); // coverage:ignore-line
                                       // Test empty build
         let _ = Package::builder().build(); // coverage:ignore-line
+        Ok(())
     }
 
     /// Tests validation errors when fields are omitted or whitespace.
@@ -1825,7 +1824,7 @@ mod tests {
         clippy::manual_flatten,
         clippy::redundant_clone
     )]
-    fn test_package_from_bytes_edge_cases() {
+    fn test_package_from_bytes_edge_cases() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut writer = CfbWriter::new(CfbVersion::V4);
 
         // 1. Corrupted Summary Information stream (fails SummaryInfo::parse)
@@ -1910,10 +1909,11 @@ mod tests {
             &cols_stream,
             &prop_stream,
         ] {
-            let corrupted = corrupt_stream_entry(&valid_bytes, name).expect("test");
+            let corrupted = corrupt_stream_entry(&valid_bytes, name).ok_or("none")?;
             assert!(Package::from_bytes(&corrupted).is_err());
         }
         assert!(corrupt_stream_entry(&valid_bytes, "NonExistentStream").is_none());
+        Ok(())
     }
 
     /// Corrupts a directory entry's starting sector to point out-of-bounds in mini-stream.
@@ -1951,7 +1951,8 @@ mod tests {
         clippy::similar_names,
         clippy::cast_possible_wrap
     )]
-    fn test_package_columns_and_properties_edge_cases() {
+    fn test_package_columns_and_properties_edge_cases(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         fn transpose_table(
             rows: &[Vec<u8>],
             layout: &crate::database::physical::PhysicalTableLayout<'_>,
@@ -1992,8 +1993,7 @@ mod tests {
             .with_column(ColumnDef::new("Type", DataType::Short));
 
         let layout =
-            crate::database::physical::PhysicalTableLayout::new(&columns_schema.columns, false)
-                .unwrap();
+            crate::database::physical::PhysicalTableLayout::new(&columns_schema.columns, false)?;
         let _ = transpose_table(&[], &layout);
 
         let mut col_rows = Vec::new();
@@ -2008,11 +2008,7 @@ mod tests {
             FieldValue::String("Col1".to_string()),
             FieldValue::Short(0x0040),
         ]);
-        let s1 = rec1.serialize(
-            &columns_schema.physical_layout().expect("test"),
-            &mut pool,
-            2,
-        );
+        let s1 = rec1.serialize(&columns_schema.physical_layout()?, &mut pool, 2);
         assert!(s1.is_ok());
         col_rows.push(s1.unwrap_or_default());
 
@@ -2023,11 +2019,7 @@ mod tests {
             FieldValue::Null,
             FieldValue::Short(0x0040),
         ]);
-        let s2 = rec2.serialize(
-            &columns_schema.physical_layout().expect("test"),
-            &mut pool,
-            2,
-        );
+        let s2 = rec2.serialize(&columns_schema.physical_layout()?, &mut pool, 2);
         assert!(s2.is_ok());
         col_rows.push(s2.unwrap_or_default());
 
@@ -2038,11 +2030,7 @@ mod tests {
             FieldValue::String("ColErr".to_string()),
             FieldValue::Short(0x0400 | 0x0800), // conflicting short + long
         ]);
-        let s3 = rec3.serialize(
-            &columns_schema.physical_layout().expect("test"),
-            &mut pool,
-            2,
-        );
+        let s3 = rec3.serialize(&columns_schema.physical_layout()?, &mut pool, 2);
         assert!(s3.is_ok());
         col_rows.push(s3.unwrap_or_default());
 
@@ -2054,11 +2042,7 @@ mod tests {
             FieldValue::String(bad_col.name.clone()),
             FieldValue::Short(bad_col.to_bitmask() as i16),
         ]);
-        let s3b = rec3b.serialize(
-            &columns_schema.physical_layout().expect("test"),
-            &mut pool,
-            2,
-        );
+        let s3b = rec3b.serialize(&columns_schema.physical_layout()?, &mut pool, 2);
         assert!(s3b.is_ok());
         col_rows.push(s3b.unwrap_or_default());
 
@@ -2070,11 +2054,7 @@ mod tests {
             FieldValue::String(valid_col1.name.clone()),
             FieldValue::Short(valid_col1.to_bitmask() as i16),
         ]);
-        let s4a = rec4a.serialize(
-            &columns_schema.physical_layout().expect("test"),
-            &mut pool,
-            2,
-        );
+        let s4a = rec4a.serialize(&columns_schema.physical_layout()?, &mut pool, 2);
         assert!(s4a.is_ok());
         col_rows.push(s4a.unwrap_or_default());
 
@@ -2086,11 +2066,7 @@ mod tests {
             FieldValue::String(valid_col2.name.clone()),
             FieldValue::Short(valid_col2.to_bitmask() as i16),
         ]);
-        let s4b = rec4b.serialize(
-            &columns_schema.physical_layout().expect("test"),
-            &mut pool,
-            2,
-        );
+        let s4b = rec4b.serialize(&columns_schema.physical_layout()?, &mut pool, 2);
         assert!(s4b.is_ok());
         col_rows.push(s4b.unwrap_or_default());
 
@@ -2103,11 +2079,7 @@ mod tests {
             FieldValue::String(prop_col1.name.clone()),
             FieldValue::Short(prop_col1.to_bitmask() as i16),
         ]);
-        let s5a = rec5a.serialize(
-            &columns_schema.physical_layout().expect("test"),
-            &mut pool,
-            2,
-        );
+        let s5a = rec5a.serialize(&columns_schema.physical_layout()?, &mut pool, 2);
         assert!(s5a.is_ok());
         col_rows.push(s5a.unwrap_or_default());
         let rec5b = Record::with_fields(vec![
@@ -2116,15 +2088,10 @@ mod tests {
             FieldValue::String(prop_col2.name.clone()),
             FieldValue::Short(prop_col2.to_bitmask() as i16),
         ]);
-        let s5b = rec5b.serialize(
-            &columns_schema.physical_layout().expect("test"),
-            &mut pool,
-            2,
-        );
+        let s5b = rec5b.serialize(&columns_schema.physical_layout()?, &mut pool, 2);
         assert!(s5b.is_ok());
         col_rows.push(s5b.unwrap_or_default());
-        let col_bytes =
-            transpose_table(&col_rows, &columns_schema.physical_layout().expect("test"));
+        let col_bytes = transpose_table(&col_rows, &columns_schema.physical_layout()?);
 
         // Add Property records:
         // - "ProductVersion" => "invalid_version_string"
@@ -2138,32 +2105,31 @@ mod tests {
             FieldValue::String("ProductVersion".to_string()),
             FieldValue::String("invalid-version-string".to_string()),
         ]);
-        let sp1 = prop_rec1.serialize(&prop_schema.physical_layout().expect("test"), &mut pool, 2);
+        let sp1 = prop_rec1.serialize(&prop_schema.physical_layout()?, &mut pool, 2);
         assert!(sp1.is_ok());
         prop_rows.push(sp1.unwrap_or_default());
         let prop_rec2 = Record::with_fields(vec![
             FieldValue::String("UNRECOGNIZED_PROPERTY".to_string()),
             FieldValue::String("some_value".to_string()),
         ]);
-        let sp2 = prop_rec2.serialize(&prop_schema.physical_layout().expect("test"), &mut pool, 2);
+        let sp2 = prop_rec2.serialize(&prop_schema.physical_layout()?, &mut pool, 2);
         assert!(sp2.is_ok());
         prop_rows.push(sp2.unwrap_or_default());
         let prop_rec3 = Record::with_fields(vec![
             FieldValue::String("NullValProp".to_string()),
             FieldValue::Null,
         ]);
-        let sp3 = prop_rec3.serialize(&prop_schema.physical_layout().expect("test"), &mut pool, 2);
+        let sp3 = prop_rec3.serialize(&prop_schema.physical_layout()?, &mut pool, 2);
         assert!(sp3.is_ok());
         prop_rows.push(sp3.unwrap_or_default());
         let prop_rec_empty = Record::with_fields(vec![
             FieldValue::String(String::new()),
             FieldValue::String("empty_prop_val".to_string()),
         ]);
-        let sp_empty =
-            prop_rec_empty.serialize(&prop_schema.physical_layout().expect("test"), &mut pool, 2);
+        let sp_empty = prop_rec_empty.serialize(&prop_schema.physical_layout()?, &mut pool, 2);
         assert!(sp_empty.is_ok());
         prop_rows.push(sp_empty.unwrap_or_default());
-        let prop_bytes = transpose_table(&prop_rows, &prop_schema.physical_layout().expect("test"));
+        let prop_bytes = transpose_table(&prop_rows, &prop_schema.physical_layout()?);
 
         // Also add custom table with a valid row and a corrupted row (fails Record::deserialize)
         let custom_schema = TableSchema::new("CustomTbl")
@@ -2176,19 +2142,12 @@ mod tests {
             FieldValue::Short(42),
             FieldValue::String("Hello".to_string()),
         ]);
-        let sc = custom_rec.serialize(
-            &custom_schema.physical_layout().expect("test"),
-            &mut pool,
-            2,
-        );
+        let sc = custom_rec.serialize(&custom_schema.physical_layout()?, &mut pool, 2);
         assert!(sc.is_ok());
         let mut custom_rows = vec![sc.unwrap_or_default()];
         // Add 4 bytes for an invalid record chunk where string ID (0xFFFF) is out of bounds
         custom_rows.push(vec![42, 0, 0xFF, 0xFF]);
-        let custom_bytes = transpose_table(
-            &custom_rows,
-            &custom_schema.physical_layout().expect("test"),
-        );
+        let custom_bytes = transpose_table(&custom_rows, &custom_schema.physical_layout()?);
 
         // Build CFB container
         let mut writer = CfbWriter::new(CfbVersion::V4);
@@ -2216,6 +2175,7 @@ mod tests {
             pkg.database().catalog.table_names()
         );
         assert_eq!(pkg.metadata().version(), ProductVersion::new(1, 0, 0));
+        Ok(())
     }
 
     /// Tests [`Package::to_bytes`] when `_Tables` and `_Columns` already exist and tables without schemas are present.
@@ -2478,7 +2438,8 @@ mod tests {
 
     /// Tests package serialization when `_Tables` and `_Columns` tables are explicitly present but empty.
     #[test]
-    fn test_package_serialization_with_empty_catalog_tables() {
+    fn test_package_serialization_with_empty_catalog_tables(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut pkg = Package::from_database(LinkedDatabase::default(), HashMap::new());
         pkg.database
             .tables
@@ -2504,8 +2465,9 @@ mod tests {
                 FieldValue::Short(0),
             ])],
         );
-        let bytes_non_empty = pkg_non_empty.to_bytes().expect("test");
+        let bytes_non_empty = pkg_non_empty.to_bytes()?;
         let _ = Package::from_bytes(&bytes_non_empty);
+        Ok(())
     }
 
     /// Tests package builder validation failure on whitespace-only fields.
@@ -2666,18 +2628,18 @@ mod tests {
 
     /// Verifies that system catalog streams and table streams use exact MS-CFB naming matching `WiX`.
     #[test]
-    fn test_package_table_stream_name_parity() {
+    fn test_package_table_stream_name_parity() -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
         let pkg = Package::builder()
             .product_name("Test App")
             .manufacturer("Vendor")
             .version(ProductVersion::new(1, 0, 0))
             .product_code("{12345678-1234-1234-1234-123456789012}")
             .add_embedded_cabinet("#payload.cab", vec![0xCA, 0xFE])
-            .build()
-            .expect("Valid minimal package");
+            .build()?;
 
-        let bytes = pkg.to_bytes().expect("Failed to serialize package");
-        let reader = CfbReader::new(&bytes).expect("Failed to parse CFB");
+        let bytes = pkg.to_bytes()?;
+        let reader = CfbReader::new(&bytes)?;
 
         let mut all_stream_names: Vec<String> = reader
             .entries()
@@ -2690,12 +2652,12 @@ mod tests {
             .collect();
         all_stream_names.sort();
 
-        let pool_name = encode_msi_stream_name("_StringPool", true).expect("test");
-        let data_name = encode_msi_stream_name("_StringData", true).expect("test");
-        let tables_name = encode_msi_stream_name("_Tables", true).expect("test");
-        let columns_name = encode_msi_stream_name("_Columns", true).expect("test");
-        let property_name = encode_msi_stream_name("Property", true).expect("test");
-        let cab_name = encode_msi_stream_name("payload.cab", false).expect("test");
+        let pool_name = encode_msi_stream_name("_StringPool", true)?;
+        let data_name = encode_msi_stream_name("_StringData", true)?;
+        let tables_name = encode_msi_stream_name("_Tables", true)?;
+        let columns_name = encode_msi_stream_name("_Columns", true)?;
+        let property_name = encode_msi_stream_name("Property", true)?;
+        let cab_name = encode_msi_stream_name("payload.cab", false)?;
         let summary_name = SUMMARY_INFORMATION_STREAM.to_string();
 
         assert!(all_stream_names.contains(&pool_name));
@@ -2705,6 +2667,7 @@ mod tests {
         assert!(all_stream_names.contains(&property_name));
         assert!(all_stream_names.contains(&cab_name));
         assert!(all_stream_names.contains(&summary_name));
+        Ok(())
     }
 
     /// Tests auto-generated product codes (* and ?), summary codepage fallback, missing table schema handling in serialization, and package file saving.
@@ -2773,14 +2736,15 @@ mod tests {
 
     /// Tests that the synthesized `_Columns` table uses physical (not logical) indices for the `Number` field.
     #[test]
-    fn test_package_synthesize_columns_physical_layout() {
+    fn test_package_synthesize_columns_physical_layout(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let builder = Package::builder()
             .product_name("Edge Product 4")
             .manufacturer("Edge Corp 4")
             .version(ProductVersion::new(1, 0, 0))
             .product_code("{44444444-4444-4444-4444-444444444444}");
 
-        let mut pkg = builder.build().expect("test");
+        let mut pkg = builder.build()?;
 
         // Create a custom table where logical != physical
         // Logically: 0: Value (String), 1: Name (String) [PK], 2: Id (Short)
@@ -2789,10 +2753,7 @@ mod tests {
             .with_column(ColumnDef::new("Name", DataType::String { max_len: 72 }).primary_key())
             .with_column(ColumnDef::new("Id", DataType::Short));
 
-        pkg.database_mut()
-            .catalog
-            .add_table(custom_schema)
-            .expect("test");
+        pkg.database_mut().catalog.add_table(custom_schema)?;
         pkg.database_mut().tables.insert(
             "LayoutTest".to_string(),
             vec![Record::with_fields(vec![
@@ -2802,8 +2763,8 @@ mod tests {
             ])],
         );
 
-        let cfb_bytes = pkg.to_bytes().expect("Serialization succeeded");
-        let pkg_reparsed = Package::from_bytes(&cfb_bytes).expect("Deserialization succeeded");
+        let cfb_bytes = pkg.to_bytes()?;
+        let pkg_reparsed = Package::from_bytes(&cfb_bytes)?;
 
         let mut cols_records = pkg_reparsed
             .database()
@@ -2850,11 +2811,13 @@ mod tests {
                 ("Id".to_string(), 3)
             ]
         );
+        Ok(())
     }
 
     #[test]
     #[allow(clippy::unreachable)]
-    fn test_package_missing_columns_stream_and_schema() {
+    fn test_package_missing_columns_stream_and_schema(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         use crate::cfb::header::CfbVersion;
         use crate::cfb::writer::CfbWriter;
         use crate::database::string_pool::CODEPAGE_UTF8;
@@ -2863,29 +2826,20 @@ mod tests {
         let mut w = CfbWriter::new(CfbVersion::V4);
         let mut pool_bytes = vec![0u8; 4];
         pool_bytes[0..2].copy_from_slice(&CODEPAGE_UTF8.to_le_bytes());
-        w.add_stream(
-            &encode_msi_stream_name("_StringPool", true).expect("test"),
-            &pool_bytes,
-        )
-        .expect("test");
-        w.add_stream(
-            &encode_msi_stream_name("_StringData", true).expect("test"),
-            &[],
-        )
-        .expect("test");
-        w.add_stream("SummaryInformation", &[]).expect("test");
+        w.add_stream(&encode_msi_stream_name("_StringPool", true)?, &pool_bytes)?;
+        w.add_stream(&encode_msi_stream_name("_StringData", true)?, &[])?;
+        assert!(w.add_stream("SummaryInformation", &[]).is_ok());
 
-        let tbl_name = encode_msi_stream_name("NoSchemaTable", true).expect("test");
-        w.add_stream(&tbl_name, &[0; 10]).expect("test");
+        let tbl_name = encode_msi_stream_name("NoSchemaTable", true)?;
+        w.add_stream(&tbl_name, &[0; 10])?;
 
         let buf = w.build();
-        let _ = Package::from_bytes(&buf).unwrap();
+        let _ = Package::from_bytes(&buf)?;
+        Ok(())
     }
 
     #[test]
-    fn test_package_uncovered_lines_batch() {
-        use crate::cfb::header::CfbVersion;
-        use crate::cfb::writer::CfbWriter;
+    fn test_package_uncovered_lines_batch() -> std::result::Result<(), Box<dyn std::error::Error>> {
         use crate::database::tables::record::Record;
         use crate::database::{column::ColumnDef, DataType, FieldValue, TableSchema};
         use crate::package::{PackageBuilder, ProductVersion};
@@ -2896,8 +2850,7 @@ mod tests {
             .manufacturer("Mfg")
             .version(ProductVersion::new(1, 0, 0))
             .product_code("Code")
-            .build()
-            .unwrap();
+            .build()?;
 
         // empty string cabinet
         package.database.add_record(
@@ -2925,85 +2878,60 @@ mod tests {
         );
 
         // Re-construct the Package to trigger Package::from_database and cover lines 387, 388
-        use crate::package::Package;
         let _ = Package::from_database(package.database.clone(), HashMap::default());
 
-        let _ = package.to_bytes().unwrap(); // Covers line 387, 388
+        let _ = package.to_bytes()?; // Covers line 387, 388
 
         // Cover line 883: 2 PKs, first is equal
-        package
-            .database
-            .catalog
-            .add_table(
-                TableSchema::new("TwoPKs")
-                    .with_column(
-                        ColumnDef::new("PK1", DataType::String { max_len: 32 }).primary_key(),
-                    )
-                    .with_column(
-                        ColumnDef::new("PK2", DataType::String { max_len: 32 }).primary_key(),
-                    )
-                    .with_column(
-                        ColumnDef::new("Val", DataType::String { max_len: 32 }).nullable(),
-                    ),
-            )
-            .unwrap();
-        package.database.add_record(
-            "TwoPKs",
-            Record::with_fields(vec![
-                FieldValue::String("Same".to_string()),
-                FieldValue::String("A".to_string()),
-                FieldValue::Null,
-            ]),
-        );
-        package.database.add_record(
-            "TwoPKs",
-            Record::with_fields(vec![
-                FieldValue::String("Same".to_string()),
-                FieldValue::String("B".to_string()),
-                FieldValue::Null,
-            ]),
-        );
-        let _ = package.to_bytes().unwrap(); // Covers line 883
+        package.database.catalog.add_table(
+            TableSchema::new("TwoPKs")
+                .with_column(ColumnDef::new("PK1", DataType::String { max_len: 32 }).primary_key())
+                .with_column(ColumnDef::new("PK2", DataType::String { max_len: 32 }).primary_key())
+                .with_column(ColumnDef::new("Val", DataType::String { max_len: 32 }).nullable()),
+        )?;
+        for pk2 in ["A", "B"] {
+            package.database.add_record(
+                "TwoPKs",
+                Record::with_fields(vec![
+                    FieldValue::String("Same".to_string()),
+                    FieldValue::String(pk2.to_string()),
+                    FieldValue::Null,
+                ]),
+            );
+        }
+        let _ = package.to_bytes()?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_package_malformed_stream_and_storage_entries(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        use crate::cfb::header::CfbVersion;
+        use crate::cfb::writer::CfbWriter;
 
         // Cover lines 590, 598 and 717
         let mut w = CfbWriter::new(CfbVersion::V3);
         // Malformed encoded stream names will not decode (empty decoded name)
         // 598 (cabinet)
-        w.add_stream("\u{4840}", &[1, 2, 3]).expect("test");
+        assert!(w.add_stream("\u{4840}", &[1, 2, 3]).is_ok());
         // 717 (empty table stream)
 
-        let tables_name = encode_msi_stream_name("_Tables", true).expect("test");
-        w.add_stream(&tables_name, &[1, 2, 3]).expect("test"); // Unaligned tables in _Tables
+        let tables_name = encode_msi_stream_name("_Tables", true)?;
+        assert!(w.add_stream(&tables_name, &[1, 2, 3]).is_ok()); // Unaligned tables in _Tables
 
         let pool = StringPool::new(CODEPAGE_UTF8);
         let (pool_bytes, data_bytes) = pool.serialize();
-        w.add_stream(
-            &encode_msi_stream_name("_StringPool", true).unwrap(),
-            &pool_bytes,
-        )
-        .unwrap();
-        w.add_stream(
-            &encode_msi_stream_name("_StringData", true).unwrap(),
-            &data_bytes,
-        )
-        .unwrap();
+        w.add_stream(&encode_msi_stream_name("_StringPool", true)?, &pool_bytes)?;
+        w.add_stream(&encode_msi_stream_name("_StringData", true)?, &data_bytes)?;
 
         let buf = w.build();
-        let _ = Package::from_bytes(&buf).unwrap();
+        let _ = Package::from_bytes(&buf)?;
 
         // 590 (storage)
         let mut w2 = CfbWriter::new(CfbVersion::V3);
-        w2.add_stream("\u{4840}", &[1, 2, 3]).expect("test");
-        w2.add_stream(
-            &encode_msi_stream_name("_StringPool", true).unwrap(),
-            &pool_bytes,
-        )
-        .unwrap();
-        w2.add_stream(
-            &encode_msi_stream_name("_StringData", true).unwrap(),
-            &data_bytes,
-        )
-        .unwrap();
+        assert!(w2.add_stream("\u{4840}", &[1, 2, 3]).is_ok());
+        w2.add_stream(&encode_msi_stream_name("_StringPool", true)?, &pool_bytes)?;
+        w2.add_stream(&encode_msi_stream_name("_StringData", true)?, &data_bytes)?;
         let mut buf2 = w2.build();
 
         // Find the directory entry for "\u{4840}" and change its type to Storage (0x01)
@@ -3015,6 +2943,7 @@ mod tests {
         }
 
         // We know extract_sub_storage will fail, so we ignore the error
-        let _ = Package::from_bytes(&buf2).unwrap();
+        let _ = Package::from_bytes(&buf2)?;
+        Ok(())
     }
 }

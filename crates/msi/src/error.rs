@@ -1042,6 +1042,15 @@ pub enum MsiError {
     UserManagementError(String),
 }
 
+impl Default for MsiError {
+    fn default() -> Self {
+        Self::Validation {
+            element: String::new(),
+            reason: String::new(),
+        }
+    }
+}
+
 /// A specialized [`Result`] type for MSI package operations.
 pub type Result<T> = std::result::Result<T, MsiError>;
 
@@ -1053,6 +1062,8 @@ mod tests {
     /// Tests core error variant display formatting.
     #[test]
     fn test_error_display_core() {
+        let def_err = MsiError::default();
+        assert_eq!(format!("{def_err}"), "Validation error on : ");
         let err_io = MsiError::Io(IoContext::from_string("file not found".to_string()));
         assert_eq!(format!("{err_io}"), "I/O error: file not found");
 

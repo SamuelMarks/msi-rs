@@ -780,7 +780,7 @@ mod tests {
         assert_eq!(kind, kind_clone);
         assert_ne!(ConsoleKind::LinuxVirtualTerminal, ConsoleKind::SerialPort);
         assert_ne!(ConsoleKind::UefiGop, ConsoleKind::HeadlessFallback);
-        assert!(format!("{kind:?}").contains("AnsiTerminal"));
+        assert!(format!("{kind:?}").contains("AnsiTerminal"), "format check");
     }
 
     /// Tests `SerialParity` enum variants and defaults.
@@ -788,6 +788,7 @@ mod tests {
     fn test_serial_parity_variants() {
         assert_eq!(SerialParity::default(), SerialParity::None);
         assert_ne!(SerialParity::Even, SerialParity::Odd);
-        assert!(format!("{:?}", SerialParity::Even).contains("Even"));
+        let even_dbg = format!("{:?}", SerialParity::Even);
+        assert!(even_dbg.contains("Even"));
     }
 }

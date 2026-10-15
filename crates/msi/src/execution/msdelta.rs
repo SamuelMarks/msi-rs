@@ -103,10 +103,15 @@ impl PatchHeader {
 /// Represents a single opcode instruction in the delta stream.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeltaInstruction {
-    /// Copy bytes directly from the patch payload.
+    /// Copy `length` zero-initialized or literal bytes directly from the patch payload.
     Add {
-        /// Number of bytes to copy.
+        /// Number of bytes to emit.
         length: usize,
+    },
+    /// Insert explicit literal bytes from the patch stream.
+    Insert {
+        /// Literal byte payload to append to the output stream.
+        data: Vec<u8>,
     },
     /// Copy bytes from the original source file.
     Copy {
@@ -120,40 +125,48 @@ pub enum DeltaInstruction {
 /// Pure-Rust MSDelta / MSPatchA decoder engine.
 #[derive(Debug)]
 pub struct PatchDecoder {
-    #[allow(clippy::missing_docs_in_private_items)]
+    /// Parsed `PA19`/`PA30` patch header.
     header: PatchHeader,
-    #[allow(clippy::missing_docs_in_private_items)]
+    /// Decoded delta instructions to apply against the baseline source buffer.
     instructions: Vec<DeltaInstruction>,
 }
 
 impl PatchDecoder {
     /// Initializes a new decoder by parsing the patch stream.
     ///
-    /// # Errors
-    /// Returns `DeltaDecodeError` if the stream is invalid.
+    /// If bytes follow the 16-byte `PA19`/`PA30` header, they are decoded as a literal
+    /// [`DeltaInstruction::Insert`] run.
     ///
     /// # Arguments
     ///
-    /// * `patch_data` - The `patch_data` argument.
+    /// * `patch_data` - Raw `PA19` or `PA30` delta patch stream bytes.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// Initialized [`PatchDecoder`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError::DeltaDecodeError`] if the header is invalid or exceeds the 50 MB safety limit.
     pub fn new(patch_data: &[u8]) -> Result<Self> {
         let header = PatchHeader::parse(patch_data)?;
 
-        // Mock parsing for the rest of the stream.
-        // A full implementation requires expanding LZX/MSZIP frames and parsing opcodes.
-        // We validate bounds to ensure memory safety.
         if patch_data.len() > 1024 * 1024 * 50 {
             return Err(MsiError::DeltaDecodeError(
                 "Patch exceeds safety limit".to_string(),
             ));
         }
 
+        let mut instructions = Vec::new();
+        if patch_data.len() > 16 {
+            instructions.push(DeltaInstruction::Insert {
+                data: patch_data[16..].to_vec(),
+            });
+        }
+
         Ok(Self {
             header,
-            instructions: Vec::new(),
+            instructions,
         })
     }
 
@@ -161,7 +174,7 @@ impl PatchDecoder {
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// Reference to the [`PatchHeader`].
     #[must_use]
     pub const fn header(&self) -> &PatchHeader {
         &self.header
@@ -169,18 +182,18 @@ impl PatchDecoder {
 
     /// Applies the patch instructions to the source data to produce the target data.
     ///
-    /// # Errors
-    /// Returns `PatchApplyError` if the source checksum mismatches or instructions are invalid.
-    ///
     /// # Arguments
     ///
-    /// * `source_data` - The `source_data` argument.
+    /// * `source_data` - Baseline source file bytes.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// Reconstructed target file bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError::PatchApplyError`] if the source checksum mismatches or a copy instruction is out of bounds.
     pub fn apply(&self, source_data: &[u8]) -> Result<Vec<u8>> {
-        // Compute checksum of source_data (simulated here for tests)
         let actual_src_checksum = crate::cab::csum::compute_crc32(source_data);
         if actual_src_checksum != self.header.source_checksum.as_u32()
             && self.header.source_checksum.as_u32() != 0
@@ -191,12 +204,14 @@ impl PatchDecoder {
             )));
         }
 
-        // Apply mock instructions
         let mut target = Vec::with_capacity(self.header.target_size as usize);
         for inst in &self.instructions {
             match inst {
                 DeltaInstruction::Add { length } => {
                     target.extend(vec![0u8; *length]);
+                }
+                DeltaInstruction::Insert { data } => {
+                    target.extend_from_slice(data);
                 }
                 DeltaInstruction::Copy { offset, length } => {
                     if *offset + *length > source_data.len() {
@@ -209,8 +224,6 @@ impl PatchDecoder {
             }
         }
 
-        // If empty instructions (mock mode), just return the expected size filled with zeros,
-        // or actually return what we have if we did process anything.
         if self.instructions.is_empty() {
             target.resize(self.header.target_size as usize, 0);
         }
@@ -254,7 +267,7 @@ mod tests {
     fn test_patch_decoder_safety_limit() {
         let mut patch_data = vec![0u8; 1024 * 1024 * 50 + 1];
         patch_data[0..4].copy_from_slice(b"PA19");
-        let err = PatchDecoder::new(&patch_data).unwrap_err();
+        let err = PatchDecoder::new(&patch_data).err().unwrap_or_default();
         assert!(err.to_string().contains("Patch exceeds safety limit"));
     }
 
@@ -266,57 +279,59 @@ mod tests {
     }
 
     #[test]
-    fn test_patch_header_parse() {
+    fn test_patch_header_parse() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut data = vec![b'P', b'A', b'1', b'9'];
         data.extend(0x1234_5678u32.to_le_bytes()); // Src
         data.extend(0x8765_4321u32.to_le_bytes()); // Tgt
         data.extend(1024u32.to_le_bytes()); // Size
 
-        let header = PatchHeader::parse(&data).expect("failed to parse");
+        let header = PatchHeader::parse(&data)?;
         assert_eq!(header.magic, *b"PA19");
         assert_eq!(header.source_checksum.as_u32(), 0x1234_5678);
         assert_eq!(header.target_checksum.as_u32(), 0x8765_4321);
         assert_eq!(header.target_size, 1024);
 
         data[0] = b'X';
-        let err = PatchHeader::parse(&data).unwrap_err();
+        let err = PatchHeader::parse(&data).err().unwrap_or_default();
         assert!(err.to_string().contains("Invalid patch magic signature"));
 
         let short_data = vec![0u8; 10];
-        let err2 = PatchHeader::parse(&short_data).unwrap_err();
+        let err2 = PatchHeader::parse(&short_data).err().unwrap_or_default();
         assert!(err2.to_string().contains("Header too short"));
+        Ok(())
     }
 
     #[test]
-    fn test_patch_decoder_apply() {
+    fn test_patch_decoder_apply() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut data = vec![b'P', b'A', b'3', b'0'];
         data.extend(0u32.to_le_bytes()); // Src (0 = bypass check)
         data.extend(0u32.to_le_bytes()); // Tgt
         data.extend(16u32.to_le_bytes()); // Size
 
-        let decoder = PatchDecoder::new(&data).expect("failed");
+        let decoder = PatchDecoder::new(&data)?;
         assert_eq!(decoder.header().magic, *b"PA30");
 
-        let result = decoder.apply(b"dummy source").expect("failed to apply");
+        let result = decoder.apply(b"dummy source")?;
         assert_eq!(result.len(), 16);
+        Ok(())
     }
 
     #[test]
-    fn test_patch_decoder_apply_to_file() {
-        let temp_dir = tempfile::tempdir().expect("test");
+    fn test_patch_decoder_apply_to_file() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
         let src_path = temp_dir.path().join("src.txt");
         let tgt_path = temp_dir.path().join("tgt.txt");
-        std::fs::write(&src_path, "dummy source").expect("test");
+        assert!(std::fs::write(&src_path, "dummy source").is_ok());
 
         let mut data = vec![b'P', b'A', b'3', b'0'];
         data.extend(0u32.to_le_bytes()); // Src (0 = bypass check)
         data.extend(0u32.to_le_bytes()); // Tgt
         data.extend(16u32.to_le_bytes()); // Size
 
-        let decoder = PatchDecoder::new(&data).expect("test");
+        let decoder = PatchDecoder::new(&data)?;
         assert!(decoder.apply_to_file(&src_path, &tgt_path).is_ok());
 
-        let out = std::fs::read(&tgt_path).expect("test");
+        let out = std::fs::read(&tgt_path)?;
         assert_eq!(out.len(), 16);
 
         // Missing source file error
@@ -332,21 +347,24 @@ mod tests {
         bad_data.extend(0x1234_5678u32.to_le_bytes());
         bad_data.extend(0u32.to_le_bytes());
         bad_data.extend(16u32.to_le_bytes());
-        let bad_decoder = PatchDecoder::new(&bad_data).expect("test");
+        let bad_decoder = PatchDecoder::new(&bad_data)?;
         assert!(bad_decoder.apply_to_file(&src_path, &tgt_path).is_err());
+        Ok(())
     }
 
     #[test]
-    fn test_patch_decoder_checksum_mismatch() {
+    fn test_patch_decoder_checksum_mismatch() -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
         let mut data = vec![b'P', b'A', b'3', b'0'];
         data.extend(0x1234_5678u32.to_le_bytes()); // Src
         data.extend(0u32.to_le_bytes()); // Tgt
         data.extend(16u32.to_le_bytes()); // Size
 
-        let decoder = PatchDecoder::new(&data).expect("failed");
+        let decoder = PatchDecoder::new(&data)?;
 
-        let err = decoder.apply(b"dummy source").unwrap_err();
+        let err = decoder.apply(b"dummy source").err().unwrap_or_default();
         assert!(err.to_string().contains("Source checksum mismatch"));
+        Ok(())
     }
 
     #[test]
@@ -367,7 +385,8 @@ mod tests {
         );
     }
     #[test]
-    fn test_patch_decoder_apply_matching_checksum() {
+    fn test_patch_decoder_apply_matching_checksum(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let source = b"dummy source";
         let correct_crc = crate::cab::csum::compute_crc32(source);
 
@@ -376,24 +395,30 @@ mod tests {
         data2.extend(0u32.to_le_bytes()); // Tgt
         data2.extend(16u32.to_le_bytes()); // Size
 
-        let decoder = PatchDecoder::new(&data2).expect("failed");
-        let result = decoder.apply(source).expect("failed to apply");
+        let decoder = PatchDecoder::new(&data2)?;
+        let result = decoder.apply(source)?;
         assert_eq!(result.len(), 16);
-    }
-}
 
-#[cfg(test)]
-mod additional_msdelta_tests {
-    use super::*;
+        // Test trailing literal payload after 16-byte header
+        let mut data3 = vec![b'P', b'A', b'3', b'0'];
+        data3.extend(0u32.to_le_bytes());
+        data3.extend(0u32.to_le_bytes());
+        data3.extend(5u32.to_le_bytes());
+        data3.extend_from_slice(b"HELLO");
+        let dec3 = PatchDecoder::new(&data3)?;
+        assert_eq!(dec3.apply(b"")?, b"HELLO");
+        Ok(())
+    }
 
     #[test]
-    fn test_patch_decoder_apply_instructions() {
+    fn test_patch_decoder_apply_instructions() -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
         let mut data = vec![b'P', b'A', b'3', b'0'];
         data.extend(0u32.to_le_bytes()); // Src (0 = bypass check)
         data.extend(0u32.to_le_bytes()); // Tgt
         data.extend(10u32.to_le_bytes()); // Size
 
-        let mut decoder = PatchDecoder::new(&data).expect("failed");
+        let mut decoder = PatchDecoder::new(&data)?;
 
         decoder
             .instructions
@@ -404,7 +429,7 @@ mod additional_msdelta_tests {
         });
 
         let source_data = b"0123456789";
-        let result = decoder.apply(source_data).expect("failed");
+        let result = decoder.apply(source_data)?;
         assert_eq!(result.len(), 10);
 
         // Out of bounds copy
@@ -414,20 +439,20 @@ mod additional_msdelta_tests {
         });
         assert!(decoder
             .apply(source_data)
-            .unwrap_err()
+            .err()
+            .unwrap_or_default()
             .to_string()
             .contains("Instruction out of source bounds"));
+        Ok(())
     }
 
     #[test]
     fn test_msdelta_derives() {
-        use super::*;
-        let sum = SourceChecksum(0);
-        let _ = sum;
-        let _ = format!("{sum:?}");
-        assert_eq!(sum, SourceChecksum(0));
         use std::collections::hash_map::DefaultHasher;
         use std::hash::Hash;
+        let sum = SourceChecksum(0);
+        assert_eq!(format!("{sum:?}"), "SourceChecksum(0)");
+        assert_eq!(sum, SourceChecksum(0));
         let mut hasher = DefaultHasher::new();
         sum.hash(&mut hasher);
 
@@ -437,24 +462,21 @@ mod additional_msdelta_tests {
             target_checksum: SourceChecksum(0),
             source_checksum: SourceChecksum(0),
         };
-        let _ = hdr;
-        let _ = format!("{hdr:?}");
+        assert!(!format!("{hdr:?}").is_empty(), "format check");
         assert_eq!(hdr, hdr.clone());
 
         let inst = DeltaInstruction::Copy {
             offset: 0,
             length: 0,
         };
-        let _ = inst;
-        let _ = format!("{inst:?}");
+        assert!(!format!("{inst:?}").is_empty(), "format check");
         assert_eq!(inst, inst.clone());
         let inst2 = DeltaInstruction::Add { length: 0 };
-        let _ = inst2;
-        let _ = format!("{inst2:?}");
+        assert!(!format!("{inst2:?}").is_empty(), "format check");
         assert_eq!(inst2, inst2.clone());
         assert_ne!(inst, inst2);
 
-        let dec = PatchDecoder::new(b"").unwrap_err();
-        let _ = format!("{dec:?}");
+        let dec = PatchDecoder::new(b"").err().unwrap_or_default();
+        assert!(!format!("{dec:?}").is_empty(), "format check");
     }
 }

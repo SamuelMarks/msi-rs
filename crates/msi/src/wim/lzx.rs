@@ -79,8 +79,6 @@ fn decompress_lzx_internal(input: &[u8], output_size: usize, window_bits: u8) ->
 
 #[cfg(test)]
 #[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
     clippy::field_reassign_with_default,
     clippy::shadow_unrelated,
     clippy::unreadable_literal,
@@ -93,7 +91,7 @@ mod tests {
 
     #[test]
     fn test_lzx_decompress_empty() -> Result<()> {
-        let err = decompress_lzx(&[], 100).unwrap_err();
+        let err = decompress_lzx(&[], 100).err().unwrap_or_default();
         assert!(matches!(err, MsiError::WimDecompressionError { .. }));
 
         let empty = decompress_lzx(&[], 0)?;
@@ -103,7 +101,9 @@ mod tests {
 
     #[test]
     fn test_lzx_decompress_invalid() {
-        let err = decompress_lzx(&[0xFF, 0xFF, 0xFF], 100).unwrap_err();
+        let err = decompress_lzx(&[0xFF, 0xFF, 0xFF], 100)
+            .err()
+            .unwrap_or_default();
         assert!(matches!(err, MsiError::WimDecompressionError { .. }));
     }
 

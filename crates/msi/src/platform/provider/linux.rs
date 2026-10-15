@@ -113,14 +113,15 @@ mod tests {
 
     /// Verifies XDG `.desktop` shortcut creation on `LinuxProvider`.
     #[test]
-    fn test_create_shortcut() {
+    fn test_create_shortcut() -> Result<(), Box<dyn std::error::Error>> {
         let provider = LinuxProvider::new();
-        let temp_dir = tempfile::tempdir().expect("test");
+        let temp_dir = tempfile::tempdir()?;
         let target = temp_dir.path().join("target");
         let shortcut = temp_dir.path().join("shortcut.desktop");
 
         assert!(PlatformProvider::create_shortcut(&provider, &target, &shortcut).is_ok());
         assert!(shortcut.exists());
+        Ok(())
     }
 
     /// Verifies `LinuxProvider` registry persistence, service tracking, and defaults.

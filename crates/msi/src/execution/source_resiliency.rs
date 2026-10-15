@@ -204,12 +204,12 @@ mod tests {
 
     #[test]
     #[cfg(not(windows))]
-    fn test_network_source_resolution() {
+    fn test_network_source_resolution() -> std::result::Result<(), Box<dyn std::error::Error>> {
         use std::fs;
         let base_mnt = Path::new("/tmp/msi_test_mnt/");
-        fs::create_dir_all(base_mnt.join("myshare")).expect("Expected success");
+        assert!(fs::create_dir_all(base_mnt.join("myshare")).is_ok());
         let test_file = base_mnt.join("myshare").join("test_file.txt");
-        fs::write(&test_file, "data").expect("Expected success");
+        assert!(fs::write(&test_file, "data").is_ok());
 
         let mut list = SourceList {
             sources: Vec::new(),
@@ -220,10 +220,9 @@ mod tests {
             unc_path: r"\\myshare".to_string(),
         }));
 
-        let res = list
-            .resolve_file(Path::new("test_file.txt"), None::<fn(&str) -> bool>)
-            .expect("test");
-        assert_eq!(res.file_name().expect("Expected a value"), "test_file.txt");
+        let res = list.resolve_file(Path::new("test_file.txt"), None::<fn(&str) -> bool>)?;
+        assert_eq!(res.file_name().ok_or("none")?, "test_file.txt");
+        Ok(())
     }
 
     use std::fs;
@@ -269,10 +268,10 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_file_local() {
-        let dir = tempdir().expect("test");
+    fn test_resolve_file_local() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let file_path = dir.path().join("test.cab");
-        fs::write(&file_path, "dummy data").expect("test");
+        assert!(fs::write(&file_path, "dummy data").is_ok());
 
         let list = SourceList {
             sources: vec![SourcePath::Media(MediaSource {
@@ -284,17 +283,16 @@ mod tests {
             last_used: None,
         };
 
-        let resolved = list
-            .resolve_file(Path::new("test.cab"), None::<fn(&str) -> bool>)
-            .expect("test");
+        let resolved = list.resolve_file(Path::new("test.cab"), None::<fn(&str) -> bool>)?;
         assert_eq!(resolved, file_path);
+        Ok(())
     }
 
     #[test]
-    fn test_resolve_file_last_used() {
-        let dir = tempdir().expect("test");
+    fn test_resolve_file_last_used() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let file_path = dir.path().join("test.cab");
-        fs::write(&file_path, "dummy data").expect("test");
+        assert!(fs::write(&file_path, "dummy data").is_ok());
 
         let list = SourceList {
             sources: vec![],
@@ -306,15 +304,14 @@ mod tests {
             })),
         };
 
-        let resolved = list
-            .resolve_file(Path::new("test.cab"), None::<fn(&str) -> bool>)
-            .expect("test");
+        let resolved = list.resolve_file(Path::new("test.cab"), None::<fn(&str) -> bool>)?;
         assert_eq!(resolved, file_path);
+        Ok(())
     }
 
     #[test]
-    fn test_resolve_file_prompt_retry() {
-        let dir = tempdir().expect("test");
+    fn test_resolve_file_prompt_retry() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let file_path = dir.path().join("delayed.cab");
 
         let list = SourceList {
@@ -333,7 +330,7 @@ mod tests {
             prompt_count += 1;
             if prompt_count == 2 {
                 // Simulate user inserting disk on 2nd prompt
-                fs::write(&file_path, "delayed data").expect("test");
+                assert!(fs::write(&file_path, "delayed data").is_ok());
             }
             true // keep retrying, or exit loop if found
         };
@@ -342,8 +339,8 @@ mod tests {
         assert!(resolved.is_ok());
 
         // Do another resolution for abort
-        let temp2 = tempdir().expect("test");
-        let mut list2 = SourceList::parse(temp2.path().to_str().expect("test"));
+        let temp2 = tempdir()?;
+        let mut list2 = SourceList::parse(temp2.path().to_str().unwrap_or(""));
         list2.sources.push(SourcePath::Media(MediaSource {
             base_path: temp2.path().to_path_buf(),
             disk_id: Some(1),
@@ -359,11 +356,12 @@ mod tests {
         };
         let resolved2 = list2.resolve_file(Path::new("abort.cab"), Some(callback2));
         assert!(resolved2.is_err());
+        Ok(())
     }
 
     #[test]
-    fn test_resolve_file_prompt_cancel() {
-        let dir = tempdir().expect("test");
+    fn test_resolve_file_prompt_cancel() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
 
         let list = SourceList {
             sources: vec![SourcePath::Media(MediaSource {
@@ -381,9 +379,11 @@ mod tests {
 
         let res = list.resolve_file(Path::new("missing.cab"), Some(callback));
         assert!(res
-            .expect_err("Expected an error")
+            .err()
+            .unwrap_or_default()
             .to_string()
             .contains("File not found"));
+        Ok(())
     }
 }
 
@@ -406,12 +406,12 @@ mod source_resiliency_additional_tests {
     }
 
     #[test]
-    fn test_resolve_file_last_used() {
-        let temp = tempfile::tempdir().expect("test");
+    fn test_resolve_file_last_used() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
         let file_path = temp.path().join("last_used.txt");
-        std::fs::write(&file_path, "data").expect("test");
+        assert!(std::fs::write(&file_path, "data").is_ok());
 
-        let mut list = SourceList::parse(temp.path().to_str().expect("test"));
+        let mut list = SourceList::parse(temp.path().to_str().unwrap_or(""));
         list.last_used = Some(SourcePath::Media(MediaSource {
             base_path: temp.path().to_path_buf(),
             disk_id: Some(1),
@@ -419,9 +419,7 @@ mod source_resiliency_additional_tests {
             disk_prompt: Some(String::new()),
         }));
 
-        let resolved = list
-            .resolve_file(Path::new("last_used.txt"), None::<fn(&str) -> bool>)
-            .expect("test");
+        let resolved = list.resolve_file(Path::new("last_used.txt"), None::<fn(&str) -> bool>)?;
         assert_eq!(resolved, file_path);
 
         let res_missing =
@@ -433,9 +431,7 @@ mod source_resiliency_additional_tests {
             callback2_called.set(true);
             false
         };
-        let resolved2 = list
-            .resolve_file(Path::new("last_used.txt"), Some(&callback2))
-            .expect("test");
+        let resolved2 = list.resolve_file(Path::new("last_used.txt"), Some(&callback2))?;
         assert_eq!(resolved2, file_path);
         // callback should not be called because last_used works
         assert!(!callback2_called.get());
@@ -470,9 +466,8 @@ mod source_resiliency_additional_tests {
 
         // Also exercise Media source found & Network source found with None::<fn(&str) -> bool>
         list.last_used = None;
-        let resolved_none_cb = list
-            .resolve_file(Path::new("last_used.txt"), None::<fn(&str) -> bool>)
-            .expect("test");
+        let resolved_none_cb =
+            list.resolve_file(Path::new("last_used.txt"), None::<fn(&str) -> bool>)?;
         assert_eq!(resolved_none_cb, file_path);
 
         let mnt_dir = PathBuf::from("/tmp/msi_test_mnt/srv_none/share_none");
@@ -482,25 +477,27 @@ mod source_resiliency_additional_tests {
         list.sources.push(SourcePath::Network(NetworkSource {
             unc_path: r"\\srv_none\share_none".to_string(),
         }));
-        let resolved_net_none = list
-            .resolve_file(Path::new("net_found.txt"), None::<fn(&str) -> bool>)
-            .expect("test");
+        let resolved_net_none =
+            list.resolve_file(Path::new("net_found.txt"), None::<fn(&str) -> bool>)?;
         assert_eq!(resolved_net_none, net_file);
         let _ = std::fs::remove_dir_all("/tmp/msi_test_mnt/srv_none");
 
-        static FN_PTR_CALLS: std::sync::atomic::AtomicUsize =
-            std::sync::atomic::AtomicUsize::new(0);
-        fn fn_ptr_retry_then_cancel(_: &str) -> bool {
-            FN_PTR_CALLS.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0
+        {
+            static FN_PTR_CALLS: std::sync::atomic::AtomicUsize =
+                std::sync::atomic::AtomicUsize::new(0);
+            fn fn_ptr_retry_then_cancel(_: &str) -> bool {
+                FN_PTR_CALLS.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0
+            }
+            let cb_ptr: fn(&str) -> bool = fn_ptr_retry_then_cancel;
+            let _ = list.resolve_file(Path::new("missing_fn_ptr.txt"), Some(cb_ptr));
         }
-        let cb_ptr: fn(&str) -> bool = fn_ptr_retry_then_cancel;
-        let _ = list.resolve_file(Path::new("missing_fn_ptr.txt"), Some(cb_ptr));
+        Ok(())
     }
 
     #[test]
-    fn test_resolve_file_prompt_abort() {
-        let temp = tempfile::tempdir().expect("test");
-        let list = SourceList::parse(temp.path().to_str().expect("test"));
+    fn test_resolve_file_prompt_abort() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let list = SourceList::parse(temp.path().to_str().unwrap_or(""));
 
         let mut prompt_count = 0;
         let callback = |_: &str| -> bool {
@@ -515,13 +512,15 @@ mod source_resiliency_additional_tests {
         let res = list.resolve_file(Path::new("missing.txt"), Some(callback));
         assert!(res.is_err());
         assert_eq!(prompt_count, 2);
+        Ok(())
     }
 
     #[test]
-    fn test_source_list_cache() {
+    fn test_source_list_cache() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let cache = source_list_cache();
-        let is_empty = cache.read().expect("test").is_empty();
+        let is_empty = cache.read()?.is_empty();
         assert!(is_empty);
+        Ok(())
     }
 
     #[test]
@@ -588,7 +587,7 @@ mod source_resiliency_exhaustive_derives {
 
         assert_eq!(ms1, ms1.clone());
         assert_ne!(ms1, ms2);
-        assert!(!format!("{ms1:?}").is_empty());
+        assert!(!format!("{ms1:?}").is_empty(), "format check");
 
         let ns1 = NetworkSource {
             unc_path: "\\\\server\\share".to_string(),
@@ -598,7 +597,7 @@ mod source_resiliency_exhaustive_derives {
         };
         assert_eq!(ns1, ns1.clone());
         assert_ne!(ns1, ns2);
-        assert!(!format!("{ns1:?}").is_empty());
+        assert!(!format!("{ns1:?}").is_empty(), "format check");
 
         let us1 = UrlSource {
             url: "http://example.com".to_string(),
@@ -608,7 +607,7 @@ mod source_resiliency_exhaustive_derives {
         };
         assert_eq!(us1, us1.clone());
         assert_ne!(us1, us2);
-        assert!(!format!("{us1:?}").is_empty());
+        assert!(!format!("{us1:?}").is_empty(), "format check");
 
         let sp1 = SourcePath::Media(ms1);
         let sp2 = SourcePath::Network(ns1);
@@ -617,14 +616,14 @@ mod source_resiliency_exhaustive_derives {
         assert_ne!(sp1, sp2);
         assert_ne!(sp2, sp3);
         assert_ne!(sp1, sp3);
-        assert!(!format!("{sp1:?}").is_empty());
+        assert!(!format!("{sp1:?}").is_empty(), "format check");
 
-        let mut sl1 = SourceList::default();
-        sl1.sources.push(sp1);
-        let mut sl2 = SourceList::default();
-        sl2.sources.push(sp2);
-        assert_eq!(sl1, sl1.clone());
-        assert_ne!(sl1, sl2);
-        assert!(!format!("{sl1:?}").is_empty());
+        let mut list_a = SourceList::default();
+        list_a.sources.push(sp1);
+        let mut list_b = SourceList::default();
+        list_b.sources.push(sp2);
+        assert_eq!(list_a, list_a.clone());
+        assert_ne!(list_a, list_b);
+        assert!(!format!("{list_a:?}").is_empty(), "format check");
     }
 }

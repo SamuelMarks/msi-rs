@@ -29,14 +29,14 @@ pub struct TargetProductCodeW(pub *const u16);
 ///
 /// # Arguments
 ///
-/// * `_sz_patch_package` - Path to the patch package.
-/// * `_sz_install_package` - Path to the install package.
-/// * `_e_install_type` - Type of installation.
-/// * `_sz_command_line` - Command line arguments.
+/// * `sz_patch_package` - Path to the patch package.
+/// * `sz_install_package` - Path to the install package.
+/// * `e_install_type` - Type of installation.
+/// * `sz_command_line` - Command line arguments.
 ///
 /// # Errors
 ///
-/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `_sz_patch_package` is NULL.
+/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `sz_patch_package` is NULL.
 /// Returns `1603` (`ERROR_INSTALL_FAILURE`) on panic.
 ///
 /// # Safety
@@ -46,15 +46,14 @@ pub struct TargetProductCodeW(pub *const u16);
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiApplyPatchA(
-    _sz_patch_package: *const c_char,
-    _sz_install_package: *const c_char,
-    _e_install_type: i32,
-    _sz_command_line: *const c_char,
+    sz_patch_package: *const c_char,
+    sz_install_package: *const c_char,
+    e_install_type: i32,
+    sz_command_line: *const c_char,
 ) -> u32 {
     let result = catch_unwind(|| {
-        let patch_path = match crate::win32::strings::lpcstr_to_string(_sz_patch_package) {
-            Some(p) => p,
-            None => return 87, // ERROR_INVALID_PARAMETER
+        let Some(patch_path) = crate::win32::strings::lpcstr_to_string(sz_patch_package) else {
+            return 87;
         };
 
         match msi::execution::patching::PatchEngine::extract_patch_transform(std::path::Path::new(
@@ -71,14 +70,14 @@ pub unsafe extern "system" fn MsiApplyPatchA(
 ///
 /// # Arguments
 ///
-/// * `_sz_patch_package` - Path to the patch package.
-/// * `_sz_install_package` - Path to the install package.
-/// * `_e_install_type` - Type of installation.
-/// * `_sz_command_line` - Command line arguments.
+/// * `sz_patch_package` - Path to the patch package.
+/// * `sz_install_package` - Path to the install package.
+/// * `e_install_type` - Type of installation.
+/// * `sz_command_line` - Command line arguments.
 ///
 /// # Errors
 ///
-/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `_sz_patch_package` is NULL.
+/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `sz_patch_package` is NULL.
 /// Returns `1603` (`ERROR_INSTALL_FAILURE`) on panic.
 ///
 /// # Safety
@@ -88,15 +87,14 @@ pub unsafe extern "system" fn MsiApplyPatchA(
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiApplyPatchW(
-    _sz_patch_package: *const u16,
-    _sz_install_package: *const u16,
-    _e_install_type: i32,
-    _sz_command_line: *const u16,
+    sz_patch_package: *const u16,
+    sz_install_package: *const u16,
+    e_install_type: i32,
+    sz_command_line: *const u16,
 ) -> u32 {
     let result = catch_unwind(|| {
-        let patch_path = match crate::win32::strings::lpcwstr_to_string(_sz_patch_package) {
-            Some(p) => p,
-            None => return 87, // ERROR_INVALID_PARAMETER
+        let Some(patch_path) = crate::win32::strings::lpcwstr_to_string(sz_patch_package) else {
+            return 87;
         };
 
         match msi::execution::patching::PatchEngine::extract_patch_transform(std::path::Path::new(
@@ -113,15 +111,15 @@ pub unsafe extern "system" fn MsiApplyPatchW(
 ///
 /// # Arguments
 ///
-/// * `_sz_product_code` - Target product code.
-/// * `_sz_user_sid` - User SID.
-/// * `_u_context` - User context.
+/// * `sz_product_code` - Target product code.
+/// * `sz_user_sid` - User SID.
+/// * `u_context` - User context.
 /// * `_c_patch_info` - Count of patch infos.
 /// * `_p_patch_info` - Patch infos array.
 ///
 /// # Errors
 ///
-/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `_sz_product_code` is NULL.
+/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `sz_product_code` is NULL.
 /// Returns `1603` (`ERROR_INSTALL_FAILURE`) on panic.
 ///
 /// # Safety
@@ -130,16 +128,15 @@ pub unsafe extern "system" fn MsiApplyPatchW(
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiDeterminePatchSequenceA(
-    _sz_product_code: TargetProductCodeA,
-    _sz_user_sid: *const c_char,
-    _u_context: i32,
+    sz_product_code: TargetProductCodeA,
+    sz_user_sid: *const c_char,
+    u_context: i32,
     _c_patch_info: u32,
     _p_patch_info: *mut std::ffi::c_void,
 ) -> u32 {
     let result = catch_unwind(|| {
-        let product_code = match crate::win32::strings::lpcstr_to_string(_sz_product_code.0) {
-            Some(p) => p,
-            None => return 87, // ERROR_INVALID_PARAMETER
+        let Some(product_code) = crate::win32::strings::lpcstr_to_string(sz_product_code.0) else {
+            return 87;
         };
 
         // We assume _p_patch_info represents an array of structures containing paths.
@@ -161,15 +158,15 @@ pub unsafe extern "system" fn MsiDeterminePatchSequenceA(
 ///
 /// # Arguments
 ///
-/// * `_sz_product_code` - Target product code.
-/// * `_sz_user_sid` - User SID.
-/// * `_u_context` - User context.
+/// * `sz_product_code` - Target product code.
+/// * `sz_user_sid` - User SID.
+/// * `u_context` - User context.
 /// * `_c_patch_info` - Count of patch infos.
 /// * `_p_patch_info` - Patch infos array.
 ///
 /// # Errors
 ///
-/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `_sz_product_code` is NULL.
+/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `sz_product_code` is NULL.
 /// Returns `1603` (`ERROR_INSTALL_FAILURE`) on panic.
 ///
 /// # Safety
@@ -178,16 +175,15 @@ pub unsafe extern "system" fn MsiDeterminePatchSequenceA(
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiDeterminePatchSequenceW(
-    _sz_product_code: TargetProductCodeW,
-    _sz_user_sid: *const u16,
-    _u_context: i32,
+    sz_product_code: TargetProductCodeW,
+    sz_user_sid: *const u16,
+    u_context: i32,
     _c_patch_info: u32,
     _p_patch_info: *mut std::ffi::c_void,
 ) -> u32 {
     let result = catch_unwind(|| {
-        let product_code = match crate::win32::strings::lpcwstr_to_string(_sz_product_code.0) {
-            Some(p) => p,
-            None => return 87, // ERROR_INVALID_PARAMETER
+        let Some(product_code) = crate::win32::strings::lpcwstr_to_string(sz_product_code.0) else {
+            return 87;
         };
 
         let paths: Vec<std::path::PathBuf> = vec![];
@@ -207,33 +203,32 @@ pub unsafe extern "system" fn MsiDeterminePatchSequenceW(
 ///
 /// # Arguments
 ///
-/// * `_sz_patch_path` - Path to the patch.
-/// * `_dw_flags` - Flags.
-/// * `_sz_xml_data` - Output XML data buffer.
-/// * `_pcch_xml_data` - Buffer size.
+/// * `sz_patch_path` - Path to the patch.
+/// * `dw_flags` - Flags.
+/// * `sz_xml_data` - Output XML data buffer.
+/// * `pcch_xml_data` - Buffer size.
 ///
 /// # Errors
 ///
-/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `_sz_patch_path` is NULL.
+/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `sz_patch_path` is NULL.
 /// Returns `1603` (`ERROR_INSTALL_FAILURE`) on panic.
 ///
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
-/// The caller is responsible for providing a properly allocated buffer for `_sz_xml_data`
-/// and specifying its size in `_pcch_xml_data`. The caller must free any memory they allocate.
+/// The caller is responsible for providing a properly allocated buffer for `sz_xml_data`
+/// and specifying its size in `pcch_xml_data`. The caller must free any memory they allocate.
 
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiExtractPatchXMLDataA(
-    _sz_patch_path: *const c_char,
-    _dw_flags: u32,
-    _sz_xml_data: *mut c_char,
-    _pcch_xml_data: *mut u32,
+    sz_patch_path: *const c_char,
+    dw_flags: u32,
+    sz_xml_data: *mut c_char,
+    pcch_xml_data: *mut u32,
 ) -> u32 {
     let result = catch_unwind(|| {
-        let patch_path_str = match crate::win32::strings::lpcstr_to_string(_sz_patch_path) {
-            Some(p) => p,
-            None => return 87, // ERROR_INVALID_PARAMETER
+        let Some(patch_path_str) = crate::win32::strings::lpcstr_to_string(sz_patch_path) else {
+            return 87;
         };
 
         // Connect to the patch engine metadata extractor.
@@ -241,10 +236,10 @@ pub unsafe extern "system" fn MsiExtractPatchXMLDataA(
             &patch_path_str,
         )) {
             Ok(_) => {
-                if !_sz_xml_data.is_null() && !_pcch_xml_data.is_null() {
+                if !sz_xml_data.is_null() && !pcch_xml_data.is_null() {
                     // Simulate writing some XML data
-                    *_pcch_xml_data = 0;
-                    *_sz_xml_data = 0;
+                    *pcch_xml_data = 0;
+                    *sz_xml_data = 0;
                 }
                 0 // ERROR_SUCCESS
             }
@@ -258,43 +253,42 @@ pub unsafe extern "system" fn MsiExtractPatchXMLDataA(
 ///
 /// # Arguments
 ///
-/// * `_sz_patch_path` - Path to the patch.
-/// * `_dw_flags` - Flags.
-/// * `_sz_xml_data` - Output XML data buffer.
-/// * `_pcch_xml_data` - Buffer size.
+/// * `sz_patch_path` - Path to the patch.
+/// * `dw_flags` - Flags.
+/// * `sz_xml_data` - Output XML data buffer.
+/// * `pcch_xml_data` - Buffer size.
 ///
 /// # Errors
 ///
-/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `_sz_patch_path` is NULL.
+/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `sz_patch_path` is NULL.
 /// Returns `1603` (`ERROR_INSTALL_FAILURE`) on panic.
 ///
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
-/// The caller is responsible for providing a properly allocated buffer for `_sz_xml_data`
-/// and specifying its size in `_pcch_xml_data`. The caller must free any memory they allocate.
+/// The caller is responsible for providing a properly allocated buffer for `sz_xml_data`
+/// and specifying its size in `pcch_xml_data`. The caller must free any memory they allocate.
 
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiExtractPatchXMLDataW(
-    _sz_patch_path: *const u16,
-    _dw_flags: u32,
-    _sz_xml_data: *mut u16,
-    _pcch_xml_data: *mut u32,
+    sz_patch_path: *const u16,
+    dw_flags: u32,
+    sz_xml_data: *mut u16,
+    pcch_xml_data: *mut u32,
 ) -> u32 {
     let result = catch_unwind(|| {
-        let patch_path_str = match crate::win32::strings::lpcwstr_to_string(_sz_patch_path) {
-            Some(p) => p,
-            None => return 87, // ERROR_INVALID_PARAMETER
+        let Some(patch_path_str) = crate::win32::strings::lpcwstr_to_string(sz_patch_path) else {
+            return 87;
         };
 
         match msi::execution::patching::PatchEngine::extract_msp_metadata(std::path::Path::new(
             &patch_path_str,
         )) {
             Ok(_) => {
-                if !_sz_xml_data.is_null() && !_pcch_xml_data.is_null() {
+                if !sz_xml_data.is_null() && !pcch_xml_data.is_null() {
                     // Simulate writing some XML data
-                    *_pcch_xml_data = 0;
-                    *_sz_xml_data = 0;
+                    *pcch_xml_data = 0;
+                    *sz_xml_data = 0;
                 }
                 0 // ERROR_SUCCESS
             }
@@ -308,14 +302,14 @@ pub unsafe extern "system" fn MsiExtractPatchXMLDataW(
 ///
 /// # Arguments
 ///
-/// * `_sz_patch_list` - List of patches to remove.
-/// * `_sz_product_code` - Target product code.
-/// * `_e_uninstall_type` - Uninstall type.
-/// * `_sz_property_list` - Properties.
+/// * `sz_patch_list` - List of patches to remove.
+/// * `sz_product_code` - Target product code.
+/// * `e_uninstall_type` - Uninstall type.
+/// * `sz_property_list` - Properties.
 ///
 /// # Errors
 ///
-/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `_sz_patch_list` is NULL.
+/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `sz_patch_list` is NULL.
 /// Returns `1603` (`ERROR_INSTALL_FAILURE`) on panic.
 ///
 /// # Safety
@@ -325,19 +319,17 @@ pub unsafe extern "system" fn MsiExtractPatchXMLDataW(
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiRemovePatchesA(
-    _sz_patch_list: *const c_char,
-    _sz_product_code: *const c_char,
-    _e_uninstall_type: i32,
-    _sz_property_list: *const c_char,
+    sz_patch_list: *const c_char,
+    sz_product_code: *const c_char,
+    e_uninstall_type: i32,
+    sz_property_list: *const c_char,
 ) -> u32 {
     let result = catch_unwind(|| {
-        let patch_list = match crate::win32::strings::lpcstr_to_string(_sz_patch_list) {
-            Some(p) => p,
-            None => return 87, // ERROR_INVALID_PARAMETER
+        let Some(patch_list) = crate::win32::strings::lpcstr_to_string(sz_patch_list) else {
+            return 87;
         };
-        let product_code = match crate::win32::strings::lpcstr_to_string(_sz_product_code) {
-            Some(p) => p,
-            None => return 87, // ERROR_INVALID_PARAMETER
+        let Some(product_code) = crate::win32::strings::lpcstr_to_string(sz_product_code) else {
+            return 87;
         };
         match msi::execution::patching::PatchEngine::remove_patches(&patch_list, &product_code) {
             Ok(()) => 0,
@@ -351,14 +343,14 @@ pub unsafe extern "system" fn MsiRemovePatchesA(
 ///
 /// # Arguments
 ///
-/// * `_sz_patch_list` - List of patches to remove.
-/// * `_sz_product_code` - Target product code.
-/// * `_e_uninstall_type` - Uninstall type.
-/// * `_sz_property_list` - Properties.
+/// * `sz_patch_list` - List of patches to remove.
+/// * `sz_product_code` - Target product code.
+/// * `e_uninstall_type` - Uninstall type.
+/// * `sz_property_list` - Properties.
 ///
 /// # Errors
 ///
-/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `_sz_patch_list` is NULL.
+/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `sz_patch_list` is NULL.
 /// Returns `1603` (`ERROR_INSTALL_FAILURE`) on panic.
 ///
 /// # Safety
@@ -368,19 +360,17 @@ pub unsafe extern "system" fn MsiRemovePatchesA(
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiRemovePatchesW(
-    _sz_patch_list: *const u16,
-    _sz_product_code: *const u16,
-    _e_uninstall_type: i32,
-    _sz_property_list: *const u16,
+    sz_patch_list: *const u16,
+    sz_product_code: *const u16,
+    e_uninstall_type: i32,
+    sz_property_list: *const u16,
 ) -> u32 {
     let result = catch_unwind(|| {
-        let patch_list = match crate::win32::strings::lpcwstr_to_string(_sz_patch_list) {
-            Some(p) => p,
-            None => return 87, // ERROR_INVALID_PARAMETER
+        let Some(patch_list) = crate::win32::strings::lpcwstr_to_string(sz_patch_list) else {
+            return 87;
         };
-        let product_code = match crate::win32::strings::lpcwstr_to_string(_sz_product_code) {
-            Some(p) => p,
-            None => return 87, // ERROR_INVALID_PARAMETER
+        let Some(product_code) = crate::win32::strings::lpcwstr_to_string(sz_product_code) else {
+            return 87;
         };
         match msi::execution::patching::PatchEngine::remove_patches(&patch_list, &product_code) {
             Ok(()) => 0,
@@ -409,8 +399,8 @@ mod tests {
 
         let temp_dir = std::env::temp_dir();
         let p = temp_dir.join("test.msp");
-        std::fs::File::create(&p).unwrap();
-        let path_str = std::ffi::CString::new(p.to_str().unwrap()).unwrap();
+        assert!(std::fs::File::create(&p).is_ok());
+        let path_str = std::ffi::CString::new(p.to_str().unwrap_or("")).unwrap_or_default();
         assert_eq!(
             unsafe { MsiApplyPatchA(path_str.as_ptr(), ptr::null(), 0, ptr::null()) },
             0 // ERROR_SUCCESS
@@ -431,7 +421,7 @@ mod tests {
 
         let temp_dir = std::env::temp_dir();
         let p = temp_dir.join("test.msp");
-        std::fs::File::create(&p).unwrap();
+        assert!(std::fs::File::create(&p).is_ok());
         let mut path_w: Vec<u16> = p.to_string_lossy().encode_utf16().collect();
         path_w.push(0);
         assert_eq!(
@@ -513,8 +503,8 @@ mod tests {
         );
         let temp_dir = std::env::temp_dir();
         let p = temp_dir.join("manifest_test.msp");
-        std::fs::File::create(&p).unwrap();
-        let path_str = std::ffi::CString::new(p.to_str().unwrap()).unwrap();
+        assert!(std::fs::File::create(&p).is_ok());
+        let path_str = std::ffi::CString::new(p.to_str().unwrap_or("")).unwrap_or_default();
 
         let mut buf = vec![0_i8; 1024];
         let mut size = 1024;
@@ -540,8 +530,8 @@ mod tests {
         );
 
         let p_inv = temp_dir.join("invalid_manifest_test.msp");
-        std::fs::File::create(&p_inv).unwrap();
-        let path_inv_str = std::ffi::CString::new(p_inv.to_str().unwrap()).unwrap();
+        assert!(std::fs::File::create(&p_inv).is_ok());
+        let path_inv_str = std::ffi::CString::new(p_inv.to_str().unwrap_or("")).unwrap_or_default();
         assert_eq!(
             unsafe {
                 MsiExtractPatchXMLDataA(path_inv_str.as_ptr(), 0, buf.as_mut_ptr(), &mut size)
@@ -564,7 +554,7 @@ mod tests {
 
         let temp_dir = std::env::temp_dir();
         let p = temp_dir.join("manifest_test.msp");
-        std::fs::File::create(&p).unwrap();
+        assert!(std::fs::File::create(&p).is_ok());
         let mut path_w: Vec<u16> = p.to_string_lossy().encode_utf16().collect();
         path_w.push(0);
 
@@ -592,7 +582,7 @@ mod tests {
         );
 
         let p_inv = temp_dir.join("invalid_manifest_test.msp");
-        std::fs::File::create(&p_inv).unwrap();
+        assert!(std::fs::File::create(&p_inv).is_ok());
         let mut path_inv_w: Vec<u16> = p_inv.to_string_lossy().encode_utf16().collect();
         path_inv_w.push(0);
         assert_eq!(
@@ -607,8 +597,8 @@ mod tests {
             unsafe { MsiRemovePatchesA(ptr::null(), ptr::null(), 0, ptr::null()) },
             87
         );
-        let dummy = std::ffi::CString::new("patch").unwrap();
-        let prod = std::ffi::CString::new("prod").unwrap();
+        let dummy = std::ffi::CString::new("patch").unwrap_or_default();
+        let prod = std::ffi::CString::new("prod").unwrap_or_default();
         assert_eq!(
             unsafe { MsiRemovePatchesA(dummy.as_ptr(), ptr::null(), 0, ptr::null()) },
             87
@@ -618,7 +608,7 @@ mod tests {
             0 // ERROR_SUCCESS
         );
 
-        let inv = std::ffi::CString::new("invalid").unwrap();
+        let inv = std::ffi::CString::new("invalid").unwrap_or_default();
         assert_eq!(
             unsafe { MsiRemovePatchesA(inv.as_ptr(), prod.as_ptr(), 0, ptr::null()) },
             1603 // ERROR_INSTALL_FAILURE

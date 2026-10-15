@@ -162,7 +162,7 @@ mod tests {
         assert_eq!(coder.range, 0xFFFF_FFFF);
         assert_eq!(coder.code, 0x4433_2211);
 
-        let err = LzmsRangeCoder::new(&[0x11, 0x22]).unwrap_err();
+        let err = LzmsRangeCoder::new(&[0x11, 0x22]).err().unwrap_or_default();
         assert!(matches!(err, MsiError::WimDecompressionError { .. }));
         Ok(())
     }
@@ -172,7 +172,9 @@ mod tests {
     fn test_lzms_state_initialization() -> Result<()> {
         let input = [0x00, 0x00, 0x00, 0x00];
 
-        let err = LzmsState::new(LZMS_MAX_WINDOW_SIZE + 1, &input).unwrap_err();
+        let err = LzmsState::new(LZMS_MAX_WINDOW_SIZE + 1, &input)
+            .err()
+            .unwrap_or_default();
         assert!(matches!(err, MsiError::WimDecompressionError { .. }));
 
         let state = LzmsState::new(1024, &input)?;
@@ -184,7 +186,9 @@ mod tests {
     #[test]
     fn test_lzms_decompress_modes() -> Result<()> {
         let invalid_input = [0x00, 0x00, 0x00, 0x00];
-        let err = decompress_lzms(&invalid_input, 1024, 1024).unwrap_err();
+        let err = decompress_lzms(&invalid_input, 1024, 1024)
+            .err()
+            .unwrap_or_default();
         assert!(matches!(err, MsiError::WimDecompressionError { .. }));
 
         // Stored block (input.len() == output_size, non-zero header)
@@ -205,13 +209,13 @@ mod tests {
         let c1 = LzmsRangeCoder::default();
         let c2 = c1.clone();
         assert_eq!(c1, c2);
-        assert!(format!("{c1:?}").contains("LzmsRangeCoder"));
+        assert!(format!("{c1:?}").contains("LzmsRangeCoder"), "format check");
 
         let input = [0x00, 0x00, 0x00, 0x00];
         let s1 = LzmsState::new(100, &input)?;
         let s2 = s1.clone();
         assert_eq!(s1.coder, s2.coder);
-        assert!(format!("{s1:?}").contains("LzmsState"));
+        assert!(format!("{s1:?}").contains("LzmsState"), "format check");
         Ok(())
     }
 }

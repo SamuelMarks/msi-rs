@@ -1,9 +1,3 @@
-#![allow(
-    clippy::cognitive_complexity,
-    clippy::literal_string_with_formatting_args,
-    clippy::too_many_lines
-)]
-#![cfg_attr(test, allow(clippy::redundant_clone))]
 //! # light
 //!
 //! `WiX` v3 linker and binder executable shim replicating `light.exe`.

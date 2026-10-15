@@ -534,7 +534,8 @@ mod tests {
         let mut session = Session::default();
         let err = session
             .set_property("UnknownProperty", Variant::I32(1))
-            .unwrap_err();
+            .err()
+            .unwrap_or_default();
         assert!(
             matches!(err, MsiError::ActionExecutionError(msg) if msg.contains("not found or read-only on Session"))
         );
@@ -545,7 +546,8 @@ mod tests {
         let mut record = Record::new(1);
         let err = record
             .set_property("SomeProp", Variant::I32(1))
-            .unwrap_err();
+            .err()
+            .unwrap_or_default();
         assert!(
             matches!(err, MsiError::ActionExecutionError(msg) if msg.contains("not found or read-only on Record"))
         );
@@ -581,11 +583,11 @@ mod tests {
     }
 
     #[test]
-    fn test_installer_automation() {
+    fn test_installer_automation() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut inst = Installer::new();
 
         assert_eq!(
-            inst.get_property("Version").expect("test"),
+            inst.get_property("Version")?,
             Variant::String("5.0.0.0".to_string())
         );
 
@@ -595,11 +597,11 @@ mod tests {
         let err_set = inst.set_property("Version", Variant::I32(1));
         assert!(err_set.is_err());
 
-        let invoke_res = inst.invoke("OpenPackage", &[]).expect("test");
-        let session_obj = invoke_res.into_object().expect("test object");
+        let invoke_res = inst.invoke("OpenPackage", &[])?;
+        let session_obj = invoke_res.into_object()?;
 
         // Assert property directly to avoid `matches!` macro branch gaps
-        let lang_prop = session_obj.get_property("Language").expect("test");
+        let lang_prop = session_obj.get_property("Language")?;
         assert_eq!(lang_prop, Variant::I32(1033));
 
         let err_invoke = inst.invoke("MissingMethod", &[]);
@@ -607,51 +609,39 @@ mod tests {
 
         // Test into_object error path
         assert!(Variant::Empty.into_object().is_err());
+        Ok(())
     }
 
     #[test]
-    fn test_session_automation() {
+    fn test_session_automation() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut session = Session::new();
 
-        assert_eq!(
-            session.get_property("Language").expect("test"),
-            Variant::I32(1033)
-        );
+        assert_eq!(session.get_property("Language")?, Variant::I32(1033));
 
-        session
-            .set_property("Language", Variant::I32(1041))
-            .expect("test");
-        assert_eq!(
-            session.get_property("Language").expect("test"),
-            Variant::I32(1041)
-        );
+        session.set_property("Language", Variant::I32(1041))?;
+        assert_eq!(session.get_property("Language")?, Variant::I32(1041));
 
         let err_set_type = session.set_property("Language", Variant::String("en".to_string()));
         assert!(err_set_type.is_err());
 
-        let err_set_missing = session.set_property("Missing", Variant::I32(1));
-        assert!(err_set_missing.is_err());
+        let missing_write_err = session.set_property("Missing", Variant::I32(1));
+        assert!(missing_write_err.is_err());
 
-        let err_get_missing = session.get_property("Missing");
-        assert!(err_get_missing.is_err());
+        let missing_read_err = session.get_property("Missing");
+        assert!(missing_read_err.is_err());
 
-        assert_eq!(
-            session.invoke("DoAction", &[]).expect("test"),
-            Variant::I32(1)
-        );
+        assert_eq!(session.invoke("DoAction", &[])?, Variant::I32(1));
 
         let err_invoke_missing = session.invoke("MissingMethod", &[]);
         assert!(err_invoke_missing.is_err());
+        Ok(())
     }
 
     #[test]
-    fn test_record_automation() {
+    fn test_record_automation() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut rec = Record::new(2);
 
-        assert_eq!(
-            rec.get_property("FieldCount").expect("test"),
-            Variant::I32(2)
-        );
+        assert_eq!(rec.get_property("FieldCount")?, Variant::I32(2));
 
         let err_get = rec.get_property("StringData");
         assert!(err_get.is_err());
@@ -659,54 +649,58 @@ mod tests {
         let err_set = rec.set_property("StringData", Variant::Empty);
         assert!(err_set.is_err());
 
-        assert_eq!(rec.invoke("ClearData", &[]).expect("test"), Variant::Empty);
+        assert_eq!(rec.invoke("ClearData", &[])?, Variant::Empty);
 
         let err_invoke = rec.invoke("MissingMethod", &[]);
         assert!(err_invoke.is_err());
+        Ok(())
     }
 
     #[test]
-    fn test_string_list() {
+    fn test_string_list() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut sl = StringList::default();
         sl.add("A".to_string());
         sl.add("B".to_string());
         assert_eq!(sl.count(), 2);
-        assert_eq!(sl.item(1).expect("test"), "A");
-        assert_eq!(sl.item(2).expect("test"), "B");
+        assert_eq!(sl.item(1)?, "A");
+        assert_eq!(sl.item(2)?, "B");
         assert!(sl.item(0).is_err());
         assert!(sl.item(3).is_err());
+        Ok(())
     }
 
     #[test]
-    fn test_record_list() {
+    fn test_record_list() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut rl = RecordList::default();
         rl.add(100);
         rl.add(200);
         assert_eq!(rl.count(), 2);
-        assert_eq!(rl.item(1).expect("test"), 100);
-        assert_eq!(rl.item(2).expect("test"), 200);
+        assert_eq!(rl.item(1)?, 100);
+        assert_eq!(rl.item(2)?, 200);
         assert!(rl.item(0).is_err());
         assert!(rl.item(3).is_err());
+        Ok(())
     }
 
     #[test]
     fn test_ui_preview() {
         let preview = UiPreview::new("dummy.msi".to_string());
-        preview.view_dialog("WelcomeDlg").expect("test");
+        assert!(preview.view_dialog("WelcomeDlg").is_ok());
         assert!(preview.view_dialog("").is_err());
     }
 
     #[test]
-    fn test_summary_info_ext() {
+    fn test_summary_info_ext() -> std::result::Result<(), Box<dyn std::error::Error>> {
         assert_eq!(
-            SummaryInfoExt::translate_dictionary(b"data", true).expect("test"),
+            SummaryInfoExt::translate_dictionary(b"data", true)?,
             "ANSI_TRANSLATED"
         );
         assert_eq!(
-            SummaryInfoExt::translate_dictionary(b"data", false).expect("test"),
+            SummaryInfoExt::translate_dictionary(b"data", false)?,
             "UNICODE_TRANSLATED"
         );
         assert!(SummaryInfoExt::translate_dictionary(b"", true).is_err());
+        Ok(())
     }
 
     #[test]
@@ -720,9 +714,8 @@ mod tests {
     }
 
     #[test]
-    const fn test_stubs() {
-        let _st = IStorageStub;
-        let _ss = IStreamStub;
-        let _sp = IPersistStub;
+    fn test_stubs() {
+        let dbg = format!("{IStorageStub:?}{IStreamStub:?}{IPersistStub:?}");
+        assert!(!dbg.is_empty());
     }
 }

@@ -854,7 +854,7 @@ pub unsafe extern "C" fn msi_package_builder_pack_files_from_disk(
                 })?;
 
                 let (hash_part1, hash_part2, hash_part3, hash_part4) =
-                    crate::md5::format_msi_md5_quads(&data);
+                    msi::database::md5::format_msi_md5_quads(&data);
 
                 let file_key =
                     FileKey::new(file_id).map_err(|e| (map_msi_error(&e), e.to_string()))?;
@@ -969,6 +969,7 @@ pub unsafe extern "C" fn msi_package_builder_build(
 }
 
 #[cfg(test)]
+#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 mod tests {
     use super::*;
     use crate::error::*;

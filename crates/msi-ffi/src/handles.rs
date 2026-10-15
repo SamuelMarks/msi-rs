@@ -4,12 +4,10 @@
 //! rather than opaque pointers. This module implements a thread-safe,
 //! global handle registry mapping `u32` IDs to internal Rust objects.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::RwLock;
-
-#[cfg(not(test))]
-use std::sync::OnceLock;
+use std::sync::{OnceLock, RwLock};
+use std::thread::ThreadId;
 
 /// A strongly-typed Windows Installer handle.
 pub type MsiHandle = u32;
@@ -38,6 +36,8 @@ pub(crate) struct HandleTable {
     pub(crate) next_id: AtomicU32,
     /// Thread-safe map of handles.
     pub(crate) map: RwLock<HashMap<MsiHandle, MsiObject>>,
+    /// Per-thread handle ownership registry so `close_all_handles` is thread-isolated.
+    pub(crate) owners: RwLock<HashMap<ThreadId, HashSet<MsiHandle>>>,
 }
 
 impl HandleTable {
@@ -46,29 +46,40 @@ impl HandleTable {
         Self {
             next_id: AtomicU32::new(1),
             map: RwLock::new(HashMap::new()),
+            owners: RwLock::new(HashMap::new()),
         }
+    }
+    /// Allocates a new handle on this `HandleTable`.
+    pub(crate) fn alloc(&self, obj: MsiObject) -> MsiHandle {
+        let mut map = self
+            .map
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut handle = self.next_id.fetch_add(1, Ordering::Relaxed);
+        while handle == MSI_NULL_HANDLE || map.contains_key(&handle) {
+            handle = self.next_id.fetch_add(1, Ordering::Relaxed);
+        }
+        map.insert(handle, obj);
+        drop(map);
+
+        let mut owners = self
+            .owners
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        owners
+            .entry(std::thread::current().id())
+            .or_default()
+            .insert(handle);
+        handle
     }
 }
 
 /// Global singleton instance.
-#[cfg(not(test))]
 pub(crate) static HANDLE_TABLE: OnceLock<HandleTable> = OnceLock::new();
 
 /// Executes a closure with the global handle table instance.
-#[cfg(not(test))]
 pub(crate) fn with_handle_table<R, F: FnOnce(&HandleTable) -> R>(f: F) -> R {
     f(HANDLE_TABLE.get_or_init(HandleTable::new))
-}
-
-#[cfg(test)]
-thread_local! {
-    static THREAD_HANDLE_TABLE: HandleTable = HandleTable::new();
-}
-
-/// Executes a closure with the thread-local handle table instance.
-#[cfg(test)]
-pub(crate) fn with_handle_table<R, F: FnOnce(&HandleTable) -> R>(f: F) -> R {
-    THREAD_HANDLE_TABLE.with(f)
 }
 
 /// Allocates a new handle for the given object.
@@ -82,19 +93,7 @@ pub(crate) fn with_handle_table<R, F: FnOnce(&HandleTable) -> R>(f: F) -> R {
 /// A new 32-bit `MsiHandle` representing the allocated object.
 #[must_use]
 pub fn alloc_handle(obj: MsiObject) -> MsiHandle {
-    with_handle_table(|table| {
-        let mut handle = table.next_id.fetch_add(1, Ordering::Relaxed);
-        if handle == MSI_NULL_HANDLE {
-            handle = table.next_id.fetch_add(1, Ordering::Relaxed);
-        }
-
-        let mut map = table
-            .map
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        map.insert(handle, obj);
-        handle
-    })
+    with_handle_table(|table| table.alloc(obj))
 }
 
 /// Closes an open handle, freeing the associated object.
@@ -113,18 +112,41 @@ pub fn close_handle(handle: MsiHandle) -> bool {
             .map
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        map.remove(&handle).is_some()
+        let removed = map.remove(&handle).is_some();
+        drop(map);
+
+        if removed {
+            let mut owners = table
+                .owners
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some(set) = owners.get_mut(&std::thread::current().id()) {
+                set.remove(&handle);
+            }
+        }
+        removed
     })
 }
 
-/// Closes all open handles.
+/// Closes all open handles allocated on the current thread.
 pub fn close_all_handles() {
     with_handle_table(|table| {
+        let owned = {
+            let mut owners = table
+                .owners
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            owners
+                .remove(&std::thread::current().id())
+                .unwrap_or_default()
+        };
         let mut map = table
             .map
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        map.clear();
+        for handle in owned {
+            map.remove(&handle);
+        }
     });
 }
 
@@ -228,9 +250,18 @@ mod tests {
             true
         }
 
-        with_handle_table(|table| {
-            table.next_id.store(0xFFFF_FFFF, Ordering::Relaxed);
-        });
+        // Verify wraparound over u32::MAX -> 0 -> 1 and collision skipping on a dedicated HandleTable
+        let local_table = HandleTable::new();
+        local_table.next_id.store(0xFFFF_FFFF, Ordering::Relaxed);
+        let w1 = local_table.alloc(MsiObject::Record(crate::types::MsiRecordHandle {
+            inner: msi::database::tables::record::Record::new(),
+        }));
+        let w2 = local_table.alloc(MsiObject::Record(crate::types::MsiRecordHandle {
+            inner: msi::database::tables::record::Record::new(),
+        }));
+        assert_eq!(w1, 0xFFFF_FFFF);
+        assert_eq!(w2, 1);
+
         let rec1 = msi::database::tables::record::Record::new();
         let h1 = alloc_handle(MsiObject::Record(crate::types::MsiRecordHandle {
             inner: rec1,
@@ -245,20 +276,20 @@ mod tests {
         assert_ne!(h2, MSI_NULL_HANDLE);
 
         // Test with_handle_mut_and_read valid handles
-        let res = with_handle_mut_and_read(h1, h2, noop_mut_read);
-        assert!(res.is_some());
+        let valid_pair = with_handle_mut_and_read(h1, h2, noop_mut_read);
+        assert!(valid_pair.is_some());
 
         // Test with_handle_mut_and_read invalid read handle
-        let res = with_handle_mut_and_read(h1, MSI_NULL_HANDLE, noop_mut_read);
-        assert!(res.is_none());
+        let invalid_read = with_handle_mut_and_read(h1, MSI_NULL_HANDLE, noop_mut_read);
+        assert!(invalid_read.is_none());
 
         // Test with_handle_mut_and_read invalid mut handle
-        let res = with_handle_mut_and_read(MSI_NULL_HANDLE, h2, noop_mut_read);
-        assert!(res.is_none());
+        let invalid_mut = with_handle_mut_and_read(MSI_NULL_HANDLE, h2, noop_mut_read);
+        assert!(invalid_mut.is_none());
 
         // Also test with_handle_mut_and_read same handle
-        let res = with_handle_mut_and_read(h1, h1, noop_mut_read);
-        assert!(res.is_none());
+        let same_handle = with_handle_mut_and_read(h1, h1, noop_mut_read);
+        assert!(same_handle.is_none());
 
         assert!(close_handle(h1));
         assert!(close_handle(h2));
@@ -311,7 +342,7 @@ mod tests {
                     .map
                     .write()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
-                panic!("poison");
+                std::panic::resume_unwind(Box::new("poison"));
             });
         });
 

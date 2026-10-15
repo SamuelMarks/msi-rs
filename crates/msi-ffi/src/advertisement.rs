@@ -26,42 +26,41 @@ pub struct ScriptContext(pub *mut c_void);
 ///
 /// # Arguments
 ///
-/// * `_sz_package_path` - Path to the package.
-/// * `_sz_script_info` - Script information.
-/// * `_sz_transforms` - Applied transforms.
-/// * `_lgid_language` - Language ID.
+/// * `sz_package_path` - Path to the package.
+/// * `sz_script_info` - Script information.
+/// * `sz_transforms` - Applied transforms.
+/// * `lgid_language` - Language ID.
 ///
 /// # Errors
 ///
-/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `_sz_package_path` is NULL.
+/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `sz_package_path` is NULL.
 /// Returns `0` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is a stub.
 ///
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
 /// # Panics
-/// Panics if `_lgid_language` is 9999.
+/// Panics if `lgid_language` is 9999.
 
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiAdvertiseProductA(
-    _sz_package_path: *const c_char,
-    _sz_script_info: *const c_char,
-    _sz_transforms: *const c_char,
-    _lgid_language: u16,
+    sz_package_path: *const c_char,
+    sz_script_info: *const c_char,
+    sz_transforms: *const c_char,
+    lgid_language: u16,
 ) -> u32 {
     let result = catch_unwind(|| {
-        if _sz_package_path.is_null() {
+        if sz_package_path.is_null() {
             return 87; // ERROR_INVALID_PARAMETER
         }
-        let package_path = match crate::win32::strings::lpcstr_to_string(_sz_package_path) {
-            Some(s) => s,
-            None => return 87,
+        let Some(package_path) = crate::win32::strings::lpcstr_to_string(sz_package_path) else {
+            return 87;
         };
-        let script_info = crate::win32::strings::lpcstr_to_string(_sz_script_info);
-        let transforms = crate::win32::strings::lpcstr_to_string(_sz_transforms);
+        let script_info = crate::win32::strings::lpcstr_to_string(sz_script_info);
+        let transforms = crate::win32::strings::lpcstr_to_string(sz_transforms);
         let options = msi::execution::advertisement::AdvertiseOptions {
-            language: _lgid_language,
+            language: lgid_language,
             platform: 0,
             options: 0,
         };
@@ -82,42 +81,41 @@ pub unsafe extern "system" fn MsiAdvertiseProductA(
 ///
 /// # Arguments
 ///
-/// * `_sz_package_path` - Path to the package.
-/// * `_sz_script_info` - Script information.
-/// * `_sz_transforms` - Applied transforms.
-/// * `_lgid_language` - Language ID.
+/// * `sz_package_path` - Path to the package.
+/// * `sz_script_info` - Script information.
+/// * `sz_transforms` - Applied transforms.
+/// * `lgid_language` - Language ID.
 ///
 /// # Errors
 ///
-/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `_sz_package_path` is NULL.
+/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `sz_package_path` is NULL.
 /// Returns `0` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is a stub.
 ///
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
 /// # Panics
-/// Panics if `_lgid_language` is 9999.
+/// Panics if `lgid_language` is 9999.
 
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiAdvertiseProductW(
-    _sz_package_path: *const u16,
-    _sz_script_info: *const u16,
-    _sz_transforms: *const u16,
-    _lgid_language: u16,
+    sz_package_path: *const u16,
+    sz_script_info: *const u16,
+    sz_transforms: *const u16,
+    lgid_language: u16,
 ) -> u32 {
     let result = catch_unwind(|| {
-        if _sz_package_path.is_null() {
+        if sz_package_path.is_null() {
             return 87; // ERROR_INVALID_PARAMETER
         }
-        let package_path = match crate::win32::strings::lpcwstr_to_string(_sz_package_path) {
-            Some(s) => s,
-            None => return 87,
+        let Some(package_path) = crate::win32::strings::lpcwstr_to_string(sz_package_path) else {
+            return 87;
         };
-        let script_info = crate::win32::strings::lpcwstr_to_string(_sz_script_info);
-        let transforms = crate::win32::strings::lpcwstr_to_string(_sz_transforms);
+        let script_info = crate::win32::strings::lpcwstr_to_string(sz_script_info);
+        let transforms = crate::win32::strings::lpcwstr_to_string(sz_transforms);
         let options = msi::execution::advertisement::AdvertiseOptions {
-            language: _lgid_language,
+            language: lgid_language,
             platform: 0,
             options: 0,
         };
@@ -135,34 +133,34 @@ pub unsafe extern "system" fn MsiAdvertiseProductW(
 }
 
 /// Advertises a product with advanced options (ANSI).
-/// # Panics
-/// Panics if `_lgid_language` is 9999.
-
+///
+/// # Safety
+///
+/// Pointer arguments must be valid or null.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiAdvertiseProductExA(
-    _sz_package_path: *const c_char,
-    _sz_script_info: *const c_char,
-    _sz_transforms: *const c_char,
-    _lgid_language: u16,
-    _dw_platform: u32,
-    _dw_options: u32,
+    sz_package_path: *const c_char,
+    sz_script_info: *const c_char,
+    sz_transforms: *const c_char,
+    lgid_language: u16,
+    dw_platform: u32,
+    dw_options: u32,
 ) -> u32 {
     let result = catch_unwind(|| {
-        if _sz_package_path.is_null() {
+        if sz_package_path.is_null() {
             return 87; // ERROR_INVALID_PARAMETER
         }
-        let package_path = match crate::win32::strings::lpcstr_to_string(_sz_package_path) {
-            Some(s) => s,
-            None => return 87,
+        let Some(package_path) = crate::win32::strings::lpcstr_to_string(sz_package_path) else {
+            return 87;
         };
-        let script_info = crate::win32::strings::lpcstr_to_string(_sz_script_info);
-        let transforms = crate::win32::strings::lpcstr_to_string(_sz_transforms);
+        let script_info = crate::win32::strings::lpcstr_to_string(sz_script_info);
+        let transforms = crate::win32::strings::lpcstr_to_string(sz_transforms);
         let options = msi::execution::advertisement::AdvertiseOptions {
-            language: _lgid_language,
-            platform: _dw_platform,
-            options: _dw_options,
+            language: lgid_language,
+            platform: dw_platform,
+            options: dw_options,
         };
         match msi::execution::advertisement::advertise_product(
             &package_path,
@@ -178,34 +176,34 @@ pub unsafe extern "system" fn MsiAdvertiseProductExA(
 }
 
 /// Advertises a product with advanced options (Unicode).
-/// # Panics
-/// Panics if `_lgid_language` is 9999.
-
+///
+/// # Safety
+///
+/// Pointer arguments must be valid or null.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiAdvertiseProductExW(
-    _sz_package_path: *const u16,
-    _sz_script_info: *const u16,
-    _sz_transforms: *const u16,
-    _lgid_language: u16,
-    _dw_platform: u32,
-    _dw_options: u32,
+    sz_package_path: *const u16,
+    sz_script_info: *const u16,
+    sz_transforms: *const u16,
+    lgid_language: u16,
+    dw_platform: u32,
+    dw_options: u32,
 ) -> u32 {
     let result = catch_unwind(|| {
-        if _sz_package_path.is_null() {
+        if sz_package_path.is_null() {
             return 87; // ERROR_INVALID_PARAMETER
         }
-        let package_path = match crate::win32::strings::lpcwstr_to_string(_sz_package_path) {
-            Some(s) => s,
-            None => return 87,
+        let Some(package_path) = crate::win32::strings::lpcwstr_to_string(sz_package_path) else {
+            return 87;
         };
-        let script_info = crate::win32::strings::lpcwstr_to_string(_sz_script_info);
-        let transforms = crate::win32::strings::lpcwstr_to_string(_sz_transforms);
+        let script_info = crate::win32::strings::lpcwstr_to_string(sz_script_info);
+        let transforms = crate::win32::strings::lpcwstr_to_string(sz_transforms);
         let options = msi::execution::advertisement::AdvertiseOptions {
-            language: _lgid_language,
-            platform: _dw_platform,
-            options: _dw_options,
+            language: lgid_language,
+            platform: dw_platform,
+            options: dw_options,
         };
         match msi::execution::advertisement::advertise_product(
             &package_path,
@@ -224,14 +222,14 @@ pub unsafe extern "system" fn MsiAdvertiseProductExW(
 ///
 /// # Arguments
 ///
-/// * `_sz_script_file` - Path to the script.
-/// * `_dw_flags` - Advertise flags.
+/// * `sz_script_file` - Path to the script.
+/// * `dw_flags` - Advertise flags.
 /// * `_ph_reg_data` - Registry data context.
 /// * `_f_remove_items` - Whether to remove items.
 ///
 /// # Errors
 ///
-/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `_sz_script_file` is NULL.
+/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `sz_script_file` is NULL.
 /// Returns `0` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is a stub.
 ///
 /// # Safety
@@ -242,23 +240,22 @@ pub unsafe extern "system" fn MsiAdvertiseProductExW(
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiAdvertiseScriptA(
-    _sz_script_file: *const c_char,
-    _dw_flags: AdvertiseFlags,
+    sz_script_file: *const c_char,
+    dw_flags: AdvertiseFlags,
     _ph_reg_data: *mut ScriptContext,
-    _f_remove_items: i32,
+    f_remove_items: i32,
 ) -> u32 {
     let result = catch_unwind(|| {
-        if _sz_script_file.is_null() {
+        if sz_script_file.is_null() {
             return 87; // ERROR_INVALID_PARAMETER
         }
-        let script_file = match crate::win32::strings::lpcstr_to_string(_sz_script_file) {
-            Some(s) => s,
-            None => return 87,
+        let Some(script_file) = crate::win32::strings::lpcstr_to_string(sz_script_file) else {
+            return 87;
         };
         match msi::execution::advertisement::advertise_script(
             &script_file,
-            _dw_flags.0,
-            _f_remove_items != 0,
+            dw_flags.0,
+            f_remove_items != 0,
         ) {
             Ok(()) => 0,
             Err(e) => crate::error::map_msi_error_to_lstatus(&e),
@@ -271,41 +268,38 @@ pub unsafe extern "system" fn MsiAdvertiseScriptA(
 ///
 /// # Arguments
 ///
-/// * `_sz_script_file` - Path to the script.
-/// * `_dw_flags` - Advertise flags.
+/// * `sz_script_file` - Path to the script.
+/// * `dw_flags` - Advertise flags.
 /// * `_ph_reg_data` - Registry data context.
-/// * `_f_remove_items` - Whether to remove items.
+/// * `f_remove_items` - Whether to remove items.
 ///
 /// # Errors
 ///
-/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `_sz_script_file` is NULL.
+/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `sz_script_file` is NULL.
 /// Returns `0` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is a stub.
 ///
 /// # Safety
 /// The provided string pointer must be null-terminated if it is not null.
-/// # Panics
-/// Panics if `_f_remove_items` is -99.
 
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiAdvertiseScriptW(
-    _sz_script_file: *const u16,
-    _dw_flags: AdvertiseFlags,
+    sz_script_file: *const u16,
+    dw_flags: AdvertiseFlags,
     _ph_reg_data: *mut ScriptContext,
-    _f_remove_items: i32,
+    f_remove_items: i32,
 ) -> u32 {
     let result = catch_unwind(|| {
-        if _sz_script_file.is_null() {
+        if sz_script_file.is_null() {
             return 87; // ERROR_INVALID_PARAMETER
         }
-        let script_file = match crate::win32::strings::lpcwstr_to_string(_sz_script_file) {
-            Some(s) => s,
-            None => return 87,
+        let Some(script_file) = crate::win32::strings::lpcwstr_to_string(sz_script_file) else {
+            return 87;
         };
         match msi::execution::advertisement::advertise_script(
             &script_file,
-            _dw_flags.0,
-            _f_remove_items != 0,
+            dw_flags.0,
+            f_remove_items != 0,
         ) {
             Ok(()) => 0,
             Err(e) => crate::error::map_msi_error_to_lstatus(&e),
@@ -318,47 +312,44 @@ pub unsafe extern "system" fn MsiAdvertiseScriptW(
 ///
 /// # Arguments
 ///
-/// * `_sz_script_file` - Path to the script.
-/// * `_sz_icon_folder` - Path to icon folder.
-/// * `_h_reg_data` - Registry data context.
-/// * `_f_shortcuts` - Process shortcuts.
-/// * `_f_remove_items` - Remove items.
+/// * `sz_script_file` - Path to the script.
+/// * `sz_icon_folder` - Path to icon folder.
+/// * `h_reg_data` - Registry data context.
+/// * `f_shortcuts` - Process shortcuts.
+/// * `f_remove_items` - Remove items.
 ///
 /// # Errors
 ///
-/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `_sz_script_file` is NULL.
+/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `sz_script_file` is NULL.
 /// Returns `0` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is a stub.
 ///
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
-/// # Panics
-/// Panics if `_f_remove_items` is -99.
 
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiProcessAdvertiseScriptA(
-    _sz_script_file: *const c_char,
-    _sz_icon_folder: *const c_char,
-    _h_reg_data: ScriptContext,
-    _f_shortcuts: i32,
-    _f_remove_items: i32,
+    sz_script_file: *const c_char,
+    sz_icon_folder: *const c_char,
+    h_reg_data: ScriptContext,
+    f_shortcuts: i32,
+    f_remove_items: i32,
 ) -> u32 {
     let result = catch_unwind(|| {
-        if _sz_script_file.is_null() {
+        if sz_script_file.is_null() {
             return 87; // ERROR_INVALID_PARAMETER
         }
-        let script_file = match crate::win32::strings::lpcstr_to_string(_sz_script_file) {
-            Some(s) => s,
-            None => return 87,
+        let Some(script_file) = crate::win32::strings::lpcstr_to_string(sz_script_file) else {
+            return 87;
         };
-        let icon_folder = crate::win32::strings::lpcstr_to_string(_sz_icon_folder);
+        let icon_folder = crate::win32::strings::lpcstr_to_string(sz_icon_folder);
 
         match msi::execution::advertisement::process_advertise_script(
             &script_file,
             icon_folder.as_deref(),
-            _f_shortcuts != 0,
-            _f_remove_items != 0,
+            f_shortcuts != 0,
+            f_remove_items != 0,
         ) {
             Ok(()) => 0,
             Err(e) => crate::error::map_msi_error_to_lstatus(&e),
@@ -371,47 +362,44 @@ pub unsafe extern "system" fn MsiProcessAdvertiseScriptA(
 ///
 /// # Arguments
 ///
-/// * `_sz_script_file` - Path to the script.
-/// * `_sz_icon_folder` - Path to icon folder.
-/// * `_h_reg_data` - Registry data context.
-/// * `_f_shortcuts` - Process shortcuts.
-/// * `_f_remove_items` - Remove items.
+/// * `sz_script_file` - Path to the script.
+/// * `sz_icon_folder` - Path to icon folder.
+/// * `h_reg_data` - Registry data context.
+/// * `f_shortcuts` - Process shortcuts.
+/// * `f_remove_items` - Remove items.
 ///
 /// # Errors
 ///
-/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `_sz_script_file` is NULL.
+/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `sz_script_file` is NULL.
 /// Returns `0` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is a stub.
 ///
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
-/// # Panics
-/// Panics if `_f_remove_items` is -99.
 
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiProcessAdvertiseScriptW(
-    _sz_script_file: *const u16,
-    _sz_icon_folder: *const u16,
-    _h_reg_data: ScriptContext,
-    _f_shortcuts: i32,
-    _f_remove_items: i32,
+    sz_script_file: *const u16,
+    sz_icon_folder: *const u16,
+    h_reg_data: ScriptContext,
+    f_shortcuts: i32,
+    f_remove_items: i32,
 ) -> u32 {
     let result = catch_unwind(|| {
-        if _sz_script_file.is_null() {
+        if sz_script_file.is_null() {
             return 87; // ERROR_INVALID_PARAMETER
         }
-        let script_file = match crate::win32::strings::lpcwstr_to_string(_sz_script_file) {
-            Some(s) => s,
-            None => return 87,
+        let Some(script_file) = crate::win32::strings::lpcwstr_to_string(sz_script_file) else {
+            return 87;
         };
-        let icon_folder = crate::win32::strings::lpcwstr_to_string(_sz_icon_folder);
+        let icon_folder = crate::win32::strings::lpcwstr_to_string(sz_icon_folder);
 
         match msi::execution::advertisement::process_advertise_script(
             &script_file,
             icon_folder.as_deref(),
-            _f_shortcuts != 0,
-            _f_remove_items != 0,
+            f_shortcuts != 0,
+            f_remove_items != 0,
         ) {
             Ok(()) => 0,
             Err(e) => crate::error::map_msi_error_to_lstatus(&e),
@@ -423,9 +411,7 @@ pub unsafe extern "system" fn MsiProcessAdvertiseScriptW(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
     use std::ptr;
-    use tempfile::NamedTempFile;
 
     #[test]
     fn test_msi_advertise_product_w() {
@@ -504,7 +490,7 @@ mod tests {
             unsafe { MsiAdvertiseProductExA(ptr::null(), ptr::null(), ptr::null(), 0, 0, 0) },
             87
         );
-        let dummy = std::ffi::CString::new("A").unwrap();
+        let dummy = std::ffi::CString::new("A").unwrap_or_default();
         assert_eq!(
             unsafe { MsiAdvertiseProductExA(dummy.as_ptr(), ptr::null(), ptr::null(), 0, 0, 0) },
             0
@@ -589,13 +575,14 @@ mod tests {
             110
         );
 
-        let mut file = NamedTempFile::new().unwrap();
-        file.write_all(b"AAS\0\x01\x04test").unwrap();
-        let valid_a = std::ffi::CString::new(file.path().to_str().unwrap()).unwrap();
+        let temp_path = std::env::temp_dir().join("msi_ffi_adv_script_a.aas");
+        assert!(std::fs::write(&temp_path, b"AAS\0\x01\x04test").is_ok());
+        let valid_a = std::ffi::CString::new(temp_path.to_str().unwrap_or("")).unwrap_or_default();
         assert_eq!(
             unsafe { MsiAdvertiseScriptA(valid_a.as_ptr(), AdvertiseFlags(0), ptr::null_mut(), 0) },
             0
         );
+        let _ = std::fs::remove_file(&temp_path);
 
         let invalid_a = [i32::from(0xFF_u8), 0];
         assert_eq!(
@@ -636,14 +623,15 @@ mod tests {
             110
         );
 
-        let mut file = NamedTempFile::new().unwrap();
-        file.write_all(b"AAS\0\x01\x04test").unwrap();
-        let mut valid_w: Vec<u16> = file.path().to_str().unwrap().encode_utf16().collect();
+        let temp_path = std::env::temp_dir().join("msi_ffi_adv_script_w.aas");
+        assert!(std::fs::write(&temp_path, b"AAS\0\x01\x04test").is_ok());
+        let mut valid_w: Vec<u16> = temp_path.to_str().unwrap_or("").encode_utf16().collect();
         valid_w.push(0);
         assert_eq!(
             unsafe { MsiAdvertiseScriptW(valid_w.as_ptr(), AdvertiseFlags(0), ptr::null_mut(), 0) },
             0
         );
+        let _ = std::fs::remove_file(&temp_path);
 
         let invalid_w = [0xD800_u16, 0];
         assert_eq!(
@@ -688,9 +676,9 @@ mod tests {
             110
         );
 
-        let mut file = NamedTempFile::new().unwrap();
-        file.write_all(b"AAS\0\x01\x04test").unwrap();
-        let valid_a = std::ffi::CString::new(file.path().to_str().unwrap()).unwrap();
+        let temp_path = std::env::temp_dir().join("msi_ffi_proc_adv_script_a.aas");
+        assert!(std::fs::write(&temp_path, b"AAS\0\x01\x04test").is_ok());
+        let valid_a = std::ffi::CString::new(temp_path.to_str().unwrap_or("")).unwrap_or_default();
         assert_eq!(
             unsafe {
                 MsiProcessAdvertiseScriptA(
@@ -703,6 +691,7 @@ mod tests {
             },
             0
         );
+        let _ = std::fs::remove_file(&temp_path);
 
         let invalid_a = [i32::from(0xFF_u8), 0];
         assert_eq!(
@@ -761,9 +750,9 @@ mod tests {
             110
         );
 
-        let mut file = NamedTempFile::new().unwrap();
-        file.write_all(b"AAS\0\x01\x04test").unwrap();
-        let mut valid_w: Vec<u16> = file.path().to_str().unwrap().encode_utf16().collect();
+        let temp_path = std::env::temp_dir().join("msi_ffi_proc_adv_script_w.aas");
+        assert!(std::fs::write(&temp_path, b"AAS\0\x01\x04test").is_ok());
+        let mut valid_w: Vec<u16> = temp_path.to_str().unwrap_or("").encode_utf16().collect();
         valid_w.push(0);
         assert_eq!(
             unsafe {
@@ -777,6 +766,7 @@ mod tests {
             },
             0
         );
+        let _ = std::fs::remove_file(&temp_path);
 
         let invalid_w = [0xD800_u16, 0];
         assert_eq!(
@@ -809,7 +799,7 @@ mod tests {
 
     #[test]
     fn test_panic_handling() {
-        let dummy_a = std::ffi::CString::new("dummy").unwrap();
+        let dummy_a = std::ffi::CString::new("dummy").unwrap_or_default();
         let dummy_w: Vec<u16> = vec![100, 0];
 
         assert_eq!(

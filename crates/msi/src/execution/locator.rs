@@ -61,6 +61,34 @@ pub fn provide_component(
     product_code: &str,
     feature_id: &str,
     component_id: &str,
+    install_mode: InstallMode,
+) -> Result<String, MsiError> {
+    let store = RegistryStore::default();
+    provide_component_with_store(&store, product_code, feature_id, component_id, install_mode)
+}
+
+/// Provides a component against a specific [`RegistryStore`] and returns its resolved keypath.
+///
+/// # Arguments
+///
+/// * `store` - Registry store to query.
+/// * `product_code` - Product code GUID.
+/// * `feature_id` - Feature identifier.
+/// * `component_id` - Component GUID or identifier.
+/// * `_install_mode` - Installation mode (`INSTALLMODE_*`).
+///
+/// # Errors
+///
+/// Returns [`MsiError::InvalidArgument`] if any parameter is empty.
+///
+/// # Returns
+///
+/// Resolved component keypath string.
+pub fn provide_component_with_store(
+    store: &RegistryStore,
+    product_code: &str,
+    feature_id: &str,
+    component_id: &str,
     _install_mode: InstallMode,
 ) -> Result<String, MsiError> {
     if product_code.is_empty() || feature_id.is_empty() || component_id.is_empty() {
@@ -72,7 +100,6 @@ pub fn provide_component(
     if let (Ok(comp_squid), Ok(prod_squid)) =
         (encode_squid(component_id), encode_squid(product_code))
     {
-        let store = RegistryStore::default();
         let key = format!(
             "Software/Microsoft/Windows/CurrentVersion/Installer/UserData/S-1-5-18/Components/{comp_squid}"
         );
@@ -264,7 +291,7 @@ mod tests {
         let cid = ComponentId::new("1234");
         assert_eq!(cid.as_str(), "1234");
         assert_eq!(cid, ComponentId::new("1234"));
-        assert!(format!("{cid:?}").contains("1234"));
+        assert!(format!("{cid:?}").contains("1234"), "format check");
         let cid2 = cid.clone();
         assert_eq!(cid, cid2);
     }
@@ -278,18 +305,38 @@ mod tests {
 
     /// Verifies `provide_component` parameter validation and GUID SQUID lookup path.
     #[test]
-    fn test_provide_component() {
+    fn test_provide_component() -> Result<(), Box<dyn std::error::Error>> {
         assert!(provide_component("", "f", "c", InstallMode::default()).is_err());
         assert!(provide_component("p", "", "c", InstallMode::default()).is_err());
         assert!(provide_component("p", "f", "", InstallMode::default()).is_err());
         assert!(provide_component("p", "f", "c", InstallMode::default()).is_ok());
-        assert!(provide_component(
-            "{11111111-1111-1111-1111-111111111111}",
+        let prod_guid = "{11111111-1111-1111-1111-111111111111}";
+        let comp_guid = "{22222222-2222-2222-2222-222222222222}";
+        assert!(
+            provide_component(prod_guid, "Feature1", comp_guid, InstallMode::default()).is_ok()
+        );
+
+        let mut store = RegistryStore::default();
+        let comp_squid = encode_squid(comp_guid)?;
+        let prod_squid = encode_squid(prod_guid)?;
+        let key = format!(
+            "Software/Microsoft/Windows/CurrentVersion/Installer/UserData/S-1-5-18/Components/{comp_squid}"
+        );
+        store.set_value(
+            RegistryRoot::LocalMachine,
+            &key,
+            Some(&prod_squid),
+            crate::platform::registry_store::RegistryValue::Sz("C:/App/bin.exe".to_string()),
+        );
+        let found = provide_component_with_store(
+            &store,
+            prod_guid,
             "Feature1",
-            "{22222222-2222-2222-2222-222222222222}",
-            InstallMode::default()
-        )
-        .is_ok());
+            comp_guid,
+            InstallMode::default(),
+        )?;
+        assert_eq!(found, "C:/App/bin.exe");
+        Ok(())
     }
 
     /// Verifies `provide_component_from_descriptor` on raw and structured descriptors.
@@ -303,8 +350,8 @@ mod tests {
 
     /// Verifies `locate_component` validation and state resolution.
     #[test]
-    fn test_locate_component() {
-        let err1 = locate_component("").unwrap_err();
+    fn test_locate_component() -> Result<(), Box<dyn std::error::Error>> {
+        let err1 = locate_component("").err().unwrap_or_default();
         assert_eq!(
             err1,
             MsiError::InvalidArgument {
@@ -312,58 +359,64 @@ mod tests {
                 reason: "empty".to_string()
             }
         );
-        let err2 = locate_component("{00000000-0000-0000-0000-000000000000}").unwrap_err();
+        let err2 = locate_component("{00000000-0000-0000-0000-000000000000}")
+            .err()
+            .unwrap_or_default();
         assert_eq!(
             err2,
             MsiError::MissingTable {
                 name: "test".to_string()
             }
         );
-        let res = locate_component("comp").expect("test");
+        let res = locate_component("comp")?;
         assert_eq!(res.0, "");
         assert_eq!(res.1, 3);
+        Ok(())
     }
 
     /// Verifies `provide_assembly` with and without application context.
     #[test]
-    fn test_provide_assembly() {
+    fn test_provide_assembly() -> Result<(), Box<dyn std::error::Error>> {
         assert!(provide_assembly("", None, InstallMode::default()).is_err());
         assert!(provide_assembly("asm", None, InstallMode::default()).is_ok());
         assert_eq!(
-            provide_assembly("asm.dll", Some("/app"), InstallMode::default()).expect("test"),
+            provide_assembly("asm", Some(""), InstallMode::default())?,
+            ""
+        );
+        assert_eq!(
+            provide_assembly("asm.dll", Some("/app"), InstallMode::default())?,
             "/app/asm.dll"
         );
+        Ok(())
     }
 
     /// Verifies `use_feature` parameter validation.
     #[test]
-    fn test_use_feature() {
+    fn test_use_feature() -> Result<(), Box<dyn std::error::Error>> {
         assert!(use_feature("", "f", InstallMode::default()).is_err());
         assert!(use_feature("p", "", InstallMode::default()).is_err());
-        assert_eq!(
-            use_feature("p", "f", InstallMode::default()).expect("test"),
-            3
-        );
+        assert_eq!(use_feature("p", "f", InstallMode::default())?, 3);
+        Ok(())
     }
 
     /// Verifies `get_shortcut_target` on missing paths and synthesized `.lnk` files with `DarwinDataBlock`.
     #[test]
-    fn test_get_shortcut_target() {
+    fn test_get_shortcut_target() -> Result<(), Box<dyn std::error::Error>> {
         assert!(get_shortcut_target("").is_err());
-        let res = get_shortcut_target("path").expect("test");
+        let res = get_shortcut_target("path")?;
         assert_eq!(res.0, "");
         assert_eq!(res.1, "");
         assert_eq!(res.2, "");
 
-        let temp_dir = tempfile::tempdir().expect("test");
+        let temp_dir = tempfile::tempdir()?;
         let lnk_path = temp_dir.path().join("adv.lnk");
         let mut builder = crate::platform::shell::lnk::ShellLinkBuilder::new();
         builder
             .set_target("C:/App.exe")
             .set_darwin_descriptor("ProdGuid[MainFeature]>CompGuid");
-        builder.save(&lnk_path).expect("test");
+        assert!(builder.save(&lnk_path).is_ok());
 
-        let parsed = get_shortcut_target(&lnk_path.to_string_lossy()).expect("test");
+        let parsed = get_shortcut_target(&lnk_path.to_string_lossy())?;
         assert_eq!(
             parsed,
             (
@@ -372,5 +425,50 @@ mod tests {
                 "CompGuid".to_string()
             )
         );
+
+        let lnk_no_feat = temp_dir.path().join("adv_no_feat.lnk");
+        let mut raw_block = crate::platform::shell::lnk::DARWIN_DATA_BLOCK_SIGNATURE
+            .to_le_bytes()
+            .to_vec();
+        raw_block.extend_from_slice(b"ProdGuid>CompGuid");
+        std::fs::write(&lnk_no_feat, &raw_block)?;
+        let parsed_no_feat = get_shortcut_target(&lnk_no_feat.to_string_lossy())?;
+        assert_eq!(
+            parsed_no_feat,
+            (
+                "ProdGuid".to_string(),
+                String::new(),
+                "CompGuid".to_string()
+            )
+        );
+
+        let lnk_plain = temp_dir.path().join("plain.lnk");
+        let mut plain_builder = crate::platform::shell::lnk::ShellLinkBuilder::new();
+        plain_builder.set_target("C:/App.exe");
+        assert!(plain_builder.save(&lnk_plain).is_ok());
+        assert_eq!(
+            get_shortcut_target(&lnk_plain.to_string_lossy())?,
+            (String::new(), String::new(), String::new())
+        );
+
+        let lnk_sig_only = temp_dir.path().join("sig_only.lnk");
+        let sig_bytes = crate::platform::shell::lnk::DARWIN_DATA_BLOCK_SIGNATURE
+            .to_le_bytes()
+            .to_vec();
+        std::fs::write(&lnk_sig_only, &sig_bytes)?;
+        assert_eq!(
+            get_shortcut_target(&lnk_sig_only.to_string_lossy())?,
+            (String::new(), String::new(), String::new())
+        );
+
+        let lnk_no_delim = temp_dir.path().join("no_delim.lnk");
+        let mut no_delim_bytes = sig_bytes;
+        no_delim_bytes.extend_from_slice(b"NoArrowHere\0");
+        std::fs::write(&lnk_no_delim, &no_delim_bytes)?;
+        assert_eq!(
+            get_shortcut_target(&lnk_no_delim.to_string_lossy())?,
+            (String::new(), String::new(), String::new())
+        );
+        Ok(())
     }
 }

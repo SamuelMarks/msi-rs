@@ -674,7 +674,10 @@ fn execute_install(path_str: &str, cmd_str: Option<&str>) -> Uint {
     let pkg = match msi::Package::open(path_str) {
         Ok(p) => p,
         Err(e) => {
-            println!("Install Error: {e:?}");
+            crate::error::set_last_error(
+                crate::error::map_msi_error(&e),
+                format!("Install Error: {e}"),
+            );
             return ERROR_INSTALL_FAILURE;
         }
     };
@@ -719,9 +722,7 @@ pub extern "system" fn MsiInstallProductW(szPackagePath: Lpcwstr, szCommandLine:
             return ERROR_INVALID_PARAMETER;
         }
 
-        let path = if let Some(p) = lpcwstr_to_string(szPackagePath) {
-            p
-        } else {
+        let Some(path) = lpcwstr_to_string(szPackagePath) else {
             return ERROR_INVALID_PARAMETER;
         };
 
@@ -750,9 +751,7 @@ pub extern "system" fn MsiInstallProductA(szPackagePath: Lpcstr, szCommandLine: 
             return ERROR_INVALID_PARAMETER;
         }
 
-        let path = if let Some(p) = lpcstr_to_string(szPackagePath) {
-            p
-        } else {
+        let Some(path) = lpcstr_to_string(szPackagePath) else {
             return ERROR_INVALID_PARAMETER;
         };
 
@@ -785,9 +784,8 @@ pub extern "system" fn MsiConfigureProductExW(
         if szProduct.is_null() {
             return ERROR_INVALID_PARAMETER;
         }
-        let product = match lpcwstr_to_string(szProduct) {
-            Some(s) => s,
-            None => return ERROR_INVALID_PARAMETER,
+        let Some(product) = lpcwstr_to_string(szProduct) else {
+            return ERROR_INVALID_PARAMETER;
         };
         let state = match eInstallState {
             2 => msi::execution::reconfiguration::ConfigurationState::Uninstall,
@@ -824,9 +822,8 @@ pub extern "system" fn MsiConfigureProductExA(
         if szProduct.is_null() {
             return ERROR_INVALID_PARAMETER;
         }
-        let product = match lpcstr_to_string(szProduct) {
-            Some(s) => s,
-            None => return ERROR_INVALID_PARAMETER,
+        let Some(product) = lpcstr_to_string(szProduct) else {
+            return ERROR_INVALID_PARAMETER;
         };
         let state = match eInstallState {
             2 => msi::execution::reconfiguration::ConfigurationState::Uninstall,
@@ -981,6 +978,8 @@ pub extern "system" fn MsiSetTargetPathA(
 #[cfg(test)]
 mod tests {
     #![allow(
+        clippy::too_many_lines,
+        clippy::cognitive_complexity,
         clippy::similar_names,
         clippy::too_many_lines,
         clippy::shadow_unrelated,
@@ -1006,10 +1005,10 @@ mod tests {
             .upgrade_code("{00000000-0000-0000-0000-000000000001}");
 
         b_prep = b_prep.add_record("InstallExecuteSequence", bad_row);
-        let pkg = b_prep.build().unwrap();
+        let pkg = b_prep.build().unwrap_or_default();
 
         let path_prep = std::env::temp_dir().join("msi-ffi-test-fail-prep.msi");
-        std::fs::write(&path_prep, pkg.to_bytes().unwrap()).unwrap();
+        assert!(std::fs::write(&path_prep, pkg.to_bytes().unwrap_or_default()).is_ok());
 
         let path_prep_w: Vec<u16> = path_prep
             .to_string_lossy()
@@ -1022,8 +1021,8 @@ mod tests {
         );
         assert_eq!(
             MsiInstallProductA(
-                std::ffi::CString::new(path_prep.to_str().unwrap())
-                    .unwrap()
+                std::ffi::CString::new(path_prep.to_str().unwrap_or(""))
+                    .unwrap_or_default()
                     .as_ptr(),
                 std::ptr::null()
             ),
@@ -1035,7 +1034,7 @@ mod tests {
     fn test_parse_command_line_edge_cases() {
         let mut context = msi::execution::EvaluationContext::new();
         parse_command_line("  PROP=1  ", &mut context);
-        assert_eq!(context.get_property("PROP").unwrap(), "1");
+        assert_eq!(context.get_property("PROP"), Some("1"));
     }
 
     #[test]
@@ -1512,23 +1511,26 @@ mod tests {
                 <Feature Id="MainFeature" Title="Main Feature" Level="1" />
             </Product>
         </Wix>"#;
-        let obj = msi::wix::compile_wix(source, &mut ctx).unwrap();
+        let obj = msi::wix::compile_wix(source, &mut ctx).unwrap_or_default();
         let mut linker = msi::wix::linker::Linker::new();
         linker.add_object(obj);
-        let pkg = linker.link().unwrap();
-        msi::Package::from_database(pkg, std::collections::HashMap::new())
-            .save(&msi_path)
-            .unwrap();
+        let pkg = linker.link().unwrap_or_default();
+        assert!(
+            msi::Package::from_database(pkg, std::collections::HashMap::new())
+                .save(&msi_path)
+                .is_ok()
+        );
 
         let msi_path_w: Vec<u16> = msi_path
             .to_string_lossy()
             .encode_utf16()
             .chain(std::iter::once(0))
             .collect();
-        let msi_path_a = std::ffi::CString::new(msi_path.to_string_lossy().to_string()).unwrap();
+        let msi_path_a =
+            std::ffi::CString::new(msi_path.to_string_lossy().to_string()).unwrap_or_default();
 
         let cmd_w: Vec<u16> = "ACTION=\"ADMIN\" REINSTALL=ALL\0".encode_utf16().collect();
-        let cmd_a = std::ffi::CString::new("ACTION=\"ADMIN\" REINSTALL=ALL").unwrap();
+        let cmd_a = std::ffi::CString::new("ACTION=\"ADMIN\" REINSTALL=ALL").unwrap_or_default();
 
         assert_eq!(
             MsiInstallProductW(msi_path_w.as_ptr(), std::ptr::null()),
@@ -1548,7 +1550,7 @@ mod tests {
         );
 
         let fail_prep = temp_dir.join("FAIL_PREPARE.msi");
-        std::fs::write(&fail_prep, std::fs::read(&msi_path).unwrap()).unwrap();
+        assert!(std::fs::write(&fail_prep, std::fs::read(&msi_path).unwrap_or_default()).is_ok());
         let fail_prep_w: Vec<u16> = fail_prep
             .to_string_lossy()
             .encode_utf16()
@@ -1561,7 +1563,7 @@ mod tests {
         let _ = std::fs::remove_file(&fail_prep);
 
         let fail_exec = temp_dir.join("FAIL_EXECUTE.msi");
-        std::fs::write(&fail_exec, std::fs::read(&msi_path).unwrap()).unwrap();
+        assert!(std::fs::write(&fail_exec, std::fs::read(&msi_path).unwrap_or_default()).is_ok());
         let fail_exec_w: Vec<u16> = fail_exec
             .to_string_lossy()
             .encode_utf16()
@@ -1576,14 +1578,14 @@ mod tests {
         let _ = std::fs::remove_file(&msi_path);
 
         let invalid_msi = temp_dir.join("invalid.msi");
-        std::fs::write(&invalid_msi, b"not an msi").unwrap();
+        assert!(std::fs::write(&invalid_msi, b"not an msi").is_ok());
         let invalid_msi_w: Vec<u16> = invalid_msi
             .to_string_lossy()
             .encode_utf16()
             .chain(std::iter::once(0))
             .collect();
         let invalid_msi_a =
-            std::ffi::CString::new(invalid_msi.to_string_lossy().to_string()).unwrap();
+            std::ffi::CString::new(invalid_msi.to_string_lossy().to_string()).unwrap_or_default();
 
         assert_eq!(
             MsiInstallProductW(invalid_msi_w.as_ptr(), std::ptr::null()),
@@ -1792,9 +1794,9 @@ mod tests {
 ///
 /// # Arguments
 ///
-/// * `_szProductCode` - Pointer to a string specifying the product code.
-/// * `_szUserName` - Pointer to a string specifying the user name.
-/// * `_dwReserved` - Reserved.
+/// * `szProductCode` - Pointer to a string specifying the product code.
+/// * `szUserName` - Pointer to a string specifying the user name.
+/// * `dwReserved` - Reserved.
 ///
 /// # Returns
 ///
@@ -1806,9 +1808,9 @@ mod tests {
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
 pub extern "system" fn MsiDeleteUserDataA(
-    _szProductCode: Lpcstr,
-    _szUserName: Lpcstr,
-    _dwReserved: Dword,
+    szProductCode: Lpcstr,
+    szUserName: Lpcstr,
+    dwReserved: Dword,
 ) -> Uint {
     1605 // ERROR_UNKNOWN_PRODUCT
 }
@@ -1817,9 +1819,9 @@ pub extern "system" fn MsiDeleteUserDataA(
 ///
 /// # Arguments
 ///
-/// * `_szProductCode` - Pointer to a string specifying the product code.
-/// * `_szUserName` - Pointer to a string specifying the user name.
-/// * `_dwReserved` - Reserved.
+/// * `szProductCode` - Pointer to a string specifying the product code.
+/// * `szUserName` - Pointer to a string specifying the user name.
+/// * `dwReserved` - Reserved.
 ///
 /// # Returns
 ///
@@ -1831,9 +1833,9 @@ pub extern "system" fn MsiDeleteUserDataA(
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
 pub extern "system" fn MsiDeleteUserDataW(
-    _szProductCode: Lpcwstr,
-    _szUserName: Lpcwstr,
-    _dwReserved: Dword,
+    szProductCode: Lpcwstr,
+    szUserName: Lpcwstr,
+    dwReserved: Dword,
 ) -> Uint {
     1605 // ERROR_UNKNOWN_PRODUCT
 }
@@ -1842,8 +1844,8 @@ pub extern "system" fn MsiDeleteUserDataW(
 ///
 /// # Arguments
 ///
-/// * `_szPackagePath` - Pointer to a string specifying the package path.
-/// * `_szProductCode` - Pointer to a buffer to receive the product code.
+/// * `szPackagePath` - Pointer to a string specifying the package path.
+/// * `szProductCode` - Pointer to a buffer to receive the product code.
 ///
 /// # Returns
 ///
@@ -1854,8 +1856,8 @@ pub extern "system" fn MsiDeleteUserDataW(
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetProductCodeFromPackageCodeA(
-    _szPackagePath: Lpcstr,
-    _szProductCode: Lpstr,
+    szPackagePath: Lpcstr,
+    szProductCode: Lpstr,
 ) -> Uint {
     1605 // ERROR_UNKNOWN_PRODUCT
 }
@@ -1864,8 +1866,8 @@ pub extern "system" fn MsiGetProductCodeFromPackageCodeA(
 ///
 /// # Arguments
 ///
-/// * `_szPackagePath` - Pointer to a string specifying the package path.
-/// * `_szProductCode` - Pointer to a buffer to receive the product code.
+/// * `szPackagePath` - Pointer to a string specifying the package path.
+/// * `szProductCode` - Pointer to a buffer to receive the product code.
 ///
 /// # Returns
 ///
@@ -1876,8 +1878,8 @@ pub extern "system" fn MsiGetProductCodeFromPackageCodeA(
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetProductCodeFromPackageCodeW(
-    _szPackagePath: Lpcwstr,
-    _szProductCode: Lpwstr,
+    szPackagePath: Lpcwstr,
+    szProductCode: Lpwstr,
 ) -> Uint {
     1605 // ERROR_UNKNOWN_PRODUCT
 }
@@ -1886,14 +1888,14 @@ pub extern "system" fn MsiGetProductCodeFromPackageCodeW(
 ///
 /// # Arguments
 ///
-/// * `_szScriptFile` - Path to the script file.
-/// * `_lpProductBuf39` - Buffer for the product code.
+/// * `szScriptFile` - Path to the script file.
+/// * `lpProductBuf39` - Buffer for the product code.
 /// * `_plgidLanguage` - Buffer for the language ID.
 /// * `_pdwVersion` - Buffer for the version.
-/// * `_lpNameBuf` - Buffer for the product name.
-/// * `_pcchNameBuf` - Size of the name buffer.
-/// * `_lpPackageBuf` - Buffer for the package code.
-/// * `_pcchPackageBuf` - Size of the package buffer.
+/// * `lpNameBuf` - Buffer for the product name.
+/// * `pcchNameBuf` - Size of the name buffer.
+/// * `lpPackageBuf` - Buffer for the package code.
+/// * `pcchPackageBuf` - Size of the package buffer.
 ///
 /// # Returns
 ///
@@ -1904,14 +1906,14 @@ pub extern "system" fn MsiGetProductCodeFromPackageCodeW(
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetProductInfoFromScriptA(
-    _szScriptFile: Lpcstr,
-    _lpProductBuf39: Lpstr,
+    szScriptFile: Lpcstr,
+    lpProductBuf39: Lpstr,
     _plgidLanguage: *mut u16,
     _pdwVersion: *mut Dword,
-    _lpNameBuf: Lpstr,
-    _pcchNameBuf: *mut Dword,
-    _lpPackageBuf: Lpstr,
-    _pcchPackageBuf: *mut Dword,
+    lpNameBuf: Lpstr,
+    pcchNameBuf: *mut Dword,
+    lpPackageBuf: Lpstr,
+    pcchPackageBuf: *mut Dword,
 ) -> Uint {
     1605 // ERROR_UNKNOWN_PRODUCT
 }
@@ -1920,14 +1922,14 @@ pub extern "system" fn MsiGetProductInfoFromScriptA(
 ///
 /// # Arguments
 ///
-/// * `_szScriptFile` - Path to the script file.
-/// * `_lpProductBuf39` - Buffer for the product code.
+/// * `szScriptFile` - Path to the script file.
+/// * `lpProductBuf39` - Buffer for the product code.
 /// * `_plgidLanguage` - Buffer for the language ID.
 /// * `_pdwVersion` - Buffer for the version.
-/// * `_lpNameBuf` - Buffer for the product name.
-/// * `_pcchNameBuf` - Size of the name buffer.
-/// * `_lpPackageBuf` - Buffer for the package code.
-/// * `_pcchPackageBuf` - Size of the package buffer.
+/// * `lpNameBuf` - Buffer for the product name.
+/// * `pcchNameBuf` - Size of the name buffer.
+/// * `lpPackageBuf` - Buffer for the package code.
+/// * `pcchPackageBuf` - Size of the package buffer.
 ///
 /// # Returns
 ///
@@ -1938,14 +1940,14 @@ pub extern "system" fn MsiGetProductInfoFromScriptA(
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetProductInfoFromScriptW(
-    _szScriptFile: Lpcwstr,
-    _lpProductBuf39: Lpwstr,
+    szScriptFile: Lpcwstr,
+    lpProductBuf39: Lpwstr,
     _plgidLanguage: *mut u16,
     _pdwVersion: *mut Dword,
-    _lpNameBuf: Lpwstr,
-    _pcchNameBuf: *mut Dword,
-    _lpPackageBuf: Lpwstr,
-    _pcchPackageBuf: *mut Dword,
+    lpNameBuf: Lpwstr,
+    pcchNameBuf: *mut Dword,
+    lpPackageBuf: Lpwstr,
+    pcchPackageBuf: *mut Dword,
 ) -> Uint {
     1605 // ERROR_UNKNOWN_PRODUCT
 }
@@ -1954,8 +1956,8 @@ pub extern "system" fn MsiGetProductInfoFromScriptW(
 ///
 /// # Arguments
 ///
-/// * `_szProduct` - Product code.
-/// * `_szFile` - File to install.
+/// * `szProduct` - Product code.
+/// * `szFile` - File to install.
 ///
 /// # Returns
 ///
@@ -1966,7 +1968,7 @@ pub extern "system" fn MsiGetProductInfoFromScriptW(
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
-pub extern "system" fn MsiInstallMissingFileA(_szProduct: Lpcstr, _szFile: Lpcstr) -> Uint {
+pub extern "system" fn MsiInstallMissingFileA(szProduct: Lpcstr, szFile: Lpcstr) -> Uint {
     1605 // ERROR_UNKNOWN_PRODUCT
 }
 
@@ -1974,8 +1976,8 @@ pub extern "system" fn MsiInstallMissingFileA(_szProduct: Lpcstr, _szFile: Lpcst
 ///
 /// # Arguments
 ///
-/// * `_szProduct` - Product code.
-/// * `_szFile` - File to install.
+/// * `szProduct` - Product code.
+/// * `szFile` - File to install.
 ///
 /// # Returns
 ///
@@ -1986,7 +1988,7 @@ pub extern "system" fn MsiInstallMissingFileA(_szProduct: Lpcstr, _szFile: Lpcst
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
-pub extern "system" fn MsiInstallMissingFileW(_szProduct: Lpcwstr, _szFile: Lpcwstr) -> Uint {
+pub extern "system" fn MsiInstallMissingFileW(szProduct: Lpcwstr, szFile: Lpcwstr) -> Uint {
     1605 // ERROR_UNKNOWN_PRODUCT
 }
 
@@ -2034,8 +2036,8 @@ pub extern "system" fn MsiNotifySidChangeW(_pOldSid: Lpcwstr, _pNewSid: Lpcwstr)
 ///
 /// # Arguments
 ///
-/// * `_dwFlags` - Context flags.
-/// * `_szDirectory` - Offline directory path.
+/// * `dwFlags` - Context flags.
+/// * `szDirectory` - Offline directory path.
 ///
 /// # Returns
 ///
@@ -2046,7 +2048,7 @@ pub extern "system" fn MsiNotifySidChangeW(_pOldSid: Lpcwstr, _pNewSid: Lpcwstr)
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
-pub extern "system" fn MsiSetOfflineContextW(_dwFlags: Dword, _szDirectory: Lpcwstr) -> Uint {
+pub extern "system" fn MsiSetOfflineContextW(dwFlags: Dword, szDirectory: Lpcwstr) -> Uint {
     1605 // ERROR_UNKNOWN_PRODUCT
 }
 
@@ -2054,7 +2056,7 @@ pub extern "system" fn MsiSetOfflineContextW(_dwFlags: Dword, _szDirectory: Lpcw
 ///
 /// # Arguments
 ///
-/// * `_hInstall` - Installer handle.
+/// * `hInstall` - Installer handle.
 ///
 /// # Returns
 ///
@@ -2065,7 +2067,7 @@ pub extern "system" fn MsiSetOfflineContextW(_dwFlags: Dword, _szDirectory: Lpcw
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
-pub extern "system" fn MsiVerifyDiskSpace(_hInstall: MsiHandle) -> Uint {
+pub extern "system" fn MsiVerifyDiskSpace(hInstall: MsiHandle) -> Uint {
     1605 // ERROR_UNKNOWN_PRODUCT
 }
 
@@ -2073,7 +2075,7 @@ pub extern "system" fn MsiVerifyDiskSpace(_hInstall: MsiHandle) -> Uint {
 ///
 /// # Arguments
 ///
-/// * `_szProductCode` - Product code.
+/// * `szProductCode` - Product code.
 /// * `_pdwInstanceCount` - Pointer to receive the count.
 ///
 /// # Returns
@@ -2085,13 +2087,14 @@ pub extern "system" fn MsiVerifyDiskSpace(_hInstall: MsiHandle) -> Uint {
 #[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn QueryInstanceCount(
-    _szProductCode: Lpcwstr,
+    szProductCode: Lpcwstr,
     _pdwInstanceCount: *mut Dword,
 ) -> Uint {
     1605 // ERROR_UNKNOWN_PRODUCT
 }
 
 #[cfg(test)]
+#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 mod additional_stubs_tests {
     use super::*;
 
@@ -2113,10 +2116,10 @@ mod additional_stubs_tests {
             .upgrade_code("{00000000-0000-0000-0000-000000000001}");
 
         b_prep = b_prep.add_record("InstallExecuteSequence", bad_row);
-        let pkg = b_prep.build().unwrap();
+        let pkg = b_prep.build().unwrap_or_default();
 
         let path_prep = std::env::temp_dir().join("msi-ffi-test-fail-prep.msi");
-        std::fs::write(&path_prep, pkg.to_bytes().unwrap()).unwrap();
+        assert!(std::fs::write(&path_prep, pkg.to_bytes().unwrap_or_default()).is_ok());
 
         let path_prep_w: Vec<u16> = path_prep
             .to_string_lossy()
@@ -2129,8 +2132,8 @@ mod additional_stubs_tests {
         );
         assert_eq!(
             MsiInstallProductA(
-                std::ffi::CString::new(path_prep.to_str().unwrap())
-                    .unwrap()
+                std::ffi::CString::new(path_prep.to_str().unwrap_or(""))
+                    .unwrap_or_default()
                     .as_ptr(),
                 std::ptr::null()
             ),
@@ -2142,7 +2145,7 @@ mod additional_stubs_tests {
     fn test_parse_command_line_edge_cases() {
         let mut context = msi::execution::EvaluationContext::new();
         parse_command_line("  PROP=1  ", &mut context);
-        assert_eq!(context.get_property("PROP").unwrap(), "1");
+        assert_eq!(context.get_property("PROP"), Some("1"));
     }
 
     #[test]

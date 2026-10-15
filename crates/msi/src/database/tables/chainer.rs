@@ -198,7 +198,6 @@ impl MsiEmbeddedChainerRow {
             _ => None,
         };
 
-        println!("REC: {rec:?}");
         let source = match rec.get(3) {
             Some(FieldValue::String(s)) if !s.is_empty() => s.clone(),
             _ => {
@@ -365,7 +364,8 @@ mod tests {
         #[allow(clippy::redundant_clone)]
         let row_cloned = row.clone();
         assert_eq!(row_cloned, row);
-        assert!(format!("{row:?}").contains("LibScriptChainer"));
+        let row_dbg = format!("{row:?}");
+        assert!(row_dbg.contains("LibScriptChainer"));
     }
 
     /// Tests validation errors on invalid row data.

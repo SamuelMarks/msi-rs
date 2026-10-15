@@ -433,20 +433,25 @@ mod tests {
 
     #[cfg(not(windows))]
     #[test]
-    fn test_posix_ini_parser() {
+    fn test_posix_ini_parser() -> Result<(), Box<dyn std::error::Error>> {
         let content =
             "[PostgreSQL]\nDescription=Driver\nDriver=/usr/lib/psql.so\n\n[MySQL]\nDriver=my.so\n";
-        let parsed = OdbcManager::parse_ini(content).expect("parse failed");
+        let parsed = OdbcManager::parse_ini(content)?;
         assert_eq!(parsed.len(), 2);
         assert_eq!(parsed["PostgreSQL"]["Driver"], "/usr/lib/psql.so");
 
-        let err = OdbcManager::parse_ini("Key=Value\n[S]").unwrap_err();
+        let err = OdbcManager::parse_ini("Key=Value\n[S]")
+            .err()
+            .unwrap_or_default();
         assert!(err.to_string().contains("Key before section header"));
 
-        let err2 = OdbcManager::parse_ini("[S]\nInvalidLine").unwrap_err();
+        let err2 = OdbcManager::parse_ini("[S]\nInvalidLine")
+            .err()
+            .unwrap_or_default();
         assert!(err2.to_string().contains("Invalid INI format"));
 
         let serialized = OdbcManager::write_ini(&parsed);
         assert!(serialized.contains("[PostgreSQL]\nDescription=Driver\nDriver=/usr/lib/psql.so\n"));
+        Ok(())
     }
 }

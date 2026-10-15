@@ -836,31 +836,31 @@ mod tests {
     #[test]
     fn test_parser_and_ast_derives() {
         let parser = Parser::new(vec![Token::Select]);
-        assert!(format!("{parser:?}").contains("Parser"));
+        assert!(format!("{parser:?}").contains("Parser"), "format check");
 
         let op = BinaryOp::Equal;
         let cloned_op = op;
         assert_eq!(op, cloned_op);
         assert_ne!(op, BinaryOp::NotEqual);
-        assert!(format!("{op:?}").contains("Equal"));
+        assert!(format!("{op:?}").contains("Equal"), "format check");
 
         let dir = OrderDirection::default();
         let cloned_dir = dir;
         assert_eq!(dir, cloned_dir);
         assert_ne!(dir, OrderDirection::Descending);
-        assert!(format!("{dir:?}").contains("Ascending"));
+        assert!(format!("{dir:?}").contains("Ascending"), "format check");
 
         let val = SqlValue::Null;
         #[allow(clippy::redundant_clone)]
         let cloned_val = val.clone();
         assert_eq!(val, cloned_val);
         assert_ne!(val, SqlValue::Parameter);
-        assert!(format!("{val:?}").contains("Null"));
+        assert!(format!("{val:?}").contains("Null"), "format check");
 
         let col_type = SqlType::Stream;
         let cloned_type = col_type;
         assert_eq!(col_type, cloned_type);
-        assert!(format!("{col_type:?}").contains("Stream"));
+        assert!(format!("{col_type:?}").contains("Stream"), "format check");
 
         let term = OrderByTerm {
             column: crate::database::sql::ast::ColumnName("Col1".to_string()),
@@ -869,7 +869,7 @@ mod tests {
         #[allow(clippy::redundant_clone)]
         let cloned_term = term.clone();
         assert_eq!(term, cloned_term);
-        assert!(format!("{term:?}").contains("Col1"));
+        assert!(format!("{term:?}").contains("Col1"), "format check");
 
         let col_def = SqlColumnDef {
             name: crate::database::sql::ast::ColumnName("Col1".to_string()),
@@ -882,7 +882,7 @@ mod tests {
         #[allow(clippy::redundant_clone)]
         let cloned_col = col_def.clone();
         assert_eq!(col_def, cloned_col);
-        assert!(format!("{col_def:?}").contains("Col1"));
+        assert!(format!("{col_def:?}").contains("Col1"), "format check");
 
         let expr = Expression::IsNull {
             column: crate::database::sql::ast::ColumnName("Col1".to_string()),
@@ -891,7 +891,7 @@ mod tests {
         #[allow(clippy::redundant_clone)]
         let cloned_expr = expr.clone();
         assert_eq!(expr, cloned_expr);
-        assert!(format!("{expr:?}").contains("IsNull"));
+        assert!(format!("{expr:?}").contains("IsNull"), "format check");
 
         let stmt = Statement::DropTable {
             table: crate::database::sql::ast::TableName("T".to_string()),
@@ -899,6 +899,6 @@ mod tests {
         #[allow(clippy::redundant_clone)]
         let cloned_stmt = stmt.clone();
         assert_eq!(stmt, cloned_stmt);
-        assert!(format!("{stmt:?}").contains("DropTable"));
+        assert!(format!("{stmt:?}").contains("DropTable"), "format check");
     }
 }

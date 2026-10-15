@@ -1,9 +1,3 @@
-#![allow(clippy::items_after_statements)]
-#![allow(clippy::unnecessary_wraps)]
-#![allow(clippy::too_many_lines)]
-#![allow(clippy::cognitive_complexity)]
-#![allow(clippy::literal_string_with_formatting_args)]
-#![deny(clippy::unwrap_used)]
 //! # msiextract
 //!
 //! Windows Installer Package Extractor replicating GNOME `msiextract`.
@@ -172,136 +166,163 @@ impl MsiExtractOptions {
     /// # Returns
     ///
     /// `Ok(())` on success.
+    /// Executes WIM listing or extraction.
     ///
     /// # Errors
     ///
-    /// Returns error string on I/O or extraction failure.
-    #[allow(clippy::too_many_lines)]
-    pub fn execute(&self) -> Result<(), String> {
-        if self.is_wim {
-            let bytes = fs::read(&self.input_msi)
-                .map_err(|e| format!("failed reading file '{}': {e}", self.input_msi.display()))?;
-            let wim_reader =
-                msi::wim::WimReader::new(&bytes).map_err(|e| format!("WIM parse error: {e}"))?;
+    /// Returns an error string if reading or parsing the WIM image fails.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` when listing or extraction completes.
+    fn execute_wim(&self) -> Result<(), String> {
+        let bytes = fs::read(&self.input_msi)
+            .map_err(|e| format!("failed reading file '{}': {e}", self.input_msi.display()))?;
+        let wim_reader =
+            msi::wim::WimReader::new(&bytes).map_err(|e| format!("WIM parse error: {e}"))?;
 
-            if self.list_only {
-                println!("Contained files in WIM '{}':", self.input_msi.display());
-                for img in &wim_reader.manifest.images {
-                    println!("  Image {}: {}", img.index.0, img.name);
-                }
-                return Ok(());
+        if self.list_only {
+            println!("Contained files in WIM '{}':", self.input_msi.display());
+            for img in &wim_reader.manifest.images {
+                println!("  Image {}: {}", img.index.0, img.name);
             }
-
-            let idx = self.wim_index.unwrap_or(1);
-            let _ = wim_reader
-                .extract_image(&self.dest_dir, idx)
-                .map_err(|e| format!("failed extracting WIM image {idx}: {e}"))?;
-            println!(
-                "msiextract: extracted WIM image {} into '{}'",
-                idx,
-                self.dest_dir.display()
-            );
             return Ok(());
         }
 
-        let pkg = Package::open(&self.input_msi)
-            .map_err(|e| format!("failed opening package '{}': {e}", self.input_msi.display()))?;
+        let idx = self.wim_index.unwrap_or(1);
+        let _ = wim_reader
+            .extract_image(&self.dest_dir, idx)
+            .map_err(|e| format!("failed extracting WIM image {idx}: {e}"))?;
+        println!(
+            "msiextract: extracted WIM image {} into '{}'",
+            idx,
+            self.dest_dir.display()
+        );
+        Ok(())
+    }
 
-        // Extract hierarchy mapping from database
+    /// Builds a mapping from MSI `File` key identifiers to relative destination paths.
+    ///
+    /// # Arguments
+    ///
+    /// * `pkg` - Opened MSI package.
+    ///
+    /// # Returns
+    ///
+    /// A map from file key strings to resolved relative [`PathBuf`] paths.
+    fn build_file_map(pkg: &Package) -> std::collections::HashMap<String, PathBuf> {
+        use msi::database::FieldValue;
         let mut dir_map: std::collections::HashMap<String, PathBuf> =
             std::collections::HashMap::new();
         let mut file_map: std::collections::HashMap<String, PathBuf> =
             std::collections::HashMap::new();
 
-        if let (Some(files), Some(dirs)) = (
-            pkg.database().tables.get("File"),
-            pkg.database().tables.get("Directory"),
-        ) {
-            let mut parents = std::collections::HashMap::new();
-            let mut names = std::collections::HashMap::new();
+        let files = pkg.database().get_records("File");
+        let dirs = pkg.database().get_records("Directory");
+        if files.is_empty() || dirs.is_empty() {
+            return file_map;
+        }
 
-            for r in dirs {
-                use msi::database::FieldValue;
-                if let (Some(FieldValue::String(id)), default_dir) = (r.get(0), r.get(2)) {
-                    let parent = r.get(1).and_then(|f| match f {
-                        FieldValue::String(s) => Some(s.clone()),
-                        _ => None,
-                    });
+        let mut parents = std::collections::HashMap::new();
+        let mut names = std::collections::HashMap::new();
 
-                    let dir_name = match default_dir {
-                        Some(FieldValue::String(s)) => {
-                            let target = s.split(':').next().unwrap_or(s.as_str());
-                            target.split('|').next_back().unwrap_or(target).to_string()
-                        }
-                        _ => id.clone(),
-                    };
+        for r in dirs {
+            if let (Some(FieldValue::String(id)), default_dir) = (r.get(0), r.get(2)) {
+                let parent = r.get(1).and_then(|f| match f {
+                    FieldValue::String(s) => Some(s.clone()),
+                    _ => None,
+                });
 
-                    if dir_name == "." || dir_name == "SourceDir" {
-                        names.insert(id.clone(), String::new());
-                    } else {
-                        names.insert(id.clone(), dir_name);
+                let dir_name = match default_dir {
+                    Some(FieldValue::String(s)) => {
+                        let target = s.split(':').next().unwrap_or(s.as_str());
+                        target.split('|').next_back().unwrap_or(target).to_string()
                     }
-                    if let Some(p) = parent {
-                        parents.insert(id.clone(), p);
-                    }
+                    _ => id.clone(),
+                };
+
+                if dir_name == "." || dir_name == "SourceDir" {
+                    names.insert(id.clone(), String::new());
+                } else {
+                    names.insert(id.clone(), dir_name);
                 }
-            }
-
-            for id in names.keys() {
-                let mut path = PathBuf::new();
-                let mut curr = Some(id.clone());
-                let mut components = Vec::new();
-                while let Some(c) = curr {
-                    if let Some(n) = names.get(&c) {
-                        if !n.is_empty() {
-                            components.push(n.clone());
-                        }
-                    }
-                    curr = parents.get(&c).cloned();
-                }
-                components.reverse();
-                for comp in components {
-                    path.push(comp);
-                }
-                dir_map.insert(id.clone(), path);
-            }
-
-            let mut comp_to_dir = std::collections::HashMap::new();
-            if let Some(comps) = pkg.database().tables.get("Component") {
-                for r in comps {
-                    use msi::database::FieldValue;
-                    if let (Some(FieldValue::String(id)), Some(FieldValue::String(dir_id))) =
-                        (r.get(0), r.get(2))
-                    {
-                        comp_to_dir.insert(id.clone(), dir_id.clone());
-                    }
-                }
-            }
-
-            for r in files {
-                use msi::database::FieldValue;
-                if let (
-                    Some(FieldValue::String(file_id)),
-                    Some(FieldValue::String(comp_id)),
-                    Some(FieldValue::String(file_name)),
-                ) = (r.get(0), r.get(1), r.get(2))
-                {
-                    let name = file_name
-                        .split('|')
-                        .next_back()
-                        .unwrap_or(file_name.as_str());
-
-                    let mut path = PathBuf::new();
-                    if let Some(dir_id) = comp_to_dir.get(comp_id) {
-                        if let Some(dir_path) = dir_map.get(dir_id) {
-                            path.push(dir_path);
-                        }
-                    }
-                    path.push(name);
-                    file_map.insert(file_id.clone(), path);
+                if let Some(p) = parent {
+                    parents.insert(id.clone(), p);
                 }
             }
         }
+
+        for id in names.keys() {
+            let mut path = PathBuf::new();
+            let mut curr = Some(id.clone());
+            let mut components = Vec::new();
+            while let Some(c) = curr {
+                if let Some(n) = names.get(&c) {
+                    if !n.is_empty() {
+                        components.push(n.clone());
+                    }
+                }
+                curr = parents.get(&c).cloned();
+            }
+            components.reverse();
+            for comp in components {
+                path.push(comp);
+            }
+            dir_map.insert(id.clone(), path);
+        }
+
+        let mut comp_to_dir = std::collections::HashMap::new();
+        for r in pkg.database().get_records("Component") {
+            if let (Some(FieldValue::String(id)), Some(FieldValue::String(dir_id))) =
+                (r.get(0), r.get(2))
+            {
+                comp_to_dir.insert(id.clone(), dir_id.clone());
+            }
+        }
+
+        for r in files {
+            if let (
+                Some(FieldValue::String(file_id)),
+                Some(FieldValue::String(comp_id)),
+                Some(FieldValue::String(file_name)),
+            ) = (r.get(0), r.get(1), r.get(2))
+            {
+                let name = file_name
+                    .split('|')
+                    .next_back()
+                    .unwrap_or(file_name.as_str());
+
+                let mut path = PathBuf::new();
+                if let Some(dir_id) = comp_to_dir.get(comp_id.as_str()) {
+                    if let Some(dir_path) = dir_map.get(dir_id) {
+                        path.push(dir_path);
+                    }
+                }
+                path.push(name);
+                file_map.insert(file_id.clone(), path);
+            }
+        }
+        file_map
+    }
+
+    /// Executes the extraction or listing operation.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success.
+    ///
+    /// # Errors
+    ///
+    /// Returns error string on I/O or extraction failure.
+    pub fn execute(&self) -> Result<(), String> {
+        if self.is_wim {
+            return self.execute_wim();
+        }
+
+        let pkg = Package::open(&self.input_msi)
+            .map_err(|e| format!("failed opening package '{}': {e}", self.input_msi.display()))?;
+
+        let file_map = Self::build_file_map(&pkg);
 
         if self.list_only {
             println!("Contained files in '{}':", self.input_msi.display());
@@ -420,37 +441,16 @@ pub fn main() -> ExitCode {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::shadow_unrelated,
-    clippy::cast_possible_truncation,
-    clippy::redundant_clone
-)]
 mod tests {
     use super::*;
     use msi::cab::folder::CompressionType;
     use msi::cab::writer::CabinetWriter;
+    use msi::database::{FieldValue, Record};
     use msi::package::ProductVersion;
+    use std::path::Path;
 
-    #[test]
-    #[allow(clippy::too_many_lines, clippy::explicit_into_iter_loop)]
-    fn test_msiextract_run_all_branches() -> Result<(), String> {
-        let temp_dir = std::env::temp_dir().join("msi_cli_test_msiextract_bin");
-        let _ = fs::create_dir_all(&temp_dir);
-        let out_dir = temp_dir.join("extracted_files");
-
-        // Build a cabinet containing files
-        let mut cab_writer = CabinetWriter::new(CompressionType::None);
-        let _ = cab_writer.add_file("payload.txt", b"Cabinet payload contents");
-        let _ = cab_writer.add_file("raw.bin", b"Cabinet payload contents");
-        // File named "/" so that PathBuf::from("/").parent() is None.
-        let _ = cab_writer.add_file("/", b"test");
-        let cab_bytes = cab_writer.build().unwrap_or_default();
-
-        use msi::database::{FieldValue, Record};
-
-        // Build an MSI with both a valid cabinet and a raw non-cabinet stream
-        let msi_file = temp_dir.join("extract.msi");
+    /// Builds a sample MSI package with embedded cabinets and directory/component/file tables.
+    fn build_extract_test_msi(msi_file: &Path, cab_bytes: Vec<u8>) {
         let build_res = Package::builder()
             .product_name("ExtractApp")
             .manufacturer("ExtractMfr")
@@ -461,7 +461,7 @@ mod tests {
                 Record::with_fields(vec![
                     FieldValue::String("TARGETDIR".to_string()),
                     FieldValue::Null,
-                    FieldValue::String("SourceDir".to_string()), // Hits dir_name == "SourceDir"
+                    FieldValue::String("SourceDir".to_string()),
                 ]),
             )
             .add_record(
@@ -469,7 +469,7 @@ mod tests {
                 Record::with_fields(vec![
                     FieldValue::String("DotDir".to_string()),
                     FieldValue::String("TARGETDIR".to_string()),
-                    FieldValue::String(".".to_string()), // Hits dir_name == "."
+                    FieldValue::String(".".to_string()),
                 ]),
             )
             .add_record(
@@ -477,7 +477,7 @@ mod tests {
                 Record::with_fields(vec![
                     FieldValue::String("SomeDir".to_string()),
                     FieldValue::String("TARGETDIR".to_string()),
-                    FieldValue::String("sub|sub".to_string()), // Hits dir_name != "SourceDir"
+                    FieldValue::String("sub|sub".to_string()),
                 ]),
             )
             .add_record(
@@ -485,7 +485,7 @@ mod tests {
                 Record::with_fields(vec![
                     FieldValue::String("Comp1".to_string()),
                     FieldValue::String("guid".to_string()),
-                    FieldValue::String("SomeDir".to_string()), // Valid dir
+                    FieldValue::String("SomeDir".to_string()),
                     FieldValue::Short(0),
                     FieldValue::String(String::new()),
                     FieldValue::String(String::new()),
@@ -496,7 +496,7 @@ mod tests {
                 Record::with_fields(vec![
                     FieldValue::String("Comp2".to_string()),
                     FieldValue::String("guid".to_string()),
-                    FieldValue::String("MissingDir".to_string()), // Missing dir (dir_map.get returns None)
+                    FieldValue::String("MissingDir".to_string()),
                     FieldValue::Short(0),
                     FieldValue::String(String::new()),
                     FieldValue::String(String::new()),
@@ -506,7 +506,7 @@ mod tests {
                 "File",
                 Record::with_fields(vec![
                     FieldValue::String("payload.txt".to_string()),
-                    FieldValue::String("Comp1".to_string()), // Comp1 -> SomeDir
+                    FieldValue::String("Comp1".to_string()),
                     FieldValue::String("payload.txt".to_string()),
                     FieldValue::Long(100),
                     FieldValue::String(String::new()),
@@ -519,7 +519,7 @@ mod tests {
                 "File",
                 Record::with_fields(vec![
                     FieldValue::String("raw.bin".to_string()),
-                    FieldValue::String("Comp2".to_string()), // Comp2 -> MissingDir -> None
+                    FieldValue::String("Comp2".to_string()),
                     FieldValue::String("raw.bin".to_string()),
                     FieldValue::Long(100),
                     FieldValue::String(String::new()),
@@ -531,10 +531,212 @@ mod tests {
             .add_embedded_cabinet("#cab1.cab", cab_bytes)
             .add_embedded_cabinet("#raw.bin", vec![1, 2, 3, 4])
             .build();
-        assert!(build_res.is_ok());
-        for pkg in build_res.into_iter() {
-            assert!(pkg.save(&msi_file).is_ok());
+        assert!(build_res.is_ok_and(|pkg| pkg.save(msi_file).is_ok()));
+    }
+
+    /// Exercises malformed and partial `Directory`/`Component` tables during extraction.
+    fn run_malformed_table_cases(temp_dir: &Path) {
+        let no_dir_msi = temp_dir.join("no_dir.msi");
+        let mut malformed_db = msi::wix::linker::LinkedDatabase::new().unwrap_or_default();
+
+        let mut file_rec = Record::new();
+        file_rec.push(FieldValue::String("file1".to_string()));
+        file_rec.push(FieldValue::String("comp1".to_string()));
+        file_rec.push(FieldValue::String("filename.txt".to_string()));
+        for _ in 3..8 {
+            file_rec.push(FieldValue::Null);
         }
+        malformed_db
+            .tables
+            .insert("File".to_string(), vec![file_rec]);
+
+        let mut comp_rec = Record::new();
+        comp_rec.push(FieldValue::String("comp1".to_string()));
+        comp_rec.push(FieldValue::Null);
+        comp_rec.push(FieldValue::String("dir1".to_string()));
+        for _ in 3..6 {
+            comp_rec.push(FieldValue::Null);
+        }
+        malformed_db
+            .tables
+            .insert("Component".to_string(), vec![comp_rec]);
+
+        let mut dir_rec = Record::new();
+        dir_rec.push(FieldValue::String("dir1".to_string()));
+        dir_rec.push(FieldValue::String("TARGETDIR".to_string()));
+        dir_rec.push(FieldValue::String("MyDir".to_string()));
+        malformed_db
+            .tables
+            .insert("Directory".to_string(), vec![dir_rec]);
+
+        let no_dir_pkg = Package::from_database(malformed_db, std::collections::HashMap::new());
+        let bytes = no_dir_pkg.to_bytes().unwrap_or_default();
+        assert!(fs::write(&no_dir_msi, &bytes).is_ok());
+        let _ = run(&["-l".to_string(), no_dir_msi.to_string_lossy().to_string()]);
+        let _ = run(&[
+            "-C".to_string(),
+            temp_dir
+                .join("no_dir_extract")
+                .to_string_lossy()
+                .to_string(),
+            no_dir_msi.to_string_lossy().to_string(),
+        ]);
+
+        let no_comp_msi = temp_dir.join("no_comp.msi");
+        let mut no_comp_db = msi::wix::linker::LinkedDatabase::new().unwrap_or_default();
+        let mut file_rec_nc = Record::new();
+        for _ in 0..8 {
+            file_rec_nc.push(FieldValue::Null);
+        }
+        no_comp_db
+            .tables
+            .insert("File".to_string(), vec![file_rec_nc]);
+        let mut dir_rec_nc = Record::new();
+        for _ in 0..3 {
+            dir_rec_nc.push(FieldValue::Null);
+        }
+        no_comp_db
+            .tables
+            .insert("Directory".to_string(), vec![dir_rec_nc]);
+        let no_comp_pkg = Package::from_database(no_comp_db, std::collections::HashMap::new());
+        assert!(fs::write(&no_comp_msi, no_comp_pkg.to_bytes().unwrap_or_default()).is_ok());
+        let _ = run(&[
+            "-C".to_string(),
+            temp_dir
+                .join("no_comp_extract")
+                .to_string_lossy()
+                .to_string(),
+            no_comp_msi.to_string_lossy().to_string(),
+        ]);
+    }
+
+    /// Exercises WIM CLI options, extraction, listing, and error branches.
+    fn run_wim_branch_cases(temp_dir: &Path, out_dir: &Path) {
+        let wim_file = temp_dir.join("test.wim");
+        let mut wim_data = vec![];
+        wim_data.extend_from_slice(&msi::wim::header::WIM_MAGIC);
+        wim_data.extend_from_slice(&208u32.to_le_bytes());
+        wim_data.extend_from_slice(&0x0001_0d00_u32.to_le_bytes());
+        wim_data.extend_from_slice(&0u32.to_le_bytes());
+        wim_data.extend_from_slice(&32768u32.to_le_bytes());
+        wim_data.extend_from_slice(&[0; 16]);
+        wim_data.extend_from_slice(&1u16.to_le_bytes());
+        wim_data.extend_from_slice(&1u16.to_le_bytes());
+        wim_data.extend_from_slice(&1u32.to_le_bytes());
+
+        let xml_payload = b"<WIM><IMAGE INDEX=\"1\"><NAME>Img1</NAME></IMAGE></WIM>";
+
+        let flags_size: u64 =
+            (u64::from(msi::wim::header::ResourceFlags::COMPRESSED.bits()) << 56) | 0x0032;
+        wim_data.extend_from_slice(&flags_size.to_le_bytes());
+        wim_data.extend_from_slice(&208u64.to_le_bytes());
+        wim_data.extend_from_slice(&50u64.to_le_bytes());
+
+        let xml_len = u64::try_from(xml_payload.len()).unwrap_or(0);
+        let xml_flags_size: u64 =
+            (u64::from(msi::wim::header::ResourceFlags::FREE.bits()) << 56) | xml_len;
+        wim_data.extend_from_slice(&xml_flags_size.to_le_bytes());
+        wim_data.extend_from_slice(&258u64.to_le_bytes());
+        wim_data.extend_from_slice(&xml_len.to_le_bytes());
+
+        wim_data.extend_from_slice(&[0; 112]);
+        wim_data.extend_from_slice(&[0; 50]);
+        wim_data.extend_from_slice(xml_payload);
+
+        let _ = fs::write(&wim_file, &wim_data);
+
+        assert_eq!(
+            run(&[
+                "--wim".to_string(),
+                "--index".to_string(),
+                "1".to_string(),
+                "-C".to_string(),
+                out_dir.to_string_lossy().to_string(),
+                wim_file.to_string_lossy().to_string(),
+            ]),
+            0
+        );
+
+        assert_eq!(
+            run(&[
+                "--wim".to_string(),
+                "-l".to_string(),
+                wim_file.to_string_lossy().to_string(),
+            ]),
+            0
+        );
+
+        assert_eq!(run(&["--wim".to_string(), "file.xyz".to_string()]), 1);
+
+        let wim_file_err = temp_dir.join("err.wim");
+        let _ = fs::write(&wim_file_err, vec![0u8; 10]);
+        assert_eq!(
+            run(&[
+                "--wim".to_string(),
+                wim_file_err.to_string_lossy().to_string(),
+            ]),
+            1
+        );
+        assert_eq!(
+            run(&[
+                "--wim".to_string(),
+                "--index".to_string(),
+                "invalid".to_string(),
+                wim_file_err.to_string_lossy().to_string(),
+            ]),
+            1
+        );
+
+        let missing_wim_file = temp_dir.join("missing.wim");
+        assert_eq!(
+            run(&[
+                "--wim".to_string(),
+                missing_wim_file.to_string_lossy().to_string(),
+            ]),
+            1
+        );
+
+        let wim_file_dir_err = temp_dir.join("dir_err.wim");
+        let mut wim_hdr_only = vec![];
+        wim_hdr_only.extend_from_slice(&msi::wim::header::WIM_MAGIC);
+        wim_hdr_only.extend_from_slice(&208u32.to_le_bytes());
+        wim_hdr_only.extend_from_slice(&0x0001_0d00_u32.to_le_bytes());
+        wim_hdr_only.extend_from_slice(&0u32.to_le_bytes());
+        wim_hdr_only.extend_from_slice(&32768u32.to_le_bytes());
+        wim_hdr_only.extend_from_slice(&[0; 16]);
+        wim_hdr_only.extend_from_slice(&1u16.to_le_bytes());
+        wim_hdr_only.extend_from_slice(&1u16.to_le_bytes());
+        wim_hdr_only.extend_from_slice(&1u32.to_le_bytes());
+        wim_hdr_only.extend_from_slice(&[0; 160]);
+        let _ = fs::write(&wim_file_dir_err, &wim_hdr_only);
+
+        let blocking_wim_dir = temp_dir.join("blocking_wim_dir");
+        let _ = fs::write(&blocking_wim_dir, "block");
+        assert_eq!(
+            run(&[
+                "--wim".to_string(),
+                "-C".to_string(),
+                blocking_wim_dir.to_string_lossy().to_string(),
+                wim_file_dir_err.to_string_lossy().to_string(),
+            ]),
+            1
+        );
+    }
+
+    #[test]
+    fn test_msiextract_run_all_branches() {
+        let temp_dir = std::env::temp_dir().join("msi_cli_test_msiextract_bin");
+        let _ = fs::create_dir_all(&temp_dir);
+        let out_dir = temp_dir.join("extracted_files");
+
+        let mut cab_writer = CabinetWriter::new(CompressionType::None);
+        let _ = cab_writer.add_file("payload.txt", b"Cabinet payload contents");
+        let _ = cab_writer.add_file("raw.bin", b"Cabinet payload contents");
+        let _ = cab_writer.add_file("/", b"test");
+        let cab_bytes = cab_writer.build().unwrap_or_default();
+
+        let msi_file = temp_dir.join("extract.msi");
+        build_extract_test_msi(&msi_file, cab_bytes);
 
         // 1. Parse errors
         assert_eq!(run(&[]), 1);
@@ -578,8 +780,10 @@ mod tests {
         // 5. List mode (-l and --list)
         let list_args = vec!["-l".to_string(), msi_file.to_string_lossy().to_string()];
         assert_eq!(run(&list_args), 0);
+        let list_long_args = vec!["--list".to_string(), msi_file.to_string_lossy().to_string()];
+        assert_eq!(run(&list_long_args), 0);
 
-        // 6. Empty package to cover the `False` branch of `if let (Some(files), Some(dirs))`
+        // 6. Empty package to cover the `False` branch of `if files.is_empty() || dirs.is_empty()`
         let empty_msi = temp_dir.join("empty.msi");
         let empty_pkg = Package::builder()
             .product_name("Empty")
@@ -587,7 +791,7 @@ mod tests {
             .version(ProductVersion::new(1, 0, 0))
             .product_code("{00000000-0000-0000-0000-000000000000}")
             .build()
-            .unwrap();
+            .unwrap_or_default();
         let _ = empty_pkg.save(&empty_msi);
         let empty_args = vec![
             "-C".to_string(),
@@ -596,84 +800,9 @@ mod tests {
         ];
         assert_eq!(run(&empty_args), 0);
 
-        // 7. Test parsing Component and Directory tables with malformed rows or without Directory table
-        let no_dir_msi = temp_dir.join("no_dir.msi");
-        let mut malformed_db = msi::wix::linker::LinkedDatabase::new().unwrap();
+        run_malformed_table_cases(&temp_dir);
 
-        let mut file_rec = Record::new();
-        file_rec.push(FieldValue::String("file1".to_string()));
-        file_rec.push(FieldValue::String("comp1".to_string()));
-        file_rec.push(FieldValue::String("filename.txt".to_string()));
-        for _ in 3..8 {
-            file_rec.push(FieldValue::Null);
-        }
-        malformed_db
-            .tables
-            .insert("File".to_string(), vec![file_rec]);
-
-        let mut comp_rec = Record::new();
-        comp_rec.push(FieldValue::String("comp1".to_string()));
-        comp_rec.push(FieldValue::Null);
-        comp_rec.push(FieldValue::String("dir1".to_string()));
-        for _ in 3..6 {
-            comp_rec.push(FieldValue::Null);
-        }
-        malformed_db
-            .tables
-            .insert("Component".to_string(), vec![comp_rec]);
-
-        let mut dir_rec = Record::new();
-        dir_rec.push(FieldValue::String("dir1".to_string()));
-        dir_rec.push(FieldValue::String("TARGETDIR".to_string()));
-        dir_rec.push(FieldValue::String("MyDir".to_string()));
-        malformed_db
-            .tables
-            .insert("Directory".to_string(), vec![dir_rec]);
-
-        let no_dir_pkg = Package::from_database(malformed_db, std::collections::HashMap::new());
-        let bytes = no_dir_pkg.to_bytes().unwrap();
-        assert!(fs::write(&no_dir_msi, &bytes).is_ok());
-        let _ = run(&["-l".to_string(), no_dir_msi.to_string_lossy().to_string()]);
-        let _ = run(&[
-            "-C".to_string(),
-            temp_dir
-                .join("no_dir_extract")
-                .to_string_lossy()
-                .to_string(),
-            no_dir_msi.to_string_lossy().to_string(),
-        ]);
-
-        let list_long_args = vec!["--list".to_string(), msi_file.to_string_lossy().to_string()];
-        assert_eq!(run(&list_long_args), 0);
-        // Package without Component table
-        let no_comp_msi = temp_dir.join("no_comp.msi");
-        let mut no_comp_db = msi::wix::linker::LinkedDatabase::new().unwrap();
-        let mut file_rec_nc = Record::new();
-        for _ in 0..8 {
-            file_rec_nc.push(FieldValue::Null);
-        }
-        no_comp_db
-            .tables
-            .insert("File".to_string(), vec![file_rec_nc]);
-        let mut dir_rec_nc = Record::new();
-        for _ in 0..3 {
-            dir_rec_nc.push(FieldValue::Null);
-        }
-        no_comp_db
-            .tables
-            .insert("Directory".to_string(), vec![dir_rec_nc]);
-        let no_comp_pkg = Package::from_database(no_comp_db, std::collections::HashMap::new());
-        assert!(fs::write(&no_comp_msi, no_comp_pkg.to_bytes().unwrap()).is_ok());
-        let _ = run(&[
-            "-C".to_string(),
-            temp_dir
-                .join("no_comp_extract")
-                .to_string_lossy()
-                .to_string(),
-            no_comp_msi.to_string_lossy().to_string(),
-        ]);
-
-        // 6. Failure creating target directory (blocked by file)
+        // 7. Failure creating target directory (blocked by file)
         let blocking_file = temp_dir.join("blocking_file");
         assert!(fs::write(&blocking_file, b"content").is_ok());
         let blocked_dest = blocking_file.join("fail_dir");
@@ -686,169 +815,122 @@ mod tests {
             1
         );
 
-        // 7. Derives test
+        // 8. Derives test
         let default_opts = MsiExtractOptions::default();
         let cloned_opts = default_opts.clone();
         assert_eq!(default_opts, cloned_opts);
-        assert!(format!("{default_opts:?}").contains("MsiExtractOptions"));
+        let opts_dbg = format!("{default_opts:?}");
+        assert!(opts_dbg.contains("MsiExtractOptions"));
+        drop(cloned_opts);
 
-        // 9. Test WIM parsing branch
-        let wim_file = temp_dir.join("test.wim");
-        let mut wim_data = vec![];
-        wim_data.extend_from_slice(&msi::wim::header::WIM_MAGIC);
-        wim_data.extend_from_slice(&208u32.to_le_bytes()); // header size
-        wim_data.extend_from_slice(&0x0001_0d00_u32.to_le_bytes()); // version
-        wim_data.extend_from_slice(&0u32.to_le_bytes()); // flags
-        wim_data.extend_from_slice(&32768u32.to_le_bytes()); // chunk size
-        wim_data.extend_from_slice(&[0; 16]); // guid
-        wim_data.extend_from_slice(&1u16.to_le_bytes()); // part
-        wim_data.extend_from_slice(&1u16.to_le_bytes()); // total parts
-        wim_data.extend_from_slice(&1u32.to_le_bytes()); // image count
+        run_wim_branch_cases(&temp_dir, &out_dir);
 
-        let xml_payload = b"<WIM><IMAGE INDEX=\"1\"><NAME>Img1</NAME></IMAGE></WIM>";
-
-        // offset table
-        let flags_size: u64 =
-            (u64::from(msi::wim::header::ResourceFlags::COMPRESSED.bits()) << 56) | 0x0032;
-        wim_data.extend_from_slice(&flags_size.to_le_bytes());
-        wim_data.extend_from_slice(&208u64.to_le_bytes());
-        wim_data.extend_from_slice(&50u64.to_le_bytes());
-
-        // xml data
-        let xml_flags_size: u64 = (u64::from(msi::wim::header::ResourceFlags::FREE.bits()) << 56)
-            | (xml_payload.len() as u64);
-        wim_data.extend_from_slice(&xml_flags_size.to_le_bytes());
-        wim_data.extend_from_slice(&258u64.to_le_bytes());
-        wim_data.extend_from_slice(&(xml_payload.len() as u64).to_le_bytes());
-
-        // boot metadata
-        wim_data.extend_from_slice(&0u64.to_le_bytes());
-        wim_data.extend_from_slice(&0u64.to_le_bytes());
-        wim_data.extend_from_slice(&0u64.to_le_bytes());
-
-        // integrity
-        wim_data.extend_from_slice(&0u64.to_le_bytes());
-        wim_data.extend_from_slice(&0u64.to_le_bytes());
-        wim_data.extend_from_slice(&0u64.to_le_bytes());
-
-        // pad
-        wim_data.extend_from_slice(&[0; 64]);
-
-        // lookup (50)
-        wim_data.extend_from_slice(&[0; 50]);
-        // xml payload
-        wim_data.extend_from_slice(xml_payload);
-
-        let _ = fs::write(&wim_file, &wim_data);
-
-        assert_eq!(
-            run(&[
-                "--wim".to_string(),
-                "--index".to_string(),
-                "1".to_string(),
-                "-C".to_string(),
-                out_dir.to_string_lossy().to_string(),
-                wim_file.to_string_lossy().to_string(),
-            ]),
-            0
-        );
-
-        assert_eq!(
-            run(&[
-                "--wim".to_string(),
-                "-l".to_string(),
-                wim_file.to_string_lossy().to_string(),
-            ]),
-            0
-        );
-
-        // 8. Test invoking main directly
+        // 9. Test invoking main directly
         let code = main();
         assert_eq!(code, ExitCode::FAILURE);
 
-        // 13. Test CLI arg parsing for WIM logic branches
-        assert_eq!(
-            run(&[
-                "--wim".to_string(),
-                "file.xyz".to_string(), // Unrecognized extension not bypassing exists check
-            ]),
-            1
-        );
-
-        let wim_file_err = temp_dir.join("err.wim");
-        let wim_data_err = vec![0u8; 10]; // truncated
-        let _ = fs::write(&wim_file_err, &wim_data_err);
-        assert_eq!(
-            run(&[
-                "--wim".to_string(),
-                wim_file_err.to_string_lossy().to_string(),
-            ]),
-            1
-        );
-        assert_eq!(
-            run(&[
-                "--wim".to_string(),
-                "--index".to_string(),
-                "invalid".to_string(),
-                wim_file_err.to_string_lossy().to_string(),
-            ]),
-            1
-        );
-
-        let missing_wim_file = temp_dir.join("missing.wim");
-        assert_eq!(
-            run(&[
-                "--wim".to_string(),
-                missing_wim_file.to_string_lossy().to_string(),
-            ]),
-            1
-        );
-
-        let wim_file_dir_err = temp_dir.join("dir_err.wim");
-        let mut wim_data = vec![];
-        wim_data.extend_from_slice(&msi::wim::header::WIM_MAGIC);
-        wim_data.extend_from_slice(&208u32.to_le_bytes()); // header size
-        wim_data.extend_from_slice(&0x0001_0d00_u32.to_le_bytes()); // version
-        wim_data.extend_from_slice(&0u32.to_le_bytes()); // flags
-        wim_data.extend_from_slice(&32768u32.to_le_bytes()); // chunk size
-        wim_data.extend_from_slice(&[0; 16]); // guid
-        wim_data.extend_from_slice(&1u16.to_le_bytes()); // part
-        wim_data.extend_from_slice(&1u16.to_le_bytes()); // total parts
-        wim_data.extend_from_slice(&1u32.to_le_bytes()); // image count
-        wim_data.extend_from_slice(&[0; 24]); // offset
-        wim_data.extend_from_slice(&[0; 24]); // xml
-        wim_data.extend_from_slice(&[0; 24]); // boot
-        wim_data.extend_from_slice(&[0; 24]); // integrity
-        wim_data.extend_from_slice(&[0; 64]); // pad
-        let _ = fs::write(&wim_file_dir_err, &wim_data);
-
-        let blocking_file = temp_dir.join("blocking_wim_dir");
-        let _ = fs::write(&blocking_file, "block");
-        assert_eq!(
-            run(&[
-                "--wim".to_string(),
-                "-C".to_string(),
-                blocking_file.to_string_lossy().to_string(),
-                wim_file_dir_err.to_string_lossy().to_string(),
-            ]),
-            1
-        );
-
         let _ = fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
-}
 
-#[cfg(test)]
-mod additional_tests {
-    use super::*;
-    use msi::cab::folder::CompressionType;
-    use msi::cab::writer::CabinetWriter;
-    use msi::database::{FieldValue, Record};
-    use msi::package::ProductVersion;
+    /// Builds the test MSI package used for hierarchical directory extraction tests.
+    fn build_hierarchical_test_package(cab_bytes: Vec<u8>) -> Package {
+        let mut builder = Package::builder()
+            .product_name("ExtractAppHier")
+            .manufacturer("ExtractMfr")
+            .version(ProductVersion::new(1, 0, 0))
+            .product_code("{99999999-9999-9999-9999-999999999999}")
+            .add_embedded_cabinet("#cab1.cab", cab_bytes);
+
+        for (id, parent, def_dir) in [
+            (
+                Some("TARGETDIR"),
+                None,
+                FieldValue::String("SourceDir".to_string()),
+            ),
+            (None, None, FieldValue::String("SourceDir".to_string())),
+            (
+                Some("SubDir"),
+                Some("TARGETDIR"),
+                FieldValue::String("sub:SubFolder".to_string()),
+            ),
+            (Some("SubDir2"), Some("TARGETDIR"), FieldValue::Long(1)),
+            (
+                Some("SubDir3"),
+                Some("TARGETDIR"),
+                FieldValue::String("just_target".to_string()),
+            ),
+        ] {
+            builder = builder.add_record(
+                "Directory",
+                Record::with_fields(vec![
+                    id.map_or(FieldValue::Null, |s| FieldValue::String(s.to_string())),
+                    parent.map_or(FieldValue::Null, |s| FieldValue::String(s.to_string())),
+                    def_dir,
+                ]),
+            );
+        }
+
+        for (id, guid, dir) in [
+            (
+                Some("Comp1"),
+                "{00000000-0000-0000-0000-000000000000}",
+                Some("SubDir"),
+            ),
+            (
+                Some("Comp2"),
+                "{11111111-0000-0000-0000-000000000000}",
+                Some("SubDir2"),
+            ),
+            (
+                Some("Comp3"),
+                "{22222222-0000-0000-0000-000000000000}",
+                Some("SubDir3"),
+            ),
+            (None, "{33333333-0000-0000-0000-000000000000}", None),
+        ] {
+            builder = builder.add_record(
+                "Component",
+                Record::with_fields(vec![
+                    id.map_or(FieldValue::Null, |s| FieldValue::String(s.to_string())),
+                    FieldValue::String(guid.to_string()),
+                    dir.map_or(FieldValue::Null, |s| FieldValue::String(s.to_string())),
+                    FieldValue::Short(0),
+                    FieldValue::Null,
+                    FieldValue::Null,
+                ]),
+            );
+        }
+
+        for (seq, (fid, cid, fname)) in [
+            (Some("file1_id"), Some("Comp1"), Some("f1|LongFileName.txt")),
+            (Some("file2_id"), Some("Comp2"), Some("f2.txt")),
+            (Some("file3_id"), Some("Comp3"), Some("f3.txt")),
+            (None, None, None),
+            (Some("file4_id"), Some("UnknownComp"), Some("f4.txt")),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            builder = builder.add_record(
+                "File",
+                Record::with_fields(vec![
+                    fid.map_or(FieldValue::Null, |s| FieldValue::String(s.to_string())),
+                    cid.map_or(FieldValue::Null, |s| FieldValue::String(s.to_string())),
+                    fname.map_or(FieldValue::Null, |s| FieldValue::String(s.to_string())),
+                    FieldValue::Long(100),
+                    FieldValue::Null,
+                    FieldValue::Null,
+                    FieldValue::Short(512),
+                    FieldValue::Short(i16::try_from(seq + 1).unwrap_or(1)),
+                ]),
+            );
+        }
+
+        builder.build().unwrap_or_default()
+    }
 
     #[test]
-    fn test_msiextract_hierarchical_extraction() -> Result<(), String> {
+    fn test_msiextract_hierarchical_extraction() {
         let temp_dir = std::env::temp_dir().join("msi_cli_test_msiextract_hier");
         let _ = fs::create_dir_all(&temp_dir);
         let out_dir = temp_dir.join("extracted_hier");
@@ -861,164 +943,7 @@ mod additional_tests {
         let cab_bytes = cab_writer.build().unwrap_or_default();
 
         let msi_file = temp_dir.join("extract_hier.msi");
-        let mut builder = Package::builder()
-            .product_name("ExtractAppHier")
-            .manufacturer("ExtractMfr")
-            .version(ProductVersion::new(1, 0, 0))
-            .product_code("{99999999-9999-9999-9999-999999999999}")
-            .add_embedded_cabinet("#cab1.cab", cab_bytes);
-
-        builder = builder.add_record(
-            "Directory",
-            Record::with_fields(vec![
-                FieldValue::String("TARGETDIR".to_string()),
-                FieldValue::Null,
-                FieldValue::String("SourceDir".to_string()),
-            ]),
-        );
-        builder = builder.add_record(
-            "Directory",
-            Record::with_fields(vec![
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::String("SourceDir".to_string()),
-            ]),
-        );
-        builder = builder.add_record(
-            "Directory",
-            Record::with_fields(vec![
-                FieldValue::String("SubDir".to_string()),
-                FieldValue::String("TARGETDIR".to_string()),
-                FieldValue::String("sub:SubFolder".to_string()),
-            ]),
-        );
-        builder = builder.add_record(
-            "Directory",
-            Record::with_fields(vec![
-                FieldValue::String("SubDir2".to_string()),
-                FieldValue::String("TARGETDIR".to_string()),
-                FieldValue::Long(1), // Not a string, triggering the fallback _ => id.clone() branch
-            ]),
-        );
-        builder = builder.add_record(
-            "Directory",
-            Record::with_fields(vec![
-                FieldValue::String("SubDir3".to_string()),
-                FieldValue::String("TARGETDIR".to_string()),
-                FieldValue::String("just_target".to_string()),
-            ]),
-        );
-        builder = builder.add_record(
-            "Component",
-            Record::with_fields(vec![
-                FieldValue::String("Comp1".to_string()),
-                FieldValue::String("{00000000-0000-0000-0000-000000000000}".to_string()),
-                FieldValue::String("SubDir".to_string()),
-                FieldValue::Short(0),
-                FieldValue::Null,
-                FieldValue::Null,
-            ]),
-        );
-        builder = builder.add_record(
-            "Component",
-            Record::with_fields(vec![
-                FieldValue::String("Comp2".to_string()),
-                FieldValue::String("{11111111-0000-0000-0000-000000000000}".to_string()),
-                FieldValue::String("SubDir2".to_string()),
-                FieldValue::Short(0),
-                FieldValue::Null,
-                FieldValue::Null,
-            ]),
-        );
-        builder = builder.add_record(
-            "Component",
-            Record::with_fields(vec![
-                FieldValue::String("Comp3".to_string()),
-                FieldValue::String("{22222222-0000-0000-0000-000000000000}".to_string()),
-                FieldValue::String("SubDir3".to_string()),
-                FieldValue::Short(0),
-                FieldValue::Null,
-                FieldValue::Null,
-            ]),
-        );
-        builder = builder.add_record(
-            "Component",
-            Record::with_fields(vec![
-                FieldValue::Null,
-                FieldValue::String("{33333333-0000-0000-0000-000000000000}".to_string()),
-                FieldValue::Null,
-                FieldValue::Short(0),
-                FieldValue::Null,
-                FieldValue::Null,
-            ]),
-        );
-        builder = builder.add_record(
-            "File",
-            Record::with_fields(vec![
-                FieldValue::String("file1_id".to_string()),
-                FieldValue::String("Comp1".to_string()),
-                FieldValue::String("f1|LongFileName.txt".to_string()),
-                FieldValue::Long(100),
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::Short(512),
-                FieldValue::Short(1),
-            ]),
-        );
-        builder = builder.add_record(
-            "File",
-            Record::with_fields(vec![
-                FieldValue::String("file2_id".to_string()),
-                FieldValue::String("Comp2".to_string()),
-                FieldValue::String("f2.txt".to_string()),
-                FieldValue::Long(100),
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::Short(512),
-                FieldValue::Short(2),
-            ]),
-        );
-        builder = builder.add_record(
-            "File",
-            Record::with_fields(vec![
-                FieldValue::String("file3_id".to_string()),
-                FieldValue::String("Comp3".to_string()),
-                FieldValue::String("f3.txt".to_string()),
-                FieldValue::Long(100),
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::Short(512),
-                FieldValue::Short(3),
-            ]),
-        );
-        builder = builder.add_record(
-            "File",
-            Record::with_fields(vec![
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::Long(100),
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::Short(512),
-                FieldValue::Short(4),
-            ]),
-        );
-        builder = builder.add_record(
-            "File",
-            Record::with_fields(vec![
-                FieldValue::String("file4_id".to_string()),
-                FieldValue::String("UnknownComp".to_string()),
-                FieldValue::String("f4.txt".to_string()),
-                FieldValue::Long(100),
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::Short(512),
-                FieldValue::Short(5),
-            ]),
-        );
-
-        let pkg = builder.build().unwrap_or_default();
+        let pkg = build_hierarchical_test_package(cab_bytes);
         let _ = pkg.save(&msi_file);
 
         let extract_args = vec![
@@ -1033,70 +958,67 @@ mod additional_tests {
         assert_eq!(run(&list_hier_args), 0);
 
         let expected_path = out_dir.join("sub").join("LongFileName.txt");
-        let _ = expected_path.exists();
-        let file_content = b"Hierarchy content".to_vec();
-        let _ = (file_content, b"Hierarchy content");
+        assert!(expected_path.exists());
+        let file_content = fs::read(&expected_path).unwrap_or_default();
+        assert_eq!(file_content, b"Hierarchy content");
 
-        // Test fallback coverage where `default_dir` is missing/Null -> SubDir2
-        let fallback_path = out_dir.join("f2.txt");
-        let _ = fallback_path.exists();
-        let fallback_content = b"Fallback content".to_vec();
-        let _ = (fallback_content, b"Fallback content");
+        let fallback_path = out_dir.join("SubDir2").join("f2.txt");
+        assert!(fallback_path.exists());
+        let fallback_content = fs::read(&fallback_path).unwrap_or_default();
+        assert_eq!(fallback_content, b"Fallback content");
 
-        // Test fallback where root ID matches `default_dir` exactly (should strip off target spec) -> just_target -> f3.txt
         let fallback_path_3 = out_dir.join("just_target").join("f3.txt");
-        let _ = fallback_path_3.exists();
-        let fallback_content_3 = b"Fallback root content".to_vec();
-        let _ = (fallback_content_3, b"Fallback root content");
+        assert!(fallback_path_3.exists());
+        let fallback_content_3 = fs::read(&fallback_path_3).unwrap_or_default();
+        assert_eq!(fallback_content_3, b"Fallback root content");
 
-        // Test unmapped file4 ends up in the root using its filename since its component is unmapped
         let unmapped_path = out_dir.join("f4.txt");
         assert!(unmapped_path.exists());
         let unmapped_content = fs::read(&unmapped_path).unwrap_or_default();
         assert_eq!(unmapped_content, b"Unmapped content");
 
         let _ = fs::remove_dir_all(&temp_dir);
-        Ok(())
     }
-}
-#[test]
-fn test_msiextract_wim_images() -> Result<(), String> {
-    let temp_dir = std::env::temp_dir().join("msi_cli_test_msiextract_wim");
-    let _ = fs::create_dir_all(&temp_dir);
-    let wim_file = temp_dir.join("test.wim");
 
-    let mut wim_data = vec![];
-    wim_data.extend_from_slice(&msi::wim::header::WIM_MAGIC);
-    wim_data.extend_from_slice(&208u32.to_le_bytes()); // header size
-    wim_data.extend_from_slice(&0x0001_0d00_u32.to_le_bytes()); // version
-    wim_data.extend_from_slice(&0u32.to_le_bytes()); // flags
-    wim_data.extend_from_slice(&0u32.to_le_bytes()); // uncompressed chunk
-    wim_data.extend_from_slice(&[0; 16]); // guid
-    wim_data.extend_from_slice(&1u16.to_le_bytes()); // part num
-    wim_data.extend_from_slice(&1u16.to_le_bytes()); // total parts
-    wim_data.extend_from_slice(&1u32.to_le_bytes()); // image count
-    wim_data.extend_from_slice(&0u32.to_le_bytes()); // offset tab offset
-    wim_data.extend_from_slice(&0u32.to_le_bytes()); // offset tab orig
+    #[test]
+    fn test_msiextract_wim_images() {
+        let temp_dir = std::env::temp_dir().join("msi_cli_test_msiextract_wim");
+        let _ = fs::create_dir_all(&temp_dir);
+        let wim_file = temp_dir.join("test.wim");
 
-    let xml_payload = br#"<?xml version="1.0" encoding="utf-16"?><WIM><IMAGE INDEX="1"><NAME>Windows 10</NAME></IMAGE><IMAGE INDEX="2"><NAME>Windows 11</NAME></IMAGE></WIM>"#;
-    wim_data.extend_from_slice(&(xml_payload.len() as u64).to_le_bytes());
-    wim_data.extend_from_slice(&(xml_payload.len() as u64).to_le_bytes());
-    wim_data.extend_from_slice(&208u64.to_le_bytes()); // offset
+        let mut wim_data = vec![];
+        wim_data.extend_from_slice(&msi::wim::header::WIM_MAGIC);
+        wim_data.extend_from_slice(&208u32.to_le_bytes());
+        wim_data.extend_from_slice(&0x0001_0d00_u32.to_le_bytes());
+        wim_data.extend_from_slice(&0u32.to_le_bytes());
+        wim_data.extend_from_slice(&0u32.to_le_bytes());
+        wim_data.extend_from_slice(&[0; 16]);
+        wim_data.extend_from_slice(&1u16.to_le_bytes());
+        wim_data.extend_from_slice(&1u16.to_le_bytes());
+        wim_data.extend_from_slice(&1u32.to_le_bytes());
+        wim_data.extend_from_slice(&0u32.to_le_bytes());
+        wim_data.extend_from_slice(&0u32.to_le_bytes());
 
-    wim_data.extend_from_slice(&[0; 24]); // boot
-    wim_data.extend_from_slice(&[0; 24]); // integrity
-    wim_data.extend_from_slice(&[0; 64]); // pad
-    wim_data.extend_from_slice(xml_payload);
+        let xml_payload = br#"<?xml version="1.0" encoding="utf-16"?><WIM><IMAGE INDEX="1"><NAME>Windows 10</NAME></IMAGE><IMAGE INDEX="2"><NAME>Windows 11</NAME></IMAGE></WIM>"#;
+        let xml_len = u64::try_from(xml_payload.len()).unwrap_or(0);
+        wim_data.extend_from_slice(&xml_len.to_le_bytes());
+        wim_data.extend_from_slice(&xml_len.to_le_bytes());
+        wim_data.extend_from_slice(&208u64.to_le_bytes());
 
-    let _ = fs::write(&wim_file, &wim_data);
+        wim_data.extend_from_slice(&[0; 24]);
+        wim_data.extend_from_slice(&[0; 24]);
+        wim_data.extend_from_slice(&[0; 64]);
+        wim_data.extend_from_slice(xml_payload);
 
-    let list_args = vec![
-        "--wim".to_string(),
-        "-l".to_string(),
-        wim_file.to_string_lossy().to_string(),
-    ];
-    assert_eq!(run(&list_args), 0);
+        let _ = fs::write(&wim_file, &wim_data);
 
-    let _ = fs::remove_dir_all(&temp_dir);
-    Ok(())
+        let list_args = vec![
+            "--wim".to_string(),
+            "-l".to_string(),
+            wim_file.to_string_lossy().to_string(),
+        ];
+        assert_eq!(run(&list_args), 0);
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
 }

@@ -199,7 +199,7 @@ mod tests {
             binary_path: "C:/test.exe".into(),
         };
         assert_eq!(def, def.clone());
-        assert!(format!("{def:?}").contains("TestService"));
+        assert!(format!("{def:?}").contains("TestService"), "format check");
 
         scm.create_service(&def)?;
         assert_eq!(
@@ -223,7 +223,8 @@ mod tests {
         scm.stop_service("UnregisteredSvc")?;
 
         let cloned_scm = scm.clone();
-        assert!(format!("{cloned_scm:?}").contains("NativeScm"));
+        let scm_dbg = format!("{cloned_scm:?}");
+        assert!(scm_dbg.contains("NativeScm"));
 
         scm.delete_service("TestService")?;
         assert_eq!(scm.service_state("TestService"), None);

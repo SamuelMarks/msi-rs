@@ -19,9 +19,46 @@ pub enum ConfigurationState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InstallLevel(pub i32);
 
-/// Mode of reinstallation.
+/// Mode of reinstallation (`REINSTALLMODE_*` bitflags).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReinstallMode(pub u32);
+
+impl ReinstallMode {
+    /// Reinstall only if file is missing (`REINSTALLMODE_FILEMISSING = 0x0002`).
+    pub const FILE_MISSING: Self = Self(0x0002);
+    /// Reinstall if file is missing or an older version (`REINSTALLMODE_FILEOLDERVERSION = 0x0004`).
+    pub const FILE_OLDER_VERSION: Self = Self(0x0004);
+    /// Reinstall if file is missing, older, or equal version (`REINSTALLMODE_FILEEQUALVERSION = 0x0008`).
+    pub const FILE_EQUAL_VERSION: Self = Self(0x0008);
+    /// Reinstall if file does not match exact checksum (`REINSTALLMODE_FILEEXACT = 0x0010`).
+    pub const FILE_EXACT: Self = Self(0x0010);
+    /// Verify all required executables and DLLs (`REINSTALLMODE_FILEVERIFY = 0x0020`).
+    pub const FILE_VERIFY: Self = Self(0x0020);
+    /// Replace all files regardless of version (`REINSTALLMODE_FILEREPLACE = 0x0040`).
+    pub const FILE_REPLACE: Self = Self(0x0040);
+    /// Rewrite all required machine registry entries (`REINSTALLMODE_MACHINEDATA = 0x0080`).
+    pub const MACHINE_DATA: Self = Self(0x0080);
+    /// Rewrite all required user registry entries (`REINSTALLMODE_USERDATA = 0x0100`).
+    pub const USER_DATA: Self = Self(0x0100);
+    /// Recreate all shortcuts and icons (`REINSTALLMODE_SHORTCUT = 0x0200`).
+    pub const SHORTCUT: Self = Self(0x0200);
+    /// Run from source package and recache local package (`REINSTALLMODE_PACKAGE = 0x0400`).
+    pub const PACKAGE: Self = Self(0x0400);
+
+    /// Checks whether all bits in `other` are set in `self`.
+    ///
+    /// # Arguments
+    ///
+    /// * `other` - Bitflag mask to test.
+    ///
+    /// # Returns
+    ///
+    /// `true` if `other` is contained within `self`.
+    #[must_use]
+    pub const fn contains(self, other: Self) -> bool {
+        (self.0 & other.0) == other.0
+    }
+}
 
 /// Reconfigures a product.
 ///
@@ -40,7 +77,7 @@ pub struct ReinstallMode(pub u32);
 pub fn configure_product(
     product_code: &str,
     _level: InstallLevel,
-    _state: ConfigurationState,
+    state: ConfigurationState,
 ) -> Result<(), MsiError> {
     if product_code.is_empty() {
         return Err(MsiError::InvalidArgument {
@@ -61,7 +98,7 @@ pub fn configure_product(
     let pkg = crate::package::Package::open(&package_path)?;
     let mut context = crate::execution::EvaluationContext::new();
 
-    match _state {
+    match state {
         ConfigurationState::Install => {
             context.set_property("ACTION", "INSTALL");
         }
@@ -103,7 +140,7 @@ pub fn configure_product(
 /// # Returns
 ///
 /// The resulting value or `Ok(())` on success.
-pub fn reinstall_product(product_code: &str, _mode: ReinstallMode) -> Result<(), MsiError> {
+pub fn reinstall_product(product_code: &str, mode: ReinstallMode) -> Result<(), MsiError> {
     if product_code.is_empty() {
         return Err(MsiError::InvalidArgument {
             argument: "product_code".to_string(),
@@ -125,7 +162,7 @@ pub fn reinstall_product(product_code: &str, _mode: ReinstallMode) -> Result<(),
 
     context.set_property("ACTION", "REPAIR");
     context.set_property("REINSTALL", "ALL");
-    context.set_property("REINSTALLMODE", format!("{:?}", _mode.0));
+    context.set_property("REINSTALLMODE", format!("{:?}", mode.0));
 
     let cost_engine = crate::execution::DiskCostEngine::new();
     let tx = crate::execution::Transaction::from_package(&pkg, context, cost_engine);
@@ -148,14 +185,32 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_reconfiguration_full_execution() {
-        let path_str = "../../crates/msi-cli/Sample App.msi";
-        let _ = configure_product(path_str, InstallLevel(1), ConfigurationState::Install);
-        let _ = configure_product(path_str, InstallLevel(1), ConfigurationState::Uninstall);
-        let _ = configure_product(path_str, InstallLevel(1), ConfigurationState::Repair);
-        let _ = reinstall_product(path_str, ReinstallMode(1));
+    fn test_reconfiguration_full_execution() -> crate::error::Result<()> {
+        let temp_dir = tempfile::tempdir().map_err(crate::error::IoContext)?;
+        let pkg_path = temp_dir.path().join("reconfig_test.msi");
+        let pkg = crate::package::Package::builder()
+            .product_name("ReconfigApp")
+            .manufacturer("Acme")
+            .version(crate::package::ProductVersion::new(1, 0, 0))
+            .product_code("{11111111-2222-3333-4444-555555555555}")
+            .upgrade_code("{11111111-2222-3333-4444-555555555556}")
+            .build()?;
+        pkg.save(&pkg_path)?;
+
+        let path_str = pkg_path.to_string_lossy().to_string();
+        assert!(configure_product(&path_str, InstallLevel(1), ConfigurationState::Install).is_ok());
+        assert!(
+            configure_product(&path_str, InstallLevel(1), ConfigurationState::Uninstall).is_ok()
+        );
+        assert!(configure_product(&path_str, InstallLevel(1), ConfigurationState::Repair).is_ok());
+        let mode =
+            ReinstallMode(ReinstallMode::FILE_OLDER_VERSION.0 | ReinstallMode::MACHINE_DATA.0);
+        assert!(mode.contains(ReinstallMode::FILE_OLDER_VERSION));
+        assert!(!mode.contains(ReinstallMode::FILE_REPLACE));
+        assert!(reinstall_product(&path_str, mode).is_ok());
         assert!(configure_product("FAIL", InstallLevel(1), ConfigurationState::Install).is_err());
         assert!(reinstall_product("FAIL", ReinstallMode(1)).is_err());
+        Ok(())
     }
 
     #[test]

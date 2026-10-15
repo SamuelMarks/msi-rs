@@ -565,17 +565,18 @@ mod tests {
     }
 
     #[test]
-    fn test_appsearch_empty() {
-        let db = LinkedDatabase::new().expect("test");
+    fn test_appsearch_empty() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let db = LinkedDatabase::new()?;
         let host = MockHost::default();
         let app_search = AppSearch::new(&db, host);
-        let res = app_search.execute().expect("test");
+        let res = app_search.execute()?;
         assert!(res.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn test_appsearch_reglocator_raw() {
-        let mut db = LinkedDatabase::new().expect("test");
+    fn test_appsearch_reglocator_raw() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let mut db = LinkedDatabase::new()?;
         db.add_record(
             "AppSearch",
             Record::with_fields(vec![
@@ -644,13 +645,14 @@ mod tests {
         );
 
         let app_search = AppSearch::new(&db, host);
-        let res = app_search.execute().expect("test");
+        let res = app_search.execute()?;
         assert_eq!(&res["MYPROP"], "C:\\Acme");
+        Ok(())
     }
 
     #[test]
-    fn test_appsearch_reglocator_file_sig() {
-        let mut db = LinkedDatabase::new().expect("test");
+    fn test_appsearch_reglocator_file_sig() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let mut db = LinkedDatabase::new()?;
         db.add_record(
             "AppSearch",
             Record::with_fields(vec![
@@ -731,13 +733,14 @@ mod tests {
             .insert("C:\\Acme\\acme.exe".to_string(), true);
 
         let app_search = AppSearch::new(&db, host);
-        let res = app_search.execute().expect("test");
+        let res = app_search.execute()?;
         assert_eq!(&res["MYPROP"], "C:\\Acme\\acme.exe");
+        Ok(())
     }
 
     #[test]
-    fn test_appsearch_inilocator() {
-        let mut db = LinkedDatabase::new().expect("test");
+    fn test_appsearch_inilocator() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let mut db = LinkedDatabase::new()?;
         db.add_record(
             "AppSearch",
             Record::with_fields(vec![
@@ -808,13 +811,14 @@ mod tests {
         );
 
         let app_search = AppSearch::new(&db, host);
-        let res = app_search.execute().expect("test");
+        let res = app_search.execute()?;
         assert_eq!(&res["MYINI"], "IniValue");
+        Ok(())
     }
 
     #[test]
-    fn test_appsearch_drlocator() {
-        let mut db = LinkedDatabase::new().expect("test");
+    fn test_appsearch_drlocator() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let mut db = LinkedDatabase::new()?;
         db.add_record(
             "AppSearch",
             Record::with_fields(vec![
@@ -878,13 +882,15 @@ mod tests {
         );
 
         let app_search = AppSearch::new(&db, host);
-        let res = app_search.execute().expect("test");
+        let res = app_search.execute()?;
         assert_eq!(&res["MYDIR"], "C:\\Program Files\\Acme");
+        Ok(())
     }
 
     #[test]
-    fn test_appsearch_drlocator_with_signature() {
-        let mut db = LinkedDatabase::new().expect("test");
+    fn test_appsearch_drlocator_with_signature(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let mut db = LinkedDatabase::new()?;
         db.add_record(
             "AppSearch",
             Record::with_fields(vec![
@@ -963,13 +969,14 @@ mod tests {
         host.signatures.insert("C:\\App\\app.exe".to_string(), true);
 
         let app_search = AppSearch::new(&db, host);
-        let res = app_search.execute().expect("test");
+        let res = app_search.execute()?;
         assert_eq!(&res["MYFILE"], "C:\\App\\app.exe");
+        Ok(())
     }
 
     #[test]
-    fn test_appsearch_complocator() {
-        let mut db = LinkedDatabase::new().expect("test");
+    fn test_appsearch_complocator() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let mut db = LinkedDatabase::new()?;
         db.add_record(
             "AppSearch",
             Record::with_fields(vec![
@@ -988,14 +995,15 @@ mod tests {
 
         let host = MockHost::default();
         let app_search = AppSearch::new(&db, host);
-        let res = app_search.execute().expect("test");
+        let res = app_search.execute()?;
         // CompLocator unimpl
         assert!(res.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn test_appsearch_extra_coverage() {
-        let mut db = LinkedDatabase::new().expect("test");
+    fn test_appsearch_extra_coverage() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let mut db = LinkedDatabase::new()?;
         // 1) AppSearch empty prop/sig
         db.add_record(
             "AppSearch",
@@ -1091,14 +1099,15 @@ mod tests {
         host.signatures
             .insert(r"C:\FailFile.exe".to_string(), false);
         let app_search = AppSearch::new(&db, host);
-        let res = app_search.execute().expect("test");
+        let res = app_search.execute()?;
         assert_eq!(&res["MYINIFILE"], r"C:\IniFile");
+        Ok(())
     }
 
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_appsearch_extra_coverage_pt2() {
-        let mut db = LinkedDatabase::new().expect("test");
+    fn test_appsearch_extra_coverage_pt2() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let mut db = LinkedDatabase::new()?;
 
         // 5) DrLocator missing path but has parent (line 216), parent resolves to "C:\Parent"
         db.add_record(
@@ -1303,15 +1312,17 @@ mod tests {
             .insert("C:\\Found\\found_bad_sig.exe".to_string(), false);
 
         let app_search = AppSearch::new(&db, host);
-        let res = app_search.execute().expect("test");
+        let res = app_search.execute()?;
 
         assert_eq!(&res["MYDIRPARENT"], "C:\\Parent");
         assert_eq!(&res["MYDIRBOTH"], "C:\\Parent\\Child");
+        Ok(())
     }
 
     #[test]
-    fn test_appsearch_locator_type_unsupported() {
-        let mut db = LinkedDatabase::new().expect("test");
+    fn test_appsearch_locator_type_unsupported(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let mut db = LinkedDatabase::new()?;
         db.add_record(
             "AppSearch",
             Record::with_fields(vec![
@@ -1402,14 +1413,14 @@ mod tests {
         );
 
         let app_search = AppSearch::new(&db, host);
-        let res = app_search.execute().expect("test");
+        let res = app_search.execute()?;
         assert!(res.is_empty());
+        Ok(())
     }
 
     #[test]
-    #[allow(clippy::unwrap_used)]
-    fn test_appsearch_negative_values() {
-        let mut db = LinkedDatabase::new().expect("test");
+    fn test_appsearch_negative_values() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let mut db = LinkedDatabase::new()?;
         db.add_record(
             "AppSearch",
             Record::with_fields(vec![
@@ -1443,11 +1454,12 @@ mod tests {
         let host = MockHost::default();
         let app_search = AppSearch::new(&db, host);
         let _ = app_search.execute();
+        Ok(())
     }
 
     #[test]
-    fn test_appsearch_errors() {
-        let mut db = LinkedDatabase::new().expect("test");
+    fn test_appsearch_errors() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let mut db = LinkedDatabase::new()?;
         db.add_record(
             "DrLocator",
             Record::with_fields(vec![
@@ -1460,6 +1472,7 @@ mod tests {
         let host = MockHost::default();
         let app_search = AppSearch::new(&db, host);
         let _ = app_search.execute();
+        Ok(())
     }
 }
 
@@ -1468,42 +1481,92 @@ mod appsearch_tests_extra {
     use super::tests::MockHost;
     use super::*;
 
+    /// Populates `DrLocator` records for `test_appsearch_extra_coverage`.
+    fn populate_dr_locator_records(db: &mut LinkedDatabase) {
+        for (prop, sig) in [
+            ("MYDIRPARENT", "SigDirParent"),
+            ("MYDIRBOTH", "SigDirBoth"),
+            ("MYDIRFAIL", "SigDirFail"),
+            ("MYFILEFAIL", "SigFileFail"),
+            ("MYFILEFAIL2", "SigFileFail2"),
+        ] {
+            db.add_record(
+                "AppSearch",
+                Record::with_fields(vec![
+                    FieldValue::String(prop.to_string()),
+                    FieldValue::String(sig.to_string()),
+                ]),
+            );
+        }
+
+        for (sig, parent, path) in [
+            ("SigDirParent", Some("SigParentReg"), None),
+            ("SigDirBoth", Some("SigParentReg"), Some("Child")),
+            ("SigDirFail", None, Some("C:\\MissingDir")),
+            ("SigFileFail", None, Some("")),
+            ("SigFileFail2", None, Some("C:\\Found")),
+        ] {
+            db.add_record(
+                "DrLocator",
+                Record::with_fields(vec![
+                    FieldValue::String(sig.to_string()),
+                    parent.map_or(FieldValue::Null, |s| FieldValue::String(s.to_string())),
+                    path.map_or(FieldValue::Null, |s| FieldValue::String(s.to_string())),
+                    FieldValue::Null,
+                ]),
+            );
+        }
+
+        db.add_record(
+            "RegLocator",
+            Record::with_fields(vec![
+                FieldValue::String("SigParentReg".to_string()),
+                FieldValue::Long(2),
+                FieldValue::String("Software\\Parent".to_string()),
+                FieldValue::Null,
+                FieldValue::Long(2),
+            ]),
+        );
+
+        for (sig, fname) in [
+            ("SigFileFail", "missing.exe"),
+            ("SigFileFail2", "found_bad_sig.exe"),
+        ] {
+            db.add_record(
+                "Signature",
+                Record::with_fields(vec![
+                    FieldValue::String(sig.to_string()),
+                    FieldValue::String(fname.to_string()),
+                    FieldValue::Null,
+                    FieldValue::Null,
+                    FieldValue::Null,
+                    FieldValue::Null,
+                    FieldValue::Null,
+                    FieldValue::Null,
+                    FieldValue::Null,
+                ]),
+            );
+        }
+    }
+
     #[test]
-    fn test_appsearch_extra_coverage() {
-        let mut db = LinkedDatabase::new().expect("test");
-        // 1) AppSearch empty prop/sig
-        db.add_record(
-            "AppSearch",
-            Record::with_fields(vec![
-                FieldValue::String(String::new()),
-                FieldValue::String("SigEmpty".to_string()),
-            ]),
-        );
-        db.add_record(
-            "AppSearch",
-            Record::with_fields(vec![
-                FieldValue::String("PROP".to_string()),
-                FieldValue::String(String::new()),
-            ]),
-        );
-
-        // 2) Unresolved signature
-        db.add_record(
-            "AppSearch",
-            Record::with_fields(vec![
-                FieldValue::String("PROP_UNRES".to_string()),
-                FieldValue::String("SigUnresolved".to_string()),
-            ]),
-        );
-
-        // 3) IniLocator with locator_type=0 (file) and missing signature (line 196-199, 244)
-        db.add_record(
-            "AppSearch",
-            Record::with_fields(vec![
-                FieldValue::String("MYINIFILE".to_string()),
-                FieldValue::String("SigIniFile".to_string()),
-            ]),
-        );
+    fn test_appsearch_extra_coverage() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let mut db = LinkedDatabase::new()?;
+        for (prop, sig) in [
+            ("", "SigEmpty"),
+            ("PROP", ""),
+            ("PROP_UNRES", "SigUnresolved"),
+            ("MYINIFILE", "SigIniFile"),
+            ("MYREGFAIL", "SigRegFail"),
+        ] {
+            db.add_record(
+                "AppSearch",
+                Record::with_fields(vec![
+                    FieldValue::String(prop.to_string()),
+                    FieldValue::String(sig.to_string()),
+                ]),
+            );
+        }
         db.add_record(
             "IniLocator",
             Record::with_fields(vec![
@@ -1511,17 +1574,8 @@ mod appsearch_tests_extra {
                 FieldValue::String("test2.ini".to_string()),
                 FieldValue::String("Sec2".to_string()),
                 FieldValue::String("Key2".to_string()),
-                FieldValue::Short(1), // field using FieldValue::Short! covers get_i32 Short
-                FieldValue::Long(0),  // file type
-            ]),
-        );
-
-        // 4) RegLocator where check_signature fails
-        db.add_record(
-            "AppSearch",
-            Record::with_fields(vec![
-                FieldValue::String("MYREGFAIL".to_string()),
-                FieldValue::String("SigRegFail".to_string()),
+                FieldValue::Short(1),
+                FieldValue::Long(0),
             ]),
         );
         db.add_record(
@@ -1549,134 +1603,7 @@ mod appsearch_tests_extra {
             ]),
         );
 
-        // 5) DrLocator missing path but has parent (line 216), parent resolves to "C:\Parent"
-        db.add_record(
-            "AppSearch",
-            Record::with_fields(vec![
-                FieldValue::String("MYDIRPARENT".to_string()),
-                FieldValue::String("SigDirParent".to_string()),
-            ]),
-        );
-        db.add_record(
-            "DrLocator",
-            Record::with_fields(vec![
-                FieldValue::String("SigDirParent".to_string()),
-                FieldValue::String("SigParentReg".to_string()), // parent
-                FieldValue::Null,                               // no path
-                FieldValue::Null,
-            ]),
-        );
-        // Provide parent via RegLocator
-        db.add_record(
-            "RegLocator",
-            Record::with_fields(vec![
-                FieldValue::String("SigParentReg".to_string()),
-                FieldValue::Long(2),
-                FieldValue::String("Software\\Parent".to_string()),
-                FieldValue::Null,
-                FieldValue::Long(2), // raw type
-            ]),
-        );
-
-        // 6) DrLocator with parent and path (line 213)
-        db.add_record(
-            "AppSearch",
-            Record::with_fields(vec![
-                FieldValue::String("MYDIRBOTH".to_string()),
-                FieldValue::String("SigDirBoth".to_string()),
-            ]),
-        );
-        db.add_record(
-            "DrLocator",
-            Record::with_fields(vec![
-                FieldValue::String("SigDirBoth".to_string()),
-                FieldValue::String("SigParentReg".to_string()), // parent
-                FieldValue::String("Child".to_string()),        // path
-                FieldValue::Null,
-            ]),
-        );
-
-        // 7) DrLocator find_dir fails (Line 390)
-        db.add_record(
-            "AppSearch",
-            Record::with_fields(vec![
-                FieldValue::String("MYDIRFAIL".to_string()),
-                FieldValue::String("SigDirFail".to_string()),
-            ]),
-        );
-        db.add_record(
-            "DrLocator",
-            Record::with_fields(vec![
-                FieldValue::String("SigDirFail".to_string()),
-                FieldValue::Null,
-                FieldValue::String("C:\\MissingDir".to_string()),
-                FieldValue::Null,
-            ]),
-        );
-
-        // 8) DrLocator find_file empty path (Line 376) and fails (Line 383, 225)
-        db.add_record(
-            "AppSearch",
-            Record::with_fields(vec![
-                FieldValue::String("MYFILEFAIL".to_string()),
-                FieldValue::String("SigFileFail".to_string()),
-            ]),
-        );
-        db.add_record(
-            "DrLocator",
-            Record::with_fields(vec![
-                FieldValue::String("SigFileFail".to_string()),
-                FieldValue::Null,
-                FieldValue::String(String::new()), // empty path
-                FieldValue::Null,
-            ]),
-        );
-        db.add_record(
-            "Signature",
-            Record::with_fields(vec![
-                FieldValue::String("SigFileFail".to_string()),
-                FieldValue::String("missing.exe".to_string()),
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::Null,
-            ]),
-        );
-
-        // 9) DrLocator check_signature fails (Line 224)
-        db.add_record(
-            "AppSearch",
-            Record::with_fields(vec![
-                FieldValue::String("MYFILEFAIL2".to_string()),
-                FieldValue::String("SigFileFail2".to_string()),
-            ]),
-        );
-        db.add_record(
-            "DrLocator",
-            Record::with_fields(vec![
-                FieldValue::String("SigFileFail2".to_string()),
-                FieldValue::Null,
-                FieldValue::String("C:\\Found".to_string()),
-                FieldValue::Null,
-            ]),
-        );
-        db.add_record(
-            "Signature",
-            Record::with_fields(vec![
-                FieldValue::String("SigFileFail2".to_string()),
-                FieldValue::String("found_bad_sig.exe".to_string()),
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::Null,
-            ]),
-        );
+        populate_dr_locator_records(&mut db);
 
         let mut host = MockHost::default();
         host.ini.insert(
@@ -1693,7 +1620,7 @@ mod appsearch_tests_extra {
             "C:\\FailFile.exe".to_string(),
         );
         host.signatures
-            .insert("C:\\FailFile.exe".to_string(), false); // signature check fails
+            .insert("C:\\FailFile.exe".to_string(), false);
 
         host.registry.insert(
             (2, "Software\\Parent".to_string(), None),
@@ -1705,8 +1632,6 @@ mod appsearch_tests_extra {
             "C:\\Parent\\Child".to_string(),
             "C:\\Parent\\Child".to_string(),
         );
-
-        // For 9
         host.files.insert(
             "C:\\Found\\found_bad_sig.exe".to_string(),
             "C:\\Found\\found_bad_sig.exe".to_string(),
@@ -1715,18 +1640,22 @@ mod appsearch_tests_extra {
             .insert("C:\\Found\\found_bad_sig.exe".to_string(), false);
 
         let app_search = AppSearch::new(&db, host);
-        let res = app_search.execute().expect("test");
+        let res = app_search.execute()?;
 
         assert_eq!(res.get("MYINIFILE"), Some(&"C:\\IniFile".to_string()));
         assert_eq!(res.get("MYDIRPARENT"), Some(&"C:\\Parent".to_string()));
         assert_eq!(res.get("MYDIRBOTH"), Some(&"C:\\Parent\\Child".to_string()));
 
-        // These should not be in the results
-        assert!(!res.contains_key("PROP_UNRES"));
-        assert!(!res.contains_key("MYREGFAIL"));
-        assert!(!res.contains_key("MYDIRFAIL"));
-        assert!(!res.contains_key("MYFILEFAIL"));
-        assert!(!res.contains_key("MYFILEFAIL2"));
-        assert!(!res.contains_key("PROP"));
+        for missing in [
+            "PROP_UNRES",
+            "MYREGFAIL",
+            "MYDIRFAIL",
+            "MYFILEFAIL",
+            "MYFILEFAIL2",
+            "PROP",
+        ] {
+            assert!(!res.contains_key(missing));
+        }
+        Ok(())
     }
 }

@@ -166,7 +166,8 @@ mod tests {
         let handle = RemotedHandle::new(42);
         let handle_clone = handle.clone();
         assert_eq!(handle, handle_clone);
-        assert!(format!("{handle:?}").contains("RemotedHandle"));
+        let h_dbg = format!("{handle:?}");
+        assert!(h_dbg.contains("RemotedHandle"));
 
         assert_eq!(handle.get_property("Prop")?, "");
         handle.set_property("Prop", "Val")?;

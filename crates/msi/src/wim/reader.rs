@@ -140,8 +140,7 @@ impl WimReader {
             });
         }
 
-        fs::create_dir_all(dest_dir)
-            .map_err(|e| MsiError::Io(IoContext::from_string(e.to_string())))?;
+        fs::create_dir_all(dest_dir).map_err(IoContext)?;
 
         let mut extracted = 0usize;
         for (idx, entry) in self.lookup_table.entries.iter().enumerate() {
@@ -150,8 +149,7 @@ impl WimReader {
             }
             if let Ok(payload) = self.read_resource(&entry.resource) {
                 let out_file = dest_dir.join(format!("resource_{idx}.bin"));
-                fs::write(&out_file, payload)
-                    .map_err(|e| MsiError::Io(IoContext::from_string(e.to_string())))?;
+                fs::write(&out_file, payload).map_err(IoContext)?;
                 extracted += 1;
             }
         }
@@ -178,11 +176,16 @@ mod tests {
         wim_data.extend_from_slice(&1u16.to_le_bytes()); // part
         wim_data.extend_from_slice(&1u16.to_le_bytes()); // total parts
         wim_data.extend_from_slice(&image_count.to_le_bytes()); // image count
-        wim_data.extend_from_slice(&[0; 24]); // offset_table
-        wim_data.extend_from_slice(&[0; 24]); // xml_data
+        let mut res_hdr = [0u8; 24];
+        res_hdr[0..8].copy_from_slice(&50u64.to_le_bytes());
+        res_hdr[8..16].copy_from_slice(&208u64.to_le_bytes());
+        res_hdr[16..24].copy_from_slice(&50u64.to_le_bytes());
+        wim_data.extend_from_slice(&res_hdr); // offset_table
+        wim_data.extend_from_slice(&res_hdr); // xml_data
         wim_data.extend_from_slice(&[0; 24]); // boot_metadata
         wim_data.extend_from_slice(&[0; 24]); // integrity
         wim_data.extend_from_slice(&[0; 64]); // unused
+        wim_data.extend_from_slice(&[0u8; 50]); // 50-byte resource at offset 208
         wim_data
     }
 
@@ -191,30 +194,32 @@ mod tests {
     fn test_wim_reader_and_extract() -> Result<()> {
         let raw_wim = build_synthetic_wim(0, 1);
         let mut reader = WimReader::new(&raw_wim)?;
+        reader.lookup_table.entries.clear();
         let cloned = reader.clone();
         assert_eq!(reader.header, cloned.header);
-        assert!(format!("{reader:?}").contains("WimReader"));
+        let rdr_dbg = format!("{reader:?}");
+        assert!(rdr_dbg.contains("WimReader"));
 
         // Empty resource returns empty Vec
         let empty_res = ResourceHeader::default();
         assert!(reader.read_resource(&empty_res)?.is_empty());
 
-        // Append uncompressed payload at offset 208
+        // Uncompressed valid resource
         reader.data.extend_from_slice(b"HELLO_WIM");
         let uncomp_res = ResourceHeader {
-            flags: ResourceFlags(0),
+            flags: ResourceFlags::default(),
             size: 9,
-            offset: 208,
+            offset: 258,
             original_size: 9,
         };
         assert_eq!(reader.read_resource(&uncomp_res)?, b"HELLO_WIM");
 
-        // Compressed resource dispatch across XPRESS, LZX, and LZMS flags
+        // Compressed resource branches (XPRESS, LZX, LZMS)
         let comp_res = ResourceHeader {
             flags: ResourceFlags::COMPRESSED,
-            size: 4,
-            offset: 208,
-            original_size: 8,
+            size: 9,
+            offset: 258,
+            original_size: 18,
         };
         reader.header.flags = WimFlags::COMPRESS_XPRESS;
         let _ = reader.read_resource(&comp_res);
@@ -242,17 +247,30 @@ mod tests {
             .lookup_table
             .entries
             .push(crate::wim::lookup::LookupEntry {
+                resource: comp_res,
+                part_number: 1,
+                ref_count: 1,
+                hash: crate::wim::types::FileHash::default(),
+            });
+        reader
+            .lookup_table
+            .entries
+            .push(crate::wim::lookup::LookupEntry {
                 resource: uncomp_res,
                 part_number: 1,
                 ref_count: 1,
                 hash: crate::wim::types::FileHash::default(),
             });
 
-        let temp_dir =
-            tempfile::tempdir().map_err(|e| MsiError::Io(IoContext::from_string(e.to_string())))?;
+        let temp_dir = tempfile::tempdir().map_err(IoContext)?;
         let count = reader.extract_image(temp_dir.path(), 1)?;
         assert_eq!(count, 1);
-        assert!(temp_dir.path().join("resource_1.bin").exists());
+        assert!(temp_dir.path().join("resource_2.bin").exists());
+
+        // Trigger fs::write error when resource_2.bin is a directory
+        let _ = fs::remove_file(temp_dir.path().join("resource_2.bin"));
+        let _ = fs::create_dir_all(temp_dir.path().join("resource_2.bin"));
+        assert!(reader.extract_image(temp_dir.path(), 1).is_err());
 
         // Invalid image index
         assert!(reader.extract_image(temp_dir.path(), 0).is_err());

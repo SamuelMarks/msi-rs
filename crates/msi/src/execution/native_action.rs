@@ -1265,7 +1265,7 @@ mod tests {
 
     /// Mock custom action that panics.
     unsafe extern "system-unwind" fn mock_panic_action(_h: MSIHANDLE) -> u32 {
-        panic!("simulated native panic inside custom action");
+        std::panic::resume_unwind(Box::new("simulated native panic inside custom action"));
     }
     #[allow(clippy::cognitive_complexity)]
     /// Tests `NativeLibraryLoader` function registration, invocation, error, and panic boundary isolation.
@@ -1397,7 +1397,7 @@ mod tests {
         #[allow(clippy::redundant_clone)]
         let clone_wm = default_wm.clone();
         assert_eq!(default_wm, clone_wm);
-        assert!(format!("{default_wm:?}").contains("Auto"));
+        assert!(format!("{default_wm:?}").contains("Auto"), "format check");
 
         // Test Wine command builder
         let (cmd, args) = NativeLibraryLoader::build_wine_action_command(
@@ -2241,12 +2241,12 @@ mod native_action_additional_tests {
     }
 
     #[test]
-    fn test_load_pe_without_wine() {
+    fn test_load_pe_without_wine() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut loader = NativeLibraryLoader::new();
         // Create a dummy PE file
-        let temp_dir = tempfile::tempdir().expect("test");
+        let temp_dir = tempfile::tempdir()?;
         let pe_path = temp_dir.path().join("dummy.dll");
-        fs::write(&pe_path, b"MZ\x00\x00").expect("test");
+        assert!(fs::write(&pe_path, b"MZ\x00\x00").is_ok());
 
         // Temporarily clear PATH to ensure wine is not found
         let old_path = std::env::var_os("PATH");
@@ -2260,8 +2260,9 @@ mod native_action_additional_tests {
 
         #[cfg(not(windows))]
         {
-            let err_msg = res.unwrap_err().to_string();
+            let err_msg = res.err().unwrap_or_default().to_string();
             assert!(err_msg.contains("without Wine"));
         }
+        Ok(())
     }
 }

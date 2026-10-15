@@ -244,6 +244,8 @@ pub extern "system" fn MsiLoadStringA(
 #[cfg(test)]
 mod tests {
     #![allow(
+        clippy::too_many_lines,
+        clippy::cognitive_complexity,
         clippy::similar_names,
         clippy::too_many_lines,
         clippy::shadow_unrelated,
@@ -257,13 +259,13 @@ mod tests {
         let mut utf16: Vec<u16> = "TestW".encode_utf16().collect();
         utf16.push(0);
         let ws = WideString(utf16.as_ptr());
-        assert_eq!(ws.to_string().unwrap(), "TestW");
+        assert_eq!(ws.to_string().as_deref(), Some("TestW"));
         let ws_null = WideString(ptr::null());
         assert_eq!(ws_null.to_string(), None);
 
         let bytes = b"TestA\0";
         let as_str = AnsiString(bytes.as_ptr().cast::<i8>());
-        assert_eq!(as_str.to_string().unwrap(), "TestA");
+        assert_eq!(as_str.to_string().as_deref(), Some("TestA"));
         let as_null = AnsiString(ptr::null());
         assert_eq!(as_null.to_string(), None);
     }
@@ -276,7 +278,7 @@ mod tests {
         utf16.push(0);
 
         let s = lpcwstr_to_string(utf16.as_ptr());
-        assert_eq!(s.unwrap(), "Hello");
+        assert_eq!(s.as_deref(), Some("Hello"));
     }
 
     #[test]
@@ -285,7 +287,7 @@ mod tests {
 
         let bytes = b"World\0";
         let s = lpcstr_to_string(bytes.as_ptr().cast::<i8>());
-        assert_eq!(s.unwrap(), "World");
+        assert_eq!(s.as_deref(), Some("World"));
     }
 
     #[test]

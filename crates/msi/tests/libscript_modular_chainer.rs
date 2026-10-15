@@ -82,7 +82,7 @@ echo OpenEdX Core
         ..CandleOptions::new()
     };
     let wixobjs = candle_opts.execute()?;
-    let _ = (wixobjs.len(), 1);
+    assert_eq!(wixobjs.len(), 1);
 
     // 2. Link with Light
     let out_msi = temp_dir.join("openedx-2.0.0.msi");
@@ -93,8 +93,8 @@ echo OpenEdX Core
         ..LightOptions::new()
     };
     let linked_path = light_opts.execute()?;
-    let _ = (linked_path, out_msi.clone());
-    let _ = out_msi.exists();
+    assert_eq!(linked_path, out_msi);
+    assert!(out_msi.exists());
 
     // 3. Inspect generated database tables
     let pkg = Package::open(&out_msi)?;
@@ -102,21 +102,24 @@ echo OpenEdX Core
 
     // Verify MsiEmbeddedChainer table presence and fields
     let chainer_records = db.get_records("MsiEmbeddedChainer");
-    let _ = (chainer_records.len(), 1);
+    assert_eq!(chainer_records.len(), 1);
     let ch_rec = &chainer_records[0];
-    let _ = (
+    assert_eq!(
         ch_rec.get(0),
-        Some(&FieldValue::String("OpenEdXChainer".to_string())),
+        Some(&FieldValue::String("OpenEdXChainer".to_string()))
     );
-    let _ = ch_rec.get(1).is_some();
-    let _ = ch_rec.get(2).is_some();
-    let _ = (ch_rec.get(3), Some(&FieldValue::Null));
-    let _ = (ch_rec.get(4), Some(&FieldValue::Long(1))); // Type 1: Binary DLL
+    assert!(ch_rec.get(1).is_some());
+    assert!(ch_rec.get(2).is_some());
+    assert_eq!(
+        ch_rec.get(3),
+        Some(&FieldValue::String("Bin_Chainer".to_string()))
+    );
+    assert_eq!(ch_rec.get(4), Some(&FieldValue::Long(1))); // Type 1: Binary DLL
 
     // 4. Simulate Transaction Chaining execution
     let mut tx_mgr =
         MultiPackageTransactionManager::begin_transaction("OpenEdX_Install_Transaction")?;
-    let _ = (tx_mgr.state(), Some(TransactionState::Active));
+    assert_eq!(tx_mgr.state(), Some(TransactionState::Active));
 
     // Child package 1: MySQL
     tx_mgr.install_product_nested(
@@ -128,18 +131,18 @@ echo OpenEdX Core
     // Child package 3: Open edX Core
     tx_mgr.install_product_nested("openedx-core.msi", "")?;
 
-    let _ = (tx_mgr.chained_packages().len(), 3);
-    let _ = (
+    assert_eq!(tx_mgr.chained_packages().len(), 3);
+    assert_eq!(
         tx_mgr.chained_packages()[0]
             .properties
             .get("PROP_MYSQL_PORT"),
-        Some(&"3306".to_string()),
+        Some(&"3306".to_string())
     );
 
     // Commit transaction
     let commit_code = tx_mgr.end_transaction(true)?;
-    let _ = (commit_code, 0);
-    let _ = (tx_mgr.state(), Some(TransactionState::Committed));
+    assert_eq!(commit_code, 0);
+    assert_eq!(tx_mgr.state(), Some(TransactionState::Committed));
 
     let _ = fs::remove_dir_all(&temp_dir);
     Ok(())
@@ -221,7 +224,7 @@ fn test_standalone_component_service_lifecycle() -> Result<()> {
         ..LightOptions::new()
     };
     let linked = light_opts.execute()?;
-    let _ = (linked, out_msi.clone());
+    assert_eq!(linked, out_msi);
 
     // 3. Inspect database
     let pkg = Package::open(&out_msi)?;
@@ -229,30 +232,31 @@ fn test_standalone_component_service_lifecycle() -> Result<()> {
 
     // Verify Component.Attributes has 0x0020 (SharedDllRefCount)
     let comp_records = db.get_records("Component");
-    let _ = (comp_records.len(), 1);
-    let _comp_attrs = match comp_records[0].get(3) {
+    assert_eq!(comp_records.len(), 1);
+    let comp_attrs = match comp_records[0].get(3) {
         Some(FieldValue::Short(v)) => i32::from(*v),
         Some(FieldValue::Long(v)) => *v,
         _ => 0,
     };
+    assert_ne!(comp_attrs & 0x0020, 0);
 
     // Verify ServiceInstall fields
     let svc_records = db.get_records("ServiceInstall");
-    let _ = (svc_records.len(), 1);
-    let _ = svc_records[0].get(1).is_some();
-    let _ = (
+    assert_eq!(svc_records.len(), 1);
+    assert!(svc_records[0].get(1).is_some());
+    assert_eq!(
         svc_records[0].get(8),
         Some(&FieldValue::String(
             r"NT AUTHORITY\NetworkService".to_string(),
-        )),
+        ))
     );
 
     // Verify ServiceControl fields
     let ctrl_records = db.get_records("ServiceControl");
-    let _ = (ctrl_records.len(), 1);
+    assert_eq!(ctrl_records.len(), 1);
     // Start="install" (0x0001), Stop="both" (0x0022), Remove="uninstall" (0x0080) -> 0x00A3 = 163
-    let _ = (ctrl_records[0].get(2), Some(&FieldValue::Short(0x00A3)));
-    let _ = (ctrl_records[0].get(4), Some(&FieldValue::Short(1))); // Wait="yes"
+    assert_eq!(ctrl_records[0].get(2), Some(&FieldValue::Short(0x00A3)));
+    assert_eq!(ctrl_records[0].get(4), Some(&FieldValue::Short(1))); // Wait="yes"
 
     // Verify automatic standard action injection in InstallExecuteSequence
     let ies_records = db.get_records("InstallExecuteSequence");
@@ -261,39 +265,25 @@ fn test_standalone_component_service_lifecycle() -> Result<()> {
             .iter()
             .any(|r| r.get(0) == Some(&FieldValue::String(name.to_string())))
     };
-    let _ = has_action("StopServices");
-    let _ = has_action("DeleteServices");
-    let _ = has_action("InstallServices");
-    let _ = has_action("StartServices");
+    assert!(has_action("StopServices"));
+    assert!(has_action("DeleteServices"));
+    assert!(has_action("InstallServices"));
+    assert!(has_action("StartServices"));
 
     let _ = fs::remove_dir_all(&temp_dir);
     Ok(())
 }
 
-/// Simulates side-by-side coexistence of Open edX and `WordPress` sharing a single
-/// `MySQL` service on port 3306 without destructive premature uninstallation.
-///
-/// Validates Windows Installer shared component reference counting (`SharedDllRefCount="yes"`):
-/// - Tracking client `ProductCode` associations per `ComponentId` GUID in the local registry/state store.
-/// - Incrementing component ref-count on install linking multiple products.
-/// - Decrementing ref-count on uninstall; retaining files and services when ref-count > 0.
-/// - Verifying database operational continuity for remaining client products.
-/// - Stopping and removing shared services and files only when ref-count drops to 0.
-#[test]
-#[allow(clippy::too_many_lines)]
-fn test_side_by_side_coexistence_and_sql_provisioning() -> Result<()> {
-    let mut worker = WorkerContext::default();
-    let mut reg_store = RegistryStore::new();
-
-    let shared_mysql_bin = r"C:\Program Files\LibScript\MySQL\mysqld.exe";
-    let mysql_service = "LibScript_MySQL";
-    let mysql_comp_guid = "{5B2783B0-9A1F-4348-9F93-87CE43C21001}";
-    let prod_openedx = "{E0F45901-83B4-4B21-9B5A-01D38FE81001}";
-    let prod_wordpress = "{E0F45901-83B4-4B21-9B5A-01D38FE81002}";
-
-    // -------------------------------------------------------------
-    // Scenario 1: Install Open edX linking shared MySQL component
-    // -------------------------------------------------------------
+/// Verifies Open edX and `WordPress` side-by-side shared component installation.
+fn verify_side_by_side_install(
+    worker: &mut WorkerContext,
+    reg_store: &mut RegistryStore,
+    shared_mysql_bin: &str,
+    mysql_service: &str,
+    mysql_comp_guid: &str,
+    prod_openedx: &str,
+    prod_wordpress: &str,
+) -> Result<(EvaluationContext, EvaluationContext)> {
     worker.install_component(
         mysql_comp_guid,
         prod_openedx,
@@ -309,15 +299,14 @@ fn test_side_by_side_coexistence_and_sql_provisioning() -> Result<()> {
     )?;
     worker.start_service(mysql_service);
 
-    let _ = (reg_count1, 1);
-    let _ = (worker.get_component_client_count(mysql_comp_guid), 1);
-    let _ = (reg_store.get_component_client_count(mysql_comp_guid)?, 1);
-    let _ = (worker.get_shared_dll_ref(shared_mysql_bin), 1);
-    let _ = (reg_store.get_shared_dll_ref(shared_mysql_bin)?, 1);
-    let _ = worker.is_service_running(mysql_service);
-    let _ = !reg_store.is_component_shared(mysql_comp_guid)?;
+    assert_eq!(reg_count1, 1);
+    assert_eq!(worker.get_component_client_count(mysql_comp_guid), 1);
+    assert_eq!(reg_store.get_component_client_count(mysql_comp_guid)?, 1);
+    assert_eq!(worker.get_shared_dll_ref(shared_mysql_bin), 1);
+    assert_eq!(reg_store.get_shared_dll_ref(shared_mysql_bin)?, 1);
+    assert!(worker.is_service_running(mysql_service));
+    assert!(!reg_store.is_component_shared(mysql_comp_guid)?);
 
-    // Provision Open edX database schema in-process
     let mut edx_ctx = EvaluationContext::new();
     edx_ctx.set_property("PROP_MYSQL_PORT", "3306");
     edx_ctx.set_property("PROP_PROVISION_DB_NAME", "openedx");
@@ -328,12 +317,9 @@ fn test_side_by_side_coexistence_and_sql_provisioning() -> Result<()> {
     let edx_cfg = SqlProvisionerConfig::from_context(&edx_ctx);
     let edx_sql_client = SqlProvisionerClient::new(edx_cfg);
     let edx_res = edx_sql_client.execute(SqlProvisionerAction::Install)?;
-    let _ = edx_res.success;
-    let _ = edx_res.executed_statements[0].contains("CREATE DATABASE IF NOT EXISTS `openedx`");
+    assert!(edx_res.success);
+    assert!(edx_res.executed_statements[0].contains("CREATE DATABASE IF NOT EXISTS `openedx`"));
 
-    // -------------------------------------------------------------
-    // Scenario 1 (continued): Install WordPress side-by-side sharing MySQL
-    // -------------------------------------------------------------
     worker.install_component(
         mysql_comp_guid,
         prod_wordpress,
@@ -348,19 +334,18 @@ fn test_side_by_side_coexistence_and_sql_provisioning() -> Result<()> {
         Some(shared_mysql_bin),
     )?;
 
-    let _ = (reg_count2, 2);
-    let _ = (worker.get_component_client_count(mysql_comp_guid), 2);
-    let _ = (reg_store.get_component_client_count(mysql_comp_guid)?, 2);
-    let _ = reg_store.is_component_shared(mysql_comp_guid)?;
-    let _ = (worker.get_shared_dll_ref(shared_mysql_bin), 2);
-    let _ = (reg_store.get_shared_dll_ref(shared_mysql_bin)?, 2);
+    assert_eq!(reg_count2, 2);
+    assert_eq!(worker.get_component_client_count(mysql_comp_guid), 2);
+    assert_eq!(reg_store.get_component_client_count(mysql_comp_guid)?, 2);
+    assert!(reg_store.is_component_shared(mysql_comp_guid)?);
+    assert_eq!(worker.get_shared_dll_ref(shared_mysql_bin), 2);
+    assert_eq!(reg_store.get_shared_dll_ref(shared_mysql_bin)?, 2);
 
     let clients = reg_store.get_component_clients(mysql_comp_guid)?;
-    let _ = (clients.len(), 2);
-    let _ = clients.contains(&prod_openedx.to_string());
-    let _ = clients.contains(&prod_wordpress.to_string());
+    assert_eq!(clients.len(), 2);
+    assert!(clients.contains(&prod_openedx.to_string()));
+    assert!(clients.contains(&prod_wordpress.to_string()));
 
-    // Provision WordPress database schema on the same MySQL service
     let mut wp_ctx = EvaluationContext::new();
     wp_ctx.set_property("PROP_MYSQL_PORT", "3306");
     wp_ctx.set_property("PROP_PROVISION_DB_NAME", "wordpress");
@@ -370,22 +355,52 @@ fn test_side_by_side_coexistence_and_sql_provisioning() -> Result<()> {
     wp_ctx.set_property("SQL_PROVISION_MOCK", "1");
 
     let wp_cfg = SqlProvisionerConfig::from_context(&wp_ctx);
-    let wp_sql_client = SqlProvisionerClient::new(wp_cfg.clone());
+    let wp_sql_client = SqlProvisionerClient::new(wp_cfg);
     let wp_res = wp_sql_client.execute(SqlProvisionerAction::Install)?;
-    let _ = wp_res.success;
-    let _ = wp_res.executed_statements[0].contains("CREATE DATABASE IF NOT EXISTS `wordpress`");
+    assert!(wp_res.success);
+    assert!(wp_res.executed_statements[0].contains("CREATE DATABASE IF NOT EXISTS `wordpress`"));
+    Ok((edx_ctx, wp_ctx))
+}
+
+/// Simulates side-by-side coexistence of Open edX and `WordPress` sharing a single
+/// `MySQL` service on port 3306 without destructive premature uninstallation.
+///
+/// Validates Windows Installer shared component reference counting (`SharedDllRefCount="yes"`):
+/// - Tracking client `ProductCode` associations per `ComponentId` GUID in the local registry/state store.
+/// - Incrementing component ref-count on install linking multiple products.
+/// - Decrementing ref-count on uninstall; retaining files and services when ref-count > 0.
+/// - Verifying database operational continuity for remaining client products.
+/// - Stopping and removing shared services and files only when ref-count drops to 0.
+#[test]
+fn test_side_by_side_coexistence_and_sql_provisioning() -> Result<()> {
+    let mut worker = WorkerContext::default();
+    let mut reg_store = RegistryStore::new();
+
+    let shared_mysql_bin = r"C:\Program Files\LibScript\MySQL\mysqld.exe";
+    let mysql_service = "LibScript_MySQL";
+    let mysql_comp_guid = "{5B2783B0-9A1F-4348-9F93-87CE43C21001}";
+    let prod_openedx = "{E0F45901-83B4-4B21-9B5A-01D38FE81001}";
+    let prod_wordpress = "{E0F45901-83B4-4B21-9B5A-01D38FE81002}";
+
+    let (mut edx_ctx, mut wp_ctx) = verify_side_by_side_install(
+        &mut worker,
+        &mut reg_store,
+        shared_mysql_bin,
+        mysql_service,
+        mysql_comp_guid,
+        prod_openedx,
+        prod_wordpress,
+    )?;
 
     // -------------------------------------------------------------
     // Scenario 2: Independent Uninstall of Open edX
     // -------------------------------------------------------------
-    // Open edX uninstalls without PURGE_DATA -> database must not be dropped!
     edx_ctx.set_property("PURGE_DATA", "0");
     let edx_uninst_cfg = SqlProvisionerConfig::from_context(&edx_ctx);
     let edx_uninst_client = SqlProvisionerClient::new(edx_uninst_cfg);
     let edx_uninst_res = edx_uninst_client.execute(SqlProvisionerAction::Uninstall)?;
-    let _ = edx_uninst_res.executed_statements.is_empty(); // No destructive DROP statements
+    assert!(edx_uninst_res.executed_statements.is_empty());
 
-    // Component reference counting prevents deletion of MySQL binary and teardown of service
     let uninst_removed_a = worker.uninstall_component_guarded(mysql_comp_guid, prod_openedx);
     let reg_uninst_count = reg_store.unregister_component_client(
         mysql_comp_guid,
@@ -393,34 +408,32 @@ fn test_side_by_side_coexistence_and_sql_provisioning() -> Result<()> {
         Some(shared_mysql_bin),
     )?;
 
-    let _ = !uninst_removed_a; // Teardown suppressed because WordPress still holds reference!
-    let _ = (reg_uninst_count, 1);
-    let _ = (worker.get_component_client_count(mysql_comp_guid), 1);
-    let _ = (reg_store.get_component_client_count(mysql_comp_guid)?, 1);
-    let _ = !reg_store.is_component_shared(mysql_comp_guid)?;
-    let _ = (worker.get_shared_dll_ref(shared_mysql_bin), 1);
-    let _ = (reg_store.get_shared_dll_ref(shared_mysql_bin)?, 1);
-    let _ = worker.get_file_content(shared_mysql_bin).is_some();
-    let _ = worker.is_service_running(mysql_service);
+    assert!(!uninst_removed_a);
+    assert_eq!(reg_uninst_count, 1);
+    assert_eq!(worker.get_component_client_count(mysql_comp_guid), 1);
+    assert_eq!(reg_store.get_component_client_count(mysql_comp_guid)?, 1);
+    assert!(!reg_store.is_component_shared(mysql_comp_guid)?);
+    assert_eq!(worker.get_shared_dll_ref(shared_mysql_bin), 1);
+    assert_eq!(reg_store.get_shared_dll_ref(shared_mysql_bin)?, 1);
+    assert!(worker.get_file_content(shared_mysql_bin).is_some());
+    assert!(worker.is_service_running(mysql_service));
 
-    // Verify WordPress operational continuity: WordPress can still execute operations on MySQL
+    let wp_cfg = SqlProvisionerConfig::from_context(&wp_ctx);
     let wp_continuity_client = SqlProvisionerClient::new(wp_cfg);
     let wp_ping = wp_continuity_client.execute(SqlProvisionerAction::Install)?;
-    let _ = wp_ping.success;
-    let _ = worker.is_service_running(mysql_service);
+    assert!(wp_ping.success);
+    assert!(worker.is_service_running(mysql_service));
 
     // -------------------------------------------------------------
     // Scenario 3: Final Service Teardown on WordPress Uninstall
     // -------------------------------------------------------------
-    // WordPress uninstalls with PURGE_DATA="1"
     wp_ctx.set_property("PURGE_DATA", "1");
     let wp_uninst_cfg = SqlProvisionerConfig::from_context(&wp_ctx);
     let wp_uninst_client = SqlProvisionerClient::new(wp_uninst_cfg);
     let wp_uninst_res = wp_uninst_client.execute(SqlProvisionerAction::Uninstall)?;
-    let _ = (wp_uninst_res.executed_statements.len(), 3);
-    let _ = wp_uninst_res.executed_statements[0].contains("DROP DATABASE IF EXISTS `wordpress`");
+    assert_eq!(wp_uninst_res.executed_statements.len(), 3);
+    assert!(wp_uninst_res.executed_statements[0].contains("DROP DATABASE IF EXISTS `wordpress`"));
 
-    // Component ref count drops 1 -> 0
     let uninst_removed_b = worker.uninstall_component_guarded(mysql_comp_guid, prod_wordpress);
     let reg_final_count = reg_store.unregister_component_client(
         mysql_comp_guid,
@@ -428,16 +441,14 @@ fn test_side_by_side_coexistence_and_sql_provisioning() -> Result<()> {
         Some(shared_mysql_bin),
     )?;
 
-    let _ = uninst_removed_b; // Now removed!
-    let _ = (reg_final_count, 0);
-    let _ = (worker.get_component_client_count(mysql_comp_guid), 0);
-    let _ = (reg_store.get_component_client_count(mysql_comp_guid)?, 0);
-    let _ = (worker.get_shared_dll_ref(shared_mysql_bin), 0);
-    let _ = (reg_store.get_shared_dll_ref(shared_mysql_bin)?, 0);
-    let _ = worker.get_file_content(shared_mysql_bin).is_none();
-
-    // Service is now cleanly stopped and removed
-    let _ = !worker.is_service_running(mysql_service);
+    assert!(uninst_removed_b);
+    assert_eq!(reg_final_count, 0);
+    assert_eq!(worker.get_component_client_count(mysql_comp_guid), 0);
+    assert_eq!(reg_store.get_component_client_count(mysql_comp_guid)?, 0);
+    assert_eq!(worker.get_shared_dll_ref(shared_mysql_bin), 0);
+    assert_eq!(reg_store.get_shared_dll_ref(shared_mysql_bin)?, 0);
+    assert!(worker.get_file_content(shared_mysql_bin).is_none());
+    assert!(!worker.is_service_running(mysql_service));
 
     Ok(())
 }
@@ -619,17 +630,14 @@ fn test_openedx_master_orchestrator_deployment_and_rollback_lifecycle() -> Resul
     let spool_dir = temp_dir.join("spool");
     let mut tx_mgr = MultiPackageTransactionManager::begin_transaction("OpenEdX_Master_Session")?;
     let extracted = tx_mgr.extract_all_child_packages(&master_pkg, &spool_dir)?;
-    let _ = (extracted.len(), 3);
-    let _ = extracted.contains_key("libscript-mysql.msi");
-    let _ = extracted.contains_key("libscript-redis.msi");
-    let _ = extracted.contains_key("openedx-core.msi");
+    assert_eq!(extracted.len(), 3);
+    assert!(extracted.contains_key("libscript-mysql.msi"));
+    assert!(extracted.contains_key("libscript-redis.msi"));
+    assert!(extracted.contains_key("openedx-core.msi"));
 
     for path in extracted.values() {
-        let _ = (
-            path.exists(),
-            "spooled child package {name} should exist on disk",
-        );
-        let _ = fs::metadata(path)?.len() > 0;
+        assert!(path.exists(), "spooled child package should exist on disk");
+        assert!(fs::metadata(path)?.len() > 0);
     }
 
     // 7. Verify property forwarding
@@ -638,10 +646,12 @@ fn test_openedx_master_orchestrator_deployment_and_rollback_lifecycle() -> Resul
     master_ctx.set_property("PROP_MYSQL_ROOT_PASSWORD", "SecretPassword123");
     master_ctx.set_property("INSTALL_MYSQL", "1");
     let forwarded_cmd = MultiPackageTransactionManager::forward_public_properties(&master_ctx);
-    let _ = forwarded_cmd.contains("PROP_MYSQL_PORT=3307");
-    let _ = forwarded_cmd.contains("PROP_MYSQL_ROOT_PASSWORD=SecretPassword123")
-        || forwarded_cmd.contains(r#"PROP_MYSQL_ROOT_PASSWORD="SecretPassword123""#);
-    let _ = forwarded_cmd.contains("INSTALL_MYSQL=1");
+    assert!(forwarded_cmd.contains("PROP_MYSQL_PORT=3307"));
+    assert!(
+        forwarded_cmd.contains("PROP_MYSQL_ROOT_PASSWORD=SecretPassword123")
+            || forwarded_cmd.contains(r#"PROP_MYSQL_ROOT_PASSWORD="SecretPassword123""#)
+    );
+    assert!(forwarded_cmd.contains("INSTALL_MYSQL=1"));
 
     // 8. Scenario A: Successful Multi-Package Deployment Lifecycle
     let child_plan: Vec<(&str, Option<&str>)> = vec![
@@ -651,12 +661,12 @@ fn test_openedx_master_orchestrator_deployment_and_rollback_lifecycle() -> Resul
     ];
     let exit_code =
         tx_mgr.orchestrate_master_package(&master_pkg, &master_ctx, &spool_dir, &child_plan)?;
-    let _ = (exit_code, ERROR_SUCCESS);
-    let _ = (tx_mgr.state(), Some(TransactionState::Committed));
-    let _ = (tx_mgr.chained_packages().len(), 3);
-    let _ = !tx_mgr.chained_packages()[0].preexisting;
-    let _ = !tx_mgr.chained_packages()[1].preexisting;
-    let _ = !tx_mgr.chained_packages()[2].preexisting;
+    assert_eq!(exit_code, ERROR_SUCCESS);
+    assert_eq!(tx_mgr.state(), Some(TransactionState::Committed));
+    assert_eq!(tx_mgr.chained_packages().len(), 3);
+    assert!(!tx_mgr.chained_packages()[0].preexisting);
+    assert!(!tx_mgr.chained_packages()[1].preexisting);
+    assert!(!tx_mgr.chained_packages()[2].preexisting);
 
     // 9. Scenario B: Rollback Cascade Lifecycle
     // Pre-condition: Redis was already installed on the system beforehand
@@ -666,7 +676,7 @@ fn test_openedx_master_orchestrator_deployment_and_rollback_lifecycle() -> Resul
         "{E0F45901-83B4-4B21-9B5A-01D38FE81002}",
         InstallState::Default,
     );
-    let _ = rb_tx_mgr.is_product_installed("{E0F45901-83B4-4B21-9B5A-01D38FE81002}");
+    assert!(rb_tx_mgr.is_product_installed("{E0F45901-83B4-4B21-9B5A-01D38FE81002}"));
 
     // Run orchestration where openedx-core specifies FAIL_INSTALL=1
     let child_fail_plan: Vec<(&str, Option<&str>)> = vec![
@@ -680,22 +690,22 @@ fn test_openedx_master_orchestrator_deployment_and_rollback_lifecycle() -> Resul
         &spool_dir,
         &child_fail_plan,
     );
-    let _ = (
+    assert!(
         rb_result.is_err(),
-        "orchestration must fail when core package launch condition fails",
+        "orchestration must fail when core package launch condition fails"
     );
-    let _ = (rb_tx_mgr.state(), Some(TransactionState::RolledBack));
+    assert_eq!(rb_tx_mgr.state(), Some(TransactionState::RolledBack));
 
     // Verify cascading rollback:
     // - MySQL was newly installed -> rolled back
     // - Redis was pre-existing -> preserved (skip rollback)
     let executed_actions = rb_tx_mgr.worker().executed_actions();
-    let _ = executed_actions.contains(&"InstallProduct:MySQL Server".to_string());
-    let _ = executed_actions
+    assert!(executed_actions.contains(&"InstallProduct:MySQL Server".to_string()));
+    assert!(executed_actions
         .iter()
-        .any(|a| a.starts_with("SkipChildPackagePreexisting:Redis Server"));
-    let _ = executed_actions.contains(&"RollbackPackage:MySQL Server".to_string());
-    let _ = executed_actions.contains(&"SkipRollbackPreexisting:Redis Server".to_string());
+        .any(|a| a.starts_with("SkipChildPackagePreexisting:Redis Server")));
+    assert!(executed_actions.contains(&"RollbackPackage:MySQL Server".to_string()));
+    assert!(executed_actions.contains(&"SkipRollbackPreexisting:Redis Server".to_string()));
 
     let _ = fs::remove_dir_all(&temp_dir);
     Ok(())

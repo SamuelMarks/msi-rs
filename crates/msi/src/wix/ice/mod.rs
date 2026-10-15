@@ -7,11 +7,15 @@
 
 pub mod advanced;
 pub mod components;
+pub mod cub;
 pub mod files;
+pub mod rules;
 pub mod sequences;
 pub mod structural;
 pub mod system;
 pub mod types;
 pub mod ui;
 
+pub use cub::CubValidator;
+pub use rules::{IceDiagnostic, IceDiagnosticType, IceRegistry, IceRule, StandardIceRule};
 pub use types::{IceReport, IceSeverity};

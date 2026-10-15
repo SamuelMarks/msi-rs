@@ -1,9 +1,3 @@
-#![allow(
-    clippy::cognitive_complexity,
-    clippy::literal_string_with_formatting_args,
-    clippy::too_many_lines
-)]
-#![cfg_attr(test, allow(clippy::redundant_clone))]
 //! # smoke
 //!
 //! `WiX` v3 Standalone Package Validator executable shim replicating `smoke.exe`.
@@ -193,8 +187,79 @@ mod tests {
     use msi::package::ProductVersion;
     use std::fs;
 
+    /// Exercises ICE failure, suppression, selection, and warning branches.
+    fn run_smoke_ice_cases(temp_dir: &Path) {
+        let bad_msi = temp_dir.join("bad.msi");
+        let bad_build_res = Package::builder()
+            .product_name("BadPkg")
+            .manufacturer("BadMfr")
+            .version(ProductVersion::new(1, 0, 0))
+            .product_code("{12345678-1234-1234-1234-123456789012}")
+            .add_record(
+                "File",
+                msi::database::Record::with_fields(vec![
+                    msi::database::FieldValue::String("File1".to_string()),
+                    msi::database::FieldValue::String("Comp1".to_string()),
+                    msi::database::FieldValue::String("file1.txt".to_string()),
+                    msi::database::FieldValue::Long(100),
+                    msi::database::FieldValue::Null,
+                    msi::database::FieldValue::Null,
+                    msi::database::FieldValue::Null,
+                    msi::database::FieldValue::Short(99),
+                ]),
+            )
+            .build();
+        assert!(bad_build_res.is_ok_and(|bad_pkg| bad_pkg.save(&bad_msi).is_ok()));
+        let bad_args = vec!["-nologo".to_string(), bad_msi.to_string_lossy().to_string()];
+        assert_eq!(run(&bad_args), 1);
+
+        let suppress_args = vec![
+            "-nologo".to_string(),
+            "-sice:ICE04".to_string(),
+            "-sice:ICE05".to_string(),
+            "-sice:ICE21".to_string(),
+            "-sice:ICE61".to_string(),
+            bad_msi.to_string_lossy().to_string(),
+        ];
+        assert_eq!(run(&suppress_args), 0);
+
+        let select_args = vec![
+            "-nologo".to_string(),
+            "-ice:ICE01".to_string(),
+            bad_msi.to_string_lossy().to_string(),
+        ];
+        assert_eq!(run(&select_args), 0);
+
+        let warn_msi = temp_dir.join("warn.msi");
+        let warn_build_res = Package::builder()
+            .product_name("WarnPkg")
+            .manufacturer("WarnMfr")
+            .version(ProductVersion::new(1, 0, 0))
+            .product_code("{12345678-1234-1234-1234-123456789012}")
+            .add_record(
+                "Registry",
+                msi::database::Record::with_fields(vec![
+                    msi::database::FieldValue::String("Reg1".to_string()),
+                    msi::database::FieldValue::Short(0),
+                    msi::database::FieldValue::String(
+                        "CLSID\\{11111111-2222-3333-4444-555555555555}".to_string(),
+                    ),
+                    msi::database::FieldValue::Null,
+                    msi::database::FieldValue::Null,
+                    msi::database::FieldValue::String("Comp1".to_string()),
+                ]),
+            )
+            .build();
+        assert!(warn_build_res.is_ok_and(|warn_pkg| warn_pkg.save(&warn_msi).is_ok()));
+        let warn_args = vec![
+            "-nologo".to_string(),
+            "-ice:ICE33".to_string(),
+            warn_msi.to_string_lossy().to_string(),
+        ];
+        assert_eq!(run(&warn_args), 0);
+    }
+
     #[test]
-    #[allow(clippy::too_many_lines, clippy::explicit_into_iter_loop)]
     fn test_smoke_run_all_branches() {
         let temp_dir = std::env::temp_dir().join("msi_cli_test_smoke_bin");
         let _ = fs::create_dir_all(&temp_dir);
@@ -220,21 +285,16 @@ mod tests {
         .unwrap_or_default()
         .execute();
 
-        // 1. Parse errors (empty arguments)
         assert_eq!(run(&[]), 1);
         assert_eq!(run_app(&[]), ExitCode::FAILURE);
-
-        // 2. Non-existent package
         assert_eq!(run(&["nonexistent.msi".to_string()]), 1);
 
-        // 3. Successful run with banner and stdout
         assert_eq!(run(&[msi_file.to_string_lossy().to_string()]), 0);
         assert_eq!(
             run_app(&[msi_file.to_string_lossy().to_string()]),
             ExitCode::SUCCESS,
         );
 
-        // 4. Successful run with hyphen flags
         let full_args = vec![
             "-nologo".to_string(),
             "-ice:ICE01".to_string(),
@@ -244,7 +304,6 @@ mod tests {
         ];
         assert_eq!(run(&full_args), 0);
 
-        // 5. Successful run with slash flags (/nologo, /ice:, /sice:)
         let slash_args = vec![
             "/nologo".to_string(),
             "/ice:ICE01".to_string(),
@@ -253,118 +312,41 @@ mod tests {
         ];
         assert_eq!(run(&slash_args), 0);
 
-        // 6. Test slash path variations: .msm, .msp, existing file without extension, and non-existent slash path
         let msm_path = temp_dir.join("test.msm");
         assert!(fs::copy(&msi_file, &msm_path).is_ok());
-        let msm_args = vec![
-            "-nologo".to_string(),
-            msm_path.to_string_lossy().to_string(),
-        ];
-        assert_eq!(run(&msm_args), 0);
+        assert_eq!(
+            run(&[
+                "-nologo".to_string(),
+                msm_path.to_string_lossy().to_string()
+            ]),
+            0
+        );
 
         let msp_path = temp_dir.join("test.msp");
         assert!(fs::copy(&msi_file, &msp_path).is_ok());
-        let msp_args = vec![
-            "-nologo".to_string(),
-            msp_path.to_string_lossy().to_string(),
-        ];
-        assert_eq!(run(&msp_args), 0);
+        assert_eq!(
+            run(&[
+                "-nologo".to_string(),
+                msp_path.to_string_lossy().to_string()
+            ]),
+            0
+        );
 
-        // Existing file without standard extension starting with slash
         let noext_file = temp_dir.join("testpkg");
         assert!(fs::copy(&msi_file, &noext_file).is_ok());
-        let noext_args = vec![
-            "-nologo".to_string(),
-            noext_file.to_string_lossy().to_string(),
-        ];
-        assert_eq!(run(&noext_args), 0);
+        assert_eq!(
+            run(&[
+                "-nologo".to_string(),
+                noext_file.to_string_lossy().to_string()
+            ]),
+            0
+        );
 
-        // Non-existent slash path that doesn't exist and has non-msi extension (hits else idx += 1)
-        let invalid_slash_args = vec!["/nonexistent/path.xyz".to_string()];
-        assert_eq!(run(&invalid_slash_args), 1);
+        assert_eq!(run(&["/nonexistent/path.xyz".to_string()]), 1);
 
-        // 7. Trigger ICE validation failure (error SMK0002)
-        let bad_msi = temp_dir.join("bad.msi");
-        let bad_build_res = Package::builder()
-            .product_name("BadPkg")
-            .manufacturer("BadMfr")
-            .version(ProductVersion::new(1, 0, 0))
-            .product_code("{12345678-1234-1234-1234-123456789012}")
-            .add_record(
-                "File",
-                msi::database::Record::with_fields(vec![
-                    msi::database::FieldValue::String("File1".to_string()),
-                    msi::database::FieldValue::String("Comp1".to_string()),
-                    msi::database::FieldValue::String("file1.txt".to_string()),
-                    msi::database::FieldValue::Long(100),
-                    msi::database::FieldValue::Null,
-                    msi::database::FieldValue::Null,
-                    msi::database::FieldValue::Null,
-                    msi::database::FieldValue::Short(99),
-                ]),
-            )
-            .build();
-        assert!(bad_build_res.is_ok());
-        for bad_pkg in bad_build_res.into_iter() {
-            assert!(bad_pkg.save(&bad_msi).is_ok());
-        }
-        let bad_args = vec!["-nologo".to_string(), bad_msi.to_string_lossy().to_string()];
-        assert_eq!(run(&bad_args), 1);
+        run_smoke_ice_cases(&temp_dir);
 
-        // Suppress failing ICE04, ICE05, ICE21, and ICE61 rules
-        let suppress_args = vec![
-            "-nologo".to_string(),
-            "-sice:ICE04".to_string(),
-            "-sice:ICE05".to_string(),
-            "-sice:ICE21".to_string(),
-            "-sice:ICE61".to_string(),
-            bad_msi.to_string_lossy().to_string(),
-        ];
-        assert_eq!(run(&suppress_args), 0);
-
-        // Select only passing ICE01 rule
-        let select_args = vec![
-            "-nologo".to_string(),
-            "-ice:ICE01".to_string(),
-            bad_msi.to_string_lossy().to_string(),
-        ];
-        assert_eq!(run(&select_args), 0);
-
-        // 8. Test package triggering ICE warning (e.g. ICE33 warning)
-        let warn_msi = temp_dir.join("warn.msi");
-        let warn_build_res = Package::builder()
-            .product_name("WarnPkg")
-            .manufacturer("WarnMfr")
-            .version(ProductVersion::new(1, 0, 0))
-            .product_code("{12345678-1234-1234-1234-123456789012}")
-            .add_record(
-                "Registry",
-                msi::database::Record::with_fields(vec![
-                    msi::database::FieldValue::String("Reg1".to_string()),
-                    msi::database::FieldValue::Short(0),
-                    msi::database::FieldValue::String(
-                        "CLSID\\{11111111-2222-3333-4444-555555555555}".to_string(),
-                    ),
-                    msi::database::FieldValue::Null,
-                    msi::database::FieldValue::Null,
-                    msi::database::FieldValue::String("Comp1".to_string()),
-                ]),
-            )
-            .build();
-        assert!(warn_build_res.is_ok());
-        for warn_pkg in warn_build_res.into_iter() {
-            assert!(warn_pkg.save(&warn_msi).is_ok());
-        }
-        let warn_args = vec![
-            "-nologo".to_string(),
-            "-ice:ICE33".to_string(),
-            warn_msi.to_string_lossy().to_string(),
-        ];
-        assert_eq!(run(&warn_args), 0);
-
-        // 9. Test invoking main directly
         let _code = main();
-
         let _ = fs::remove_dir_all(&temp_dir);
     }
 }

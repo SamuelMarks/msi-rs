@@ -2373,7 +2373,10 @@ mod tests {
         let mut engine = JScriptEngine::new();
 
         let script = "var x = ;";
-        let res = engine.execute(script, &mut session).unwrap_err();
+        let res = engine
+            .execute(script, &mut session)
+            .err()
+            .unwrap_or_default();
         assert!(res.to_string().contains("at line 1"));
     }
 
@@ -2793,7 +2796,8 @@ mod tests {
         let while_infinite = "while (true) { }";
         let res = engine
             .execute(while_infinite, &mut fuel_session)
-            .unwrap_err();
+            .err()
+            .unwrap_or_default();
         assert!(res.to_string().contains("step limit"));
     }
     #[allow(clippy::cognitive_complexity)]

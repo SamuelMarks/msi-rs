@@ -884,7 +884,8 @@ mod tests {
 
         let ba_clone = ba_default.clone();
         assert_eq!(ba_default, ba_clone);
-        assert!(format!("{ba_default:?}").contains("BootstrapperApplication"));
+        let ba_dbg = format!("{ba_default:?}");
+        assert!(ba_dbg.contains("BootstrapperApplication"));
 
         let pkg_type = ChainPackageType::RollbackBoundary;
         #[allow(clippy::redundant_clone)]
@@ -904,7 +905,8 @@ mod tests {
         };
         let pkg_clone = pkg.clone();
         assert_eq!(pkg, pkg_clone);
-        assert!(format!("{pkg:?}").contains("ChainPackage"));
+        let pkg_dbg = format!("{pkg:?}");
+        assert!(pkg_dbg.contains("ChainPackage"));
 
         let payload = BundlePayload {
             id: "Pay1".to_string(),
@@ -912,14 +914,16 @@ mod tests {
             name: Some("data.dat".to_string()),
         };
         assert_eq!(payload, payload.clone());
-        assert!(format!("{payload:?}").contains("BundlePayload"));
+        let pay_dbg = format!("{payload:?}");
+        assert!(pay_dbg.contains("BundlePayload"));
 
         let pg = PayloadGroup {
             id: "Group1".to_string(),
             payloads: vec![payload],
         };
         assert_eq!(pg, pg.clone());
-        assert!(format!("{pg:?}").contains("PayloadGroup"));
+        let group_dbg = format!("{pg:?}");
+        assert!(group_dbg.contains("PayloadGroup"));
 
         let bundle = BurnBundle {
             name: "B".to_string(),
@@ -936,7 +940,7 @@ mod tests {
         #[allow(clippy::redundant_clone)]
         let bundle_clone = bundle.clone();
         assert_eq!(bundle, bundle_clone);
-        assert!(format!("{bundle:?}").contains("BurnBundle"));
+        assert!(format!("{bundle:?}").contains("BurnBundle"), "format check");
     }
     #[allow(clippy::cognitive_complexity)]
     /// Tests `BurnCompiler`, `BurnLinker`, and `BurnEngine` with rollback boundaries and packaging.

@@ -343,6 +343,7 @@ pub extern "system" fn MsiGetProductPropertyA(
 }
 
 #[cfg(test)]
+#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 mod tests {
     use super::*;
     use crate::win32::ERROR_MORE_DATA;

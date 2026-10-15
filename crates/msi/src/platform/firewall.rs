@@ -347,14 +347,16 @@ mod tests {
         let add_err = mgr.add_port_exception(&empty_name, port, Protocol::Tcp);
         assert!(add_err.is_err());
         assert!(add_err
-            .unwrap_err()
+            .err()
+            .unwrap_or_default()
             .to_string()
             .contains("Rule name cannot be empty"));
 
         let rm_err = mgr.remove_port_exception(&empty_name, port, Protocol::Tcp);
         assert!(rm_err.is_err());
         assert!(rm_err
-            .unwrap_err()
+            .err()
+            .unwrap_or_default()
             .to_string()
             .contains("Rule name cannot be empty"));
     }
@@ -395,14 +397,16 @@ mod tests {
         let add_err = mgr.add_port_exception(&empty_name, port, Protocol::Tcp);
         assert!(add_err.is_err());
         assert!(add_err
-            .unwrap_err()
+            .err()
+            .unwrap_or_default()
             .to_string()
             .contains("Rule name cannot be empty"));
 
         let rm_err = mgr.remove_port_exception(&empty_name, port, Protocol::Tcp);
         assert!(rm_err.is_err());
         assert!(rm_err
-            .unwrap_err()
+            .err()
+            .unwrap_or_default()
             .to_string()
             .contains("Rule name cannot be empty"));
     }
@@ -442,14 +446,16 @@ mod tests {
         let add_err = mgr.add_port_exception(&empty_name, port, Protocol::Tcp);
         assert!(add_err.is_err());
         assert!(add_err
-            .unwrap_err()
+            .err()
+            .unwrap_or_default()
             .to_string()
             .contains("Rule name cannot be empty"));
 
         let rm_err = mgr.remove_port_exception(&empty_name, port, Protocol::Tcp);
         assert!(rm_err.is_err());
         assert!(rm_err
-            .unwrap_err()
+            .err()
+            .unwrap_or_default()
             .to_string()
             .contains("Rule name cannot be empty"));
     }

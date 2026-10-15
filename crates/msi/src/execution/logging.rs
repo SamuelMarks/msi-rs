@@ -191,17 +191,20 @@ mod tests {
             let _ = sender.send(msg);
         });
 
-        logger.log(InstallLogMode::Info, "hit 167").expect("test");
+        assert!(logger.log(InstallLogMode::Info, "hit 167").is_ok());
         // Let it hit timeout (50ms)
         thread::sleep(Duration::from_millis(150));
 
         // Test shutdown and inactive logger
         logger.shutdown();
-        let err = logger.log(InstallLogMode::Info, "test").unwrap_err();
+        let err = logger
+            .log(InstallLogMode::Info, "test")
+            .err()
+            .unwrap_or_default();
         assert!(err.to_string().contains("callback"));
 
         // Wait for thread to close
-        handle.join().expect("test");
+        assert!(handle.join().is_ok());
     }
 
     #[test]
@@ -211,11 +214,11 @@ mod tests {
             let _ = sender.send(msg);
         });
 
-        logger.log(InstallLogMode::Info, "hit 188").expect("test");
+        assert!(logger.log(InstallLogMode::Info, "hit 188").is_ok());
         // Drop the logger to drop its sender, hitting the Disconnected error branch
         drop(logger);
 
-        handle.join().expect("test");
+        assert!(handle.join().is_ok());
     }
 
     use std::sync::mpsc;
@@ -249,7 +252,7 @@ mod tests {
     }
 
     #[test]
-    fn test_logging_queue() {
+    fn test_logging_queue() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let (tx, rx) = mpsc::channel();
 
         let (queue, handle) = MsiLogQueue::new(100, move |formatted| {
@@ -257,13 +260,9 @@ mod tests {
         });
 
         // Test normal logging
-        queue
-            .log(InstallLogMode::Verbose, "Test message")
-            .expect("test");
+        queue.log(InstallLogMode::Verbose, "Test message")?;
 
-        let received = rx
-            .recv_timeout(Duration::from_secs(1))
-            .expect("Timeout receiving log");
+        let received = rx.recv_timeout(Duration::from_secs(1))?;
         assert_eq!(received, "MSI (c) (XX:XX) [XX:XX:XX:XXX]: Test message\n");
 
         // Test shutdown
@@ -271,6 +270,7 @@ mod tests {
 
         // Wait for thread to exit
         let _ = handle.join();
+        Ok(())
     }
 
     #[test]

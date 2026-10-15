@@ -410,10 +410,7 @@ mod tests {
 
     #[test]
     fn test_is_elevated() {
-        // Just calling it to ensure coverage. The value will depend on the environment.
         let elevated = is_elevated();
-        // Since we can't reliably assert the environment's elevation in a generic CI,
-        // we just assert that it returns a boolean (which is trivial).
-        assert!(elevated || !elevated);
+        assert_eq!(elevated, is_elevated());
     }
 }

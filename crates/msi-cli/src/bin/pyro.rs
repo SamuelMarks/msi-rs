@@ -1,5 +1,3 @@
-#![allow(clippy::cognitive_complexity)]
-#![allow(clippy::literal_string_with_formatting_args)]
 //! # pyro
 //!
 //! `WiX` v3 Patch Creation tool replicating `pyro.exe`.
@@ -241,8 +239,61 @@ pub fn main() -> ExitCode {
 mod tests {
     use super::*;
 
+    /// Exercises error and derive cases for `PyroOptions`.
+    fn run_pyro_error_cases(temp_dir: &Path, patch_obj: &Path, mst_file: &Path, msp_out: &Path) {
+        let blocking_file = temp_dir.join("blocking_parent_file");
+        assert!(fs::write(&blocking_file, b"occupied").is_ok());
+        let blocked_out = blocking_file.join("fail.msp");
+        assert_eq!(
+            run(&[
+                "-nologo".to_string(),
+                "-o".to_string(),
+                blocked_out.to_string_lossy().to_string(),
+                patch_obj.to_string_lossy().to_string(),
+            ]),
+            1
+        );
+
+        let no_out_opts = PyroOptions {
+            nologo: true,
+            output: None,
+            input_patch: patch_obj.to_path_buf(),
+            transforms: HashMap::new(),
+            warnings_as_errors: false,
+        };
+        assert!(no_out_opts.execute().is_err());
+
+        let empty_out_opts = PyroOptions {
+            nologo: true,
+            output: Some(PathBuf::from("")),
+            input_patch: patch_obj.to_path_buf(),
+            transforms: HashMap::new(),
+            warnings_as_errors: false,
+        };
+        assert!(empty_out_opts.execute().is_err());
+
+        let dup_stream_opts = PyroOptions {
+            nologo: true,
+            output: Some(msp_out.to_path_buf()),
+            input_patch: patch_obj.to_path_buf(),
+            transforms: std::iter::once((
+                "\u{0005}SummaryInformation".to_string(),
+                mst_file.to_path_buf(),
+            ))
+            .collect(),
+            warnings_as_errors: false,
+        };
+        assert!(dup_stream_opts.execute().is_err());
+
+        let default_opts = PyroOptions::default();
+        let mut cloned_opts = default_opts.clone();
+        cloned_opts.clone_from(&default_opts);
+        assert_eq!(default_opts, cloned_opts);
+        let opts_dbg = format!("{default_opts:?}");
+        assert!(opts_dbg.contains("PyroOptions"));
+    }
+
     #[test]
-    #[allow(clippy::too_many_lines, clippy::redundant_clone)]
     fn test_pyro_run_all_branches() {
         let temp_dir = std::env::temp_dir().join("msi_cli_test_pyro_bin");
         let _ = fs::create_dir_all(&temp_dir);
@@ -259,7 +310,6 @@ mod tests {
         assert_eq!(run(&["-t".to_string(), "Family".to_string()]), 1);
         assert_eq!(run(&["-o".to_string()]), 1);
         assert_eq!(run(&[patch_obj.to_string_lossy().to_string()]), 1);
-        // Relative path (not starting with /)
         assert_eq!(run(&["relative_patch.wixobj".to_string()]), 1);
         assert_eq!(run_app(&[]), ExitCode::FAILURE);
 
@@ -309,7 +359,6 @@ mod tests {
         assert_eq!(run(&slash_args), 0);
         assert!(msp_out2.exists());
 
-        // Test /o and /out and xml and existing non-extension file
         let xml_patch = temp_dir.join("patch.xml");
         let noext_patch = temp_dir.join("patch_noext");
         assert!(fs::copy(&patch_obj, &xml_patch).is_ok());
@@ -336,56 +385,8 @@ mod tests {
             0
         );
 
-        // 5. Execution error when output cannot be written (parent is a file)
-        let blocking_file = temp_dir.join("blocking_parent_file");
-        assert!(fs::write(&blocking_file, b"occupied").is_ok());
-        let blocked_out = blocking_file.join("fail.msp");
-        assert_eq!(
-            run(&[
-                "-nologo".to_string(),
-                "-o".to_string(),
-                blocked_out.to_string_lossy().to_string(),
-                patch_obj.to_string_lossy().to_string(),
-            ]),
-            1
-        );
+        run_pyro_error_cases(&temp_dir, &patch_obj, &mst_file, &msp_out);
 
-        // 6. Direct execute with missing output, empty output path, or duplicate stream name
-        let no_out_opts = PyroOptions {
-            nologo: true,
-            output: None,
-            input_patch: patch_obj.clone(),
-            transforms: HashMap::new(),
-            warnings_as_errors: false,
-        };
-        assert!(no_out_opts.execute().is_err());
-
-        let empty_out_opts = PyroOptions {
-            nologo: true,
-            output: Some(PathBuf::from("")),
-            input_patch: patch_obj.clone(),
-            transforms: HashMap::new(),
-            warnings_as_errors: false,
-        };
-        assert!(empty_out_opts.execute().is_err());
-
-        let dup_stream_opts = PyroOptions {
-            nologo: true,
-            output: Some(msp_out),
-            input_patch: patch_obj,
-            transforms: std::iter::once(("\u{0005}SummaryInformation".to_string(), mst_file))
-                .collect(),
-            warnings_as_errors: false,
-        };
-        assert!(dup_stream_opts.execute().is_err());
-
-        // 7. Derives test
-        let default_opts = PyroOptions::default();
-        let cloned_opts = default_opts.clone();
-        assert_eq!(default_opts, cloned_opts);
-        assert!(format!("{default_opts:?}").contains("PyroOptions"));
-
-        // 8. Test invoking main directly
         let code = main();
         assert_eq!(code, ExitCode::FAILURE);
 

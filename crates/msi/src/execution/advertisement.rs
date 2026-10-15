@@ -211,18 +211,19 @@ mod tests {
     use tempfile::NamedTempFile;
 
     #[test]
-    fn test_advertise_script_functions_parse_error() {
-        let mut file = NamedTempFile::new().unwrap();
-        file.write_all(b"BAD\0").unwrap();
+    fn test_advertise_script_functions_parse_error() -> Result<(), Box<dyn std::error::Error>> {
+        let mut file = NamedTempFile::new()?;
+        assert!(file.write_all(b"BAD\0").is_ok());
 
-        let path = file.path().to_str().unwrap();
+        let path = file.path().to_str().unwrap_or("");
 
         assert!(advertise_script(path, 0, true).is_err());
         assert!(process_advertise_script(path, None, true, false).is_err());
+        Ok(())
     }
 
     #[test]
-    fn test_aas_parser_valid() {
+    fn test_aas_parser_valid() -> Result<(), Box<dyn std::error::Error>> {
         let mut data = Vec::new();
         data.extend_from_slice(b"AAS\0");
 
@@ -241,10 +242,11 @@ mod tests {
         data.push(1);
         data.extend_from_slice(b"x");
 
-        let parser = AasParser::parse(&data).expect("test");
+        let parser = AasParser::parse(&data)?;
         assert_eq!(parser.opcodes.len(), 2);
         assert_eq!(parser.opcodes[0], AasOpcode::Class("test".to_string()));
         assert_eq!(parser.opcodes[1], AasOpcode::Shortcut("lnk".to_string()));
+        Ok(())
     }
 
     #[test]
@@ -276,28 +278,30 @@ mod tests {
     }
 
     #[test]
-    fn test_advertise_script() {
+    fn test_advertise_script() -> Result<(), Box<dyn std::error::Error>> {
         assert!(advertise_script("", 0, false).is_err());
 
-        let mut file = NamedTempFile::new().expect("test");
-        file.write_all(b"AAS\0\x01\x04test").expect("test");
-        assert!(advertise_script(file.path().to_str().expect("test"), 0, false).is_ok());
+        let mut file = NamedTempFile::new()?;
+        assert!(file.write_all(b"AAS\0\x01\x04test").is_ok());
+        assert!(advertise_script(file.path().to_str().unwrap_or(""), 0, false).is_ok());
 
         assert!(advertise_script("nonexistent.aas", 0, false).is_err());
+        Ok(())
     }
 
     #[test]
-    fn test_process_advertise_script() {
+    fn test_process_advertise_script() -> Result<(), Box<dyn std::error::Error>> {
         assert!(process_advertise_script("", None, false, false).is_err());
 
-        let mut file = NamedTempFile::new().expect("test");
-        file.write_all(b"AAS\0\x02\x03ext").expect("test");
+        let mut file = NamedTempFile::new()?;
+        assert!(file.write_all(b"AAS\0\x02\x03ext").is_ok());
         assert!(
-            process_advertise_script(file.path().to_str().expect("test"), None, false, false)
+            process_advertise_script(file.path().to_str().unwrap_or(""), None, false, false)
                 .is_ok()
         );
 
         assert!(process_advertise_script("nonexistent.aas", None, false, false).is_err());
+        Ok(())
     }
 
     #[test]

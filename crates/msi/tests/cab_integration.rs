@@ -1,5 +1,4 @@
 //! Integration tests for the CAB API.
-#![allow(unused_variables)]
 
 use msi::cab::data::CfData;
 use msi::cab::file::{
@@ -7,38 +6,51 @@ use msi::cab::file::{
 };
 use msi::cab::folder::{CfFolder, CompressionType};
 use msi::cab::header::CfHeader;
+use msi::error::Result;
 
 #[test]
-fn test_cab_api_surface() {
+fn test_cab_api_surface() -> Result<()> {
     // CfData
-    let _ = CfData::new(vec![1, 2, 3], 3, vec![]);
-    let _ = CfData::default();
+    let data = CfData::new(vec![1, 2, 3], 3, vec![])?;
+    assert_eq!(data.uncompressed_size, 3);
+    let default_data = CfData::default();
+    assert_eq!(default_data.uncompressed_size, 0);
 
     // CfFile
     let f = CfFile::new("test", 100);
-    let _ = CfFile::default();
+    assert_eq!(f.filename, "test");
+    assert_eq!(f.file_size, 100);
+    let default_file = CfFile::default();
+    assert!(default_file.filename.is_empty());
     let b = f.to_bytes();
-    let _ = CfFile::parse(&b);
+    let (parsed_file, consumed) = CfFile::parse(&b)?;
+    assert_eq!(parsed_file.filename, "test");
+    assert_eq!(parsed_file.file_size, 100);
+    assert_eq!(consumed, b.len());
 
     let attrs = FileAttributes(0xFFFF);
-    let _ = attrs.is_read_only();
-    let _ = attrs.is_hidden();
-    let _ = attrs.is_system();
-    let _ = attrs.is_archive();
-    let _ = attrs.is_exec();
-    let _ = attrs.is_utf8_name();
+    assert!(attrs.is_read_only());
+    assert!(attrs.is_hidden());
+    assert!(attrs.is_system());
+    assert!(attrs.is_archive());
+    assert!(attrs.is_exec());
+    assert!(attrs.is_utf8_name());
 
     let d = encode_dos_date(2023, 10, 11);
-    let _ = decode_dos_date(d);
-    let t = encode_dos_time(12, 30, 45);
-    let _ = decode_dos_time(t);
+    assert_eq!(decode_dos_date(d), (2023, 10, 11));
+    let t = encode_dos_time(12, 30, 44);
+    assert_eq!(decode_dos_time(t), (12, 30, 44));
 
     // CfFolder
-    let _ = CfFolder::new(CompressionType::None);
-    let _ = CfFolder::default();
+    let folder = CfFolder::new(CompressionType::None);
+    assert_eq!(folder.compression_type, CompressionType::None);
+    let default_folder = CfFolder::default();
+    assert_eq!(default_folder.compression_type, CompressionType::Mszip);
 
     // CfHeader
-    let _ = CfHeader::default();
+    let default_header = CfHeader::default();
+    assert_eq!(default_header.cabinet_size, 0);
+    assert_eq!(default_header.file_count, 0);
     let mut header_bytes = [0u8; 64];
     header_bytes[0..4].copy_from_slice(b"MSCF"); // signature
     header_bytes[24] = 3; // version minor
@@ -49,5 +61,9 @@ fn test_cab_api_surface() {
     header_bytes[37] = 0;
     header_bytes[38] = 0;
     header_bytes[39] = 0;
-    let _ = CfHeader::parse(&header_bytes);
+    let (parsed_header, hdr_len) = CfHeader::parse(&header_bytes)?;
+    assert!(parsed_header.flags.has_prev_cabinet());
+    assert!(parsed_header.flags.has_next_cabinet());
+    assert_eq!(hdr_len, 40);
+    Ok(())
 }

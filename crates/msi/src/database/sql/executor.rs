@@ -28,6 +28,186 @@ pub enum QueryResult {
     SchemaChanged,
 }
 
+/// Executes a read-only `SELECT` SQL query against an immutable [`LinkedDatabase`] reference.
+///
+/// # Arguments
+///
+/// * `db` - Target database to query.
+/// * `sql` - Raw `SELECT` SQL query text.
+/// * `params` - Optional positional parameter bindings for `?` placeholders.
+///
+/// # Returns
+///
+/// [`QueryResult::Select`] containing projected columns and matching records.
+///
+/// # Errors
+///
+/// Returns [`crate::MsiError::Sql`] if the statement is not a `SELECT` query, or on syntax/schema errors.
+pub fn execute_select_sql(
+    db: &LinkedDatabase,
+    sql: &str,
+    params: &[FieldValue],
+) -> Result<QueryResult> {
+    let mut lexer = Lexer::new(sql);
+    let tokens = lexer.tokenize()?;
+    let mut parser = Parser::new(tokens);
+    let stmt = parser.parse()?;
+
+    match &stmt {
+        Statement::Select {
+            distinct,
+            columns,
+            table,
+            joins,
+            where_clause,
+            order_by,
+        } => execute_select_query(
+            db,
+            *distinct,
+            columns,
+            table,
+            joins,
+            where_clause.as_ref(),
+            order_by,
+            params,
+        ),
+        _ => Err(MsiError::Sql {
+            message: "execute_select_sql only supports SELECT statements".to_string(),
+        }),
+    }
+}
+
+/// Executes a `SELECT` query against an immutable [`LinkedDatabase`].
+///
+/// # Arguments
+///
+/// * `db` - Target database to query.
+/// * `distinct` - Whether `DISTINCT` deduplication is enabled.
+/// * `columns` - Projected columns (empty for `*`).
+/// * `table` - Primary table name.
+/// * `joins` - Additional joined table names.
+/// * `where_clause` - Optional `WHERE` filter expression.
+/// * `order_by` - Optional `ORDER BY` terms.
+/// * `params` - Parameter bindings for `?` placeholders.
+///
+/// # Returns
+///
+/// [`QueryResult::Select`] containing projected columns and matching records.
+///
+/// # Errors
+///
+/// Returns [`crate::MsiError::Sql`] if any referenced table or column does not exist.
+#[allow(clippy::too_many_arguments)]
+fn execute_select_query(
+    db: &LinkedDatabase,
+    distinct: bool,
+    columns: &[crate::database::sql::ast::ColumnName],
+    table: &crate::database::sql::ast::TableName,
+    joins: &[crate::database::sql::ast::TableName],
+    where_clause: Option<&Expression>,
+    order_by: &[OrderByTerm],
+    params: &[FieldValue],
+) -> Result<QueryResult> {
+    let mut schemas = Vec::new();
+
+    let primary_schema = db
+        .catalog
+        .get_table(table.as_str())
+        .ok_or_else(|| MsiError::Sql {
+            message: format!("table '{}' does not exist in database", table.as_str()),
+        })?;
+    schemas.push(primary_schema);
+
+    for j in joins {
+        let s = db
+            .catalog
+            .get_table(j.as_str())
+            .ok_or_else(|| MsiError::Sql {
+                message: format!("table '{}' does not exist in database", j.as_str()),
+            })?;
+        schemas.push(s);
+    }
+
+    let mut all_rows = vec![Record::new()];
+    for schema_ref in &schemas {
+        let table_rows = db.tables.get(&schema_ref.name).cloned().unwrap_or_default();
+        let mut new_rows = Vec::new();
+        for existing in &all_rows {
+            for r in &table_rows {
+                let mut combined = existing.fields().to_vec();
+                combined.extend(r.fields().iter().cloned());
+                new_rows.push(Record::with_fields(combined));
+            }
+        }
+        all_rows = new_rows;
+    }
+
+    let mut matching_rows = Vec::new();
+    let mut param_idx = 0;
+
+    for r in all_rows {
+        if let Some(expr) = where_clause {
+            if eval_expression(expr, &r, &schemas, params, &mut param_idx)? {
+                matching_rows.push(r);
+            }
+        } else {
+            matching_rows.push(r);
+        }
+    }
+
+    if !order_by.is_empty() {
+        sort_records(&mut matching_rows, order_by, &schemas);
+    }
+
+    let (proj_cols, proj_rows): (Vec<crate::database::sql::ast::ColumnName>, _) =
+        if columns.is_empty() {
+            let mut col_names = Vec::new();
+            for s in &schemas {
+                for c in &s.columns {
+                    col_names.push(crate::database::sql::ast::ColumnName(c.name.clone()));
+                }
+            }
+            (col_names, matching_rows)
+        } else {
+            let mut col_indices = Vec::new();
+            for col_name in columns {
+                let idx = find_column_index(&schemas, col_name.as_str())?;
+                col_indices.push(idx);
+            }
+
+            let mut projected = Vec::new();
+            for r in matching_rows {
+                let mut new_r = Record::new();
+                for &idx in &col_indices {
+                    if let Some(val) = r.get(idx) {
+                        new_r.push(val.clone());
+                    } else {
+                        new_r.push(FieldValue::Null);
+                    }
+                }
+                projected.push(new_r);
+            }
+            (columns.to_vec(), projected)
+        };
+
+    let final_rows = if distinct {
+        let mut seen = Vec::new();
+        for r in proj_rows {
+            if !seen.contains(&r) {
+                seen.push(r);
+            }
+        }
+        seen
+    } else {
+        proj_rows
+    };
+
+    Ok(QueryResult::Select {
+        columns: proj_cols.into_iter().map(|c| c.0).collect(),
+        rows: final_rows,
+    })
+}
+
 /// Executes a SQL query against a [`LinkedDatabase`] with optional parameterized bindings.
 ///
 /// # Arguments
@@ -85,109 +265,16 @@ pub fn execute_statement(
             joins,
             where_clause,
             order_by,
-        } => {
-            let mut schemas = Vec::new();
-
-            let primary_schema =
-                db.catalog
-                    .get_table(table.as_str())
-                    .ok_or_else(|| MsiError::Sql {
-                        message: format!("table '{}' does not exist in database", table.as_str()),
-                    })?;
-            schemas.push(primary_schema);
-
-            for j in joins {
-                let s = db
-                    .catalog
-                    .get_table(j.as_str())
-                    .ok_or_else(|| MsiError::Sql {
-                        message: format!("table '{}' does not exist in database", j.as_str()),
-                    })?;
-                schemas.push(s);
-            }
-
-            // Cartesian product of all rows
-            let mut all_rows = vec![Record::new()];
-            for schema_ref in &schemas {
-                let table_rows = db.tables.get(&schema_ref.name).cloned().unwrap_or_default();
-                let mut new_rows = Vec::new();
-                for existing in &all_rows {
-                    for r in &table_rows {
-                        let mut combined = existing.fields().to_vec();
-                        combined.extend(r.fields().iter().cloned());
-                        new_rows.push(Record::with_fields(combined));
-                    }
-                }
-                all_rows = new_rows;
-            }
-
-            let mut matching_rows = Vec::new();
-            let mut param_idx = 0;
-
-            for r in all_rows {
-                if let Some(ref expr) = where_clause {
-                    if eval_expression(expr, &r, &schemas, params, &mut param_idx)? {
-                        matching_rows.push(r);
-                    }
-                } else {
-                    matching_rows.push(r);
-                }
-            }
-
-            // Handle sorting
-            if !order_by.is_empty() {
-                sort_records(&mut matching_rows, order_by, &schemas);
-            }
-
-            // Column projection
-            let (proj_cols, proj_rows): (Vec<crate::database::sql::ast::ColumnName>, _) =
-                if columns.is_empty() {
-                    let mut col_names = Vec::new();
-                    for s in &schemas {
-                        for c in &s.columns {
-                            col_names.push(crate::database::sql::ast::ColumnName(c.name.clone()));
-                        }
-                    }
-                    (col_names, matching_rows)
-                } else {
-                    let mut col_indices = Vec::new();
-                    for col_name in columns {
-                        let idx = find_column_index(&schemas, col_name.as_str())?;
-                        col_indices.push(idx);
-                    }
-
-                    let mut projected = Vec::new();
-                    for r in matching_rows {
-                        let mut new_r = Record::new();
-                        for &idx in &col_indices {
-                            if let Some(val) = r.get(idx) {
-                                new_r.push(val.clone());
-                            } else {
-                                new_r.push(FieldValue::Null);
-                            }
-                        }
-                        projected.push(new_r);
-                    }
-                    (columns.clone(), projected)
-                };
-
-            let final_rows = if *distinct {
-                let mut seen = Vec::new();
-                for r in proj_rows {
-                    if !seen.contains(&r) {
-                        seen.push(r);
-                    }
-                }
-                seen
-            } else {
-                proj_rows
-            };
-
-            Ok(QueryResult::Select {
-                columns: proj_cols.into_iter().map(|c| c.0).collect(),
-                rows: final_rows,
-            })
-        }
+        } => execute_select_query(
+            db,
+            *distinct,
+            columns,
+            table,
+            joins,
+            where_clause.as_ref(),
+            order_by,
+            params,
+        ),
         Statement::Insert {
             table,
             columns,
@@ -485,8 +572,6 @@ fn resolve_sql_value(
         }
     }
 }
-
-/// Evaluates a SQL expression against a record row.
 
 /// Finds the index of a column in a list of schemas, handling optional table prefixes.
 ///
@@ -1226,7 +1311,7 @@ mod tests {
         let res_mod_clone = res_mod.clone();
         assert_eq!(res_mod, res_mod_clone);
         assert_ne!(res_mod, QueryResult::SchemaChanged);
-        assert!(format!("{res_mod:?}").contains("Modified"));
+        assert!(format!("{res_mod:?}").contains("Modified"), "format check");
 
         let res_sc = QueryResult::SchemaChanged;
         assert_eq!(res_sc.clone(), res_sc);
@@ -1291,7 +1376,7 @@ mod tests {
         let ast = Statement::DropTable {
             table: TableName("StreamTable".to_string()),
         };
-        execute_statement(&mut db, &ast, &[]).expect("test");
+        assert!(execute_statement(&mut db, &ast, &[]).is_ok());
 
         let s = &db.tables["_Streams"];
         assert_eq!(s.len(), 2);
@@ -1307,8 +1392,6 @@ mod tests {
         assert!(err.is_err());
 
         // Test with context but missing column
-        use crate::database::catalogs::TableSchema;
-        use crate::database::tables::record::Record;
         let schema = TableSchema::new("MyTable".to_string());
         let rec = Record::new();
         let schemas = [&schema];
@@ -1317,16 +1400,20 @@ mod tests {
     }
 
     #[test]
-    fn test_drop_stream_table_without_streams_table() {
+    fn test_drop_stream_table_without_streams_table(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         // Test dropping a table with a stream column when _Streams does not exist
-        let mut db = LinkedDatabase::new().unwrap();
+        let mut db = LinkedDatabase::new()?;
         let create_sql = "CREATE TABLE StreamTab (StreamCol OBJECT) HOLD";
-        execute_sql(&mut db, create_sql, &[]).unwrap();
+        assert!(execute_sql(&mut db, create_sql, &[]).is_ok());
         // db.tables doesn't have _Streams because we haven't inserted any streams.
         let drop_sql = "DROP TABLE StreamTab";
         assert_eq!(
             execute_sql(&mut db, drop_sql, &[]).as_ref(),
             Ok(&QueryResult::SchemaChanged)
         );
+        assert!(execute_select_sql(&db, "DROP TABLE Property", &[]).is_err());
+        assert!(execute_select_sql(&db, "SELECT `Property`, `Value` FROM `Property`", &[]).is_ok());
+        Ok(())
     }
 }

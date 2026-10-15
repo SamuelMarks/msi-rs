@@ -112,8 +112,6 @@ impl LookupTable {
 
 #[cfg(test)]
 #[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
     clippy::field_reassign_with_default,
     clippy::shadow_unrelated,
     clippy::unreadable_literal,
@@ -190,7 +188,7 @@ mod tests {
         let mut entry = LookupEntry::default();
         entry.resource.offset = u64::MAX;
         entry.resource.size = 1;
-        let err = entry.end_offset().unwrap_err();
+        let err = entry.end_offset().err().unwrap_or_default();
         assert!(matches!(err, MsiError::InvalidArgument { .. }));
     }
 

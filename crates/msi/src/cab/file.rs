@@ -426,13 +426,14 @@ impl CfFile {
 mod tests {
 
     #[test]
-    fn test_file_sequence() {
-        let seq = FileSequence::new(1).unwrap();
+    fn test_file_sequence() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let seq = FileSequence::new(1)?;
         assert_eq!(seq.as_u32(), 1);
         assert_eq!(format!("{seq}"), "FileSeq(1)");
 
         let err = FileSequence::new(0);
         assert!(err.is_err());
+        Ok(())
     }
 
     use super::*;

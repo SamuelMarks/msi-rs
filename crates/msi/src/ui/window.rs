@@ -1458,26 +1458,31 @@ mod tests {
         };
         let cloned_node = node.clone();
         assert_eq!(node, cloned_node);
-        assert!(format!("{node:?}").contains("AccessibleNode"));
-        assert!(format!("{:?}", AccessibleRole::Window).contains("Window"));
+        let node_dbg = format!("{node:?}");
+        assert!(node_dbg.contains("AccessibleNode"));
+        let role_dbg = format!("{:?}", AccessibleRole::Window);
+        assert!(role_dbg.contains("Window"));
 
         bridge.update_nodes(vec![node]);
         assert_eq!(bridge.nodes().len(), 1);
         let cloned_bridge = bridge.clone();
         assert_eq!(cloned_bridge.nodes().len(), 1);
-        assert!(format!("{bridge:?}").contains("AccessKitBridge"));
+        let bridge_dbg = format!("{bridge:?}");
+        assert!(bridge_dbg.contains("AccessKitBridge"));
 
         let event = GuiInputEvent::MouseClick { x: 5, y: 10 };
         #[allow(clippy::redundant_clone)]
         let cloned_event = event.clone();
         assert_eq!(event, cloned_event);
-        assert!(format!("{event:?}").contains("MouseClick"));
+        let event_dbg = format!("{event:?}");
+        assert!(event_dbg.contains("MouseClick"));
 
         let config = WindowConfig::default();
         #[allow(clippy::redundant_clone)]
         let cloned_config = config.clone();
         assert_eq!(config, cloned_config);
-        assert!(format!("{config:?}").contains("WindowConfig"));
+        let config_dbg = format!("{config:?}");
+        assert!(config_dbg.contains("WindowConfig"));
 
         let engine = create_test_engine();
         let mut runtime = GuiDesktopRuntime::new(
@@ -1485,7 +1490,8 @@ mod tests {
             WizardTheme::mondo(),
             GuiHardwareBackend::WgpuDirectXMetalVulkan,
         );
-        assert!(format!("{runtime:?}").contains("GuiDesktopRuntime"));
+        let rt_dbg = format!("{runtime:?}");
+        assert!(rt_dbg.contains("GuiDesktopRuntime"));
 
         // Test backend fallback cascade
         assert_eq!(
@@ -1660,7 +1666,8 @@ mod tests {
             height: 400,
         };
         assert_eq!(lc_ev, lc_ev.clone());
-        assert!(format!("{lc_ev:?}").contains("ResizeRequested"));
+        let lc_dbg = format!("{lc_ev:?}");
+        assert!(lc_dbg.contains("ResizeRequested"));
     }
     #[allow(clippy::cognitive_complexity)]
     /// Tests `run_event_loop` and rich interactive input events (text editing, checkboxes, radios).

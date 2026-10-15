@@ -46,10 +46,6 @@ pub const CLSID_INSTALLER: GUID = GUID::new(
 /// # Returns
 ///
 /// `S_OK`, `CLASS_E_CLASSNOTAVAILABLE`, `E_POINTER`, `E_NOINTERFACE`.
-///
-/// # Safety
-/// The provided pointers (`rclsid`, `riid`, `ppv`) must be valid if not null. The function correctly handles unwinds.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
@@ -94,10 +90,6 @@ pub extern "system" fn DllGetClassObject(
 /// # Returns
 ///
 /// `S_OK` if the DLL can be unloaded, `S_FALSE` otherwise.
-///
-/// # Safety
-/// The function must handle unwinds gracefully.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
@@ -118,10 +110,6 @@ pub extern "system" fn DllCanUnloadNow() -> HRESULT {
 /// # Returns
 ///
 /// `S_OK` on success.
-///
-/// # Safety
-/// The function must handle unwinds gracefully.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
@@ -163,10 +151,6 @@ pub extern "system" fn DllRegisterServer() -> HRESULT {
 /// # Returns
 ///
 /// `S_OK` on success.
-///
-/// # Safety
-/// The function must handle unwinds gracefully.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
@@ -223,14 +207,10 @@ pub struct DLLVERSIONINFO {
 /// # Returns
 ///
 /// `S_OK` on success.
-///
-/// # Safety
-///
-/// Pointer must be valid or null.
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case)]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "system" fn DllGetVersion(pdvi: *mut DLLVERSIONINFO) -> HRESULT {
     let result = panic::catch_unwind(|| {
         if pdvi.is_null() {
@@ -352,7 +332,7 @@ mod tests {
         assert_eq!(DllGetVersion(std::ptr::null_mut()), E_POINTER);
 
         let mut info = DLLVERSIONINFO {
-            cbSize: size_of::<DLLVERSIONINFO>() as u32,
+            cbSize: u32::try_from(size_of::<DLLVERSIONINFO>()).unwrap_or(20),
             dwMajorVersion: 0,
             dwMinorVersion: 0,
             dwBuildNumber: 0,

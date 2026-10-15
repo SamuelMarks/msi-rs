@@ -225,8 +225,6 @@ impl WimReader {
 
 #[cfg(test)]
 #[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
     clippy::field_reassign_with_default,
     clippy::shadow_unrelated,
     clippy::unreadable_literal,
@@ -314,7 +312,8 @@ mod tests {
 
         let checksum_err = reader
             .validate_checksum(&[], &crate::wim::types::FileHash::default())
-            .unwrap_err();
+            .err()
+            .unwrap_or_default();
         assert!(matches!(checksum_err, MsiError::WimChecksumMismatch { .. }));
 
         let _ = reader.validate_checksum(&[1], &crate::wim::types::FileHash::default());

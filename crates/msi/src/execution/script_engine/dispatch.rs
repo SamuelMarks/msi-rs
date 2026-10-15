@@ -206,43 +206,48 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn test_windows_dispatch() {
+    fn test_windows_dispatch() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let resolver = NativeDispatchResolver::default();
-        let obj = resolver.create_object("TestObject").expect("failed");
+        let obj = resolver.create_object("TestObject")?;
         assert_eq!(
-            obj.invoke("Method", &DispParams::default()).unwrap(),
+            obj.invoke("Method", &DispParams::default())?,
             VariantType::Empty
         );
 
-        let err = resolver.create_object("").unwrap_err();
+        let err = resolver.create_object("").err().unwrap_or_default();
         assert!(err.to_string().contains("Empty ProgID"));
 
-        let err2 = obj.invoke("", &DispParams::default()).unwrap_err();
+        let err2 = obj
+            .invoke("", &DispParams::default())
+            .err()
+            .unwrap_or_default();
         assert!(err2.to_string().contains("Invoke name cannot be empty"));
+        Ok(())
     }
 
     #[cfg(not(windows))]
     #[test]
-    fn test_posix_dispatch() {
+    fn test_posix_dispatch() -> std::result::Result<(), Box<dyn std::error::Error>> {
         #[allow(clippy::default_constructed_unit_structs)]
         let resolver = MockDispatchResolver::default();
-        let obj = resolver
-            .create_object("Scripting.FileSystemObject")
-            .expect("failed");
-        let res = obj
-            .invoke("FileExists", &DispParams::default())
-            .expect("failed");
+        let obj = resolver.create_object("Scripting.FileSystemObject")?;
+        let res = obj.invoke("FileExists", &DispParams::default())?;
         assert_eq!(res, VariantType::Bool(false));
 
-        let err = resolver.create_object("UnknownObject").unwrap_err();
+        let err = resolver
+            .create_object("UnknownObject")
+            .err()
+            .unwrap_or_default();
         assert!(err.to_string().contains("Unsupported COM object"));
 
-        let err2 = resolver.create_object("").unwrap_err();
+        let err2 = resolver.create_object("").err().unwrap_or_default();
         assert!(err2.to_string().contains("Empty ProgID"));
 
         let err3 = obj
             .invoke("FormatDrive", &DispParams::default())
-            .unwrap_err();
+            .err()
+            .unwrap_or_default();
         assert!(err3.to_string().contains("Unsupported method"));
+        Ok(())
     }
 }

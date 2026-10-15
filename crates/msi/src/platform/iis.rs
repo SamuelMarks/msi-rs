@@ -339,7 +339,8 @@ mod tests {
         let err_pool = gen.generate_pool_config(&WebAppPoolName::new(""), "v4.0");
         assert!(err_pool.is_err());
         assert!(err_pool
-            .unwrap_err()
+            .err()
+            .unwrap_or_default()
             .to_string()
             .contains("App pool name cannot be empty"));
 
@@ -354,7 +355,8 @@ mod tests {
         let err_site_name = gen.generate_site_config("", &path, WebSitePort::new(8080));
         assert!(err_site_name.is_err());
         assert!(err_site_name
-            .unwrap_err()
+            .err()
+            .unwrap_or_default()
             .to_string()
             .contains("Web site name cannot be empty"));
 
@@ -365,14 +367,16 @@ mod tests {
         );
         assert!(err_site_dir.is_err());
         assert!(err_site_dir
-            .unwrap_err()
+            .err()
+            .unwrap_or_default()
             .to_string()
             .contains("Directory path cannot be empty"));
 
         let err_site_port = gen.generate_site_config("example.com", &path, WebSitePort::new(21));
         assert!(err_site_port.is_err());
         assert!(err_site_port
-            .unwrap_err()
+            .err()
+            .unwrap_or_default()
             .to_string()
             .contains("requires root privileges"));
 
@@ -400,7 +404,8 @@ mod tests {
         let err_pool = gen.generate_pool_config(&WebAppPoolName::new(""), "v4.0");
         assert!(err_pool.is_err());
         assert!(err_pool
-            .unwrap_err()
+            .err()
+            .unwrap_or_default()
             .to_string()
             .contains("App pool name cannot be empty"));
 
@@ -415,7 +420,8 @@ mod tests {
         let err_site_name = gen.generate_site_config("", &path, WebSitePort::new(80));
         assert!(err_site_name.is_err());
         assert!(err_site_name
-            .unwrap_err()
+            .err()
+            .unwrap_or_default()
             .to_string()
             .contains("Web site name cannot be empty"));
 
@@ -426,7 +432,8 @@ mod tests {
         );
         assert!(err_site_dir.is_err());
         assert!(err_site_dir
-            .unwrap_err()
+            .err()
+            .unwrap_or_default()
             .to_string()
             .contains("Directory path cannot be empty"));
     }

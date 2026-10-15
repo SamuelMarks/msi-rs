@@ -1,9 +1,3 @@
-#![allow(
-    clippy::cognitive_complexity,
-    clippy::literal_string_with_formatting_args,
-    clippy::too_many_lines
-)]
-#![cfg_attr(test, allow(clippy::redundant_clone))]
 //! # msibuild
 //!
 //! Low-level MSI Database builder and stream manipulator replicating GNOME `msibuild`.
@@ -242,9 +236,87 @@ pub fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
+
+    /// Exercises read-only failure and derive cases for `msibuild`.
+    fn run_msibuild_readonly_and_derives(temp_dir: &Path, msi_file: &Path, sample_txt: &Path) {
+        let ro_msi = temp_dir.join("readonly.msi");
+        assert!(fs::copy(msi_file, &ro_msi).is_ok());
+        assert!(fs::metadata(&ro_msi).is_ok_and(|m| {
+            let mut perms = m.permissions();
+            perms.set_readonly(true);
+            fs::set_permissions(&ro_msi, perms).is_ok()
+        }));
+
+        assert_eq!(
+            run(&[
+                ro_msi.to_string_lossy().to_string(),
+                "-a".to_string(),
+                "RoStream".to_string(),
+                sample_txt.to_string_lossy().to_string(),
+            ]),
+            1
+        );
+        assert_eq!(
+            run(&[
+                ro_msi.to_string_lossy().to_string(),
+                "-s".to_string(),
+                "RoStream".to_string(),
+            ]),
+            1
+        );
+
+        assert!(fs::metadata(&ro_msi).is_ok_and(|m| {
+            let mut restore_perms = m.permissions();
+            #[allow(clippy::permissions_set_readonly_false)]
+            restore_perms.set_readonly(false);
+            fs::set_permissions(&ro_msi, restore_perms).is_ok()
+        }));
+
+        let empty_path_opts = MsiBuildOptions {
+            msi_path: PathBuf::from(""),
+            operation: MsiBuildOperation::None,
+        };
+        assert!(empty_path_opts.execute().is_err());
+
+        let op1 = MsiBuildOperation::None;
+        let op2 = MsiBuildOperation::RemoveStream {
+            stream_name: "test".to_string(),
+        };
+        let op3 = MsiBuildOperation::AddStream {
+            stream_name: "test".to_string(),
+            file_path: PathBuf::from("path"),
+        };
+        let mut cloned_op1 = op1.clone();
+        cloned_op1.clone_from(&op1);
+        let mut cloned_op2 = op2.clone();
+        cloned_op2.clone_from(&op2);
+        let mut cloned_op3 = op3.clone();
+        cloned_op3.clone_from(&op3);
+        assert_eq!(cloned_op1, MsiBuildOperation::None);
+        assert_eq!(cloned_op2, op2);
+        assert_eq!(cloned_op3, op3);
+        assert_ne!(op1, op2);
+        assert_ne!(op2, op3);
+        let op1_dbg = format!("{op1:?}");
+        let op2_dbg = format!("{op2:?}");
+        let op3_dbg = format!("{op3:?}");
+        assert!(op1_dbg.contains("None"));
+        assert!(op2_dbg.contains("RemoveStream"));
+        assert!(op3_dbg.contains("AddStream"));
+
+        let opts1 = MsiBuildOptions {
+            msi_path: PathBuf::from("a"),
+            operation: MsiBuildOperation::None,
+        };
+        let mut opts1_cloned = opts1.clone();
+        opts1_cloned.clone_from(&opts1);
+        assert_eq!(opts1_cloned, opts1);
+        let opts1_dbg = format!("{opts1:?}");
+        assert!(opts1_dbg.contains("MsiBuildOptions"));
+    }
 
     #[test]
-    #[allow(clippy::too_many_lines, clippy::explicit_into_iter_loop)]
     fn test_msibuild_run_all_branches() {
         let temp_dir = std::env::temp_dir().join("msi_cli_test_msibuild_bin");
         let _ = fs::create_dir_all(&temp_dir);
@@ -273,7 +345,7 @@ mod tests {
         );
         assert_eq!(run_app(&[]), ExitCode::FAILURE);
 
-        // 2. Initialize new database in a nested subdirectory (exercises parent directory creation)
+        // 2. Initialize new database in a nested subdirectory
         let nested_dir = temp_dir.join("nested_dir");
         let nested_msi = nested_dir.join("nested.msi");
         assert_eq!(
@@ -294,13 +366,15 @@ mod tests {
         assert!(msi_file.exists());
 
         // 4. Add stream
-        let add_args = vec![
-            msi_file.to_string_lossy().to_string(),
-            "-a".to_string(),
-            "CustomStream".to_string(),
-            sample_txt.to_string_lossy().to_string(),
-        ];
-        assert_eq!(run(&add_args), 0);
+        assert_eq!(
+            run(&[
+                msi_file.to_string_lossy().to_string(),
+                "-a".to_string(),
+                "CustomStream".to_string(),
+                sample_txt.to_string_lossy().to_string(),
+            ]),
+            0
+        );
 
         // 5. Remove stream
         assert_eq!(
@@ -334,80 +408,8 @@ mod tests {
             1
         );
 
-        // 9. Fail saving when destination file is read-only (for both AddStream and RemoveStream)
-        let ro_msi = temp_dir.join("readonly.msi");
-        assert!(fs::copy(&msi_file, &ro_msi).is_ok());
-        for m in fs::metadata(&ro_msi).into_iter() {
-            let mut perms = m.permissions();
-            perms.set_readonly(true);
-            assert!(fs::set_permissions(&ro_msi, perms).is_ok());
-        }
+        run_msibuild_readonly_and_derives(&temp_dir, &msi_file, &sample_txt);
 
-        // AddStream fails save
-        assert_eq!(
-            run(&[
-                ro_msi.to_string_lossy().to_string(),
-                "-a".to_string(),
-                "RoStream".to_string(),
-                sample_txt.to_string_lossy().to_string(),
-            ]),
-            1
-        );
-
-        // RemoveStream fails save
-        assert_eq!(
-            run(&[
-                ro_msi.to_string_lossy().to_string(),
-                "-s".to_string(),
-                "RoStream".to_string(),
-            ]),
-            1
-        );
-
-        // Restore permissions for cleanup
-        for m in fs::metadata(&ro_msi).into_iter() {
-            let mut restore_perms = m.permissions();
-            #[allow(clippy::permissions_set_readonly_false)]
-            restore_perms.set_readonly(false);
-            assert!(fs::set_permissions(&ro_msi, restore_perms).is_ok());
-        }
-
-        // 10. Empty path where parent is None
-        let empty_path_opts = MsiBuildOptions {
-            msi_path: PathBuf::from(""),
-            operation: MsiBuildOperation::None,
-        };
-        assert!(empty_path_opts.execute().is_err());
-
-        // 11. Derives test covering all variants and methods
-        let op1 = MsiBuildOperation::None;
-        let op2 = MsiBuildOperation::RemoveStream {
-            stream_name: "test".to_string(),
-        };
-        let op3 = MsiBuildOperation::AddStream {
-            stream_name: "test".to_string(),
-            file_path: PathBuf::from("path"),
-        };
-        let cloned_op1 = op1.clone();
-        let cloned_op2 = op2.clone();
-        let cloned_op3 = op3.clone();
-        assert_eq!(cloned_op1, MsiBuildOperation::None);
-        assert_eq!(cloned_op2, op2);
-        assert_eq!(cloned_op3, op3);
-        assert_ne!(op1, op2);
-        assert_ne!(op2, op3);
-        assert!(format!("{op1:?}").contains("None"));
-        assert!(format!("{op2:?}").contains("RemoveStream"));
-        assert!(format!("{op3:?}").contains("AddStream"));
-
-        let opts1 = MsiBuildOptions {
-            msi_path: PathBuf::from("a"),
-            operation: MsiBuildOperation::None,
-        };
-        assert_eq!(opts1.clone(), opts1);
-        assert!(format!("{opts1:?}").contains("MsiBuildOptions"));
-
-        // 12. Test invoking main directly
         let code = main();
         assert_eq!(code, ExitCode::FAILURE);
 

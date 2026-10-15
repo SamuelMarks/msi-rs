@@ -28,16 +28,17 @@ impl<'a> PhysicalTableLayout<'a> {
     /// # Arguments
     ///
     /// * `columns` - The logical column definitions.
-    /// * `_is_system_catalog` - Whether the table is a system catalog (`_Tables` or `_Columns`).
+    /// * `is_system_catalog` - Whether the table is a system catalog (`_Tables` or `_Columns`).
     ///
     /// # Returns
     ///
-    /// A computed `PhysicalTableLayout`.
+    /// A computed [`PhysicalTableLayout`].
     ///
     /// # Errors
     ///
-    /// Returns `PhysicalLayoutError` if a mapping cannot be created (e.g., Stream column as Primary Key).
-    pub fn new(columns: &'a [ColumnDef], _is_system_catalog: bool) -> Result<Self> {
+    /// Returns [`MsiError::PhysicalLayoutError`] if a mapping cannot be created (e.g., `Stream` column marked as Primary Key).
+    pub fn new(columns: &'a [ColumnDef], is_system_catalog: bool) -> Result<Self> {
+        let _ = is_system_catalog;
         let sorted_indices: Vec<usize> = (0..columns.len()).collect();
 
         // Check for invalid column states that prevent layout
@@ -127,7 +128,7 @@ mod tests {
 
     /// Tests that tables containing composite primary keys maintain strict 1:1 logical order.
     #[test]
-    fn test_layout_strict_one_to_one() {
+    fn test_layout_strict_one_to_one() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let cols = vec![
             ColumnDef::new("Attr", DataType::Short),
             ColumnDef::new("Key1", DataType::String { max_len: 72 }).primary_key(),
@@ -135,7 +136,7 @@ mod tests {
             ColumnDef::new("Key2", DataType::Long).primary_key(),
         ];
 
-        let layout = PhysicalTableLayout::new(&cols, false).expect("valid layout");
+        let layout = PhysicalTableLayout::new(&cols, false)?;
 
         let physical_cols: Vec<_> = layout.physical_columns().map(|c| c.name.as_str()).collect();
         // Strict 1:1 mapping mapping
@@ -171,11 +172,12 @@ mod tests {
             layout.logical_index(PhysicalIndex(3)),
             Some(LogicalIndex(3))
         );
+        Ok(())
     }
 
     /// Tests with tables containing mixed length, out-of-order logical definitions (e.g., `InstallExecuteSequence`).
     #[test]
-    fn test_layout_mixed_length_strict() {
+    fn test_layout_mixed_length_strict() -> std::result::Result<(), Box<dyn std::error::Error>> {
         // InstallExecuteSequence:
         // Action (String) [PK], Condition (String), Sequence (Short)
         let cols = vec![
@@ -184,7 +186,7 @@ mod tests {
             ColumnDef::new("Sequence", DataType::Short).nullable(),
         ];
 
-        let layout = PhysicalTableLayout::new(&cols, false).expect("valid layout");
+        let layout = PhysicalTableLayout::new(&cols, false)?;
 
         let physical_cols: Vec<_> = layout.physical_columns().map(|c| c.name.as_str()).collect();
         // Strict 1:1 mapping
@@ -205,6 +207,7 @@ mod tests {
             layout.physical_index(LogicalIndex(2)),
             Some(PhysicalIndex(2))
         );
+        Ok(())
     }
 
     /// Tests `PhysicalLayoutError` propagation when stream is marked as a primary key.
@@ -217,22 +220,24 @@ mod tests {
 
     /// Tests out of bounds lookups.
     #[test]
-    fn test_layout_out_of_bounds() {
+    fn test_layout_out_of_bounds() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let cols = vec![ColumnDef::new("Attr", DataType::Short)];
-        let layout = PhysicalTableLayout::new(&cols, false).expect("valid layout");
+        let layout = PhysicalTableLayout::new(&cols, false)?;
 
         assert_eq!(layout.physical_index(LogicalIndex(5)), None);
         assert_eq!(layout.logical_index(PhysicalIndex(5)), None);
+        Ok(())
     }
 
     /// Tests `columns()` accessor.
     #[test]
-    fn test_layout_columns_accessor() {
+    fn test_layout_columns_accessor() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let cols = vec![ColumnDef::new("Attr", DataType::Short)];
-        let layout = PhysicalTableLayout::new(&cols, false).expect("valid layout");
+        let layout = PhysicalTableLayout::new(&cols, false)?;
 
         assert_eq!(layout.columns().len(), 1);
         assert_eq!(layout.columns()[0].name, "Attr");
+        Ok(())
     }
 
     /// Tests derived traits for `LogicalIndex`, `PhysicalIndex`, and `PhysicalTableLayout`.

@@ -10,6 +10,7 @@ pub struct MergeConfig {
     pub table_name: Option<String>,
 }
 
+#[allow(clippy::multiple_inherent_impl)]
 impl LinkedDatabase {
     /// Merges another database into this one.
     ///
@@ -26,10 +27,10 @@ impl LinkedDatabase {
     ///
     /// Returns `MsiError::DatabaseMergeError` if a schema mismatch or a primary key collision occurs.
     pub fn merge(&mut self, other: &Self, config: &MergeConfig) -> Result<()> {
-        let tables_to_merge = match &config.table_name {
-            Some(name) => vec![name.as_str()],
-            None => other.catalog.table_names(),
-        };
+        let tables_to_merge = config
+            .table_name
+            .as_ref()
+            .map_or_else(|| other.catalog.table_names(), |name| vec![name.as_str()]);
 
         for table_name in tables_to_merge {
             if let Some(source_schema) = other.catalog.get_table(table_name) {
@@ -123,14 +124,12 @@ mod tests {
     }
 
     #[test]
-    fn test_merge_success_missing_table_in_target() {
+    fn test_merge_success_missing_table_in_target(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut target = LinkedDatabase::default();
         let mut source = LinkedDatabase::default();
 
-        source
-            .catalog
-            .add_table(make_schema("TestTable"))
-            .expect("test");
+        source.catalog.add_table(make_schema("TestTable"))?;
         let record = Record::with_fields(vec![
             FieldValue::String("1".to_string()),
             FieldValue::String("A".to_string()),
@@ -140,25 +139,20 @@ mod tests {
         let config = MergeConfig {
             table_name: Some("TestTable".to_string()),
         };
-        target.merge(&source, &config).expect("test");
+        assert!(target.merge(&source, &config).is_ok());
 
         assert!(target.catalog.get_table("TestTable").is_some());
         assert_eq!(target.tables["TestTable"].len(), 1);
+        Ok(())
     }
 
     #[test]
-    fn test_merge_success_identical_rows() {
+    fn test_merge_success_identical_rows() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut target = LinkedDatabase::default();
         let mut source = LinkedDatabase::default();
 
-        target
-            .catalog
-            .add_table(make_schema("TestTable"))
-            .expect("test");
-        source
-            .catalog
-            .add_table(make_schema("TestTable"))
-            .expect("test");
+        target.catalog.add_table(make_schema("TestTable"))?;
+        source.catalog.add_table(make_schema("TestTable"))?;
 
         let record = Record::with_fields(vec![
             FieldValue::String("1".to_string()),
@@ -171,24 +165,19 @@ mod tests {
         let config = MergeConfig {
             table_name: Some("TestTable".to_string()),
         };
-        target.merge(&source, &config).expect("test");
+        assert!(target.merge(&source, &config).is_ok());
 
         assert_eq!(target.tables["TestTable"].len(), 1);
+        Ok(())
     }
 
     #[test]
-    fn test_merge_success_different_rows() {
+    fn test_merge_success_different_rows() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut target = LinkedDatabase::default();
         let mut source = LinkedDatabase::default();
 
-        target
-            .catalog
-            .add_table(make_schema("TestTable"))
-            .expect("test");
-        source
-            .catalog
-            .add_table(make_schema("TestTable"))
-            .expect("test");
+        target.catalog.add_table(make_schema("TestTable"))?;
+        source.catalog.add_table(make_schema("TestTable"))?;
 
         let record1 = Record::with_fields(vec![
             FieldValue::String("1".to_string()),
@@ -206,24 +195,19 @@ mod tests {
         let config = MergeConfig {
             table_name: Some("TestTable".to_string()),
         };
-        target.merge(&source, &config).expect("test");
+        assert!(target.merge(&source, &config).is_ok());
 
         assert_eq!(target.tables["TestTable"].len(), 2);
+        Ok(())
     }
 
     #[test]
-    fn test_merge_conflict() {
+    fn test_merge_conflict() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut target = LinkedDatabase::default();
         let mut source = LinkedDatabase::default();
 
-        target
-            .catalog
-            .add_table(make_schema("TestTable"))
-            .expect("test");
-        source
-            .catalog
-            .add_table(make_schema("TestTable"))
-            .expect("test");
+        target.catalog.add_table(make_schema("TestTable"))?;
+        source.catalog.add_table(make_schema("TestTable"))?;
 
         let record1 = Record::with_fields(vec![
             FieldValue::String("1".to_string()),
@@ -241,35 +225,34 @@ mod tests {
         let config = MergeConfig {
             table_name: Some("TestTable".to_string()),
         };
-        let err = target.merge(&source, &config).unwrap_err();
+        let err = target.merge(&source, &config).err().unwrap_or_default();
         assert_eq!(
             err.to_string(),
             "Database merge error: Merge conflict in table 'TestTable'"
         );
+        Ok(())
     }
 
     #[test]
-    fn test_merge_schema_mismatch() {
+    fn test_merge_schema_mismatch() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut target = LinkedDatabase::default();
         let mut source = LinkedDatabase::default();
 
-        target
-            .catalog
-            .add_table(make_schema("TestTable"))
-            .expect("test");
+        target.catalog.add_table(make_schema("TestTable"))?;
 
         let schema2 = TableSchema::new("TestTable")
             .with_column(ColumnDef::new("Id", DataType::String { max_len: 72 }).primary_key()); // missing 'Value' column
-        source.catalog.add_table(schema2).expect("test");
+        assert!(source.catalog.add_table(schema2).is_ok());
 
         let config = MergeConfig {
             table_name: Some("TestTable".to_string()),
         };
-        let err = target.merge(&source, &config).unwrap_err();
+        let err = target.merge(&source, &config).err().unwrap_or_default();
         assert_eq!(
             err.to_string(),
             "Database merge error: Schema mismatch for table 'TestTable'"
         );
+        Ok(())
     }
 
     #[test]
@@ -280,7 +263,7 @@ mod tests {
         let config = MergeConfig {
             table_name: Some("MissingTable".to_string()),
         };
-        let err = target.merge(&source, &config).unwrap_err();
+        let err = target.merge(&source, &config).err().unwrap_or_default();
         assert_eq!(
             err.to_string(),
             "Database merge error: Table 'MissingTable' not found in source database"
@@ -288,24 +271,19 @@ mod tests {
     }
 
     #[test]
-    fn test_merge_all_tables() {
+    fn test_merge_all_tables() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut target = LinkedDatabase::default();
         let mut source = LinkedDatabase::default();
 
-        source
-            .catalog
-            .add_table(make_schema("TestTable1"))
-            .expect("test");
-        source
-            .catalog
-            .add_table(make_schema("TestTable2"))
-            .expect("test");
+        source.catalog.add_table(make_schema("TestTable1"))?;
+        source.catalog.add_table(make_schema("TestTable2"))?;
 
         let config = MergeConfig::default();
-        target.merge(&source, &config).expect("test");
+        assert!(target.merge(&source, &config).is_ok());
 
         assert!(target.catalog.get_table("TestTable1").is_some());
         assert!(target.catalog.get_table("TestTable2").is_some());
+        Ok(())
     }
 
     #[test]

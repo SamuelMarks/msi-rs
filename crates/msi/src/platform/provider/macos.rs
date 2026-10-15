@@ -140,7 +140,7 @@ mod tests {
 
         provider.create_shortcut(Path::new(""), Path::new(""))?;
 
-        let temp_dir = tempfile::tempdir().expect("test");
+        let temp_dir = tempfile::tempdir()?;
         let target = temp_dir.path().join("MacApp");
         let shortcut = temp_dir.path().join("MacApp.plist");
         provider.create_shortcut(&target, &shortcut)?;

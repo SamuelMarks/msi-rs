@@ -515,7 +515,10 @@ mod tests {
     #[test]
     fn test_in_memory_media_provider_missing_cabinet() {
         let mut provider = InMemoryMediaProvider::new();
-        let err = provider.request_cabinet("Disk 2", "disk2.cab").unwrap_err();
+        let err = provider
+            .request_cabinet("Disk 2", "disk2.cab")
+            .err()
+            .unwrap_or_default();
         assert!(matches!(err, MsiError::InvalidCabData { .. }));
     }
     use super::*;

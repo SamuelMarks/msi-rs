@@ -480,6 +480,58 @@ int32_t msi_create_storage_from_memory(
     IStorage** ppstg
 );
 
+/* ========================================================================= */
+/* Win32 Windows Installer (Msi*) C-ABI Entry Points                         */
+/* ========================================================================= */
+
+/** 32-bit Windows Installer handle (`MSIHANDLE`). */
+typedef uint32_t MSIHANDLE;
+
+/** Opens a database file for data access (ANSI). */
+uint32_t MsiOpenDatabaseA(const char* szDatabasePath, const char* szPersist, MSIHANDLE* phDatabase);
+
+/** Opens a database file for data access (Unicode). */
+uint32_t MsiOpenDatabaseW(const uint16_t* szDatabasePath, const uint16_t* szPersist, MSIHANDLE* phDatabase);
+
+/** Commits changes to a database. */
+uint32_t MsiDatabaseCommit(MSIHANDLE hDatabase);
+
+/** Prepares a database query and creates a view object (ANSI). */
+uint32_t MsiDatabaseOpenViewA(MSIHANDLE hDatabase, const char* szQuery, MSIHANDLE* phView);
+
+/** Prepares a database query and creates a view object (Unicode). */
+uint32_t MsiDatabaseOpenViewW(MSIHANDLE hDatabase, const uint16_t* szQuery, MSIHANDLE* phView);
+
+/** Executes a SQL view query. */
+uint32_t MsiViewExecute(MSIHANDLE hView, MSIHANDLE hRecord);
+
+/** Fetches the next sequential record from an executed view. */
+uint32_t MsiViewFetch(MSIHANDLE hView, MSIHANDLE* phRecord);
+
+/** Releases the result set for an executed view. */
+uint32_t MsiViewClose(MSIHANDLE hView);
+
+/** Creates a new record object with the specified number of fields. */
+MSIHANDLE MsiCreateRecord(uint32_t cParams);
+
+/** Sets a record field to an integer value. */
+uint32_t MsiRecordSetInteger(MSIHANDLE hRecord, uint32_t iField, int32_t iValue);
+
+/** Returns the integer value from a record field. */
+int32_t MsiRecordGetInteger(MSIHANDLE hRecord, uint32_t iField);
+
+/** Sets a record field to a string value (ANSI). */
+uint32_t MsiRecordSetStringA(MSIHANDLE hRecord, uint32_t iField, const char* szValue);
+
+/** Sets a record field to a string value (Unicode). */
+uint32_t MsiRecordSetStringW(MSIHANDLE hRecord, uint32_t iField, const uint16_t* szValue);
+
+/** Closes an open installation handle. */
+uint32_t MsiCloseHandle(MSIHANDLE hAny);
+
+/** Closes all open installation handles allocated by the current thread. */
+uint32_t MsiCloseAllHandles(void);
+
 #ifdef __cplusplus
 }
 #endif

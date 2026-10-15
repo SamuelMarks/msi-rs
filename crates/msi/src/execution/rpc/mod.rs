@@ -174,7 +174,8 @@ mod tests {
 
         let p_clone = p.clone();
         assert_eq!(p, p_clone);
-        assert!(format!("{p:?}").contains("WineMsiRpcPacket"));
+        let p_dbg = format!("{p:?}");
+        assert!(p_dbg.contains("WineMsiRpcPacket"));
 
         let p2 = client.dispatch(p)?;
         let p3 = server.handle_request(p2)?;

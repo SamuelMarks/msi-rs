@@ -728,7 +728,7 @@ mod tests {
                         assert_eq!(res.is_ok(), !should_reap);
                     }
                     Err(e) => {
-                        assert!(format!("{e:?}").contains("No such file"));
+                        assert!(format!("{e:?}").contains("No such file"), "format check");
                     }
                 }
             }

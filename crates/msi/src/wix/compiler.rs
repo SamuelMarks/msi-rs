@@ -2029,7 +2029,6 @@ impl Compiler {
             FieldValue::Long(chainer_type),
         ]);
 
-        println!("WIX COMPILED MsiEmbeddedChainer: {rec:?}");
         tables
             .entry("MsiEmbeddedChainer".to_string())
             .or_insert_with(|| IntermediateTable::new("MsiEmbeddedChainer"))

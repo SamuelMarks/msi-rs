@@ -63,13 +63,13 @@ fn format_internal(
     record: Option<&Record>,
     context: &FormatContext,
 ) -> Result<String> {
-    let mut chars = template.chars().peekable();
+    let mut chars = template.chars();
     parse_until(&mut chars, None, record, context)
 }
 
 /// Parses the template string until a stop character.
 fn parse_until(
-    chars: &mut std::iter::Peekable<std::str::Chars<'_>>,
+    chars: &mut std::str::Chars<'_>,
     stop_char: Option<char>,
     record: Option<&Record>,
     context: &FormatContext,
@@ -131,37 +131,7 @@ fn parse_until(
 
             // Parse inner
             let inner = parse_until(chars, Some(']'), record, context)?;
-
-            if inner == "~" {
-                result.push('\0');
-            } else if inner.starts_with('%') {
-                let var = &inner[1..];
-                if let Some(val) = context.env_vars.get(var) {
-                    result.push_str(val);
-                } else if let Ok(val) = std::env::var(var) {
-                    result.push_str(&val);
-                }
-            } else if inner.starts_with('#') {
-                let var = &inner[1..];
-                if let Some(val) = context.files.get(var) {
-                    result.push_str(val);
-                }
-            } else if inner.starts_with('$') {
-                let var = &inner[1..];
-                if let Some(val) = context.components.get(var) {
-                    result.push_str(val);
-                }
-            } else if let Ok(idx) = inner.parse::<usize>() {
-                if let Some(rec) = record {
-                    if let Some(field) = rec.get(idx) {
-                        result.push_str(&field.to_string());
-                    }
-                }
-            } else if inner.starts_with('!') || inner.starts_with('?') {
-                // Not fully supported yet, leave empty for now as fallback
-            } else if let Some(val) = context.properties.get(&inner) {
-                result.push_str(val);
-            }
+            resolve_bracket_token(&inner, record, context, &mut result);
         } else if c == ']' {
             result.push(']');
         } else {
@@ -170,6 +140,42 @@ fn parse_until(
     }
 
     Ok(result)
+}
+
+/// Resolves a parsed `[...]` token against `record` and `context` and appends to `result`.
+fn resolve_bracket_token(
+    inner: &str,
+    record: Option<&Record>,
+    context: &FormatContext,
+    result: &mut String,
+) {
+    if inner == "~" {
+        result.push('\0');
+    } else if let Some(var) = inner.strip_prefix('%') {
+        if let Some(val) = context.env_vars.get(var) {
+            result.push_str(val);
+        } else if let Ok(val) = std::env::var(var) {
+            result.push_str(&val);
+        }
+    } else if let Some(var) = inner.strip_prefix('#') {
+        if let Some(val) = context.files.get(var) {
+            result.push_str(val);
+        }
+    } else if let Some(var) = inner.strip_prefix('$') {
+        if let Some(val) = context.components.get(var) {
+            result.push_str(val);
+        }
+    } else if let Ok(idx) = inner.parse::<usize>() {
+        if let Some(rec) = record {
+            if let Some(field) = rec.get(idx) {
+                result.push_str(&field.to_string());
+            }
+        }
+    } else if inner.starts_with('!') || inner.starts_with('?') {
+        // Not fully supported yet, leave empty for now as fallback
+    } else if let Some(val) = context.properties.get(inner) {
+        result.push_str(val);
+    }
 }
 
 #[cfg(test)]

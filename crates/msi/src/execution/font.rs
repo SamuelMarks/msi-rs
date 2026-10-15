@@ -42,10 +42,8 @@ pub struct FontTitle {
 ///
 /// * `data` - The `data` parameter.
 ///
-/// # Returns
-///
-/// The resulting value or `Ok(())` on success.
-pub fn extract_font_title(data: &[u8]) -> Result<FontTitle, MsiError> {
+/// Locates and validates the `name` table slice within a TrueType/OpenType font payload.
+fn find_ttf_name_table(data: &[u8]) -> Result<&[u8], MsiError> {
     if data.len() < 12 {
         return Err(MsiError::FontRegistrationError(
             "File too small to be a font".to_string(),
@@ -53,10 +51,10 @@ pub fn extract_font_title(data: &[u8]) -> Result<FontTitle, MsiError> {
     }
 
     let tag = &data[0..4];
-    let is_ttf = tag == [0x00, 0x01, 0x00, 0x00];
-    let is_otf = tag == b"OTTO";
+    let is_truetype = tag == [0x00, 0x01, 0x00, 0x00];
+    let is_opentype = tag == b"OTTO";
 
-    if !is_ttf && !is_otf {
+    if !is_truetype && !is_opentype {
         return Err(MsiError::FontRegistrationError(
             "Invalid font magic signature".to_string(),
         ));
@@ -110,6 +108,24 @@ pub fn extract_font_title(data: &[u8]) -> Result<FontTitle, MsiError> {
             "Invalid 'name' table header".to_string(),
         ));
     }
+    Ok(name_table)
+}
+
+/// Parses a TrueType/OpenType font file's binary data to extract its `FontTitle`.
+///
+/// # Errors
+/// Returns `MsiError::FontRegistrationError` if the font file is corrupted, truncated,
+/// or lacks a valid `name` table with a Full Font Name (ID 4).
+///
+/// # Arguments
+///
+/// * `data` - Raw TrueType/OpenType font bytes.
+///
+/// # Returns
+///
+/// The extracted [`FontTitle`] on success.
+pub fn extract_font_title(data: &[u8]) -> Result<FontTitle, MsiError> {
+    let name_table = find_ttf_name_table(data)?;
 
     let count = u16::from_be_bytes([name_table[2], name_table[3]]) as usize;
     let string_offset = u16::from_be_bytes([name_table[4], name_table[5]]) as usize;
@@ -131,14 +147,14 @@ pub fn extract_font_title(data: &[u8]) -> Result<FontTitle, MsiError> {
         let length =
             u16::from_be_bytes([name_table[record_offset + 8], name_table[record_offset + 9]])
                 as usize;
-        let offset = u16::from_be_bytes([
+        let str_rel_offset = u16::from_be_bytes([
             name_table[record_offset + 10],
             name_table[record_offset + 11],
         ]) as usize;
 
         // Name ID 4 is Full Font Name
         if name_id == 4 {
-            let str_start = string_offset + offset;
+            let str_start = string_offset + str_rel_offset;
             let str_end = str_start + length;
 
             if str_end > name_table.len() {
@@ -175,13 +191,14 @@ pub fn extract_font_title(data: &[u8]) -> Result<FontTitle, MsiError> {
         record_offset += 12;
     }
 
-    if let Some(name) = best_name {
-        Ok(FontTitle { full_name: name })
-    } else {
-        Err(MsiError::FontRegistrationError(
-            "Could not find valid Full Font Name (ID 4)".to_string(),
-        ))
-    }
+    best_name.map_or_else(
+        || {
+            Err(MsiError::FontRegistrationError(
+                "Could not find valid Full Font Name (ID 4)".to_string(),
+            ))
+        },
+        |name| Ok(FontTitle { full_name: name }),
+    )
 }
 
 /// Registers a font file with the native OS font subsystem.
@@ -313,7 +330,7 @@ mod tests {
         data2.extend_from_slice(&[0, 0, 0, 0, 0, 0, 0, 28]); // offset 28
         data2.extend_from_slice(&[0, 0, 0, 2]); // length 2
         data2.extend_from_slice(&[0, 0]); // 2 bytes
-        let err2 = extract_font_title(&data2).unwrap_err();
+        let err2 = extract_font_title(&data2).err().unwrap_or_default();
         assert!(err2.to_string().contains("Invalid 'name' table header"));
 
         // Name record out of bounds
@@ -328,7 +345,7 @@ mod tests {
         // 1 record: platformID(3), encodingID(1), languageID(1033), nameID(4), length(10), offset(0)
         data3.extend_from_slice(&[0, 3, 0, 1, 0x04, 0x09, 0, 4, 0, 10, 0, 0]);
         // String offset is 28 + 18 = 46. length is 10. End is 56. But we only have 46 bytes!
-        let err3 = extract_font_title(&data3).unwrap_err();
+        let err3 = extract_font_title(&data3).err().unwrap_or_default();
         assert!(err3
             .to_string()
             .contains("Name record string out of bounds"));
@@ -346,11 +363,11 @@ mod tests {
         // Use MSI_FONT_HOME_OVERRIDE to avoid mutating the global HOME env var across threads
         let temp_dir = std::env::temp_dir().join("msi_test_register_font_unix");
         let _ = fs::remove_dir_all(&temp_dir);
-        fs::create_dir_all(&temp_dir).expect("test");
+        assert!(fs::create_dir_all(&temp_dir).is_ok());
 
         // 1. Success case (first call creates font dir, second call sees existing font dir)
         let font_path = temp_dir.join("test.ttf");
-        fs::write(&font_path, "dummy").expect("test");
+        assert!(fs::write(&font_path, "dummy").is_ok());
 
         let home_dir = temp_dir.join("home_success");
         std::env::set_var("MSI_FONT_HOME_OVERRIDE", &home_dir);
@@ -358,34 +375,31 @@ mod tests {
         assert!(register_font(&font_path).is_ok());
 
         // 2. Trigger "Invalid font path" error
-        let err1 =
-            register_font(Path::new("/")).expect_err("Expected error due to missing filename");
+        let err1 = register_font(Path::new("/")).err().unwrap_or_default();
         assert!(err1.to_string().contains("Invalid font path"));
 
         // 3. Trigger fs::create_dir_all failure by pointing MSI_FONT_HOME_OVERRIDE to /dev/null/home
         std::env::set_var("MSI_FONT_HOME_OVERRIDE", "/dev/null/home");
-        let err_create = register_font(&font_path).expect_err("Expected create_dir_all to fail");
+        let err_create = register_font(&font_path).err().unwrap_or_default();
         assert!(err_create.to_string().contains("Failed to create"));
 
         // 4. Trigger fs::copy failure by passing a directory instead of a file
         std::env::set_var("MSI_FONT_HOME_OVERRIDE", &home_dir); // Restore to valid home
         let font_dir_path = temp_dir.join("f.ttf");
-        fs::create_dir_all(&font_dir_path).expect("test");
-        let err2 =
-            register_font(&font_dir_path).expect_err("Expected error due to copying a directory");
+        assert!(fs::create_dir_all(&font_dir_path).is_ok());
+        let err2 = register_font(&font_dir_path).err().unwrap_or_default();
         assert!(err2.to_string().contains("Failed to copy font"));
 
         // 5. Fallback to HOME when MSI_FONT_HOME_OVERRIDE is not set
         std::env::remove_var("MSI_FONT_HOME_OVERRIDE");
-        let err_fallback =
-            register_font(Path::new("/")).expect_err("Expected error due to missing filename");
+        let err_fallback = register_font(Path::new("/")).err().unwrap_or_default();
         assert!(err_fallback.to_string().contains("Invalid font path"));
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
 
     #[test]
-    fn test_extract_font_title_mac_roman() {
+    fn test_extract_font_title_mac_roman() -> Result<(), Box<dyn std::error::Error>> {
         let mut data = b"\x00\x01\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00".to_vec();
         data.extend_from_slice(b"name");
         data.extend_from_slice(&[0, 0, 0, 0, 0, 0, 0, 28]); // offset 28
@@ -398,12 +412,13 @@ mod tests {
         // The string data: "Test"
         data.extend_from_slice(b"Test");
 
-        let title = extract_font_title(&data).expect("test");
+        let title = extract_font_title(&data)?;
         assert_eq!(title.full_name, "Test");
+        Ok(())
     }
 
     #[test]
-    fn test_extract_font_title_mac_roman_multiple() {
+    fn test_extract_font_title_mac_roman_multiple() -> Result<(), Box<dyn std::error::Error>> {
         let mut data = b"\x00\x01\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00".to_vec();
         data.extend_from_slice(b"name");
         data.extend_from_slice(&[0, 0, 0, 0, 0, 0, 0, 28]); // offset 28
@@ -419,8 +434,9 @@ mod tests {
         // String data
         data.extend_from_slice(b"Mac1Mac2");
 
-        let title = extract_font_title(&data).expect("test");
+        let title = extract_font_title(&data)?;
         assert_eq!(title.full_name, "Mac1"); // It should prefer the first one
+        Ok(())
     }
 
     #[test]
@@ -436,7 +452,7 @@ mod tests {
         data.extend_from_slice(b"\xFF\xFF");
 
         // It should return an error because we didn't find any valid name
-        let err = extract_font_title(&data).unwrap_err();
+        let err = extract_font_title(&data).err().unwrap_or_default();
         assert!(err.to_string().contains("Font registration error"));
     }
 
@@ -506,7 +522,9 @@ mod tests {
 
     #[test]
     fn test_register_font_not_found() {
-        let err = register_font(Path::new("does_not_exist.ttf")).unwrap_err();
+        let err = register_font(Path::new("does_not_exist.ttf"))
+            .err()
+            .unwrap_or_default();
         assert!(err.to_string().contains("not found"));
     }
 
@@ -516,7 +534,7 @@ mod tests {
         let temp_dir = std::env::temp_dir().join("msi_test_register_font_windows");
         let _ = fs::create_dir_all(&temp_dir);
         let font_path = temp_dir.join("test.ttf");
-        fs::write(&font_path, "dummy").expect("test");
+        assert!(fs::write(&font_path, "dummy").is_ok());
         assert!(register_font(&font_path).is_ok());
         let _ = fs::remove_dir_all(&temp_dir);
     }
@@ -524,7 +542,7 @@ mod tests {
     #[test]
     fn test_extract_font_title_too_small() {
         let data = vec![0, 1, 0];
-        let err = extract_font_title(&data).unwrap_err();
+        let err = extract_font_title(&data).err().unwrap_or_default();
         assert_eq!(
             err,
             MsiError::FontRegistrationError("File too small to be a font".to_string())
@@ -534,7 +552,7 @@ mod tests {
     #[test]
     fn test_extract_font_title_invalid_magic() {
         let data = vec![0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-        let err = extract_font_title(&data).unwrap_err();
+        let err = extract_font_title(&data).err().unwrap_or_default();
         assert_eq!(
             err,
             MsiError::FontRegistrationError("Invalid font magic signature".to_string())
@@ -555,7 +573,7 @@ mod tests {
         data.extend_from_slice(&[0, 0, 0, 0]); // offset
         data.extend_from_slice(&[0, 0, 0, 0]); // length
 
-        let err = extract_font_title(&data).unwrap_err();
+        let err = extract_font_title(&data).err().unwrap_or_default();
         assert_eq!(
             err,
             MsiError::FontRegistrationError("Font missing 'name' table".to_string())
@@ -563,7 +581,7 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_font_title_valid_ttf() {
+    fn test_extract_font_title_valid_ttf() -> Result<(), Box<dyn std::error::Error>> {
         let mut data = vec![
             0, 1, 0, 0, // TrueType magic
             0, 1, // numTables = 1
@@ -572,7 +590,7 @@ mod tests {
 
         let name_table = create_mock_name_table("My Test Font");
         let name_table_offset: u32 = 12 + 16;
-        let name_table_length = name_table.len() as u32;
+        let name_table_length = u32::try_from(name_table.len()).unwrap_or(0);
 
         data.extend_from_slice(b"name");
         data.extend_from_slice(&[0, 0, 0, 0]); // checkSum
@@ -581,12 +599,13 @@ mod tests {
 
         data.extend(name_table);
 
-        let title = extract_font_title(&data).expect("test");
+        let title = extract_font_title(&data)?;
         assert_eq!(title.full_name, "My Test Font");
+        Ok(())
     }
 
     #[test]
-    fn test_extract_font_title_valid_otf() {
+    fn test_extract_font_title_valid_otf() -> Result<(), Box<dyn std::error::Error>> {
         let mut data = vec![
             b'O', b'T', b'T', b'O', // OpenType magic
             0, 1, // numTables = 1
@@ -595,7 +614,7 @@ mod tests {
 
         let name_table = create_mock_name_table("My OpenType Font");
         let name_table_offset: u32 = 12 + 16;
-        let name_table_length = name_table.len() as u32;
+        let name_table_length = u32::try_from(name_table.len()).unwrap_or(0);
 
         data.extend_from_slice(b"name");
         data.extend_from_slice(&[0, 0, 0, 0]); // checkSum
@@ -604,8 +623,9 @@ mod tests {
 
         data.extend(name_table);
 
-        let title = extract_font_title(&data).expect("test");
+        let title = extract_font_title(&data)?;
         assert_eq!(title.full_name, "My OpenType Font");
+        Ok(())
     }
 
     fn create_mock_name_table(font_name: &str) -> Vec<u8> {
@@ -616,7 +636,7 @@ mod tests {
         ];
 
         let utf16_name: Vec<u16> = font_name.encode_utf16().collect();
-        let name_length = (utf16_name.len() * 2) as u16;
+        let name_length = u16::try_from(utf16_name.len() * 2).unwrap_or(0);
 
         // Name record
         name_table.extend_from_slice(&[
@@ -768,7 +788,7 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_font_title_mac_platform_duplicate() {
+    fn test_extract_font_title_mac_platform_duplicate() -> Result<(), Box<dyn std::error::Error>> {
         let mut data = vec![0x00, 0x01, 0x00, 0x00];
         data.extend_from_slice(&1u16.to_be_bytes()); // 1 table
         data.extend_from_slice(&[0; 6]);
@@ -803,12 +823,14 @@ mod tests {
         data.extend_from_slice(b"Mac Font"); // Mac string 1
         data.extend_from_slice(b"Ignored "); // Mac string 2
 
-        let title = extract_font_title(&data).expect("test");
+        let title = extract_font_title(&data)?;
         assert_eq!(title.full_name, "Mac Font"); // It should prefer the first one
+        Ok(())
     }
 
     #[test]
-    fn test_extract_font_title_mac_platform_with_existing_best_name() {
+    fn test_extract_font_title_mac_platform_with_existing_best_name(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let mut data = vec![0x00, 0x01, 0x00, 0x00];
         data.extend_from_slice(&1u16.to_be_bytes()); // 1 table
         data.extend_from_slice(&[0; 6]);
@@ -843,12 +865,13 @@ mod tests {
         data.extend_from_slice(&[0, b'W', 0, b'i', 0, b'n', 0, b'd']); // Windows string
         data.extend_from_slice(b"Mac Font"); // Mac string
 
-        let title = extract_font_title(&data).expect("test");
+        let title = extract_font_title(&data)?;
         assert_eq!(title.full_name, "Wind"); // It should prefer Windows
+        Ok(())
     }
 
     #[test]
-    fn test_extract_font_title_mac_platform() {
+    fn test_extract_font_title_mac_platform() -> Result<(), Box<dyn std::error::Error>> {
         let mut data = vec![0x00, 0x01, 0x00, 0x00];
         data.extend_from_slice(&1u16.to_be_bytes());
         data.extend_from_slice(&[0; 6]);
@@ -871,8 +894,9 @@ mod tests {
 
         data.extend_from_slice(b"Mac Font");
 
-        let title = extract_font_title(&data).expect("test");
+        let title = extract_font_title(&data)?;
         assert_eq!(title.full_name, "Mac Font");
+        Ok(())
     }
 
     #[test]

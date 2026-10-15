@@ -20,7 +20,7 @@ use msi::cfb::reader::CfbReader;
 ///
 /// `data` must point to `len` bytes of readable memory.
 /// `ppstg` must be a valid pointer to receive the `IStorage` pointer.
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn msi_create_storage_from_memory(
     data: *const u8,
     len: usize,
@@ -32,14 +32,11 @@ pub unsafe extern "C" fn msi_create_storage_from_memory(
 
     let slice = std::slice::from_raw_parts(data, len);
 
-    match CfbReader::new(slice) {
-        Ok(reader) => {
-            let storage = NativeStorage::new(Some(reader));
-            *ppstg = Box::into_raw(storage).cast::<IStorage>();
-            crate::com::S_OK
-        }
-        Err(_) => crate::error::E_FAIL,
-    }
+    CfbReader::new(slice).map_or(crate::error::E_FAIL, |reader| {
+        let storage = NativeStorage::new(Some(reader));
+        *ppstg = Box::into_raw(storage).cast::<IStorage>();
+        crate::com::S_OK
+    })
 }
 
 #[cfg(test)]
@@ -52,32 +49,32 @@ mod tests {
         let mut stg: *mut IStorage = ptr::null_mut();
         // Bad data (fails CFB parsing)
         let data = [0u8; 10];
-        let res = unsafe { msi_create_storage_from_memory(data.as_ptr(), data.len(), &mut stg) };
-        assert_eq!(res, crate::error::E_FAIL);
+        let res_bad =
+            unsafe { msi_create_storage_from_memory(data.as_ptr(), data.len(), &mut stg) };
+        assert_eq!(res_bad, crate::error::E_FAIL);
 
         // Good CFB data
         let cfb_data = {
             let mut writer = msi::cfb::writer::CfbWriter::new(msi::cfb::header::CfbVersion::V3);
-            writer.add_stream("TestStream", b"content").unwrap();
+            assert!(writer.add_stream("TestStream", b"content").is_ok());
             writer.build()
         };
-        let res =
+        let res_ok =
             unsafe { msi_create_storage_from_memory(cfb_data.as_ptr(), cfb_data.len(), &mut stg) };
-        assert_eq!(res, crate::com::S_OK);
+        assert_eq!(res_ok, crate::com::S_OK);
 
         unsafe {
             let _ = Box::from_raw(stg.cast::<NativeStorage>());
         }
 
-        let mut stg: *mut IStorage = ptr::null_mut();
+        let mut stg2: *mut IStorage = ptr::null_mut();
         // Null data
-        let res = unsafe { msi_create_storage_from_memory(ptr::null(), 0, &mut stg) };
-        assert_eq!(res, crate::com::E_POINTER);
+        let res_null_data = unsafe { msi_create_storage_from_memory(ptr::null(), 0, &mut stg2) };
+        assert_eq!(res_null_data, crate::com::E_POINTER);
 
         // Null out pointer
-        let data = [0u8; 10];
-        let res =
+        let res_null_out =
             unsafe { msi_create_storage_from_memory(data.as_ptr(), data.len(), ptr::null_mut()) };
-        assert_eq!(res, crate::com::E_POINTER);
+        assert_eq!(res_null_out, crate::com::E_POINTER);
     }
 }

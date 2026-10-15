@@ -43,7 +43,9 @@ mod tests {
 
     #[test]
     fn test_extract_manifest_no_file() {
-        let result = extract_manifest(Path::new("does_not_exist.dll")).unwrap_err();
+        let result = extract_manifest(Path::new("does_not_exist.dll"))
+            .err()
+            .unwrap_or_default();
         let msg = result.to_string();
         assert!(msg.contains("No such file") || msg.contains("cannot find the file"));
     }
@@ -59,8 +61,9 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_manifest_res_data_no_manifest() {
-        let temp_dir = tempfile::tempdir().unwrap();
+    fn test_extract_manifest_res_data_no_manifest(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
         let pe_path = temp_dir.path().join("dummy_res_no_manifest.exe");
 
         let mut pe = vec![0u8; 512];
@@ -86,14 +89,15 @@ mod tests {
         pe[0xD9] = 0x01; // RVA = 0x100
         pe[0xDC] = 0x10; // Size = 16
 
-        std::fs::write(&pe_path, &pe).unwrap();
-        let result = extract_manifest(&pe_path).unwrap_err();
+        assert!(std::fs::write(&pe_path, &pe).is_ok());
+        let result = extract_manifest(&pe_path).err().unwrap_or_default();
         assert!(result.to_string().contains("No embedded manifest found"));
+        Ok(())
     }
 
     #[test]
-    fn test_extract_manifest_success() {
-        let temp_dir = tempfile::tempdir().unwrap();
+    fn test_extract_manifest_success() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
         let pe_path = temp_dir.path().join("dummy_manifest.exe");
 
         let mut pe = vec![0u8; 1024];
@@ -172,8 +176,9 @@ mod tests {
         pe[0x25B] = b'>';
         pe[0x25C] = 0;
 
-        std::fs::write(&pe_path, &pe).unwrap();
-        let xml = extract_manifest(&pe_path).unwrap();
+        assert!(std::fs::write(&pe_path, &pe).is_ok());
+        let xml = extract_manifest(&pe_path)?;
         assert_eq!(xml.trim_end_matches('\0'), "<x/>");
+        Ok(())
     }
 }

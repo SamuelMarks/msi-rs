@@ -39,9 +39,9 @@ impl NativeControl {
 #[derive(Debug)]
 pub struct DialogMetrics {
     /// Base horizontal dialog unit.
-    _base_x: u32,
+    base_x: i16,
     /// Base vertical dialog unit.
-    _base_y: u32,
+    base_y: i16,
 }
 
 impl DialogMetrics {
@@ -53,8 +53,8 @@ impl DialogMetrics {
     #[allow(clippy::unnecessary_wraps)]
     pub const fn new() -> Result<Self> {
         Ok(Self {
-            _base_x: 8,
-            _base_y: 16,
+            base_x: 8,
+            base_y: 16,
         })
     }
 
@@ -74,10 +74,10 @@ impl DialogMetrics {
         &self,
         mut rect: crate::ui::layout::DluRect,
     ) -> crate::ui::layout::DluRect {
-        rect.x = (rect.x * (self._base_x as i16)) / 4;
-        rect.y = (rect.y * (self._base_y as i16)) / 8;
-        rect.width = (rect.width * (self._base_x as i16)) / 4;
-        rect.height = (rect.height * (self._base_y as i16)) / 8;
+        rect.x = (rect.x * self.base_x) / 4;
+        rect.y = (rect.y * self.base_y) / 8;
+        rect.width = (rect.width * self.base_x) / 4;
+        rect.height = (rect.height * self.base_y) / 8;
         rect
     }
 }
@@ -88,7 +88,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_native_controls_stubs() {
+    fn test_native_controls_stubs() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let def = ControlDefinition::new(
             "Dlg",
             "Btn",
@@ -96,13 +96,14 @@ mod tests {
             crate::ui::layout::DluRect::new(0, 0, 50, 14),
             0,
         );
-        let mut ctrl = NativeControl::new(&def).unwrap();
+        let mut ctrl = NativeControl::new(&def)?;
         assert_eq!(ctrl.handle_message(0, 0, 0), 0);
 
-        let metrics = DialogMetrics::new().unwrap();
-        assert_eq!(metrics.create_gdi_font("Normal").unwrap(), 0);
+        let metrics = DialogMetrics::new()?;
+        assert_eq!(metrics.create_gdi_font("Normal")?, 0);
         let px_rect = metrics.map_dialog_rect(def.rect());
         assert_eq!(px_rect.width, 100); // 50 * 8 / 4 = 100
         assert_eq!(px_rect.height, 28); // 14 * 16 / 8 = 28
+        Ok(())
     }
 }

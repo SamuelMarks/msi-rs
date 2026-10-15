@@ -270,7 +270,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_win32_dialog_runtime_stubs() {
+    fn test_win32_dialog_runtime_stubs() -> std::result::Result<(), Box<dyn std::error::Error>> {
         assert!(DialogClassManager::register_classes().is_ok());
         assert_eq!(DialogClassManager::dialog_proc(0, 0, 0), 0);
         let dialog = DialogDef {
@@ -278,8 +278,9 @@ mod tests {
             title: "Test".to_string(),
             controls: vec![],
         };
-        assert_eq!(ModalDialogPump::pump_messages(&dialog).unwrap(), 1);
+        assert_eq!(ModalDialogPump::pump_messages(&dialog)?, 1);
         assert!(ModelessDialogManager::update_modeless(&dialog).is_ok());
+        Ok(())
     }
 
     #[test]
@@ -288,21 +289,22 @@ mod tests {
     }
 
     #[test]
-    fn test_ui_manager_external_ui() {
-        let mut mgr = UiManager::new();
-        assert_eq!(mgr.invoke_external_ui(1, "test").expect("test"), 0);
-
+    fn test_ui_manager_external_ui() -> std::result::Result<(), Box<dyn std::error::Error>> {
         fn cb(msg_type: u32, msg: &str) -> i32 {
             if msg == "abort" {
                 -1
             } else {
-                msg_type as i32
+                i32::try_from(msg_type).unwrap_or(0)
             }
         }
 
+        let mut mgr = UiManager::new();
+        assert_eq!(mgr.invoke_external_ui(1, "test")?, 0);
+
         mgr.set_external_ui(cb);
-        assert_eq!(mgr.invoke_external_ui(42, "hello").expect("test"), 42);
+        assert_eq!(mgr.invoke_external_ui(42, "hello")?, 42);
         assert!(mgr.invoke_external_ui(0, "abort").is_err());
+        Ok(())
     }
 
     #[test]

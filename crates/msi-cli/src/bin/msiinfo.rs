@@ -1,5 +1,3 @@
-#![allow(clippy::cognitive_complexity)]
-#![allow(clippy::literal_string_with_formatting_args)]
 //! # msiinfo
 //!
 //! Windows Installer Information and Inspection tool replicating GNOME `msiinfo`.
@@ -392,10 +390,255 @@ pub fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
+
+    /// Exercises `tables`, `schema`, and `streams` subcommands in `msiinfo`.
+    fn run_msiinfo_tables_schema_streams_cases(temp_dir: &Path, msi_file: &Path) {
+        assert_eq!(
+            run(&["tables".to_string(), msi_file.to_string_lossy().to_string()]),
+            0
+        );
+        assert_eq!(
+            run(&["tables".to_string(), "nonexistent.msi".to_string()]),
+            1
+        );
+
+        assert_eq!(
+            run(&["schema".to_string(), msi_file.to_string_lossy().to_string()]),
+            0
+        );
+        for tbl in &["Property", "Directory"] {
+            assert_eq!(
+                run(&[
+                    "schema".to_string(),
+                    msi_file.to_string_lossy().to_string(),
+                    (*tbl).to_string(),
+                ]),
+                0
+            );
+        }
+        assert_eq!(
+            run(&[
+                "schema".to_string(),
+                msi_file.to_string_lossy().to_string(),
+                "NonexistentTable".to_string(),
+            ]),
+            1
+        );
+        assert_eq!(
+            run(&["schema".to_string(), "nonexistent.msi".to_string()]),
+            1
+        );
+
+        assert_eq!(
+            run(&[
+                "streams".to_string(),
+                msi_file.to_string_lossy().to_string(),
+            ]),
+            0
+        );
+        assert_eq!(
+            run(&["streams".to_string(), "nonexistent.msi".to_string()]),
+            1
+        );
+
+        let corrupt_msi = temp_dir.join("corrupt.msi");
+        assert!(fs::write(&corrupt_msi, b"not cfb format").is_ok());
+        assert_eq!(
+            run(&[
+                "streams".to_string(),
+                corrupt_msi.to_string_lossy().to_string(),
+            ]),
+            1
+        );
+    }
+
+    /// Exercises `export` and `extract` subcommands in `msiinfo`.
+    fn run_msiinfo_export_and_extract_cases(temp_dir: &Path, msi_file: &Path, out_extract: &Path) {
+        let corrupt_msi = temp_dir.join("corrupt.msi");
+        assert_eq!(
+            run(&[
+                "export".to_string(),
+                msi_file.to_string_lossy().to_string(),
+                "Property".to_string(),
+            ]),
+            0
+        );
+        assert_eq!(
+            run(&[
+                "export".to_string(),
+                msi_file.to_string_lossy().to_string(),
+                "Nonexistent".to_string(),
+            ]),
+            1
+        );
+        assert_eq!(
+            run(&[
+                "export".to_string(),
+                "nonexistent.msi".to_string(),
+                "Property".to_string(),
+            ]),
+            1
+        );
+
+        assert_eq!(
+            run(&[
+                "extract".to_string(),
+                msi_file.to_string_lossy().to_string(),
+                "\u{0005}SummaryInformation".to_string(),
+            ]),
+            0
+        );
+        assert_eq!(
+            run(&[
+                "extract".to_string(),
+                msi_file.to_string_lossy().to_string(),
+                "\u{0005}SummaryInformation".to_string(),
+                out_extract.to_string_lossy().to_string(),
+            ]),
+            0
+        );
+        assert!(out_extract.exists());
+
+        for bad_target in &["nonexistent.msi", &corrupt_msi.to_string_lossy()] {
+            assert_eq!(
+                run(&[
+                    "extract".to_string(),
+                    (*bad_target).to_string(),
+                    "stream".to_string(),
+                ]),
+                1
+            );
+        }
+        assert_eq!(
+            run(&[
+                "extract".to_string(),
+                msi_file.to_string_lossy().to_string(),
+                "NonexistentStream".to_string(),
+            ]),
+            1
+        );
+
+        let blocking_file = temp_dir.join("blocking_parent_extract");
+        assert!(fs::write(&blocking_file, "blocking").is_ok());
+        assert_eq!(
+            run(&[
+                "extract".to_string(),
+                msi_file.to_string_lossy().to_string(),
+                "\u{0005}SummaryInformation".to_string(),
+                blocking_file.join("out.bin").to_string_lossy().to_string(),
+            ]),
+            1
+        );
+
+        let empty_out_extract = MsiInfoOptions {
+            action: "extract".to_string(),
+            msi_path: msi_file.to_path_buf(),
+            stream: Some("\u{0005}SummaryInformation".to_string()),
+            out_file: Some(PathBuf::from("")),
+            ..MsiInfoOptions::default()
+        };
+        assert!(empty_out_extract.execute().is_err());
+    }
+
+    /// Exercises summary editing options and read-only failures in `msiinfo`.
+    fn run_msiinfo_summary_edit_cases(temp_dir: &Path, msi_file: &Path) {
+        let long_edit_args = vec![
+            msi_file.to_string_lossy().to_string(),
+            "--title".to_string(),
+            "Long Title".to_string(),
+            "--subject".to_string(),
+            "Long Subject".to_string(),
+            "--author".to_string(),
+            "Long Author".to_string(),
+            "--keywords".to_string(),
+            "Long Keywords".to_string(),
+            "--comments".to_string(),
+            "Long Comments".to_string(),
+            "--template".to_string(),
+            "Intel;1033".to_string(),
+        ];
+        assert_eq!(run(&long_edit_args), 0);
+
+        for opt in [
+            "-t",
+            "-j",
+            "-a",
+            "-k",
+            "-c",
+            "-p",
+            "--title",
+            "--subject",
+            "--author",
+            "--keywords",
+            "--comments",
+            "--template",
+            "--unknown-flag",
+        ] {
+            assert_eq!(
+                run(&[msi_file.to_string_lossy().to_string(), opt.to_string()]),
+                0
+            );
+        }
+
+        assert_eq!(run(&[msi_file.to_string_lossy().to_string()]), 0);
+
+        for (flag, val) in [
+            ("-t", "T"),
+            ("-j", "J"),
+            ("-a", "A"),
+            ("-k", "K"),
+            ("-c", "C"),
+            ("-p", "P"),
+        ] {
+            assert_eq!(
+                run(&[
+                    msi_file.to_string_lossy().to_string(),
+                    flag.to_string(),
+                    val.to_string()
+                ]),
+                0
+            );
+        }
+
+        let edit_args = vec![
+            msi_file.to_string_lossy().to_string(),
+            "-t".to_string(),
+            "New Title".to_string(),
+            "-j".to_string(),
+            "New Subject".to_string(),
+            "-a".to_string(),
+            "New Author".to_string(),
+            "-k".to_string(),
+            "New Keywords".to_string(),
+            "-c".to_string(),
+            "New Comments".to_string(),
+            "-p".to_string(),
+            "x64;1033".to_string(),
+        ];
+        assert_eq!(run(&edit_args), 0);
+        assert_eq!(run_app(&edit_args), ExitCode::SUCCESS);
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let ro_msi = temp_dir.join("readonly.msi");
+            assert!(fs::copy(msi_file, &ro_msi).is_ok());
+            assert!(fs::set_permissions(&ro_msi, fs::Permissions::from_mode(0o400)).is_ok());
+            assert_eq!(
+                run(&[
+                    ro_msi.to_string_lossy().to_string(),
+                    "-t".to_string(),
+                    "FailTitle".to_string(),
+                ]),
+                1
+            );
+            assert!(fs::set_permissions(&ro_msi, fs::Permissions::from_mode(0o644)).is_ok());
+        }
+    }
 
     /// Tests all branches and error handling of `msiinfo` binary execution.
     #[test]
-    #[allow(clippy::too_many_lines)]
     fn test_msiinfo_run_all_branches() {
         let temp_dir = std::env::temp_dir().join("msi_cli_test_msiinfo_bin");
         let _ = fs::create_dir_all(&temp_dir);
@@ -422,330 +665,29 @@ mod tests {
         .unwrap_or_default()
         .execute();
 
-        // 1. Parse errors
         assert_eq!(run(&[]), 1);
-        assert_eq!(run(&["-invalid".to_string()]), 1);
-        assert_eq!(run(&["tables".to_string()]), 1);
-        assert_eq!(run(&["schema".to_string()]), 1);
-        assert_eq!(run(&["streams".to_string()]), 1);
-        assert_eq!(
-            run(&["export".to_string(), msi_file.to_string_lossy().to_string()]),
-            1
-        );
-        assert_eq!(
-            run(&[
-                "extract".to_string(),
-                msi_file.to_string_lossy().to_string()
-            ]),
-            1
-        );
-
-        // Long options parsing and trailing options without value
-        let long_edit_args = vec![
-            msi_file.to_string_lossy().to_string(),
-            "--title".to_string(),
-            "Long Title".to_string(),
-            "--subject".to_string(),
-            "Long Subject".to_string(),
-            "--author".to_string(),
-            "Long Author".to_string(),
-            "--keywords".to_string(),
-            "Long Keywords".to_string(),
-            "--comments".to_string(),
-            "Long Comments".to_string(),
-            "--template".to_string(),
-            "Intel;1033".to_string(),
-        ];
-        assert_eq!(run(&long_edit_args), 0);
-
-        let trailing_opts = [
-            "-t",
-            "-j",
-            "-a",
-            "-k",
-            "-c",
-            "-p",
-            "--title",
-            "--subject",
-            "--author",
-            "--keywords",
-            "--comments",
-            "--template",
-        ];
-        for opt in trailing_opts {
-            assert_eq!(
-                run(&[msi_file.to_string_lossy().to_string(), opt.to_string()]),
-                0
-            );
+        for sub in &["-invalid", "tables", "schema", "streams"] {
+            assert_eq!(run(&[(*sub).to_string()]), 1);
         }
-        assert_eq!(
-            run(&[
-                msi_file.to_string_lossy().to_string(),
-                "--unknown-flag".to_string()
-            ]),
-            0
-        );
-
-        // 2. Summary inspection
-        assert_eq!(run(&[msi_file.to_string_lossy().to_string()]), 0);
-
-        // 3. Summary editing: individual properties
-        assert_eq!(
-            run(&[
-                msi_file.to_string_lossy().to_string(),
-                "-t".to_string(),
-                "T".to_string()
-            ]),
-            0
-        );
-        assert_eq!(
-            run(&[
-                msi_file.to_string_lossy().to_string(),
-                "-j".to_string(),
-                "J".to_string()
-            ]),
-            0
-        );
-        assert_eq!(
-            run(&[
-                msi_file.to_string_lossy().to_string(),
-                "-a".to_string(),
-                "A".to_string()
-            ]),
-            0
-        );
-        assert_eq!(
-            run(&[
-                msi_file.to_string_lossy().to_string(),
-                "-k".to_string(),
-                "K".to_string()
-            ]),
-            0
-        );
-        assert_eq!(
-            run(&[
-                msi_file.to_string_lossy().to_string(),
-                "-c".to_string(),
-                "C".to_string()
-            ]),
-            0
-        );
-        assert_eq!(
-            run(&[
-                msi_file.to_string_lossy().to_string(),
-                "-p".to_string(),
-                "P".to_string()
-            ]),
-            0
-        );
-
-        let edit_args = vec![
-            msi_file.to_string_lossy().to_string(),
-            "-t".to_string(),
-            "New Title".to_string(),
-            "-j".to_string(),
-            "New Subject".to_string(),
-            "-a".to_string(),
-            "New Author".to_string(),
-            "-k".to_string(),
-            "New Keywords".to_string(),
-            "-c".to_string(),
-            "New Comments".to_string(),
-            "-p".to_string(),
-            "x64;1033".to_string(),
-        ];
-        assert_eq!(run(&edit_args), 0);
-        assert_eq!(run_app(&edit_args), ExitCode::SUCCESS);
-
-        // Summary edit save failure on read-only file
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let ro_msi = temp_dir.join("readonly.msi");
-            assert!(fs::copy(&msi_file, &ro_msi).is_ok());
-            assert!(fs::set_permissions(&ro_msi, fs::Permissions::from_mode(0o400)).is_ok());
+        for sub in &["export", "extract"] {
             assert_eq!(
-                run(&[
-                    ro_msi.to_string_lossy().to_string(),
-                    "-t".to_string(),
-                    "FailTitle".to_string(),
-                ]),
+                run(&[(*sub).to_string(), msi_file.to_string_lossy().to_string()]),
                 1
             );
-            assert!(fs::set_permissions(&ro_msi, fs::Permissions::from_mode(0o644)).is_ok());
         }
 
-        // 4. Tables listing
-        assert_eq!(
-            run(&["tables".to_string(), msi_file.to_string_lossy().to_string()]),
-            0
-        );
-        assert_eq!(
-            run(&["tables".to_string(), "nonexistent.msi".to_string()]),
-            1
-        );
+        run_msiinfo_summary_edit_cases(&temp_dir, &msi_file);
+        run_msiinfo_tables_schema_streams_cases(&temp_dir, &msi_file);
+        run_msiinfo_export_and_extract_cases(&temp_dir, &msi_file, &out_extract);
 
-        // 5. Schema inspection (all, single table, and failure)
-        assert_eq!(
-            run(&["schema".to_string(), msi_file.to_string_lossy().to_string()]),
-            0
-        );
-        assert_eq!(
-            run(&[
-                "schema".to_string(),
-                msi_file.to_string_lossy().to_string(),
-                "Property".to_string(),
-            ]),
-            0
-        );
-        assert_eq!(
-            run(&[
-                "schema".to_string(),
-                msi_file.to_string_lossy().to_string(),
-                "Directory".to_string(),
-            ]),
-            0
-        );
-        assert_eq!(
-            run(&[
-                "schema".to_string(),
-                msi_file.to_string_lossy().to_string(),
-                "NonexistentTable".to_string(),
-            ]),
-            1
-        );
-        assert_eq!(
-            run(&["schema".to_string(), "nonexistent.msi".to_string()]),
-            1
-        );
-
-        // 6. Streams listing
-        assert_eq!(
-            run(&[
-                "streams".to_string(),
-                msi_file.to_string_lossy().to_string(),
-            ]),
-            0
-        );
-        assert_eq!(
-            run(&["streams".to_string(), "nonexistent.msi".to_string()]),
-            1
-        );
-
-        let corrupt_msi = temp_dir.join("corrupt.msi");
-        assert!(fs::write(&corrupt_msi, b"not cfb format").is_ok());
-        assert_eq!(
-            run(&[
-                "streams".to_string(),
-                corrupt_msi.to_string_lossy().to_string(),
-            ]),
-            1
-        );
-
-        // 7. Export table
-        assert_eq!(
-            run(&[
-                "export".to_string(),
-                msi_file.to_string_lossy().to_string(),
-                "Property".to_string(),
-            ]),
-            0
-        );
-        assert_eq!(
-            run(&[
-                "export".to_string(),
-                msi_file.to_string_lossy().to_string(),
-                "Nonexistent".to_string(),
-            ]),
-            1
-        );
-        assert_eq!(
-            run(&[
-                "export".to_string(),
-                "nonexistent.msi".to_string(),
-                "Property".to_string(),
-            ]),
-            1
-        );
-
-        // 8. Extract stream (stdout, file, errors)
-        assert_eq!(
-            run(&[
-                "extract".to_string(),
-                msi_file.to_string_lossy().to_string(),
-                "\u{0005}SummaryInformation".to_string(),
-            ]),
-            0
-        );
-        assert_eq!(
-            run(&[
-                "extract".to_string(),
-                msi_file.to_string_lossy().to_string(),
-                "\u{0005}SummaryInformation".to_string(),
-                out_extract.to_string_lossy().to_string(),
-            ]),
-            0
-        );
-        assert!(out_extract.exists());
-
-        assert_eq!(
-            run(&[
-                "extract".to_string(),
-                "nonexistent.msi".to_string(),
-                "stream".to_string(),
-            ]),
-            1
-        );
-        assert_eq!(
-            run(&[
-                "extract".to_string(),
-                corrupt_msi.to_string_lossy().to_string(),
-                "stream".to_string(),
-            ]),
-            1
-        );
-        assert_eq!(
-            run(&[
-                "extract".to_string(),
-                msi_file.to_string_lossy().to_string(),
-                "NonexistentStream".to_string(),
-            ]),
-            1
-        );
-
-        // Extract write failure
-        let blocking_file = temp_dir.join("blocking_parent_extract");
-        assert!(fs::write(&blocking_file, "blocking").is_ok());
-        assert_eq!(
-            run(&[
-                "extract".to_string(),
-                msi_file.to_string_lossy().to_string(),
-                "\u{0005}SummaryInformation".to_string(),
-                blocking_file.join("out.bin").to_string_lossy().to_string(),
-            ]),
-            1
-        );
-
-        let empty_out_extract = MsiInfoOptions {
-            action: "extract".to_string(),
-            msi_path: msi_file,
-            stream: Some("\u{0005}SummaryInformation".to_string()),
-            out_file: Some(PathBuf::from("")),
-            ..MsiInfoOptions::default()
-        };
-        assert!(empty_out_extract.execute().is_err());
-
-        // 9. Error on non-existent package
         assert_eq!(run(&["nonexistent.msi".to_string()]), 1);
 
-        // 10. Unsupported command
         let other_opts = MsiInfoOptions {
             action: "unknown_cmd".to_string(),
             ..MsiInfoOptions::default()
         };
         assert!(other_opts.execute().is_err());
 
-        // 11. Derives testing
         let default_opts = MsiInfoOptions::default();
         let mut cloned_opts = default_opts.clone();
         cloned_opts.clone_from(&default_opts);
@@ -755,9 +697,9 @@ mod tests {
         };
         assert_eq!(default_opts, cloned_opts);
         assert_ne!(default_opts, different_opts);
-        assert!(format!("{default_opts:?}").contains("MsiInfoOptions"));
+        let opts_dbg = format!("{default_opts:?}");
+        assert!(opts_dbg.contains("MsiInfoOptions"));
 
-        // 12. Test invoking main directly and run_app error
         assert_eq!(run_app(&[]), ExitCode::FAILURE);
         let code = main();
         assert_eq!(code, ExitCode::FAILURE);

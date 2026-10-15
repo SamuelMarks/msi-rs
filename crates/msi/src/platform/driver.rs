@@ -612,9 +612,8 @@ Class=SCSIAdapter",
         let stage_res = LinuxKernelModuleServicing::stage_modules(&temp_dir, kver, &modules);
         assert!(stage_res.is_ok());
 
-        assert!(temp_dir
-            .join(format!("lib/modules/{kver}/modules.dep"))
-            .exists());
+        let dep_path = temp_dir.join(format!("lib/modules/{kver}/modules.dep"));
+        assert!(dep_path.exists());
 
         // Verify storage modules
         assert!(LinuxKernelModuleServicing::verify_storage_modules(

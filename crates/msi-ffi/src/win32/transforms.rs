@@ -50,7 +50,7 @@ pub extern "system" fn MsiDatabaseGenerateTransformW(
                         )
                         .unwrap_or_default();
                         transform.summary_info.word_count = Some(iValidation);
-                        transform.validation_flags = iValidation as u32;
+                        transform.validation_flags = u32::from_ne_bytes(iValidation.to_ne_bytes());
                         let bytes = transform.to_bytes().unwrap_or_default();
                         match std::fs::write(&path, bytes) {
                             Ok(()) => ERROR_SUCCESS,
@@ -102,7 +102,7 @@ pub extern "system" fn MsiDatabaseGenerateTransformA(
                         )
                         .unwrap_or_default();
                         transform.summary_info.word_count = Some(iValidation);
-                        transform.validation_flags = iValidation as u32;
+                        transform.validation_flags = u32::from_ne_bytes(iValidation.to_ne_bytes());
                         let bytes = transform.to_bytes().unwrap_or_default();
                         match std::fs::write(&path, bytes) {
                             Ok(()) => ERROR_SUCCESS,
@@ -339,6 +339,7 @@ pub extern "system" fn MsiGetActiveDatabase(hInstall: MsiHandle) -> MsiHandle {
 }
 
 #[cfg(test)]
+#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 mod transform_and_record_tests {
     use super::*;
 
@@ -525,9 +526,6 @@ mod transform_and_record_tests {
             -1
         );
 
-        let valid_w: Vec<u16> = "valid".encode_utf16().chain(std::iter::once(0)).collect();
-        let valid_a = b"valid\0";
-
         assert_eq!(
             MsiDatabaseGetPrimaryKeysW(0, valid_w.as_ptr(), &raw mut rec_handle),
             ERROR_INVALID_HANDLE
@@ -550,7 +548,7 @@ mod transform_and_record_tests {
         }));
 
         let mock_rec = msi::database::tables::record::Record::new();
-        let mut rec_handle = alloc_handle(MsiObject::Record(crate::types::MsiRecordHandle {
+        rec_handle = alloc_handle(MsiObject::Record(crate::types::MsiRecordHandle {
             inner: mock_rec,
         }));
 
@@ -628,7 +626,7 @@ mod transform_and_record_tests {
 
         let valid_w: Vec<u16> = valid_path
             .to_str()
-            .unwrap()
+            .unwrap_or("")
             .encode_utf16()
             .chain(std::iter::once(0))
             .collect();
@@ -640,7 +638,7 @@ mod transform_and_record_tests {
 
         let dir_w: Vec<u16> = std::env::temp_dir()
             .to_str()
-            .unwrap()
+            .unwrap_or("")
             .encode_utf16()
             .chain(std::iter::once(0))
             .collect();
@@ -649,13 +647,14 @@ mod transform_and_record_tests {
             1603
         ); // ERROR_INSTALL_FAILURE
 
-        let valid_a = std::ffi::CString::new(valid_path.to_str().unwrap()).unwrap();
+        let valid_a = std::ffi::CString::new(valid_path.to_str().unwrap_or("")).unwrap_or_default();
         assert_eq!(
             MsiDatabaseGenerateTransformA(h1, h2, valid_a.as_ptr(), 0, 0),
             0
         );
 
-        let dir_a = std::ffi::CString::new(std::env::temp_dir().to_str().unwrap()).unwrap();
+        let dir_a =
+            std::ffi::CString::new(std::env::temp_dir().to_str().unwrap_or("")).unwrap_or_default();
         assert_eq!(
             MsiDatabaseGenerateTransformA(h1, h2, dir_a.as_ptr(), 0, 0),
             1603

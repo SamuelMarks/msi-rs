@@ -76,19 +76,21 @@ mod tests {
         let sandbox = CustomActionSandbox;
         let cloned = sandbox;
         assert_eq!(sandbox, cloned);
-        assert!(format!("{sandbox:?}").contains("CustomActionSandbox"));
+        let sb_dbg = format!("{sandbox:?}");
+        assert!(sb_dbg.contains("CustomActionSandbox"));
 
-        assert_eq!(
-            sandbox.execute_with_timeout(Duration::from_secs(1), || 42)?,
-            42
-        );
-        assert!(sandbox.execute_with_timeout(Duration::ZERO, || 42).is_err());
-        assert!(sandbox
-            .execute_with_timeout(Duration::from_nanos(1), || {
-                std::thread::sleep(Duration::from_millis(5));
+        let run_action = |sleep_ms: u64, timeout: Duration| {
+            sandbox.execute_with_timeout(timeout, || {
+                if sleep_ms > 0 {
+                    std::thread::sleep(Duration::from_millis(sleep_ms));
+                }
                 42
             })
-            .is_err());
+        };
+
+        assert_eq!(run_action(0, Duration::from_secs(1))?, 42);
+        assert!(run_action(0, Duration::ZERO).is_err());
+        assert!(run_action(5, Duration::from_nanos(1)).is_err());
 
         sandbox.terminate_process(1234)?;
         assert!(sandbox.terminate_process(0).is_err());

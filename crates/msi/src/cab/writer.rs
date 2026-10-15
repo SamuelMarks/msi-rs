@@ -185,13 +185,14 @@ impl CabinetWriter {
 
         let is_regular_folder = matches!(folder_index, FolderIndex::Index(_));
 
+        let file_size = u32::try_from(data.len()).unwrap_or(u32::MAX);
         if is_regular_folder {
             // Check for deduplication
             for (cached_hash, cached_data, cached_folder_idx, cached_offset) in &self.dedup_cache {
                 if *cached_hash == hash && cached_data == data {
                     self.files.push(StagedFile {
                         filename: filename.to_string(),
-                        file_size: data.len() as u32,
+                        file_size,
                         folder_index: FolderIndex::Index(*cached_folder_idx),
                         folder_offset: *cached_offset,
                     });
@@ -210,7 +211,7 @@ impl CabinetWriter {
                     },
                 );
             }
-            let offset = self.folders[idx_usize].payload.len() as u32;
+            let offset = u32::try_from(self.folders[idx_usize].payload.len()).unwrap_or(u32::MAX);
             self.folders[idx_usize].payload.extend_from_slice(data);
 
             self.dedup_cache.push((hash, data.to_vec(), idx, offset));
@@ -224,7 +225,7 @@ impl CabinetWriter {
                     payload: Vec::new(),
                 });
             }
-            let offset = self.folders[0].payload.len() as u32;
+            let offset = u32::try_from(self.folders[0].payload.len()).unwrap_or(u32::MAX);
             self.folders[0].payload.extend_from_slice(data);
 
             (folder_index, offset)
@@ -232,7 +233,7 @@ impl CabinetWriter {
 
         self.files.push(StagedFile {
             filename: filename.to_string(),
-            file_size: data.len() as u32,
+            file_size,
             folder_index: final_folder_index,
             folder_offset,
         });
@@ -457,7 +458,7 @@ mod tests {
 
     /// Tests deduplication of payload contents.
     #[test]
-    fn test_cabinet_writer_deduplication() {
+    fn test_cabinet_writer_deduplication() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut writer = CabinetWriter::new(CompressionType::Mszip);
         let payload = vec![0x42u8; 10 * 1024 * 1024]; // 10 MB file
 
@@ -475,29 +476,30 @@ mod tests {
         // Let's assert it's less than 15MB which means only one copy is compressed.
         assert!(cab_bytes.len() < 15 * 1024 * 1024);
 
-        let reader = CabinetReader::new(&cab_bytes).expect("test");
+        let reader = CabinetReader::new(&cab_bytes)?;
         assert_eq!(reader.files().len(), 2);
         let f1 = reader
             .files()
             .iter()
             .find(|f| f.filename == "file1.bin")
-            .expect("test");
+            .ok_or("none")?;
         let f2 = reader
             .files()
             .iter()
             .find(|f| f.filename == "file2.bin")
-            .expect("test");
+            .ok_or("none")?;
 
         assert_eq!(f1.folder_index, f2.folder_index);
         assert_eq!(f1.folder_offset, f2.folder_offset);
 
         assert_eq!(reader.extract_file("file1.bin"), Ok(payload.clone()));
         assert_eq!(reader.extract_file("file2.bin"), Ok(payload));
+        Ok(())
     }
 
     /// Tests building and extracting files with multiple folders.
     #[test]
-    fn test_cabinet_writer_multi_folder() {
+    fn test_cabinet_writer_multi_folder() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut writer = CabinetWriter::new(CompressionType::None);
         assert!(writer
             .add_file_with_folder_index("f0_1.txt", b"F0", FolderIndex::Index(0))
@@ -510,12 +512,13 @@ mod tests {
             .is_ok());
 
         let cab_bytes = writer.build().unwrap_or_default();
-        let reader = CabinetReader::new(&cab_bytes).expect("test");
+        let reader = CabinetReader::new(&cab_bytes)?;
 
         assert_eq!(reader.folders().len(), 3);
         assert_eq!(reader.extract_file("f0_1.txt"), Ok(b"F0".to_vec()));
         assert_eq!(reader.extract_file("f1_1.txt"), Ok(b"F1".to_vec()));
         assert_eq!(reader.extract_file("f2_1.txt"), Ok(b"F2".to_vec()));
+        Ok(())
     }
 
     /// Tests building and extracting files with LZX compression.
@@ -614,11 +617,12 @@ mod tests {
 
     /// Tests compressing a 50 MB synthetic buffer and verifying compressed size is < 15 MB.
     #[test]
-    fn test_cabinet_writer_large_compression() {
+    fn test_cabinet_writer_large_compression() -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
         let mut writer = CabinetWriter::new(CompressionType::Mszip);
         let mut large_payload = vec![0xABu8; 50 * 1024 * 1024]; // 50 MB
         for i in 0..10_000 {
-            large_payload[i * 100] = (i % 255) as u8;
+            large_payload[i * 100] = u8::try_from(i % 255).unwrap_or(0);
         }
 
         assert!(writer.add_file("huge.dat", &large_payload).is_ok());
@@ -627,27 +631,34 @@ mod tests {
         // Assert compressed size is less than 15 MB
         assert!(cab_bytes.len() < 15 * 1024 * 1024);
 
-        let reader = CabinetReader::new(&cab_bytes).expect("Valid cabinet");
-        let extracted = reader.extract_file("huge.dat").expect("Extracted");
+        let reader = CabinetReader::new(&cab_bytes)?;
+        let extracted = reader.extract_file("huge.dat")?;
         assert_eq!(extracted, large_payload);
+        Ok(())
     }
 
     /// Tests empty cabinet archive.
     #[test]
-    fn test_cabinet_writer_continuation_folders() {
+    fn test_cabinet_writer_continuation_folders(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut writer = CabinetWriter::new(CompressionType::None);
         // Add file with continuation folder to empty folders array
-        writer
-            .add_file_with_folder_index("cont.txt", b"cont_data", FolderIndex::ContinuedToNext)
-            .unwrap();
+        writer.add_file_with_folder_index(
+            "cont.txt",
+            b"cont_data",
+            FolderIndex::ContinuedToNext,
+        )?;
 
         // Add another to hit the `!self.folders.is_empty()` branch in the continuation folder block
-        writer
-            .add_file_with_folder_index("cont2.txt", b"cont_data_2", FolderIndex::ContinuedFromPrev)
-            .unwrap();
+        writer.add_file_with_folder_index(
+            "cont2.txt",
+            b"cont_data_2",
+            FolderIndex::ContinuedFromPrev,
+        )?;
 
         let cab = writer.build().unwrap_or_default();
         assert!(!cab.is_empty());
+        Ok(())
     }
 
     #[test]
@@ -671,15 +682,16 @@ mod tests {
 
     /// Roundtrip test extracting compressed cabinet using external `cabextract` or `expand.exe`.
     #[test]
-    fn test_cabinet_external_extraction_roundtrip() {
+    fn test_cabinet_external_extraction_roundtrip(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut writer = CabinetWriter::new(CompressionType::Mszip);
         let payload = b"Data to extract using external tool.";
         assert!(writer.add_file("ext.txt", payload).is_ok());
         let cab_bytes = writer.build().unwrap_or_default();
 
-        let dir = tempfile::tempdir().expect("tempdir");
+        let dir = tempfile::tempdir()?;
         let cab_path = dir.path().join("test.cab");
-        std::fs::write(&cab_path, &cab_bytes).expect("write cab");
+        assert!(std::fs::write(&cab_path, &cab_bytes).is_ok());
 
         #[cfg(windows)]
         {
@@ -699,8 +711,9 @@ mod tests {
                 .status();
         }
 
-        let extracted = std::fs::read(dir.path().join("ext.txt")).expect("read extracted");
+        let extracted = std::fs::read(dir.path().join("ext.txt"))?;
         assert_eq!(extracted, payload);
+        Ok(())
     }
 
     /// Tests chained cabinet metadata setters and resulting header flags.
@@ -768,7 +781,7 @@ mod tests {
 fn test_cabinet_writer_mszip_compression_error() {
     let mut writer = CabinetWriter::new(CompressionType::Mszip);
     let payload = vec![0x42u8; 40_000]; // Larger than 32KB
-    writer.add_file("huge.txt", &payload).unwrap();
+    assert!(writer.add_file("huge.txt", &payload).is_ok());
 
     let res = writer.build_with_block_size(40_000);
     assert!(matches!(res, Err(MsiError::CabinetCompressionError { .. })));
@@ -778,7 +791,7 @@ fn test_cabinet_writer_mszip_compression_error() {
 fn test_cabinet_writer_lzx_compression_error() {
     let mut writer = CabinetWriter::new(CompressionType::Lzx { window_bits: 16 });
     let payload = vec![0x42u8; 40_000]; // Larger than 32KB
-    writer.add_file("huge.txt", &payload).unwrap();
+    assert!(writer.add_file("huge.txt", &payload).is_ok());
 
     let res = writer.build_with_block_size(40_000);
     assert!(matches!(res, Err(MsiError::CabinetCompressionError { .. })));

@@ -1,5 +1,3 @@
-#![allow(clippy::similar_names, clippy::shadow_unrelated)]
-
 //! Internal utility for dumping MSI files.
 
 use std::fs;
@@ -138,27 +136,24 @@ mod tests {
         let _ = fs::remove_file(&path);
 
         // test missing pool stream
-        let cfbg_no_pool = CfbWriter::new(CfbVersion::V4);
-        let cfb_no_pool = cfbg_no_pool.build();
-        let _ = fs::write(&path, cfb_no_pool);
+        let writer_no_pool = CfbWriter::new(CfbVersion::V4);
+        let bytes_no_pool = writer_no_pool.build();
+        let _ = fs::write(&path, bytes_no_pool);
         let res_no_pool = run_dump(path.to_str().unwrap_or(""));
         assert!(res_no_pool.is_err());
         let _ = fs::remove_file(&path);
 
         // test missing data stream
-        let mut cfbg_no_data = CfbWriter::new(CfbVersion::V4);
-        let pool_name = encode_msi_stream_name("_StringPool", true).unwrap_or_default();
-        let _ = cfbg_no_data.add_stream(&pool_name, &[0, 0, 0, 0]);
-        let cfb_no_data = cfbg_no_data.build();
-        let _ = fs::write(&path, cfb_no_data);
+        let mut writer_no_data = CfbWriter::new(CfbVersion::V4);
+        let _ = writer_no_data.add_stream(&pool_name, &[0, 0, 0, 0]);
+        let bytes_no_data = writer_no_data.build();
+        let _ = fs::write(&path, bytes_no_data);
         let res_no_data = run_dump(path.to_str().unwrap_or(""));
         assert!(res_no_data.is_err());
         let _ = fs::remove_file(&path);
 
         // test break on short chunk
         let mut cfbg = CfbWriter::new(CfbVersion::V4);
-        let pool_name = encode_msi_stream_name("_StringPool", true).unwrap_or_default();
-        let data_name = encode_msi_stream_name("_StringData", true).unwrap_or_default();
         // 4 bytes header, 2 bytes partial chunk (should trigger break)
         let _ = cfbg.add_stream(&pool_name, &[0, 0, 0, 0, 1, 2]);
         let _ = cfbg.add_stream(&data_name, &[]);

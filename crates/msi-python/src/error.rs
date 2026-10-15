@@ -1,43 +1,94 @@
 //! Python exception definitions and error conversions for `_msi`.
 
-#![allow(clippy::same_name_method)]
-
-use pyo3::create_exception;
 use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
+use pyo3::sync::GILOnceCell;
+use pyo3::types::PyType;
 
-create_exception!(
-    _msi,
+/// Defines a custom Python exception type inheriting from `$base` without duplicate inherent/trait methods.
+macro_rules! define_py_exception {
+    ($module:expr, $name:ident, $base:ty, $doc:expr) => {
+        #[doc = $doc]
+        #[derive(Debug, Clone, Copy)]
+        pub struct $name;
+
+        // SAFETY: `$name` registers a valid Python exception type object via `PyErr::new_type_bound`.
+        unsafe impl pyo3::type_object::PyTypeInfo for $name {
+            const NAME: &'static str = stringify!($name);
+            const MODULE: Option<&'static str> = Some($module);
+
+            #[inline]
+            fn type_object_raw(py: Python<'_>) -> *mut pyo3::ffi::PyTypeObject {
+                static TYPE_OBJECT: GILOnceCell<Py<PyType>> = GILOnceCell::new();
+                TYPE_OBJECT
+                    .get_or_init(py, || {
+                        PyErr::new_type_bound(
+                            py,
+                            concat!($module, ".", stringify!($name)),
+                            Some($doc),
+                            Some(&py.get_type_bound::<$base>()),
+                            None,
+                        )
+                        .unwrap_or(py.get_type_bound::<$base>().unbind())
+                    })
+                    .as_ptr()
+                    .cast()
+            }
+        }
+
+        impl $name {
+            /// Creates a new [`PyErr`] of this exception type with the given message.
+            ///
+            /// # Arguments
+            ///
+            /// * `args` - Exception message string.
+            ///
+            /// # Returns
+            ///
+            /// A newly constructed [`PyErr`] instance.
+            #[must_use]
+            pub fn new_err<A>(args: A) -> PyErr
+            where
+                A: pyo3::PyErrArguments + Send + Sync + 'static,
+            {
+                PyErr::new::<Self, A>(args)
+            }
+        }
+    };
+}
+
+define_py_exception!(
+    "_msi",
     MsiError,
     PyException,
     "Base exception for all msi-rs errors."
 );
-create_exception!(
-    _msi,
+define_py_exception!(
+    "_msi",
     ValidationError,
     MsiError,
     "Package, table schema, or identifier validation failure."
 );
-create_exception!(
-    _msi,
+define_py_exception!(
+    "_msi",
     DatabaseError,
     MsiError,
     "Relational database constraint or catalog violation."
 );
-create_exception!(
-    _msi,
+define_py_exception!(
+    "_msi",
     CabinetError,
     MsiError,
     "Cabinet compression, decompression, or corruption error."
 );
-create_exception!(
-    _msi,
+define_py_exception!(
+    "_msi",
     IoError,
     MsiError,
     "Filesystem, stream, or Compound File Binary I/O failure."
 );
-create_exception!(
-    _msi,
+define_py_exception!(
+    "_msi",
     WixError,
     MsiError,
     "WiX preprocessor, XML parser, compiler, or linker failure."
@@ -188,6 +239,12 @@ mod tests {
                 reason: "fail".to_string(),
             };
             assert!(to_py_err(&other_err).is_instance_of::<MsiError>(py));
+            assert_eq!(
+                format!(
+                    "{MsiError:?},{ValidationError:?},{DatabaseError:?},{CabinetError:?},{IoError:?},{WixError:?}"
+                ),
+                "MsiError,ValidationError,DatabaseError,CabinetError,IoError,WixError"
+            );
 
             // Register exceptions into a mock module
             assert!(check_register_exceptions(PyModule::new_bound(

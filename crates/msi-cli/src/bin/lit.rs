@@ -1,5 +1,3 @@
-#![allow(clippy::cognitive_complexity)]
-#![allow(clippy::literal_string_with_formatting_args)]
 //! # lit
 //!
 //! `WiX` v3 Library Tool executable shim replicating `lit.exe`.
@@ -261,121 +259,8 @@ mod tests {
         WixLibrary::open(path).map_or_else(|_| Vec::new(), |lib| vec![lib])
     }
 
-    /// Tests all branches and error handling of `lit` binary execution.
-    #[test]
-    #[allow(clippy::too_many_lines, clippy::redundant_clone)]
-    fn test_lit_run_all_branches() {
-        let temp_dir = std::env::temp_dir().join("msi_cli_test_lit_bin");
-        let _ = fs::create_dir_all(&temp_dir);
-        let src_file = temp_dir.join("lib.wxs");
-        let obj_file = temp_dir.join("lib.wixobj");
-        let out_lib = temp_dir.join("output.wixlib");
-
-        let wxs = r#"
-<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-    <Fragment>
-        <DirectoryRef Id="TARGETDIR" />
-    </Fragment>
-</Wix>
-"#;
-        assert!(fs::write(&src_file, wxs).is_ok());
-
-        let _ = msi::wix::CandleOptions::parse(&[
-            "-o".to_string(),
-            obj_file.to_string_lossy().to_string(),
-            src_file.to_string_lossy().to_string(),
-        ])
-        .unwrap_or_default()
-        .execute();
-
-        // 1. Parse errors
-        assert_eq!(run(&[]), 1);
-        assert_eq!(run(&["-o".to_string()]), 1);
-        assert_eq!(run(&[obj_file.to_string_lossy().to_string()]), 1);
-        assert_eq!(run_app(&[]), ExitCode::FAILURE);
-
-        // 2. Execution error on non-existent object
-        assert_eq!(
-            run(&[
-                "-o".to_string(),
-                out_lib.to_string_lossy().to_string(),
-                "nonexistent.wixobj".to_string(),
-            ]),
-            1
-        );
-
-        // 3. Execution error on corrupt object
-        let bad_obj = temp_dir.join("bad.wixobj");
-        assert!(fs::write(&bad_obj, b"NOT_A_WIXOBJ").is_ok());
-        assert_eq!(
-            run(&[
-                "-o".to_string(),
-                out_lib.to_string_lossy().to_string(),
-                bad_obj.to_string_lossy().to_string(),
-            ]),
-            1
-        );
-
-        // 4. Successful run with all flags and banner printed
-        let full_args = vec![
-            "-o".to_string(),
-            out_lib.to_string_lossy().to_string(),
-            obj_file.to_string_lossy().to_string(),
-        ];
-        assert_eq!(run(&full_args), 0);
-        assert_eq!(run_app(&full_args), ExitCode::SUCCESS);
-        assert!(out_lib.exists());
-
-        // 5. Successful run with alternate flags: -nologo, -bf, -out, /o, /out, /nologo, /bf
-        let out_lib2 = temp_dir.join("nested_sub").join("output2.wixlib");
-        let slash_args = vec![
-            "/nologo".to_string(),
-            "/bf".to_string(),
-            "-out".to_string(),
-            out_lib2.to_string_lossy().to_string(),
-            "-unknown".to_string(),
-            "/nonexistent_slash_path.xyz".to_string(),
-            obj_file.to_string_lossy().to_string(),
-        ];
-        assert_eq!(run(&slash_args), 0);
-        assert!(out_lib2.exists());
-
-        // Test /o and /out flags and .wixlib input extension
-        let out_lib3 = temp_dir.join("output3.wixlib");
-        let wixlib_input = temp_dir.join("valid_input.wixlib");
-        assert!(fs::copy(&obj_file, &wixlib_input).is_ok());
-        let alt_args = vec![
-            "-nologo".to_string(),
-            "-bf".to_string(),
-            "/out".to_string(),
-            out_lib3.to_string_lossy().to_string(),
-            wixlib_input.to_string_lossy().to_string(),
-        ];
-        assert_eq!(run(&alt_args), 0);
-
-        let out_lib4 = temp_dir.join("output4.wixlib");
-        let slash_o_args = vec![
-            "/o".to_string(),
-            out_lib4.to_string_lossy().to_string(),
-            obj_file.to_string_lossy().to_string(),
-        ];
-        assert_eq!(run(&slash_o_args), 0);
-
-        // Existing file without standard extension
-        let noext_file = temp_dir.join("lib_noext");
-        assert!(fs::copy(&obj_file, &noext_file).is_ok());
-        let out_lib5 = temp_dir.join("output5.wixlib");
-        assert_eq!(
-            run(&[
-                "-nologo".to_string(),
-                "-o".to_string(),
-                out_lib5.to_string_lossy().to_string(),
-                noext_file.to_string_lossy().to_string(),
-            ]),
-            0
-        );
-
-        // 6. Execution error when output cannot be written (parent is a file)
+    /// Exercises output blocking and empty output errors for `LitOptions`.
+    fn run_lit_output_error_cases(temp_dir: &Path, obj_file: &Path) {
         let blocking_file = temp_dir.join("blocking_parent_file");
         assert!(fs::write(&blocking_file, b"occupied").is_ok());
         let blocked_out = blocking_file.join("fail.wixlib");
@@ -389,12 +274,11 @@ mod tests {
             1
         );
 
-        // 7. Direct execute with missing output or empty output (parent is None)
         let no_out_opts = LitOptions {
             nologo: true,
             bind_files: false,
             output: None,
-            inputs: vec![obj_file.clone()],
+            inputs: vec![obj_file.to_path_buf()],
         };
         assert!(no_out_opts.execute().is_err());
 
@@ -402,11 +286,13 @@ mod tests {
             nologo: true,
             bind_files: false,
             output: Some(PathBuf::from("")),
-            inputs: vec![obj_file],
+            inputs: vec![obj_file.to_path_buf()],
         };
         assert!(empty_out_opts.execute().is_err());
+    }
 
-        // 8. Test -bf binding actual file payload
+    /// Exercises `-bf` file binding and error cases in `lit`.
+    fn run_lit_bind_files_cases(temp_dir: &Path) {
         let payload_file = temp_dir.join("payload.txt");
         assert!(fs::write(&payload_file, b"bound file payload data").is_ok());
         let mut obj_with_file = WixObject::new();
@@ -428,14 +314,16 @@ mod tests {
         assert!(fs::write(&obj_with_file_path, obj_with_file.serialize()).is_ok());
 
         let bound_out = temp_dir.join("bound_output.wixlib");
-        let bound_args = vec![
-            "-nologo".to_string(),
-            "-bf".to_string(),
-            "-o".to_string(),
-            bound_out.to_string_lossy().to_string(),
-            obj_with_file_path.to_string_lossy().to_string(),
-        ];
-        assert_eq!(run(&bound_args), 0);
+        assert_eq!(
+            run(&[
+                "-nologo".to_string(),
+                "-bf".to_string(),
+                "-o".to_string(),
+                bound_out.to_string_lossy().to_string(),
+                obj_with_file_path.to_string_lossy().to_string(),
+            ]),
+            0
+        );
         assert!(try_open_wixlib(&temp_dir.join("nonexistent.wixlib")).is_empty());
         for loaded_bound_lib in try_open_wixlib(&bound_out) {
             assert_eq!(
@@ -444,7 +332,6 @@ mod tests {
             );
         }
 
-        // Test non-existent file and wrong field types in WixFile
         let mut obj_mixed = WixObject::new();
         let mut sec_mixed = msi::wix::wixobj::IntermediateSection::new(
             msi::wix::wixobj::SectionType::Fragment,
@@ -475,7 +362,6 @@ mod tests {
             0
         );
 
-        // Test read error on directory path in WixFile
         let mut obj_dir_err = WixObject::new();
         let mut sec_dir_err = msi::wix::wixobj::IntermediateSection::new(
             msi::wix::wixobj::SectionType::Fragment,
@@ -501,14 +387,105 @@ mod tests {
             ]),
             1
         );
+    }
 
-        // 9. Derives test
+    /// Tests all branches and error handling of `lit` binary execution.
+    #[test]
+    fn test_lit_run_all_branches() {
+        let temp_dir = std::env::temp_dir().join("msi_cli_test_lit_bin");
+        let _ = fs::create_dir_all(&temp_dir);
+        let src_file = temp_dir.join("lib.wxs");
+        let obj_file = temp_dir.join("lib.wixobj");
+        let out_lib = temp_dir.join("output.wixlib");
+
+        let wxs = "<Wix xmlns=\"http://schemas.microsoft.com/wix/2006/wi\"><Fragment><DirectoryRef Id=\"TARGETDIR\" /></Fragment></Wix>";
+        assert!(fs::write(&src_file, wxs).is_ok());
+
+        let _ = msi::wix::CandleOptions::parse(&[
+            "-o".to_string(),
+            obj_file.to_string_lossy().to_string(),
+            src_file.to_string_lossy().to_string(),
+        ])
+        .unwrap_or_default()
+        .execute();
+
+        assert_eq!(run(&[]), 1);
+        assert_eq!(run(&["-o".to_string()]), 1);
+        assert_eq!(run(&[obj_file.to_string_lossy().to_string()]), 1);
+        assert_eq!(run_app(&[]), ExitCode::FAILURE);
+
+        let bad_obj = temp_dir.join("bad.wixobj");
+        assert!(fs::write(&bad_obj, b"NOT_A_WIXOBJ").is_ok());
+        for bad_in in ["nonexistent.wixobj", &bad_obj.to_string_lossy()] {
+            assert_eq!(
+                run(&[
+                    "-o".to_string(),
+                    out_lib.to_string_lossy().to_string(),
+                    bad_in.to_string(),
+                ]),
+                1
+            );
+        }
+
+        let full_args = vec![
+            "-o".to_string(),
+            out_lib.to_string_lossy().to_string(),
+            obj_file.to_string_lossy().to_string(),
+        ];
+        assert_eq!(run(&full_args), 0);
+        assert_eq!(run_app(&full_args), ExitCode::SUCCESS);
+        assert!(out_lib.exists());
+
+        let out_lib2 = temp_dir.join("nested_sub").join("output2.wixlib");
+        assert_eq!(
+            run(&[
+                "/nologo".to_string(),
+                "/bf".to_string(),
+                "-out".to_string(),
+                out_lib2.to_string_lossy().to_string(),
+                "-unknown".to_string(),
+                "/nonexistent_slash_path.xyz".to_string(),
+                obj_file.to_string_lossy().to_string(),
+            ]),
+            0
+        );
+        assert!(out_lib2.exists());
+
+        let wixlib_input = temp_dir.join("valid_input.wixlib");
+        let noext_file = temp_dir.join("lib_noext");
+        assert!(fs::copy(&obj_file, &wixlib_input).is_ok());
+        assert!(fs::copy(&obj_file, &noext_file).is_ok());
+        for (idx, (out_flag, in_path)) in [
+            ("/out", &wixlib_input),
+            ("/o", &obj_file),
+            ("-o", &noext_file),
+        ]
+        .iter()
+        .enumerate()
+        {
+            let target_out = temp_dir.join(format!("output_alt_{idx}.wixlib"));
+            assert_eq!(
+                run(&[
+                    "-nologo".to_string(),
+                    "-bf".to_string(),
+                    (*out_flag).to_string(),
+                    target_out.to_string_lossy().to_string(),
+                    in_path.to_string_lossy().to_string(),
+                ]),
+                0
+            );
+        }
+
+        run_lit_output_error_cases(&temp_dir, &obj_file);
+        run_lit_bind_files_cases(&temp_dir);
+
         let default_opts = LitOptions::default();
-        let cloned_opts = default_opts.clone();
+        let mut cloned_opts = default_opts.clone();
+        cloned_opts.clone_from(&default_opts);
         assert_eq!(default_opts, cloned_opts);
-        assert!(format!("{default_opts:?}").contains("LitOptions"));
+        let opts_dbg = format!("{default_opts:?}");
+        assert!(opts_dbg.contains("LitOptions"));
 
-        // 10. Test invoking main directly
         let code = main();
         assert_eq!(code, ExitCode::FAILURE);
 

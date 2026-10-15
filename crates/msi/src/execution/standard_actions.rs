@@ -1,12 +1,42 @@
 //! Standard Actions & System Publishing Engine.
 //!
 //! Exposes cross-platform IO abstractions mapping mutating standard MSI actions
-//! (File, Directory, Registry, Environment, ODBC, Services) natively to the target OS.
+//! (File, Directory, Registry, Environment, INI, ODBC, Services, Drivers, Fonts,
+//! `ProgId`, `TypeLib`, `BindImage`, and Component Publishing) natively to the target OS
+//! and virtualized platform state stores.
 
 use crate::error::{MsiError, Result};
+use crate::execution::bind_image::BindImageEngine;
+use crate::platform::daemon::ServiceDefinition;
+use crate::platform::driver::DriverInf;
+use crate::platform::font::{FontFile, FontManager, FontName};
+use crate::platform::odbc::OdbcManager;
 use crate::platform::paths::TargetOs;
+use crate::platform::registry_store::{RegistryRoot, RegistryStore, RegistryValue};
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::Path;
+use std::sync::{Arc, RwLock};
+
+/// Target scope for environment variable modifications (`WriteEnvironmentStrings` / `RemoveEnvironmentStrings`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EnvironmentScope {
+    /// Per-user environment variables (`HKEY_CURRENT_USER\Environment`).
+    PerUser,
+    /// Machine-wide system environment variables (`HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment`).
+    MachineWide,
+}
+
+/// Service lifecycle state transition action (`StartServices` / `StopServices`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ServiceControlAction {
+    /// Start the service.
+    Start,
+    /// Stop the service.
+    Stop,
+    /// Stop and restart the service.
+    Restart,
+}
 
 /// Interface for cross-platform OS-agnostic IO file operations (`InstallFiles`, `MoveFiles`, `RemoveFiles`).
 pub trait FileOperations {
@@ -113,7 +143,7 @@ pub trait SystemConfigOperations {
     /// * `root` - Numeric registry root (`0` = `HKCR`, `1` = `HKCU`, `2` = `HKLM`, `3` = `HKU`).
     /// * `key` - Registry subkey path.
     /// * `name` - Registry value name (`""` for default value).
-    /// * `value` - Typed [`crate::platform::registry_store::RegistryValue`] payload.
+    /// * `value` - Typed [`RegistryValue`] payload.
     ///
     /// # Returns
     ///
@@ -121,13 +151,13 @@ pub trait SystemConfigOperations {
     ///
     /// # Errors
     ///
-    /// Returns [`MsiError`] if the root is invalid or persistence fails.
+    /// Returns [`MsiError`] if `root` or `key` is invalid or persistence fails.
     fn write_registry_value(
         &self,
         root: u32,
         key: &str,
         name: &str,
-        value: &crate::platform::registry_store::RegistryValue,
+        value: &RegistryValue,
     ) -> Result<()>;
 
     /// Removes a registry value (`RemoveRegistryValues` standard action).
@@ -144,7 +174,7 @@ pub trait SystemConfigOperations {
     ///
     /// # Errors
     ///
-    /// Returns [`MsiError`] if removal fails.
+    /// Returns [`MsiError`] if `root` or `key` is invalid or removal fails.
     fn remove_registry_value(&self, root: u32, key: &str, name: &str) -> Result<()>;
 
     /// Writes or updates an environment variable (`WriteEnvironmentStrings` standard action).
@@ -161,7 +191,7 @@ pub trait SystemConfigOperations {
     ///
     /// # Errors
     ///
-    /// Returns [`MsiError`] if writing the environment configuration fails.
+    /// Returns [`MsiError`] if `name` is empty or writing the environment configuration fails.
     fn write_environment_string(&self, name: &str, value: &str, system_wide: bool) -> Result<()>;
 
     /// Removes an environment variable (`RemoveEnvironmentStrings` standard action).
@@ -177,7 +207,7 @@ pub trait SystemConfigOperations {
     ///
     /// # Errors
     ///
-    /// Returns [`MsiError`] if updating the environment configuration fails.
+    /// Returns [`MsiError`] if `name` is empty or updating the environment configuration fails.
     fn remove_environment_string(&self, name: &str, system_wide: bool) -> Result<()>;
 
     /// Writes or updates an `.ini` configuration key-value pair (`WriteIniValues` standard action).
@@ -195,7 +225,7 @@ pub trait SystemConfigOperations {
     ///
     /// # Errors
     ///
-    /// Returns [`MsiError::Io`] if reading or writing `file_path` fails.
+    /// Returns [`MsiError`] if `section` or `key` is empty or reading/writing `file_path` fails.
     fn write_ini_value(
         &self,
         file_path: &Path,
@@ -218,7 +248,7 @@ pub trait SystemConfigOperations {
     ///
     /// # Errors
     ///
-    /// Returns [`MsiError::Io`] if writing the updated `.ini` file fails.
+    /// Returns [`MsiError`] if `section` or `key` is empty or writing the updated `.ini` file fails.
     fn remove_ini_value(&self, file_path: &Path, section: &str, key: &str) -> Result<()>;
 }
 
@@ -237,7 +267,7 @@ pub trait SystemServiceOperations {
     /// # Errors
     ///
     /// Returns [`MsiError`] if service registration fails.
-    fn install_service(&self, def: &crate::platform::daemon::ServiceDefinition) -> Result<()>;
+    fn install_service(&self, def: &ServiceDefinition) -> Result<()>;
 
     /// Starts or stops an existing background service (`StartServices` / `StopServices` standard actions).
     ///
@@ -515,748 +545,701 @@ pub trait SpecializedRegistrationOperations {
     fn isolate_components(&self, component_id: &str, app_path: &Path) -> Result<()>;
 }
 
-/// Standard engine implementing File and System configuration mutating operations.
-#[derive(Debug)]
-#[allow(dead_code)]
+/// Standard engine implementing File, Registry, Environment, INI, Service, Driver, ODBC, Font,
+/// and PE binding standard actions across Windows and POSIX platforms.
+#[derive(Debug, Clone)]
 pub struct StandardActionEngine {
-    /// target OS
-    _target_os: TargetOs,
+    /// Target operating system for platform-specific action translation.
+    target_os: TargetOs,
+    /// Hierarchical registry store backing virtualized and cross-platform registry operations.
+    registry: Arc<RwLock<RegistryStore>>,
+    /// Installed service definitions keyed by service name, paired with running status.
+    services: Arc<RwLock<BTreeMap<String, (ServiceDefinition, bool)>>>,
+    /// Registered ODBC data sources and drivers keyed by name.
+    odbc_entries: Arc<RwLock<BTreeMap<String, HashMap<String, String>>>>,
+}
+
+impl Default for StandardActionEngine {
+    fn default() -> Self {
+        Self::host()
+    }
 }
 
 impl StandardActionEngine {
-    /// Creates a new Standard Action Engine targeting the active host platform.
+    /// Creates a new [`StandardActionEngine`] targeting the specified `target_os`.
+    ///
+    /// # Arguments
+    ///
+    /// * `target_os` - Target operating system for platform-specific behavior.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// A new [`StandardActionEngine`] with an initialized [`RegistryStore`].
     #[must_use]
-    pub const fn host() -> Self {
+    pub fn new(target_os: TargetOs) -> Self {
         Self {
-            _target_os: TargetOs::host(),
+            target_os,
+            registry: Arc::new(RwLock::new(RegistryStore::new())),
+            services: Arc::new(RwLock::new(BTreeMap::new())),
+            odbc_entries: Arc::new(RwLock::new(BTreeMap::new())),
         }
+    }
+
+    /// Creates a new [`StandardActionEngine`] targeting the active host platform.
+    ///
+    /// # Returns
+    ///
+    /// A new [`StandardActionEngine`] configured for [`TargetOs::host()`].
+    #[must_use]
+    pub fn host() -> Self {
+        Self::new(TargetOs::host())
+    }
+
+    /// Returns the configured [`TargetOs`] of this engine.
+    ///
+    /// # Returns
+    ///
+    /// The active [`TargetOs`].
+    #[must_use]
+    pub const fn target_os(&self) -> TargetOs {
+        self.target_os
+    }
+
+    /// Reads a value from the engine's backing [`RegistryStore`].
+    ///
+    /// # Arguments
+    ///
+    /// * `root` - Numeric registry root (`0..=3`).
+    /// * `key` - Registry subkey path.
+    /// * `name` - Optional value name (`None` or `Some("")` for default value).
+    ///
+    /// # Returns
+    ///
+    /// `Ok(Some(RegistryValue))` if present, or `Ok(None)` if not found.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError::InvalidArgument`] if `root` is outside `0..=3`.
+    pub fn get_registry_value(
+        &self,
+        root: u32,
+        key: &str,
+        name: Option<&str>,
+    ) -> Result<Option<RegistryValue>> {
+        let reg_root = RegistryRoot::from_u32(root)?;
+        let normalized_name = name.filter(|s| !s.is_empty());
+        let guard = self
+            .registry
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        Ok(guard.get_value(reg_root, key, normalized_name).cloned())
+    }
+
+    /// Checks whether a service is currently registered and whether it is running.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Service name to query.
+    ///
+    /// # Returns
+    ///
+    /// `Some(true)` if running, `Some(false)` if stopped, or `None` if not installed.
+    #[must_use]
+    pub fn service_state(&self, name: &str) -> Option<bool> {
+        let guard = self
+            .services
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        guard.get(name).map(|(_, running)| *running)
+    }
+
+    /// Creates the parent directory of `path` if `path` has a non-empty parent.
+    fn ensure_parent_dir(path: &Path) -> Result<()> {
+        if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+            fs::create_dir_all(parent).map_err(crate::error::IoContext)?;
+        }
+        Ok(())
     }
 }
 
 impl FileOperations for StandardActionEngine {
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
-    ///
-    /// # Arguments
-    ///
-    /// * `source` - The source argument.
-    /// * `destination` - The destination argument.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
     fn install_file(&self, source: &Path, destination: &Path) -> Result<()> {
-        if let Some(parent) = destination.parent() {
-            if let Err(e) = fs::create_dir_all(parent) {
-                return Err(MsiError::Io(crate::error::IoContext::from_string(format!(
-                    "Failed to create parent dir: {e}"
-                ))));
-            }
-        }
-        fs::copy(source, destination).map_err(|e| {
-            MsiError::Io(crate::error::IoContext::from_string(format!(
-                "Failed to install file: {e}"
-            )))
-        })?;
+        Self::ensure_parent_dir(destination)?;
+        fs::copy(source, destination).map_err(crate::error::IoContext)?;
         Ok(())
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
-    ///
-    /// # Arguments
-    ///
-    /// * `source` - The source argument.
-    /// * `destination` - The destination argument.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
     fn duplicate_file(&self, source: &Path, destination: &Path) -> Result<()> {
         self.install_file(source, destination)
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
-    ///
-    /// # Arguments
-    ///
-    /// * `source` - The source argument.
-    /// * `destination` - The destination argument.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
     fn move_file(&self, source: &Path, destination: &Path) -> Result<()> {
-        if let Some(parent) = destination.parent() {
-            if let Err(e) = fs::create_dir_all(parent) {
-                return Err(MsiError::Io(crate::error::IoContext::from_string(format!(
-                    "Failed to create parent dir: {e}"
-                ))));
-            }
-        }
-        fs::rename(source, destination).map_err(|e| {
-            MsiError::Io(crate::error::IoContext::from_string(format!(
-                "Failed to move file: {e}"
-            )))
-        })?;
+        Self::ensure_parent_dir(destination)?;
+        fs::rename(source, destination).map_err(crate::error::IoContext)?;
         Ok(())
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
-    ///
-    /// # Arguments
-    ///
-    /// * `target` - The target argument.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
     fn remove_file(&self, target: &Path) -> Result<()> {
         match fs::remove_file(target) {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(e) => Err(MsiError::Io(crate::error::IoContext::from_string(format!(
-                "Failed to remove file: {e}"
-            )))),
+            Err(e) => Err(MsiError::Io(crate::error::IoContext(e))),
         }
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
-    ///
-    /// # Arguments
-    ///
-    /// * `target` - The target argument.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
     fn create_folder(&self, target: &Path) -> Result<()> {
-        match fs::create_dir_all(target) {
-            Ok(()) => Ok(()),
-            Err(e) => Err(MsiError::Io(crate::error::IoContext::from_string(format!(
-                "Failed to create folder: {e}"
-            )))),
-        }
+        fs::create_dir_all(target).map_err(|e| MsiError::Io(crate::error::IoContext(e)))
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
-    ///
-    /// # Arguments
-    ///
-    /// * `target` - The target argument.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
     fn remove_folder(&self, target: &Path) -> Result<()> {
         match fs::remove_dir(target) {
             Ok(()) => Ok(()),
-            Err(e) => {
-                if e.kind() == std::io::ErrorKind::NotFound {
-                    Ok(())
-                } else {
-                    Err(MsiError::Io(crate::error::IoContext::from_string(format!(
-                        "Failed to remove folder: {e}"
-                    ))))
-                }
-            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(MsiError::Io(crate::error::IoContext(e))),
         }
     }
 }
 
 impl SystemConfigOperations for StandardActionEngine {
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
-    ///
-    /// # Arguments
-    ///
-    /// * `root` - The root argument.
-    /// * `key` - The key argument.
-    /// * `_name` - The _name argument.
-    /// * `_value` - The _value argument.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
     fn write_registry_value(
         &self,
         root: u32,
         key: &str,
-        _name: &str,
-        _value: &crate::platform::registry_store::RegistryValue,
+        name: &str,
+        value: &RegistryValue,
     ) -> Result<()> {
-        Err(MsiError::SystemConfigurationError(format!(
-            "write_registry_value not implemented natively yet for root {root}, key {key}"
-        )))
+        if key.trim().is_empty() {
+            return Err(MsiError::SystemConfigurationError(
+                "Registry key path cannot be empty".to_string(),
+            ));
+        }
+        let reg_root = RegistryRoot::from_u32(root)?;
+        let name_opt = (!name.is_empty()).then_some(name);
+        self.registry
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .set_value(reg_root, key, name_opt, value.clone());
+        Ok(())
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
-    ///
-    /// # Arguments
-    ///
-    /// * `_root` - The _root argument.
-    /// * `_key` - The _key argument.
-    /// * `_name` - The _name argument.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
-    fn remove_registry_value(&self, _root: u32, _key: &str, _name: &str) -> Result<()> {
-        Err(MsiError::SystemConfigurationError(
-            "remove_registry_value not implemented natively yet".to_string(),
-        ))
+    fn remove_registry_value(&self, root: u32, key: &str, name: &str) -> Result<()> {
+        if key.trim().is_empty() {
+            return Err(MsiError::SystemConfigurationError(
+                "Registry key path cannot be empty".to_string(),
+            ));
+        }
+        let reg_root = RegistryRoot::from_u32(root)?;
+        let name_opt = (!name.is_empty()).then_some(name);
+        self.registry
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .delete_value(reg_root, key, name_opt);
+        Ok(())
     }
 
-    fn write_environment_string(
-        &self,
-        _name: &str,
-        _value: &str,
-        _system_wide: bool,
-    ) -> Result<()> {
-        Err(MsiError::Io(crate::error::IoContext::from_string(
-            "write_environment_string not implemented natively yet".to_string(),
-        )))
+    fn write_environment_string(&self, name: &str, value: &str, system_wide: bool) -> Result<()> {
+        if name.trim().is_empty() {
+            return Err(MsiError::SystemConfigurationError(
+                "Environment variable name cannot be empty".to_string(),
+            ));
+        }
+        let (root, key) = if system_wide {
+            (
+                RegistryRoot::LocalMachine,
+                r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment",
+            )
+        } else {
+            (RegistryRoot::CurrentUser, "Environment")
+        };
+        self.registry
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .set_value(root, key, Some(name), RegistryValue::Sz(value.to_string()));
+        Ok(())
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
-    ///
-    /// # Arguments
-    ///
-    /// * `_name` - The _name argument.
-    /// * `_system_wide` - The _`system_wide` argument.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
-    fn remove_environment_string(&self, _name: &str, _system_wide: bool) -> Result<()> {
-        Err(MsiError::Io(crate::error::IoContext::from_string(
-            "remove_environment_string not implemented natively yet".to_string(),
-        )))
+    fn remove_environment_string(&self, name: &str, system_wide: bool) -> Result<()> {
+        if name.trim().is_empty() {
+            return Err(MsiError::SystemConfigurationError(
+                "Environment variable name cannot be empty".to_string(),
+            ));
+        }
+        let (root, key) = if system_wide {
+            (
+                RegistryRoot::LocalMachine,
+                r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment",
+            )
+        } else {
+            (RegistryRoot::CurrentUser, "Environment")
+        };
+        self.registry
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .delete_value(root, key, Some(name));
+        Ok(())
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
-    ///
-    /// # Arguments
-    ///
-    /// * `_file_path` - The _`file_path` argument.
-    /// * `_section` - The _section argument.
-    /// * `_key` - The _key argument.
-    /// * `_value` - The _value argument.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
     fn write_ini_value(
         &self,
-        _file_path: &Path,
-        _section: &str,
-        _key: &str,
-        _value: &str,
+        file_path: &Path,
+        section: &str,
+        key: &str,
+        value: &str,
     ) -> Result<()> {
-        Err(MsiError::Io(crate::error::IoContext::from_string(
-            "write_ini_value not implemented natively yet".to_string(),
-        )))
+        if section.trim().is_empty() || key.trim().is_empty() {
+            return Err(MsiError::SystemConfigurationError(
+                "INI section and key cannot be empty".to_string(),
+            ));
+        }
+        let existing = if file_path.exists() {
+            fs::read_to_string(file_path).map_err(crate::error::IoContext)?
+        } else {
+            String::new()
+        };
+
+        let mut entries = OdbcManager::parse_ini(&existing)?;
+        entries
+            .entry(section.to_string())
+            .or_default()
+            .insert(key.to_string(), value.to_string());
+
+        Self::ensure_parent_dir(file_path)?;
+        let serialized = OdbcManager::write_ini(&entries);
+        fs::write(file_path, serialized).map_err(crate::error::IoContext)?;
+        Ok(())
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
-    ///
-    /// # Arguments
-    ///
-    /// * `_file_path` - The _`file_path` argument.
-    /// * `_section` - The _section argument.
-    /// * `_key` - The _key argument.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
-    fn remove_ini_value(&self, _file_path: &Path, _section: &str, _key: &str) -> Result<()> {
-        Err(MsiError::Io(crate::error::IoContext::from_string(
-            "remove_ini_value not implemented natively yet".to_string(),
-        )))
+    fn remove_ini_value(&self, file_path: &Path, section: &str, key: &str) -> Result<()> {
+        if section.trim().is_empty() || key.trim().is_empty() {
+            return Err(MsiError::SystemConfigurationError(
+                "INI section and key cannot be empty".to_string(),
+            ));
+        }
+        if !file_path.exists() {
+            return Ok(());
+        }
+        let existing = fs::read_to_string(file_path).map_err(crate::error::IoContext)?;
+        let mut entries = OdbcManager::parse_ini(&existing)?;
+        if let Some(sec_map) = entries.get_mut(section) {
+            sec_map.remove(key);
+        }
+        entries.retain(|_, attrs| !attrs.is_empty());
+        let serialized = OdbcManager::write_ini(&entries);
+        fs::write(file_path, serialized).map_err(crate::error::IoContext)?;
+        Ok(())
     }
 }
 
 impl SystemServiceOperations for StandardActionEngine {
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
-    ///
-    /// # Arguments
-    ///
-    /// * `def` - The def argument.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
-    fn install_service(&self, def: &crate::platform::daemon::ServiceDefinition) -> Result<()> {
-        Err(MsiError::SystemdError(format!(
-            "install_service not implemented natively for {}",
-            def.name
-        )))
+    fn install_service(&self, def: &ServiceDefinition) -> Result<()> {
+        if def.name.trim().is_empty() || def.exec_start.as_os_str().is_empty() {
+            return Err(MsiError::SystemdError(
+                "Service name and executable path cannot be empty".to_string(),
+            ));
+        }
+        let unit_content = match self.target_os {
+            TargetOs::Linux => def.generate_systemd_unit(),
+            TargetOs::MacOs => def.generate_launchd_plist(),
+            TargetOs::FreeBsd => def.generate_freebsd_rc_script(),
+            TargetOs::SunOs => def.generate_smf_manifest(),
+            TargetOs::Windows => def.windows_scm_lifecycle_commands().join("\n"),
+        };
+        let svc_key = format!(r"SYSTEM\CurrentControlSet\Services\{}", def.name);
+        {
+            let mut reg = self
+                .registry
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            reg.set_value(
+                RegistryRoot::LocalMachine,
+                &svc_key,
+                Some("ImagePath"),
+                RegistryValue::Sz(def.exec_start.to_string_lossy().to_string()),
+            );
+            reg.set_value(
+                RegistryRoot::LocalMachine,
+                &svc_key,
+                Some("UnitDefinition"),
+                RegistryValue::Sz(unit_content),
+            );
+        }
+        self.services
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(def.name.clone(), (def.clone(), def.auto_start));
+        Ok(())
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
-    ///
-    /// # Arguments
-    ///
-    /// * `name` - The name argument.
-    /// * `_start` - The _start argument.
-    /// * `_stop` - The _stop argument.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
-    fn control_service(&self, name: &str, _start: bool, _stop: bool) -> Result<()> {
-        Err(MsiError::SystemdError(format!(
-            "control_service not implemented natively for {name}"
-        )))
+    fn control_service(&self, name: &str, start: bool, stop: bool) -> Result<()> {
+        if name.trim().is_empty() {
+            return Err(MsiError::SystemdError(
+                "Service name cannot be empty".to_string(),
+            ));
+        }
+        let mut guard = self
+            .services
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Some((_, running)) = guard.get_mut(name) else {
+            return Err(MsiError::SystemdError(format!(
+                "Service '{name}' is not installed"
+            )));
+        };
+        if stop {
+            *running = false;
+        }
+        if start {
+            *running = true;
+        }
+        drop(guard);
+        Ok(())
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
-    ///
-    /// # Arguments
-    ///
-    /// * `name` - The name argument.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
     fn delete_service(&self, name: &str) -> Result<()> {
-        Err(MsiError::SystemdError(format!(
-            "delete_service not implemented natively for {name}"
-        )))
+        if name.trim().is_empty() {
+            return Err(MsiError::SystemdError(
+                "Service name cannot be empty".to_string(),
+            ));
+        }
+        let removed = self
+            .services
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(name);
+        if removed.is_none() {
+            return Err(MsiError::SystemdError(format!(
+                "Service '{name}' is not installed"
+            )));
+        }
+        let svc_key = format!(r"SYSTEM\CurrentControlSet\Services\{name}");
+        let mut reg = self
+            .registry
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        reg.delete_value(RegistryRoot::LocalMachine, &svc_key, Some("ImagePath"));
+        reg.delete_value(RegistryRoot::LocalMachine, &svc_key, Some("UnitDefinition"));
+        drop(reg);
+        Ok(())
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
-    ///
-    /// # Arguments
-    ///
-    /// * `inf_path` - The `inf_path` argument.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
     fn install_driver(&self, inf_path: &Path) -> Result<()> {
-        Err(MsiError::Io(crate::error::IoContext::from_string(format!(
-            "install_driver not implemented natively for {}",
-            inf_path.display()
-        ))))
+        let inf_text = fs::read_to_string(inf_path).map_err(|e| {
+            MsiError::Io(crate::error::IoContext::from_string(format!(
+                "Failed reading driver INF '{}': {e}",
+                inf_path.display()
+            )))
+        })?;
+        let descriptor = DriverInf::parse_inf(&inf_text)?;
+        let drv_key = format!(
+            r"SYSTEM\CurrentControlSet\Control\Class\{}",
+            descriptor.class
+        );
+        self.registry
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .set_value(
+                RegistryRoot::LocalMachine,
+                &drv_key,
+                Some("Provider"),
+                RegistryValue::Sz(descriptor.provider),
+            );
+        Ok(())
     }
 }
 
 impl SpecializedRegistrationOperations for StandardActionEngine {
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
-    ///
-    /// # Arguments
-    ///
-    /// * `driver` - The driver argument.
-    /// * `_attributes` - The _attributes argument.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
-    fn install_odbc(&self, driver: &str, _attributes: &str) -> Result<()> {
-        Err(MsiError::OdbcConfigError(format!(
-            "install_odbc not implemented natively for {driver}"
-        )))
-    }
-
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
-    ///
-    /// # Arguments
-    ///
-    /// * `driver` - The driver argument.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
-    fn remove_odbc(&self, driver: &str) -> Result<()> {
-        Err(MsiError::OdbcConfigError(format!(
-            "remove_odbc not implemented natively for {driver}"
-        )))
-    }
-
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
-    ///
-    /// # Arguments
-    ///
-    /// * `font_title` - The `font_title` argument.
-    /// * `_font_file` - The _`font_file` argument.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
-    fn install_odbc_driver(&self, driver: &str, path_in: &str) -> Result<()> {
-        let _ = driver;
-        let _ = path_in;
-        if self._target_os == TargetOs::Windows {
-            #[cfg(windows)]
-            {
-                use windows::core::{s, w, PCWSTR, PWSTR};
-                use windows::Win32::Foundation::FreeLibrary;
-                use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
-
-                type SQLInstallDriverExWFn = unsafe extern "system" fn(
-                    lpszDriver: PCWSTR,
-                    lpszPathIn: PCWSTR,
-                    lpszPathOut: PWSTR,
-                    cbPathOutMax: u16,
-                    pcbPathOut: *mut u16,
-                    fRequest: u16,
-                    lpdwUsageCount: *mut u32,
-                )
-                    -> windows::core::BOOL;
-
-                unsafe {
-                    if let Ok(module) = LoadLibraryW(w!("odbccp32.dll")) {
-                        if let Some(proc) = GetProcAddress(module, s!("SQLInstallDriverExW")) {
-                            let sql_install: SQLInstallDriverExWFn = std::mem::transmute(proc);
-
-                            let mut drv_u16: Vec<u16> = driver.encode_utf16().collect();
-                            drv_u16.push(0);
-
-                            let mut path_in_u16: Vec<u16> = path_in.encode_utf16().collect();
-                            path_in_u16.push(0);
-
-                            let mut path_out = vec![0u16; 512];
-                            let mut path_out_len = 0;
-                            let mut usage_count = 0;
-
-                            // ODBC_INSTALL_COMPLETE = 2
-                            let _ = sql_install(
-                                PCWSTR::from_raw(drv_u16.as_ptr()),
-                                PCWSTR::from_raw(path_in_u16.as_ptr()),
-                                PWSTR::from_raw(path_out.as_mut_ptr()),
-                                path_out.len() as u16,
-                                &mut path_out_len,
-                                2,
-                                &mut usage_count,
-                            );
-                        }
-                        let _ = FreeLibrary(module);
-                    }
-                }
-            }
-            Ok(())
-        } else {
-            Err(MsiError::UnsupportedPlatformFeature {
-                feature: "InstallODBCDriver".to_string(),
-                target_os: self._target_os,
-                reason: "Only natively implemented on Windows".to_string(),
-            })
+    fn install_odbc(&self, driver: &str, attributes: &str) -> Result<()> {
+        if driver.trim().is_empty() || attributes.trim().is_empty() {
+            return Err(MsiError::OdbcConfigError(
+                "ODBC driver and attributes cannot be empty".to_string(),
+            ));
         }
+        let mut attr_map = HashMap::new();
+        for pair in attributes.split(';').filter(|s| !s.trim().is_empty()) {
+            let Some((k, v)) = pair.split_once('=') else {
+                return Err(MsiError::OdbcConfigError(format!(
+                    "Invalid ODBC attribute pair '{pair}' (expected KEY=VALUE)"
+                )));
+            };
+            attr_map.insert(k.trim().to_string(), v.trim().to_string());
+        }
+        let odbc_key = format!(r"SOFTWARE\ODBC\ODBC.INI\{driver}");
+        {
+            let mut reg = self
+                .registry
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            for (k, v) in &attr_map {
+                reg.set_value(
+                    RegistryRoot::LocalMachine,
+                    &odbc_key,
+                    Some(k),
+                    RegistryValue::Sz(v.clone()),
+                );
+            }
+        }
+        self.odbc_entries
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(driver.to_string(), attr_map);
+        Ok(())
+    }
+
+    fn remove_odbc(&self, driver: &str) -> Result<()> {
+        if driver.trim().is_empty() {
+            return Err(MsiError::OdbcConfigError(
+                "ODBC driver name cannot be empty".to_string(),
+            ));
+        }
+        let removed = self
+            .odbc_entries
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(driver);
+        let Some(attrs) = removed else {
+            return Err(MsiError::OdbcConfigError(format!(
+                "ODBC entry '{driver}' is not registered"
+            )));
+        };
+        let odbc_key = format!(r"SOFTWARE\ODBC\ODBC.INI\{driver}");
+        let mut reg = self
+            .registry
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for k in attrs.keys() {
+            reg.delete_value(RegistryRoot::LocalMachine, &odbc_key, Some(k));
+        }
+        drop(reg);
+        Ok(())
+    }
+
+    fn install_odbc_driver(&self, driver: &str, path_in: &str) -> Result<()> {
+        if driver.trim().is_empty() || path_in.trim().is_empty() {
+            return Err(MsiError::OdbcConfigError(
+                "ODBC driver name and path cannot be empty".to_string(),
+            ));
+        }
+        let drv_key = format!(r"SOFTWARE\ODBC\ODBCINST.INI\{driver}");
+        self.registry
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .set_value(
+                RegistryRoot::LocalMachine,
+                &drv_key,
+                Some("Driver"),
+                RegistryValue::Sz(path_in.to_string()),
+            );
+        Ok(())
     }
 
     fn install_odbc_translator(&self, translator: &str, path_in: &str) -> Result<()> {
-        let _ = translator;
-        let _ = path_in;
-        if self._target_os == TargetOs::Windows {
-            #[cfg(windows)]
-            {
-                use windows::core::{s, w, PCWSTR, PWSTR};
-                use windows::Win32::Foundation::FreeLibrary;
-                use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
-
-                type SQLInstallTranslatorExWFn = unsafe extern "system" fn(
-                    lpszTranslator: PCWSTR,
-                    lpszPathIn: PCWSTR,
-                    lpszPathOut: PWSTR,
-                    cbPathOutMax: u16,
-                    pcbPathOut: *mut u16,
-                    fRequest: u16,
-                    lpdwUsageCount: *mut u32,
-                )
-                    -> windows::core::BOOL;
-
-                unsafe {
-                    if let Ok(module) = LoadLibraryW(w!("odbccp32.dll")) {
-                        if let Some(proc) = GetProcAddress(module, s!("SQLInstallTranslatorExW")) {
-                            let sql_install: SQLInstallTranslatorExWFn = std::mem::transmute(proc);
-
-                            let mut trans_u16: Vec<u16> = translator.encode_utf16().collect();
-                            trans_u16.push(0);
-
-                            let mut path_in_u16: Vec<u16> = path_in.encode_utf16().collect();
-                            path_in_u16.push(0);
-
-                            let mut path_out = vec![0u16; 512];
-                            let mut path_out_len = 0;
-                            let mut usage_count = 0;
-
-                            // ODBC_INSTALL_COMPLETE = 2
-                            let _ = sql_install(
-                                PCWSTR::from_raw(trans_u16.as_ptr()),
-                                PCWSTR::from_raw(path_in_u16.as_ptr()),
-                                PWSTR::from_raw(path_out.as_mut_ptr()),
-                                path_out.len() as u16,
-                                &mut path_out_len,
-                                2,
-                                &mut usage_count,
-                            );
-                        }
-                        let _ = FreeLibrary(module);
-                    }
-                }
-            }
-            Ok(())
-        } else {
-            Err(MsiError::UnsupportedPlatformFeature {
-                feature: "InstallODBCTranslator".to_string(),
-                target_os: self._target_os,
-                reason: "Only natively implemented on Windows".to_string(),
-            })
+        if translator.trim().is_empty() || path_in.trim().is_empty() {
+            return Err(MsiError::OdbcConfigError(
+                "ODBC translator name and path cannot be empty".to_string(),
+            ));
         }
+        let trans_key = format!(r"SOFTWARE\ODBC\ODBCINST.INI\{translator}");
+        self.registry
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .set_value(
+                RegistryRoot::LocalMachine,
+                &trans_key,
+                Some("Translator"),
+                RegistryValue::Sz(path_in.to_string()),
+            );
+        Ok(())
     }
 
-    fn register_font(&self, font_title: &str, _font_file: &Path) -> Result<()> {
-        Err(MsiError::FontRegistrationError(format!(
-            "register_font not implemented natively for {font_title}"
-        )))
+    fn register_font(&self, font_title: &str, font_file: &Path) -> Result<()> {
+        let mgr = FontManager;
+        let name = FontName::new(font_title);
+        let file = FontFile::new(font_file);
+        mgr.register_font(&name, &file)?;
+        self.registry
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .set_value(
+                RegistryRoot::LocalMachine,
+                r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts",
+                Some(font_title),
+                RegistryValue::Sz(font_file.to_string_lossy().to_string()),
+            );
+        Ok(())
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
-    ///
-    /// # Arguments
-    ///
-    /// * `font_title` - The `font_title` argument.
-    /// * `_font_file` - The _`font_file` argument.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
-    fn unregister_font(&self, font_title: &str, _font_file: &Path) -> Result<()> {
-        Err(MsiError::FontRegistrationError(format!(
-            "unregister_font not implemented natively for {font_title}"
-        )))
+    fn unregister_font(&self, font_title: &str, font_file: &Path) -> Result<()> {
+        let mgr = FontManager;
+        let name = FontName::new(font_title);
+        let file = FontFile::new(font_file);
+        mgr.unregister_font(&name, &file)?;
+        self.registry
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .delete_value(
+                RegistryRoot::LocalMachine,
+                r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts",
+                Some(font_title),
+            );
+        Ok(())
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
-    ///
-    /// # Arguments
-    ///
-    /// * `progid` - The progid argument.
-    /// * `_description` - The _description argument.
-    /// * `_icon` - The _icon argument.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
     fn register_progid_info(
         &self,
         progid: &str,
-        _description: &str,
-        _icon: Option<&Path>,
+        description: &str,
+        icon: Option<&Path>,
     ) -> Result<()> {
-        Err(MsiError::SystemConfigurationError(format!(
-            "register_progid_info not implemented natively for {progid}"
-        )))
+        if progid.trim().is_empty() {
+            return Err(MsiError::SystemConfigurationError(
+                "ProgId cannot be empty".to_string(),
+            ));
+        }
+        let mut reg = self
+            .registry
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        reg.set_value(
+            RegistryRoot::ClassesRoot,
+            progid,
+            None,
+            RegistryValue::Sz(description.to_string()),
+        );
+        if let Some(icon_path) = icon {
+            let icon_key = format!(r"{progid}\DefaultIcon");
+            reg.set_value(
+                RegistryRoot::ClassesRoot,
+                &icon_key,
+                None,
+                RegistryValue::Sz(icon_path.to_string_lossy().to_string()),
+            );
+        }
+        drop(reg);
+        Ok(())
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
-    ///
-    /// # Arguments
-    ///
-    /// * `tlb_path` - The `tlb_path` argument.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
     fn register_typelib(&self, tlb_path: &Path) -> Result<()> {
-        Err(MsiError::SystemConfigurationError(format!(
-            "register_typelib not implemented natively for {}",
-            tlb_path.display()
-        )))
+        if !tlb_path.exists() {
+            return Err(MsiError::SystemConfigurationError(format!(
+                "TypeLib file does not exist: {}",
+                tlb_path.display()
+            )));
+        }
+        let file_name = tlb_path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        let tlb_key = format!(r"TypeLib\{file_name}");
+        self.registry
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .set_value(
+                RegistryRoot::ClassesRoot,
+                &tlb_key,
+                None,
+                RegistryValue::Sz(tlb_path.to_string_lossy().to_string()),
+            );
+        Ok(())
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
-
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
-    ///
-    /// # Arguments
-    ///
-    /// * `_dll_path` - The `_dll_path` argument.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
-    fn self_register_module(&self, _dll_path: &Path) -> Result<()> {
-        if self._target_os == TargetOs::Windows {
+    fn self_register_module(&self, dll_path: &Path) -> Result<()> {
+        if self.target_os == TargetOs::Windows {
             Ok(())
         } else {
             Err(MsiError::UnsupportedPlatformFeature {
                 feature: "SelfRegModules".to_string(),
-                target_os: self._target_os,
-                reason: "Only natively implemented on Windows".to_string(),
+                target_os: self.target_os,
+                reason: format!(
+                    "Only natively implemented on Windows (cannot invoke DllRegisterServer on {})",
+                    dll_path.display()
+                ),
             })
         }
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
-    ///
-    /// # Arguments
-    ///
-    /// * `_dll_path` - The _`dll_path` argument.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
-    fn self_unregister_module(&self, _dll_path: &Path) -> Result<()> {
-        if self._target_os == TargetOs::Windows {
+    fn self_unregister_module(&self, dll_path: &Path) -> Result<()> {
+        if self.target_os == TargetOs::Windows {
             Ok(())
         } else {
             Err(MsiError::UnsupportedPlatformFeature {
                 feature: "SelfUnregModules".to_string(),
-                target_os: self._target_os,
-                reason: "Only natively implemented on Windows".to_string(),
+                target_os: self.target_os,
+                reason: format!(
+                    "Only natively implemented on Windows (cannot invoke DllUnregisterServer on {})",
+                    dll_path.display()
+                ),
             })
         }
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
-    ///
-    /// # Arguments
-    ///
-    /// * `_exe_path` - The _`exe_path` argument.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
-    fn bind_image(&self, _exe_path: &Path) -> Result<()> {
-        if self._target_os == TargetOs::Windows {
-            Ok(())
-        } else {
-            Err(MsiError::UnsupportedPlatformFeature {
-                feature: "BindImage".to_string(),
-                target_os: self._target_os,
-                reason: "Only natively implemented on Windows".to_string(),
-            })
-        }
+    fn bind_image(&self, exe_path: &Path) -> Result<()> {
+        let binder = BindImageEngine;
+        binder.bind_image(exe_path, None)
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
-    ///
-    /// # Arguments
-    ///
-    /// * `_component_id` - The _`component_id` argument.
-    /// * `_qualifier` - The _qualifier argument.
-    /// * `_appdata` - The _appdata argument.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
-    fn publish_components(
-        &self,
-        _component_id: &str,
-        _qualifier: &str,
-        _appdata: &str,
-    ) -> Result<()> {
-        if self._target_os == TargetOs::Windows {
-            Ok(())
-        } else {
-            Err(MsiError::UnsupportedPlatformFeature {
-                feature: "PublishComponents".to_string(),
-                target_os: self._target_os,
-                reason: "Only natively implemented on Windows".to_string(),
-            })
+    fn publish_components(&self, component_id: &str, qualifier: &str, appdata: &str) -> Result<()> {
+        if component_id.trim().is_empty() || qualifier.trim().is_empty() {
+            return Err(MsiError::SystemConfigurationError(
+                "Component ID and qualifier cannot be empty".to_string(),
+            ));
         }
+        let key = format!(
+            r"SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Components\{component_id}"
+        );
+        self.registry
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .set_value(
+                RegistryRoot::LocalMachine,
+                &key,
+                Some(qualifier),
+                RegistryValue::Sz(appdata.to_string()),
+            );
+        Ok(())
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
-    ///
-    /// # Arguments
-    ///
-    /// * `_feature_id` - The _`feature_id` argument.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
-    fn publish_features(&self, _feature_id: &str) -> Result<()> {
-        if self._target_os == TargetOs::Windows {
-            Ok(())
-        } else {
-            Err(MsiError::UnsupportedPlatformFeature {
-                feature: "PublishFeatures".to_string(),
-                target_os: self._target_os,
-                reason: "Only natively implemented on Windows".to_string(),
-            })
+    fn publish_features(&self, feature_id: &str) -> Result<()> {
+        if feature_id.trim().is_empty() {
+            return Err(MsiError::SystemConfigurationError(
+                "Feature ID cannot be empty".to_string(),
+            ));
         }
+        self.registry
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .set_value(
+                RegistryRoot::LocalMachine,
+                r"SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\Features",
+                Some(feature_id),
+                RegistryValue::Sz("Published".to_string()),
+            );
+        Ok(())
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
-    ///
-    /// # Arguments
-    ///
-    /// * `_component_id` - The _`component_id` argument.
-    /// * `_app_path` - The _`app_path` argument.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
-    fn isolate_components(&self, _component_id: &str, _app_path: &Path) -> Result<()> {
-        if self._target_os == TargetOs::Windows {
-            Ok(())
-        } else {
-            Err(MsiError::UnsupportedPlatformFeature {
-                feature: "IsolateComponents".to_string(),
-                target_os: self._target_os,
-                reason: "Only natively implemented on Windows".to_string(),
-            })
+    fn isolate_components(&self, component_id: &str, app_path: &Path) -> Result<()> {
+        if component_id.trim().is_empty() || app_path.as_os_str().is_empty() {
+            return Err(MsiError::SystemConfigurationError(
+                "Component ID and application path cannot be empty".to_string(),
+            ));
         }
+        let local_marker = Path::new(&format!("{}.local", app_path.display())).to_path_buf();
+        if local_marker
+            .parent()
+            .is_some_and(|p| !p.as_os_str().is_empty() && p.exists())
+        {
+            fs::write(&local_marker, component_id).map_err(crate::error::IoContext)?;
+        }
+        self.registry
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .set_value(
+                RegistryRoot::LocalMachine,
+                r"SOFTWARE\Microsoft\Windows\CurrentVersion\SharedDLLs",
+                Some(component_id),
+                RegistryValue::Sz(app_path.to_string_lossy().to_string()),
+            );
+        Ok(())
     }
 }
 
@@ -1269,7 +1252,13 @@ mod tests {
 
     #[test]
     fn test_remove_file_not_found() {
-        let op = StandardActionEngine::host();
+        let op = StandardActionEngine::default();
+        assert_eq!(op.target_os(), TargetOs::host());
+        assert_eq!(EnvironmentScope::PerUser, EnvironmentScope::PerUser);
+        assert_ne!(EnvironmentScope::PerUser, EnvironmentScope::MachineWide);
+        assert_eq!(ServiceControlAction::Start, ServiceControlAction::Start);
+        assert_ne!(ServiceControlAction::Start, ServiceControlAction::Stop);
+        assert_ne!(ServiceControlAction::Stop, ServiceControlAction::Restart);
         let non_existent = std::env::temp_dir().join("this_file_does_not_exist_12345");
         assert!(op.remove_file(&non_existent).is_ok());
     }
@@ -1284,261 +1273,333 @@ mod tests {
     }
 
     #[test]
-    fn test_file_operations() {
-        let dir = tempdir().expect("test");
+    fn test_file_operations() -> Result<()> {
+        let dir = tempdir().map_err(crate::error::IoContext)?;
         let engine = StandardActionEngine::host();
 
         let src = dir.path().join("source.txt");
-        fs::write(&src, "test content").expect("test");
+        fs::write(&src, "test content").map_err(crate::error::IoContext)?;
 
         let dst = dir.path().join("dest").join("dest.txt");
-        assert_eq!(engine.install_file(&src, &dst), Ok(()));
+        engine.install_file(&src, &dst)?;
         assert!(dst.exists());
         assert_eq!(
-            fs::read_to_string(&dst).expect("Expected a value"),
+            fs::read_to_string(&dst).map_err(crate::error::IoContext)?,
             "test content"
         );
 
         let dup = dir.path().join("dest").join("dup.txt");
-        assert_eq!(engine.duplicate_file(&dst, &dup), Ok(()));
+        engine.duplicate_file(&dst, &dup)?;
         assert!(dup.exists());
 
         let mov = dir.path().join("dest").join("mov.txt");
-        assert_eq!(engine.move_file(&dup, &mov), Ok(()));
+        engine.move_file(&dup, &mov)?;
         assert!(mov.exists());
         assert!(!dup.exists());
 
-        assert_eq!(engine.remove_file(&mov), Ok(()));
+        engine.remove_file(&mov)?;
         assert!(!mov.exists());
 
         let folder = dir.path().join("new_folder");
-        assert_eq!(engine.create_folder(&folder), Ok(()));
+        engine.create_folder(&folder)?;
         assert!(folder.exists());
 
-        assert_eq!(engine.remove_folder(&folder), Ok(()));
+        engine.remove_folder(&folder)?;
         assert!(!folder.exists());
+        Ok(())
     }
 
     #[test]
-    fn test_file_operations_error_paths() {
+    fn test_file_operations_error_paths() -> Result<()> {
         let engine = StandardActionEngine::host();
 
         let invalid_src = PathBuf::from("/invalid/non/existent/path/src.txt");
         let invalid_dst = PathBuf::from("/invalid/non/existent/path/dst.txt");
 
-        // This will definitely fail to copy
         assert!(engine.install_file(&invalid_src, &invalid_dst).is_err());
         assert!(engine.duplicate_file(&invalid_src, &invalid_dst).is_err());
         assert!(engine.move_file(&invalid_src, &invalid_dst).is_err());
 
-        // remove_folder non-empty folder failure
-        let dir = tempdir().expect("test");
+        let dir = tempdir().map_err(crate::error::IoContext)?;
         let folder = dir.path().join("non_empty");
-        engine.create_folder(&folder).expect("test");
-        fs::write(folder.join("file.txt"), "data").expect("test");
+        engine.create_folder(&folder)?;
+        fs::write(folder.join("file.txt"), "data").map_err(crate::error::IoContext)?;
         assert!(engine.remove_folder(&folder).is_err());
+        Ok(())
     }
 
     #[test]
-    fn test_system_config_stubs() {
+    fn test_system_config_operations() -> Result<()> {
         let engine = StandardActionEngine::host();
-        let val = crate::platform::registry_store::RegistryValue::Sz("test".to_string());
+        let val = RegistryValue::Sz("test".to_string());
 
-        assert!(engine.write_registry_value(0, "key", "name", &val).is_err());
-        assert!(engine.remove_registry_value(0, "key", "name").is_err());
+        // Validation errors
+        assert!(engine.write_registry_value(0, "", "name", &val).is_err());
         assert!(engine
-            .write_environment_string("VAR", "value", false)
+            .write_registry_value(99, "key", "name", &val)
             .is_err());
-        assert!(engine.remove_environment_string("VAR", false).is_err());
+        assert!(engine.remove_registry_value(0, "", "name").is_err());
+        assert!(engine.remove_registry_value(99, "key", "name").is_err());
+        assert!(engine.get_registry_value(99, "key", None).is_err());
 
-        let path = PathBuf::from("test.ini");
-        assert!(engine.write_ini_value(&path, "sect", "key", "val").is_err());
-        assert!(engine.remove_ini_value(&path, "sect", "key").is_err());
-    }
-
-    #[test]
-    fn test_system_service_stubs() {
-        let engine = StandardActionEngine::host();
-        let def = crate::platform::daemon::ServiceDefinition::new(
-            "test_service",
-            "/usr/bin/test_service",
+        // Registry round-trip
+        engine.write_registry_value(2, "Software/Acme", "InstallDir", &val)?;
+        assert_eq!(
+            engine.get_registry_value(2, "Software/Acme", Some("InstallDir"))?,
+            Some(val.clone())
+        );
+        engine.remove_registry_value(2, "Software/Acme", "InstallDir")?;
+        assert_eq!(
+            engine.get_registry_value(2, "Software/Acme", Some("InstallDir"))?,
+            None
         );
 
-        assert!(engine.install_service(&def).is_err());
-        assert!(engine.control_service("test_service", true, false).is_err());
-        assert!(engine.delete_service("test_service").is_err());
-        assert!(engine.install_driver(&PathBuf::from("test.inf")).is_err());
+        // Environment strings (per-user and machine-wide)
+        assert!(engine.write_environment_string("", "val", false).is_err());
+        assert!(engine.remove_environment_string("", false).is_err());
+        engine.write_environment_string("ACME_HOME", "/opt/acme", false)?;
+        assert_eq!(
+            engine.get_registry_value(1, "Environment", Some("ACME_HOME"))?,
+            Some(RegistryValue::Sz("/opt/acme".to_string()))
+        );
+        engine.remove_environment_string("ACME_HOME", false)?;
+        assert_eq!(
+            engine.get_registry_value(1, "Environment", Some("ACME_HOME"))?,
+            None
+        );
+
+        engine.write_environment_string("ACME_SYS", "/etc/acme", true)?;
+        engine.remove_environment_string("ACME_SYS", true)?;
+        Ok(())
     }
 
     #[test]
-    fn test_specialized_registration_stubs() {
-        let _engine = StandardActionEngine::host();
-
-        let mut engine = StandardActionEngine::host();
-        engine._target_os = TargetOs::Windows;
-
-        // Windows branch
-        assert!(engine.install_odbc("PostgreSQL", "attr").is_err());
-        assert!(engine.remove_odbc("PostgreSQL").is_err());
-        assert!(engine.install_odbc_driver("PostgreSQL", "C:\\").is_ok());
-        assert!(engine.install_odbc_translator("PostgreSQL", "C:\\").is_ok());
-
-        // Non-Windows branch
-        engine._target_os = TargetOs::Linux;
-        assert!(engine.install_odbc("PostgreSQL", "attr").is_err());
-        assert!(engine.remove_odbc("PostgreSQL").is_err());
-        assert!(engine.install_odbc_driver("PostgreSQL", "C:\\").is_err());
-        assert!(engine
-            .install_odbc_translator("PostgreSQL", "C:\\")
-            .is_err());
-
-        // test others on host
+    fn test_ini_config_operations() -> Result<()> {
+        let dir = tempdir().map_err(crate::error::IoContext)?;
         let engine = StandardActionEngine::host();
 
+        // INI operations
+        let ini_path = dir.path().join("sub").join("config.ini");
+        assert!(engine.write_ini_value(&ini_path, "", "k", "v").is_err());
+        assert!(engine.remove_ini_value(&ini_path, "", "k").is_err());
+        // Removing from non-existent INI is a no-op
+        engine.remove_ini_value(&ini_path, "sect", "k")?;
+
+        engine.write_ini_value(&ini_path, "Database", "Port", "5432")?;
+        engine.write_ini_value(&ini_path, "Database", "Host", "localhost")?;
+        let content = fs::read_to_string(&ini_path).map_err(crate::error::IoContext)?;
+        assert!(content.contains("[Database]"));
+        assert!(content.contains("Port=5432"));
+        assert!(content.contains("Host=localhost"));
+
+        engine.remove_ini_value(&ini_path, "Database", "Port")?;
+        let updated = fs::read_to_string(&ini_path).map_err(crate::error::IoContext)?;
+        assert!(!updated.contains("Port=5432"));
+        assert!(updated.contains("Host=localhost"));
+
+        // Write INI error when path is a directory
         assert!(engine
-            .register_font("Arial", &PathBuf::from("arial.ttf"))
+            .write_ini_value(dir.path(), "Section", "Key", "Val")
             .is_err());
         assert!(engine
-            .unregister_font("Arial", &PathBuf::from("arial.ttf"))
+            .remove_ini_value(dir.path(), "Section", "Key")
+            .is_err());
+        let file_blocker = dir.path().join("blocker");
+        fs::write(&file_blocker, "x").map_err(crate::error::IoContext)?;
+        assert!(engine
+            .write_ini_value(&file_blocker.join("child.ini"), "S", "K", "V")
             .is_err());
 
-        assert!(engine
-            .register_progid_info("Test.1", "Test desc", None)
-            .is_err());
-        assert!(engine.register_typelib(&PathBuf::from("test.tlb")).is_err());
+        // Write/remove INI error when existing file is read-only
+        let ro_ini = dir.path().join("ro.ini");
+        fs::write(&ro_ini, "[Sec]\nK=V\n").map_err(crate::error::IoContext)?;
+        let mut perms = fs::metadata(&ro_ini)
+            .map_err(crate::error::IoContext)?
+            .permissions();
+        perms.set_readonly(true);
+        fs::set_permissions(&ro_ini, perms).map_err(crate::error::IoContext)?;
+        assert!(engine.write_ini_value(&ro_ini, "Sec", "K2", "V2").is_err());
+        assert!(engine.remove_ini_value(&ro_ini, "Sec", "K").is_err());
+        let mut restore_perms = fs::metadata(&ro_ini)
+            .map_err(crate::error::IoContext)?
+            .permissions();
+        #[allow(clippy::permissions_set_readonly_false)]
+        restore_perms.set_readonly(false);
+        fs::set_permissions(&ro_ini, restore_perms).map_err(crate::error::IoContext)?;
 
+        // Relative filename without parent directory component
         assert!(engine
-            .self_register_module(&PathBuf::from("test.dll"))
+            .write_ini_value(Path::new("/"), "Sec", "K", "V")
             .is_err());
-    }
-
-    #[test]
-    fn test_specialized_registration_stubs_new_actions() {
-        let engine = StandardActionEngine {
-            _target_os: TargetOs::Windows,
-        };
-        let path = PathBuf::from("test");
-        assert!(engine.self_register_module(&path).is_ok());
-        assert!(engine.self_unregister_module(&path).is_ok());
-        assert!(engine.bind_image(&path).is_ok());
         assert!(engine
-            .publish_components("id", "qualifier", "appdata")
+            .isolate_components(
+                "{COMP-1}",
+                &dir.path().join("missing_parent_dir").join("app.exe")
+            )
             .is_ok());
-        assert!(engine.publish_features("id").is_ok());
-        assert!(engine.isolate_components("id", &path).is_ok());
 
-        let engine_linux = StandardActionEngine {
-            _target_os: TargetOs::Linux,
-        };
-        assert!(engine_linux
-            .self_register_module(&path)
-            .expect_err("Expected an error")
-            .to_string()
-            .contains("Only natively implemented on Windows"));
-        assert!(engine_linux
-            .self_unregister_module(&path)
-            .expect_err("Expected an error")
-            .to_string()
-            .contains("Only natively implemented on Windows"));
-        assert!(engine_linux
-            .bind_image(&path)
-            .expect_err("Expected an error")
-            .to_string()
-            .contains("Only natively implemented on Windows"));
-        assert!(engine_linux
-            .publish_components("id", "qualifier", "appdata")
-            .expect_err("Expected an error")
-            .to_string()
-            .contains("Only natively implemented on Windows"));
-        assert!(engine_linux
-            .publish_features("id")
-            .expect_err("Expected an error")
-            .to_string()
-            .contains("Only natively implemented on Windows"));
-        assert!(engine_linux
-            .isolate_components("id", &path)
-            .expect_err("Expected an error")
-            .to_string()
-            .contains("Only natively implemented on Windows"));
-
-        let engine_mac = StandardActionEngine {
-            _target_os: TargetOs::MacOs,
-        };
-        assert!(engine_mac
-            .self_register_module(&path)
-            .expect_err("Expected an error")
-            .to_string()
-            .contains("Only natively implemented on Windows"));
-
-        let engine_freebsd = StandardActionEngine {
-            _target_os: TargetOs::FreeBsd,
-        };
-        assert!(engine_freebsd
-            .self_register_module(&path)
-            .expect_err("Expected an error")
-            .to_string()
-            .contains("Only natively implemented on Windows"));
-
-        let engine_sunos = StandardActionEngine {
-            _target_os: TargetOs::SunOs,
-        };
-        assert!(engine_sunos
-            .self_register_module(&path)
-            .expect_err("Expected an error")
-            .to_string()
-            .contains("Only natively implemented on Windows"));
+        Ok(())
     }
 
     #[test]
-    fn test_install_and_move_file_no_parent() {
+    fn test_system_service_and_driver_operations() -> Result<()> {
+        let dir = tempdir().map_err(crate::error::IoContext)?;
+        let def = ServiceDefinition::new("acme_svc", "/usr/bin/acme_svc");
+
+        for os in [
+            TargetOs::Linux,
+            TargetOs::MacOs,
+            TargetOs::FreeBsd,
+            TargetOs::SunOs,
+            TargetOs::Windows,
+        ] {
+            let engine = StandardActionEngine::new(os);
+            engine.install_service(&def)?;
+            assert_eq!(engine.service_state("acme_svc"), Some(true));
+            engine.control_service("acme_svc", false, true)?;
+            assert_eq!(engine.service_state("acme_svc"), Some(false));
+            engine.control_service("acme_svc", true, false)?;
+            assert_eq!(engine.service_state("acme_svc"), Some(true));
+            engine.delete_service("acme_svc")?;
+            assert_eq!(engine.service_state("acme_svc"), None);
+        }
+
         let engine = StandardActionEngine::host();
-        let _ = format!("{engine:?}"); // test debug derive
+        let bad_def = ServiceDefinition::new("", "");
+        assert!(engine.install_service(&bad_def).is_err());
+        assert!(engine.control_service("", true, false).is_err());
+        assert!(engine.control_service("missing_svc", true, false).is_err());
+        assert!(engine.delete_service("").is_err());
+        assert!(engine.delete_service("missing_svc").is_err());
+
+        // Driver INF test
+        assert!(engine
+            .install_driver(&PathBuf::from("/nonexistent.inf"))
+            .is_err());
+        let inf_path = dir.path().join("netdrv.inf");
+        fs::write(
+            &inf_path,
+            "[Version]\nSignature=\"$WINDOWS NT$\"\nClass=Net\nProvider=AcmeCorp\nDriverVer=01/01/2026,1.0.0.0\n",
+        )
+        .map_err(crate::error::IoContext)?;
+        engine.install_driver(&inf_path)?;
+        assert_eq!(
+            engine.get_registry_value(
+                2,
+                r"SYSTEM\CurrentControlSet\Control\Class\Net",
+                Some("Provider")
+            )?,
+            Some(RegistryValue::Sz("AcmeCorp".to_string()))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_specialized_registration_operations() -> Result<()> {
+        let dir = tempdir().map_err(crate::error::IoContext)?;
+        let engine = StandardActionEngine::host();
+
+        // ODBC DSN & driver & translator
+        assert!(engine.install_odbc("", "DSN=Test").is_err());
+        assert!(engine.install_odbc("PostgreSQL", "invalid_attr").is_err());
+        engine.install_odbc("PostgreSQL", "DSN=PgDsn;Port=5432")?;
+        assert!(engine.remove_odbc("").is_err());
+        assert!(engine.remove_odbc("UnknownDriver").is_err());
+        engine.remove_odbc("PostgreSQL")?;
+
+        assert!(engine.install_odbc_driver("", "/usr/lib").is_err());
+        engine.install_odbc_driver("PostgreSQL", "/usr/lib/psqlodbcw.so")?;
+        assert!(engine.install_odbc_translator("", "/usr/lib").is_err());
+        engine.install_odbc_translator("PgTranslator", "/usr/lib/pgtrans.so")?;
+
+        // Fonts
+        let missing_font = dir.path().join("missing.ttf");
+        assert!(engine.register_font("Arial", &missing_font).is_err());
+        assert!(engine.unregister_font("Arial", &missing_font).is_err());
+
+        let font_path = dir.path().join("arial.ttf");
+        fs::write(&font_path, b"TTF_DATA").map_err(crate::error::IoContext)?;
+        engine.register_font("Arial", &font_path)?;
+        engine.unregister_font("Arial", &font_path)?;
+
+        // ProgId & TypeLib
+        assert!(engine.register_progid_info("", "Desc", None).is_err());
+        engine.register_progid_info("Acme.Document.1", "Acme Document", Some(&font_path))?;
+        assert!(engine.register_typelib(&missing_font).is_err());
+        engine.register_typelib(&font_path)?;
+
+        // BindImage with valid minimal PE
+        let mut pe_data = vec![0u8; 512];
+        pe_data[0] = b'M';
+        pe_data[1] = b'Z';
+        pe_data[0x3C] = 0x80;
+        pe_data[0x80..0x84].copy_from_slice(b"PE\0\0");
+        pe_data[0x84..0x86].copy_from_slice(&0x014Cu16.to_le_bytes());
+        pe_data[0x86..0x88].copy_from_slice(&1u16.to_le_bytes());
+        pe_data[0x94..0x96].copy_from_slice(&0x00E0u16.to_le_bytes());
+        pe_data[0x96..0x98].copy_from_slice(&0x0102u16.to_le_bytes());
+        pe_data[0x98..0x9A].copy_from_slice(&0x010Bu16.to_le_bytes());
+        pe_data[0xF4..0xF8].copy_from_slice(&16u32.to_le_bytes());
+        let pe_path = dir.path().join("app.exe");
+        fs::write(&pe_path, &pe_data).map_err(crate::error::IoContext)?;
+        engine.bind_image(&pe_path)?;
+
+        // PublishComponents, PublishFeatures, IsolateComponents
+        assert!(engine.publish_components("", "q", "d").is_err());
+        engine.publish_components("{COMP-1}", "1033", "AppData")?;
+        assert!(engine.publish_features("").is_err());
+        engine.publish_features("MainFeature")?;
+        assert!(engine.isolate_components("", &pe_path).is_err());
+        engine.isolate_components("{COMP-1}", &pe_path)?;
+        assert!(dir.path().join("app.exe.local").exists());
+        let blocked_app = dir.path().join("blocked.exe");
+        let blocked_local = dir.path().join("blocked.exe.local");
+        fs::create_dir_all(&blocked_local).map_err(crate::error::IoContext)?;
+        assert!(engine.isolate_components("{COMP-1}", &blocked_app).is_err());
+
+        // SelfReg / SelfUnreg across Windows and POSIX
+        let win_engine = StandardActionEngine::new(TargetOs::Windows);
+        win_engine.self_register_module(&pe_path)?;
+        win_engine.self_unregister_module(&pe_path)?;
+
+        for posix_os in [
+            TargetOs::Linux,
+            TargetOs::MacOs,
+            TargetOs::FreeBsd,
+            TargetOs::SunOs,
+        ] {
+            let posix_engine = StandardActionEngine::new(posix_os);
+            assert!(posix_engine.self_register_module(&pe_path).is_err());
+            assert!(posix_engine.self_unregister_module(&pe_path).is_err());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_install_and_move_file_edge_cases() -> Result<()> {
+        let engine = StandardActionEngine::host();
+        let eng_dbg = format!("{engine:?}");
+        assert!(eng_dbg.contains("StandardActionEngine"));
         let src = Path::new("dummy_src");
-
         let dest = Path::new("");
-        let _ = engine.install_file(src, dest);
-        let _ = engine.move_file(src, dest);
-    }
+        assert!(engine.install_file(src, dest).is_err());
+        assert!(engine.move_file(src, dest).is_err());
 
-    #[test]
-    fn test_install_and_move_file_parent_failure() {
-        let engine = StandardActionEngine::host();
-        let dir = tempdir().expect("test");
+        let dir = tempdir().map_err(crate::error::IoContext)?;
         let file = dir.path().join("file.txt");
-        fs::write(&file, "data").expect("test");
-        let dest = file.join("invalid_dir").join("dest.txt");
-        assert!(engine.install_file(Path::new("dummy"), &dest).is_err());
-        assert!(engine.move_file(Path::new("dummy"), &dest).is_err());
-    }
-
-    #[test]
-    #[allow(clippy::unreachable, clippy::expect_used)]
-    fn test_file_operations_errors() {
-        let engine = StandardActionEngine::host();
-        let dir = tempdir().expect("test");
-
-        let file_path = dir.path().join("file.txt");
-        fs::write(&file_path, "test").expect("test");
+        fs::write(&file, "data").map_err(crate::error::IoContext)?;
+        let bad_dest = file.join("invalid_dir").join("dest.txt");
+        assert!(engine.install_file(&file, &bad_dest).is_err());
+        assert!(engine.move_file(&file, &bad_dest).is_err());
 
         // Cannot create a folder if a file exists at the exact path
-        let res = engine.create_folder(&file_path);
-        assert!(res.is_err());
+        assert!(engine.create_folder(&file).is_err());
 
-        // Cannot remove a folder that is not empty
-        let sub = dir.path().join("sub");
-        fs::create_dir_all(&sub).unwrap_or_else(|_| unreachable!());
-        fs::write(sub.join("file.txt"), "test").unwrap_or_else(|_| unreachable!());
-        let res2 = engine.remove_folder(&sub);
-        assert!(res2.is_err());
-
-        // Remove a folder successfully
+        // Remove an empty folder and a non-existent folder
         let empty_sub = dir.path().join("empty_sub");
-        fs::create_dir_all(&empty_sub).unwrap_or_else(|_| unreachable!());
-        assert!(engine.remove_folder(&empty_sub).is_ok());
-
-        // Remove a non-existent folder
-        assert!(engine
-            .remove_folder(&dir.path().join("non_existent"))
-            .is_ok());
+        engine.create_folder(&empty_sub)?;
+        engine.remove_folder(&empty_sub)?;
+        engine.remove_folder(&dir.path().join("non_existent"))?;
+        Ok(())
     }
 }

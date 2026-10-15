@@ -155,14 +155,14 @@ mod sql_tests_extended {
     }
 
     #[test]
-    fn test_sql_joins() {
+    fn test_sql_joins() -> Result<(), Box<dyn std::error::Error>> {
         let mut db = LinkedDatabase::default();
 
         // Create Table T1
         let schema1 = TableSchema::new("T1")
             .with_column(ColumnDef::new("Id", DataType::Short).primary_key())
             .with_column(ColumnDef::new("Name", DataType::String { max_len: 255 }));
-        db.catalog.add_table(schema1).expect("test");
+        assert!(db.catalog.add_table(schema1).is_ok());
         db.tables.insert(
             "T1".to_string(),
             vec![
@@ -181,7 +181,7 @@ mod sql_tests_extended {
         let schema2 = TableSchema::new("T2")
             .with_column(ColumnDef::new("Id", DataType::Short).primary_key())
             .with_column(ColumnDef::new("Color", DataType::String { max_len: 255 }));
-        db.catalog.add_table(schema2).expect("test");
+        assert!(db.catalog.add_table(schema2).is_ok());
         db.tables.insert(
             "T2".to_string(),
             vec![
@@ -201,8 +201,7 @@ mod sql_tests_extended {
             &mut db,
             "SELECT T1.Name, T2.Color FROM T1, T2 WHERE T1.Id = T2.Id",
             &[],
-        )
-        .expect("Failed to execute select");
+        )?;
         let expected = QueryResult::Select {
             columns: vec!["T1.Name".to_string(), "T2.Color".to_string()],
             rows: vec![
@@ -217,22 +216,24 @@ mod sql_tests_extended {
             ],
         };
         assert_eq!(res, expected);
+        Ok(())
     }
 
     #[test]
-    fn test_sql_alter_table_hold_free() {
+    fn test_sql_alter_table_hold_free() -> Result<(), Box<dyn std::error::Error>> {
         let mut db = LinkedDatabase::default();
 
         // Create Table T1
         let schema1 =
             TableSchema::new("T1").with_column(ColumnDef::new("Id", DataType::Short).primary_key());
-        db.catalog.add_table(schema1).expect("test");
+        assert!(db.catalog.add_table(schema1).is_ok());
 
-        let res = execute_sql(&mut db, "ALTER TABLE T1 HOLD", &[]).expect("test");
-        assert_eq!(res, QueryResult::SchemaChanged);
+        let res_hold = execute_sql(&mut db, "ALTER TABLE T1 HOLD", &[])?;
+        assert_eq!(res_hold, QueryResult::SchemaChanged);
 
-        let res = execute_sql(&mut db, "ALTER TABLE T1 FREE", &[]).expect("test");
-        assert_eq!(res, QueryResult::SchemaChanged);
+        let res_free = execute_sql(&mut db, "ALTER TABLE T1 FREE", &[])?;
+        assert_eq!(res_free, QueryResult::SchemaChanged);
+        Ok(())
     }
 
     #[test]
@@ -240,7 +241,7 @@ mod sql_tests_extended {
         let mut db = LinkedDatabase::default();
         let schema1 =
             TableSchema::new("T1").with_column(ColumnDef::new("Id", DataType::Short).primary_key());
-        db.catalog.add_table(schema1).expect("test");
+        assert!(db.catalog.add_table(schema1).is_ok());
 
         // Malformed ALTER TABLE
         assert!(execute_sql(&mut db, "ALTER TABLE T1", &[]).is_err());
@@ -257,7 +258,7 @@ mod sql_tests_extended {
         // Ambiguous column reference
         let schema2 =
             TableSchema::new("T2").with_column(ColumnDef::new("Id", DataType::Short).primary_key());
-        db.catalog.add_table(schema2).expect("test");
+        assert!(db.catalog.add_table(schema2).is_ok());
         assert!(execute_sql(&mut db, "SELECT Id FROM T1, T2", &[]).is_err());
 
         // Malformed DROP TABLE

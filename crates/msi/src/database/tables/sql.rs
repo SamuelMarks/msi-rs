@@ -969,7 +969,7 @@ mod tests {
         #[allow(clippy::redundant_clone)]
         let row_cloned = row.clone();
         assert_eq!(row_cloned, row);
-        assert!(format!("{row:?}").contains("OpenEdXDb"));
+        assert!(format!("{row:?}").contains("OpenEdXDb"), "format check");
     }
     #[allow(clippy::cognitive_complexity)]
     /// Tests `SqlString` schema and typed row conversions.
@@ -1128,7 +1128,7 @@ mod tests {
         #[allow(clippy::redundant_clone)]
         let row_cloned = row.clone();
         assert_eq!(row_cloned, row);
-        assert!(format!("{row:?}").contains("CreateSchema"));
+        assert!(format!("{row:?}").contains("CreateSchema"), "format check");
     }
     #[allow(clippy::cognitive_complexity)]
     /// Tests `SqlScript` schema and typed row conversions.
@@ -1326,6 +1326,6 @@ mod tests {
         #[allow(clippy::redundant_clone)]
         let row_cloned = row.clone();
         assert_eq!(row_cloned, row);
-        assert!(format!("{row:?}").contains("InitScript"));
+        assert!(format!("{row:?}").contains("InitScript"), "format check");
     }
 }

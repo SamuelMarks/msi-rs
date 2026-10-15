@@ -133,7 +133,7 @@ mod tests {
 
         provider.create_shortcut(Path::new(""), Path::new(""))?;
 
-        let temp_dir = tempfile::tempdir().expect("test");
+        let temp_dir = tempfile::tempdir()?;
         let lnk_path = temp_dir.path().join("App.lnk");
         provider.create_shortcut(Path::new("C:/App.exe"), &lnk_path)?;
         assert!(lnk_path.exists());

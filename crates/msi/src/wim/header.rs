@@ -292,8 +292,6 @@ impl WimHeader {
 
 #[cfg(test)]
 #[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
     clippy::field_reassign_with_default,
     clippy::shadow_unrelated,
     clippy::unreadable_literal,

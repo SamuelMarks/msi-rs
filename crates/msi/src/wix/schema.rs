@@ -121,10 +121,22 @@ mod tests {
             WIX_POSIX_V1_NAMESPACE
         );
 
-        assert!(format!("{}", WixSchemaVersion::V3).contains("WiX v3"));
-        assert!(format!("{}", WixSchemaVersion::V4).contains("WiX v4"));
-        assert!(format!("{}", WixSchemaVersion::V5).contains("WiX v5"));
-        assert!(format!("{}", WixSchemaVersion::PosixV1).contains("POSIX v1"));
+        assert_eq!(
+            format!("{}", WixSchemaVersion::V3),
+            format!("WiX v3 ({WIX_V3_NAMESPACE})")
+        );
+        assert_eq!(
+            format!("{}", WixSchemaVersion::V4),
+            format!("WiX v4 ({WIX_V4_NAMESPACE})")
+        );
+        assert_eq!(
+            format!("{}", WixSchemaVersion::V5),
+            format!("WiX v5 ({WIX_V5_NAMESPACE})")
+        );
+        assert_eq!(
+            format!("{}", WixSchemaVersion::PosixV1),
+            format!("POSIX v1 ({WIX_POSIX_V1_NAMESPACE})")
+        );
 
         assert!(WixSchemaVersion::from_uri("http://example.com/invalid").is_err());
     }

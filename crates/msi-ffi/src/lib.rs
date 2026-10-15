@@ -1,35 +1,12 @@
 #![deny(missing_docs)]
 #![deny(clippy::missing_docs_in_private_items)]
 #![allow(non_snake_case)]
-#![allow(clippy::empty_line_after_doc_comments)]
-#![allow(clippy::assertions_on_constants)]
 #![allow(
-    clippy::unreadable_literal,
-    clippy::missing_safety_doc,
     clippy::significant_drop_tightening,
     clippy::missing_const_for_fn,
-    clippy::inline_always,
-    clippy::missing_panics_doc,
-    clippy::manual_assert
-)]
-#![allow(
-    clippy::match_same_arms,
-    clippy::option_if_let_else,
-    clippy::cast_sign_loss,
     clippy::not_unsafe_ptr_arg_deref,
-    clippy::manual_let_else,
-    clippy::maybe_infinite_iter,
-    clippy::cast_possible_truncation,
-    clippy::cast_possible_wrap,
-    clippy::shadow_unrelated,
     unused_variables
 )]
-#![allow(clippy::used_underscore_binding)]
-#![allow(clippy::unnecessary_safety_doc)]
-#![allow(clippy::cognitive_complexity)]
-#![allow(clippy::too_many_lines)]
-#![allow(clippy::unnecessary_wraps)]
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! # msi-ffi
 //!
 //! C-compatible Foreign Function Interface (C-ABI) for `msi-rs`.
@@ -63,7 +40,6 @@ pub mod error;
 pub mod handles;
 pub mod hooks;
 pub mod locator;
-pub mod md5;
 pub mod package;
 pub mod patching;
 pub mod source_list;

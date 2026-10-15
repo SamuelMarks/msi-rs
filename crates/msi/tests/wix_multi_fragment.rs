@@ -687,9 +687,25 @@ fn test_wix_cross_fragment_directory_attachment_chain() -> Result<()> {
     let db = pkg.database();
 
     // Verify Directory table records
-    let _dirs = db.get_records("Directory");
+    let dirs = db.get_records("Directory");
+    assert!(dirs.iter().any(|r| {
+        r.get(0) == Some(&FieldValue::String("BINDIR".to_string()))
+            && r.get(1) == Some(&FieldValue::String("INSTALLFOLDER".to_string()))
+    }));
+    assert!(dirs.iter().any(|r| {
+        r.get(0) == Some(&FieldValue::String("PLUGINDIR".to_string()))
+            && r.get(1) == Some(&FieldValue::String("BINDIR".to_string()))
+    }));
     // Verify Component table records
-    let _comps = db.get_records("Component");
+    let comps = db.get_records("Component");
+    assert!(comps.iter().any(|r| {
+        r.get(0) == Some(&FieldValue::String("CmpBin".to_string()))
+            && r.get(2) == Some(&FieldValue::String("BINDIR".to_string()))
+    }));
+    assert!(comps.iter().any(|r| {
+        r.get(0) == Some(&FieldValue::String("CmpPlug".to_string()))
+            && r.get(2) == Some(&FieldValue::String("PLUGINDIR".to_string()))
+    }));
     let _ = fs::remove_dir_all(&temp_dir);
     Ok(())
 }

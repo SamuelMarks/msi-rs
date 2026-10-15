@@ -1259,7 +1259,8 @@ LineWithoutEquals
         assert!(build_xml.contains("BuildComponents"));
         let _ = fs::remove_dir_all(&temp_dir);
 
-        assert!(format!("{harvester:?}").contains("Harvester"));
+        let harv_dbg = format!("{harvester:?}");
+        assert!(harv_dbg.contains("Harvester"));
     }
 
     /// Tests `sanitize_id` and `make_8_3_name` helpers directly on edge cases.
@@ -1507,11 +1508,13 @@ LineWithoutEquals
         let def_opts = HarvestPayloadOptions::default();
         assert_eq!(def_opts, HarvestPayloadOptions::new());
         assert_eq!(def_opts, def_opts.clone());
-        assert!(format!("{def_opts:?}").contains("HarvestPayloadOptions"));
+        let opts_dbg = format!("{def_opts:?}");
+        assert!(opts_dbg.contains("HarvestPayloadOptions"));
 
         let def_res = HarvestPayloadResult::default();
         assert_eq!(def_res, def_res.clone());
-        assert!(format!("{def_res:?}").contains("HarvestPayloadResult"));
+        let res_dbg = format!("{def_res:?}");
+        assert!(res_dbg.contains("HarvestPayloadResult"));
     }
 
     /// Tests `matches_pattern` additional boundary and wildcard conditions.

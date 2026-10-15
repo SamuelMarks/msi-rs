@@ -264,63 +264,61 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn test_native_server_lifecycle() {
+    fn test_native_server_lifecycle() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut server = NativeMsiServer::default();
         assert_eq!(server.get_state(), RpcConnectionState::Uninitialized);
 
-        server.connect().expect("failed to connect");
+        assert!(server.connect().is_ok());
         assert_eq!(server.get_state(), RpcConnectionState::Connected);
 
-        server
-            .execute_transaction(42)
-            .expect("failed to execute transaction");
+        server.execute_transaction(42)?;
 
-        let err = server.execute_transaction(0).unwrap_err();
+        let err = server.execute_transaction(0).err().unwrap_or_default();
         assert_eq!(
             err,
             MsiError::MsiServerError("Invalid transaction ID (0).".to_string())
         );
 
-        server.disconnect().expect("failed to disconnect");
+        assert!(server.disconnect().is_ok());
         assert_eq!(server.get_state(), RpcConnectionState::Disconnected);
 
-        let err2 = server.execute_transaction(42).unwrap_err();
+        let err2 = server.execute_transaction(42).err().unwrap_or_default();
         assert_eq!(
             err2,
             MsiError::ComRpcError(
                 "Cannot execute transaction: server is not connected.".to_string()
             )
         );
+        Ok(())
     }
 
     #[cfg(not(windows))]
     #[test]
-    fn test_mock_server_lifecycle() {
+    fn test_mock_server_lifecycle() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut server = MockMsiServer::default();
         assert_eq!(server.get_state(), RpcConnectionState::Uninitialized);
 
-        server.connect().expect("failed to connect");
+        assert!(server.connect().is_ok());
         assert_eq!(server.get_state(), RpcConnectionState::Connected);
 
-        server
-            .execute_transaction(42)
-            .expect("failed to execute transaction");
+        server.execute_transaction(42)?;
 
-        let err = server.execute_transaction(0).unwrap_err();
+        let err = server.execute_transaction(0).err().unwrap_or_default();
         assert_eq!(
             err,
             MsiError::MsiServerError("Invalid transaction ID (0).".to_string())
         );
 
-        server.disconnect().expect("failed to disconnect");
+        assert!(server.disconnect().is_ok());
         assert_eq!(server.get_state(), RpcConnectionState::Disconnected);
 
-        let err2 = server.execute_transaction(42).unwrap_err();
+        let err2 = server.execute_transaction(42).err().unwrap_or_default();
         assert_eq!(
             err2,
             MsiError::ComRpcError(
                 "Cannot execute transaction: mock server is not connected.".to_string()
             )
         );
+        Ok(())
     }
 }

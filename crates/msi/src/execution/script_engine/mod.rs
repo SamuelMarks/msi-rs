@@ -186,6 +186,10 @@ mod tests {
     /// Tests `ScriptValue` conversions from both `JsValue` and `Variant`.
     #[test]
     fn test_script_value_conversions() {
+        use std::collections::hash_map::DefaultHasher;
+        use std::collections::HashMap;
+        use std::hash::Hash;
+
         let engine_default = ScriptEngine::default();
         let _ = format!("{engine_default:?}");
 
@@ -195,14 +199,11 @@ mod tests {
         assert_ne!(ScriptLanguage::JScript, ScriptLanguage::VBScript);
         let _ = format!("{sl1:?}");
 
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::Hash;
         let mut hasher = DefaultHasher::new();
         sl1.hash(&mut hasher);
 
-        let sv1 = ScriptValue::Undefined;
-        let _ = format!("{sv1:?}");
-        use std::collections::HashMap;
+        let val_undef = ScriptValue::Undefined;
+        let _ = format!("{val_undef:?}");
 
         assert_eq!(
             ScriptValue::from(JsValue::Undefined),

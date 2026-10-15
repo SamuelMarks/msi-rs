@@ -1178,7 +1178,8 @@ mod tests {
     #[test]
     fn test_renderer_types_and_traits() {
         let mapper = EguiLayoutMapper::new(WizardTheme::mondo(), FontMetrics::default());
-        assert!(format!("{mapper:?}").contains("EguiLayoutMapper"));
+        let mapper_dbg = format!("{mapper:?}");
+        assert!(mapper_dbg.contains("EguiLayoutMapper"));
 
         let widget = UiWidget::Separator {
             color: Color32::LINE_GRAY,
@@ -1186,7 +1187,7 @@ mod tests {
         #[allow(clippy::redundant_clone)]
         let cloned_widget = widget.clone();
         assert_eq!(widget, cloned_widget);
-        assert!(format!("{widget:?}").contains("Separator"));
+        assert!(format!("{widget:?}").contains("Separator"), "format check");
 
         let draw = DrawCommand::FillRect {
             rect: PixelRect::new(0, 0, 10, 10),
@@ -1195,12 +1196,13 @@ mod tests {
         #[allow(clippy::redundant_clone)]
         let cloned_draw = draw.clone();
         assert_eq!(draw, cloned_draw);
-        assert!(format!("{draw:?}").contains("FillRect"));
+        assert!(format!("{draw:?}").contains("FillRect"), "format check");
 
         let buffer = SoftwareBuffer::new(10, 10);
         #[allow(clippy::redundant_clone)]
         let cloned_buffer = buffer.clone();
         assert_eq!(buffer, cloned_buffer);
-        assert!(format!("{buffer:?}").contains("SoftwareBuffer"));
+        let buf_dbg = format!("{buffer:?}");
+        assert!(buf_dbg.contains("SoftwareBuffer"));
     }
 }

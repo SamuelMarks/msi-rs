@@ -63,19 +63,20 @@ mod tests {
     }
 
     #[test]
-    fn test_bind_image_parse_errors() {
+    fn test_bind_image_parse_errors() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let engine = BindImageEngine;
-        let dir = tempfile::tempdir().expect("test");
+        let dir = tempfile::tempdir()?;
         let path = dir.path().join("invalid.exe");
-        fs::write(&path, b"MZ  NOT A PE").expect("test");
+        assert!(fs::write(&path, b"MZ  NOT A PE").is_ok());
         let res = engine.bind_image(&path, None);
         assert!(res.is_err());
+        Ok(())
     }
 
     #[test]
-    fn test_bind_image_valid_pe() {
+    fn test_bind_image_valid_pe() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let engine = BindImageEngine;
-        let dir = tempfile::tempdir().expect("test");
+        let dir = tempfile::tempdir()?;
         let path = dir.path().join("minimal.exe");
 
         // This is a minimal 64-bit PE file that Goblin can parse.
@@ -112,17 +113,18 @@ mod tests {
         pe_data[0x106] = 0;
         pe_data[0x107] = 0;
 
-        fs::write(&path, &pe_data).expect("test");
+        assert!(fs::write(&path, &pe_data).is_ok());
 
         // bind_image should succeed
         let res = engine.bind_image(&path, None);
         assert!(res.is_ok());
+        Ok(())
     }
 
     #[test]
-    fn test_bind_image_valid_pe_32() {
+    fn test_bind_image_valid_pe_32() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let engine = BindImageEngine;
-        let dir = tempfile::tempdir().expect("test");
+        let dir = tempfile::tempdir()?;
         let path = dir.path().join("minimal32.exe");
 
         let mut pe_data = vec![0u8; 1024];
@@ -157,10 +159,11 @@ mod tests {
         pe_data[0xF6] = 0;
         pe_data[0xF7] = 0;
 
-        fs::write(&path, &pe_data).expect("test");
+        assert!(fs::write(&path, &pe_data).is_ok());
 
         // bind_image should succeed
         let res = engine.bind_image(&path, None);
         assert!(res.is_ok());
+        Ok(())
     }
 }

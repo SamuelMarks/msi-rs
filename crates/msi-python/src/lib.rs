@@ -1,7 +1,5 @@
-#![allow(clippy::redundant_pub_crate)]
 #![deny(missing_docs)]
 #![deny(clippy::missing_docs_in_private_items)]
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Native Python extension module `_msi` for Windows Installer package creation and inspection.
 
 #![allow(
@@ -12,7 +10,6 @@
 
 pub mod builder;
 pub mod error;
-pub mod md5;
 pub mod package;
 pub mod version;
 pub mod wix;
@@ -54,13 +51,15 @@ pub fn init_msi_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
 ///
 /// * `m` - The bound `_msi` Python module being initialized.
 ///
+/// # Errors
+///
+/// Returns [`PyErr`] if module initialization fails.
+///
 /// # Returns
 ///
 /// `Ok(())` when the module is populated.
-#[allow(clippy::redundant_pub_crate)]
 #[cfg_attr(not(coverage), pymodule)]
-#[allow(clippy::unnecessary_wraps)]
-fn _msi(m: &Bound<'_, PyModule>) -> PyResult<()> {
+pub fn _msi(m: &Bound<'_, PyModule>) -> PyResult<()> {
     init_msi_module(m)
 }
 

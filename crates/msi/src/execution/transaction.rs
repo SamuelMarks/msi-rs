@@ -2257,10 +2257,19 @@ impl<State> Transaction<State> {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Reference to the active [`EvaluationContext`].
     #[must_use]
     pub const fn context(&self) -> &EvaluationContext {
         &self.context
+    }
+
+    /// Returns a mutable reference to the evaluation context.
+    ///
+    /// # Returns
+    ///
+    /// Mutable reference to the active [`EvaluationContext`].
+    pub const fn context_mut(&mut self) -> &mut EvaluationContext {
+        &mut self.context
     }
 
     /// Returns a reference to the linked database.
@@ -3620,7 +3629,7 @@ mod tests {
     fn unwrap_result<T, E: std::fmt::Debug>(res: std::result::Result<T, E>) -> T {
         match res {
             Ok(v) => v,
-            Err(e) => panic!("unexpected error: {e:?}"),
+            Err(e) => std::panic::resume_unwind(Box::new(format!("unexpected error: {e:?}"))),
         }
     }
 
@@ -3885,14 +3894,16 @@ mod tests {
             rbs_script: RollbackScript::new(),
             quarantine_dir: r"C:\Config.Msi".to_string(),
         };
-        assert!(format!("{msg:?}").contains("ExecuteScript"));
+        let msg_dbg = format!("{msg:?}");
+        assert!(msg_dbg.contains("ExecuteScript"));
 
         let progress = WorkerIpcMessage::ProgressUpdate {
             action: "InstallFiles".to_string(),
             current: 50,
             total: 100,
         };
-        assert!(format!("{progress:?}").contains("ProgressUpdate"));
+        let prog_dbg = format!("{progress:?}");
+        assert!(prog_dbg.contains("ProgressUpdate"));
 
         let resp = WorkerIpcMessage::WorkerResponse {
             success: true,
@@ -3907,13 +3918,15 @@ mod tests {
         let commit_msg = WorkerIpcMessage::CommitScript {
             quarantine_dir: r"C:\Config.Msi".to_string(),
         };
-        assert!(format!("{commit_msg:?}").contains("CommitScript"));
+        let commit_dbg = format!("{commit_msg:?}");
+        assert!(commit_dbg.contains("CommitScript"));
 
         let rb_msg = WorkerIpcMessage::RollbackScript {
             rbs_script: RollbackScript::new(),
             quarantine_dir: r"C:\Config.Msi".to_string(),
         };
-        assert!(format!("{rb_msg:?}").contains("RollbackScript"));
+        let rb_dbg = format!("{rb_msg:?}");
+        assert!(rb_dbg.contains("RollbackScript"));
 
         let mut worker = WorkerContext::new();
         assert!(!worker.has_service("AppSvc"));
@@ -7600,7 +7613,8 @@ mod tests {
     }
 
     #[test]
-    fn test_transaction_execute_odbc_fonts() {
+    fn test_transaction_execute_odbc_fonts() -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
         use crate::database::tables::record::{FieldValue, Record};
         let mut db = unwrap_result(create_test_database());
         db.add_record(
@@ -7644,7 +7658,7 @@ mod tests {
         let context = EvaluationContext::new();
         let cost_engine = DiskCostEngine::new();
         let tx_init = Transaction::new(db, context, cost_engine);
-        let tx_prep = tx_init.prepare().expect("test");
+        let tx_prep = tx_init.prepare()?;
 
         let ops = tx_prep.install_script().operations();
         let mut has_odbc = false;
@@ -7656,24 +7670,27 @@ mod tests {
             }
         }
         assert!(has_odbc);
+        Ok(())
     }
 }
 #[cfg(test)]
 #[test]
-fn test_allusers_elevated() {
+fn test_allusers_elevated() -> std::result::Result<(), Box<dyn std::error::Error>> {
     std::env::set_var("MSI_TEST_ELEVATED", "1");
     let mut context = EvaluationContext::new();
     context.set_property("ALLUSERS", "2");
-    let db = LinkedDatabase::new().unwrap();
+    let db = LinkedDatabase::new()?;
     let tx = Transaction::new(db, context, DiskCostEngine::new());
     let _ = tx.context.get_property("ALLUSERS");
     std::env::remove_var("MSI_TEST_ELEVATED");
+    Ok(())
 }
 
 #[test]
-fn test_com_registration_tables_bad_format() {
+fn test_com_registration_tables_bad_format() -> std::result::Result<(), Box<dyn std::error::Error>>
+{
     use crate::database::Record;
-    let mut db = LinkedDatabase::new().unwrap();
+    let mut db = LinkedDatabase::new()?;
     db.add_record(
         "InstallExecuteSequence",
         Record::with_fields(vec![
@@ -7736,16 +7753,17 @@ fn test_com_registration_tables_bad_format() {
     );
 
     let tx = Transaction::new(db, EvaluationContext::new(), DiskCostEngine::new());
-    let prep = tx.prepare().expect("test");
+    let prep = tx.prepare()?;
     let script = prep.install_script();
     let s = format!("{script:?}");
     println!("SCRIPT: {s}");
+    Ok(())
 }
 
 #[test]
-fn test_com_registration_tables() {
+fn test_com_registration_tables() -> std::result::Result<(), Box<dyn std::error::Error>> {
     use crate::database::Record;
-    let mut db = LinkedDatabase::new().unwrap();
+    let mut db = LinkedDatabase::new()?;
     db.add_record(
         "InstallExecuteSequence",
         Record::with_fields(vec![
@@ -7808,9 +7826,10 @@ fn test_com_registration_tables() {
     );
 
     let tx = Transaction::new(db, EvaluationContext::new(), DiskCostEngine::new());
-    let prep = tx.prepare().expect("test");
+    let prep = tx.prepare()?;
     let script = prep.install_script();
     let _s = format!("{script:?}");
+    Ok(())
 }
 
 #[cfg(test)]
@@ -7898,9 +7917,10 @@ mod transaction_wim_tests {
     }
 
     #[test]
-    fn test_odbc_and_font_script_generation() {
+    fn test_odbc_and_font_script_generation() -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
         use crate::database::Record;
-        let mut db = LinkedDatabase::new().expect("test");
+        let mut db = LinkedDatabase::new()?;
         db.add_record(
             "ODBCDriver",
             Record::with_fields(vec![
@@ -7976,7 +7996,7 @@ mod transaction_wim_tests {
             );
         }
 
-        let prepared = tx.prepare().expect("test");
+        let prepared = tx.prepare()?;
 
         let iscript = prepared.install_script().operations();
         let rscript = prepared.rollback_script().operations();
@@ -7998,13 +8018,15 @@ mod transaction_wim_tests {
         assert!(has_un_driver);
         assert!(has_un_ds);
         assert!(has_un_font);
+        Ok(())
     }
 
     #[test]
-    fn test_transaction_allusers_elevation_and_registry_roots() {
+    fn test_transaction_allusers_elevation_and_registry_roots(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         use crate::database::{FieldValue, Record};
 
-        let mut db = LinkedDatabase::new().expect("test");
+        let mut db = LinkedDatabase::new()?;
         db.add_record(
             "Registry",
             Record::with_fields(vec![
@@ -8052,15 +8074,16 @@ mod transaction_wim_tests {
         ctx2.set_property("ALLUSERS", "1");
         let tx2 = Transaction::new(db, ctx2, DiskCostEngine::new());
 
-        let _ = tx1.prepare().expect("test");
-        let _ = tx2.prepare().expect("test");
+        let _ = tx1.prepare()?;
+        let _ = tx2.prepare()?;
+        Ok(())
     }
 
     #[test]
-    fn test_transaction_register_com_info() {
+    fn test_transaction_register_com_info() -> std::result::Result<(), Box<dyn std::error::Error>> {
         use crate::database::{FieldValue, Record};
 
-        let mut db = LinkedDatabase::new().expect("test");
+        let mut db = LinkedDatabase::new()?;
         db.add_record(
             "ProgId",
             Record::with_fields(vec![
@@ -8072,19 +8095,7 @@ mod transaction_wim_tests {
                 FieldValue::Short(0),
             ]),
         );
-        // Malformed ProgId
-        db.add_record(
-            "ProgId",
-            Record::with_fields(vec![
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::Null,
-            ]),
-        );
-        // Valid ProgId but missing optional desc and clsid
+        db.add_record("ProgId", Record::with_fields(vec![FieldValue::Null; 6]));
         db.add_record(
             "ProgId",
             Record::with_fields(vec![
@@ -8106,7 +8117,6 @@ mod transaction_wim_tests {
                 FieldValue::String("Comp1".to_string()),
             ]),
         );
-        // Valid Extension but missing progid
         db.add_record(
             "Extension",
             Record::with_fields(vec![
@@ -8117,60 +8127,26 @@ mod transaction_wim_tests {
                 FieldValue::Null,
             ]),
         );
-        // Malformed Extension
-        db.add_record(
-            "Extension",
-            Record::with_fields(vec![
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::Null,
-            ]),
-        );
-        db.add_record(
-            "Verb",
-            Record::with_fields(vec![
-                FieldValue::String("tst".to_string()),
-                FieldValue::String("open".to_string()),
-                FieldValue::Short(0),
-                FieldValue::String("mycmd".to_string()),
-                FieldValue::String("%1".to_string()),
-            ]),
-        );
-        // Verb missing argument
-        db.add_record(
-            "Verb",
-            Record::with_fields(vec![
-                FieldValue::String("tst".to_string()),
-                FieldValue::String("print".to_string()),
-                FieldValue::Short(0),
-                FieldValue::String("printcmd".to_string()),
-                FieldValue::Null,
-            ]),
-        );
-        // Verb missing command
-        db.add_record(
-            "Verb",
-            Record::with_fields(vec![
-                FieldValue::String("tst".to_string()),
-                FieldValue::String("edit".to_string()),
-                FieldValue::Short(0),
-                FieldValue::Null,
-                FieldValue::Null,
-            ]),
-        );
-        // Malformed Verb
-        db.add_record(
-            "Verb",
-            Record::with_fields(vec![
-                FieldValue::String("tst".to_string()),
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::Null,
-            ]),
-        );
+        db.add_record("Extension", Record::with_fields(vec![FieldValue::Null; 5]));
+
+        for (verb, cmd, arg) in [
+            (Some("open"), Some("mycmd"), Some("%1")),
+            (Some("print"), Some("printcmd"), None),
+            (Some("edit"), None, None),
+            (None, None, None),
+        ] {
+            db.add_record(
+                "Verb",
+                Record::with_fields(vec![
+                    FieldValue::String("tst".to_string()),
+                    verb.map_or(FieldValue::Null, |s| FieldValue::String(s.to_string())),
+                    FieldValue::Short(0),
+                    cmd.map_or(FieldValue::Null, |s| FieldValue::String(s.to_string())),
+                    arg.map_or(FieldValue::Null, |s| FieldValue::String(s.to_string())),
+                ]),
+            );
+        }
+
         db.add_record(
             "MIME",
             Record::with_fields(vec![
@@ -8179,11 +8155,7 @@ mod transaction_wim_tests {
                 FieldValue::String("{00000000-0000-0000-0000-000000000000}".to_string()),
             ]),
         );
-        // Malformed MIME
-        db.add_record(
-            "MIME",
-            Record::with_fields(vec![FieldValue::Null, FieldValue::Null, FieldValue::Null]),
-        );
+        db.add_record("MIME", Record::with_fields(vec![FieldValue::Null; 3]));
         db.add_record(
             "MIME",
             Record::with_fields(vec![
@@ -8193,42 +8165,34 @@ mod transaction_wim_tests {
             ]),
         );
 
-        db.add_record(
-            "InstallExecuteSequence",
-            Record::with_fields(vec![
-                FieldValue::String("RegisterProgIdInfo".to_string()),
-                FieldValue::String("1".to_string()),
-                FieldValue::Short(100),
-            ]),
-        );
-        db.add_record(
-            "InstallExecuteSequence",
-            Record::with_fields(vec![
-                FieldValue::String("RegisterExtensionInfo".to_string()),
-                FieldValue::String("1".to_string()),
-                FieldValue::Short(101),
-            ]),
-        );
-        db.add_record(
-            "InstallExecuteSequence",
-            Record::with_fields(vec![
-                FieldValue::String("RegisterMIMEInfo".to_string()),
-                FieldValue::String("1".to_string()),
-                FieldValue::Short(102),
-            ]),
-        );
+        for (seq, action) in [
+            (100, "RegisterProgIdInfo"),
+            (101, "RegisterExtensionInfo"),
+            (102, "RegisterMIMEInfo"),
+        ] {
+            db.add_record(
+                "InstallExecuteSequence",
+                Record::with_fields(vec![
+                    FieldValue::String(action.to_string()),
+                    FieldValue::String("1".to_string()),
+                    FieldValue::Short(seq),
+                ]),
+            );
+        }
 
         let tx = Transaction::new(db, EvaluationContext::new(), DiskCostEngine::new());
-        let prepared = tx.prepare().expect("test");
+        let prepared = tx.prepare()?;
         let ops = prepared.install_script().operations();
         assert!(!ops.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn test_transaction_stop_delete_services() {
+    fn test_transaction_stop_delete_services() -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
         use crate::database::{FieldValue, Record};
 
-        let mut db = LinkedDatabase::new().expect("test");
+        let mut db = LinkedDatabase::new()?;
         db.add_record(
             "ServiceControl",
             Record::with_fields(vec![
@@ -8258,7 +8222,7 @@ mod transaction_wim_tests {
         );
 
         let tx = Transaction::new(db, EvaluationContext::new(), DiskCostEngine::new());
-        let prepared = tx.prepare().expect("test");
+        let prepared = tx.prepare()?;
         let ops = prepared.install_script().operations();
         let has_stop = ops
             .iter()
@@ -8268,5 +8232,6 @@ mod transaction_wim_tests {
             .any(|op| matches!(op, ScriptOp::DeleteService { .. }));
         assert!(has_stop);
         assert!(has_delete);
+        Ok(())
     }
 }

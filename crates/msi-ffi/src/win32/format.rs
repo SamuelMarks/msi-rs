@@ -31,9 +31,8 @@ pub extern "system" fn MsiFormatRecordW(
             }
         });
 
-        let formatted = match formatted_res {
-            Some(Ok(f)) => f,
-            _ => return ERROR_INVALID_HANDLE,
+        let Some(Ok(formatted)) = formatted_res else {
+            return ERROR_INVALID_HANDLE;
         };
 
         string_to_lpwstr(&formatted, szResultBuf, pcchResultBuf)
@@ -69,9 +68,8 @@ pub extern "system" fn MsiFormatRecordA(
             }
         });
 
-        let formatted = match formatted_res {
-            Some(Ok(f)) => f,
-            _ => return ERROR_INVALID_HANDLE,
+        let Some(Ok(formatted)) = formatted_res else {
+            return ERROR_INVALID_HANDLE;
         };
 
         string_to_lpstr(&formatted, szResultBuf, pcchResultBuf)

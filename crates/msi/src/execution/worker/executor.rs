@@ -326,7 +326,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_live_worker_executor_atomic_write_and_commit() {
+    fn test_live_worker_executor_atomic_write_and_commit(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let temp_dir = std::env::temp_dir().join(format!("msi_test_commit_{}", std::process::id()));
         let quarantine = temp_dir.join("quarantine");
         let target_file = temp_dir.join("app").join("config.txt");
@@ -337,22 +338,23 @@ mod tests {
         // Write first version
         let res1 = executor.write_file_atomic(&target_file, b"version 1.0", Some(0o644));
         assert!(res1.is_ok());
-        assert_eq!(fs::read(&target_file).expect("read"), b"version 1.0");
+        assert_eq!(fs::read(&target_file)?, b"version 1.0");
 
         // Write second version (should quarantine v1)
         let res2 = executor.write_file_atomic(&target_file, b"version 2.0", Some(0o644));
         assert!(res2.is_ok());
-        assert_eq!(fs::read(&target_file).expect("read"), b"version 2.0");
+        assert_eq!(fs::read(&target_file)?, b"version 2.0");
         assert!(quarantine.exists());
 
         // Commit transaction
         let res_commit = executor.commit();
         assert!(res_commit.is_ok());
         assert!(!quarantine.exists());
-        assert_eq!(fs::read(&target_file).expect("read"), b"version 2.0");
+        assert_eq!(fs::read(&target_file)?, b"version 2.0");
 
         // Cleanup
         let _ = fs::remove_dir_all(&temp_dir);
+        Ok(())
     }
 
     /// Tests atomic write and commit I/O error edge cases.
@@ -410,7 +412,8 @@ mod tests {
     }
 
     #[test]
-    fn test_live_worker_executor_rollback_restoration() {
+    fn test_live_worker_executor_rollback_restoration(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let temp_dir =
             std::env::temp_dir().join(format!("msi_test_rollback_{}", std::process::id()));
         let quarantine = temp_dir.join("quarantine");
@@ -431,7 +434,7 @@ mod tests {
             .write_file_atomic(&new_file, b"new extra data", None)
             .is_ok());
 
-        assert_eq!(fs::read(&target_file).expect("read"), b"corrupted data");
+        assert_eq!(fs::read(&target_file)?, b"corrupted data");
         assert!(new_file.exists());
 
         // Rollback
@@ -439,12 +442,13 @@ mod tests {
         assert!(res_rollback.is_ok());
 
         // Verify original file restored and new file removed
-        assert_eq!(fs::read(&target_file).expect("read"), b"pristine data");
+        assert_eq!(fs::read(&target_file)?, b"pristine data");
         assert!(!new_file.exists());
         assert!(!quarantine.exists());
 
         // Cleanup
         let _ = fs::remove_dir_all(&temp_dir);
+        Ok(())
     }
 
     #[test]
@@ -526,15 +530,15 @@ mod worker_executor_additional_tests {
     use super::*;
 
     #[test]
-    fn test_executor_rollback_failure() {
-        let temp_dir = tempfile::tempdir().expect("test");
+    fn test_executor_rollback_failure() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
         let q_dir = temp_dir.path().join("quarantine");
-        fs::create_dir_all(&q_dir).expect("test");
+        assert!(fs::create_dir_all(&q_dir).is_ok());
         let mut exec = LiveWorkerExecutor::new(&q_dir, "test");
 
         // 1. NewlyCreated fails (try to remove_file on a directory)
         let dir_as_file = temp_dir.path().join("dir_as_file");
-        fs::create_dir_all(&dir_as_file).expect("test");
+        assert!(fs::create_dir_all(&dir_as_file).is_ok());
         exec.installed_files.insert(
             dir_as_file.clone(),
             InstalledFileRecord::NewlyCreated(dir_as_file),
@@ -542,9 +546,9 @@ mod worker_executor_additional_tests {
 
         // 2. Overwritten restore fails (try to copy a file over an existing directory)
         let rbf_file = q_dir.join("test.rbf");
-        fs::write(&rbf_file, "data").expect("test");
+        assert!(fs::write(&rbf_file, "data").is_ok());
         let dir_target = temp_dir.path().join("dir_target");
-        fs::create_dir_all(&dir_target).expect("test");
+        assert!(fs::create_dir_all(&dir_target).is_ok());
         exec.installed_files.insert(
             dir_target.clone(),
             InstalledFileRecord::Overwritten {
@@ -555,30 +559,30 @@ mod worker_executor_additional_tests {
 
         // 3. remove_dir fails (try to read_dir on a file)
         let dir_in_q = q_dir.join("empty_dir");
-        fs::write(&dir_in_q, "data").expect("test");
+        assert!(fs::write(&dir_in_q, "data").is_ok());
         exec.created_directories.push(dir_in_q);
 
         // 3.b non-empty directory (will skip removing)
         let non_empty_dir = q_dir.join("non_empty_dir");
-        fs::create_dir_all(&non_empty_dir).expect("test");
-        fs::write(non_empty_dir.join("file"), "data").expect("test");
+        assert!(fs::create_dir_all(&non_empty_dir).is_ok());
+        assert!(fs::write(non_empty_dir.join("file"), "data").is_ok());
         exec.created_directories.push(non_empty_dir);
 
         // 3.c remove_dir fails because parent is read-only
         let unremovable_child = q_dir.join("unremovable_child");
-        fs::create_dir_all(&unremovable_child).expect("test");
+        assert!(fs::create_dir_all(&unremovable_child).is_ok());
         exec.created_directories.push(unremovable_child);
 
         // 4. remove_dir_all fails on quarantine_dir (make parent read-only)
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&q_dir, fs::Permissions::from_mode(0o500)).expect("test");
+            assert!(fs::set_permissions(&q_dir, fs::Permissions::from_mode(0o500)).is_ok());
         }
 
         let res = exec.rollback();
         assert!(res.is_err());
-        let err_msg = res.expect_err("Expected an error").to_string();
+        let err_msg = res.err().unwrap_or_default().to_string();
         assert!(err_msg.contains("remove newly created file"));
         assert!(err_msg.contains("restore quarantined file"));
         assert!(err_msg.contains("remove created directory"));
@@ -587,15 +591,17 @@ mod worker_executor_additional_tests {
         {
             // Restore permissions so cleanup can happen
             use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&q_dir, fs::Permissions::from_mode(0o755)).expect("test");
+            assert!(fs::set_permissions(&q_dir, fs::Permissions::from_mode(0o755)).is_ok());
         }
+        Ok(())
     }
 
     #[test]
-    fn test_recover_interrupted_transaction() {
-        let temp_dir = tempfile::tempdir().expect("test");
+    fn test_recover_interrupted_transaction() -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
+        let temp_dir = tempfile::tempdir()?;
         let q_dir = temp_dir.path().join("quarantine");
-        fs::create_dir_all(&q_dir).expect("test");
+        assert!(fs::create_dir_all(&q_dir).is_ok());
 
         // No rbs file
         assert!(LiveWorkerExecutor::recover_interrupted_transaction(&q_dir).is_ok());
@@ -603,9 +609,10 @@ mod worker_executor_additional_tests {
         // Write empty rbs file
         let rbs_path = q_dir.join("rollback.rbs");
         let script = crate::execution::script::RollbackScript::new();
-        fs::write(&rbs_path, script.serialize()).expect("test");
+        assert!(fs::write(&rbs_path, script.serialize()).is_ok());
 
         assert!(LiveWorkerExecutor::recover_interrupted_transaction(&q_dir).is_ok());
+        Ok(())
     }
 
     #[test]
@@ -625,12 +632,14 @@ mod worker_executor_additional_tests {
         };
         assert_ne!(rec1, rec4);
         assert_eq!(rec4.clone(), rec4);
-        assert!(format!("{rec4:?}").contains("target_path"));
+        assert!(format!("{rec4:?}").contains("target_path"), "format check");
 
         let exec = LiveWorkerExecutor::default();
         #[allow(clippy::redundant_clone)]
         let exec_clone = exec.clone();
-        assert!(format!("{exec:?}").contains("LiveWorkerExecutor"));
-        assert!(format!("{exec_clone:?}").contains("LiveWorkerExecutor"));
+        let exec_dbg = format!("{exec:?}");
+        let exec_clone_dbg = format!("{exec_clone:?}");
+        assert!(exec_dbg.contains("LiveWorkerExecutor"));
+        assert!(exec_clone_dbg.contains("LiveWorkerExecutor"));
     }
 }

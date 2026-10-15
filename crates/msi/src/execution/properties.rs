@@ -519,9 +519,7 @@ impl EvaluationContext {
 
         let tokens = Self::tokenize_expression(trimmed);
         let mut parser = ConditionParser::new(tokens, self);
-        let result = parser.parse_or_expr();
-        println!("EVAL RES for {expr}: {result:?}");
-        let result = result?;
+        let result = parser.parse_or_expr()?;
 
         if parser.cursor < parser.tokens.len() {
             return Err(MsiError::Validation {

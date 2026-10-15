@@ -179,7 +179,8 @@ mod tests {
 
         let err = evaluator
             .validate_service_install(&row, TargetOs::Windows)
-            .unwrap_err();
+            .err()
+            .unwrap_or_default();
         assert!(err.to_string().contains("Kernel driver installations"));
     }
 
@@ -198,22 +199,26 @@ mod tests {
         // Validate mappings are appropriately rejected for POSIX systems
         let err_linux = evaluator
             .validate_service_install(&row, TargetOs::Linux)
-            .unwrap_err();
+            .err()
+            .unwrap_or_default();
         assert!(err_linux.to_string().contains("systemd"));
 
         let err_mac = evaluator
             .validate_service_install(&row, TargetOs::MacOs)
-            .unwrap_err();
+            .err()
+            .unwrap_or_default();
         assert!(err_mac.to_string().contains("launchd"));
 
         let err_freebsd = evaluator
             .validate_service_install(&row, TargetOs::FreeBsd)
-            .unwrap_err();
+            .err()
+            .unwrap_or_default();
         assert!(err_freebsd.to_string().contains("rc"));
 
         let err_sunos = evaluator
             .validate_service_install(&row, TargetOs::SunOs)
-            .unwrap_err();
+            .err()
+            .unwrap_or_default();
         assert!(err_sunos.to_string().contains("SMF"));
 
         assert!(evaluator
@@ -233,7 +238,8 @@ mod tests {
 
         let err = evaluator
             .validate_service_control(&row, TargetOs::Linux)
-            .unwrap_err();
+            .err()
+            .unwrap_or_default();
         assert!(err.to_string().contains("Native SCM interactions"));
     }
 

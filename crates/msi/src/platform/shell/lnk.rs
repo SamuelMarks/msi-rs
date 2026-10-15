@@ -241,16 +241,16 @@ impl ShellLinkBuilder {
     ///
     /// Returns [`MsiError`] if building the `.lnk` payload fails or writing to `path` fails.
     pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<()> {
+        self.save_to_path(path.as_ref())
+    }
+
+    /// Writes the `.lnk` binary payload to `target_path`, creating parent directories as needed.
+    fn save_to_path(&self, target_path: &Path) -> Result<()> {
         let bytes = self.build()?;
-        let target_path = path.as_ref();
-        if let Some(parent) = target_path.parent() {
-            if !parent.as_os_str().is_empty() {
-                fs::create_dir_all(parent)
-                    .map_err(|e| MsiError::Io(IoContext::from_string(e.to_string())))?;
-            }
+        if let Some(parent) = target_path.parent().filter(|p| !p.as_os_str().is_empty()) {
+            fs::create_dir_all(parent).map_err(IoContext)?;
         }
-        fs::write(target_path, bytes)
-            .map_err(|e| MsiError::Io(IoContext::from_string(e.to_string())))?;
+        fs::write(target_path, bytes).map_err(IoContext)?;
         Ok(())
     }
 }
@@ -274,7 +274,8 @@ mod tests {
 
         let cloned = builder.clone();
         assert_eq!(builder, cloned);
-        assert!(format!("{builder:?}").contains("ShellLinkBuilder"));
+        let b_dbg = format!("{builder:?}");
+        assert!(b_dbg.contains("ShellLinkBuilder"));
 
         let data = builder.build()?;
         assert!(data.len() > 76);
@@ -291,13 +292,11 @@ mod tests {
         let icon_idx = i32::from_le_bytes([data[56], data[57], data[58], data[59]]);
         assert_eq!(icon_idx, 2);
 
-        let temp_dir =
-            tempfile::tempdir().map_err(|e| MsiError::Io(IoContext::from_string(e.to_string())))?;
+        let temp_dir = tempfile::tempdir().map_err(IoContext)?;
         let lnk_path = temp_dir.path().join("nested").join("test.lnk");
         builder.save(&lnk_path)?;
 
-        let read_back =
-            fs::read(&lnk_path).map_err(|e| MsiError::Io(IoContext::from_string(e.to_string())))?;
+        let read_back = fs::read(&lnk_path).map_err(IoContext)?;
         assert_eq!(read_back, data);
 
         // Save to relative filename without parent directory creation
@@ -321,10 +320,8 @@ mod tests {
         assert!(minimal.save(&invalid_nested).is_err());
 
         // Test save with a relative filename that has an empty parent component
-        let prev_dir = std::env::current_dir()
-            .map_err(|e| MsiError::Io(IoContext::from_string(e.to_string())))?;
-        std::env::set_current_dir(temp_dir.path())
-            .map_err(|e| MsiError::Io(IoContext::from_string(e.to_string())))?;
+        let prev_dir = std::env::current_dir().map_err(IoContext)?;
+        std::env::set_current_dir(temp_dir.path()).map_err(IoContext)?;
         let rel_res = minimal.save("rel_only.lnk");
         let _ = std::env::set_current_dir(prev_dir);
         rel_res?;

@@ -1,32 +1,6 @@
 #![deny(missing_docs)]
 #![deny(clippy::missing_docs_in_private_items)]
 #![deny(clippy::unwrap_used)]
-#![allow(
-    clippy::similar_names,
-    clippy::double_must_use,
-    clippy::cast_possible_truncation,
-    clippy::option_if_let_else,
-    clippy::empty_line_after_doc_comments,
-    clippy::cast_sign_loss,
-    clippy::used_underscore_binding,
-    clippy::cognitive_complexity,
-    clippy::unused_peekable,
-    clippy::manual_strip,
-    clippy::match_same_arms,
-    clippy::field_reassign_with_default,
-    clippy::multiple_inherent_impl,
-    clippy::shadow_unrelated,
-    clippy::cast_possible_wrap,
-    clippy::unnecessary_wraps,
-    clippy::comparison_chain,
-    clippy::string_add,
-    clippy::items_after_statements,
-    clippy::no_effect_underscore_binding,
-    clippy::overly_complex_bool_expr,
-    clippy::too_many_lines
-)]
-#![allow(clippy::literal_string_with_formatting_args)]
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! # msi
 //!
 //! A comprehensive Rust library for creating, inspecting, and manipulating Windows Installer (`.msi`) packages.
@@ -69,39 +43,44 @@ pub use package::{Package, PackageBuilder, PackageMetadata, ProductVersion};
 #[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
-
-    /// Tests that the top-level exports work and integrate properly.
     #[test]
-    fn test_top_level_exports() {
-        let version = ProductVersion::new(1, 2, 3);
+    fn test_reexports_are_accessible() -> Result<()> {
+        let version = ProductVersion::new(1, 0, 0);
+        assert_eq!(version.major(), 1);
+
         let pkg = Package::builder()
-            .product_name("Test App")
-            .manufacturer("Acme Corp")
+            .product_name("Test")
+            .manufacturer("Test")
             .version(version)
             .product_code("{00000000-0000-0000-0000-000000000000}")
-            .build();
+            .build()?;
 
-        assert!(pkg.is_ok());
+        assert_eq!(pkg.metadata().product_name(), "Test");
+        assert_eq!(pkg.metadata().manufacturer(), "Test");
 
-        // Validate other exports
-        let _scope = AdvertiseScope::Machine;
-        let _ctx = EvaluationContext::new();
-        let _state = InstallState::Local;
-        let _log = LoggingOptions::default();
-        let _opt = MsiExecOptions::parse(["msiexec"]).unwrap_or_else(|_| MsiExecOptions {
-            action: ActionMode::Install {
-                package_path: "test".to_string(),
-            },
-            ui_level: UiLevel::Full,
-            logging: Some(LoggingOptions::default()),
-            tui: false,
-            properties: std::collections::HashMap::new(),
-        });
-        let _repair = RepairFlags::default();
-        let _ui = UiLevel::Full;
+        let scope = AdvertiseScope::Machine;
+        assert_eq!(scope, AdvertiseScope::Machine);
+        let mut ctx = EvaluationContext::new();
+        ctx.set_property("KEY", "VAL");
+        assert_eq!(ctx.get_property("KEY"), Some("VAL"));
 
-        let _err = MsiError::FileNotFound {
+        let state = InstallState::Local;
+        assert_eq!(state, InstallState::Local);
+
+        let log = LoggingOptions::default();
+        assert!(log.log_file.is_empty());
+
+        let opt = MsiExecOptions::parse(["/i", "test.msi"])?;
+        assert_eq!(opt.ui_level, UiLevel::Full);
+        assert!(matches!(opt.action, ActionMode::Install { .. }));
+
+        let repair = RepairFlags::default();
+        assert_eq!(repair.to_string(), "pecmsu");
+
+        let err = MsiError::FileNotFound {
             path: "test".to_string(),
         };
+        assert!(err.to_string().contains("test"));
+        Ok(())
     }
 }

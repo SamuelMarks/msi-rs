@@ -281,6 +281,7 @@ pub extern "system" fn MsiGetLastErrorRecord() -> MsiHandle {
 }
 
 #[cfg(test)]
+#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 mod tests {
     use super::*;
     use crate::win32::ERROR_MORE_DATA;
@@ -343,7 +344,7 @@ mod tests {
 
         assert_eq!(MsiRecordClearData(0), ERROR_INVALID_HANDLE);
         assert_eq!(MsiRecordClearData(h), ERROR_SUCCESS);
-        let db = msi::wix::linker::LinkedDatabase::new().unwrap();
+        let db = msi::wix::linker::LinkedDatabase::new().unwrap_or_default();
         let h_db = alloc_handle(MsiObject::Database(crate::types::MsiDatabaseHandle {
             inner: db,
             state: 0,

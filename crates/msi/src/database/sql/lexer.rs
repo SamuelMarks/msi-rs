@@ -551,16 +551,17 @@ mod tests {
         let cloned_token = token.clone();
         assert_eq!(token, cloned_token);
         assert_ne!(token, Token::From);
-        assert!(format!("{token:?}").contains("Select"));
+        assert!(format!("{token:?}").contains("Select"), "format check");
 
         let lexer = Lexer::new("SELECT 1");
-        assert!(format!("{lexer:?}").contains("Lexer"));
+        assert!(format!("{lexer:?}").contains("Lexer"), "format check");
     }
 
     #[test]
-    fn test_lex_longchar() {
+    fn test_lex_longchar() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut lexer = Lexer::new("LONGCHAR");
-        let token = lexer.tokenize().expect("test")[0].clone();
+        let token = lexer.tokenize()?[0].clone();
         assert_eq!(token, Token::Longchar);
+        Ok(())
     }
 }

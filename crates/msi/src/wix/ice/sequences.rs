@@ -719,11 +719,13 @@ mod tests {
             sequence: 10,
         };
         assert_eq!(entry, entry.clone());
-        assert!(format!("{entry:?}").contains("SequenceEntry"));
+        let entry_dbg = format!("{entry:?}");
+        assert!(entry_dbg.contains("SequenceEntry"));
         #[allow(clippy::redundant_clone)]
         let graph_clone = graph.clone();
         assert_eq!(graph.entries, graph_clone.entries);
-        assert!(format!("{graph:?}").contains("SequenceGraph"));
+        let graph_dbg = format!("{graph:?}");
+        assert!(graph_dbg.contains("SequenceGraph"));
         let default_graph = SequenceGraph::default();
         assert!(default_graph.entries.is_empty());
     }

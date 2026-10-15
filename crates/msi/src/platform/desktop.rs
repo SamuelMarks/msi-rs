@@ -756,7 +756,7 @@ mod tests {
 
         // Trait derives
         assert_eq!(&entry, &entry.clone());
-        assert!(!format!("{entry:?}").is_empty());
+        assert!(!format!("{entry:?}").is_empty(), "format check");
         assert!(!min_content.contains("MimeType="));
     }
 
@@ -796,7 +796,7 @@ mod tests {
 
         // Trait derives
         assert_eq!(&bundle, &bundle.clone());
-        assert!(!format!("{bundle:?}").is_empty());
+        assert!(!format!("{bundle:?}").is_empty(), "format check");
     }
     #[allow(clippy::cognitive_complexity)]
     /// Tests `Win32ShellLink` binary serialization, `XdgDesktopEntry` directory installation, and macOS symlinks.
@@ -876,7 +876,7 @@ mod tests {
 
         // Trait derives
         assert_eq!(&lnk, &lnk.clone());
-        assert!(!format!("{lnk:?}").is_empty());
+        assert!(!format!("{lnk:?}").is_empty(), "format check");
 
         // 3. macOS App Bundle symlink
         let app_test_dir = temp_dir.join("Applications");

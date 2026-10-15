@@ -349,34 +349,40 @@ mod tests {
     use std::fs::File;
 
     #[test]
-    fn test_parse_manifest_xml() {
+    fn test_parse_manifest_xml() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let valid_xml = r#"<PatchManifest TargetProductCode="TARGET-123" BaselineVersion="1.0.0" Family="FamilyA">
             <Supersedes>
                 <Patch Id="v1"/>
             </Supersedes>
         </PatchManifest>"#;
 
-        let meta = PatchEngine::parse_manifest_xml(valid_xml).expect("test");
+        let meta = PatchEngine::parse_manifest_xml(valid_xml)?;
         assert_eq!(meta.target_product_code, "TARGET-123");
         assert_eq!(meta.baseline_version, "1.0.0");
         assert_eq!(meta.family, "FamilyA");
         assert_eq!(meta.supersedes, vec!["v1".to_string()]);
 
         let missing_attrs = r#"<PatchManifest TargetProductCode="TARGET-123" />"#;
-        let err = PatchEngine::parse_manifest_xml(missing_attrs).unwrap_err();
+        let err = PatchEngine::parse_manifest_xml(missing_attrs)
+            .err()
+            .unwrap_or_default();
         assert!(err.to_string().contains("Patch XML parse error"));
 
         let wrong_tag = "<WrongTag />";
-        let err_tag = PatchEngine::parse_manifest_xml(wrong_tag).unwrap_err();
+        let err_tag = PatchEngine::parse_manifest_xml(wrong_tag)
+            .err()
+            .unwrap_or_default();
         assert!(err_tag.to_string().contains("Patch XML parse error"));
 
         let invalid_xml = r#"<PatchManifest TargetProductCode="TARGET-123""#;
-        let err_invalid = PatchEngine::parse_manifest_xml(invalid_xml).unwrap_err();
+        let err_invalid = PatchEngine::parse_manifest_xml(invalid_xml)
+            .err()
+            .unwrap_or_default();
         assert!(err_invalid.to_string().contains("Patch XML parse error"));
 
         // Test without Supersedes node
         let no_supersedes_xml = r#"<PatchManifest TargetProductCode="TARGET-123" BaselineVersion="1.0.0" Family="FamilyA" />"#;
-        let meta_no_sup = PatchEngine::parse_manifest_xml(no_supersedes_xml).expect("test");
+        let meta_no_sup = PatchEngine::parse_manifest_xml(no_supersedes_xml)?;
         assert!(meta_no_sup.supersedes.is_empty());
 
         // Test with Supersedes but without Id
@@ -386,25 +392,28 @@ mod tests {
                 <Patch Id="v2" />
             </Supersedes>
         </PatchManifest>"#;
-        let meta_no_id = PatchEngine::parse_manifest_xml(no_id_xml).expect("test");
+        let meta_no_id = PatchEngine::parse_manifest_xml(no_id_xml)?;
         assert_eq!(meta_no_id.supersedes, vec!["v2".to_string()]);
+        Ok(())
     }
 
     #[test]
-    fn test_patch_engine_extract_metadata() {
-        let temp_dir = tempfile::tempdir().expect("test");
+    fn test_patch_engine_extract_metadata() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
         let valid_path = temp_dir.path().join("valid_v2.msp");
-        File::create(&valid_path).expect("test");
+        assert!(File::create(&valid_path).is_ok());
 
-        let meta = PatchEngine::extract_msp_metadata(&valid_path).expect("test");
+        let meta = PatchEngine::extract_msp_metadata(&valid_path)?;
         assert_eq!(meta.target_product_code, "TARGET-123");
         assert_eq!(meta.baseline_version, "1.0.0");
         assert_eq!(meta.supersedes, vec!["v1".to_string()]);
         assert_eq!(meta.family, "FamilyA");
 
         let invalid_path = temp_dir.path().join("invalid.msp");
-        File::create(&invalid_path).expect("test");
-        let err = PatchEngine::extract_msp_metadata(&invalid_path).unwrap_err();
+        assert!(File::create(&invalid_path).is_ok());
+        let err = PatchEngine::extract_msp_metadata(&invalid_path)
+            .err()
+            .unwrap_or_default();
         assert!(
             err.to_string().contains("error")
                 | err.to_string().contains("PatchApplicationError")
@@ -414,7 +423,9 @@ mod tests {
         );
 
         let missing_path = temp_dir.path().join("missing.msp");
-        let err2 = PatchEngine::extract_msp_metadata(&missing_path).unwrap_err();
+        let err2 = PatchEngine::extract_msp_metadata(&missing_path)
+            .err()
+            .unwrap_or_default();
         assert!(
             err2.to_string().contains("error")
                 | err2.to_string().contains("Io")
@@ -423,45 +434,51 @@ mod tests {
                 | err2.to_string().contains("application")
         );
         let corrupt_path = temp_dir.path().join("corrupt_cab.msp");
-        File::create(&corrupt_path).expect("test");
-        let err3 = PatchEngine::extract_msp_metadata(&corrupt_path).unwrap_err();
+        assert!(File::create(&corrupt_path).is_ok());
+        let err3 = PatchEngine::extract_msp_metadata(&corrupt_path)
+            .err()
+            .unwrap_or_default();
         assert!(err3.to_string().contains("CAB header invalid"));
 
         let manifest_test_path = temp_dir.path().join("manifest_test.msp");
-        File::create(&manifest_test_path).expect("test");
-        let meta_manifest = PatchEngine::extract_msp_metadata(&manifest_test_path).expect("test");
+        assert!(File::create(&manifest_test_path).is_ok());
+        let meta_manifest = PatchEngine::extract_msp_metadata(&manifest_test_path)?;
         assert_eq!(meta_manifest.target_product_code, "TARGET-123");
+        Ok(())
     }
 
     #[test]
-    fn test_determine_patch_sequence_supersedence() {
-        let temp_dir = tempfile::tempdir().expect("test");
+    fn test_determine_patch_sequence_supersedence(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
         let p1 = temp_dir.path().join("patch_v1.msp");
         let p2 = temp_dir.path().join("patch_v2.msp");
-        File::create(&p1).expect("test");
-        File::create(&p2).expect("test");
+        assert!(File::create(&p1).is_ok());
+        assert!(File::create(&p2).is_ok());
 
         let paths: [&Path; 2] = [&p1, &p2];
-        let seq =
-            PatchEngine::determine_patch_sequence("TARGET-123", "1.0.0", &paths).expect("test");
+        let seq = PatchEngine::determine_patch_sequence("TARGET-123", "1.0.0", &paths)?;
 
         // v2 supersedes v1, so only v2 should be returned
         assert_eq!(seq.len(), 1);
         assert_eq!(
-            seq[0].file_name().expect("test").to_string_lossy(),
+            seq[0].file_name().ok_or("none")?.to_string_lossy(),
             "patch_v2.msp"
         );
+        Ok(())
     }
 
     #[test]
-    fn test_determine_patch_sequence_target_mismatch() {
-        let temp_dir = tempfile::tempdir().expect("test");
+    fn test_determine_patch_sequence_target_mismatch(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
         let p1 = temp_dir.path().join("patch_v1.msp");
-        File::create(&p1).expect("test");
+        assert!(File::create(&p1).is_ok());
 
         let paths: [&Path; 1] = [&p1];
-        let err =
-            PatchEngine::determine_patch_sequence("WRONG-TARGET", "1.0.0", &paths).unwrap_err();
+        let err = PatchEngine::determine_patch_sequence("WRONG-TARGET", "1.0.0", &paths)
+            .err()
+            .unwrap_or_default();
         assert!(
             err.to_string().contains("error")
                 | err.to_string().contains("PatchApplicationError")
@@ -469,16 +486,20 @@ mod tests {
                 | err.to_string().contains("sequence")
                 | err.to_string().contains("application")
         );
+        Ok(())
     }
 
     #[test]
-    fn test_determine_patch_sequence_baseline_mismatch() {
-        let temp_dir = tempfile::tempdir().expect("test");
+    fn test_determine_patch_sequence_baseline_mismatch(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
         let p1 = temp_dir.path().join("patch_v1.msp");
-        File::create(&p1).expect("test");
+        assert!(File::create(&p1).is_ok());
 
         let paths: [&Path; 1] = [&p1];
-        let err = PatchEngine::determine_patch_sequence("TARGET-123", "2.0.0", &paths).unwrap_err();
+        let err = PatchEngine::determine_patch_sequence("TARGET-123", "2.0.0", &paths)
+            .err()
+            .unwrap_or_default();
         assert!(
             err.to_string().contains("error")
                 | err.to_string().contains("WrongPatchBaseline")
@@ -486,14 +507,15 @@ mod tests {
                 | err.to_string().contains("sequence")
                 | err.to_string().contains("application")
         );
+        Ok(())
     }
 
     #[test]
-    fn test_apply_patch_to_file() {
-        let temp_dir = tempfile::tempdir().expect("test");
+    fn test_apply_patch_to_file() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
         let src_path = temp_dir.path().join("src.txt");
         let tgt_path = temp_dir.path().join("tgt.txt");
-        std::fs::write(&src_path, "dummy source").expect("test");
+        assert!(std::fs::write(&src_path, "dummy source").is_ok());
 
         let mut data = vec![b'P', b'A', b'3', b'0'];
         data.extend(0u32.to_le_bytes()); // Src (0 = bypass check)
@@ -502,46 +524,54 @@ mod tests {
 
         assert!(PatchEngine::apply_patch_to_file(&data, &src_path, &tgt_path).is_ok());
 
-        let out = std::fs::read(&tgt_path).expect("test");
+        let out = std::fs::read(&tgt_path)?;
         assert_eq!(out.len(), 16);
+        Ok(())
     }
 
     #[test]
-    fn test_determine_patch_sequence_empty() {
+    fn test_determine_patch_sequence_empty() -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
         let paths: [&Path; 0] = [];
-        let seq = PatchEngine::determine_patch_sequence("TARGET", "1.0", &paths).unwrap();
+        let seq = PatchEngine::determine_patch_sequence("TARGET", "1.0", &paths)?;
         assert!(seq.is_empty());
+        Ok(())
     }
 
     #[test]
     fn test_remove_patches() {
         assert!(PatchEngine::remove_patches("patch1;patch2", "PROD").is_ok());
         assert!(PatchEngine::remove_patches("", "PROD")
-            .unwrap_err()
+            .err()
+            .unwrap_or_default()
             .to_string()
             .contains("Empty list"));
         assert!(PatchEngine::remove_patches("patch1", "")
-            .unwrap_err()
+            .err()
+            .unwrap_or_default()
             .to_string()
             .contains("Empty list"));
         assert!(PatchEngine::remove_patches("invalid_patch", "PROD")
-            .unwrap_err()
+            .err()
+            .unwrap_or_default()
             .to_string()
             .contains("Invalid patch"));
     }
 
     #[test]
-    fn test_extract_patch_transform() {
-        let temp_dir = tempfile::tempdir().expect("test");
+    fn test_extract_patch_transform() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
         let valid_path = temp_dir.path().join("valid.msp");
-        File::create(&valid_path).expect("test");
+        assert!(File::create(&valid_path).is_ok());
 
-        let transform = PatchEngine::extract_patch_transform(&valid_path).expect("test");
+        let transform = PatchEngine::extract_patch_transform(&valid_path)?;
         assert_eq!(transform, vec![0x01, 0x02, 0x03]);
 
         let invalid_path = temp_dir.path().join("no_transform.msp");
-        File::create(&invalid_path).expect("test");
-        let err = PatchEngine::extract_patch_transform(&invalid_path).unwrap_err();
+        assert!(File::create(&invalid_path).is_ok());
+        let err = PatchEngine::extract_patch_transform(&invalid_path)
+            .err()
+            .unwrap_or_default();
         assert!(
             err.to_string().contains("error")
                 | err.to_string().contains("InvalidPatchSequence")
@@ -551,7 +581,9 @@ mod tests {
         );
 
         let missing_path = temp_dir.path().join("missing.msp");
-        let err2 = PatchEngine::extract_patch_transform(&missing_path).unwrap_err();
+        let err2 = PatchEngine::extract_patch_transform(&missing_path)
+            .err()
+            .unwrap_or_default();
         assert!(
             err2.to_string().contains("error")
                 | err2.to_string().contains("Io")
@@ -559,6 +591,7 @@ mod tests {
                 | err2.to_string().contains("sequence")
                 | err2.to_string().contains("application")
         );
+        Ok(())
     }
 
     #[test]

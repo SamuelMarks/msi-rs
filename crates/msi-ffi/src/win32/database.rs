@@ -288,6 +288,7 @@ pub extern "system" fn MsiGetDatabaseState(hDatabase: MsiHandle) -> Msidbstate {
 }
 
 #[cfg(test)]
+#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 mod tests {
     use super::*;
 
@@ -449,7 +450,7 @@ mod tests {
         assert!(crate::handles::close_handle(h_db_direct));
 
         let mut h_db_create_a = 0;
-        let create_path_a = std::ffi::CString::new("create_test.msi").unwrap();
+        let create_path_a = std::ffi::CString::new("create_test.msi").unwrap_or_default();
         assert_eq!(
             MsiOpenDatabaseA(
                 create_path_a.as_ptr(),
@@ -461,7 +462,7 @@ mod tests {
         assert!(crate::handles::close_handle(h_db_create_a));
 
         let mut h_db_direct_a = 0;
-        let direct_path_a = std::ffi::CString::new("direct_test.msi").unwrap();
+        let direct_path_a = std::ffi::CString::new("direct_test.msi").unwrap_or_default();
         assert_eq!(
             MsiOpenDatabaseA(
                 direct_path_a.as_ptr(),

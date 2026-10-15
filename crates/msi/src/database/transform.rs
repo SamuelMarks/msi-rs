@@ -196,7 +196,7 @@ impl DatabaseTransform {
     ///
     /// `Ok(())` if the transform satisfies all validation flags against `db`.
     pub fn validate(&self, db: &LinkedDatabase) -> Result<()> {
-        let flags = self.summary_info.word_count.unwrap_or(0) as u32;
+        let flags = u32::from_ne_bytes(self.summary_info.word_count.unwrap_or(0).to_ne_bytes());
 
         if let Some(rev) = &self.summary_info.rev_number {
             let parts: Vec<&str> = rev.split(';').collect();
@@ -469,28 +469,23 @@ mod tests {
         db.tables.insert("Property".to_string(), prop_rows.clone());
 
         let mut transform = DatabaseTransform::new();
-        transform.summary_info.word_count = Some(
+        transform.summary_info.word_count = Some(i32::from_ne_bytes(
             (validation_flags::MSITRANSFORM_VALIDATE_PRODUCT
-                | validation_flags::MSITRANSFORM_VALIDATE_UPGRADECODE) as i32,
-        );
+                | validation_flags::MSITRANSFORM_VALIDATE_UPGRADECODE)
+                .to_ne_bytes(),
+        ));
         transform.summary_info.rev_number = Some("{11111111-1111-1111-1111-111111111111}1.0.0;{33333333-3333-3333-3333-333333333333}2.0.0;{22222222-2222-2222-2222-222222222222}".to_string());
 
         assert!(transform.validate(&db).is_ok());
 
         transform.summary_info.rev_number = Some("{44444444-4444-4444-4444-444444444444}1.0.0;{33333333-3333-3333-3333-333333333333}2.0.0;{22222222-2222-2222-2222-222222222222}".to_string());
-        let err = transform
-            .validate(&db)
-            .expect_err("Expected TransformConflict");
+        let err = transform.validate(&db).err().unwrap_or_default();
         assert!(err.to_string().contains("Mismatched ProductCode"));
 
         transform.summary_info.rev_number = Some("{11111111-1111-1111-1111-111111111111}1.0.0;{33333333-3333-3333-3333-333333333333}2.0.0;{44444444-4444-4444-4444-444444444444}".to_string());
-        let err = transform
-            .validate(&db)
-            .expect_err("Expected TransformConflict");
-        assert!(err.to_string().contains("Mismatched UpgradeCode"));
-        let apply_err = transform
-            .apply(&mut db)
-            .expect_err("Expected TransformConflict");
+        let upgrade_err = transform.validate(&db).err().unwrap_or_default();
+        assert!(upgrade_err.to_string().contains("Mismatched UpgradeCode"));
+        let apply_err = transform.apply(&mut db).err().unwrap_or_default();
         assert!(apply_err.to_string().contains("Mismatched UpgradeCode"));
 
         transform.summary_info.rev_number =
@@ -563,13 +558,14 @@ mod tests {
         assert_eq!(op_cloned, op_ins);
         assert_ne!(op_ins, op_del);
         assert_ne!(op_ins, op_mod);
-        assert!(format!("{op_ins:?}").contains("Insert"));
+        assert!(format!("{op_ins:?}").contains("Insert"), "format check");
 
         let tt_default = TableTransform::default();
         #[allow(clippy::redundant_clone)]
         let tt_cloned = tt_default.clone();
         assert_eq!(tt_cloned, tt_default);
-        assert!(format!("{tt_default:?}").contains("TableTransform"));
+        let tt_dbg = format!("{tt_default:?}");
+        assert!(tt_dbg.contains("TableTransform"));
 
         let dt_new = DatabaseTransform::new();
         let dt_default = DatabaseTransform::default();
@@ -577,7 +573,8 @@ mod tests {
         #[allow(clippy::redundant_clone)]
         let dt_cloned = dt_new.clone();
         assert_eq!(dt_cloned, dt_default);
-        assert!(format!("{dt_new:?}").contains("DatabaseTransform"));
+        let dt_dbg = format!("{dt_new:?}");
+        assert!(dt_dbg.contains("DatabaseTransform"));
     }
 
     /// Tests basic database diffing and application with modifications and additions.
@@ -948,8 +945,7 @@ mod tests {
         let _ = writer2.add_stream("_TransformView", &[0xFF, 0xFE, 0xFD]);
         let cfb2 = writer2.build();
         let parsed2 = DatabaseTransform::from_bytes(&cfb2);
-        let err = parsed2
-            .expect_err("Expected InvalidTransform error due to invalid UTF-8 in _TransformView");
+        let err = parsed2.err().unwrap_or_default();
         assert!(err.to_string().contains("not valid UTF-8"));
     }
 
@@ -1140,10 +1136,11 @@ mod tests {
 
         let mut transform = DatabaseTransform::new();
         transform.summary_info.rev_number = Some(String::new());
-        transform.summary_info.word_count = Some(
+        transform.summary_info.word_count = Some(i32::from_ne_bytes(
             (validation_flags::MSITRANSFORM_VALIDATE_PRODUCT
-                | validation_flags::MSITRANSFORM_VALIDATE_UPGRADECODE) as i32,
-        );
+                | validation_flags::MSITRANSFORM_VALIDATE_UPGRADECODE)
+                .to_ne_bytes(),
+        ));
 
         assert!(transform.validate(&db).is_ok());
 

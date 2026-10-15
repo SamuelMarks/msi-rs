@@ -104,37 +104,34 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_detect_locking_processes_empty() {
+    fn test_detect_locking_processes_empty() -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
         let files: [&Path; 0] = [];
-        let processes = RestartManager::detect_locking_processes(&files).expect("test");
+        let processes = RestartManager::detect_locking_processes(&files)?;
         assert!(processes.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn test_prompt_files_in_use() {
+    fn test_prompt_files_in_use() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let rm = RestartManager;
 
-        let outcome_empty = rm.prompt_files_in_use(&[], false).expect("test");
+        let outcome_empty = rm.prompt_files_in_use(&[], false)?;
         assert_eq!(outcome_empty, RmSessionOutcome::Ignore);
 
-        let outcome_unattended = rm
-            .prompt_files_in_use(&["app.exe".to_string()], true)
-            .expect("test");
+        let outcome_unattended = rm.prompt_files_in_use(&["app.exe".to_string()], true)?;
         assert_eq!(outcome_unattended, RmSessionOutcome::Ignore);
 
-        let outcome_exit = rm
-            .prompt_files_in_use(&["critical_system_daemon".to_string()], false)
-            .expect("test");
+        let outcome_exit =
+            rm.prompt_files_in_use(&["critical_system_daemon".to_string()], false)?;
         assert_eq!(outcome_exit, RmSessionOutcome::Exit);
 
-        let outcome_retry = rm
-            .prompt_files_in_use(&["retry_trigger_app".to_string()], false)
-            .expect("test");
+        let outcome_retry = rm.prompt_files_in_use(&["retry_trigger_app".to_string()], false)?;
         assert_eq!(outcome_retry, RmSessionOutcome::Retry);
 
-        let outcome_default_ignore = rm
-            .prompt_files_in_use(&["some_other_app".to_string()], false)
-            .expect("test");
+        let outcome_default_ignore =
+            rm.prompt_files_in_use(&["some_other_app".to_string()], false)?;
         assert_eq!(outcome_default_ignore, RmSessionOutcome::Ignore);
+        Ok(())
     }
 }

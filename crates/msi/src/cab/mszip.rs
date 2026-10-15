@@ -259,44 +259,44 @@ impl MszipDecompressor {
 mod tests {
 
     #[test]
-    fn test_mszip_compress_done_loop() {
+    fn test_mszip_compress_done_loop() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut comp = MszipCompressor::new();
         // Generate enough highly random data to force miniz to output > 1024 bytes
         let mut random_data = vec![0u8; 15000];
         let mut state: u32 = 12345;
         for b in &mut random_data {
             state = state.wrapping_mul(1_103_515_245).wrapping_add(12345);
-            *b = (state >> 16) as u8;
+            *b = state.to_le_bytes()[2];
         }
-        let _ = comp.compress(&random_data).unwrap();
+        let _ = comp.compress(&random_data)?;
+        Ok(())
     }
 
     #[test]
-    fn test_mszip_compress_overflow() {
+    fn test_mszip_compress_overflow() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut comp = MszipCompressor::new();
         // Fill history exactly
         let exact = vec![b'H'; MSZIP_BLOCK_SIZE];
-        let _ = comp.compress(&exact).unwrap();
+        let _ = comp.compress(&exact)?;
 
         // Push past history
         let push = vec![b'P'; 100];
-        let _ = comp.compress(&push).unwrap();
+        let _ = comp.compress(&push)?;
         assert_eq!(comp.history.len(), MSZIP_BLOCK_SIZE);
+        Ok(())
     }
 
     use super::*;
 
     /// Tests compression and decompression roundtrip of small and block-sized payloads.
     #[test]
-    fn test_mszip_roundtrip() {
+    fn test_mszip_roundtrip() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut comp = MszipCompressor::new();
         let mut decomp = MszipDecompressor::new();
 
         let small = b"Hello MSZIP world!";
-        let comp_bytes = comp.compress(small).expect("test");
-        let decomp_bytes = decomp
-            .decompress_block(&comp_bytes, small.len())
-            .expect("test");
+        let comp_bytes = comp.compress(small)?;
+        let decomp_bytes = decomp.decompress_block(&comp_bytes, small.len())?;
         assert_eq!(decomp_bytes, small.to_vec());
 
         // Reset folder state manually between disparate tests
@@ -305,43 +305,43 @@ mod tests {
 
         // Exactly 32KB payload
         let large = vec![0xABu8; MSZIP_BLOCK_SIZE];
-        let comp_large = comp.compress(&large).expect("test");
-        let decomp_large = decomp
-            .decompress_block(&comp_large, large.len())
-            .expect("test");
+        let comp_large = comp.compress(&large)?;
+        let decomp_large = decomp.decompress_block(&comp_large, large.len())?;
         assert_eq!(decomp_large, large);
+        Ok(())
     }
 
     /// Tests the sliding window multi-block logic across 3 consecutive blocks.
     #[test]
-    fn test_mszip_multi_block() {
+    fn test_mszip_multi_block() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut comp = MszipCompressor::new();
         let mut decomp = MszipDecompressor::new();
 
         // 1. First block: 10KB of repeating 'A's
         let chunk1 = vec![b'A'; 10000];
-        let comp1 = comp.compress(&chunk1).expect("test");
-        let dec1 = decomp.decompress_block(&comp1, chunk1.len()).expect("test");
+        let comp1 = comp.compress(&chunk1)?;
+        let dec1 = decomp.decompress_block(&comp1, chunk1.len())?;
         assert_eq!(dec1, chunk1);
 
         // 2. Second block: 15KB of repeating 'A's
         // Because of the sliding window, this should compress incredibly well
         let chunk2 = vec![b'A'; 15000];
-        let comp2 = comp.compress(&chunk2).expect("test");
+        let comp2 = comp.compress(&chunk2)?;
         assert!(comp2.len() < 100);
-        let dec2 = decomp.decompress_block(&comp2, chunk2.len()).expect("test");
+        let dec2 = decomp.decompress_block(&comp2, chunk2.len())?;
         assert_eq!(dec2, chunk2);
 
         // 3. Third block: 20KB of repeating 'A's, crossing the 32KB total boundary
         let chunk3 = vec![b'A'; 20000];
-        let comp3 = comp.compress(&chunk3).expect("test");
-        let dec3 = decomp.decompress_block(&comp3, chunk3.len()).expect("test");
+        let comp3 = comp.compress(&chunk3)?;
+        let dec3 = decomp.decompress_block(&comp3, chunk3.len())?;
         assert_eq!(dec3, chunk3);
+        Ok(())
     }
 
     /// Tests MSZIP error conditions.
     #[test]
-    fn test_mszip_errors() {
+    fn test_mszip_errors() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut comp = MszipCompressor::new();
         let mut decomp = MszipDecompressor::new();
 
@@ -356,7 +356,7 @@ mod tests {
         assert!(decomp.decompress_block(&[0x00, 0x00], 0).is_err());
 
         // Decompression with unconsumed bytes
-        let mut comp_bytes_extra = comp.compress(b"data").expect("test");
+        let mut comp_bytes_extra = comp.compress(b"data")?;
         comp_bytes_extra.push(0xFF);
         assert!(decomp.decompress_block(&comp_bytes_extra, 4).is_err());
 
@@ -365,12 +365,13 @@ mod tests {
         let _def_comp = MszipCompressor::default();
 
         // Decompression size mismatch
-        let comp_bytes = comp.compress(b"data").expect("test");
+        let comp_bytes = comp.compress(b"data")?;
         assert!(decomp.decompress_block(&comp_bytes, 999).is_err());
 
         // Corrupt deflate payload
         let bad_payload = [0x43, 0x4B, 0xFF, 0xFF, 0xFF, 0xFF];
         assert!(decomp.decompress_block(&bad_payload, 10).is_err());
+        Ok(())
     }
 }
 
@@ -383,7 +384,7 @@ mod random_tests {
         let mut comp = MszipCompressor::new();
         let mut random_data = vec![0u8; 200_000];
         for (i, b) in random_data.iter_mut().enumerate() {
-            *b = (i % 256) as u8;
+            *b = u8::try_from(i % 256).unwrap_or(0);
         }
         let _ = comp.compress(&random_data);
     }
@@ -400,7 +401,7 @@ mod random_tests_2 {
         let mut state: u32 = 12345;
         for b in &mut random_data {
             state = state.wrapping_mul(1_103_515_245).wrapping_add(12345);
-            *b = (state >> 16) as u8;
+            *b = state.to_le_bytes()[2];
         }
         let _ = comp.compress(&random_data);
     }

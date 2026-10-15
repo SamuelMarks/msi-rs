@@ -832,16 +832,35 @@ mod tests {
                     empty_args.as_ptr(),
                     std::ptr::null_mut(),
                 );
+                let mut holder_ref = pyo3::impl_::extract_argument::FunctionArgumentHolder::INIT;
+                let _ = <
+                    &PyPackage as pyo3::impl_::extract_argument::PyFunctionArgument<'_, '_>
+                >::extract(bad_obj.as_any(), &mut holder_ref);
+                let mut holder_mut = pyo3::impl_::extract_argument::FunctionArgumentHolder::INIT;
+                let _ = <&mut PyPackage as pyo3::impl_::extract_argument::PyFunctionArgument<
+                    '_,
+                    '_,
+                >>::extract(bad_obj.as_any(), &mut holder_mut);
             }
 
             // Python runtime module test with context manager
+            let temp_dir = std::env::temp_dir().join("msi_py_pkg_ctx_test");
+            let _ = fs::create_dir_all(&temp_dir);
+            let saved_msi = temp_dir.join("saved.msi");
+            let ext_dir = temp_dir.join("extracted");
             let bytes_vec = py_pkg.to_bytes(py).unwrap_or_default();
             let py_bytes = PyBytes::new_bound(py, &bytes_vec);
             let globals = PyDict::new_bound(py);
             assert!(globals.set_item("m", &m).is_ok());
             assert!(globals.set_item("pkg_bytes", &py_bytes).is_ok());
+            assert!(globals
+                .set_item("saved_msi", saved_msi.to_string_lossy().as_ref())
+                .is_ok());
+            assert!(globals
+                .set_item("ext_dir", ext_dir.to_string_lossy().as_ref())
+                .is_ok());
 
-            let script = r#"
+            let script = r##"
 with m.Package.from_bytes(bytes(pkg_bytes)) as p:
     assert p.get_property("ProductName") == "TestProduct"
     assert p.get_property("Manufacturer") == "TestManufacturer"
@@ -859,8 +878,17 @@ with m.Package.from_bytes(bytes(pkg_bytes)) as p:
     assert len(file_rows) >= 1
     bin_rows = p.get_table("Binary")
     assert len(bin_rows) >= 1
-"#;
-            py.run_bound(script, Some(&globals), None).is_ok()
+    assert len(p.to_bytes()) > 0
+    p.save(saved_msi)
+    extracted = p.extract_cabinet("#cab1.cab", ext_dir)
+    assert "sample.txt" in extracted
+
+with m.Package.open(saved_msi) as p2:
+    assert p2.get_property("ProductName") == "TestProduct"
+"##;
+            let ok = py.run_bound(script, Some(&globals), None).is_ok();
+            let _ = fs::remove_dir_all(&temp_dir);
+            ok
         })
     }
 

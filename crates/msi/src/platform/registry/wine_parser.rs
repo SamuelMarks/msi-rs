@@ -196,19 +196,17 @@ mod tests {
     use tempfile::NamedTempFile;
 
     #[test]
-    fn test_parse_empty() -> Result<()> {
+    fn test_parse_empty() {
         let empty = "";
         let res = WineRegHive::parse_reader(Cursor::new(empty));
         assert!(res.is_err());
-        Ok(())
     }
 
     #[test]
-    fn test_parse_invalid_header() -> Result<()> {
+    fn test_parse_invalid_header() {
         let invalid = "WINE REGISTRY Version 1\n";
         let res = WineRegHive::parse_reader(Cursor::new(invalid));
         assert!(res.is_err());
-        Ok(())
     }
 
     #[test]
@@ -325,29 +323,29 @@ mod tests {
         let v_str = WineRegValue::String("A".into());
         let v_exp = WineRegValue::ExpandString("B".into());
         let v_mul = WineRegValue::MultiString(vec!["C".into()]);
-        let v_dw = WineRegValue::Dword(1);
-        let v_qw = WineRegValue::Qword(2);
+        let dword_entry = WineRegValue::Dword(1);
+        let qword_val = WineRegValue::Qword(2);
         let v_hex = WineRegValue::Hex(3, vec![0xFF]);
 
         assert_eq!(v_str, v_str.clone());
         assert_eq!(v_exp, v_exp.clone());
         assert_eq!(v_mul, v_mul.clone());
-        assert_eq!(v_dw, v_dw.clone());
-        assert_eq!(v_qw, v_qw.clone());
+        assert_eq!(dword_entry, dword_entry.clone());
+        assert_eq!(qword_val, qword_val.clone());
         assert_eq!(v_hex, v_hex.clone());
 
         assert_ne!(v_str, v_exp);
         assert_ne!(v_exp, v_mul);
-        assert_ne!(v_mul, v_dw);
-        assert_ne!(v_dw, v_qw);
-        assert_ne!(v_qw, v_hex);
+        assert_ne!(v_mul, dword_entry);
+        assert_ne!(dword_entry, qword_val);
+        assert_ne!(qword_val, v_hex);
         assert_ne!(v_hex, v_str);
 
         assert_eq!(format!("{v_str:?}"), "String(\"A\")");
         assert_eq!(format!("{v_exp:?}"), "ExpandString(\"B\")");
         assert_eq!(format!("{v_mul:?}"), "MultiString([\"C\"])");
-        assert_eq!(format!("{v_dw:?}"), "Dword(1)");
-        assert_eq!(format!("{v_qw:?}"), "Qword(2)");
+        assert_eq!(format!("{dword_entry:?}"), "Dword(1)");
+        assert_eq!(format!("{qword_val:?}"), "Qword(2)");
         assert_eq!(format!("{v_hex:?}"), "Hex(3, [255])");
     }
 }

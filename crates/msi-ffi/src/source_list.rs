@@ -28,10 +28,10 @@ pub struct ResolutionMode(pub u32);
 ///
 /// # Arguments
 ///
-/// * `_sz_product` - The product code.
-/// * `_sz_user_name` - The user name or NULL.
-/// * `_dw_reserved` - Reserved, must be 0.
-/// * `_sz_source` - The network source path.
+/// * `sz_product` - The product code.
+/// * `sz_user_name` - The user name or NULL.
+/// * `dw_reserved` - Reserved, must be 0.
+/// * `sz_source` - The network source path.
 ///
 /// # Errors
 ///
@@ -50,22 +50,20 @@ pub struct ResolutionMode(pub u32);
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiSourceListAddSourceW(
-    _sz_product: crate::action::ProductCodeW,
-    _sz_user_name: *const u16,
-    _dw_reserved: u32,
-    _sz_source: SourceListPathW,
+    sz_product: crate::action::ProductCodeW,
+    sz_user_name: *const u16,
+    dw_reserved: u32,
+    sz_source: SourceListPathW,
 ) -> u32 {
     std::panic::catch_unwind(|| {
-        if _sz_product.0.is_null() || _sz_source.0.is_null() {
+        if sz_product.0.is_null() || sz_source.0.is_null() {
             return 87; // ERROR_INVALID_PARAMETER
         }
-        let product_code = match crate::win32::strings::lpcwstr_to_string(_sz_product.0) {
-            Some(v) => v,
-            None => return 87,
+        let Some(product_code) = crate::win32::strings::lpcwstr_to_string(sz_product.0) else {
+            return 87;
         };
-        let source_path = match crate::win32::strings::lpcwstr_to_string(_sz_source.0) {
-            Some(v) => v,
-            None => return 87,
+        let Some(source_path) = crate::win32::strings::lpcwstr_to_string(sz_source.0) else {
+            return 87;
         };
 
         let mut cache = msi::execution::source_resiliency::source_list_cache()
@@ -102,10 +100,10 @@ pub unsafe extern "system" fn MsiSourceListAddSourceW(
 ///
 /// # Arguments
 ///
-/// * `_sz_product` - The product code.
-/// * `_sz_user_name` - The user name or NULL.
-/// * `_dw_reserved` - Reserved, must be 0.
-/// * `_sz_source` - The network source path.
+/// * `sz_product` - The product code.
+/// * `sz_user_name` - The user name or NULL.
+/// * `dw_reserved` - Reserved, must be 0.
+/// * `sz_source` - The network source path.
 ///
 /// # Errors
 ///
@@ -124,22 +122,20 @@ pub unsafe extern "system" fn MsiSourceListAddSourceW(
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiSourceListAddSourceA(
-    _sz_product: crate::action::ProductCodeA,
-    _sz_user_name: *const c_char,
-    _dw_reserved: u32,
-    _sz_source: SourceListPathA,
+    sz_product: crate::action::ProductCodeA,
+    sz_user_name: *const c_char,
+    dw_reserved: u32,
+    sz_source: SourceListPathA,
 ) -> u32 {
     std::panic::catch_unwind(|| {
-        if _sz_product.0.is_null() || _sz_source.0.is_null() {
+        if sz_product.0.is_null() || sz_source.0.is_null() {
             return 87; // ERROR_INVALID_PARAMETER
         }
-        let product_code = match crate::win32::strings::lpcstr_to_string(_sz_product.0) {
-            Some(v) => v,
-            None => return 87,
+        let Some(product_code) = crate::win32::strings::lpcstr_to_string(sz_product.0) else {
+            return 87;
         };
-        let source_path = match crate::win32::strings::lpcstr_to_string(_sz_source.0) {
-            Some(v) => v,
-            None => return 87,
+        let Some(source_path) = crate::win32::strings::lpcstr_to_string(sz_source.0) else {
+            return 87;
         };
 
         let mut cache = msi::execution::source_resiliency::source_list_cache()
@@ -176,9 +172,9 @@ pub unsafe extern "system" fn MsiSourceListAddSourceA(
 ///
 /// # Arguments
 ///
-/// * `_sz_product` - The product code.
-/// * `_sz_user_name` - The user name or NULL.
-/// * `_dw_reserved` - Reserved, must be 0.
+/// * `sz_product` - The product code.
+/// * `sz_user_name` - The user name or NULL.
+/// * `dw_reserved` - Reserved, must be 0.
 ///
 /// # Errors
 ///
@@ -197,17 +193,16 @@ pub unsafe extern "system" fn MsiSourceListAddSourceA(
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiSourceListClearAllW(
-    _sz_product: crate::action::ProductCodeW,
-    _sz_user_name: *const u16,
-    _dw_reserved: u32,
+    sz_product: crate::action::ProductCodeW,
+    sz_user_name: *const u16,
+    dw_reserved: u32,
 ) -> u32 {
     std::panic::catch_unwind(|| {
-        if _sz_product.0.is_null() {
+        if sz_product.0.is_null() {
             return 87;
         }
-        let product_code = match crate::win32::strings::lpcwstr_to_string(_sz_product.0) {
-            Some(v) => v,
-            None => return 87,
+        let Some(product_code) = crate::win32::strings::lpcwstr_to_string(sz_product.0) else {
+            return 87;
         };
         let mut cache = msi::execution::source_resiliency::source_list_cache()
             .write()
@@ -222,9 +217,9 @@ pub unsafe extern "system" fn MsiSourceListClearAllW(
 ///
 /// # Arguments
 ///
-/// * `_sz_product` - The product code.
-/// * `_sz_user_name` - The user name or NULL.
-/// * `_dw_reserved` - Reserved, must be 0.
+/// * `sz_product` - The product code.
+/// * `sz_user_name` - The user name or NULL.
+/// * `dw_reserved` - Reserved, must be 0.
 ///
 /// # Errors
 ///
@@ -243,17 +238,16 @@ pub unsafe extern "system" fn MsiSourceListClearAllW(
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiSourceListClearAllA(
-    _sz_product: crate::action::ProductCodeA,
-    _sz_user_name: *const c_char,
-    _dw_reserved: u32,
+    sz_product: crate::action::ProductCodeA,
+    sz_user_name: *const c_char,
+    dw_reserved: u32,
 ) -> u32 {
     std::panic::catch_unwind(|| {
-        if _sz_product.0.is_null() {
+        if sz_product.0.is_null() {
             return 87;
         }
-        let product_code = match crate::win32::strings::lpcstr_to_string(_sz_product.0) {
-            Some(v) => v,
-            None => return 87,
+        let Some(product_code) = crate::win32::strings::lpcstr_to_string(sz_product.0) else {
+            return 87;
         };
         let mut cache = msi::execution::source_resiliency::source_list_cache()
             .write()
@@ -268,12 +262,12 @@ pub unsafe extern "system" fn MsiSourceListClearAllA(
 ///
 /// # Arguments
 ///
-/// * `_sz_product` - The product code.
-/// * `_sz_user_name` - The user name or NULL.
-/// * `_dw_reserved` - Reserved, must be 0.
-/// * `_dw_disk_id` - Media disk ID.
-/// * `_sz_volume_label` - The volume label.
-/// * `_sz_disk_prompt` - The disk prompt.
+/// * `sz_product` - The product code.
+/// * `sz_user_name` - The user name or NULL.
+/// * `dw_reserved` - Reserved, must be 0.
+/// * `dw_disk_id` - Media disk ID.
+/// * `sz_volume_label` - The volume label.
+/// * `sz_disk_prompt` - The disk prompt.
 ///
 /// # Errors
 ///
@@ -292,29 +286,27 @@ pub unsafe extern "system" fn MsiSourceListClearAllA(
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiSourceListAddMediaDiskW(
-    _sz_product: crate::action::ProductCodeW,
-    _sz_user_name: *const u16,
-    _dw_reserved: u32,
-    _dw_disk_id: MediaDiskId,
-    _sz_volume_label: *const u16,
-    _sz_disk_prompt: *const u16,
+    sz_product: crate::action::ProductCodeW,
+    sz_user_name: *const u16,
+    dw_reserved: u32,
+    dw_disk_id: MediaDiskId,
+    sz_volume_label: *const u16,
+    sz_disk_prompt: *const u16,
 ) -> u32 {
     std::panic::catch_unwind(|| {
-        if _sz_product.0.is_null() || _sz_volume_label.is_null() {
+        if sz_product.0.is_null() || sz_volume_label.is_null() {
             return 87;
         }
-        let product_code = match crate::win32::strings::lpcwstr_to_string(_sz_product.0) {
-            Some(v) => v,
-            None => return 87,
+        let Some(product_code) = crate::win32::strings::lpcwstr_to_string(sz_product.0) else {
+            return 87;
         };
-        let volume_label = match crate::win32::strings::lpcwstr_to_string(_sz_volume_label) {
-            Some(v) => v,
-            None => return 87,
+        let Some(volume_label) = crate::win32::strings::lpcwstr_to_string(sz_volume_label) else {
+            return 87;
         };
-        let disk_prompt = if _sz_disk_prompt.is_null() {
+        let disk_prompt = if sz_disk_prompt.is_null() {
             None
         } else {
-            crate::win32::strings::lpcwstr_to_string(_sz_disk_prompt)
+            crate::win32::strings::lpcwstr_to_string(sz_disk_prompt)
         };
 
         let mut cache = msi::execution::source_resiliency::source_list_cache()
@@ -325,7 +317,7 @@ pub unsafe extern "system" fn MsiSourceListAddMediaDiskW(
             .push(msi::execution::source_resiliency::SourcePath::Media(
                 msi::execution::source_resiliency::MediaSource {
                     base_path: std::path::PathBuf::new(),
-                    disk_id: Some(_dw_disk_id.0),
+                    disk_id: Some(dw_disk_id.0),
                     volume_label: Some(volume_label),
                     disk_prompt,
                 },
@@ -339,12 +331,12 @@ pub unsafe extern "system" fn MsiSourceListAddMediaDiskW(
 ///
 /// # Arguments
 ///
-/// * `_sz_product` - The product code.
-/// * `_sz_user_name` - The user name or NULL.
-/// * `_dw_reserved` - Reserved, must be 0.
-/// * `_dw_disk_id` - Media disk ID.
-/// * `_sz_volume_label` - The volume label.
-/// * `_sz_disk_prompt` - The disk prompt.
+/// * `sz_product` - The product code.
+/// * `sz_user_name` - The user name or NULL.
+/// * `dw_reserved` - Reserved, must be 0.
+/// * `dw_disk_id` - Media disk ID.
+/// * `sz_volume_label` - The volume label.
+/// * `sz_disk_prompt` - The disk prompt.
 ///
 /// # Errors
 ///
@@ -363,29 +355,27 @@ pub unsafe extern "system" fn MsiSourceListAddMediaDiskW(
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiSourceListAddMediaDiskA(
-    _sz_product: crate::action::ProductCodeA,
-    _sz_user_name: *const c_char,
-    _dw_reserved: u32,
-    _dw_disk_id: MediaDiskId,
-    _sz_volume_label: *const c_char,
-    _sz_disk_prompt: *const c_char,
+    sz_product: crate::action::ProductCodeA,
+    sz_user_name: *const c_char,
+    dw_reserved: u32,
+    dw_disk_id: MediaDiskId,
+    sz_volume_label: *const c_char,
+    sz_disk_prompt: *const c_char,
 ) -> u32 {
     std::panic::catch_unwind(|| {
-        if _sz_product.0.is_null() || _sz_volume_label.is_null() {
+        if sz_product.0.is_null() || sz_volume_label.is_null() {
             return 87;
         }
-        let product_code = match crate::win32::strings::lpcstr_to_string(_sz_product.0) {
-            Some(v) => v,
-            None => return 87,
+        let Some(product_code) = crate::win32::strings::lpcstr_to_string(sz_product.0) else {
+            return 87;
         };
-        let volume_label = match crate::win32::strings::lpcstr_to_string(_sz_volume_label) {
-            Some(v) => v,
-            None => return 87,
+        let Some(volume_label) = crate::win32::strings::lpcstr_to_string(sz_volume_label) else {
+            return 87;
         };
-        let disk_prompt = if _sz_disk_prompt.is_null() {
+        let disk_prompt = if sz_disk_prompt.is_null() {
             None
         } else {
-            crate::win32::strings::lpcstr_to_string(_sz_disk_prompt)
+            crate::win32::strings::lpcstr_to_string(sz_disk_prompt)
         };
 
         let mut cache = msi::execution::source_resiliency::source_list_cache()
@@ -396,7 +386,7 @@ pub unsafe extern "system" fn MsiSourceListAddMediaDiskA(
             .push(msi::execution::source_resiliency::SourcePath::Media(
                 msi::execution::source_resiliency::MediaSource {
                     base_path: std::path::PathBuf::new(),
-                    disk_id: Some(_dw_disk_id.0),
+                    disk_id: Some(dw_disk_id.0),
                     volume_label: Some(volume_label),
                     disk_prompt,
                 },
@@ -410,13 +400,13 @@ pub unsafe extern "system" fn MsiSourceListAddMediaDiskA(
 ///
 /// # Arguments
 ///
-/// * `_sz_product` - The product code.
-/// * `_sz_user_name` - The user name or NULL.
-/// * `_dw_context` - The context to query.
-/// * `_dw_options` - Options like `MSISOURCETYPE_NETWORK`.
-/// * `_sz_property` - Property to retrieve.
-/// * `_sz_value` - Output buffer.
-/// * `_pcch_value` - Output buffer size.
+/// * `sz_product` - The product code.
+/// * `sz_user_name` - The user name or NULL.
+/// * `dw_context` - The context to query.
+/// * `dw_options` - Options like `MSISOURCETYPE_NETWORK`.
+/// * `sz_property` - Property to retrieve.
+/// * `sz_value` - Output buffer.
+/// * `pcch_value` - Output buffer size.
 ///
 /// # Errors
 ///
@@ -434,68 +424,55 @@ pub unsafe extern "system" fn MsiSourceListAddMediaDiskA(
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiSourceListGetInfoW(
-    _sz_product: crate::action::ProductCodeW,
-    _sz_user_name: *const u16,
-    _dw_context: u32,
-    _dw_options: ResolutionMode,
-    _sz_property: *const u16,
-    _sz_value: *mut u16,
-    _pcch_value: *mut u32,
+    sz_product: crate::action::ProductCodeW,
+    sz_user_name: *const u16,
+    dw_context: u32,
+    dw_options: ResolutionMode,
+    sz_property: *const u16,
+    sz_value: *mut u16,
+    pcch_value: *mut u32,
 ) -> u32 {
     std::panic::catch_unwind(|| {
-        if _sz_product.0.is_null() || _sz_property.is_null() {
+        if sz_product.0.is_null() || sz_property.is_null() {
             return 87; // ERROR_INVALID_PARAMETER
         }
-        let product_code = match crate::win32::strings::lpcwstr_to_string(_sz_product.0) {
-            Some(v) => v,
-            None => return 87,
+        let Some(product_code) = crate::win32::strings::lpcwstr_to_string(sz_product.0) else {
+            return 87;
         };
-        let property = match crate::win32::strings::lpcwstr_to_string(_sz_property) {
-            Some(v) => v,
-            None => return 87,
+        let Some(property) = crate::win32::strings::lpcwstr_to_string(sz_property) else {
+            return 87;
         };
 
         let cache = msi::execution::source_resiliency::source_list_cache()
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let list = match cache.get(&product_code) {
-            Some(l) => l,
-            None => return 1610, // ERROR_BAD_CONFIGURATION
+        let Some(list) = cache.get(&product_code) else {
+            return 1610;
         };
 
         let value = match property.as_str() {
-            "LastUsedSource" => {
-                if let Some(last_used) = &list.last_used {
-                    match last_used {
-                        msi::execution::source_resiliency::SourcePath::Media(m) => {
-                            m.base_path.to_string_lossy().into_owned()
-                        }
-                        msi::execution::source_resiliency::SourcePath::Network(n) => {
-                            n.unc_path.clone()
-                        }
-                        msi::execution::source_resiliency::SourcePath::Url(u) => u.url.clone(),
+            "LastUsedSource" => list
+                .last_used
+                .as_ref()
+                .map_or_else(String::new, |last_used| match last_used {
+                    msi::execution::source_resiliency::SourcePath::Media(m) => {
+                        m.base_path.to_string_lossy().into_owned()
                     }
-                } else {
-                    String::new()
-                }
-            }
-            "LastUsedType" => {
-                if let Some(last_used) = &list.last_used {
-                    match last_used {
-                        msi::execution::source_resiliency::SourcePath::Media(_) => "m".to_string(),
-                        msi::execution::source_resiliency::SourcePath::Network(_) => {
-                            "n".to_string()
-                        }
-                        msi::execution::source_resiliency::SourcePath::Url(_) => "u".to_string(),
-                    }
-                } else {
-                    String::new()
-                }
-            }
+                    msi::execution::source_resiliency::SourcePath::Network(n) => n.unc_path.clone(),
+                    msi::execution::source_resiliency::SourcePath::Url(u) => u.url.clone(),
+                }),
+            "LastUsedType" => list
+                .last_used
+                .as_ref()
+                .map_or_else(String::new, |last_used| match last_used {
+                    msi::execution::source_resiliency::SourcePath::Media(_) => "m".to_string(),
+                    msi::execution::source_resiliency::SourcePath::Network(_) => "n".to_string(),
+                    msi::execution::source_resiliency::SourcePath::Url(_) => "u".to_string(),
+                }),
             _ => String::new(),
         };
 
-        crate::win32::strings::string_to_lpwstr(&value, _sz_value, _pcch_value)
+        crate::win32::strings::string_to_lpwstr(&value, sz_value, pcch_value)
     })
     .unwrap_or(1603)
 }
@@ -504,13 +481,13 @@ pub unsafe extern "system" fn MsiSourceListGetInfoW(
 ///
 /// # Arguments
 ///
-/// * `_sz_product` - The product code.
-/// * `_sz_user_name` - The user name or NULL.
-/// * `_dw_context` - The context to query.
-/// * `_dw_options` - Options like `MSISOURCETYPE_NETWORK`.
-/// * `_sz_property` - Property to retrieve.
-/// * `_sz_value` - Output buffer.
-/// * `_pcch_value` - Output buffer size.
+/// * `sz_product` - The product code.
+/// * `sz_user_name` - The user name or NULL.
+/// * `dw_context` - The context to query.
+/// * `dw_options` - Options like `MSISOURCETYPE_NETWORK`.
+/// * `sz_property` - Property to retrieve.
+/// * `sz_value` - Output buffer.
+/// * `pcch_value` - Output buffer size.
 ///
 /// # Errors
 ///
@@ -528,68 +505,55 @@ pub unsafe extern "system" fn MsiSourceListGetInfoW(
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiSourceListGetInfoA(
-    _sz_product: crate::action::ProductCodeA,
-    _sz_user_name: *const c_char,
-    _dw_context: u32,
-    _dw_options: ResolutionMode,
-    _sz_property: *const c_char,
-    _sz_value: *mut c_char,
-    _pcch_value: *mut u32,
+    sz_product: crate::action::ProductCodeA,
+    sz_user_name: *const c_char,
+    dw_context: u32,
+    dw_options: ResolutionMode,
+    sz_property: *const c_char,
+    sz_value: *mut c_char,
+    pcch_value: *mut u32,
 ) -> u32 {
     std::panic::catch_unwind(|| {
-        if _sz_product.0.is_null() || _sz_property.is_null() {
+        if sz_product.0.is_null() || sz_property.is_null() {
             return 87;
         }
-        let product_code = match crate::win32::strings::lpcstr_to_string(_sz_product.0) {
-            Some(v) => v,
-            None => return 87,
+        let Some(product_code) = crate::win32::strings::lpcstr_to_string(sz_product.0) else {
+            return 87;
         };
-        let property = match crate::win32::strings::lpcstr_to_string(_sz_property) {
-            Some(v) => v,
-            None => return 87,
+        let Some(property) = crate::win32::strings::lpcstr_to_string(sz_property) else {
+            return 87;
         };
 
         let cache = msi::execution::source_resiliency::source_list_cache()
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let list = match cache.get(&product_code) {
-            Some(l) => l,
-            None => return 1610, // ERROR_BAD_CONFIGURATION
+        let Some(list) = cache.get(&product_code) else {
+            return 1610;
         };
 
         let value = match property.as_str() {
-            "LastUsedSource" => {
-                if let Some(last_used) = &list.last_used {
-                    match last_used {
-                        msi::execution::source_resiliency::SourcePath::Media(m) => {
-                            m.base_path.to_string_lossy().into_owned()
-                        }
-                        msi::execution::source_resiliency::SourcePath::Network(n) => {
-                            n.unc_path.clone()
-                        }
-                        msi::execution::source_resiliency::SourcePath::Url(u) => u.url.clone(),
+            "LastUsedSource" => list
+                .last_used
+                .as_ref()
+                .map_or_else(String::new, |last_used| match last_used {
+                    msi::execution::source_resiliency::SourcePath::Media(m) => {
+                        m.base_path.to_string_lossy().into_owned()
                     }
-                } else {
-                    String::new()
-                }
-            }
-            "LastUsedType" => {
-                if let Some(last_used) = &list.last_used {
-                    match last_used {
-                        msi::execution::source_resiliency::SourcePath::Media(_) => "m".to_string(),
-                        msi::execution::source_resiliency::SourcePath::Network(_) => {
-                            "n".to_string()
-                        }
-                        msi::execution::source_resiliency::SourcePath::Url(_) => "u".to_string(),
-                    }
-                } else {
-                    String::new()
-                }
-            }
+                    msi::execution::source_resiliency::SourcePath::Network(n) => n.unc_path.clone(),
+                    msi::execution::source_resiliency::SourcePath::Url(u) => u.url.clone(),
+                }),
+            "LastUsedType" => list
+                .last_used
+                .as_ref()
+                .map_or_else(String::new, |last_used| match last_used {
+                    msi::execution::source_resiliency::SourcePath::Media(_) => "m".to_string(),
+                    msi::execution::source_resiliency::SourcePath::Network(_) => "n".to_string(),
+                    msi::execution::source_resiliency::SourcePath::Url(_) => "u".to_string(),
+                }),
             _ => String::new(),
         };
 
-        crate::win32::strings::string_to_lpstr(&value, _sz_value, _pcch_value)
+        crate::win32::strings::string_to_lpstr(&value, sz_value, pcch_value)
     })
     .unwrap_or(1603)
 }
@@ -597,6 +561,8 @@ pub unsafe extern "system" fn MsiSourceListGetInfoA(
 #[cfg(test)]
 mod tests {
     #![allow(
+        clippy::too_many_lines,
+        clippy::cognitive_complexity,
         clippy::as_underscore,
         clippy::as_pointer_underscore,
         clippy::ptr_as_ptr,
@@ -608,7 +574,9 @@ mod tests {
     use std::ffi::CString;
 
     fn clear_cache() {
-        let mut cache = source_list_cache().write().unwrap();
+        let mut cache = source_list_cache()
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         cache.clear();
     }
 
@@ -616,8 +584,8 @@ mod tests {
     fn test_msi_source_list_add_and_clear() {
         clear_cache();
 
-        let p_a = CString::new("{11111111-1111-1111-1111-111111111111}").unwrap();
-        let s_a = CString::new(r"\\server\share").unwrap();
+        let p_a = CString::new("{11111111-1111-1111-1111-111111111111}").unwrap_or_default();
+        let s_a = CString::new(r"\\server\share").unwrap_or_default();
 
         let res = unsafe {
             MsiSourceListAddSourceA(
@@ -630,21 +598,23 @@ mod tests {
         assert_eq!(res, crate::win32::ERROR_SUCCESS);
 
         {
-            let cache = source_list_cache().read().unwrap();
-            let sources = cache
+            let cache = source_list_cache()
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let found = cache
                 .get("{11111111-1111-1111-1111-111111111111}")
-                .expect("product missing");
-            let found = sources
-                .sources
-                .iter()
-                .any(|s| matches!(s, SourcePath::Network(n) if n.unc_path == r"\\server\share"));
+                .is_some_and(|sources| {
+                    sources.sources.iter().any(
+                        |s| matches!(s, SourcePath::Network(n) if n.unc_path == r"\\server\share"),
+                    )
+                });
             assert!(found);
         }
 
         // Add Media disk
-        let disk_a = CString::new("Disk1").unwrap();
-        let prompt_a = CString::new("Insert Disk 1").unwrap();
-        let res = unsafe {
+        let disk_a = CString::new("Disk1").unwrap_or_default();
+        let prompt_a = CString::new("Insert Disk 1").unwrap_or_default();
+        let res_disk = unsafe {
             MsiSourceListAddMediaDiskA(
                 ProductCodeA(p_a.as_ptr()),
                 std::ptr::null(),
@@ -654,36 +624,39 @@ mod tests {
                 prompt_a.as_ptr(),
             )
         };
-        assert_eq!(res, crate::win32::ERROR_SUCCESS);
+        assert_eq!(res_disk, crate::win32::ERROR_SUCCESS);
 
         {
-            let cache = source_list_cache().read().unwrap();
-            let sources = cache
+            let cache = source_list_cache()
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let found = cache
                 .get("{11111111-1111-1111-1111-111111111111}")
-                .expect("product missing");
-            let found = sources.sources.iter().any(|s| {
-                matches!(
-                    s,
-                    SourcePath::Media(m)
-                        if m.disk_id == Some(1)
-                            && m.volume_label.as_deref() == Some("Disk1")
-                            && m.disk_prompt.as_deref() == Some("Insert Disk 1")
-                )
-            });
+                .is_some_and(|sources| {
+                    sources.sources.iter().any(|s| {
+                        matches!(
+                            s,
+                            SourcePath::Media(m)
+                                if m.disk_id == Some(1)
+                                    && m.volume_label.as_deref() == Some("Disk1")
+                                    && m.disk_prompt.as_deref() == Some("Insert Disk 1")
+                        )
+                    })
+                });
             assert!(found);
         }
 
         // Now test MsiSourceListClearSource targeting specific network/URL source types
         // MsiSourceListClearSourceA (requires MSISOURCETYPE_NETWORK)
         // Note: MsiSourceListClearSourceA takes raw pointers, not wrappers
-        let res = MsiSourceListClearSourceA(
+        let res_clear = MsiSourceListClearSourceA(
             p_a.as_ptr(),
             std::ptr::null(),
             1, /* MSISOURCETYPE_NETWORK */
             s_a.as_ptr(),
         );
-        assert_eq!(res, crate::win32::ERROR_SUCCESS); // MsiSourceListClearSourceA is a stub returning 1603 or 0 if null, let's see, it returns 1603 for not null
-                                                      // wait, the stub for ClearSource returns 1603 if not null, or 87 if null.
+        assert_eq!(res_clear, crate::win32::ERROR_SUCCESS); // MsiSourceListClearSourceA is a stub returning 1603 or 0 if null, let's see, it returns 1603 for not null
+                                                            // wait, the stub for ClearSource returns 1603 if not null, or 87 if null.
     }
 
     #[test]
@@ -1054,17 +1027,15 @@ pub extern "system" fn MsiSourceListEnumMediaDisksW(
         if szProductCodeOrPatchCode.is_null() {
             return 87;
         }
-        let product_code = match crate::win32::strings::lpcwstr_to_string(szProductCodeOrPatchCode)
-        {
-            Some(s) => s,
-            None => return 87,
+        let Some(product_code) = crate::win32::strings::lpcwstr_to_string(szProductCodeOrPatchCode)
+        else {
+            return 87;
         };
         let cache = msi::execution::source_resiliency::source_list_cache()
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let list = match cache.get(&product_code) {
-            Some(l) => l,
-            None => return 259, // ERROR_NO_MORE_ITEMS
+        let Some(list) = cache.get(&product_code) else {
+            return 259;
         };
 
         let media_sources: Vec<_> = list
@@ -1132,16 +1103,15 @@ pub extern "system" fn MsiSourceListEnumMediaDisksA(
         if szProductCodeOrPatchCode.is_null() {
             return 87;
         }
-        let product_code = match crate::win32::strings::lpcstr_to_string(szProductCodeOrPatchCode) {
-            Some(v) => v,
-            None => return 87,
+        let Some(product_code) = crate::win32::strings::lpcstr_to_string(szProductCodeOrPatchCode)
+        else {
+            return 87;
         };
         let cache = msi::execution::source_resiliency::source_list_cache()
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let list = match cache.get(&product_code) {
-            Some(l) => l,
-            None => return 259,
+        let Some(list) = cache.get(&product_code) else {
+            return 259;
         };
 
         let media_sources: Vec<_> = list
@@ -1292,18 +1262,15 @@ pub extern "system" fn MsiSourceListSetInfoW(
         if szProductCodeOrPatchCode.is_null() || szProperty.is_null() || szValue.is_null() {
             return 87; // ERROR_INVALID_PARAMETER
         }
-        let product_code = match crate::win32::strings::lpcwstr_to_string(szProductCodeOrPatchCode)
-        {
-            Some(v) => v,
-            None => return 87,
+        let Some(product_code) = crate::win32::strings::lpcwstr_to_string(szProductCodeOrPatchCode)
+        else {
+            return 87;
         };
-        let property = match crate::win32::strings::lpcwstr_to_string(szProperty) {
-            Some(v) => v,
-            None => return 87,
+        let Some(property) = crate::win32::strings::lpcwstr_to_string(szProperty) else {
+            return 87;
         };
-        let value = match crate::win32::strings::lpcwstr_to_string(szValue) {
-            Some(v) => v,
-            None => return 87,
+        let Some(value) = crate::win32::strings::lpcwstr_to_string(szValue) else {
+            return 87;
         };
 
         let mut cache = msi::execution::source_resiliency::source_list_cache()
@@ -1358,17 +1325,15 @@ pub extern "system" fn MsiSourceListSetInfoA(
         if szProductCodeOrPatchCode.is_null() || szProperty.is_null() || szValue.is_null() {
             return 87; // ERROR_INVALID_PARAMETER
         }
-        let product_code = match crate::win32::strings::lpcstr_to_string(szProductCodeOrPatchCode) {
-            Some(v) => v,
-            None => return 87,
+        let Some(product_code) = crate::win32::strings::lpcstr_to_string(szProductCodeOrPatchCode)
+        else {
+            return 87;
         };
-        let property = match crate::win32::strings::lpcstr_to_string(szProperty) {
-            Some(v) => v,
-            None => return 87,
+        let Some(property) = crate::win32::strings::lpcstr_to_string(szProperty) else {
+            return 87;
         };
-        let value = match crate::win32::strings::lpcstr_to_string(szValue) {
-            Some(v) => v,
-            None => return 87,
+        let Some(value) = crate::win32::strings::lpcstr_to_string(szValue) else {
+            return 87;
         };
 
         let mut cache = msi::execution::source_resiliency::source_list_cache()
@@ -1405,6 +1370,7 @@ pub extern "system" fn MsiSourceListSetInfoA(
 }
 
 #[cfg(test)]
+#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 mod additional_tests {
     use super::*;
     use std::ptr;
@@ -1412,7 +1378,7 @@ mod additional_tests {
     #[test]
     fn test_source_list_ex_stubs() {
         let dummy_w = [u16::from(b'B'), 0];
-        let dummy_a = [b'B' as i8, 0];
+        let dummy_a = [i8::from_ne_bytes([b'B']), 0];
 
         assert_eq!(
             MsiSourceListAddSourceExW(ptr::null(), ptr::null(), 0, 0, ptr::null(), 0),
@@ -1623,11 +1589,11 @@ mod additional_tests {
 ///
 /// # Arguments
 ///
-/// * `_szProduct` - Pointer to a string specifying the product code.
-/// * `_szUserName` - Pointer to a string specifying the user name.
-/// * `_dwContext` - Context.
-/// * `_dwOptions` - Options.
-/// * `_dwDiskId` - Disk ID.
+/// * `szProduct` - Pointer to a string specifying the product code.
+/// * `szUserName` - Pointer to a string specifying the user name.
+/// * `dwContext` - Context.
+/// * `dwOptions` - Options.
+/// * `dwDiskId` - Disk ID.
 ///
 /// # Returns
 ///
@@ -1638,19 +1604,18 @@ mod additional_tests {
 #[allow(non_snake_case, unused_variables)]
 #[must_use]
 pub extern "system" fn MsiSourceListClearMediaDiskA(
-    _szProduct: *const c_char,
-    _szUserName: *const c_char,
-    _dwContext: u32,
-    _dwOptions: u32,
-    _dwDiskId: u32,
+    szProduct: *const c_char,
+    szUserName: *const c_char,
+    dwContext: u32,
+    dwOptions: u32,
+    dwDiskId: u32,
 ) -> u32 {
     std::panic::catch_unwind(|| {
-        if _szProduct.is_null() {
+        if szProduct.is_null() {
             return 87; // ERROR_INVALID_PARAMETER
         }
-        let product_code = match crate::win32::strings::lpcstr_to_string(_szProduct) {
-            Some(v) => v,
-            None => return 87,
+        let Some(product_code) = crate::win32::strings::lpcstr_to_string(szProduct) else {
+            return 87;
         };
 
         let mut cache = msi::execution::source_resiliency::source_list_cache()
@@ -1660,7 +1625,7 @@ pub extern "system" fn MsiSourceListClearMediaDiskA(
         if let Some(list) = cache.get_mut(&product_code) {
             list.sources.retain(|s| match s {
                 msi::execution::source_resiliency::SourcePath::Media(m) => {
-                    !matches!(m.disk_id, Some(id) if id == _dwDiskId || _dwDiskId == 0xFFFF_FFFF)
+                    !matches!(m.disk_id, Some(id) if id == dwDiskId || dwDiskId == 0xFFFF_FFFF)
                 }
                 _ => true,
             });
@@ -1676,11 +1641,11 @@ pub extern "system" fn MsiSourceListClearMediaDiskA(
 ///
 /// # Arguments
 ///
-/// * `_szProduct` - Pointer to a string specifying the product code.
-/// * `_szUserName` - Pointer to a string specifying the user name.
-/// * `_dwContext` - Context.
-/// * `_dwOptions` - Options.
-/// * `_dwDiskId` - Disk ID.
+/// * `szProduct` - Pointer to a string specifying the product code.
+/// * `szUserName` - Pointer to a string specifying the user name.
+/// * `dwContext` - Context.
+/// * `dwOptions` - Options.
+/// * `dwDiskId` - Disk ID.
 ///
 /// # Returns
 ///
@@ -1691,19 +1656,18 @@ pub extern "system" fn MsiSourceListClearMediaDiskA(
 #[allow(non_snake_case, unused_variables)]
 #[must_use]
 pub extern "system" fn MsiSourceListClearMediaDiskW(
-    _szProduct: *const u16,
-    _szUserName: *const u16,
-    _dwContext: u32,
-    _dwOptions: u32,
-    _dwDiskId: u32,
+    szProduct: *const u16,
+    szUserName: *const u16,
+    dwContext: u32,
+    dwOptions: u32,
+    dwDiskId: u32,
 ) -> u32 {
     std::panic::catch_unwind(|| {
-        if _szProduct.is_null() {
+        if szProduct.is_null() {
             return 87; // ERROR_INVALID_PARAMETER
         }
-        let product_code = match crate::win32::strings::lpcwstr_to_string(_szProduct) {
-            Some(v) => v,
-            None => return 87,
+        let Some(product_code) = crate::win32::strings::lpcwstr_to_string(szProduct) else {
+            return 87;
         };
 
         let mut cache = msi::execution::source_resiliency::source_list_cache()
@@ -1713,7 +1677,7 @@ pub extern "system" fn MsiSourceListClearMediaDiskW(
         if let Some(list) = cache.get_mut(&product_code) {
             list.sources.retain(|s| match s {
                 msi::execution::source_resiliency::SourcePath::Media(m) => {
-                    !matches!(m.disk_id, Some(id) if id == _dwDiskId || _dwDiskId == 0xFFFF_FFFF)
+                    !matches!(m.disk_id, Some(id) if id == dwDiskId || dwDiskId == 0xFFFF_FFFF)
                 }
                 _ => true,
             });
@@ -1729,10 +1693,10 @@ pub extern "system" fn MsiSourceListClearMediaDiskW(
 ///
 /// # Arguments
 ///
-/// * `_szProduct` - Pointer to a string specifying the product code.
-/// * `_szUserName` - Pointer to a string specifying the user name.
-/// * `_dwContext` - Context.
-/// * `_dwOptions` - Options.
+/// * `szProduct` - Pointer to a string specifying the product code.
+/// * `szUserName` - Pointer to a string specifying the user name.
+/// * `dwContext` - Context.
+/// * `dwOptions` - Options.
 ///
 /// # Returns
 ///
@@ -1743,18 +1707,17 @@ pub extern "system" fn MsiSourceListClearMediaDiskW(
 #[allow(non_snake_case, unused_variables)]
 #[must_use]
 pub extern "system" fn MsiSourceListForceResolutionExA(
-    _szProduct: *const c_char,
-    _szUserName: *const c_char,
-    _dwContext: u32,
-    _dwOptions: u32,
+    szProduct: *const c_char,
+    szUserName: *const c_char,
+    dwContext: u32,
+    dwOptions: u32,
 ) -> u32 {
     std::panic::catch_unwind(|| {
-        if _szProduct.is_null() {
+        if szProduct.is_null() {
             return 87; // ERROR_INVALID_PARAMETER
         }
-        let product_code = match crate::win32::strings::lpcstr_to_string(_szProduct) {
-            Some(v) => v,
-            None => return 87,
+        let Some(product_code) = crate::win32::strings::lpcstr_to_string(szProduct) else {
+            return 87;
         };
 
         let mut cache = msi::execution::source_resiliency::source_list_cache()
@@ -1774,10 +1737,10 @@ pub extern "system" fn MsiSourceListForceResolutionExA(
 ///
 /// # Arguments
 ///
-/// * `_szProduct` - Pointer to a string specifying the product code.
-/// * `_szUserName` - Pointer to a string specifying the user name.
-/// * `_dwContext` - Context.
-/// * `_dwOptions` - Options.
+/// * `szProduct` - Pointer to a string specifying the product code.
+/// * `szUserName` - Pointer to a string specifying the user name.
+/// * `dwContext` - Context.
+/// * `dwOptions` - Options.
 ///
 /// # Returns
 ///
@@ -1788,18 +1751,17 @@ pub extern "system" fn MsiSourceListForceResolutionExA(
 #[allow(non_snake_case, unused_variables)]
 #[must_use]
 pub extern "system" fn MsiSourceListForceResolutionExW(
-    _szProduct: *const u16,
-    _szUserName: *const u16,
-    _dwContext: u32,
-    _dwOptions: u32,
+    szProduct: *const u16,
+    szUserName: *const u16,
+    dwContext: u32,
+    dwOptions: u32,
 ) -> u32 {
     std::panic::catch_unwind(|| {
-        if _szProduct.is_null() {
+        if szProduct.is_null() {
             return 87; // ERROR_INVALID_PARAMETER
         }
-        let product_code = match crate::win32::strings::lpcwstr_to_string(_szProduct) {
-            Some(v) => v,
-            None => return 87,
+        let Some(product_code) = crate::win32::strings::lpcwstr_to_string(szProduct) else {
+            return 87;
         };
 
         let mut cache = msi::execution::source_resiliency::source_list_cache()
@@ -1816,6 +1778,7 @@ pub extern "system" fn MsiSourceListForceResolutionExW(
 }
 
 #[cfg(test)]
+#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 mod additional_stubs_tests {
     use super::*;
 
@@ -1870,6 +1833,7 @@ fn final_clear_all_test() {
 }
 
 #[cfg(test)]
+#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 mod tests_final_cov {
     use super::*;
     use crate::action::{ProductCodeA, ProductCodeW};
@@ -1883,7 +1847,7 @@ mod tests_final_cov {
             .encode_utf16()
             .chain(std::iter::once(0))
             .collect::<Vec<_>>();
-        let good_a = CString::new("product_test_coverage_edge_cases").unwrap();
+        let good_a = CString::new("product_test_coverage_edge_cases").unwrap_or_default();
         let bad_w = [0xD800, 0];
         let bad_a = b"\xFF\x00";
 
@@ -1967,7 +1931,7 @@ mod tests_final_cov {
                 .encode_utf16()
                 .chain(std::iter::once(0))
                 .collect::<Vec<_>>();
-            let url_a = CString::new("http://url").unwrap();
+            let url_a = CString::new("http://url").unwrap_or_default();
             let _ = MsiSourceListAddSourceW(
                 ProductCodeW(good_w.as_ptr()),
                 ptr::null(),
@@ -1985,7 +1949,7 @@ mod tests_final_cov {
                 .encode_utf16()
                 .chain(std::iter::once(0))
                 .collect::<Vec<_>>();
-            let net_a = CString::new("\\\\net").unwrap();
+            let net_a = CString::new("\\\\net").unwrap_or_default();
             let _ = MsiSourceListAddSourceW(
                 ProductCodeW(good_w.as_ptr()),
                 ptr::null(),
@@ -2243,7 +2207,7 @@ mod tests_final_cov {
                 .encode_utf16()
                 .chain(std::iter::once(0))
                 .collect::<Vec<_>>();
-            let unknown_a = CString::new("Unknown").unwrap();
+            let unknown_a = CString::new("Unknown").unwrap_or_default();
             let _ = MsiSourceListGetInfoW(
                 ProductCodeW(good_w.as_ptr()),
                 ptr::null(),
@@ -2287,13 +2251,14 @@ mod tests_final_cov {
                 .encode_utf16()
                 .chain(std::iter::once(0))
                 .collect::<Vec<_>>();
-            let unk_prod_a = CString::new("unknown_product_does_not_exist_at_all").unwrap();
+            let unk_prod_a =
+                CString::new("unknown_product_does_not_exist_at_all").unwrap_or_default();
 
             let last_source_w = "LastUsedSource"
                 .encode_utf16()
                 .chain(std::iter::once(0))
                 .collect::<Vec<_>>();
-            let last_source_a = CString::new("LastUsedSource").unwrap();
+            let last_source_a = CString::new("LastUsedSource").unwrap_or_default();
 
             let _ = MsiSourceListGetInfoW(
                 ProductCodeW(unk_prod_w.as_ptr()),
@@ -2363,7 +2328,9 @@ mod tests_final_cov {
             let mut val_w2 = vec![0u16; 100];
             let mut buf_a2 = vec![0u8; 100];
             let mut id = 0;
-            let mut cache = source_list_cache().write().unwrap();
+            let mut cache = source_list_cache()
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             let list = cache
                 .entry("product_test_coverage_edge_cases".to_string())
                 .or_default();
@@ -2433,53 +2400,62 @@ mod tests_final_cov {
                 &mut sz_val,
             );
 
-            // ClearMediaDisk that actually removes a disk (id == _dwDiskId)
-            let mut cache = source_list_cache().write().unwrap();
-            let list = cache
-                .entry("product_test_coverage_edge_cases".to_string())
-                .or_default();
-            list.sources.clear();
-            list.sources.push(SourcePath::Media(MediaSource {
-                base_path: std::path::PathBuf::from("C:\\media"),
-                disk_id: Some(42),
-                volume_label: None,
-                disk_prompt: None,
-            }));
-            drop(cache);
+            // ClearMediaDisk that actually removes a disk (id == dwDiskId)
+            {
+                let mut cache_w = source_list_cache()
+                    .write()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                let list_w = cache_w
+                    .entry("product_test_coverage_edge_cases".to_string())
+                    .or_default();
+                list_w.sources.clear();
+                list_w.sources.push(SourcePath::Media(MediaSource {
+                    base_path: std::path::PathBuf::from("C:\\media"),
+                    disk_id: Some(42),
+                    volume_label: None,
+                    disk_prompt: None,
+                }));
+            }
             let _ = MsiSourceListClearMediaDiskW(good_w.as_ptr(), ptr::null(), 0, 0, 42);
 
-            let mut cache = source_list_cache().write().unwrap();
-            let list = cache
-                .entry("product_test_coverage_edge_cases".to_string())
-                .or_default();
-            list.sources.clear();
-            list.sources.push(SourcePath::Media(MediaSource {
-                base_path: std::path::PathBuf::from("C:\\media"),
-                disk_id: Some(42),
-                volume_label: None,
-                disk_prompt: None,
-            }));
-            drop(cache);
+            {
+                let mut cache_a = source_list_cache()
+                    .write()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                let list_a = cache_a
+                    .entry("product_test_coverage_edge_cases".to_string())
+                    .or_default();
+                list_a.sources.clear();
+                list_a.sources.push(SourcePath::Media(MediaSource {
+                    base_path: std::path::PathBuf::from("C:\\media"),
+                    disk_id: Some(42),
+                    volume_label: None,
+                    disk_prompt: None,
+                }));
+            }
             let _ = MsiSourceListClearMediaDiskA(good_a.as_ptr(), ptr::null(), 0, 0, 42);
 
             // EnumMediaDisks missing MORE_DATA
-            let mut cache = source_list_cache().write().unwrap();
-            let list = cache
-                .entry("product_test_coverage_edge_cases".to_string())
-                .or_default();
-            list.sources.clear();
-            list.sources.push(SourcePath::Media(MediaSource {
-                base_path: std::path::PathBuf::from("C:\\media"),
-                disk_id: Some(42),
-                volume_label: Some("Label".to_string()),
-                disk_prompt: Some("Prompt".to_string()),
-            }));
-            drop(cache);
+            {
+                let mut cache_m = source_list_cache()
+                    .write()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                let list_m = cache_m
+                    .entry("product_test_coverage_edge_cases".to_string())
+                    .or_default();
+                list_m.sources.clear();
+                list_m.sources.push(SourcePath::Media(MediaSource {
+                    base_path: std::path::PathBuf::from("C:\\media"),
+                    disk_id: Some(42),
+                    volume_label: Some("Label".to_string()),
+                    disk_prompt: Some("Prompt".to_string()),
+                }));
+            }
 
             let mut small_sz = 1;
-            let mut id = 0;
-            let mut val_w2 = vec![0u16; 100];
-            let mut buf_a2 = vec![0u8; 100];
+            id = 0;
+            val_w2 = vec![0u16; 100];
+            buf_a2 = vec![0u8; 100];
             let mut sz2 = 100;
             let _ = MsiSourceListEnumMediaDisksW(
                 good_w.as_ptr(),
@@ -2544,7 +2520,7 @@ mod tests_final_cov {
             .encode_utf16()
             .chain(std::iter::once(0))
             .collect::<Vec<_>>();
-        let good_a = CString::new("product_get_info").unwrap();
+        let good_a = CString::new("product_get_info").unwrap_or_default();
 
         let last_source_w = "LastUsedSource"
             .encode_utf16()
@@ -2554,8 +2530,8 @@ mod tests_final_cov {
             .encode_utf16()
             .chain(std::iter::once(0))
             .collect::<Vec<_>>();
-        let last_source_a = CString::new("LastUsedSource").unwrap();
-        let last_type_a = CString::new("LastUsedType").unwrap();
+        let last_source_a = CString::new("LastUsedSource").unwrap_or_default();
+        let last_type_a = CString::new("LastUsedType").unwrap_or_default();
 
         let mut sz = 100;
 
@@ -2605,7 +2581,9 @@ mod tests_final_cov {
 
         // Let's populate the cache with some fake sources
         {
-            let mut cache = source_list_cache().write().unwrap();
+            let mut cache = source_list_cache()
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             let list = cache.entry("product_get_info".to_string()).or_default();
 
             // 1. Media
@@ -2659,7 +2637,9 @@ mod tests_final_cov {
         }
 
         {
-            let mut cache = source_list_cache().write().unwrap();
+            let mut cache = source_list_cache()
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             let list = cache.entry("product_get_info".to_string()).or_default();
 
             // 2. Network
@@ -2710,7 +2690,9 @@ mod tests_final_cov {
         }
 
         {
-            let mut cache = source_list_cache().write().unwrap();
+            let mut cache = source_list_cache()
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             let list = cache.entry("product_get_info".to_string()).or_default();
 
             // 3. Url
@@ -2761,7 +2743,9 @@ mod tests_final_cov {
         }
 
         {
-            let mut cache = source_list_cache().write().unwrap();
+            let mut cache = source_list_cache()
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             let list = cache.entry("product_get_info".to_string()).or_default();
             list.last_used = None;
         }
@@ -2769,7 +2753,7 @@ mod tests_final_cov {
         unsafe {
             let mut val_w = vec![0u16; 100];
             let mut val_a = vec![0u8; 100];
-            let mut sz = 100;
+            sz = 100;
             let _ = MsiSourceListGetInfoW(
                 ProductCodeW(good_w.as_ptr()),
                 ptr::null(),
@@ -2836,7 +2820,7 @@ mod tests_final_cov {
                 .encode_utf16()
                 .chain(std::iter::once(0))
                 .collect::<Vec<_>>();
-            let unknown_a = CString::new("Unknown").unwrap();
+            let unknown_a = CString::new("Unknown").unwrap_or_default();
             let _ = MsiSourceListGetInfoW(
                 ProductCodeW(good_w.as_ptr()),
                 ptr::null(),
@@ -2880,13 +2864,8 @@ mod tests_final_cov {
                 .encode_utf16()
                 .chain(std::iter::once(0))
                 .collect::<Vec<_>>();
-            let unk_prod_a = CString::new("unknown_product_does_not_exist_at_all").unwrap();
-
-            let last_source_w = "LastUsedSource"
-                .encode_utf16()
-                .chain(std::iter::once(0))
-                .collect::<Vec<_>>();
-            let last_source_a = CString::new("LastUsedSource").unwrap();
+            let unk_prod_a =
+                CString::new("unknown_product_does_not_exist_at_all").unwrap_or_default();
 
             let _ = MsiSourceListGetInfoW(
                 ProductCodeW(unk_prod_w.as_ptr()),
@@ -2955,6 +2934,7 @@ mod tests_final_cov {
 }
 
 #[cfg(test)]
+#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 mod tests_remaining_cov {
     use super::*;
     use crate::action::{ProductCodeA, ProductCodeW};
@@ -2967,7 +2947,7 @@ mod tests_remaining_cov {
             .encode_utf16()
             .chain(std::iter::once(0))
             .collect::<Vec<_>>();
-        let good_a = CString::new("product_remaining").expect("valid");
+        let good_a = CString::new("product_remaining").unwrap_or_default();
 
         let bad_w = [0xD800, 0];
         let bad_a = &[0xFF, 0x00];
@@ -2988,12 +2968,12 @@ mod tests_remaining_cov {
                 .encode_utf16()
                 .chain(std::iter::once(0))
                 .collect::<Vec<_>>();
-            let prop_a = CString::new("LastUsedSource").expect("valid");
+            let prop_a = CString::new("LastUsedSource").unwrap_or_default();
             let prop_last_w = "LastUsedType"
                 .encode_utf16()
                 .chain(std::iter::once(0))
                 .collect::<Vec<_>>();
-            let prop_last_a = CString::new("LastUsedType").expect("valid");
+            let prop_last_a = CString::new("LastUsedType").unwrap_or_default();
 
             // GetInfo bad product
             let _ = MsiSourceListGetInfoW(
@@ -3020,7 +3000,7 @@ mod tests_remaining_cov {
                 .encode_utf16()
                 .chain(std::iter::once(0))
                 .collect::<Vec<_>>();
-            let value_a = CString::new("http://test").expect("valid");
+            let value_a = CString::new("http://test").unwrap_or_default();
             let _ = MsiSourceListSetInfoW(
                 bad_w.as_ptr(),
                 ptr::null(),
@@ -3043,17 +3023,17 @@ mod tests_remaining_cov {
                 .encode_utf16()
                 .chain(std::iter::once(0))
                 .collect::<Vec<_>>();
-            let net_a = CString::new("\\net").expect("valid");
+            let net_a = CString::new("\\net").unwrap_or_default();
             let media_w = r"C:\media"
                 .encode_utf16()
                 .chain(std::iter::once(0))
                 .collect::<Vec<_>>();
-            let media_a = CString::new(r"C:\media").expect("valid");
+            let media_a = CString::new(r"C:\media").unwrap_or_default();
             let url_w = "http://url"
                 .encode_utf16()
                 .chain(std::iter::once(0))
                 .collect::<Vec<_>>();
-            let url_a = CString::new("http://url").expect("valid");
+            let url_a = CString::new("http://url").unwrap_or_default();
 
             let _ = MsiSourceListSetInfoW(
                 good_w.as_ptr(),
@@ -3173,7 +3153,7 @@ mod tests_remaining_cov {
                 .chain(std::iter::once(0))
                 .collect::<Vec<_>>();
             let _ = MsiSourceListClearAllW(ProductCodeW(good_w.as_ptr()), user_w.as_ptr(), 0);
-            let user_a = CString::new("user").expect("valid");
+            let user_a = CString::new("user").unwrap_or_default();
             let _ = MsiSourceListClearAllA(ProductCodeA(good_a.as_ptr()), user_a.as_ptr(), 0);
 
             let bad_user_w = [0xD800, 0];
@@ -3194,8 +3174,8 @@ mod tests_remaining_cov {
                 .encode_utf16()
                 .chain(std::iter::once(0))
                 .collect::<Vec<_>>();
-            let disk_a = CString::new("Disk").expect("valid");
-            let prompt_a = CString::new("Prompt").expect("valid");
+            let disk_a = CString::new("Disk").unwrap_or_default();
+            let prompt_a = CString::new("Prompt").unwrap_or_default();
             let _ = MsiSourceListAddMediaDiskW(
                 ProductCodeW(good_w.as_ptr()),
                 ptr::null(),
@@ -3218,7 +3198,7 @@ mod tests_remaining_cov {
                 .encode_utf16()
                 .chain(std::iter::once(0))
                 .collect::<Vec<_>>();
-            let unk_a = CString::new("unk").expect("valid");
+            let unk_a = CString::new("unk").unwrap_or_default();
             let _ = MsiSourceListAddMediaDiskW(
                 ProductCodeW(unk_w.as_ptr()),
                 ptr::null(),
@@ -3258,13 +3238,13 @@ mod tests_remaining_cov {
                 .encode_utf16()
                 .chain(std::iter::once(0))
                 .collect::<Vec<_>>();
-            let iso_a = CString::new(iso_str).expect("valid");
+            let iso_a = CString::new(iso_str).unwrap_or_default();
             let missing_str = "product_never_inserted_xyz_999";
             let missing_w = missing_str
                 .encode_utf16()
                 .chain(std::iter::once(0))
                 .collect::<Vec<_>>();
-            let missing_a = CString::new(missing_str).expect("valid");
+            let missing_a = CString::new(missing_str).unwrap_or_default();
 
             // Unknown and invalid product branches
             assert_eq!(
@@ -3520,7 +3500,7 @@ mod tests_remaining_cov {
                 .encode_utf16()
                 .chain(std::iter::once(0))
                 .collect::<Vec<_>>();
-            let net_unc_ansi = CString::new(r"\\server\share").expect("valid");
+            let net_unc_ansi = CString::new(r"\\server\share").unwrap_or_default();
             assert_eq!(
                 MsiSourceListSetInfoW(
                     iso_w.as_ptr(),

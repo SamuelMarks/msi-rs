@@ -465,7 +465,7 @@ impl PyPackageBuilder {
         );
 
         let (hash_part1, hash_part2, hash_part3, hash_part4) =
-            crate::md5::format_msi_md5_quads(&data);
+            msi::database::md5::format_msi_md5_quads(&data);
 
         let hash_row = FileHashRow {
             file: file_key,
@@ -1272,10 +1272,34 @@ mod tests {
                     empty_args.as_ptr(),
                     std::ptr::null_mut(),
                 );
+                let mut holder_ref = pyo3::impl_::extract_argument::FunctionArgumentHolder::INIT;
+                let _ = <
+                    &PyPackageBuilder as pyo3::impl_::extract_argument::PyFunctionArgument<'_, '_>
+                >::extract(bad_obj.as_any(), &mut holder_ref);
+                let mut holder_mut = pyo3::impl_::extract_argument::FunctionArgumentHolder::INIT;
+                let _ = <
+                    &mut PyPackageBuilder as pyo3::impl_::extract_argument::PyFunctionArgument<
+                        '_,
+                        '_,
+                    >
+                >::extract(bad_obj.as_any(), &mut holder_mut);
             }
+            let _ = PyPackageBuilder::default().into_py(py);
+
+            let temp_dir = std::env::temp_dir().join("msi_py_bld_ctx_test");
+            let _ = fs::create_dir_all(&temp_dir);
+            let sample_src = temp_dir.join("sample.txt");
+            let _ = fs::write(&sample_src, b"sample content");
+            let out_msi = temp_dir.join("out.msi");
 
             let globals = PyDict::new_bound(py);
             assert!(globals.set_item("m", &m).is_ok());
+            assert!(globals
+                .set_item("sample_src", sample_src.to_string_lossy().as_ref())
+                .is_ok());
+            assert!(globals
+                .set_item("out_msi", out_msi.to_string_lossy().as_ref())
+                .is_ok());
 
             let script = r##"
 with m.PackageBuilder("ContextApp", "ContextVendor", "1.2.3") as b:
@@ -1291,6 +1315,7 @@ with m.PackageBuilder("ContextApp", "ContextVendor", "1.2.3") as b:
     b.add_feature("MainFeat", None, "Title", "Desc", 1, 1, "INSTALLDIR", 0)
     b.add_feature_component("MainFeat", "MainComp")
     b.add_file("MainFile", "MainComp", "app.exe", 1024, "1.0", "1033", 0, 1)
+    b.add_file_from_disk(sample_src, "INSTALLDIR", "MainFeat")
     b.add_media(1, 100, "Disk", "#cab1.cab", "Vol", "src")
     b.add_embedded_cabinet("#manual.cab", bytes([1, 2, 3]))
 
@@ -1301,8 +1326,11 @@ with m.PackageBuilder("ContextApp", "ContextVendor", "1.2.3") as b:
 
     raw_bytes = b.build_to_bytes()
     assert len(raw_bytes) > 0
+    b.build_to_file(out_msi)
 "##;
-            py.run_bound(script, Some(&globals), None).is_ok()
+            let ok = py.run_bound(script, Some(&globals), None).is_ok();
+            let _ = fs::remove_dir_all(&temp_dir);
+            ok
         })
     }
 

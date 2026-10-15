@@ -267,19 +267,25 @@ impl CabinetReader {
 mod tests {
 
     #[test]
-    fn test_cabinet_reader_file_chunk_not_found() {
+    fn test_cabinet_reader_file_chunk_not_found(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut writer = CabinetWriter::new(CompressionType::None);
-        writer.add_file("test.txt", b"hello").expect("test");
+        assert!(writer.add_file("test.txt", b"hello").is_ok());
         let cab_bytes = writer.build().unwrap_or_default();
-        let reader = CabinetReader::new(&cab_bytes).expect("test");
-        let err = reader.extract_file_chunk("missing").unwrap_err();
+        let reader = CabinetReader::new(&cab_bytes)?;
+        let err = reader
+            .extract_file_chunk("missing")
+            .err()
+            .unwrap_or_default();
         assert!(matches!(err, MsiError::CabinetFileNotFound { .. }));
+        Ok(())
     }
 
     #[test]
-    fn test_cabinet_reader_invalid_folder_index() {
+    fn test_cabinet_reader_invalid_folder_index(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut writer = CabinetWriter::new(CompressionType::None);
-        writer.add_file("test.txt", b"hello").expect("test");
+        assert!(writer.add_file("test.txt", b"hello").is_ok());
         let mut cab_bytes = writer.build().unwrap_or_default();
         // Corrupt folder index. CFFILE entries start after CFFOLDER (which is after CFHEADER).
         // Let's just find "test.txt" in the binary and corrupt the index right before it.
@@ -287,21 +293,24 @@ mod tests {
         // File entry: [uncompressed size 4][offset 4][folder index 2][date 2][time 2][attrs 2][name...]
         // We know it's at offset 0x24 in a minimal cabinet.
         cab_bytes[0x24] = 0xFF;
-        let reader = CabinetReader::new(&cab_bytes).unwrap();
+        let reader = CabinetReader::new(&cab_bytes)?;
         let res = reader.extract_file_chunk("test.txt");
         assert!(res.is_err());
+        Ok(())
     }
 
     #[test]
-    fn test_cabinet_reader_lzx_invalid_window() {
+    fn test_cabinet_reader_lzx_invalid_window(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut writer = CabinetWriter::new(CompressionType::None);
-        writer.add_file("test.txt", b"hello").expect("test");
+        assert!(writer.add_file("test.txt", b"hello").is_ok());
         let mut cab_bytes = writer.build().unwrap_or_default();
         cab_bytes[0x2A] = 0x03;
         cab_bytes[0x2B] = 0x0F;
-        let reader = CabinetReader::new(&cab_bytes).expect("test");
-        let err = reader.extract_file("test.txt").unwrap_err();
+        let reader = CabinetReader::new(&cab_bytes)?;
+        let err = reader.extract_file("test.txt").err().unwrap_or_default();
         assert!(matches!(err, MsiError::LzxDecompressionFailed { .. }));
+        Ok(())
     }
 
     use super::*;
@@ -558,10 +567,12 @@ mod tests {
         #[allow(clippy::redundant_clone)]
         let cloned = reader.clone();
         assert_eq!(reader.files().len(), cloned.files().len());
-        assert!(format!("{reader:?}").contains("CabinetReader"));
+        let rdr_dbg = format!("{reader:?}");
+        assert!(rdr_dbg.contains("CabinetReader"));
 
         let dec = FolderDecompressor::None;
-        assert!(format!("{dec:?}").contains("None"));
+        let dec_dbg = format!("{dec:?}");
+        assert!(dec_dbg.contains("None"));
     }
 
     /// Tests reading a cabinet with header, folder, and data reserve sizes.

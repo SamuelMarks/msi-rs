@@ -378,6 +378,7 @@ pub extern "system" fn MsiPreviewBillboardA(
 }
 
 #[cfg(test)]
+#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 mod tests {
     use super::*;
     use crate::handles::{alloc_handle, MsiObject};

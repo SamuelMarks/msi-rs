@@ -67,13 +67,16 @@ pub extern "system" fn MsiViewGetErrorW(
 
         crate::handles::with_handle(hView, |obj| {
             if let crate::handles::MsiObject::View(view) = obj {
-                if let Some(col_name) = &view.last_error_column {
-                    let _ = string_to_lpwstr(col_name, szColumnNameBuffer, pcchBuf);
-                    -1 // MSIDBERROR_FUNCTIONERROR (or specific validation error if we had it)
-                } else {
-                    let _ = string_to_lpwstr("", szColumnNameBuffer, pcchBuf);
-                    0 // MSIDBERROR_NOERROR
-                }
+                view.last_error_column.as_ref().map_or_else(
+                    || {
+                        let _ = string_to_lpwstr("", szColumnNameBuffer, pcchBuf);
+                        0
+                    },
+                    |col_name| {
+                        let _ = string_to_lpwstr(col_name, szColumnNameBuffer, pcchBuf);
+                        -1
+                    },
+                )
             } else {
                 -3 // MSIDBERROR_INVALIDARG
             }
@@ -85,7 +88,6 @@ pub extern "system" fn MsiViewGetErrorW(
 }
 
 /// Validates a view execution and returns any error that occurred (ANSI).
-
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
@@ -101,13 +103,16 @@ pub extern "system" fn MsiViewGetErrorA(
 
         crate::handles::with_handle(hView, |obj| {
             if let crate::handles::MsiObject::View(view) = obj {
-                if let Some(col_name) = &view.last_error_column {
-                    let _ = string_to_lpstr(col_name, szColumnNameBuffer, pcchBuf);
-                    -1 // MSIDBERROR_FUNCTIONERROR
-                } else {
-                    let _ = string_to_lpstr("", szColumnNameBuffer, pcchBuf);
-                    0 // MSIDBERROR_NOERROR
-                }
+                view.last_error_column.as_ref().map_or_else(
+                    || {
+                        let _ = string_to_lpstr("", szColumnNameBuffer, pcchBuf);
+                        0
+                    },
+                    |col_name| {
+                        let _ = string_to_lpstr(col_name, szColumnNameBuffer, pcchBuf);
+                        -1
+                    },
+                )
             } else {
                 -3 // MSIDBERROR_INVALIDARG
             }
@@ -240,9 +245,8 @@ pub extern "system" fn MsiViewModify(
             use msi::database::sql::parser::Parser;
 
             let mut lexer = Lexer::new(&query_copy);
-            let tokens = match lexer.tokenize() {
-                Ok(t) => t,
-                Err(_) => return 13, // ERROR_INVALID_DATA
+            let Ok(tokens) = lexer.tokenize() else {
+                return 13;
             };
             let mut parser = Parser::new(tokens);
             match parser.parse() {
@@ -350,6 +354,7 @@ pub extern "system" fn MsiViewGetColumnInfo(
 }
 
 #[cfg(test)]
+#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 mod tests {
     use super::*;
 
@@ -451,7 +456,7 @@ mod tests {
         use msi::database::FieldValue;
         use msi::wix::linker::LinkedDatabase;
 
-        let db = LinkedDatabase::new().unwrap();
+        let db = LinkedDatabase::new().unwrap_or_default();
         let db_handle = crate::handles::alloc_handle(crate::handles::MsiObject::Database(
             crate::types::MsiDatabaseHandle {
                 inner: db,

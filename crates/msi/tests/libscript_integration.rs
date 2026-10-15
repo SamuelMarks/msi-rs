@@ -418,7 +418,7 @@ fn test_libscript_openedx_online_dual_fragment_workflow() -> Result<()> {
 
     let db = pkg.database();
     let ca_records = db.get_records("CustomAction");
-    let _ = ca_records.iter().any(|r| {
+    assert!(ca_records.iter().any(|r| {
         r.get(3).is_some_and(|f| {
             if let FieldValue::String(s) = f {
                 s.contains("--admin-user") && s.contains("--admin-password")
@@ -426,10 +426,10 @@ fn test_libscript_openedx_online_dual_fragment_workflow() -> Result<()> {
                 false
             }
         })
-    });
+    }));
 
     let seq_records = db.get_records("InstallExecuteSequence");
-    let _ = seq_records.iter().any(|r| {
+    assert!(seq_records.iter().any(|r| {
         r.get(1).is_some_and(|f| {
             if let FieldValue::String(s) = f {
                 s.contains("AGREE_ALL_LICENSES") && s.contains("LICENSE_ACCEPTED_mysql")
@@ -437,7 +437,7 @@ fn test_libscript_openedx_online_dual_fragment_workflow() -> Result<()> {
                 false
             }
         })
-    });
+    }));
 
     let _ = fs::remove_dir_all(&temp_dir);
     Ok(())

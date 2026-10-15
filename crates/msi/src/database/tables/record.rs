@@ -540,28 +540,27 @@ impl Record {
 #[allow(clippy::redundant_clone)]
 mod tests {
     #[test]
-    fn test_field_value_deserialize_null_stream_and_string_3_byte_index() {
+    fn test_field_value_deserialize_null_stream_and_string_3_byte_index(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut pool = StringPool::new(1252);
 
         let col_stream = ColumnDef::new("Col1", DataType::Stream);
         let stream_null_bytes = [0x00, 0x00, 0x00, 0x00];
-        let val_stream =
-            Record::deserialize_field(&stream_null_bytes, &col_stream, &pool, 2).expect("test");
+        let val_stream = Record::deserialize_field(&stream_null_bytes, &col_stream, &pool, 2)?;
         assert_eq!(val_stream, FieldValue::Null);
 
         let col_string = ColumnDef::new("Col2", DataType::String { max_len: 255 });
         let string_null_bytes = [0x00, 0x00, 0x00, 0x00];
-        let val_string =
-            Record::deserialize_field(&string_null_bytes, &col_string, &pool, 3).expect("test");
+        let val_string = Record::deserialize_field(&string_null_bytes, &col_string, &pool, 3)?;
         assert_eq!(val_string, FieldValue::Null);
 
         pool.add_string("TestString");
         // We know "TestString" will be ID 1 (or at least non-zero).
         // We can just construct a 3 byte stream with value 1: 0x01, 0x00, 0x00, 0x00
         let string_valid_bytes = [0x01, 0x00, 0x00, 0x00];
-        let val_string2 =
-            Record::deserialize_field(&string_valid_bytes, &col_string, &pool, 3).expect("test");
+        let val_string2 = Record::deserialize_field(&string_valid_bytes, &col_string, &pool, 3)?;
         assert_eq!(val_string2, FieldValue::String("TestString".to_string()));
+        Ok(())
     }
     use super::*;
     use crate::database::string_pool::CODEPAGE_UTF8;
@@ -803,10 +802,10 @@ mod tests {
 
     /// Tests record error cases and boundary conditions.
     #[test]
-    fn test_record_errors() {
+    fn test_record_errors() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut pool = StringPool::new(CODEPAGE_UTF8);
         let cols = vec![ColumnDef::new("Col1", DataType::Short)];
-        let layout = PhysicalTableLayout::new(&cols, false).expect("test");
+        let layout = PhysicalTableLayout::new(&cols, false)?;
         let r = Record::new(); // 0 fields, but 1 column expected
         assert_eq!(r.fields().len(), 0);
         assert!(r.serialize(&layout, &mut pool, 2).is_err());
@@ -853,11 +852,13 @@ mod tests {
             test_rec.get(1),
             Some(&FieldValue::String("mutated".to_string()))
         );
+        Ok(())
     }
 
     /// Tests short integer serialization boundaries and hex output.
     #[test]
-    fn test_short_integer_serialization_exhaustive() {
+    fn test_short_integer_serialization_exhaustive(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut pool = StringPool::new(CODEPAGE_UTF8);
         let cols = vec![ColumnDef::new("Col1", DataType::Short)];
 
@@ -877,7 +878,7 @@ mod tests {
 
             let des_res = try_deserialize(&bytes, &cols, &pool, 2);
             assert_eq!(des_res.len(), 1);
-            let des_field = des_res[0].get(0).expect("test");
+            let des_field = des_res[0].get(0).ok_or("none")?;
 
             // i16::MIN and Null both deserialize back to Null
             let expected_des = if field_val == FieldValue::Short(i16::MIN) {
@@ -887,11 +888,13 @@ mod tests {
             };
             assert_eq!(des_field, &expected_des);
         }
+        Ok(())
     }
 
     /// Tests long integer serialization boundaries and hex output.
     #[test]
-    fn test_long_integer_serialization_exhaustive() {
+    fn test_long_integer_serialization_exhaustive(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut pool = StringPool::new(CODEPAGE_UTF8);
         let cols = vec![ColumnDef::new("Col1", DataType::Long)];
 
@@ -913,7 +916,7 @@ mod tests {
 
             let des_res = try_deserialize(&bytes, &cols, &pool, 2);
             assert_eq!(des_res.len(), 1);
-            let des_field = des_res[0].get(0).expect("test");
+            let des_field = des_res[0].get(0).ok_or("none")?;
 
             // i32::MIN and Null both deserialize back to Null
             let expected_des = if field_val == FieldValue::Long(i32::MIN) {
@@ -923,15 +926,16 @@ mod tests {
             };
             assert_eq!(des_field, &expected_des);
         }
+        Ok(())
     }
 
     /// Tests integer data integrity errors during serialization.
     #[test]
-    fn test_integer_data_integrity() {
+    fn test_integer_data_integrity() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut pool = StringPool::new(CODEPAGE_UTF8);
 
         let cols_short = vec![ColumnDef::new("Col1", DataType::Short)];
-        let layout_short = PhysicalTableLayout::new(&cols_short, false).expect("test");
+        let layout_short = PhysicalTableLayout::new(&cols_short, false)?;
 
         let r_out_of_bounds = Record::with_fields(vec![FieldValue::Long(32768)]);
         let res = r_out_of_bounds.serialize(&layout_short, &mut pool, 2);
@@ -946,26 +950,27 @@ mod tests {
         assert!(res3.is_err());
 
         let cols_long = vec![ColumnDef::new("Col1", DataType::Long)];
-        let layout_long = PhysicalTableLayout::new(&cols_long, false).expect("test");
+        let layout_long = PhysicalTableLayout::new(&cols_long, false)?;
 
         let r_wrong_type_long = Record::with_fields(vec![FieldValue::String("NaN".to_string())]);
         let res4 = r_wrong_type_long.serialize(&layout_long, &mut pool, 2);
         assert!(res4.is_err());
+        Ok(())
     }
 
     #[test]
-    fn test_record_extra_coverage() {
+    fn test_record_extra_coverage() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut pool = StringPool::new(CODEPAGE_UTF8);
         let cols = vec![ColumnDef::new("Col1", DataType::Short)];
-        let layout = PhysicalTableLayout::new(&cols, false).expect("test");
+        let layout = PhysicalTableLayout::new(&cols, false)?;
 
         // Line 374-375
         assert!(Record::deserialize(&[0; 0], &layout, &pool, 2).is_err());
 
         // Line 487: Stream str_id == 0 -> Null
         let cols_stream = vec![ColumnDef::new("Col1", DataType::Stream)];
-        let layout_stream = PhysicalTableLayout::new(&cols_stream, false).expect("test");
-        let des = Record::deserialize(&[0, 0], &layout_stream, &pool, 2).expect("test");
+        let layout_stream = PhysicalTableLayout::new(&cols_stream, false)?;
+        let des = Record::deserialize(&[0, 0], &layout_stream, &pool, 2)?;
         assert_eq!(des.fields()[0], FieldValue::Null);
 
         // try_serialize fail
@@ -982,18 +987,14 @@ mod tests {
 
         // Lines 285-286: Long to Short valid
         let r_long_to_short = Record::with_fields(vec![FieldValue::Long(123)]);
-        let serialized_short = r_long_to_short
-            .serialize(&layout, &mut pool, 2)
-            .expect("test");
+        let serialized_short = r_long_to_short.serialize(&layout, &mut pool, 2)?;
         assert_eq!(serialized_short, vec![0x7B, 0x80]);
 
         // Line 300: Short to Long valid
         let cols_long = vec![ColumnDef::new("Col1", DataType::Long)];
-        let layout_long = PhysicalTableLayout::new(&cols_long, false).expect("test");
+        let layout_long = PhysicalTableLayout::new(&cols_long, false)?;
         let r_short_to_long = Record::with_fields(vec![FieldValue::Short(123)]);
-        let serialized_long = r_short_to_long
-            .serialize(&layout_long, &mut pool, 2)
-            .expect("test");
+        let serialized_long = r_short_to_long.serialize(&layout_long, &mut pool, 2)?;
         assert_eq!(serialized_long, vec![123, 0, 0, 128]);
 
         // Lines 483 and 511: try_serialize and try_deserialize with invalid cols
@@ -1006,6 +1007,7 @@ mod tests {
             try_deserialize(&[], &bad_cols, &pool, 2),
             Vec::<Record>::new()
         );
+        Ok(())
     }
 }
 

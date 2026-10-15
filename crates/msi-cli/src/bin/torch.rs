@@ -1,5 +1,3 @@
-#![allow(clippy::cognitive_complexity)]
-#![allow(clippy::literal_string_with_formatting_args)]
 //! # torch
 //!
 //! `WiX` v3 Database Transform Generation tool replicating `torch.exe`.
@@ -357,174 +355,8 @@ mod tests {
         fs::read_to_string(path).map_or_else(|_| Vec::new(), |c| vec![c])
     }
 
-    /// Tests all branches and error handling of `torch` binary execution.
-    #[test]
-    #[allow(clippy::too_many_lines, clippy::redundant_clone)]
-    fn test_torch_run_all_branches() {
-        let temp_dir = std::env::temp_dir().join("msi_cli_test_torch_bin");
-        let _ = fs::create_dir_all(&temp_dir);
-        let src1 = temp_dir.join("base.wxs");
-        let src2 = temp_dir.join("upd.wxs");
-        let msi1 = temp_dir.join("base.msi");
-        let msi2 = temp_dir.join("upd.msi");
-        let mst_out = temp_dir.join("patch.mst");
-
-        let wxs1 = r#"
-<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-    <Product Id="{11111111-1111-1111-1111-111111111111}" Name="App1" Version="1.0.0" Manufacturer="Test">
-        <Package Description="Test" />
-        <Directory Id="TARGETDIR" Name="SourceDir" />
-    </Product>
-</Wix>
-"#;
-        let wxs2 = r#"
-<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-    <Product Id="{11111111-1111-1111-1111-111111111111}" Name="App2" Version="2.0.0" Manufacturer="Test">
-        <Package Description="Test" />
-        <Directory Id="TARGETDIR" Name="SourceDir" />
-    </Product>
-</Wix>
-"#;
-        assert!(fs::write(&src1, wxs1).is_ok());
-        assert!(fs::write(&src2, wxs2).is_ok());
-
-        let _ = msi::wix::WixBuildOptions::parse(&[
-            "-sval".to_string(),
-            "-o".to_string(),
-            msi1.to_string_lossy().to_string(),
-            src1.to_string_lossy().to_string(),
-        ])
-        .unwrap_or_default()
-        .execute();
-
-        let _ = msi::wix::WixBuildOptions::parse(&[
-            "-sval".to_string(),
-            "-o".to_string(),
-            msi2.to_string_lossy().to_string(),
-            src2.to_string_lossy().to_string(),
-        ])
-        .unwrap_or_default()
-        .execute();
-
-        // 1. Parse errors
-        assert_eq!(run(&[]), 1);
-        assert_eq!(run(&["-val".to_string()]), 1);
-        assert_eq!(run(&["-o".to_string()]), 1);
-        assert_eq!(run(&[msi1.to_string_lossy().to_string()]), 1);
-        assert_eq!(
-            run(&[
-                msi1.to_string_lossy().to_string(),
-                msi2.to_string_lossy().to_string()
-            ]),
-            1
-        );
-        // Relative path covering !arg.starts_with('/')
-        assert_eq!(run(&["relative.msi".to_string()]), 1);
-        assert_eq!(run_app(&[]), ExitCode::FAILURE);
-
-        // 2. Execution error on non-existent baseline
-        assert_eq!(
-            run(&[
-                "-o".to_string(),
-                mst_out.to_string_lossy().to_string(),
-                "nonexistent.msi".to_string(),
-                msi2.to_string_lossy().to_string(),
-            ]),
-            1
-        );
-
-        // 3. Execution error on non-existent updated
-        assert_eq!(
-            run(&[
-                "-o".to_string(),
-                mst_out.to_string_lossy().to_string(),
-                msi1.to_string_lossy().to_string(),
-                "nonexistent2.msi".to_string(),
-            ]),
-            1
-        );
-
-        // 4. Successful diff with banner printed
-        let full_args = vec![
-            "-p".to_string(),
-            "-xi".to_string(),
-            "-xo".to_string(),
-            "-val".to_string(),
-            "31".to_string(),
-            "-o".to_string(),
-            mst_out.to_string_lossy().to_string(),
-            msi1.to_string_lossy().to_string(),
-            msi2.to_string_lossy().to_string(),
-        ];
-        assert_eq!(run(&full_args), 0);
-        assert_eq!(run_app(&full_args), ExitCode::SUCCESS);
-        assert!(mst_out.exists());
-
-        // 5. Successful diff with alternate flags (/nologo, /p, /xi, /xo, /val, /o, /out, -out)
-        let mst_out2 = temp_dir.join("nested_dir").join("patch2.mst");
-        let slash_args = vec![
-            "/nologo".to_string(),
-            "/p".to_string(),
-            "/xi".to_string(),
-            "/xo".to_string(),
-            "/val".to_string(),
-            "not_a_number".to_string(),
-            "-out".to_string(),
-            mst_out2.to_string_lossy().to_string(),
-            "-unknown".to_string(),
-            "/nonexistent_slash_path.xyz".to_string(),
-            msi1.to_string_lossy().to_string(),
-            msi2.to_string_lossy().to_string(),
-        ];
-        assert_eq!(run(&slash_args), 0);
-        assert!(mst_out2.exists());
-
-        // Test /o and /out and .mst extension and non-extension file
-        let mst_input = temp_dir.join("input.mst");
-        let noext_file = temp_dir.join("input_noext");
-        assert!(fs::copy(&msi1, &mst_input).is_ok());
-        assert!(fs::copy(&msi2, &noext_file).is_ok());
-
-        let mst_out3 = temp_dir.join("patch3.mst");
-        assert_eq!(
-            run(&[
-                "-nologo".to_string(),
-                "/o".to_string(),
-                mst_out3.to_string_lossy().to_string(),
-                mst_input.to_string_lossy().to_string(),
-                noext_file.to_string_lossy().to_string(),
-            ]),
-            0
-        );
-
-        let mst_out4 = temp_dir.join("patch4.mst");
-        assert_eq!(
-            run(&[
-                "-nologo".to_string(),
-                "/out".to_string(),
-                mst_out4.to_string_lossy().to_string(),
-                msi1.to_string_lossy().to_string(),
-                msi2.to_string_lossy().to_string(),
-            ]),
-            0
-        );
-
-        // 6. Execution error when output cannot be written (parent is a file)
-        let blocking_file = temp_dir.join("blocking_parent_file");
-        assert!(fs::write(&blocking_file, b"occupied").is_ok());
-        let blocked_out = blocking_file.join("fail.mst");
-        assert_eq!(
-            run(&[
-                "-nologo".to_string(),
-                "-o".to_string(),
-                blocked_out.to_string_lossy().to_string(),
-                msi1.to_string_lossy().to_string(),
-                msi2.to_string_lossy().to_string(),
-            ]),
-            1
-        );
-
-        // 7. Test xml_input with real XML files, invalid XML, and non-package binary
+    /// Exercises XML input/output cases for `torch`.
+    fn run_torch_xml_cases(temp_dir: &Path, src1: &Path, src2: &Path) {
         let xml_out = temp_dir.join("xml_transform.xml");
         assert_eq!(
             run(&[
@@ -541,29 +373,19 @@ mod tests {
 
         let bad_xml = temp_dir.join("bad.xml");
         assert!(fs::write(&bad_xml, b"<Invalid><").is_ok());
-        assert_eq!(
-            run(&[
-                "-nologo".to_string(),
-                "-xi".to_string(),
-                "-o".to_string(),
-                xml_out.to_string_lossy().to_string(),
-                bad_xml.to_string_lossy().to_string(),
-                src2.to_string_lossy().to_string(),
-            ]),
-            1
-        );
-        // Test invalid updated XML when baseline XML is valid (covers line 155)
-        assert_eq!(
-            run(&[
-                "-nologo".to_string(),
-                "-xi".to_string(),
-                "-o".to_string(),
-                xml_out.to_string_lossy().to_string(),
-                src1.to_string_lossy().to_string(),
-                bad_xml.to_string_lossy().to_string(),
-            ]),
-            1
-        );
+        for (base_in, upd_in) in [(bad_xml.as_path(), src2), (src1, bad_xml.as_path())] {
+            assert_eq!(
+                run(&[
+                    "-nologo".to_string(),
+                    "-xi".to_string(),
+                    "-o".to_string(),
+                    xml_out.to_string_lossy().to_string(),
+                    base_in.to_string_lossy().to_string(),
+                    upd_in.to_string_lossy().to_string(),
+                ]),
+                1
+            );
+        }
 
         let corrupt_bin = temp_dir.join("corrupt.bin");
         assert!(fs::write(&corrupt_bin, [0xFF, 0xFE, 0x00, 0x01]).is_ok());
@@ -578,17 +400,19 @@ mod tests {
             ]),
             1
         );
+    }
 
-        // 8. Test preserve_unmodified_cabs with matching, differing, and missing embedded cabs
+    /// Exercises cabinet preservation and stream error cases for `torch`.
+    fn run_torch_cabinet_cases(temp_dir: &Path, msi1: &Path, msi2: &Path) {
         assert!(try_open_package(&temp_dir.join("nonexistent.msi")).is_empty());
-        for mut pkg1 in try_open_package(&msi1) {
+        for mut pkg1 in try_open_package(msi1) {
             pkg1.add_embedded_cabinet("#cab1.cab", vec![1, 2, 3]);
             pkg1.add_embedded_cabinet("#cab2.cab", vec![4, 5, 6]);
             pkg1.add_embedded_cabinet("#cab3.cab", vec![7, 8, 9]);
             let cab_msi1 = temp_dir.join("cab1.msi");
             assert!(pkg1.save(&cab_msi1).is_ok());
 
-            for mut pkg2 in try_open_package(&msi2) {
+            for mut pkg2 in try_open_package(msi2) {
                 pkg2.add_embedded_cabinet("#cab1.cab", vec![1, 2, 3]);
                 pkg2.add_embedded_cabinet("#cab2.cab", vec![9, 9, 9]);
                 let cab_msi2 = temp_dir.join("cab2.msi");
@@ -614,7 +438,6 @@ mod tests {
             }
         }
 
-        // Test XML write error (output path is directory)
         assert_eq!(
             run(&[
                 "-nologo".to_string(),
@@ -626,8 +449,6 @@ mod tests {
             ]),
             1
         );
-
-        // Test binary write error (output path is directory)
         assert_eq!(
             run(&[
                 "-nologo".to_string(),
@@ -639,13 +460,12 @@ mod tests {
             1
         );
 
-        // Test serialization failure when stream changes contain duplicate reserved stream name
-        for mut pkg_dup1 in try_open_package(&msi1) {
+        for mut pkg_dup1 in try_open_package(msi1) {
             pkg_dup1.add_embedded_cabinet("_TransformView", vec![1, 2, 3]);
             let dup_msi1 = temp_dir.join("dup1.msi");
             assert!(pkg_dup1.save(&dup_msi1).is_ok());
 
-            for mut pkg_dup2 in try_open_package(&msi2) {
+            for mut pkg_dup2 in try_open_package(msi2) {
                 pkg_dup2.add_embedded_cabinet("_TransformView", vec![1, 2, 3]);
                 let dup_msi2 = temp_dir.join("dup2.msi");
                 assert!(pkg_dup2.save(&dup_msi2).is_ok());
@@ -664,13 +484,162 @@ mod tests {
                 );
             }
         }
+    }
 
-        // 9. Direct execute with missing output or empty output path (parent is None)
+    /// Exercises CLI option parsing and error cases for `torch`.
+    fn run_torch_cli_parse_cases(temp_dir: &Path, msi1: &Path, msi2: &Path, mst_out: &Path) {
+        assert_eq!(run(&[]), 1);
+        assert_eq!(run(&["-val".to_string()]), 1);
+        assert_eq!(run(&["-o".to_string()]), 1);
+        assert_eq!(run(&[msi1.to_string_lossy().to_string()]), 1);
+        assert_eq!(
+            run(&[
+                msi1.to_string_lossy().to_string(),
+                msi2.to_string_lossy().to_string()
+            ]),
+            1
+        );
+        assert_eq!(run(&["relative.msi".to_string()]), 1);
+        assert_eq!(run_app(&[]), ExitCode::FAILURE);
+
+        for (b, u) in [
+            ("nonexistent.msi", msi2.to_string_lossy().as_ref()),
+            (msi1.to_string_lossy().as_ref(), "nonexistent2.msi"),
+        ] {
+            assert_eq!(
+                run(&[
+                    "-o".to_string(),
+                    mst_out.to_string_lossy().to_string(),
+                    b.to_string(),
+                    u.to_string(),
+                ]),
+                1
+            );
+        }
+
+        let blocking_file = temp_dir.join("blocking_parent_file");
+        assert!(fs::write(&blocking_file, b"occupied").is_ok());
+        let blocked_out = blocking_file.join("fail.mst");
+        assert_eq!(
+            run(&[
+                "-nologo".to_string(),
+                "-o".to_string(),
+                blocked_out.to_string_lossy().to_string(),
+                msi1.to_string_lossy().to_string(),
+                msi2.to_string_lossy().to_string(),
+            ]),
+            1
+        );
+    }
+
+    /// Tests all branches and error handling of `torch` binary execution.
+    #[test]
+    fn test_torch_run_all_branches() {
+        let temp_dir = std::env::temp_dir().join("msi_cli_test_torch_bin");
+        let _ = fs::create_dir_all(&temp_dir);
+        let src1 = temp_dir.join("base.wxs");
+        let src2 = temp_dir.join("upd.wxs");
+        let msi1 = temp_dir.join("base.msi");
+        let msi2 = temp_dir.join("upd.msi");
+        let mst_out = temp_dir.join("patch.mst");
+
+        let wxs1 = "<Wix xmlns=\"http://schemas.microsoft.com/wix/2006/wi\"><Product Id=\"{11111111-1111-1111-1111-111111111111}\" Name=\"App1\" Version=\"1.0.0\" Manufacturer=\"Test\"><Package Description=\"Test\" /><Directory Id=\"TARGETDIR\" Name=\"SourceDir\" /></Product></Wix>";
+        let wxs2 = "<Wix xmlns=\"http://schemas.microsoft.com/wix/2006/wi\"><Product Id=\"{11111111-1111-1111-1111-111111111111}\" Name=\"App2\" Version=\"2.0.0\" Manufacturer=\"Test\"><Package Description=\"Test\" /><Directory Id=\"TARGETDIR\" Name=\"SourceDir\" /></Product></Wix>";
+        assert!(fs::write(&src1, wxs1).is_ok());
+        assert!(fs::write(&src2, wxs2).is_ok());
+
+        for (src, out) in [(&src1, &msi1), (&src2, &msi2)] {
+            let _ = msi::wix::WixBuildOptions::parse(&[
+                "-sval".to_string(),
+                "-o".to_string(),
+                out.to_string_lossy().to_string(),
+                src.to_string_lossy().to_string(),
+            ])
+            .unwrap_or_default()
+            .execute();
+        }
+
+        run_torch_cli_parse_cases(&temp_dir, &msi1, &msi2, &mst_out);
+
+        let full_args = vec![
+            "-p".to_string(),
+            "-xi".to_string(),
+            "-xo".to_string(),
+            "-val".to_string(),
+            "31".to_string(),
+            "-o".to_string(),
+            mst_out.to_string_lossy().to_string(),
+            msi1.to_string_lossy().to_string(),
+            msi2.to_string_lossy().to_string(),
+        ];
+        assert_eq!(run(&full_args), 0);
+        assert_eq!(run_app(&full_args), ExitCode::SUCCESS);
+        assert!(mst_out.exists());
+
+        let mst_out2 = temp_dir.join("nested_dir").join("patch2.mst");
+        let slash_args = vec![
+            "/nologo".to_string(),
+            "/p".to_string(),
+            "/xi".to_string(),
+            "/xo".to_string(),
+            "/val".to_string(),
+            "not_a_number".to_string(),
+            "-out".to_string(),
+            mst_out2.to_string_lossy().to_string(),
+            "-unknown".to_string(),
+            "/nonexistent_slash_path.xyz".to_string(),
+            msi1.to_string_lossy().to_string(),
+            msi2.to_string_lossy().to_string(),
+        ];
+        assert_eq!(run(&slash_args), 0);
+        assert!(mst_out2.exists());
+
+        let mst_input = temp_dir.join("input.mst");
+        let noext_file = temp_dir.join("input_noext");
+        assert!(fs::copy(&msi1, &mst_input).is_ok());
+        assert!(fs::copy(&msi2, &noext_file).is_ok());
+
+        for (idx, (flag, b_in, u_in)) in [("/o", &mst_input, &noext_file), ("/out", &msi1, &msi2)]
+            .iter()
+            .enumerate()
+        {
+            let target_mst = temp_dir.join(format!("patch_alt_{idx}.mst"));
+            assert_eq!(
+                run(&[
+                    "-nologo".to_string(),
+                    (*flag).to_string(),
+                    target_mst.to_string_lossy().to_string(),
+                    b_in.to_string_lossy().to_string(),
+                    u_in.to_string_lossy().to_string(),
+                ]),
+                0
+            );
+        }
+
+        run_torch_xml_and_cabinet_cases(&temp_dir, &src1, &src2, &msi1, &msi2);
+
+        let code = main();
+        assert_eq!(code, ExitCode::FAILURE);
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    /// Runs XML, cabinet, option error, and derive test helpers.
+    fn run_torch_xml_and_cabinet_cases(
+        temp_dir: &Path,
+        src1: &Path,
+        src2: &Path,
+        msi1: &Path,
+        msi2: &Path,
+    ) {
+        run_torch_xml_cases(temp_dir, src1, src2);
+        run_torch_cabinet_cases(temp_dir, msi1, msi2);
+
         let no_out_opts = TorchOptions {
             nologo: true,
             output: None,
-            baseline_msi: msi1.clone(),
-            updated_msi: msi2.clone(),
+            baseline_msi: msi1.to_path_buf(),
+            updated_msi: msi2.to_path_buf(),
             ..Default::default()
         };
         assert!(no_out_opts.execute().is_err());
@@ -678,27 +647,22 @@ mod tests {
         let empty_out_opts = TorchOptions {
             nologo: true,
             output: Some(PathBuf::from("")),
-            baseline_msi: msi1,
-            updated_msi: msi2,
+            baseline_msi: msi1.to_path_buf(),
+            updated_msi: msi2.to_path_buf(),
             ..Default::default()
         };
         assert!(empty_out_opts.execute().is_err());
 
-        // 8. Derives test
         let default_opts = TorchOptions::default();
-        let cloned_opts = default_opts.clone();
+        let mut cloned_opts = default_opts.clone();
+        cloned_opts.clone_from(&default_opts);
         let different_opts = TorchOptions {
             validation_flags: 42,
             ..Default::default()
         };
         assert_eq!(default_opts, cloned_opts);
         assert_ne!(default_opts, different_opts);
-        assert!(format!("{default_opts:?}").contains("TorchOptions"));
-
-        // 9. Test invoking main directly
-        let code = main();
-        assert_eq!(code, ExitCode::FAILURE);
-
-        let _ = fs::remove_dir_all(&temp_dir);
+        let opts_dbg = format!("{default_opts:?}");
+        assert!(opts_dbg.contains("TorchOptions"));
     }
 }

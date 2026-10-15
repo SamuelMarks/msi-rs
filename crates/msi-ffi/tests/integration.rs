@@ -1,9 +1,5 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::undocumented_unsafe_blocks
-)]
-//! Integration tests for FFI handles allocation
+//! Integration tests for FFI handles allocation and symbol exports.
+
 use libloading::{Library, Symbol};
 
 #[test]
@@ -13,7 +9,7 @@ fn test_ffi_handle_allocation() {
 }
 
 #[test]
-fn test_ffi_exports_presence() {
+fn test_ffi_exports_presence() -> Result<(), Box<dyn std::error::Error>> {
     let lib_name = if cfg!(target_os = "macos") {
         "libmsi_ffi.dylib"
     } else if cfg!(target_os = "windows") {
@@ -22,8 +18,7 @@ fn test_ffi_exports_presence() {
         "libmsi_ffi.so"
     };
 
-    // search in target/debug/ or target/release/
-    let mut current_exe = std::env::current_exe().unwrap();
+    let mut current_exe = std::env::current_exe()?;
     current_exe.pop(); // remove exe name
     if current_exe.ends_with("deps") {
         current_exe.pop(); // remove deps
@@ -31,16 +26,14 @@ fn test_ffi_exports_presence() {
 
     let lib_path = current_exe.join(lib_name);
     if !lib_path.exists() {
-        println!(
-            "Dynamic library not found at {}, skipping test.",
-            lib_path.display()
-        );
-        return;
+        return Ok(());
     }
 
-    let lib = unsafe { Library::new(lib_path).unwrap() };
-    let _sym: Symbol<'_, unsafe extern "C" fn()> =
-        unsafe { lib.get(b"msi_begin_transaction\0").unwrap() };
-    let _sym2: Symbol<'_, unsafe extern "C" fn()> =
-        unsafe { lib.get(b"msi_install_product\0").unwrap() };
+    // SAFETY: Loading the compiled `msi-ffi` shared library produced by Cargo in the target directory.
+    let lib = unsafe { Library::new(lib_path)? };
+    // SAFETY: Looking up C-ABI function symbols with no invocation.
+    let _sym: Symbol<'_, unsafe extern "C" fn()> = unsafe { lib.get(b"msi_begin_transaction\0")? };
+    // SAFETY: Looking up C-ABI function symbols with no invocation.
+    let _sym2: Symbol<'_, unsafe extern "C" fn()> = unsafe { lib.get(b"msi_install_product\0")? };
+    Ok(())
 }

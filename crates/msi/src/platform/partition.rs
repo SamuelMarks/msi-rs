@@ -742,30 +742,7 @@ impl StandardPartitionScheme {
     }
 }
 
-/// Standard IEEE 802.3 CRC32 checksum calculator for GPT header verification.
-///
-/// # Arguments
-///
-/// * `bytes` - The `bytes` parameter.
-///
-/// # Returns
-///
-/// The resulting value or `Ok(())` on success.
-#[must_use]
-pub fn compute_crc32(bytes: &[u8]) -> u32 {
-    let mut crc: u32 = 0xFFFF_FFFF;
-    for &b in bytes {
-        crc ^= u32::from(b);
-        for _ in 0..8 {
-            if crc & 1 != 0 {
-                crc = (crc >> 1) ^ 0xEDB8_8320;
-            } else {
-                crc >>= 1;
-            }
-        }
-    }
-    !crc
-}
+pub use crate::cab::csum::compute_crc32;
 
 #[cfg(test)]
 #[allow(clippy::redundant_clone)]
@@ -779,7 +756,7 @@ mod tests {
         assert_eq!(format!("{lba}"), "2048");
 
         let uuid = PartitionUuid([0x12; 16]);
-        assert!(format!("{uuid}").starts_with("1212"));
+        assert!(format!("{uuid}").starts_with("1212"), "format check");
     }
 
     /// Tests `GptPartitionEntry` serialization and sector calculation.

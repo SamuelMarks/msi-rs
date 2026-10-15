@@ -92,19 +92,22 @@ impl MediaManager {
     ///
     /// The resulting value or `Ok(())` on success.
     pub fn prompt_for_disk(&self, disk_id: i32, prompt_msg: &str) -> Result<()> {
-        if let Some(cb) = self.prompt_cb {
-            if cb(disk_id, prompt_msg) {
-                Ok(())
-            } else {
+        self.prompt_cb.map_or_else(
+            || {
                 Err(MsiError::ActionExecutionError(
-                    "User canceled media prompt".to_string(),
+                    "No UI handler for media prompt".to_string(),
                 ))
-            }
-        } else {
-            Err(MsiError::ActionExecutionError(
-                "No UI handler for media prompt".to_string(),
-            ))
-        }
+            },
+            |cb| {
+                if cb(disk_id, prompt_msg) {
+                    Ok(())
+                } else {
+                    Err(MsiError::ActionExecutionError(
+                        "User canceled media prompt".to_string(),
+                    ))
+                }
+            },
+        )
     }
 
     /// Determines the extraction source type for a given file key.
@@ -130,17 +133,20 @@ impl MediaManager {
             return Ok(ExtractionSource::UncompressedExternal);
         }
 
-        if let Some(cab) = cab_name {
-            if cab.starts_with('#') {
-                Ok(ExtractionSource::EmbeddedCabinet(cab.to_string()))
-            } else {
-                Ok(ExtractionSource::ExternalCabinet(cab.to_string()))
-            }
-        } else {
-            Err(MsiError::Io(crate::error::IoContext::from_string(
-                "Compressed file missing cabinet reference".to_string(),
-            )))
-        }
+        cab_name.map_or_else(
+            || {
+                Err(MsiError::Io(crate::error::IoContext::from_string(
+                    "Compressed file missing cabinet reference".to_string(),
+                )))
+            },
+            |cab| {
+                if cab.starts_with('#') {
+                    Ok(ExtractionSource::EmbeddedCabinet(cab.to_string()))
+                } else {
+                    Ok(ExtractionSource::ExternalCabinet(cab.to_string()))
+                }
+            },
+        )
     }
 
     /// Simulates dynamic resolution of compression streams (MSZIP, LZX, Quantum).
@@ -181,69 +187,73 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_sanitize_target_path_windows_long() {
-        let long_path_str = "C:\\".to_string() + &"a".repeat(260);
+    fn test_sanitize_target_path_windows_long(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let long_path_str = format!("C:\\{}", "a".repeat(260));
         let long_path = Path::new(&long_path_str);
-        let sanitized = MediaManager::sanitize_target_path(long_path).expect("test");
+        let sanitized = MediaManager::sanitize_target_path(long_path)?;
         assert!(sanitized.to_string_lossy().starts_with(r"\\?\"));
+        Ok(())
     }
 
     #[test]
-    fn test_sanitize_target_path() {
+    fn test_sanitize_target_path() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let valid = Path::new("C:\\normal\\path");
-        assert_eq!(MediaManager::sanitize_target_path(valid).unwrap(), valid);
+        assert_eq!(MediaManager::sanitize_target_path(valid)?, valid);
 
         let empty = Path::new("");
         assert!(MediaManager::sanitize_target_path(empty).is_err());
 
         // Test very long path
-        let long_str = "C:\\".to_string() + &"a".repeat(300);
+        let long_str = format!("C:\\{}", "a".repeat(300));
         let long = Path::new(&long_str);
-        let sanitized = MediaManager::sanitize_target_path(long).expect("test");
+        let sanitized = MediaManager::sanitize_target_path(long)?;
         assert!(sanitized.to_string_lossy().starts_with(r"\\?\"));
 
         // Already prefixed long path
-        let already_prefixed = MediaManager::sanitize_target_path(&sanitized).expect("test");
+        let already_prefixed = MediaManager::sanitize_target_path(&sanitized)?;
         assert_eq!(already_prefixed, sanitized);
+        Ok(())
     }
 
     #[test]
     fn test_prompt_for_disk() {
-        let manager_no_cb = MediaManager::default();
-        assert!(manager_no_cb.prompt_for_disk(1, "Insert disk 1").is_err());
-
         const fn cb_accept(_id: i32, _msg: &str) -> bool {
             true
         }
-        let manager_accept = MediaManager::new(Some(cb_accept));
-        assert!(manager_accept.prompt_for_disk(2, "Insert disk 2").is_ok());
-
         const fn cb_reject(_id: i32, _msg: &str) -> bool {
             false
         }
+
+        let manager_no_cb = MediaManager::default();
+        assert!(manager_no_cb.prompt_for_disk(1, "Insert disk 1").is_err());
+
+        let manager_accept = MediaManager::new(Some(cb_accept));
+        assert!(manager_accept.prompt_for_disk(2, "Insert disk 2").is_ok());
+
         let manager_reject = MediaManager::new(Some(cb_reject));
         assert!(manager_reject.prompt_for_disk(3, "Insert disk 3").is_err());
     }
 
     #[test]
-    fn test_determine_extraction_source() {
+    fn test_determine_extraction_source() -> std::result::Result<(), Box<dyn std::error::Error>> {
         assert_eq!(
-            MediaManager::determine_extraction_source("file1", false, None).expect("test"),
+            MediaManager::determine_extraction_source("file1", false, None)?,
             ExtractionSource::UncompressedExternal
         );
 
         assert_eq!(
-            MediaManager::determine_extraction_source("file2", true, Some("#cab1")).expect("test"),
+            MediaManager::determine_extraction_source("file2", true, Some("#cab1"))?,
             ExtractionSource::EmbeddedCabinet("#cab1".to_string())
         );
 
         assert_eq!(
-            MediaManager::determine_extraction_source("file3", true, Some("ext.cab"))
-                .expect("test"),
+            MediaManager::determine_extraction_source("file3", true, Some("ext.cab"))?,
             ExtractionSource::ExternalCabinet("ext.cab".to_string())
         );
 
         assert!(MediaManager::determine_extraction_source("file4", true, None).is_err());
+        Ok(())
     }
 
     #[test]

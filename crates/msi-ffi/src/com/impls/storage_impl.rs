@@ -91,23 +91,24 @@ unsafe extern "system" fn open_stream(
     }
 
     let obj = &mut *(this.cast::<NativeStorage>());
-    let reader = match obj.reader.as_ref() {
-        Some(r) => r,
-        None => return crate::error::E_FAIL,
+    let Some(reader) = obj.reader.as_ref() else {
+        return crate::error::E_FAIL;
     };
 
-    let len = (0..).take_while(|&i| *pwcs_name.add(i) != 0).count();
+    let mut len = 0;
+    while *pwcs_name.add(len) != 0 {
+        len += 1;
+    }
     let name_slice = std::slice::from_raw_parts(pwcs_name, len);
     let name_str = String::from_utf16_lossy(name_slice);
 
-    match reader.read_stream(&name_str) {
-        Ok(data) => {
+    reader
+        .read_stream(&name_str)
+        .map_or(STG_E_FILENOTFOUND, |data| {
             let stream = crate::com::impls::stream_impl::NativeStream::new(data);
             *ppstm = Box::into_raw(stream).cast::<IStream>();
             S_OK
-        }
-        Err(_) => STG_E_FILENOTFOUND,
-    }
+        })
 }
 
 /// `IStorage::CreateStorage` `VTable` entry point.
@@ -263,6 +264,7 @@ static NATIVE_STORAGE_VTBL: IStorageVtbl = IStorageVtbl {
 };
 
 #[cfg(test)]
+#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 mod tests {
     use super::*;
     use crate::com::util::ComObject;
@@ -279,6 +281,12 @@ mod tests {
         assert_eq!(storage.release(), 0);
 
         unsafe {
+            let boxed_stg = Box::new(NativeStorage::default());
+            let raw_stg_unk = Box::into_raw(boxed_stg).cast::<IUnknown>();
+            assert_eq!(((*(*raw_stg_unk).lpVtbl).AddRef)(raw_stg_unk), 2);
+            assert_eq!(((*(*raw_stg_unk).lpVtbl).Release)(raw_stg_unk), 1);
+            assert_eq!(((*(*raw_stg_unk).lpVtbl).Release)(raw_stg_unk), 0);
+
             assert_eq!(
                 query_interface(unk, std::ptr::null(), std::ptr::null_mut()),
                 crate::com::E_NOINTERFACE
@@ -375,20 +383,26 @@ mod tests {
 
             let cfb_data_vec = {
                 let mut writer = msi::cfb::writer::CfbWriter::new(msi::cfb::header::CfbVersion::V3);
-                writer
+                assert!(writer
                     .add_stream("\u{0005}SummaryInformation", b"content")
-                    .unwrap();
+                    .is_ok());
                 writer.build()
             };
             let cfb_data = &cfb_data_vec;
-            let reader = CfbReader::new(cfb_data).unwrap();
-            let mut storage = NativeStorage::new(Some(reader));
-            let ptr = std::ptr::from_mut(&mut *storage).cast::<IStorage>();
+            let mut valid_storage = NativeStorage::new(CfbReader::new(cfb_data).ok());
+            let valid_ptr = std::ptr::from_mut(&mut *valid_storage).cast::<IStorage>();
 
             let name: Vec<u16> = "\u{0005}SummaryInformation\0".encode_utf16().collect();
             let mut pstm = std::ptr::null_mut();
             assert_eq!(
-                open_stream(ptr, name.as_ptr(), std::ptr::null_mut(), 0, 0, &mut pstm),
+                open_stream(
+                    valid_ptr,
+                    name.as_ptr(),
+                    std::ptr::null_mut(),
+                    0,
+                    0,
+                    &mut pstm
+                ),
                 S_OK
             );
             assert!(!pstm.is_null());
@@ -414,7 +428,7 @@ mod tests {
             let bad_name: Vec<u16> = "NonExistent\0".encode_utf16().collect();
             assert_eq!(
                 open_stream(
-                    ptr,
+                    valid_ptr,
                     bad_name.as_ptr(),
                     std::ptr::null_mut(),
                     0,

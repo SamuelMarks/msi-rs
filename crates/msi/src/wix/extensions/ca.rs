@@ -180,7 +180,8 @@ mod tests {
         // Test compilation failure (cargo will fail because it's an empty dir without Cargo.toml)
         let res_debug = compiler.compile(false);
         assert!(res_debug.is_err());
-        assert!(format!("{res_debug:?}").contains("CustomActionBridgeError"));
+        let res_dbg = format!("{res_debug:?}");
+        assert!(res_dbg.contains("CustomActionBridgeError"));
 
         let res_release = compiler.compile(true);
         assert!(res_release.is_err());

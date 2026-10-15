@@ -702,12 +702,13 @@ pub extern "system" fn MsiInstallMissingComponentA(
 }
 
 #[cfg(test)]
+#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 mod tests {
 
     #[test]
     fn test_feature_usage_valid() {
         let dummy_w: Vec<u16> = "dummy".encode_utf16().chain(std::iter::once(0)).collect();
-        let dummy_a = std::ffi::CString::new("dummy").unwrap();
+        let dummy_a = std::ffi::CString::new("dummy").unwrap_or_default();
 
         let mut count: Dword = 123;
         let mut date: u16 = 456;
@@ -1528,6 +1529,7 @@ pub extern "system" fn MsiReinstallFeatureFromDescriptorW(
 }
 
 #[cfg(test)]
+#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 mod additional_stubs_tests {
     use super::*;
 

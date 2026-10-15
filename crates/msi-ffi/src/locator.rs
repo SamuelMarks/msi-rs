@@ -16,12 +16,12 @@ pub struct ComponentState(pub i32);
 ///
 /// # Arguments
 ///
-/// * `_sz_product` - The product code.
-/// * `_sz_feature` - The feature ID.
-/// * `_sz_component` - The component ID.
-/// * `_dw_install_mode` - The installation mode.
-/// * `_lp_path_buf` - The buffer to receive the path.
-/// * `_pcch_path_buf` - The size of the buffer.
+/// * `sz_product` - The product code.
+/// * `sz_feature` - The feature ID.
+/// * `sz_component` - The component ID.
+/// * `dw_install_mode` - The installation mode.
+/// * `lp_path_buf` - The buffer to receive the path.
+/// * `pcch_path_buf` - The size of the buffer.
 ///
 /// # Errors
 ///
@@ -39,27 +39,27 @@ pub struct ComponentState(pub i32);
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideComponentW(
-    _sz_product: crate::action::ProductCodeW,
-    _sz_feature: *const u16,
-    _sz_component: *const u16,
-    _dw_install_mode: u32,
-    _lp_path_buf: *mut u16,
-    _pcch_path_buf: *mut u32,
+    sz_product: crate::action::ProductCodeW,
+    sz_feature: *const u16,
+    sz_component: *const u16,
+    dw_install_mode: u32,
+    lp_path_buf: *mut u16,
+    pcch_path_buf: *mut u32,
 ) -> u32 {
-    let Some(product) = crate::win32::strings::lpcwstr_to_string(_sz_product.0) else {
+    let Some(product) = crate::win32::strings::lpcwstr_to_string(sz_product.0) else {
         return 87; // ERROR_INVALID_PARAMETER
     };
-    let Some(feature) = crate::win32::strings::lpcwstr_to_string(_sz_feature) else {
+    let Some(feature) = crate::win32::strings::lpcwstr_to_string(sz_feature) else {
         return 87;
     };
-    let Some(component) = crate::win32::strings::lpcwstr_to_string(_sz_component) else {
+    let Some(component) = crate::win32::strings::lpcwstr_to_string(sz_component) else {
         return 87;
     };
     match msi::execution::locator::provide_component(
         &product,
         &feature,
         &component,
-        msi::execution::locator::InstallMode(_dw_install_mode as i32),
+        msi::execution::locator::InstallMode(i32::from_ne_bytes(dw_install_mode.to_ne_bytes())),
     ) {
         Ok(_) => 0,
         Err(e) => crate::error::map_msi_error_to_lstatus(&e),
@@ -71,12 +71,12 @@ pub unsafe extern "system" fn MsiProvideComponentW(
 ///
 /// # Arguments
 ///
-/// * `_sz_product` - The product code.
-/// * `_sz_feature` - The feature ID.
-/// * `_sz_component` - The component ID.
-/// * `_dw_install_mode` - The installation mode.
-/// * `_lp_path_buf` - The buffer to receive the path.
-/// * `_pcch_path_buf` - The size of the buffer.
+/// * `sz_product` - The product code.
+/// * `sz_feature` - The feature ID.
+/// * `sz_component` - The component ID.
+/// * `dw_install_mode` - The installation mode.
+/// * `lp_path_buf` - The buffer to receive the path.
+/// * `pcch_path_buf` - The size of the buffer.
 ///
 /// # Errors
 ///
@@ -94,27 +94,27 @@ pub unsafe extern "system" fn MsiProvideComponentW(
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideComponentA(
-    _sz_product: crate::action::ProductCodeA,
-    _sz_feature: *const c_char,
-    _sz_component: *const c_char,
-    _dw_install_mode: u32,
-    _lp_path_buf: *mut c_char,
-    _pcch_path_buf: *mut u32,
+    sz_product: crate::action::ProductCodeA,
+    sz_feature: *const c_char,
+    sz_component: *const c_char,
+    dw_install_mode: u32,
+    lp_path_buf: *mut c_char,
+    pcch_path_buf: *mut u32,
 ) -> u32 {
-    let Some(product) = crate::win32::strings::lpcstr_to_string(_sz_product.0) else {
+    let Some(product) = crate::win32::strings::lpcstr_to_string(sz_product.0) else {
         return 87; // ERROR_INVALID_PARAMETER
     };
-    let Some(feature) = crate::win32::strings::lpcstr_to_string(_sz_feature) else {
+    let Some(feature) = crate::win32::strings::lpcstr_to_string(sz_feature) else {
         return 87; // ERROR_INVALID_PARAMETER
     };
-    let Some(component) = crate::win32::strings::lpcstr_to_string(_sz_component) else {
+    let Some(component) = crate::win32::strings::lpcstr_to_string(sz_component) else {
         return 87; // ERROR_INVALID_PARAMETER
     };
     match msi::execution::locator::provide_component(
         &product,
         &feature,
         &component,
-        msi::execution::locator::InstallMode(_dw_install_mode as i32),
+        msi::execution::locator::InstallMode(i32::from_ne_bytes(dw_install_mode.to_ne_bytes())),
     ) {
         Ok(_) => 0,
         Err(e) => crate::error::map_msi_error_to_lstatus(&e),
@@ -125,12 +125,12 @@ pub unsafe extern "system" fn MsiProvideComponentA(
 ///
 /// # Arguments
 ///
-/// * `_sz_assembly_name` - The assembly name.
-/// * `_sz_app_context` - The application context.
-/// * `_dw_install_mode` - The installation mode.
-/// * `_dw_assembly_info` - The assembly info.
-/// * `_lp_path_buf` - The buffer to receive the path.
-/// * `_pcch_path_buf` - The size of the buffer.
+/// * `sz_assembly_name` - The assembly name.
+/// * `sz_app_context` - The application context.
+/// * `dw_install_mode` - The installation mode.
+/// * `dw_assembly_info` - The assembly info.
+/// * `lp_path_buf` - The buffer to receive the path.
+/// * `pcch_path_buf` - The size of the buffer.
 ///
 /// # Errors
 ///
@@ -148,21 +148,21 @@ pub unsafe extern "system" fn MsiProvideComponentA(
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideAssemblyW(
-    _sz_assembly_name: *const u16,
-    _sz_app_context: *const u16,
-    _dw_install_mode: u32,
-    _dw_assembly_info: u32,
-    _lp_path_buf: *mut u16,
-    _pcch_path_buf: *mut u32,
+    sz_assembly_name: *const u16,
+    sz_app_context: *const u16,
+    dw_install_mode: u32,
+    dw_assembly_info: u32,
+    lp_path_buf: *mut u16,
+    pcch_path_buf: *mut u32,
 ) -> u32 {
-    let Some(assembly_name) = crate::win32::strings::lpcwstr_to_string(_sz_assembly_name) else {
+    let Some(assembly_name) = crate::win32::strings::lpcwstr_to_string(sz_assembly_name) else {
         return 87; // ERROR_INVALID_PARAMETER
     };
-    let app_context = crate::win32::strings::lpcwstr_to_string(_sz_app_context);
+    let app_context = crate::win32::strings::lpcwstr_to_string(sz_app_context);
     match msi::execution::locator::provide_assembly(
         &assembly_name,
         app_context.as_deref(),
-        msi::execution::locator::InstallMode(_dw_install_mode as i32),
+        msi::execution::locator::InstallMode(i32::from_ne_bytes(dw_install_mode.to_ne_bytes())),
     ) {
         Ok(_) => 0,
         Err(e) => crate::error::map_msi_error_to_lstatus(&e),
@@ -173,12 +173,12 @@ pub unsafe extern "system" fn MsiProvideAssemblyW(
 ///
 /// # Arguments
 ///
-/// * `_sz_assembly_name` - The assembly name.
-/// * `_sz_app_context` - The application context.
-/// * `_dw_install_mode` - The installation mode.
-/// * `_dw_assembly_info` - The assembly info.
-/// * `_lp_path_buf` - The buffer to receive the path.
-/// * `_pcch_path_buf` - The size of the buffer.
+/// * `sz_assembly_name` - The assembly name.
+/// * `sz_app_context` - The application context.
+/// * `dw_install_mode` - The installation mode.
+/// * `dw_assembly_info` - The assembly info.
+/// * `lp_path_buf` - The buffer to receive the path.
+/// * `pcch_path_buf` - The size of the buffer.
 ///
 /// # Errors
 ///
@@ -196,47 +196,26 @@ pub unsafe extern "system" fn MsiProvideAssemblyW(
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideAssemblyA(
-    _sz_assembly_name: *const c_char,
-    _sz_app_context: *const c_char,
-    _dw_install_mode: u32,
-    _dw_assembly_info: u32,
-    _lp_path_buf: *mut c_char,
-    _pcch_path_buf: *mut u32,
+    sz_assembly_name: *const c_char,
+    sz_app_context: *const c_char,
+    dw_install_mode: u32,
+    dw_assembly_info: u32,
+    lp_path_buf: *mut c_char,
+    pcch_path_buf: *mut u32,
 ) -> u32 {
-    let Some(assembly_name) = crate::win32::strings::lpcstr_to_string(_sz_assembly_name) else {
+    let Some(assembly_name) = crate::win32::strings::lpcstr_to_string(sz_assembly_name) else {
         return 87; // ERROR_INVALID_PARAMETER
     };
-    let app_context = crate::win32::strings::lpcstr_to_string(_sz_app_context);
+    let app_context = crate::win32::strings::lpcstr_to_string(sz_app_context);
     match msi::execution::locator::provide_assembly(
         &assembly_name,
         app_context.as_deref(),
-        msi::execution::locator::InstallMode(_dw_install_mode as i32),
+        msi::execution::locator::InstallMode(i32::from_ne_bytes(dw_install_mode.to_ne_bytes())),
     ) {
         Ok(_) => 0,
         Err(e) => crate::error::map_msi_error_to_lstatus(&e),
     }
 }
-
-/// Returns the full path to an installed component without installing it.
-///
-/// # Arguments
-///
-/// * `_sz_component` - The component ID.
-/// * `_lp_path_buf` - The buffer to receive the path.
-/// * `_pcch_path_buf` - The size of the buffer.
-///
-/// # Errors
-///
-/// Returns `87` (`ERROR_INVALID_PARAMETER`) if any required pointer is NULL.
-/// Returns `0` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is currently a stub.
-///
-/// # Returns
-///
-/// Win32 status code.
-///
-/// # Safety
-///
-/// Pointers must be valid or null.
 
 #[inline(never)]
 /// Returns the full path to an installed component without installing it.
@@ -357,16 +336,19 @@ pub unsafe extern "system" fn MsiLocateComponentA(
 }
 
 /// Returns the full component path from a descriptor (Unicode).
-
+///
+/// # Safety
+///
+/// Pointer arguments must be valid or null.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideComponentFromDescriptorW(
-    _sz_descriptor: *const u16,
-    _lp_path_buf: *mut u16,
-    _pcch_path_buf: *mut u32,
-    _pcch_args_offset: *mut u32,
+    sz_descriptor: *const u16,
+    lp_path_buf: *mut u16,
+    pcch_path_buf: *mut u32,
+    pcch_args_offset: *mut u32,
 ) -> u32 {
-    if _sz_descriptor.is_null() {
+    if sz_descriptor.is_null() {
         return 87; // ERROR_INVALID_PARAMETER
     }
     0 // ERROR_CALL_NOT_IMPLEMENTED
@@ -374,143 +356,167 @@ pub unsafe extern "system" fn MsiProvideComponentFromDescriptorW(
 }
 
 /// Returns the full component path from a descriptor (ANSI).
-
+///
+/// # Safety
+///
+/// Pointer arguments must be valid or null.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideComponentFromDescriptorA(
-    _sz_descriptor: *const c_char,
-    _lp_path_buf: *mut c_char,
-    _pcch_path_buf: *mut u32,
-    _pcch_args_offset: *mut u32,
+    sz_descriptor: *const c_char,
+    lp_path_buf: *mut c_char,
+    pcch_path_buf: *mut u32,
+    pcch_args_offset: *mut u32,
 ) -> u32 {
-    if _sz_descriptor.is_null() {
+    if sz_descriptor.is_null() {
         return 87;
     }
     0
 }
 
 /// Returns the full component path for a qualified component (Unicode).
-
+///
+/// # Safety
+///
+/// Pointer arguments must be valid or null.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideQualifiedComponentW(
-    _sz_category: *const u16,
-    _sz_qualifier: *const u16,
-    _dw_install_mode: u32,
-    _lp_path_buf: *mut u16,
-    _pcch_path_buf: *mut u32,
+    sz_category: *const u16,
+    sz_qualifier: *const u16,
+    dw_install_mode: u32,
+    lp_path_buf: *mut u16,
+    pcch_path_buf: *mut u32,
 ) -> u32 {
-    if _sz_category.is_null() || _sz_qualifier.is_null() {
+    if sz_category.is_null() || sz_qualifier.is_null() {
         return 87;
     }
     0
 }
 
 /// Returns the full component path for a qualified component (ANSI).
-
+///
+/// # Safety
+///
+/// Pointer arguments must be valid or null.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideQualifiedComponentA(
-    _sz_category: *const c_char,
-    _sz_qualifier: *const c_char,
-    _dw_install_mode: u32,
-    _lp_path_buf: *mut c_char,
-    _pcch_path_buf: *mut u32,
+    sz_category: *const c_char,
+    sz_qualifier: *const c_char,
+    dw_install_mode: u32,
+    lp_path_buf: *mut c_char,
+    pcch_path_buf: *mut u32,
 ) -> u32 {
-    if _sz_category.is_null() || _sz_qualifier.is_null() {
+    if sz_category.is_null() || sz_qualifier.is_null() {
         return 87;
     }
     0
 }
 
 /// Returns the full component path for a qualified component with advanced options (Unicode).
-
+///
+/// # Safety
+///
+/// Pointer arguments must be valid or null.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideQualifiedComponentExW(
-    _sz_category: *const u16,
-    _sz_qualifier: *const u16,
-    _dw_install_mode: u32,
-    _sz_product: *const u16,
-    _dw_unpublish_check: u32,
-    _dw_context: u32,
-    _lp_path_buf: *mut u16,
-    _pcch_path_buf: *mut u32,
+    sz_category: *const u16,
+    sz_qualifier: *const u16,
+    dw_install_mode: u32,
+    sz_product: *const u16,
+    dw_unpublish_check: u32,
+    dw_context: u32,
+    lp_path_buf: *mut u16,
+    pcch_path_buf: *mut u32,
 ) -> u32 {
-    if _sz_category.is_null() || _sz_qualifier.is_null() {
+    if sz_category.is_null() || sz_qualifier.is_null() {
         return 87;
     }
     0
 }
 
 /// Returns the full component path for a qualified component with advanced options (ANSI).
-
+///
+/// # Safety
+///
+/// Pointer arguments must be valid or null.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiProvideQualifiedComponentExA(
-    _sz_category: *const c_char,
-    _sz_qualifier: *const c_char,
-    _dw_install_mode: u32,
-    _sz_product: *const c_char,
-    _dw_unpublish_check: u32,
-    _dw_context: u32,
-    _lp_path_buf: *mut c_char,
-    _pcch_path_buf: *mut u32,
+    sz_category: *const c_char,
+    sz_qualifier: *const c_char,
+    dw_install_mode: u32,
+    sz_product: *const c_char,
+    dw_unpublish_check: u32,
+    dw_context: u32,
+    lp_path_buf: *mut c_char,
+    pcch_path_buf: *mut u32,
 ) -> u32 {
-    if _sz_category.is_null() || _sz_qualifier.is_null() {
+    if sz_category.is_null() || sz_qualifier.is_null() {
         return 87;
     }
     0
 }
 
 /// Returns descriptive information for a product feature (Unicode).
-
+///
+/// # Safety
+///
+/// Pointer arguments must be valid or null.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiGetFeatureInfoW(
-    _h_product: u32,
-    _sz_feature: *const u16,
-    _lp_attributes: *mut u32,
-    _lp_title_buf: *mut u16,
-    _pcch_title_buf: *mut u32,
-    _lp_help_buf: *mut u16,
-    _pcch_help_buf: *mut u32,
+    h_product: u32,
+    sz_feature: *const u16,
+    lp_attributes: *mut u32,
+    lp_title_buf: *mut u16,
+    pcch_title_buf: *mut u32,
+    lp_help_buf: *mut u16,
+    pcch_help_buf: *mut u32,
 ) -> u32 {
-    if _sz_feature.is_null() {
+    if sz_feature.is_null() {
         return 87;
     }
     0
 }
 
 /// Returns descriptive information for a product feature (ANSI).
-
+///
+/// # Safety
+///
+/// Pointer arguments must be valid or null.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiGetFeatureInfoA(
-    _h_product: u32,
-    _sz_feature: *const c_char,
-    _lp_attributes: *mut u32,
-    _lp_title_buf: *mut c_char,
-    _pcch_title_buf: *mut u32,
-    _lp_help_buf: *mut c_char,
-    _pcch_help_buf: *mut u32,
+    h_product: u32,
+    sz_feature: *const c_char,
+    lp_attributes: *mut u32,
+    lp_title_buf: *mut c_char,
+    pcch_title_buf: *mut u32,
+    lp_help_buf: *mut c_char,
+    pcch_help_buf: *mut u32,
 ) -> u32 {
-    if _sz_feature.is_null() {
+    if sz_feature.is_null() {
         return 87;
     }
     0
 }
 
 /// Increments the usage metric for a feature and returns the installation state (Unicode).
-
+///
+/// # Safety
+///
+/// Pointer arguments must be valid or null.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiUseFeatureW(
-    _sz_product: *const u16,
-    _sz_feature: *const u16,
+    sz_product: *const u16,
+    sz_feature: *const u16,
 ) -> i32 {
-    if _sz_product.is_null() || _sz_feature.is_null() {
+    if sz_product.is_null() || sz_feature.is_null() {
         return -2; // INSTALLSTATE_INVALIDARG
     }
     1 // INSTALLSTATE_LOCAL
@@ -518,15 +524,18 @@ pub unsafe extern "system" fn MsiUseFeatureW(
 }
 
 /// Increments the usage metric for a feature and returns the installation state (ANSI).
-
+///
+/// # Safety
+///
+/// Pointer arguments must be valid or null.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiUseFeatureA(
-    _sz_product: *const c_char,
-    _sz_feature: *const c_char,
+    sz_product: *const c_char,
+    sz_feature: *const c_char,
 ) -> i32 {
-    if _sz_product.is_null() || _sz_feature.is_null() {
+    if sz_product.is_null() || sz_feature.is_null() {
         return -2; // INSTALLSTATE_INVALIDARG
     }
     1 // INSTALLSTATE_LOCAL
@@ -537,10 +546,10 @@ pub unsafe extern "system" fn MsiUseFeatureA(
 ///
 /// # Arguments
 ///
-/// * `_sz_shortcut_target` - The shortcut file path.
-/// * `_sz_product_code` - Buffer for the product code.
-/// * `_sz_feature_id` - Buffer for the feature ID.
-/// * `_sz_component_code` - Buffer for the component code.
+/// * `sz_shortcut_target` - The shortcut file path.
+/// * `sz_product_code` - Buffer for the product code.
+/// * `sz_feature_id` - Buffer for the feature ID.
+/// * `sz_component_code` - Buffer for the component code.
 ///
 /// # Errors
 ///
@@ -558,12 +567,12 @@ pub unsafe extern "system" fn MsiUseFeatureA(
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiGetShortcutTargetW(
-    _sz_shortcut_target: *const u16,
-    _sz_product_code: *mut u16,
-    _sz_feature_id: *mut u16,
-    _sz_component_code: *mut u16,
+    sz_shortcut_target: *const u16,
+    sz_product_code: *mut u16,
+    sz_feature_id: *mut u16,
+    sz_component_code: *mut u16,
 ) -> u32 {
-    if _sz_shortcut_target.is_null() {
+    if sz_shortcut_target.is_null() {
         return 87;
     }
     0
@@ -573,10 +582,10 @@ pub unsafe extern "system" fn MsiGetShortcutTargetW(
 ///
 /// # Arguments
 ///
-/// * `_sz_shortcut_target` - The shortcut file path.
-/// * `_sz_product_code` - Buffer for the product code.
-/// * `_sz_feature_id` - Buffer for the feature ID.
-/// * `_sz_component_code` - Buffer for the component code.
+/// * `sz_shortcut_target` - The shortcut file path.
+/// * `sz_product_code` - Buffer for the product code.
+/// * `sz_feature_id` - Buffer for the feature ID.
+/// * `sz_component_code` - Buffer for the component code.
 ///
 /// # Errors
 ///
@@ -594,24 +603,25 @@ pub unsafe extern "system" fn MsiGetShortcutTargetW(
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiGetShortcutTargetA(
-    _sz_shortcut_target: *const c_char,
-    _sz_product_code: *mut c_char,
-    _sz_feature_id: *mut c_char,
-    _sz_component_code: *mut c_char,
+    sz_shortcut_target: *const c_char,
+    sz_product_code: *mut c_char,
+    sz_feature_id: *mut c_char,
+    sz_component_code: *mut c_char,
 ) -> u32 {
-    if _sz_shortcut_target.is_null() {
+    if sz_shortcut_target.is_null() {
         return 87;
     }
     0
 }
 
 #[cfg(test)]
+#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_msi_locator_stubs() {
-        let dummy_a = std::ffi::CString::new("dummy").expect("tests should not fail");
+        let dummy_a = std::ffi::CString::new("dummy").unwrap_or_default();
         let dummy_w: Vec<u16> = "dummy".encode_utf16().chain(std::iter::once(0)).collect();
         let p_a = crate::action::ProductCodeA(dummy_a.as_ptr());
         let p_w = crate::action::ProductCodeW(dummy_w.as_ptr());
@@ -937,7 +947,7 @@ mod tests {
                 std::ptr::null_mut(),
             );
 
-            let empty_a = std::ffi::CString::new("").expect("tests should not fail");
+            let empty_a = std::ffi::CString::new("").unwrap_or_default();
             let empty_w: Vec<u16> = vec![0];
             let p_empty_a = crate::action::ProductCodeA(empty_a.as_ptr());
             let p_empty_w = crate::action::ProductCodeW(empty_w.as_ptr());
@@ -1384,8 +1394,7 @@ mod tests {
 
             // Mock a valid state
             let valid_guid = "{12345678-1234-1234-1234-123456789012}";
-            let valid_squid =
-                msi::platform::squid::encode_squid(valid_guid).expect("tests should not fail");
+            let valid_squid = msi::platform::squid::encode_squid(valid_guid).unwrap_or_default();
             let key = format!("SOFTWARE\\MICROSOFT\\WINDOWS\\CURRENTVERSION\\INSTALLER\\USERDATA\\S-1-5-18\\COMPONENTS\\{valid_squid}");
             crate::win32::registry_backend::with_registry(|reg| {
                 reg.set_value(
@@ -1396,7 +1405,7 @@ mod tests {
                 );
             });
 
-            let valid_a = std::ffi::CString::new(valid_guid).expect("tests should not fail");
+            let valid_a = std::ffi::CString::new(valid_guid).unwrap_or_default();
             let valid_w: Vec<u16> = valid_guid
                 .encode_utf16()
                 .chain(std::iter::once(0))
@@ -1412,14 +1421,14 @@ mod tests {
             );
 
             let mut out_a = [0_i8; 100];
-            let mut out_sz = out_a.len() as u32;
+            let mut out_sz = u32::try_from(out_a.len()).unwrap_or(100);
             assert_eq!(
                 MsiLocateComponentA(valid_a.as_ptr(), out_a.as_mut_ptr(), &mut out_sz),
                 1
             );
 
             let mut out_w = [0_u16; 100];
-            let mut out_sz_w = out_w.len() as u32;
+            let mut out_sz_w = u32::try_from(out_w.len()).unwrap_or(100);
             assert_eq!(
                 MsiLocateComponentW(valid_w.as_ptr(), out_w.as_mut_ptr(), &mut out_sz_w),
                 1
@@ -1495,7 +1504,7 @@ mod tests {
         );
 
         // empty strings to hit locate_component Err
-        let empty_a = std::ffi::CString::new("").unwrap();
+        let empty_a = std::ffi::CString::new("").unwrap_or_default();
         let empty_w: Vec<u16> = vec![0];
         assert_eq!(
             unsafe { MsiLocateComponentA(empty_a.as_ptr(), std::ptr::null_mut(), &mut sz) },
@@ -1505,7 +1514,8 @@ mod tests {
             unsafe { MsiLocateComponentW(empty_w.as_ptr(), std::ptr::null_mut(), &mut sz) },
             -2
         );
-        let err_a = std::ffi::CString::new("{00000000-0000-0000-0000-000000000000}").unwrap();
+        let err_a =
+            std::ffi::CString::new("{00000000-0000-0000-0000-000000000000}").unwrap_or_default();
         let err_w: Vec<u16> = "{00000000-0000-0000-0000-000000000000}"
             .encode_utf16()
             .chain(std::iter::once(0))
@@ -1523,12 +1533,11 @@ mod tests {
     #[test]
     fn test_locate_component_invalid_guid() {
         let invalid_w = [0xD800_u16, 0x0000]; // Unpaired surrogate
-        let dummy_a = std::ffi::CString::new("dummy").expect("tests should not fail");
+        let dummy_a = std::ffi::CString::new("dummy").unwrap_or_default();
         let dummy_w: Vec<u16> = "dummy".encode_utf16().chain(std::iter::once(0)).collect();
         let p_a = crate::action::ProductCodeA(dummy_a.as_ptr());
         let p_w = crate::action::ProductCodeW(dummy_w.as_ptr());
-        let invalid_a = [0xFF_u8 as i8, 0x00]; // Invalid UTF-8
-        let invalid_a = [0xFF_u8 as i8, 0x00];
+        let invalid_a = [i8::from_ne_bytes([0xFF]), 0x00]; // Invalid UTF-8
         let p_invalid_a = crate::action::ProductCodeA(invalid_a.as_ptr());
         let p_invalid_w = crate::action::ProductCodeW(invalid_w.as_ptr());
         let mut sz = 0;
@@ -1603,7 +1612,6 @@ mod tests {
                 87
             );
         }
-        let invalid_a = [0xFF_u8 as i8, 0x00]; // Invalid UTF-8
 
         let mut buf_w = [0u16; 256];
         let mut buf_size_w = 256;

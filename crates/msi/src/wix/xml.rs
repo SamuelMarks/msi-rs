@@ -719,10 +719,10 @@ Outside text after root
         #[allow(clippy::redundant_clone)]
         let cloned_node = node.clone();
         assert_eq!(node, cloned_node);
-        assert!(format!("{node:?}").contains("XmlNode"));
+        assert!(format!("{node:?}").contains("XmlNode"), "format check");
 
         let parser = XmlParser;
-        assert!(format!("{parser:?}").contains("XmlParser"));
+        assert!(format!("{parser:?}").contains("XmlParser"), "format check");
     }
 
     #[test]

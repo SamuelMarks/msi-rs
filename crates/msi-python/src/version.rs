@@ -311,6 +311,18 @@ mod tests {
                 let _ = PyProductVersion::__pymethod_as_tuple__(py, bad_obj.as_ptr());
                 let _ = PyProductVersion::__pymethod___str____(py, bad_obj.as_ptr());
                 let _ = PyProductVersion::__pymethod___repr____(py, bad_obj.as_ptr());
+                let _ = PyProductVersion::__pymethod___richcmp____(
+                    py,
+                    bad_obj.as_ptr(),
+                    bad_obj.as_ptr(),
+                    0,
+                );
+                let mut holder_mut = pyo3::impl_::extract_argument::FunctionArgumentHolder::INIT;
+                let _ =
+                    <&mut PyProductVersion as pyo3::impl_::extract_argument::PyFunctionArgument<
+                        '_,
+                        '_,
+                    >>::extract(bad_obj.as_any(), &mut holder_mut);
             }
 
             let globals = PyDict::new_bound(py);
@@ -355,6 +367,8 @@ assert (v == v) is True
 assert (v != parsed) is True
 assert (parsed > v) is True
 assert (parsed >= v) is True
+assert (v == "not_a_version") is False
+assert (v != "not_a_version") is True
 "#;
             assert!(run_version_script(
                 PyModule::new_bound(py, "test_ver_mod"),

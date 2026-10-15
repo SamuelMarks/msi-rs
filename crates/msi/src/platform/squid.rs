@@ -220,18 +220,19 @@ mod tests {
     }
 
     #[test]
-    fn test_encode_decode_squid() {
+    fn test_encode_decode_squid() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let original_guid = "{01234567-89AB-CDEF-0123-456789ABCDEF}";
         let expected_squid = "76543210BA98FEDC1032547698BADCFE";
 
-        let encoded = encode_squid(original_guid).expect("test");
+        let encoded = encode_squid(original_guid)?;
         assert_eq!(encoded, expected_squid);
 
-        let decoded = decode_squid(&encoded).expect("test");
+        let decoded = decode_squid(&encoded)?;
         assert_eq!(decoded, original_guid);
 
         // Validation errors
         assert!(encode_squid("123").is_err());
         assert!(decode_squid("123").is_err());
+        Ok(())
     }
 }

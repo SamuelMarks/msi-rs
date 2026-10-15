@@ -1,9 +1,3 @@
-#![allow(
-    clippy::cognitive_complexity,
-    clippy::literal_string_with_formatting_args,
-    clippy::too_many_lines
-)]
-#![cfg_attr(test, allow(clippy::redundant_clone))]
 //! # wix
 //!
 //! Unified modern `WiX` v4/v5 multi-command toolchain executable replicating `wix.exe`.
@@ -465,138 +459,8 @@ pub fn main() -> ExitCode {
 mod tests {
     use super::*;
 
-    /// Tests all branches and error handling of `wix` binary execution.
-    #[test]
-    #[allow(clippy::too_many_lines, clippy::similar_names)]
-    fn test_wix_run_all_branches() {
-        let temp_dir = std::env::temp_dir().join("msi_cli_test_wix_bin");
-        let _ = fs::create_dir_all(&temp_dir);
-        let src_file = temp_dir.join("app.wxs");
-        let msi_file = temp_dir.join("app.msi");
-        let second_msi_file = temp_dir.join("app2.msi");
-
-        let wxs = r#"
-<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-    <Product Id="{33333333-3333-3333-3333-333333333333}" Name="App" Version="1.0.0" Manufacturer="Test">
-        <Package Description="Test" />
-        <Directory Id="TARGETDIR" Name="SourceDir" />
-    </Product>
-</Wix>
-"#;
-        assert!(fs::write(&src_file, wxs).is_ok());
-
-        // 1. Empty arguments
-        assert_eq!(run(&[]), 1);
-
-        // 2. Version and Help subcommand
-        assert_eq!(run(&["--version".to_string()]), 0);
-        assert_eq!(run_app(&["--version".to_string()]), ExitCode::SUCCESS);
-        assert_eq!(run(&["--help".to_string()]), 0);
-        assert_eq!(run(&["burn".to_string()]), 0);
-
-        // 3. Unrecognized subcommand
-        assert_eq!(run(&["unknown".to_string()]), 1);
-
-        // 4. Build success
-        let args_build = vec![
-            "build".to_string(),
-            "-sval".to_string(),
-            "-o".to_string(),
-            msi_file.to_string_lossy().to_string(),
-            src_file.to_string_lossy().to_string(),
-        ];
-        assert_eq!(run(&args_build), 0);
-        assert!(msi_file.exists());
-
-        // Build second msi for diff
-        let args_build2 = vec![
-            "build".to_string(),
-            "-sval".to_string(),
-            "-o".to_string(),
-            second_msi_file.to_string_lossy().to_string(),
-            src_file.to_string_lossy().to_string(),
-        ];
-        assert_eq!(run(&args_build2), 0);
-
-        // 5. Build parse error & execution error
-        assert_eq!(run(&["build".to_string(), "-arch".to_string()]), 1);
-        assert_eq!(
-            run(&["build".to_string(), "nonexistent.wxs".to_string()]),
-            1,
-        );
-
-        // 6. Clean subcommand
-        let dummy_obj = temp_dir.join("dummy.wixobj");
-        assert!(fs::write(&dummy_obj, "dummy").is_ok());
-        // Directory matching extension to trigger remove_file failure branch
-        let dir_cab = temp_dir.join("fake_folder.cab");
-        assert!(fs::create_dir_all(&dir_cab).is_ok());
-        assert_eq!(
-            run(&["clean".to_string(), temp_dir.to_string_lossy().to_string()]),
-            0,
-        );
-        assert_eq!(run(&["clean".to_string()]), 0);
-        assert_eq!(
-            run(&["clean".to_string(), "nonexistent_dir_for_clean".to_string()]),
-            0,
-        );
-        let _ = fs::remove_dir_all(&dir_cab);
-
-        // 7. Extension subcommand
-        assert_eq!(run(&["extension".to_string()]), 0);
-        assert_eq!(run(&["extension".to_string(), "list".to_string()]), 0);
-        assert_eq!(
-            run(&[
-                "extension".to_string(),
-                "add".to_string(),
-                "Custom.Ext".to_string(),
-            ]),
-            0,
-        );
-        assert_eq!(run(&["extension".to_string(), "add".to_string()]), 1);
-        assert_eq!(
-            run(&[
-                "extension".to_string(),
-                "remove".to_string(),
-                "Custom.Ext".to_string(),
-            ]),
-            0,
-        );
-        assert_eq!(run(&["extension".to_string(), "remove".to_string()]), 1);
-        assert_eq!(run(&["extension".to_string(), "unknown".to_string()]), 1);
-
-        // 8. Format subcommand
-        assert_eq!(run(&["format".to_string()]), 1);
-        assert_eq!(
-            run(&["format".to_string(), src_file.to_string_lossy().to_string()]),
-            0,
-        );
-        assert_eq!(
-            run(&["format".to_string(), "nonexistent.wxs".to_string()]),
-            1,
-        );
-        let bad_xml = temp_dir.join("bad.xml");
-        assert!(fs::write(&bad_xml, "<unclosed").is_ok());
-        assert_eq!(
-            run(&["format".to_string(), bad_xml.to_string_lossy().to_string()]),
-            1,
-        );
-
-        // Format write failure on read-only file
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let ro_wxs = temp_dir.join("readonly.wxs");
-            assert!(fs::write(&ro_wxs, wxs).is_ok());
-            assert!(fs::set_permissions(&ro_wxs, fs::Permissions::from_mode(0o400)).is_ok());
-            assert_eq!(
-                run(&["format".to_string(), ro_wxs.to_string_lossy().to_string()]),
-                1,
-            );
-            assert!(fs::set_permissions(&ro_wxs, fs::Permissions::from_mode(0o644)).is_ok());
-        }
-
-        // 9. Harvest subcommand
+    /// Exercises `wix harvest` subcommand branches.
+    fn run_wix_harvest_cases(temp_dir: &Path) {
         assert_eq!(run(&["harvest".to_string()]), 1);
         assert_eq!(
             run(&[
@@ -633,35 +497,18 @@ mod tests {
             ]),
             1,
         );
-        assert_eq!(
-            run(&[
-                "harvest".to_string(),
-                "dir".to_string(),
-                temp_dir.to_string_lossy().to_string(),
-                "-unknown-opt".to_string(),
-            ]),
-            0,
-        );
-        assert_eq!(
-            run(&[
-                "harvest".to_string(),
-                "dir".to_string(),
-                temp_dir.to_string_lossy().to_string(),
-                "-o".to_string(),
-            ]),
-            0,
-        );
-        assert_eq!(
-            run(&[
-                "harvest".to_string(),
-                "dir".to_string(),
-                temp_dir.to_string_lossy().to_string(),
-                "-out".to_string(),
-            ]),
-            0,
-        );
+        for flag in &["-unknown-opt", "-o", "-out"] {
+            assert_eq!(
+                run(&[
+                    "harvest".to_string(),
+                    "dir".to_string(),
+                    temp_dir.to_string_lossy().to_string(),
+                    (*flag).to_string(),
+                ]),
+                0,
+            );
+        }
 
-        // Harvest failure on unreadable dir
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -683,12 +530,12 @@ mod tests {
                 fs::set_permissions(&unreadable_sub, fs::Permissions::from_mode(0o755)).is_ok()
             );
         }
+    }
 
-        // 10. MSI subcommand group
+    /// Exercises `wix msi decompile` subcommand cases.
+    fn run_wix_msi_decompile_cases(temp_dir: &Path, msi_file: &Path) {
         assert_eq!(run(&["msi".to_string()]), 1);
         assert_eq!(run(&["msi".to_string(), "unknown".to_string()]), 1);
-
-        // MSI decompile
         assert_eq!(run(&["msi".to_string(), "decompile".to_string()]), 1);
         assert_eq!(
             run(&[
@@ -717,42 +564,22 @@ mod tests {
             ]),
             0,
         );
-        // Trailing -out and -o without value, and unknown option
-        assert_eq!(
-            run(&[
-                "msi".to_string(),
-                "decompile".to_string(),
-                msi_file.to_string_lossy().to_string(),
-                "-unknown-opt".to_string(),
-            ]),
-            0,
-        );
-        assert_eq!(
-            run(&[
-                "msi".to_string(),
-                "decompile".to_string(),
-                msi_file.to_string_lossy().to_string(),
-                "-out".to_string(),
-            ]),
-            0,
-        );
-        assert_eq!(
-            run(&[
-                "msi".to_string(),
-                "decompile".to_string(),
-                msi_file.to_string_lossy().to_string(),
-                "-o".to_string(),
-            ]),
-            0,
-        );
+        for flag in &["-unknown-opt", "-out", "-o"] {
+            assert_eq!(
+                run(&[
+                    "msi".to_string(),
+                    "decompile".to_string(),
+                    msi_file.to_string_lossy().to_string(),
+                    (*flag).to_string(),
+                ]),
+                0,
+            );
+        }
 
-        // Empty CFB package for decompile and validate failures
         let empty_cfb_path = temp_dir.join("empty_cfb.msi");
         let mut cfb_writer = msi::cfb::writer::CfbWriter::new(msi::cfb::header::CfbVersion::V3);
         assert!(cfb_writer.add_stream("dummy", &[1, 2, 3]).is_ok());
-        let cfb_bytes = cfb_writer.build();
-        assert!(fs::write(&empty_cfb_path, cfb_bytes).is_ok());
-
+        assert!(fs::write(&empty_cfb_path, cfb_writer.build()).is_ok());
         assert_eq!(
             run(&[
                 "msi".to_string(),
@@ -761,8 +588,14 @@ mod tests {
             ]),
             1,
         );
+    }
 
-        // MSI validate
+    /// Exercises `wix msi validate` and `wix msi diff` subcommand cases.
+    fn run_wix_msi_validate_and_diff_cases(
+        temp_dir: &Path,
+        msi_file: &Path,
+        second_msi_file: &Path,
+    ) {
         assert_eq!(run(&["msi".to_string(), "validate".to_string()]), 1);
         assert_eq!(
             run(&[
@@ -780,7 +613,7 @@ mod tests {
             ]),
             0,
         );
-        // Package with ICE error for validation failure
+
         let invalid_ice_path = temp_dir.join("invalid_ice.msi");
         let mut db_ice4 = msi::wix::linker::LinkedDatabase::new().unwrap_or_default();
         db_ice4.add_record(
@@ -808,7 +641,6 @@ mod tests {
             std::collections::HashMap::new(),
         );
         assert!(pkg_invalid.save(&invalid_ice_path).is_ok());
-
         assert_eq!(
             run(&[
                 "msi".to_string(),
@@ -818,26 +650,21 @@ mod tests {
             1,
         );
 
-        // MSI diff
         assert_eq!(run(&["msi".to_string(), "diff".to_string()]), 1);
-        assert_eq!(
-            run(&[
-                "msi".to_string(),
-                "diff".to_string(),
-                "nonexistent1.msi".to_string(),
-                "nonexistent2.msi".to_string(),
-            ]),
-            1,
-        );
-        assert_eq!(
-            run(&[
-                "msi".to_string(),
-                "diff".to_string(),
-                msi_file.to_string_lossy().to_string(),
-                "nonexistent2.msi".to_string(),
-            ]),
-            1,
-        );
+        for (p1, p2) in [
+            ("nonexistent1.msi", "nonexistent2.msi"),
+            (msi_file.to_string_lossy().as_ref(), "nonexistent2.msi"),
+        ] {
+            assert_eq!(
+                run(&[
+                    "msi".to_string(),
+                    "diff".to_string(),
+                    p1.to_string(),
+                    p2.to_string(),
+                ]),
+                1,
+            );
+        }
         assert_eq!(
             run(&[
                 "msi".to_string(),
@@ -847,8 +674,119 @@ mod tests {
             ]),
             0,
         );
+    }
 
-        // 11. Test write error branches
+    /// Exercises `clean`, `extension`, and `format` subcommands in `wix`.
+    fn run_wix_clean_extension_and_format_cases(temp_dir: &Path, src_file: &Path, wxs: &str) {
+        let dummy_obj = temp_dir.join("dummy.wixobj");
+        assert!(fs::write(&dummy_obj, "dummy").is_ok());
+        let dir_cab = temp_dir.join("fake_folder.cab");
+        assert!(fs::create_dir_all(&dir_cab).is_ok());
+        assert_eq!(
+            run(&["clean".to_string(), temp_dir.to_string_lossy().to_string()]),
+            0,
+        );
+        assert_eq!(run(&["clean".to_string()]), 0);
+        assert_eq!(
+            run(&["clean".to_string(), "nonexistent_dir_for_clean".to_string()]),
+            0,
+        );
+        let _ = fs::remove_dir_all(&dir_cab);
+
+        assert_eq!(run(&["extension".to_string()]), 0);
+        assert_eq!(run(&["extension".to_string(), "list".to_string()]), 0);
+        for sub in ["add", "remove"] {
+            assert_eq!(
+                run(&[
+                    "extension".to_string(),
+                    sub.to_string(),
+                    "Custom.Ext".to_string(),
+                ]),
+                0,
+            );
+            assert_eq!(run(&["extension".to_string(), sub.to_string()]), 1);
+        }
+        assert_eq!(run(&["extension".to_string(), "unknown".to_string()]), 1);
+
+        assert_eq!(run(&["format".to_string()]), 1);
+        assert_eq!(
+            run(&["format".to_string(), src_file.to_string_lossy().to_string()]),
+            0,
+        );
+        assert_eq!(
+            run(&["format".to_string(), "nonexistent.wxs".to_string()]),
+            1,
+        );
+        let bad_xml = temp_dir.join("bad.xml");
+        assert!(fs::write(&bad_xml, "<unclosed").is_ok());
+        assert_eq!(
+            run(&["format".to_string(), bad_xml.to_string_lossy().to_string()]),
+            1,
+        );
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let ro_wxs = temp_dir.join("readonly.wxs");
+            assert!(fs::write(&ro_wxs, wxs).is_ok());
+            assert!(fs::set_permissions(&ro_wxs, fs::Permissions::from_mode(0o400)).is_ok());
+            assert_eq!(
+                run(&["format".to_string(), ro_wxs.to_string_lossy().to_string()]),
+                1,
+            );
+            assert!(fs::set_permissions(&ro_wxs, fs::Permissions::from_mode(0o644)).is_ok());
+        }
+    }
+
+    /// Tests all branches and error handling of `wix` binary execution.
+    #[test]
+    fn test_wix_run_all_branches() {
+        let temp_dir = std::env::temp_dir().join("msi_cli_test_wix_bin");
+        let _ = fs::create_dir_all(&temp_dir);
+        let src_file = temp_dir.join("app.wxs");
+        let msi_file = temp_dir.join("app.msi");
+        let second_msi_file = temp_dir.join("app2.msi");
+
+        let wxs = r#"
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="{33333333-3333-3333-3333-333333333333}" Name="App" Version="1.0.0" Manufacturer="Test">
+        <Package Description="Test" />
+        <Directory Id="TARGETDIR" Name="SourceDir" />
+    </Product>
+</Wix>
+"#;
+        assert!(fs::write(&src_file, wxs).is_ok());
+
+        assert_eq!(run(&[]), 1);
+        for cmd in ["--version", "--help", "burn"] {
+            assert_eq!(run(&[cmd.to_string()]), 0);
+        }
+        assert_eq!(run_app(&["--version".to_string()]), ExitCode::SUCCESS);
+        assert_eq!(run(&["unknown".to_string()]), 1);
+
+        for out in [&msi_file, &second_msi_file] {
+            assert_eq!(
+                run(&[
+                    "build".to_string(),
+                    "-sval".to_string(),
+                    "-o".to_string(),
+                    out.to_string_lossy().to_string(),
+                    src_file.to_string_lossy().to_string(),
+                ]),
+                0
+            );
+        }
+        assert!(msi_file.exists());
+
+        for bad_arg in ["-arch", "nonexistent.wxs"] {
+            assert_eq!(run(&["build".to_string(), bad_arg.to_string()]), 1);
+        }
+
+        run_wix_clean_extension_and_format_cases(&temp_dir, &src_file, wxs);
+        run_wix_harvest_cases(&temp_dir);
+        run_wix_msi_decompile_cases(&temp_dir, &msi_file);
+        run_wix_msi_validate_and_diff_cases(&temp_dir, &msi_file, &second_msi_file);
+
         let invalid_out = Path::new("/nonexistent_root_dir_12345/sub/test.xml");
         assert_eq!(
             run(&[
@@ -871,7 +809,6 @@ mod tests {
             1,
         );
 
-        // 12. Test invoking main directly and run_app error
         assert_eq!(run_app(&[]), ExitCode::FAILURE);
         let _code = main();
 

@@ -1,4 +1,11 @@
-use crate::database::sql::executor::{execute_sql, QueryResult};
+//! Action sequence evaluation and dispatch engine.
+//!
+//! Walks sequence tables (`InstallExecuteSequence`, `InstallUISequence`, `AdminExecuteSequence`,
+//! `AdvtExecuteSequence`) ordered by `Sequence`, evaluates conditional expressions against the
+//! active [`EvaluationContext`], and dispatches standard and custom actions.
+
+use crate::database::sql::executor::{execute_select_sql, QueryResult};
+use crate::database::tables::record::FieldValue;
 use crate::error::{MsiError, Result};
 use crate::execution::sequence::{ActionStatus, SequenceName};
 use crate::execution::transaction::{Transaction, Uninitialized};
@@ -6,55 +13,48 @@ use crate::execution::transaction::{Transaction, Uninitialized};
 /// Dispatcher responsible for evaluating conditions and executing action sequences.
 #[derive(Debug)]
 pub struct ActionDispatcher<'a> {
-    /// Active transaction manager.
+    /// Active transaction manager providing database and property context.
     transaction: &'a mut Transaction<Uninitialized>,
 }
 
 impl<'a> ActionDispatcher<'a> {
-    /// Creates a new `ActionDispatcher`.
+    /// Creates a new [`ActionDispatcher`] bound to `transaction`.
     ///
     /// # Arguments
     ///
-    /// * `transaction` - The uninitialized transaction providing context.
+    /// * `transaction` - The uninitialized transaction providing database and property context.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A new [`ActionDispatcher`].
     #[must_use]
     pub const fn new(transaction: &'a mut Transaction<Uninitialized>) -> Self {
         Self { transaction }
     }
 
-    /// Executes an entire sequence by name.
+    /// Executes an entire action sequence table by name in ascending `Sequence` order.
     ///
     /// # Arguments
     ///
-    /// * `sequence` - The `sequence` parameter.
+    /// * `sequence` - Name of the sequence table (e.g., `"InstallExecuteSequence"`).
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Final [`ActionStatus`] after executing all eligible actions in the sequence.
+    ///
     /// # Errors
     ///
-    /// Returns an error if the sequence table is malformed or if an action fails.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the sequence table does not have at least 3 columns.
+    /// Returns [`MsiError::ExecutionFailed`] if the sequence table does not exist or a Type 19
+    /// custom error action aborts installation, or [`MsiError::Validation`] if a condition expression is malformed.
     pub fn execute_sequence(&mut self, sequence: &SequenceName) -> Result<ActionStatus> {
-        if sequence.0 == "ForceSuccessSequence" {
-            return Ok(ActionStatus::Success);
-        }
-
         let query = format!(
             "SELECT `Action`, `Condition`, `Sequence` FROM `{}` ORDER BY `Sequence`",
             sequence.0
         );
 
-        let mut db_clone = self.transaction.database().clone();
-
-        let Ok(QueryResult::Select { rows, .. }) = execute_sql(&mut db_clone, &query, &[]) else {
-            // If the sequence table doesn't exist or query fails, this is a failure.
+        let Ok(QueryResult::Select { rows, .. }) =
+            execute_select_sql(self.transaction.database(), &query, &[])
+        else {
             return Err(MsiError::ExecutionFailed {
                 action: sequence.0.clone(),
                 return_code: 1603,
@@ -67,31 +67,25 @@ impl<'a> ActionDispatcher<'a> {
         for record in rows {
             let fields = record.fields();
 
-            let action = match &fields[0] {
-                crate::database::tables::record::FieldValue::String(s) => s.clone(),
+            let action = match fields.first() {
+                Some(FieldValue::String(s)) => s.clone(),
                 _ => continue,
             };
 
-            let condition = match &fields[1] {
-                crate::database::tables::record::FieldValue::String(s) => s.clone(),
-                crate::database::tables::record::FieldValue::Null => String::new(),
+            let condition = match fields.get(1) {
+                Some(FieldValue::String(s)) => s.clone(),
                 _ => String::new(),
             };
 
-            // Evaluate condition
-            if !condition.is_empty() {
-                let condition_met = self.transaction.context().evaluate_condition(&condition)?;
-                if !condition_met {
-                    continue;
-                }
+            if !condition.is_empty()
+                && !self.transaction.context().evaluate_condition(&condition)?
+            {
+                continue;
             }
 
-            // Dispatch action
             let status = self.dispatch_action(&action)?;
             match status {
-                ActionStatus::Success | ActionStatus::Skipped => {
-                    // Continue to next action
-                }
+                ActionStatus::Success | ActionStatus::Skipped => {}
                 ActionStatus::Failure | ActionStatus::FatalExit | ActionStatus::UserExit => {
                     overall_status = status;
                     break;
@@ -102,34 +96,77 @@ impl<'a> ActionDispatcher<'a> {
         Ok(overall_status)
     }
 
-    /// Dispatches a single action by name.
+    /// Dispatches a single standard or custom action by name.
+    ///
+    /// Checks the `CustomAction` table first:
+    /// - Type 19 (`0x13`) error custom actions format their `Target` message and abort with [`MsiError::ExecutionFailed`].
+    /// - Type 51 (`0x33`) property-assignment custom actions format their `Target` value and assign the property named by `Source`.
+    /// - Standard `LaunchConditions` evaluates all rows in the `LaunchCondition` table, returning [`ActionStatus::Failure`] if any condition evaluates to `false`.
     ///
     /// # Arguments
     ///
-    /// * `action_name` - The `action_name` parameter.
+    /// * `action_name` - Identifier of the standard or custom action to execute.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// [`ActionStatus`] indicating the outcome of the action.
+    ///
     /// # Errors
     ///
-    /// Returns an error if the action cannot be dispatched or fails during execution.
+    /// Returns [`MsiError::ExecutionFailed`] if a Type 19 error action triggers, or [`MsiError::Validation`] if a condition expression is invalid.
     pub fn dispatch_action(&mut self, action_name: &str) -> Result<ActionStatus> {
-        // Look up standard actions vs custom actions vs UI dialogs.
-        // E.g. check CustomAction table, check standard action handlers, check UI.
-
-        if action_name == "ForceFail" {
-            return Err(MsiError::ExecutionFailed {
-                action: action_name.to_string(),
-                return_code: 1603,
-                message: "Forced failure".to_string(),
-            });
-        }
-        if action_name == "ForceStatusFailure" {
-            return Ok(ActionStatus::Failure);
+        if action_name == "LaunchConditions" {
+            let lc_records = self.transaction.database().get_records("LaunchCondition");
+            for rec in lc_records {
+                if let Some(FieldValue::String(cond)) = rec.get(0) {
+                    if !self.transaction.context().evaluate_condition(cond)? {
+                        return Ok(ActionStatus::Failure);
+                    }
+                }
+            }
+            return Ok(ActionStatus::Success);
         }
 
-        // As a stub:
+        let ca_records = self.transaction.database().get_records("CustomAction");
+        for rec in ca_records {
+            let Some(FieldValue::String(ca_id)) = rec.get(0) else {
+                continue;
+            };
+            if ca_id != action_name {
+                continue;
+            }
+            let ca_type = match rec.get(1) {
+                Some(FieldValue::Short(v)) => i32::from(*v),
+                Some(FieldValue::Long(v)) => *v,
+                _ => 0,
+            };
+            let source = match rec.get(2) {
+                Some(FieldValue::String(s)) => s,
+                _ => "",
+            };
+            let target = match rec.get(3) {
+                Some(FieldValue::String(s)) => s,
+                _ => "",
+            };
+
+            let base_type = ca_type & 0x3F;
+            if base_type == 19 {
+                let formatted = self.transaction.context().format_string(target)?;
+                return Err(MsiError::ExecutionFailed {
+                    action: action_name.to_string(),
+                    return_code: 1603,
+                    message: formatted,
+                });
+            } else if base_type == 51 && !source.is_empty() {
+                let formatted = self.transaction.context().format_string(target)?;
+                let src_prop = source.to_string();
+                self.transaction
+                    .context_mut()
+                    .set_property(&src_prop, &formatted);
+                return Ok(ActionStatus::Success);
+            }
+        }
+
         Ok(ActionStatus::Success)
     }
 }
@@ -138,23 +175,25 @@ impl<'a> ActionDispatcher<'a> {
 #[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
+    use crate::database::tables::record::{FieldValue, Record};
+    use crate::execution::properties::EvaluationContext;
+    use crate::wix::linker::LinkedDatabase;
 
     #[test]
-    fn test_dispatcher_bad_records() {
-        let mut db = LinkedDatabase::new().expect("test");
-        let mut rows = Vec::new();
-        use crate::database::tables::record::{FieldValue, Record};
-
-        rows.push(Record::with_fields(vec![
-            FieldValue::Long(1),
-            FieldValue::Long(1),
-            FieldValue::Long(1),
-        ]));
-        rows.push(Record::with_fields(vec![
-            FieldValue::String("A".to_string()),
-            FieldValue::Long(1),
-            FieldValue::Long(1),
-        ]));
+    fn test_dispatcher_bad_records() -> Result<()> {
+        let mut db = LinkedDatabase::new()?;
+        let rows = vec![
+            Record::with_fields(vec![
+                FieldValue::Long(1),
+                FieldValue::Long(1),
+                FieldValue::Long(1),
+            ]),
+            Record::with_fields(vec![
+                FieldValue::String("A".to_string()),
+                FieldValue::Long(1),
+                FieldValue::Long(1),
+            ]),
+        ];
 
         db.tables.insert("InstallExecuteSequence".to_string(), rows);
 
@@ -163,27 +202,83 @@ mod tests {
         let mut tx = Transaction::new(db, context, cost);
 
         let mut dispatcher = ActionDispatcher::new(&mut tx);
-        let status = dispatcher
-            .execute_sequence(&SequenceName("InstallExecuteSequence".to_string()))
-            .expect("test");
+        let status =
+            dispatcher.execute_sequence(&SequenceName("InstallExecuteSequence".to_string()))?;
         assert_eq!(status, ActionStatus::Success);
+        Ok(())
     }
 
-    use crate::database::tables::record::{FieldValue, Record};
-    use crate::execution::properties::EvaluationContext;
-    use crate::wix::linker::LinkedDatabase;
-
     #[test]
-    fn test_dispatcher_stubs() {
+    fn test_dispatcher_standard_and_type51_actions() -> Result<()> {
+        let mut db = LinkedDatabase::default();
+        db.add_record(
+            "CustomAction",
+            Record::with_fields(vec![
+                FieldValue::String("OtherCA".to_string()),
+                FieldValue::Short(51),
+                FieldValue::String("OTHER_PROP".to_string()),
+                FieldValue::String("val".to_string()),
+            ]),
+        );
+        db.add_record(
+            "CustomAction",
+            Record::with_fields(vec![
+                FieldValue::Short(0),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        db.add_record(
+            "CustomAction",
+            Record::with_fields(vec![
+                FieldValue::String("SetInstallDir".to_string()),
+                FieldValue::Long(51),
+                FieldValue::String("INSTALLFOLDER".to_string()),
+                FieldValue::String("/opt/myapp".to_string()),
+            ]),
+        );
+        db.add_record(
+            "CustomAction",
+            Record::with_fields(vec![
+                FieldValue::String("NoOpCA".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        db.add_record(
+            "CustomAction",
+            Record::with_fields(vec![
+                FieldValue::String("NullTargetErrCA".to_string()),
+                FieldValue::Short(19),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+
         let mut transaction = Transaction::new(
-            LinkedDatabase::default(),
+            db,
             EvaluationContext::new(),
             crate::execution::DiskCostEngine::new(),
         );
 
         let mut dispatcher = ActionDispatcher::new(&mut transaction);
-        let result = dispatcher.dispatch_action("AppSearch").expect("test");
-        assert_eq!(result, ActionStatus::Success);
+        assert_eq!(
+            dispatcher.dispatch_action("AppSearch")?,
+            ActionStatus::Success
+        );
+        assert_eq!(
+            dispatcher.dispatch_action("SetInstallDir")?,
+            ActionStatus::Success
+        );
+        assert_eq!(dispatcher.dispatch_action("NoOpCA")?, ActionStatus::Success);
+        assert!(dispatcher.dispatch_action("NullTargetErrCA").is_err());
+        assert_eq!(
+            transaction.context().get_property("INSTALLFOLDER"),
+            Some("/opt/myapp")
+        );
+        Ok(())
     }
 
     #[test]
@@ -195,14 +290,14 @@ mod tests {
         );
 
         let mut dispatcher = ActionDispatcher::new(&mut transaction);
-        let err = dispatcher
-            .execute_sequence(&SequenceName::from("NonExistentSequence"))
-            .unwrap_err();
-        assert!(err.to_string().contains("Failed to query sequence table"));
+        let res = dispatcher.execute_sequence(&SequenceName::from("NonExistentSequence"));
+        assert!(res
+            .err()
+            .is_some_and(|err| err.to_string().contains("Failed to query sequence table")));
     }
 
     #[test]
-    fn test_execute_sequence_success() {
+    fn test_execute_sequence_success() -> Result<()> {
         let mut db = LinkedDatabase::default();
 
         db.add_record(
@@ -218,7 +313,7 @@ mod tests {
             "InstallExecuteSequence",
             Record::with_fields(vec![
                 FieldValue::String("SomeSkippedAction".to_string()),
-                FieldValue::String("0".to_string()), // false condition
+                FieldValue::String("0".to_string()),
                 FieldValue::Short(150),
             ]),
         );
@@ -226,9 +321,24 @@ mod tests {
         db.add_record(
             "InstallExecuteSequence",
             Record::with_fields(vec![
-                FieldValue::String("SomeTrueAction".to_string()),
-                FieldValue::String("1".to_string()), // true condition
+                FieldValue::String("LaunchConditions".to_string()),
+                FieldValue::String("1".to_string()),
                 FieldValue::Short(200),
+            ]),
+        );
+
+        db.add_record(
+            "LaunchCondition",
+            Record::with_fields(vec![
+                FieldValue::String("1".to_string()),
+                FieldValue::String("Always passes".to_string()),
+            ]),
+        );
+        db.add_record(
+            "LaunchCondition",
+            Record::with_fields(vec![
+                FieldValue::Null,
+                FieldValue::String("Null condition".to_string()),
             ]),
         );
 
@@ -239,46 +349,63 @@ mod tests {
         );
 
         let mut dispatcher = ActionDispatcher::new(&mut transaction);
-        let result = dispatcher
-            .execute_sequence(&SequenceName::from("InstallExecuteSequence"))
-            .expect("test");
+        let result = dispatcher.execute_sequence(&SequenceName::from("InstallExecuteSequence"))?;
         assert_eq!(result, ActionStatus::Success);
+        Ok(())
     }
 
     #[test]
-    fn test_execute_sequence_condition_false() {
+    fn test_execute_sequence_type19_error_action() {
         let mut db = LinkedDatabase::default();
+
+        db.add_record(
+            "CustomAction",
+            Record::with_fields(vec![
+                FieldValue::String("AbortInstall".to_string()),
+                FieldValue::Short(19),
+                FieldValue::Null,
+                FieldValue::String("Prerequisite missing".to_string()),
+            ]),
+        );
 
         db.add_record(
             "InstallExecuteSequence",
             Record::with_fields(vec![
-                FieldValue::String("AppSearch".to_string()),
+                FieldValue::String("AbortInstall".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(100),
+            ]),
+        );
+
+        let mut transaction = Transaction::new(
+            db,
+            EvaluationContext::new(),
+            crate::execution::DiskCostEngine::new(),
+        );
+
+        let mut dispatcher = ActionDispatcher::new(&mut transaction);
+        let res = dispatcher.execute_sequence(&SequenceName::from("InstallExecuteSequence"));
+        assert!(res
+            .err()
+            .is_some_and(|err| err.to_string().contains("Prerequisite missing")));
+    }
+
+    #[test]
+    fn test_execute_sequence_launch_condition_failure() -> Result<()> {
+        let mut db = LinkedDatabase::default();
+
+        db.add_record(
+            "LaunchCondition",
+            Record::with_fields(vec![
                 FieldValue::String("0".to_string()),
-                FieldValue::Short(100),
+                FieldValue::String("Failed launch condition".to_string()),
             ]),
         );
-
-        let mut transaction = Transaction::new(
-            db,
-            EvaluationContext::new(),
-            crate::execution::DiskCostEngine::new(),
-        );
-
-        let mut dispatcher = ActionDispatcher::new(&mut transaction);
-        let result = dispatcher
-            .execute_sequence(&SequenceName::from("InstallExecuteSequence"))
-            .expect("test");
-        assert_eq!(result, ActionStatus::Success); // it just skips and returns Success
-    }
-
-    #[test]
-    fn test_execute_sequence_dispatch_failure() {
-        let mut db = LinkedDatabase::default();
 
         db.add_record(
             "InstallExecuteSequence",
             Record::with_fields(vec![
-                FieldValue::String("ForceFail".to_string()),
+                FieldValue::String("LaunchConditions".to_string()),
                 FieldValue::Null,
                 FieldValue::Short(100),
             ]),
@@ -291,106 +418,8 @@ mod tests {
         );
 
         let mut dispatcher = ActionDispatcher::new(&mut transaction);
-        let err = dispatcher
-            .execute_sequence(&SequenceName::from("InstallExecuteSequence"))
-            .unwrap_err();
-        assert!(err.to_string().contains("Forced failure"));
-    }
-
-    #[test]
-    fn test_execute_sequence_status_failure() {
-        let mut db = LinkedDatabase::default();
-
-        db.add_record(
-            "InstallExecuteSequence",
-            Record::with_fields(vec![
-                FieldValue::String("ForceStatusFailure".to_string()),
-                FieldValue::Null,
-                FieldValue::Short(100),
-            ]),
-        );
-
-        let mut transaction = Transaction::new(
-            db,
-            EvaluationContext::new(),
-            crate::execution::DiskCostEngine::new(),
-        );
-
-        let mut dispatcher = ActionDispatcher::new(&mut transaction);
-        let result = dispatcher
-            .execute_sequence(&SequenceName::from("InstallExecuteSequence"))
-            .expect("test");
+        let result = dispatcher.execute_sequence(&SequenceName::from("InstallExecuteSequence"))?;
         assert_eq!(result, ActionStatus::Failure);
-    }
-}
-
-#[test]
-fn test_execute_force_success_sequence_fixed() {
-    let mut transaction = Transaction::new(
-        crate::wix::LinkedDatabase::default(),
-        crate::execution::properties::EvaluationContext::new(),
-        crate::execution::DiskCostEngine::new(),
-    );
-
-    let mut dispatcher = ActionDispatcher::new(&mut transaction);
-    let res = dispatcher.execute_sequence(&SequenceName::from("ForceSuccessSequence"));
-    assert_eq!(res, Ok(ActionStatus::Success));
-}
-
-#[cfg(test)]
-mod additional_tests {
-    use super::*;
-    use crate::database::tables::record::{FieldValue, Record};
-    use crate::execution::properties::EvaluationContext;
-    use crate::execution::Transaction;
-    use crate::wix::LinkedDatabase;
-
-    #[test]
-    fn test_execute_sequence_table_not_found() {
-        let mut transaction = Transaction::new(
-            LinkedDatabase::default(),
-            EvaluationContext::new(),
-            crate::execution::DiskCostEngine::new(),
-        );
-
-        let mut dispatcher = ActionDispatcher::new(&mut transaction);
-        let res = dispatcher.execute_sequence(&SequenceName::from("NonExistentSequence"));
-        assert!(res.is_err());
-    }
-
-    #[test]
-    fn test_execute_sequence_invalid_field_types() {
-        let mut db = LinkedDatabase::default();
-
-        // fields[0] is not a string -> should continue
-        db.add_record(
-            "InstallExecuteSequence",
-            Record::with_fields(vec![
-                FieldValue::Short(1),
-                FieldValue::Null,
-                FieldValue::Short(100),
-            ]),
-        );
-
-        // fields[1] is not a string or null -> should default to empty condition
-        db.add_record(
-            "InstallExecuteSequence",
-            Record::with_fields(vec![
-                FieldValue::String("ValidAction".to_string()),
-                FieldValue::Short(1), // not string/null
-                FieldValue::Short(200),
-            ]),
-        );
-
-        let mut transaction = Transaction::new(
-            db,
-            EvaluationContext::new(),
-            crate::execution::DiskCostEngine::new(),
-        );
-        let mut dispatcher = ActionDispatcher::new(&mut transaction);
-        let res = dispatcher
-            .execute_sequence(&SequenceName::from("InstallExecuteSequence"))
-            .unwrap();
-        assert_eq!(res, ActionStatus::Success);
+        Ok(())
     }
 }

@@ -466,7 +466,7 @@ pub mod posix_mock {
         pub fn install_assembly(
             &self,
             assembly_path: &Path,
-            _manifest_path: Option<&Path>,
+            manifest_path: Option<&Path>,
         ) -> Result<()> {
             if !assembly_path.exists() {
                 return Err(MsiError::Io(crate::error::IoContext::from_string(format!(
@@ -474,7 +474,9 @@ pub mod posix_mock {
                     assembly_path.display()
                 ))));
             }
-            // Mock installation targeting mono GAC
+            if let Some(mp) = manifest_path {
+                let _manifest = super::AssemblyManifest::from_file(mp)?;
+            }
             let _target_gac_dir = PathBuf::from("/usr/local/lib/mono/gac");
             Ok(())
         }
@@ -563,8 +565,8 @@ mod tests {
     use std::path::Path;
 
     #[test]
-    fn test_public_key_token() {
-        let valid = PublicKeyToken::parse("b77a5c561934e089").expect("failed to parse");
+    fn test_public_key_token() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let valid = PublicKeyToken::parse("b77a5c561934e089")?;
         assert_eq!(valid.as_str(), "b77a5c561934e089");
 
         let invalid_len = PublicKeyToken::parse("12345678");
@@ -572,15 +574,15 @@ mod tests {
 
         let invalid_chars = PublicKeyToken::parse("zzzzzzzzzzzzzzzz");
         assert!(invalid_chars.is_err());
+        Ok(())
     }
 
     #[test]
-    fn test_from_pe_file_mocked() {
+    fn test_from_pe_file_mocked() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let valid_path = Path::new("mock_valid_pe.dll");
         let asm = AssemblyManifest::from_pe_file_with_extractor(valid_path, |_| {
             Ok("<assemblyIdentity name=\"App\" version=\"1.0\" />".to_string())
-        })
-        .expect("test");
+        })?;
         assert_eq!(asm.identity.name, "App");
 
         let invalid_xml_path = Path::new("mock_invalid_xml.dll");
@@ -598,6 +600,7 @@ mod tests {
             })
             .is_err()
         );
+        Ok(())
     }
 
     #[test]
@@ -752,33 +755,30 @@ mod tests {
         let invalid_manifest = temp_dir.path().join("bad.manifest");
         fs::write(&invalid_manifest, b"INVALID")?;
         assert!(bridge.register_manifest(&invalid_manifest).is_err());
+
+        let valid_asm = temp_dir.path().join("valid.dll");
+        fs::write(&valid_asm, b"DLLDATA")?;
+        let gac = GacBridge;
+        assert!(gac
+            .install_assembly(&valid_asm, Some(&valid_manifest))
+            .is_ok());
+        assert!(gac
+            .install_assembly(&valid_asm, Some(&invalid_manifest))
+            .is_err());
         Ok(())
     }
-}
-
-#[cfg(test)]
-mod test_pe_errors {
-    use super::*;
 
     #[test]
-    fn test_assembly_from_pe_file() {
-        let dir = tempfile::tempdir().unwrap();
+    fn test_assembly_from_pe_file() -> Result<()> {
+        let dir = tempfile::tempdir()?;
         let path = dir.path().join("fake.dll");
-        std::fs::write(&path, b"not a PE file").unwrap();
+        fs::write(&path, b"not a PE file")?;
 
         let res = AssemblyManifest::from_pe_file(&path);
         assert!(res.is_err());
-    }
-}
 
-#[cfg(test)]
-mod assembly_pe_extract_tests {
-    use super::*;
-
-    #[test]
-    fn test_assembly_from_pe_file_not_found() {
-        // file doesn't exist
-        let res = AssemblyManifest::from_pe_file(std::path::Path::new("not_found.dll"));
-        assert!(res.is_err());
+        let missing = AssemblyManifest::from_pe_file(Path::new("not_found.dll"));
+        assert!(missing.is_err());
+        Ok(())
     }
 }

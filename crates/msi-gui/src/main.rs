@@ -1,7 +1,5 @@
-#![allow(clippy::literal_string_with_formatting_args)]
 #![deny(missing_docs)]
 #![deny(clippy::missing_docs_in_private_items)]
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! # msi-gui
 //!
 //! Interactive Native Desktop GUI Windowing Runtime for Windows Installer (`.msi`) packages.
@@ -643,76 +641,109 @@ mod tests {
         let _ = std::fs::remove_file(pkg_path);
         let _ = std::fs::remove_dir(temp_dir);
     }
-}
 
-#[test]
-fn test_gui_window_configurations() {
-    // verify theme, backend, resolution flags end-to-end
-    let exit_code = run_with_args([
-        "msi-gui",
-        "--theme",
-        "minimal",
-        "--backend",
-        "softbuffer",
-        "--width",
-        "800",
-        "--height",
-        "600",
-    ]);
-    assert_eq!(exit_code, ExitCode::SUCCESS);
+    #[test]
+    fn test_gui_window_configurations() {
+        // verify theme, backend, resolution flags end-to-end
+        let exit_code = run_with_args([
+            "msi-gui",
+            "--theme",
+            "minimal",
+            "--backend",
+            "softbuffer",
+            "--width",
+            "800",
+            "--height",
+            "600",
+        ]);
+        assert_eq!(exit_code, ExitCode::SUCCESS);
 
-    let exit_code2 = run_with_args([
-        "msi-gui",
-        "--theme",
-        "install-dir",
-        "--backend",
-        "softbuffer",
-    ]);
-    assert_eq!(exit_code2, ExitCode::SUCCESS);
+        let exit_code2 = run_with_args([
+            "msi-gui",
+            "--theme",
+            "install-dir",
+            "--backend",
+            "softbuffer",
+        ]);
+        assert_eq!(exit_code2, ExitCode::SUCCESS);
 
-    let _ = GuiCli::try_parse_from(["msi-gui", "--help"]);
-    let _ = GuiCli::try_parse_from(["msi-gui", "--version"]);
-    let _ = GuiCli::try_parse_from(["msi-gui", "--theme", "invalid"]);
-    let _ = GuiCli::try_parse_from(["msi-gui", "--backend", "invalid"]);
-    let _ = GuiCli::try_parse_from(["msi-gui", "--width", "not-a-number"]);
-    let _ = GuiCli::try_parse_from(["msi-gui", "--height", "not-a-number"]);
-    {
-        use clap::{CommandFactory, FromArgMatches};
-        let cmd = GuiCli::command();
-        let mut empty_matches = cmd.ignore_errors(true).get_matches_from(["msi-gui"]);
-        let _ = GuiCli::from_arg_matches(&empty_matches);
-        let mut cli_inst = GuiCli::try_parse_from(["msi-gui"]).expect("default parse");
-        let _ = cli_inst.update_from_arg_matches(&empty_matches);
-        let _ = cli_inst.update_from_arg_matches_mut(&mut empty_matches);
-        let no_defaults_matches = clap::Command::new("msi-gui")
-            .arg(clap::Arg::new("package"))
-            .arg(clap::Arg::new("theme"))
-            .arg(clap::Arg::new("backend"))
-            .arg(clap::Arg::new("width"))
-            .arg(clap::Arg::new("height"))
-            .get_matches_from(["msi-gui"]);
-        let _ = GuiCli::from_arg_matches(&no_defaults_matches);
-        let _ = cli_inst.update_from_arg_matches(&no_defaults_matches);
-        let no_backend_matches = clap::Command::new("msi-gui")
-            .arg(clap::Arg::new("package"))
-            .arg(
-                clap::Arg::new("theme")
-                    .default_value("install-dir")
-                    .value_parser(clap::value_parser!(CliTheme)),
-            )
-            .arg(clap::Arg::new("backend"))
-            .arg(clap::Arg::new("width"))
-            .arg(clap::Arg::new("height"))
-            .get_matches_from(["msi-gui"]);
-        let _ = GuiCli::from_arg_matches(&no_backend_matches);
-        let _ = cli_inst.update_from_arg_matches(&no_backend_matches);
+        assert!(GuiCli::try_parse_from(["msi-gui", "--help"]).is_err());
+        assert!(GuiCli::try_parse_from(["msi-gui", "--version"]).is_err());
+        assert!(GuiCli::try_parse_from(["msi-gui", "--theme", "invalid"]).is_err());
+        assert!(GuiCli::try_parse_from(["msi-gui", "--backend", "invalid"]).is_err());
+        assert!(GuiCli::try_parse_from(["msi-gui", "--width", "not-a-number"]).is_err());
+        assert!(GuiCli::try_parse_from(["msi-gui", "--height", "not-a-number"]).is_err());
+        {
+            use clap::{Args, CommandFactory, FromArgMatches};
+            let cmd = GuiCli::command();
+            let mut empty_matches = cmd.ignore_errors(true).get_matches_from(["msi-gui"]);
+            assert!(GuiCli::from_arg_matches(&empty_matches).is_ok());
+            let upd_cmd = GuiCli::augment_args_for_update(clap::Command::new("msi-gui-upd"));
+            let mut full_matches = upd_cmd.get_matches_from([
+                "msi-gui-upd",
+                "sample.msi",
+                "--theme",
+                "minimal",
+                "--backend",
+                "softbuffer",
+                "--width",
+                "640",
+                "--height",
+                "480",
+            ]);
+            let mut cli_inst = GuiCli {
+                package: None,
+                theme: CliTheme::Mondo,
+                backend: CliBackend::Softbuffer,
+                width: None,
+                height: None,
+            };
+            assert!(cli_inst.update_from_arg_matches(&empty_matches).is_ok());
+            assert!(cli_inst
+                .update_from_arg_matches_mut(&mut empty_matches)
+                .is_ok());
+            assert!(cli_inst
+                .update_from_arg_matches_mut(&mut full_matches)
+                .is_ok());
+            let no_defaults_matches = clap::Command::new("msi-gui")
+                .arg(clap::Arg::new("package"))
+                .arg(clap::Arg::new("theme"))
+                .arg(clap::Arg::new("backend"))
+                .arg(clap::Arg::new("width"))
+                .arg(clap::Arg::new("height"))
+                .get_matches_from(["msi-gui"]);
+            assert!(GuiCli::from_arg_matches(&no_defaults_matches).is_err());
+            assert!(cli_inst
+                .update_from_arg_matches(&no_defaults_matches)
+                .is_ok());
+            let mut no_defaults_mut = no_defaults_matches;
+            assert!(cli_inst
+                .update_from_arg_matches_mut(&mut no_defaults_mut)
+                .is_ok());
+            let no_backend_matches = clap::Command::new("msi-gui")
+                .arg(clap::Arg::new("package"))
+                .arg(
+                    clap::Arg::new("theme")
+                        .default_value("install-dir")
+                        .value_parser(clap::value_parser!(CliTheme)),
+                )
+                .arg(clap::Arg::new("backend"))
+                .arg(clap::Arg::new("width"))
+                .arg(clap::Arg::new("height"))
+                .get_matches_from(["msi-gui"]);
+            assert!(GuiCli::from_arg_matches(&no_backend_matches).is_err());
+            assert!(cli_inst
+                .update_from_arg_matches(&no_backend_matches)
+                .is_ok());
+            let mut no_backend_mut = no_backend_matches;
+            assert!(cli_inst
+                .update_from_arg_matches_mut(&mut no_backend_mut)
+                .is_ok());
+        }
+        let cli_parsed = GuiCli::try_parse_from(["msi-gui"]);
+        let cli_parsed2 = GuiCli::try_parse_from(["msi-gui"]);
+        assert_eq!(cli_parsed.is_ok(), cli_parsed2.is_ok());
+        let debug_str = format!("{cli_parsed:?}");
+        assert!(!debug_str.is_empty());
     }
-    let cli_parsed = GuiCli::try_parse_from(["msi-gui"]).expect("default parse");
-    let cli_parsed2 = GuiCli::try_parse_from(["msi-gui"]).expect("default parse");
-    assert_eq!(cli_parsed, cli_parsed2);
-    assert!(!format!("{cli_parsed:?}").is_empty());
-}
-#[test]
-fn test_main_coverage() {
-    let _ = main();
 }

@@ -2147,7 +2147,7 @@ x64
         // Test WixSubcommand
         let sub = WixSubcommand::Build(WixBuildOptions::new());
         assert_eq!(sub.clone(), sub);
-        assert!(format!("{sub:?}").contains("Build"));
+        assert!(format!("{sub:?}").contains("Build"), "format check");
 
         // Test candle with Windows slash flags, separate -I, and directory output
         let args_slash = vec![

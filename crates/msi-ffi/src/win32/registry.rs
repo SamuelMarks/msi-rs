@@ -1137,8 +1137,6 @@ pub extern "system" fn MsiGetUserInfoA(
     result.unwrap_or(INSTALLSTATE_UNKNOWN)
 }
 
-/// Internal shim for migrating cached packages (Unicode).
-
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 /// Migrates cached packages from Windows Installer 1.0 format.
@@ -1167,6 +1165,7 @@ pub extern "system" fn Migrate10CachedPackagesW(
 }
 
 #[cfg(test)]
+#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 mod tests {
     #[test]
     fn test_more_registry_branches() {
@@ -2392,8 +2391,8 @@ mod tests {
             ERROR_NO_MORE_ITEMS
         );
 
-        let mut buf_w = [0_u16; 39];
-        let mut buf_a = [0_i8; 39];
+        buf_w = [0_u16; 39];
+        buf_a = [0_i8; 39];
         assert_eq!(
             MsiEnumClientsW(valid_w.as_ptr(), 0, buf_w.as_mut_ptr()),
             ERROR_NO_MORE_ITEMS
@@ -2804,6 +2803,7 @@ pub extern "system" fn Migrate10CachedPackagesA(
 }
 
 #[cfg(test)]
+#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 mod additional_stubs_tests {
     use super::*;
 

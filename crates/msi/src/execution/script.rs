@@ -1729,7 +1729,7 @@ fn test_script_wim_truncation_edge_cases() {
 }
 
 #[test]
-fn test_script_wim_roundtrip_success() {
+fn test_script_wim_roundtrip_success() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut script = InstallScript::new();
     let op = ScriptOp::ExtractWimFile {
         wim_source: "install.wim".to_string(),
@@ -1742,16 +1742,17 @@ fn test_script_wim_roundtrip_success() {
     assert_eq!(format!("{op}"), "ExtractWimFile(install.wim[2]:Windows\\System32\\cmd.exe -> C:\\Windows\\System32\\cmd.exe)");
 
     let bytes = script.serialize();
-    let parsed = InstallScript::deserialize(&bytes).unwrap();
+    let parsed = InstallScript::deserialize(&bytes)?;
     assert_eq!(parsed.len(), 1);
     assert!(matches!(
         &parsed.operations()[0],
         ScriptOp::ExtractWimFile { image_index: 2, .. }
     ));
+    Ok(())
 }
 
 #[test]
-fn test_script_extra_opcodes() {
+fn test_script_extra_opcodes() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let ops = vec![
         ScriptOp::InstallODBCDriver {
             driver_name: "A".to_string(),
@@ -1769,7 +1770,7 @@ fn test_script_extra_opcodes() {
         iscript.push(op);
     }
     let serialized = iscript.serialize();
-    let deserialized = InstallScript::deserialize(&serialized).expect("test");
+    let deserialized = InstallScript::deserialize(&serialized)?;
     assert_eq!(iscript.operations, deserialized.operations);
 
     let rops = vec![
@@ -1789,8 +1790,9 @@ fn test_script_extra_opcodes() {
         rscript.push(rop);
     }
     let r_serialized = rscript.serialize();
-    let r_deserialized = RollbackScript::deserialize(&r_serialized).expect("test");
+    let r_deserialized = RollbackScript::deserialize(&r_serialized)?;
     assert_eq!(rscript.operations, r_deserialized.operations);
+    Ok(())
 }
 
 #[test]

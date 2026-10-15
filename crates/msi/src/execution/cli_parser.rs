@@ -984,7 +984,7 @@ mod tests {
 
     /// Tests parsing `/l` logging options, individual flags, and wildcards.
     #[test]
-    fn test_parse_logging() {
+    fn test_parse_logging() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let opts = MsiExecOptions::parse(["/i", "pkg.msi", "/lv*+!", "install.log"]);
         let expected_log = LoggingOptions {
             log_file: "install.log".to_string(),
@@ -1040,8 +1040,9 @@ mod tests {
         );
 
         // Uppercase /L flag
-        let opts_upper_l = MsiExecOptions::parse(["/I", "pkg.msi", "/L*", "out.log"]).unwrap();
+        let opts_upper_l = MsiExecOptions::parse(["/I", "pkg.msi", "/L*", "out.log"])?;
         assert!(opts_upper_l.logging.is_some());
+        Ok(())
     }
 
     /// Tests parsing attached parameters such as `-ipackage.msi`.
@@ -1107,7 +1108,7 @@ mod tests {
     /// Tests uppercase action and UI flags and repair combinations.
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_parse_uppercase_and_repair() {
+    fn test_parse_uppercase_and_repair() -> std::result::Result<(), Box<dyn std::error::Error>> {
         // Uppercase UI flags
         assert_eq!(
             MsiExecOptions::parse(["/I", "package.msi", "/QR"]),
@@ -1183,7 +1184,7 @@ mod tests {
         );
 
         // Uppercase action switches
-        let opts_x = MsiExecOptions::parse(["/X", "package.msi"]).unwrap();
+        let opts_x = MsiExecOptions::parse(["/X", "package.msi"])?;
         assert_eq!(
             opts_x.action,
             ActionMode::Uninstall {
@@ -1191,7 +1192,7 @@ mod tests {
             }
         );
 
-        let opts_a = MsiExecOptions::parse(["/A", "package.msi"]).unwrap();
+        let opts_a = MsiExecOptions::parse(["/A", "package.msi"])?;
         assert_eq!(
             opts_a.action,
             ActionMode::Administrative {
@@ -1199,7 +1200,7 @@ mod tests {
             }
         );
 
-        let opts_p = MsiExecOptions::parse(["/P", "patch.msp"]).unwrap();
+        let opts_p = MsiExecOptions::parse(["/P", "patch.msp"])?;
         assert_eq!(
             opts_p.action,
             ActionMode::ApplyPatch {
@@ -1287,14 +1288,15 @@ mod tests {
         );
 
         // Uppercase /F
-        let opts_f = MsiExecOptions::parse(["/FOMUS", "app.msi"]).unwrap();
+        let opts_f = MsiExecOptions::parse(["/FOMUS", "app.msi"])?;
         assert_eq!(
             opts_f.action,
             ActionMode::Repair {
-                flags: RepairFlags::parse("omus").unwrap(),
+                flags: RepairFlags::parse("omus")?,
                 package_path: "app.msi".to_string()
             }
         );
+        Ok(())
     }
 
     /// Tests invalid command-line inputs and parsing error conditions.

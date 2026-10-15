@@ -44,7 +44,7 @@ pub struct LogContext(pub *mut c_void);
 ///
 /// # Arguments
 ///
-/// * `_h_install` - Handle to the installation.
+/// * `h_install` - Handle to the installation.
 /// * `_ph_preview` - Pointer to receive the preview handle.
 ///
 /// # Errors
@@ -59,10 +59,10 @@ pub struct LogContext(pub *mut c_void);
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiEnableUIPreview_(
-    _h_install: MSIHANDLE,
-    _ph_preview: *mut DialogPreviewHandle,
+    h_install: MSIHANDLE,
+    ph_preview: *mut DialogPreviewHandle,
 ) -> u32 {
-    if _ph_preview.is_null() {
+    if ph_preview.is_null() {
         return 87; // ERROR_INVALID_PARAMETER
     }
     0 // ERROR_SUCCESS
@@ -72,12 +72,12 @@ pub unsafe extern "system" fn MsiEnableUIPreview_(
 ///
 /// # Arguments
 ///
-/// * `_h_preview` - The preview handle obtained from `MsiEnableUIPreview_`.
-/// * `_sz_dialog_name` - Name of the dialog to preview.
+/// * `h_preview` - The preview handle obtained from `MsiEnableUIPreview_`.
+/// * `sz_dialog_name` - Name of the dialog to preview.
 ///
 /// # Errors
 ///
-/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `_sz_dialog_name` is NULL.
+/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `sz_dialog_name` is NULL.
 /// Returns `0` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is a stub.
 /// Returns `1603` (`ERROR_INSTALL_FAILURE`) on panic.
 ///
@@ -88,10 +88,10 @@ pub unsafe extern "system" fn MsiEnableUIPreview_(
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiPreviewDialogA_(
-    _h_preview: DialogPreviewHandle,
-    _sz_dialog_name: *const c_char,
+    h_preview: DialogPreviewHandle,
+    sz_dialog_name: *const c_char,
 ) -> u32 {
-    if _sz_dialog_name.is_null() {
+    if sz_dialog_name.is_null() {
         return 87; // ERROR_INVALID_PARAMETER
     }
     0 // ERROR_SUCCESS
@@ -101,12 +101,12 @@ pub unsafe extern "system" fn MsiPreviewDialogA_(
 ///
 /// # Arguments
 ///
-/// * `_h_preview` - The preview handle obtained from `MsiEnableUIPreview_`.
-/// * `_sz_dialog_name` - Name of the dialog to preview.
+/// * `h_preview` - The preview handle obtained from `MsiEnableUIPreview_`.
+/// * `sz_dialog_name` - Name of the dialog to preview.
 ///
 /// # Errors
 ///
-/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `_sz_dialog_name` is NULL.
+/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `sz_dialog_name` is NULL.
 /// Returns `0` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is a stub.
 /// Returns `1603` (`ERROR_INSTALL_FAILURE`) on panic.
 ///
@@ -117,10 +117,10 @@ pub unsafe extern "system" fn MsiPreviewDialogA_(
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiPreviewDialogW_(
-    _h_preview: DialogPreviewHandle,
-    _sz_dialog_name: *const u16,
+    h_preview: DialogPreviewHandle,
+    sz_dialog_name: *const u16,
 ) -> u32 {
-    if _sz_dialog_name.is_null() {
+    if sz_dialog_name.is_null() {
         return 87; // ERROR_INVALID_PARAMETER
     }
     0 // ERROR_SUCCESS
@@ -130,13 +130,13 @@ pub unsafe extern "system" fn MsiPreviewDialogW_(
 ///
 /// # Arguments
 ///
-/// * `_dw_log_mode` - Logging mode flags.
-/// * `_sz_log_file` - Path to the log file.
-/// * `_dw_log_attributes` - Logging attributes.
+/// * `dw_log_mode` - Logging mode flags.
+/// * `sz_log_file` - Path to the log file.
+/// * `dw_log_attributes` - Logging attributes.
 ///
 /// # Errors
 ///
-/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `_sz_log_file` is NULL.
+/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `sz_log_file` is NULL.
 /// Returns `0` (`ERROR_SUCCESS`) on success.
 /// Returns `1603` (`ERROR_INSTALL_FAILURE`) on panic or failure.
 ///
@@ -147,14 +147,14 @@ pub unsafe extern "system" fn MsiPreviewDialogW_(
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiEnableLogA(
-    _dw_log_mode: u32,
-    _sz_log_file: *const c_char,
-    _dw_log_attributes: u32,
+    dw_log_mode: u32,
+    sz_log_file: *const c_char,
+    dw_log_attributes: u32,
 ) -> u32 {
-    if _sz_log_file.is_null() {
+    if sz_log_file.is_null() {
         return 87; // ERROR_INVALID_PARAMETER
     }
-    if let Some(path) = crate::win32::strings::lpcstr_to_string(_sz_log_file) {
+    if let Some(path) = crate::win32::strings::lpcstr_to_string(sz_log_file) {
         setup_logger(&path);
     }
     0 // ERROR_SUCCESS
@@ -164,13 +164,13 @@ pub unsafe extern "system" fn MsiEnableLogA(
 ///
 /// # Arguments
 ///
-/// * `_dw_log_mode` - Logging mode flags.
-/// * `_sz_log_file` - Path to the log file.
-/// * `_dw_log_attributes` - Logging attributes.
+/// * `dw_log_mode` - Logging mode flags.
+/// * `sz_log_file` - Path to the log file.
+/// * `dw_log_attributes` - Logging attributes.
 ///
 /// # Errors
 ///
-/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `_sz_log_file` is NULL.
+/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `sz_log_file` is NULL.
 /// Returns `0` (`ERROR_SUCCESS`) on success.
 /// Returns `1603` (`ERROR_INSTALL_FAILURE`) on panic or failure.
 ///
@@ -181,14 +181,14 @@ pub unsafe extern "system" fn MsiEnableLogA(
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiEnableLogW(
-    _dw_log_mode: u32,
-    _sz_log_file: *const u16,
-    _dw_log_attributes: u32,
+    dw_log_mode: u32,
+    sz_log_file: *const u16,
+    dw_log_attributes: u32,
 ) -> u32 {
-    if _sz_log_file.is_null() {
+    if sz_log_file.is_null() {
         return 87; // ERROR_INVALID_PARAMETER
     }
-    if let Some(path) = crate::win32::strings::lpcwstr_to_string(_sz_log_file) {
+    if let Some(path) = crate::win32::strings::lpcwstr_to_string(sz_log_file) {
         setup_logger(&path);
     }
     0 // ERROR_SUCCESS
@@ -220,10 +220,10 @@ fn setup_logger(path: &str) {
 ///
 /// # Arguments
 ///
-/// * `_h_wnd` - Parent window handle.
-/// * `_sz_text` - Message box text.
-/// * `_sz_caption` - Message box caption.
-/// * `_u_type` - Message box type.
+/// * `h_wnd` - Parent window handle.
+/// * `sz_text` - Message box text.
+/// * `sz_caption` - Message box caption.
+/// * `u_type` - Message box type.
 /// * `_w_language_id` - Language ID.
 /// * `_fdw_options` - Options.
 ///
@@ -239,10 +239,10 @@ fn setup_logger(path: &str) {
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiMessageBoxA(
-    _h_wnd: NativeWindowHandle,
-    _sz_text: *const c_char,
-    _sz_caption: *const c_char,
-    _u_type: u32,
+    h_wnd: NativeWindowHandle,
+    sz_text: *const c_char,
+    sz_caption: *const c_char,
+    u_type: u32,
     _w_language_id: u16,
     _fdw_options: u32,
 ) -> i32 {
@@ -253,10 +253,10 @@ pub unsafe extern "system" fn MsiMessageBoxA(
 ///
 /// # Arguments
 ///
-/// * `_h_wnd` - Parent window handle.
-/// * `_sz_text` - Message box text.
-/// * `_sz_caption` - Message box caption.
-/// * `_u_type` - Message box type.
+/// * `h_wnd` - Parent window handle.
+/// * `sz_text` - Message box text.
+/// * `sz_caption` - Message box caption.
+/// * `u_type` - Message box type.
 /// * `_w_language_id` - Language ID.
 /// * `_fdw_options` - Options.
 ///
@@ -272,10 +272,10 @@ pub unsafe extern "system" fn MsiMessageBoxA(
 #[inline(never)]
 #[must_use]
 pub unsafe extern "system" fn MsiMessageBoxW(
-    _h_wnd: NativeWindowHandle,
-    _sz_text: *const u16,
-    _sz_caption: *const u16,
-    _u_type: u32,
+    h_wnd: NativeWindowHandle,
+    sz_text: *const u16,
+    sz_caption: *const u16,
+    u_type: u32,
     _w_language_id: u16,
     _fdw_options: u32,
 ) -> i32 {
@@ -303,7 +303,7 @@ mod tests {
             unsafe { MsiPreviewDialogA_(DialogPreviewHandle(ptr::null_mut()), ptr::null()) },
             87
         );
-        let dummy = std::ffi::CString::new("dummy").expect("valid");
+        let dummy = std::ffi::CString::new("dummy").unwrap_or_default();
         assert_eq!(
             unsafe {
                 MsiPreviewDialogA_(DialogPreviewHandle(ptr::null_mut()), dummy.as_ptr().cast())
@@ -327,7 +327,9 @@ mod tests {
 
     #[test]
     fn test_msi_enable_log_a() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = TEST_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         assert_eq!(unsafe { MsiEnableLogA(0, ptr::null(), 0) }, 87);
         let dummy = [0_i8; 1];
         assert_eq!(unsafe { MsiEnableLogA(0, dummy.as_ptr().cast(), 0) }, 0);
@@ -335,7 +337,9 @@ mod tests {
 
     #[test]
     fn test_msi_enable_log_w() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = TEST_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         assert_eq!(unsafe { MsiEnableLogW(0, ptr::null(), 0) }, 87);
         let dummy = [0_u16; 1];
         assert_eq!(unsafe { MsiEnableLogW(0, dummy.as_ptr(), 0) }, 0);
@@ -377,9 +381,11 @@ mod tests {
 
     #[test]
     fn test_msi_enable_log_invalid_strings() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = TEST_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         // Invalid UTF-8 for A
-        let invalid_a = [0xFF_u8 as i8, 0x00];
+        let invalid_a = [i8::from_ne_bytes([0xFF]), 0x00];
         assert_eq!(unsafe { MsiEnableLogA(0, invalid_a.as_ptr(), 0) }, 0);
 
         // Invalid UTF-16 for W (unpaired surrogate)
@@ -389,10 +395,12 @@ mod tests {
 
     #[test]
     fn test_logger_coverage() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = TEST_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         // Run all logger tests sequentially in one test to prevent global state data races
         let log_file = std::env::temp_dir().join("test_msi_ffi_hooks_combined.log");
-        let log_path = log_file.to_str().expect("valid");
+        let log_path = log_file.to_str().unwrap_or("");
         setup_logger(log_path);
         // 2. Lifecycle
         {
@@ -417,10 +425,11 @@ mod tests {
             let lock = LOGGER
                 .read()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let (queue, _) = lock.as_ref().expect("LOGGER was None when trying to log");
-            queue
-                .log(msi::execution::logging::InstallLogMode::Info, "test")
-                .expect("valid");
+            assert!(lock.as_ref().is_some_and(|(queue, _)| {
+                queue
+                    .log(msi::execution::logging::InstallLogMode::Info, "test")
+                    .is_ok()
+            }));
         }
 
         // Wait for it to write
@@ -430,27 +439,31 @@ mod tests {
             let mut lock = LOGGER
                 .write()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let (queue, handle) = lock.take().unwrap();
-            queue.shutdown();
-            let _ = handle.join(); // Ensure thread completes and writes
+            assert!(lock.take().is_some_and(|(queue, handle)| {
+                queue.shutdown();
+                let _ = handle.join();
+                true
+            }));
         }
 
         let _ = std::fs::remove_file(&log_file);
 
         // 3. File open fail
         let dir_path = std::env::temp_dir();
-        let dir_str = dir_path.to_str().expect("valid");
+        let dir_str = dir_path.to_str().unwrap_or("");
         setup_logger(dir_str);
 
         std::thread::sleep(std::time::Duration::from_millis(150));
         let mut lock = LOGGER
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let (queue, handle) = lock.take().unwrap();
-        queue
-            .log(msi::execution::logging::InstallLogMode::Info, "test")
-            .expect("valid");
-        queue.shutdown();
-        let _ = handle.join();
+        assert!(lock.take().is_some_and(|(queue, handle)| {
+            let ok = queue
+                .log(msi::execution::logging::InstallLogMode::Info, "test")
+                .is_ok();
+            queue.shutdown();
+            let _ = handle.join();
+            ok
+        }));
     }
 }

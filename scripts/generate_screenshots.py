@@ -10,12 +10,15 @@ Generates pixel-perfect screenshots of:
 6. Zero-.EXE Multi-Package EmbeddedChainer & Multi-Cabinet Pipeline (`cli_chainer_output.png`)
 """
 
+from __future__ import annotations
+
 from pathlib import Path
+from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont
 
 
-def get_fonts():
+def get_fonts() -> dict[str, Any]:
     """Resolves system fonts for crisp UI rendering."""
     try:
         font_title = ImageFont.truetype(
@@ -94,9 +97,9 @@ def draw_window_titlebar(
     w: int,
     h: int,
     title: str,
-    fonts: dict,
+    fonts: dict[str, Any],
     dark: bool = False,
-):
+) -> None:
     """Draws macOS-style window title bar with traffic lights and centered title."""
     bar_bg = (40, 44, 52, 255) if dark else (235, 237, 240, 255)
     border_color = (30, 33, 39, 255) if dark else (205, 208, 212, 255)
@@ -126,12 +129,12 @@ def draw_window_titlebar(
 
 def draw_button(
     draw: ImageDraw.ImageDraw,
-    rect: list,
+    rect: list[int],
     text: str,
-    font,
+    font: Any,
     is_primary: bool = False,
     is_disabled: bool = False,
-):
+) -> None:
     """Draws a styled button with centered label."""
     bx, by, bw, bh = rect
     if is_disabled:
@@ -1192,7 +1195,7 @@ def generate_cli_chainer(fonts: dict) -> Image.Image:
     return im
 
 
-def main():
+def main() -> None:
     """Generates all screenshots and saves them to target locations."""
     fonts = get_fonts()
 

@@ -212,7 +212,7 @@ mod tests {
     }
 
     #[test]
-    fn test_msi_assembly_row_parsing() {
+    fn test_msi_assembly_row_parsing() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut record = Record::new();
         record.push(FieldValue::String("Comp1".to_string()));
         record.push(FieldValue::String("Feat1".to_string()));
@@ -220,7 +220,7 @@ mod tests {
         record.push(FieldValue::String("App1".to_string()));
         record.push(FieldValue::Short(1));
 
-        let row = MsiAssemblyRow::from_record(&record).expect("test");
+        let row = MsiAssemblyRow::from_record(&record)?;
         assert_eq!(row.component, "Comp1");
         assert_eq!(row.feature, "Feat1");
         assert_eq!(row.file_manifest, Some("Manifest1".to_string()));
@@ -234,10 +234,11 @@ mod tests {
         record_null.push(FieldValue::Null);
         record_null.push(FieldValue::Null);
 
-        let row_null = MsiAssemblyRow::from_record(&record_null).expect("test");
+        let row_null = MsiAssemblyRow::from_record(&record_null)?;
         assert_eq!(row_null.file_manifest, None);
         assert_eq!(row_null.file_application, None);
         assert_eq!(row_null.attributes, None);
+        Ok(())
     }
 
     #[test]
@@ -296,16 +297,17 @@ mod tests {
     }
 
     #[test]
-    fn test_msi_assembly_name_row_parsing() {
+    fn test_msi_assembly_name_row_parsing() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut record = Record::new();
         record.push(FieldValue::String("Comp1".to_string()));
         record.push(FieldValue::String("version".to_string()));
         record.push(FieldValue::String("1.0.0.0".to_string()));
 
-        let row = MsiAssemblyNameRow::from_record(&record).expect("test");
+        let row = MsiAssemblyNameRow::from_record(&record)?;
         assert_eq!(row.component, "Comp1");
         assert_eq!(row.name, "version");
         assert_eq!(row.value, "1.0.0.0");
+        Ok(())
     }
 
     #[test]

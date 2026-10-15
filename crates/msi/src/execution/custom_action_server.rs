@@ -95,13 +95,13 @@ impl CustomActionServer {
         match panic::catch_unwind(ffi_call) {
             Ok(result) => Ok(result),
             Err(err) => {
-                let panic_msg = if let Some(s) = err.downcast_ref::<&str>() {
-                    (*s).to_string()
-                } else if let Some(s) = err.downcast_ref::<String>() {
-                    s.clone()
-                } else {
-                    "Unknown panic".to_string()
-                };
+                let panic_msg = err.downcast_ref::<&str>().map_or_else(
+                    || {
+                        err.downcast_ref::<String>()
+                            .map_or_else(|| "Unknown panic".to_string(), Clone::clone)
+                    },
+                    |s| (*s).to_string(),
+                );
 
                 Err(MsiError::ActionExecutionError(format!(
                     "DLL Custom action '{action_name}' panicked: {panic_msg}"
@@ -129,25 +129,25 @@ mod tests {
 
         assert_eq!(run_mode(0), Ok(42));
 
-        let err = run_mode(1).expect_err("Expected err");
+        let err_str = run_mode(1).err().unwrap_or_default();
         assert_eq!(
-            err,
+            err_str,
             MsiError::ActionExecutionError(
                 "DLL Custom action 'test' panicked: str_panic".to_string()
             )
         );
 
-        let err = run_mode(2).expect_err("Expected err");
+        let err_string = run_mode(2).err().unwrap_or_default();
         assert_eq!(
-            err,
+            err_string,
             MsiError::ActionExecutionError(
                 "DLL Custom action 'test' panicked: String_panic".to_string()
             )
         );
 
-        let err = run_mode(3).expect_err("Expected err");
+        let err_unknown = run_mode(3).err().unwrap_or_default();
         assert_eq!(
-            err,
+            err_unknown,
             MsiError::ActionExecutionError(
                 "DLL Custom action 'test' panicked: Unknown panic".to_string()
             )
@@ -155,16 +155,16 @@ mod tests {
     }
 
     #[test]
-    fn test_invoke_out_of_process_action() {
+    fn test_invoke_out_of_process_action() -> std::result::Result<(), Box<dyn std::error::Error>> {
         assert_eq!(
-            CustomActionServer::invoke_out_of_process_action("MyAct", 100, None)
-                .expect("Expected success"),
+            CustomActionServer::invoke_out_of_process_action("MyAct", 100, None)?,
             0
         );
 
         let err_timeout =
             CustomActionServer::invoke_out_of_process_action("MyAct", 1, Some("timeout"))
-                .expect_err("Expected timeout error");
+                .err()
+                .unwrap_or_default();
         assert_eq!(
             err_timeout,
             MsiError::WorkerIpcError {
@@ -173,7 +173,8 @@ mod tests {
         );
 
         let err_crash = CustomActionServer::invoke_out_of_process_action("MyAct", 1, Some("crash"))
-            .expect_err("Expected crash error");
+            .err()
+            .unwrap_or_default();
         assert_eq!(
             err_crash,
             MsiError::WorkerIpcError {
@@ -184,13 +185,15 @@ mod tests {
 
         let err_other =
             CustomActionServer::invoke_out_of_process_action("MyAct", 1, Some("malformed"))
-                .expect_err("Expected malformed error");
+                .err()
+                .unwrap_or_default();
         assert_eq!(
             err_other,
             MsiError::WorkerIpcError {
                 reason: "IPC failure: malformed".to_string()
             }
         );
+        Ok(())
     }
 
     #[test]

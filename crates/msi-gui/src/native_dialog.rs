@@ -543,21 +543,19 @@ mod tests {
 
     #[cfg(not(windows))]
     #[test]
-    fn test_posix_renderer_create_window() {
+    fn test_posix_renderer_create_window() -> Result<(), MsiError> {
         let mut renderer = posix_impl::PosixRenderer;
-        assert!(renderer.create_window("test", 100, 100).is_ok());
+        let mut renderer2 = posix_impl::PosixRenderer::new();
+        let win = renderer.create_window("test", 100, 100)?;
+        let win2 = renderer2.create_window("test2", 120, 120)?;
+        assert_ne!(win.handle(), win2.handle());
 
         let res = renderer.create_window("test", 0, 100);
         assert!(matches!(res, Err(MsiError::User32RenderError(_))));
 
         let res2 = renderer.create_window("test", 100, 0);
         assert!(matches!(res2, Err(MsiError::User32RenderError(_))));
-    }
-
-    #[test]
-    const fn test_posix_renderer_new_default() {
-        let _ = posix_impl::PosixRenderer::new();
-        let _ = posix_impl::PosixRenderer;
+        Ok(())
     }
 
     use std::str::FromStr;
@@ -590,7 +588,7 @@ mod tests {
         ];
 
         for (s, expected) in types {
-            assert_eq!(NativeControlType::from_str(s).expect("valid"), expected);
+            assert_eq!(NativeControlType::from_str(s).ok(), Some(expected));
         }
 
         assert!(matches!(
@@ -734,10 +732,10 @@ mod tests {
         };
 
         let mut renderer = windows_impl::WindowsRenderer::default();
-        let mut win = renderer.create_window("Test", 800, 600).expect("valid");
+        let mut win = renderer.create_window("Test", 800, 600)?;
         assert!(win.handle().as_raw() > 0);
 
-        let ctl = win.add_control(&def).expect("valid");
+        let ctl = win.add_control(&def)?;
         assert!(ctl.handle().as_raw() > 0);
 
         def.width = 0;
@@ -767,6 +765,9 @@ mod tests {
     #[cfg(not(windows))]
     #[test]
     fn test_create_native_control_posix() {
+        fn make_default_renderer<T: Default>() -> T {
+            T::default()
+        }
         let mut def = MsiControlDefinition {
             control_type: NativeControlType::PushButton,
             x: 10,
@@ -777,25 +778,29 @@ mod tests {
             style: 0,
         };
 
-        let mut renderer = posix_impl::PosixRenderer;
-        let mut win = renderer.create_window("Test", 800, 600).expect("valid");
-        assert!(win.handle().as_raw() > 0);
+        let mut renderer: posix_impl::PosixRenderer = make_default_renderer();
+        assert!(renderer
+            .create_window("Test", 800, 600)
+            .is_ok_and(|mut win| {
+                assert!(win.handle().as_raw() > 0);
+                assert!(win
+                    .add_control(&def)
+                    .is_ok_and(|ctl| ctl.handle().as_raw() > 0));
 
-        let ctl = win.add_control(&def).expect("valid");
-        assert!(ctl.handle().as_raw() > 0);
+                def.width = 0;
+                assert!(matches!(
+                    win.add_control(&def),
+                    Err(MsiError::User32RenderError(_))
+                ));
 
-        def.width = 0;
-        assert!(matches!(
-            win.add_control(&def),
-            Err(MsiError::User32RenderError(_))
-        ));
-
-        def.width = 100;
-        def.height = 0;
-        assert!(matches!(
-            win.add_control(&def),
-            Err(MsiError::User32RenderError(_))
-        ));
+                def.width = 100;
+                def.height = 0;
+                assert!(matches!(
+                    win.add_control(&def),
+                    Err(MsiError::User32RenderError(_))
+                ));
+                true
+            }));
 
         assert!(matches!(
             renderer.create_window("Test", 0, 600),
@@ -806,24 +811,5 @@ mod tests {
             renderer.create_window("Test", 800, 0),
             Err(MsiError::User32RenderError(_))
         ));
-    }
-}
-
-#[test]
-#[allow(
-    clippy::missing_const_for_fn,
-    clippy::no_effect_underscore_binding,
-    clippy::default_constructed_unit_structs
-)]
-fn test_posix_renderer_default() {
-    let _renderer = posix_impl::PosixRenderer::default();
-    let _renderer2 = posix_impl::PosixRenderer::new();
-}
-
-#[cfg(test)]
-mod tests2 {
-    #[test]
-    const fn test_posix_renderer_default_2() {
-        let _ = super::posix_impl::PosixRenderer;
     }
 }

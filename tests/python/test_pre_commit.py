@@ -199,7 +199,7 @@ def test_calculate_doc_coverage_force(tmp_path: Path) -> None:
     doc_dir = tmp_path / "target" / "doc"
     doc_dir.mkdir(parents=True)
     old_json = doc_dir / "old.json"
-    old_json.touch()
+    old_json.write_text("{}", encoding="utf-8")
 
     def mock_run_cmd(cmd: list, cwd: Path, env: dict | None = None) -> None:
         report = {
@@ -232,15 +232,17 @@ def test_calculate_doc_coverage_zero_items(tmp_path: Path) -> None:
 
 
 def test_calculate_doc_coverage_corrupted_json(tmp_path: Path) -> None:
-    """Verifies calculate_doc_coverage catches JSON parsing errors gracefully."""
+    """Verifies calculate_doc_coverage raises RuntimeError on corrupted JSON."""
     doc_dir = tmp_path / "target" / "doc"
     doc_dir.mkdir(parents=True)
 
     with open(doc_dir / "bad.json", "w", encoding="utf-8") as f:
         f.write("invalid json content")
 
-    pct = pre_commit.calculate_doc_coverage(tmp_path, force_run=False)
-    assert pct == 100.0
+    import pytest
+
+    with pytest.raises(RuntimeError, match="Failed to parse rustdoc JSON"):
+        pre_commit.calculate_doc_coverage(tmp_path, force_run=False)
 
 
 def test_calculate_test_coverage_force(tmp_path: Path) -> None:
@@ -258,7 +260,17 @@ def test_calculate_test_coverage_force(tmp_path: Path) -> None:
                             "count": 200,
                             "covered": 190,
                             "percent": 95.0,
-                        }
+                        },
+                        "functions": {
+                            "count": 50,
+                            "covered": 50,
+                            "percent": 100.0,
+                        },
+                        "branches": {
+                            "count": 100,
+                            "covered": 95,
+                            "percent": 95.0,
+                        },
                     }
                 }
             ]

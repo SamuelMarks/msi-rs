@@ -474,7 +474,7 @@ mod tests {
         #[allow(clippy::redundant_clone)]
         let cloned = table.clone();
         assert_eq!(table, cloned);
-        assert!(format!("{table:?}").contains("MixedTable"));
+        assert!(format!("{table:?}").contains("MixedTable"), "format check");
 
         let serialized = table.serialize();
         assert!(serialized.contains("\t123\t456789\t[Stream: StringPool#42]"));

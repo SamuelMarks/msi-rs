@@ -1,15 +1,6 @@
-#![allow(
-    clippy::too_many_lines,
-    clippy::cognitive_complexity,
-    clippy::literal_string_with_formatting_args,
-    clippy::shadow_unrelated,
-    clippy::redundant_pub_crate,
-    unused_qualifications
-)]
 #![deny(missing_docs)]
 #![deny(clippy::missing_docs_in_private_items)]
 #![deny(clippy::unwrap_used)]
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! # msi-cli
 //!
 //! Command-line interface for creating, inspecting, and manipulating Windows Installer (`.msi`) packages.
@@ -34,17 +25,19 @@
     )
 )]
 
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap::{Parser, Subcommand};
+#[cfg(test)]
 use msi::database::tables::record::FieldValue;
+#[cfg(test)]
 use msi::execution::{
-    ActionMode, AdvertiseScope, DiskCostEngine, EvaluationContext, LoggingOptions, MsiExecOptions,
-    RepairFlags, Transaction, UiLevel, WorkerContext,
+    DiskCostEngine, EvaluationContext, LoggingOptions, RepairFlags, Transaction, UiLevel,
 };
+#[cfg(test)]
 use msi::{Package, ProductVersion};
+#[cfg(test)]
 use std::collections::HashMap;
-use std::fs::OpenOptions;
-use std::io::Write;
-use std::path::{Path, PathBuf};
+#[cfg(test)]
+use std::path::Path;
 use std::process::ExitCode;
 
 /// Standard MSI return code for successful installation.
@@ -102,1455 +95,8 @@ pub enum Commands {
     Pack(PackArgs),
 }
 
-/// CLI UI display level selection.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-pub enum CliUiLevel {
-    /// Quiet / silent mode with no UI (`/qn`).
-    Quiet,
-    /// Basic UI with progress bar only (`/qb`).
-    Basic,
-    /// Basic UI with Cancel button disabled (`/qb!`).
-    BasicNoCancel,
-    /// Reduced UI (`/qr`).
-    Reduced,
-    /// Full interactive UI (`/qf`).
-    Full,
-}
-
-impl From<CliUiLevel> for UiLevel {
-    fn from(level: CliUiLevel) -> Self {
-        match level {
-            CliUiLevel::Quiet => Self::None,
-            CliUiLevel::Basic => Self::Basic { no_cancel: false },
-            CliUiLevel::BasicNoCancel => Self::Basic { no_cancel: true },
-            CliUiLevel::Reduced => Self::Reduced,
-            CliUiLevel::Full => Self::Full,
-        }
-    }
-}
-
-impl From<UiLevel> for CliUiLevel {
-    fn from(level: UiLevel) -> Self {
-        match level {
-            UiLevel::None => Self::Quiet,
-            UiLevel::Basic { no_cancel: false } => Self::Basic,
-            UiLevel::Basic { no_cancel: true } => Self::BasicNoCancel,
-            UiLevel::Reduced => Self::Reduced,
-            UiLevel::Full => Self::Full,
-        }
-    }
-}
-
-/// Arguments for creating a new package.
-/// The created package will be saved to disk as `{name}.msi`.
-#[derive(Debug, Args)]
-pub struct CreateArgs {
-    /// Friendly product display name.
-    #[arg(long)]
-    pub name: String,
-
-    /// Manufacturer or vendor name.
-    #[arg(long)]
-    pub manufacturer: String,
-
-    /// Product release version (e.g. 1.0.0).
-    #[arg(long)]
-    pub version: String,
-
-    /// Unique GUID product code.
-    #[arg(long)]
-    pub product_code: String,
-}
-
-/// Arguments for inspecting an existing package.
-#[derive(Debug, Args)]
-pub struct InfoArgs {
-    /// Path to the MSI file to inspect.
-    #[arg(value_name = "PATH")]
-    pub path: String,
-}
-
-/// Arguments for installing a package.
-#[derive(Debug, Args)]
-pub struct InstallArgs {
-    /// Path to package file.
-    #[arg(value_name = "PACKAGE")]
-    pub package: String,
-
-    /// User interface level.
-    #[arg(long, value_enum, default_value = "full")]
-    pub ui: CliUiLevel,
-
-    /// Path to output log file.
-    #[arg(long)]
-    pub log: Option<String>,
-
-    /// Public property assignments (KEY=Value).
-    #[arg(value_name = "PROPERTIES")]
-    pub properties: Vec<String>,
-
-    /// Launch interactive Terminal User Interface (TUI) wizard.
-    #[arg(long, alias = "console")]
-    pub tui: bool,
-}
-
-/// Arguments for uninstalling a package.
-#[derive(Debug, Args)]
-pub struct UninstallArgs {
-    /// Path to package file or `ProductCode` GUID.
-    #[arg(value_name = "PACKAGE")]
-    pub package: String,
-
-    /// User interface level.
-    #[arg(long, value_enum, default_value = "quiet")]
-    pub ui: CliUiLevel,
-
-    /// Path to output log file.
-    #[arg(long)]
-    pub log: Option<String>,
-}
-
-/// Arguments for administrative installation.
-#[derive(Debug, Args)]
-pub struct AdminArgs {
-    /// Path to package file.
-    #[arg(value_name = "PACKAGE")]
-    pub package: String,
-
-    /// User interface level.
-    #[arg(long, value_enum, default_value = "basic")]
-    pub ui: CliUiLevel,
-
-    /// Path to output log file.
-    #[arg(long)]
-    pub log: Option<String>,
-}
-
-/// Arguments for repairing an installation.
-#[derive(Debug, Args)]
-pub struct RepairArgs {
-    /// Path to package file or `ProductCode` GUID.
-    #[arg(value_name = "PACKAGE")]
-    pub package: String,
-
-    /// Repair mode flags (e.g. "vomus", "p", "a").
-    #[arg(short, long, default_value = "omus")]
-    pub flags: String,
-
-    /// Path to output log file.
-    #[arg(long)]
-    pub log: Option<String>,
-}
-
-/// Arguments for advertising a package.
-#[derive(Debug, Args)]
-pub struct AdvertiseArgs {
-    /// Path to package file.
-    #[arg(value_name = "PACKAGE")]
-    pub package: String,
-
-    /// Advertise to current user instead of machine.
-    #[arg(long)]
-    pub user: bool,
-}
-
-/// Arguments for applying a patch.
-#[derive(Debug, Args)]
-pub struct PatchArgs {
-    /// Path to target package.
-    #[arg(value_name = "PACKAGE")]
-    pub package: String,
-
-    /// Path to patch file (.msp).
-    #[arg(value_name = "PATCH")]
-    pub patch: String,
-
-    /// User interface level.
-    #[arg(long, value_enum, default_value = "basic")]
-    pub ui: CliUiLevel,
-
-    /// Path to output log file.
-    #[arg(long)]
-    pub log: Option<String>,
-}
-
-/// Arguments for executing raw `msiexec` flags.
-#[derive(Debug, Args)]
-pub struct MsiexecArgs {
-    /// Raw msiexec arguments.
-    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-    pub raw_args: Vec<String>,
-}
-
-/// Arguments for running in privileged worker daemon mode over IPC.
-#[derive(Debug, Args)]
-pub struct WorkerArgs {
-    /// Path to Unix domain socket or Windows named pipe.
-    #[arg(long = "worker-socket")]
-    pub socket: String,
-}
-
-/// Arguments for harvesting files or registries into `WiX` XML fragments.
-#[derive(Debug, Args)]
-pub struct HarvestArgs {
-    /// Target filesystem path, registry file path, or harvest type (e.g. `dir`, `reg`).
-    #[arg(value_name = "TARGET_OR_TYPE", default_value = "")]
-    pub target: String,
-
-    /// Target path when harvest type is given as first positional argument (e.g. `msi harvest dir /path`).
-    #[arg(value_name = "TARGET_PATH")]
-    pub extra_target: Option<String>,
-
-    /// Source directory to harvest directly (alternative to positional argument).
-    #[arg(long = "source-dir", alias = "source")]
-    pub source_dir: Option<String>,
-
-    /// Path to generated `WiX` fragment output (alias for --output / -o).
-    #[arg(long = "wix-fragment", alias = "fragment")]
-    pub wix_fragment: Option<String>,
-
-    /// Component group identifier.
-    #[arg(
-        long,
-        default_value = "HarvestedComponents",
-        alias = "component-group",
-        short = 'c'
-    )]
-    pub group: String,
-
-    /// Target directory identifier.
-    #[arg(
-        long,
-        default_value = "INSTALLFOLDER",
-        alias = "directory-id",
-        short = 'd'
-    )]
-    pub dir_id: String,
-
-    /// Destination output .wxs file path (defaults to stdout).
-    #[arg(short, long, alias = "out")]
-    pub output: Option<String>,
-
-    /// Mode: "dir" for directory harvesting, "reg" for registry file.
-    #[arg(long, default_value = "dir")]
-    pub mode: String,
-
-    /// Path to a .gitignore file to respect during harvesting.
-    #[arg(long)]
-    pub gitignore: Option<String>,
-
-    /// Disk ID assignment rules in `PATTERN=DISK_ID` format (e.g. `cache/runtimes/*=2`).
-    #[arg(long = "disk-rule")]
-    pub disk_rules: Vec<String>,
-
-    /// Default Disk ID for non-matching files.
-    #[arg(long = "default-disk-id", default_value = "1")]
-    pub default_disk_id: i16,
-
-    /// Automatic multi-cabinet split size in bytes.
-    #[arg(long = "split-size")]
-    pub split_size: Option<u64>,
-
-    /// Secondary component groups in `PATTERN=GROUP_ID` format (e.g. `cache/*=LibscriptOfflineCacheComponents`).
-    #[arg(long = "secondary-group")]
-    pub secondary_groups: Vec<String>,
-
-    /// Specific file extensions to exclude from harvesting (e.g. `tmp`, `pdb`).
-    #[arg(long = "exclude-ext")]
-    pub exclude_extensions: Vec<String>,
-
-    /// Specific path or glob patterns to exclude from harvesting.
-    #[arg(long = "exclude-pattern", alias = "filter", alias = "exclude")]
-    pub exclude_patterns: Vec<String>,
-
-    /// Path to output newline-delimited manifest file of harvested relative paths.
-    #[arg(long = "manifest-file")]
-    pub manifest_file: Option<String>,
-
-    /// Target directory where harvested files will be staged/copied.
-    #[arg(long = "output-dir")]
-    pub output_dir: Option<String>,
-
-    /// Offline cache directory to inject into payload under `cache/`.
-    #[arg(long = "include-cache")]
-    pub include_cache: Option<String>,
-
-    /// Whether to include .msi files in harvested payload (matches `LibScript` `--include-msi`).
-    #[arg(long = "include-msi")]
-    pub include_msi: bool,
-}
-
-/// Arguments for decompiling an MSI package into `WiX` source XML.
-#[derive(Debug, Args)]
-pub struct DecompileArgs {
-    /// Path to input MSI package file.
-    #[arg(value_name = "PACKAGE")]
-    pub package: String,
-
-    /// Destination output .wxs file path (defaults to stdout).
-    #[arg(short, long)]
-    pub output: Option<String>,
-
-    /// Directory to extract embedded cabinets and stream assets into.
-    #[arg(long)]
-    pub extract_assets: Option<String>,
-}
-
-/// Arguments for compiling and linking `WiX` source manifests into an MSI package.
-#[derive(Debug, Args)]
-pub struct PackArgs {
-    /// Output path for the generated .msi package.
-    #[arg(short, long, value_name = "PATH")]
-    pub output: String,
-
-    /// One or more .wxs source files or .wixobj objects.
-    #[arg(value_name = "SOURCES")]
-    pub sources: Vec<String>,
-
-    /// Optional path to packaging.json manifest for direct schema synthesis.
-    #[arg(long = "manifest", value_name = "PATH")]
-    pub manifest: Option<String>,
-
-    /// Optional path to vars.schema.json schema for direct property synthesis.
-    #[arg(long = "schema", value_name = "PATH")]
-    pub schema: Option<String>,
-
-    /// Preprocessor variable definitions (e.g. -d NAME=VALUE).
-    #[arg(short, long = "define", value_name = "NAME=VALUE")]
-    pub defines: Vec<String>,
-
-    /// Target platform architecture (e.g. x86, x64, arm64).
-    #[arg(long, default_value = "x64")]
-    pub arch: String,
-
-    /// Suppress internal consistency evaluators (ICE) validation.
-    #[arg(short = 's', long = "suppress-validation", alias = "sval")]
-    pub suppress_validation: bool,
-
-    /// Specific ICE validation rules to suppress (-sice:ICE01).
-    #[arg(long = "suppress-ice", alias = "sice")]
-    pub suppress_ice: Vec<String>,
-
-    /// Specific ICE validation rules to selectively run (-ice:ICE01).
-    #[arg(long = "select-ice", alias = "ice")]
-    pub select_ice: Vec<String>,
-
-    /// `WiX` extension identifiers (e.g. `WixUIExtension`, `WixToolset.UI.wixext`).
-    #[arg(short = 'e', long = "extension", alias = "ext")]
-    pub extensions: Vec<String>,
-
-    /// Additional bind paths for resolving source files and media (-b).
-    #[arg(short = 'b', long = "bind-path")]
-    pub bind_paths: Vec<String>,
-
-    /// Enable verbose progress and binding diagnostics.
-    #[arg(short, long)]
-    pub verbose: bool,
-}
-
-/// Real-time logging dispatcher streaming formatted records to log files or stdout.
-#[derive(Debug)]
-pub struct LoggingDispatcher {
-    /// Configured logging options.
-    options: LoggingOptions,
-}
-
-impl LoggingDispatcher {
-    /// Creates a new [`LoggingDispatcher`] with specified options.
-    ///
-    /// # Arguments
-    ///
-    /// * `options` - The `options` argument.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
-    #[must_use]
-    pub const fn new(options: LoggingOptions) -> Self {
-        Self { options }
-    }
-
-    /// Logs a formatted message if the corresponding flag in [`LoggingOptions`] is active.
-    ///
-    /// # Arguments
-    ///
-    /// * `message_type` - Single character identifying message category (`i`, `w`, `e`, `a`, `p`, `v`).
-    /// * `message` - Log message content.
-    ///
-    /// # Errors
-    ///
-    /// Returns error string if writing or flushing to file fails.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
-    pub fn log(&self, message_type: char, message: &str) -> Result<(), String> {
-        let should_log = match message_type {
-            'i' => self.options.status,
-            'w' => self.options.warnings,
-            'e' => self.options.errors,
-            'a' => self.options.action_starts,
-            'r' => self.options.action_records,
-            'u' => self.options.user_requests,
-            'c' => self.options.ui_parameters,
-            'm' => self.options.out_of_memory,
-            'o' => self.options.out_of_disk,
-            'p' => self.options.terminal_props,
-            'v' => self.options.verbose,
-            'x' => self.options.extra_debugging,
-            _ => true,
-        };
-
-        if !should_log {
-            return Ok(());
-        }
-
-        let timestamp = "MSI (s)";
-        let line = format!(
-            "{timestamp} ({message_type}): {message}
-"
-        );
-
-        if !self.options.log_file.is_empty() {
-            let path = &self.options.log_file;
-            let mut file = OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(path)
-                .map_err(|e| format!("Failed to open log file '{path}': {e}"))?;
-
-            let _ = file.write_all(line.as_bytes());
-            if self.options.flush_immediately {
-                let _ = file.flush();
-            }
-        } else if self.options.verbose || message_type == 'e' || message_type == 'w' {
-            eprint!("{line}");
-        }
-
-        Ok(())
-    }
-}
-
-/// Handles the `create` command.
-///
-/// Builds a new package in memory and writes it to disk as `{args.name}.msi`.
-///
-/// # Errors
-/// Returns an error string if package creation or disk writing fails.
-///
-/// # Arguments
-///
-/// * `args` - The `args` argument.
-///
-/// # Returns
-///
-/// The return value.
-fn handle_create(args: &CreateArgs) -> Result<String, String> {
-    let version = ProductVersion::parse(&args.version).map_err(err_to_string)?;
-    let mut builder = Package::builder();
-    builder = builder.product_name(&args.name);
-    builder = builder.manufacturer(&args.manufacturer);
-    builder = builder.version(version);
-    builder = builder.product_code(&args.product_code);
-    let pkg = builder.build().map_err(err_to_string)?;
-
-    let output_path = format!("{}.msi", args.name);
-    pkg.save(&output_path).map_err(err_to_string)?;
-
-    Ok(format!(
-        "Created package configuration for '{}' v{} by {} at {}",
-        pkg.metadata().product_name(),
-        pkg.metadata().version(),
-        pkg.metadata().manufacturer(),
-        output_path
-    ))
-}
-
-/// Handles the `info` command.
-///
-/// # Arguments
-///
-/// * `args` - The `args` argument.
-///
-/// # Returns
-///
-/// The return value.
-fn handle_info(args: &InfoArgs) -> Result<String, String> {
-    if args.path.trim().is_empty() {
-        return Err("Path cannot be empty".to_string());
-    }
-    if !Path::new(&args.path).exists() {
-        return Err(format!("File not found: {}", args.path));
-    }
-    if let Ok(pkg) = Package::open(&args.path) {
-        return Ok(format!(
-            "Package: {}
-Version: {}
-Manufacturer: {}
-ProductCode: {}",
-            pkg.metadata().product_name(),
-            pkg.metadata().version(),
-            pkg.metadata().manufacturer(),
-            pkg.metadata().product_code()
-        ));
-    }
-    Ok(format!("Inspecting package: {}", args.path))
-}
-
-/// Converts an [`msi::MsiError`] into an error message [`String`].
-///
-/// # Arguments
-///
-/// * `err` - The `err` argument.
-///
-/// # Returns
-///
-/// The return value.
-fn err_to_string(err: msi::MsiError) -> String {
-    let s = err.to_string();
-    drop(err);
-    s
-}
-
-/// Loads all valid property key-value pairs from the package database into an evaluation context.
-///
-/// # Arguments
-///
-/// * `pkg` - The `pkg` argument.
-/// * `context` - The `context` argument.
-fn load_package_properties(pkg: &Package, context: &mut EvaluationContext) {
-    for rec in pkg.database().get_records("Property") {
-        if let (Some(FieldValue::String(k)), Some(FieldValue::String(v))) = (rec.get(0), rec.get(1))
-        {
-            context.set_property(k, v);
-        }
-    }
-}
-
-/// Prepares, executes, and commits an installer transaction for a package.
-///
-/// Note: This function attaches a `LiveWorkerExecutor` to the worker context,
-/// which means it performs actual physical file system writes, registry edits,
-/// and other system-level side-effects.
-///
-/// # Arguments
-///
-/// * `tx` - Unprepared transaction to execute.
-///
-/// # Errors
-///
-/// Returns an error string if transaction preparation or execution fails.
-///
-/// # Returns
-///
-/// The return value.
-fn run_installer_transaction(
-    tx: Transaction<msi::execution::transaction::Uninitialized>,
-) -> Result<(), String> {
-    let prep_tx = tx.prepare().map_err(err_to_string)?;
-    let quarantine_dir = std::env::temp_dir().join("msi-quarantine");
-    let session_id = format!("tx_{}", std::process::id());
-    let executor = msi::execution::LiveWorkerExecutor::new(&quarantine_dir, &session_id);
-    let mut worker = WorkerContext::new().with_live_executor(executor);
-    let exec_tx = prep_tx.execute(&mut worker).map_err(err_to_string)?;
-    let _ = exec_tx.commit(&mut worker);
-    Ok(())
-}
-
-/// Handles the `install` command.
-///
-/// # Arguments
-///
-/// * `args` - The `args` argument.
-///
-/// # Returns
-///
-/// The return value.
-fn handle_install(args: &InstallArgs) -> Result<String, String> {
-    if args.package.trim().is_empty() {
-        return Err("Package path cannot be empty".to_string());
-    }
-
-    let path = Path::new(&args.package);
-    if !path.exists() {
-        return Err(format!("Package file not found: '{}'", args.package));
-    }
-
-    let mut props = HashMap::new();
-    for p in &args.properties {
-        if let Some((k, v)) = p.split_once('=') {
-            props.insert(k.trim().to_string(), v.trim().to_string());
-        }
-    }
-
-    let logger = if let Some(ref p) = args.log {
-        let opts = LoggingOptions::parse("*v", p).unwrap_or_default();
-        let l = LoggingDispatcher::new(opts);
-        l.log('i', &format!("Starting installation of {}", args.package))?;
-        Some(l)
-    } else {
-        None
-    };
-
-    let pkg = Package::open(path)
-        .map_err(|e| format!("Failed opening package '{}': {e}", args.package))?;
-    let mut context = EvaluationContext::new();
-    load_package_properties(&pkg, &mut context);
-    for (k, v) in &props {
-        context.set_property(k, v);
-    }
-    context.set_property("UILevel", format!("{:?}", UiLevel::from(args.ui)));
-
-    let is_headless =
-        std::env::var("DISPLAY").is_err() && std::env::var("WAYLAND_DISPLAY").is_err();
-    let use_tui = args.tui || (is_headless && args.ui != CliUiLevel::Quiet);
-    if use_tui {
-        let mut engine = msi::ui::UiEngine::new(context.clone());
-        let _ = engine.load_from_database(pkg.database());
-        if engine.active_dialog().is_some() {
-            let mut wizard = msi::ui::TerminalWizard::new(engine);
-            wizard.set_action_text(format!("Installing {}...", pkg.metadata().product_name()));
-            let mut guard = msi::ui::TerminalSafetyGuard::new();
-            let _frame = wizard.render_frame(80, 24);
-            guard.disarm();
-        }
-    }
-
-    let cost_engine = DiskCostEngine::new();
-    let tx = Transaction::from_package(&pkg, context, cost_engine);
-    run_installer_transaction(tx)?;
-
-    if let Some(ref l) = logger {
-        drop(l.log(
-            'i',
-            &format!(
-                "Installation committed successfully for {}",
-                pkg.metadata().product_name()
-            ),
-        ));
-    }
-    Ok(format!(
-        "Successfully installed package '{}' v{} by {} (UI: {:?}, properties: {})",
-        pkg.metadata().product_name(),
-        pkg.metadata().version(),
-        pkg.metadata().manufacturer(),
-        UiLevel::from(args.ui),
-        props.len()
-    ))
-}
-
-/// Handles the `uninstall` command.
-///
-/// # Arguments
-///
-/// * `args` - The `args` argument.
-///
-/// # Returns
-///
-/// The return value.
-fn handle_uninstall(args: &UninstallArgs) -> Result<String, String> {
-    if args.package.trim().is_empty() {
-        return Err("Package path cannot be empty".to_string());
-    }
-
-    let path = Path::new(&args.package);
-    if !path.exists() && !args.package.starts_with('{') {
-        return Err(format!("Product or package not found: '{}'", args.package));
-    }
-
-    let logger = if let Some(ref p) = args.log {
-        let opts = LoggingOptions::parse("*v", p).unwrap_or_default();
-        let l = LoggingDispatcher::new(opts);
-        l.log('i', &format!("Starting uninstallation of {}", args.package))?;
-        Some(l)
-    } else {
-        None
-    };
-
-    if path.exists() {
-        let pkg = Package::open(path)
-            .map_err(|e| format!("Failed opening package '{}': {e}", args.package))?;
-        let mut context = EvaluationContext::new();
-        load_package_properties(&pkg, &mut context);
-        context.set_property("REMOVE", "ALL");
-        context.set_property("UILevel", format!("{:?}", UiLevel::from(args.ui)));
-
-        let cost_engine = DiskCostEngine::new();
-        let tx = Transaction::from_package(&pkg, context, cost_engine);
-        run_installer_transaction(tx)?;
-
-        if let Some(ref l) = logger {
-            drop(l.log(
-                'i',
-                &format!(
-                    "Uninstallation committed for {}",
-                    pkg.metadata().product_name()
-                ),
-            ));
-        }
-        Ok(format!(
-            "Successfully uninstalled package '{}' v{} (UI: {:?})",
-            pkg.metadata().product_name(),
-            pkg.metadata().version(),
-            UiLevel::from(args.ui)
-        ))
-    } else {
-        Ok(format!(
-            "Uninstalled product '{}' (UI: {:?})",
-            args.package,
-            UiLevel::from(args.ui)
-        ))
-    }
-}
-
-/// Handles the `admin` command.
-///
-/// # Arguments
-///
-/// * `args` - The `args` argument.
-///
-/// # Returns
-///
-/// The return value.
-fn handle_admin(args: &AdminArgs) -> Result<String, String> {
-    if args.package.trim().is_empty() {
-        return Err("Package path cannot be empty".to_string());
-    }
-    let path = Path::new(&args.package);
-    if !path.exists() {
-        return Err(format!("Package file not found: '{}'", args.package));
-    }
-
-    let logger = if let Some(ref p) = args.log {
-        let opts = LoggingOptions::parse("*v", p).unwrap_or_default();
-        let l = LoggingDispatcher::new(opts);
-        l.log(
-            'i',
-            &format!("Starting administrative install of {}", args.package),
-        )?;
-        Some(l)
-    } else {
-        None
-    };
-
-    let pkg = Package::open(path)
-        .map_err(|e| format!("Failed opening package '{}': {e}", args.package))?;
-    let mut context = EvaluationContext::new();
-    load_package_properties(&pkg, &mut context);
-    context.set_property("ACTION", "ADMIN");
-    let cost_engine = DiskCostEngine::new();
-    let tx = Transaction::from_package(&pkg, context, cost_engine);
-    run_installer_transaction(tx)?;
-
-    if let Some(ref l) = logger {
-        drop(l.log(
-            'i',
-            &format!(
-                "Administrative installation finished for {}",
-                pkg.metadata().product_name()
-            ),
-        ));
-    }
-    Ok(format!(
-        "Administrative installation completed for '{}' (cabs: {})",
-        pkg.metadata().product_name(),
-        pkg.embedded_cabinets().len()
-    ))
-}
-
-/// Handles the `repair` command.
-///
-/// # Arguments
-///
-/// * `args` - The `args` argument.
-///
-/// # Returns
-///
-/// The return value.
-fn handle_repair(args: &RepairArgs) -> Result<String, String> {
-    if args.package.trim().is_empty() {
-        return Err("Package path cannot be empty".to_string());
-    }
-    let path = Path::new(&args.package);
-    if !path.exists() && !args.package.starts_with('{') {
-        return Err(format!("Product or package not found: '{}'", args.package));
-    }
-
-    let flags = RepairFlags::parse(&args.flags).map_err(err_to_string)?;
-    let logger = if let Some(ref p) = args.log {
-        let opts = LoggingOptions::parse("*v", p).unwrap_or_default();
-        let l = LoggingDispatcher::new(opts);
-        l.log(
-            'i',
-            &format!("Starting repair of {} with flags {:?}", args.package, flags),
-        )?;
-        Some(l)
-    } else {
-        None
-    };
-
-    if path.exists() {
-        let pkg = Package::open(path)
-            .map_err(|e| format!("Failed opening package '{}': {e}", args.package))?;
-        let mut context = EvaluationContext::new();
-        load_package_properties(&pkg, &mut context);
-        context.set_property("REINSTALL", "ALL");
-        context.set_property("REINSTALLMODE", &args.flags);
-
-        let cost_engine = DiskCostEngine::new();
-        let tx = Transaction::from_package(&pkg, context, cost_engine);
-        run_installer_transaction(tx)?;
-
-        if let Some(ref l) = logger {
-            drop(l.log(
-                'i',
-                &format!("Repair committed for {}", pkg.metadata().product_name()),
-            ));
-        }
-        Ok(format!(
-            "Successfully repaired package '{}' v{} with flags {:?}",
-            pkg.metadata().product_name(),
-            pkg.metadata().version(),
-            flags
-        ))
-    } else {
-        Ok(format!(
-            "Repaired product '{}' with flags {:?}",
-            args.package, flags
-        ))
-    }
-}
-
-/// Handles the `advertise` command.
-///
-/// # Arguments
-///
-/// * `args` - The `args` argument.
-///
-/// # Returns
-///
-/// The return value.
-fn handle_advertise(args: &AdvertiseArgs) -> Result<String, String> {
-    if args.package.trim().is_empty() {
-        return Err("Package path cannot be empty".to_string());
-    }
-    let path = Path::new(&args.package);
-    if !path.exists() && !args.package.starts_with('{') {
-        return Err(format!("Product or package not found: '{}'", args.package));
-    }
-
-    let scope = if args.user {
-        AdvertiseScope::User
-    } else {
-        AdvertiseScope::Machine
-    };
-
-    if path.exists() {
-        let pkg = Package::open(path)
-            .map_err(|e| format!("Failed opening package '{}': {e}", args.package))?;
-        let mut context = EvaluationContext::new();
-        context.set_property("ADVERTISE", "ALL");
-        let cost_engine = DiskCostEngine::new();
-        let tx = Transaction::from_package(&pkg, context, cost_engine);
-        run_installer_transaction(tx)?;
-
-        Ok(format!(
-            "Successfully advertised package '{}' ({scope:?})",
-            pkg.metadata().product_name()
-        ))
-    } else {
-        Ok(format!("Advertised product '{}' ({scope:?})", args.package))
-    }
-}
-
-/// Handles the `patch` command.
-///
-/// # Arguments
-///
-/// * `args` - The `args` argument.
-///
-/// # Returns
-///
-/// The return value.
-fn handle_patch(args: &PatchArgs) -> Result<String, String> {
-    if args.package.trim().is_empty() {
-        return Err("Package path cannot be empty".to_string());
-    }
-    if args.patch.trim().is_empty() {
-        return Err("Patch path cannot be empty".to_string());
-    }
-
-    let pkg_path = Path::new(&args.package);
-    if !pkg_path.exists() {
-        return Err(format!("Package file not found: '{}'", args.package));
-    }
-    let patch_path = Path::new(&args.patch);
-    if !patch_path.exists() {
-        return Err(format!("Patch file not found: '{}'", args.patch));
-    }
-
-    let mut pkg = Package::open(pkg_path)
-        .map_err(|e| format!("Failed opening package '{}': {e}", args.package))?;
-    let patch_bytes = std::fs::read(patch_path)
-        .map_err(|e| format!("Failed reading patch file '{}': {e}", args.patch))?;
-
-    let cfb = msi::cfb::CfbReader::new(&patch_bytes)
-        .map_err(|e| format!("Invalid patch CFB container: {e}"))?;
-
-    let mut transforms_applied = 0;
-    for entry in cfb.entries() {
-        let name = entry.name();
-        if name != "\u{0005}SummaryInformation"
-            && !name.starts_with("MsiPatchCert_")
-            && name != "#patch.cab"
-            && !name.is_empty()
-        {
-            if let Ok(stream_bytes) = cfb.read_stream(name) {
-                if let Ok(transform) =
-                    msi::database::transform::DatabaseTransform::from_bytes(&stream_bytes)
-                {
-                    let _ = transform.apply(pkg.database_mut());
-                    transforms_applied += 1;
-                }
-            }
-        }
-    }
-
-    if let Ok(cab_bytes) = cfb.read_stream("#patch.cab") {
-        pkg.add_embedded_cabinet("#patch.cab", cab_bytes);
-    }
-
-    pkg.save(pkg_path)
-        .map_err(|e| format!("Failed saving patched package: {e}"))?;
-
-    Ok(format!(
-        "Successfully applied patch '{}' to package '{}' (transforms: {})",
-        args.patch, args.package, transforms_applied
-    ))
-}
-
-/// Helper converting [`RepairFlags`] to flag string.
-///
-/// # Arguments
-///
-/// * `flags` - The `flags` argument.
-///
-/// # Returns
-///
-/// The return value.
-fn repair_flags_to_string(flags: &RepairFlags) -> String {
-    let mut s = String::new();
-    if flags.reinstall_missing {
-        s.push('p');
-    }
-    if flags.reinstall_older {
-        s.push('o');
-    }
-    if flags.reinstall_equal_or_older {
-        s.push('e');
-    }
-    if flags.reinstall_different {
-        s.push('d');
-    }
-    if flags.reinstall_checksum {
-        s.push('c');
-    }
-    if flags.reinstall_all {
-        s.push('a');
-    }
-    if flags.rewrite_user_registry {
-        s.push('u');
-    }
-    if flags.rewrite_machine_registry {
-        s.push('m');
-    }
-    if flags.overwrite_shortcuts {
-        s.push('s');
-    }
-    if flags.recache_source {
-        s.push('v');
-    }
-    if s.is_empty() {
-        "pecmsu".to_string()
-    } else {
-        s
-    }
-}
-
-/// Handles the raw `msiexec` command by delegating to active action pipelines.
-///
-/// # Arguments
-///
-/// * `args` - The `args` argument.
-///
-/// # Returns
-///
-/// The return value.
-fn handle_msiexec(args: &MsiexecArgs) -> Result<String, String> {
-    let has_tui = args
-        .raw_args
-        .iter()
-        .any(|a| a == "/tui" || a == "--tui" || a == "-tui" || a == "/console" || a == "--console");
-    let filtered_args: Vec<String> = args
-        .raw_args
-        .iter()
-        .filter(|a| {
-            !matches!(
-                a.as_str(),
-                "/tui" | "--tui" | "-tui" | "/console" | "--console"
-            )
-        })
-        .cloned()
-        .collect();
-    let parsed = MsiExecOptions::parse(&filtered_args).map_err(err_to_string)?;
-    let log_file = parsed.logging.as_ref().map(|l| l.log_file.clone());
-    let result = match parsed.action {
-        ActionMode::Install { ref package_path } => {
-            let mut install_props = Vec::new();
-            for (k, v) in &parsed.properties {
-                install_props.push(format!("{k}={v}"));
-            }
-            handle_install(&InstallArgs {
-                package: package_path.clone(),
-                ui: CliUiLevel::from(parsed.ui_level),
-                log: log_file,
-                properties: install_props,
-                tui: has_tui,
-            })?
-        }
-        ActionMode::Uninstall { ref package_path } => handle_uninstall(&UninstallArgs {
-            package: package_path.clone(),
-            ui: CliUiLevel::from(parsed.ui_level),
-            log: log_file,
-        })?,
-        ActionMode::Administrative { ref package_path } => handle_admin(&AdminArgs {
-            package: package_path.clone(),
-            ui: CliUiLevel::from(parsed.ui_level),
-            log: log_file,
-        })?,
-        ActionMode::Repair {
-            ref flags,
-            ref package_path,
-        } => handle_repair(&RepairArgs {
-            package: package_path.clone(),
-            flags: repair_flags_to_string(flags),
-            log: log_file,
-        })?,
-        ActionMode::Advertise {
-            scope,
-            ref package_path,
-        } => handle_advertise(&AdvertiseArgs {
-            package: package_path.clone(),
-            user: scope == AdvertiseScope::User,
-        })?,
-        ActionMode::ApplyPatch { ref patch_path } => {
-            let pkg_path = match parsed.properties.get("PACKAGE") {
-                Some(p) => p.clone(),
-                None => parsed
-                    .properties
-                    .get("TARGETPACKAGE")
-                    .cloned()
-                    .unwrap_or_default(),
-            };
-            handle_patch(&PatchArgs {
-                package: pkg_path,
-                patch: patch_path.clone(),
-                ui: CliUiLevel::from(parsed.ui_level),
-                log: log_file,
-            })?
-        }
-    };
-    Ok(format!(
-        "Executed msiexec: {result} (UI: {:?}, Properties: {})",
-        parsed.ui_level,
-        parsed.properties.len()
-    ))
-}
-
-/// Strongly-typed IPC socket address for worker daemon communication.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WorkerSocketAddress(String);
-
-impl WorkerSocketAddress {
-    /// Creates a new [`WorkerSocketAddress`], validating that the socket path is non-empty.
-    ///
-    /// # Arguments
-    ///
-    /// * `path` - Path string to domain socket or named pipe.
-    ///
-    /// # Errors
-    ///
-    /// Returns error string if path is empty.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
-    pub fn parse(path: &str) -> Result<Self, String> {
-        let trimmed = path.trim();
-        if trimmed.is_empty() {
-            return Err("Worker socket path cannot be empty".to_string());
-        }
-        Ok(Self(trimmed.to_string()))
-    }
-
-    /// Returns the socket path string slice.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-/// Handles the `worker` command.
-///
-/// # Arguments
-///
-/// * `args` - The `args` argument.
-///
-/// # Returns
-///
-/// The return value.
-fn handle_worker(args: &WorkerArgs) -> Result<String, String> {
-    let socket_addr = WorkerSocketAddress::parse(&args.socket)?;
-    let path = Path::new(socket_addr.as_str());
-
-    #[cfg(unix)]
-    {
-        if path.exists() {
-            let _ = std::fs::remove_file(path);
-        }
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-
-        let listener = std::os::unix::net::UnixListener::bind(path)
-            .map_err(|e| format!("Failed to bind worker socket '{}': {e}", path.display()))?;
-
-        let _ = listener.set_nonblocking(true);
-
-        let quarantine_dir = std::env::temp_dir().join("msi_worker_quarantine");
-        let mut executor = msi::execution::worker::executor::LiveWorkerExecutor::new(
-            &quarantine_dir,
-            "worker-daemon",
-        );
-
-        for _ in 0..10 {
-            if let Ok((stream, _)) = listener.accept() {
-                let _ =
-                    msi::execution::worker::ipc::handle_ipc_stream(&stream, &stream, &mut executor);
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(5));
-        }
-
-        let _ = std::fs::remove_file(path);
-    }
-
-    #[cfg(not(unix))]
-    {
-        if !path.to_string_lossy().starts_with(r"\\.\pipe\") {
-            return Err(
-                "Windows worker socket must be a named pipe path starting with \\\\.\\pipe\\"
-                    .to_string(),
-            );
-        }
-    }
-
-    Ok(format!(
-        "Worker daemon initialized on {}",
-        socket_addr.as_str()
-    ))
-}
-
-/// Handles the `harvest` command.
-///
-/// # Arguments
-///
-/// * `args` - The `args` argument.
-///
-/// # Returns
-///
-/// The return value.
-fn handle_harvest(args: &HarvestArgs) -> Result<String, String> {
-    let raw_target = if args.target.is_empty() {
-        args.source_dir.as_deref().unwrap_or(".")
-    } else {
-        args.target.as_str()
-    };
-
-    let (effective_mode, target_path) = args.extra_target.as_ref().map_or_else(
-        || {
-            let p = Path::new(raw_target);
-            if p.extension().is_some_and(|e| e.eq_ignore_ascii_case("reg")) {
-                ("reg".to_string(), raw_target)
-            } else {
-                (args.mode.to_lowercase(), raw_target)
-            }
-        },
-        |second| (raw_target.to_lowercase(), second.as_str()),
-    );
-
-    let effective_output = args.output.as_ref().or(args.wix_fragment.as_ref());
-
-    let mut harvester = msi::wix::Harvester::new();
-    harvester.set_default_disk_id(args.default_disk_id);
-    if let Some(split) = args.split_size {
-        harvester.set_split_size(split);
-    }
-    if let Some(ref gitignore) = args.gitignore {
-        harvester
-            .load_gitignore(Path::new(gitignore))
-            .map_err(err_to_string)?;
-    }
-    for rule in &args.disk_rules {
-        if let Some((pat, disk_str)) = rule.split_once('=') {
-            if let Ok(did) = disk_str.parse::<i16>() {
-                harvester.add_disk_rule(pat, did);
-            }
-        }
-    }
-    for sec in &args.secondary_groups {
-        if let Some((pat, grp)) = sec.split_once('=') {
-            harvester.add_secondary_group(grp, pat);
-        }
-    }
-    for ext in &args.exclude_extensions {
-        harvester.exclude_extension(ext);
-    }
-    for pat in &args.exclude_patterns {
-        harvester.add_exclude_pattern(pat);
-    }
-
-    if let Some(ref _cache_dir) = args.include_cache {
-        harvester.add_secondary_group("LibscriptOfflineCacheComponents", "cache/**");
-        harvester.add_disk_rule("cache/runtimes/*", 2);
-        harvester.add_disk_rule("cache/databases/*", 3);
-        harvester.add_disk_rule("cache/codebase/*", 4);
-        harvester.add_disk_rule("cache/wheels/*", 4);
-        harvester.add_disk_rule("cache/npm/*", 4);
-    }
-
-    if args.include_msi {
-        harvester.set_include_msi(true);
-    }
-
-    let payload_opts = msi::wix::HarvestPayloadOptions {
-        component_group: args.group.clone(),
-        directory_ref: args.dir_id.clone(),
-        wix_fragment: effective_output.map(PathBuf::from),
-        manifest_file: args.manifest_file.as_ref().map(PathBuf::from),
-        output_dir: args.output_dir.as_ref().map(PathBuf::from),
-        include_cache: args.include_cache.as_ref().map(PathBuf::from),
-        include_msi: args.include_msi,
-    };
-
-    let xml = if effective_mode == "reg" {
-        let content = std::fs::read_to_string(target_path)
-            .map_err(|e| format!("Failed to read registry file '{target_path}': {e}"))?;
-        let res = harvester
-            .harvest_registry(&content, &args.group)
-            .map_err(err_to_string)?;
-        if let Some(out_file) = effective_output {
-            std::fs::write(out_file, res.as_bytes())
-                .map_err(|e| format!("Failed to write output to '{out_file}': {e}"))?;
-        }
-        res
-    } else {
-        let result = harvester
-            .harvest_payload(Path::new(target_path), &payload_opts)
-            .map_err(err_to_string)?;
-        result.wix_fragment
-    };
-
-    effective_output.map_or(Ok(xml), |out_file| {
-        Ok(format!("Harvested WiX source written to '{out_file}'"))
-    })
-}
-
-/// Handles the `decompile` command.
-///
-/// # Arguments
-///
-/// * `args` - The `args` argument.
-///
-/// # Returns
-///
-/// The return value.
-fn handle_decompile(args: &DecompileArgs) -> Result<String, String> {
-    let pkg = Package::open(&args.package)
-        .map_err(|e| format!("Failed to open package '{}': {e}", args.package))?;
-    let decompiler = msi::wix::MsiDecompiler::new(msi::wix::WixSchemaVersion::V4);
-
-    if let Some(ref asset_dir) = args.extract_assets {
-        let extracted = decompiler
-            .extract_assets(&pkg, Path::new(asset_dir))
-            .map_err(err_to_string)?;
-        println!("Extracted {} assets into '{}'", extracted.len(), asset_dir);
-    }
-
-    let xml = decompiler
-        .decompile(pkg.database())
-        .map_err(err_to_string)?;
-
-    if let Some(ref out_file) = args.output {
-        std::fs::write(out_file, xml.as_bytes())
-            .map_err(|e| format!("Failed to write output to '{out_file}': {e}"))?;
-        Ok(format!("Decompiled WiX source written to '{out_file}'"))
-    } else {
-        Ok(xml)
-    }
-}
-
-/// Automatically discovers and links companion payload `.wxs` fragments in the same directory.
-///
-/// # Arguments
-///
-/// * `sources` - The `sources` argument.
-///
-/// # Returns
-///
-/// The return value.
-fn discover_companion_fragments(sources: &[String]) -> Vec<String> {
-    let mut effective_sources = sources.to_vec();
-    if effective_sources.len() == 1 {
-        let primary_path = PathBuf::from(&effective_sources[0]);
-        if let Ok(content) = std::fs::read_to_string(&primary_path) {
-            let search_dir = match primary_path.parent() {
-                Some(p) if !p.as_os_str().is_empty() => p,
-                _ => Path::new("."),
-            };
-            if let Ok(entries) = std::fs::read_dir(search_dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    let is_wxs_file = path.is_file()
-                        && path
-                            .extension()
-                            .is_some_and(|e| e.eq_ignore_ascii_case("wxs"))
-                        && path != primary_path;
-                    if !is_wxs_file {
-                        continue;
-                    }
-                    let path_str = path.to_string_lossy().to_string();
-                    if let Ok(sibling_content) = std::fs::read_to_string(&path) {
-                        let is_pure_fragment = sibling_content.contains("<Fragment")
-                            && !sibling_content.contains("<Product")
-                            && !sibling_content.contains("<Module");
-                        if !is_pure_fragment {
-                            continue;
-                        }
-                        let is_companion_by_name = primary_path
-                            .file_stem()
-                            .and_then(|s| s.to_str())
-                            .is_some_and(|stem| {
-                                path.file_name()
-                                    .and_then(|n| n.to_str())
-                                    .is_some_and(|name| {
-                                        name.starts_with(stem) && name.contains("payload")
-                                    })
-                            });
-                        let resolves_group = content.contains("<ComponentGroupRef")
-                            && sibling_content.contains("<ComponentGroup");
-                        if is_companion_by_name || resolves_group {
-                            effective_sources.push(path_str);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    effective_sources
-}
-
-/// Handles the `pack` command by compiling and linking `WiX` source manifests into an MSI package.
-///
-/// # Arguments
-///
-/// * `args` - The command arguments containing source manifests and build configuration.
-///
-/// # Returns
-///
-/// A message string with the generated package path on success.
-///
-/// # Errors
-///
-/// Returns an error message if source files are missing, compilation fails, or linking fails.
-fn handle_pack(args: &PackArgs) -> Result<String, String> {
-    if args.output.trim().is_empty() {
-        return Err("Output path cannot be empty".to_string());
-    }
-
-    if let Some(ref manifest_path) = args.manifest {
-        let manifest_content = std::fs::read_to_string(manifest_path)
-            .map_err(|e| format!("Failed to read packaging manifest '{manifest_path}': {e}"))?;
-
-        let mut synth =
-            msi::wix::ManifestMsiSynthesizer::new(manifest_content).with_arch(&args.arch);
-
-        if let Some(ref schema_path) = args.schema {
-            let schema_content = std::fs::read_to_string(schema_path)
-                .map_err(|e| format!("Failed to read variable schema '{schema_path}': {e}"))?;
-            synth = synth.with_schema(schema_content);
-        }
-
-        if let Some(first_src) = args.sources.first() {
-            synth = synth.with_payload_fragment(PathBuf::from(first_src));
-        }
-
-        let out_p = Path::new(&args.output);
-        let out_path = synth.build_msi(out_p).map_err(err_to_string)?;
-
-        return Ok(format!(
-            "Successfully synthesized and linked MSI package from manifest: '{}'",
-            out_path.display()
-        ));
-    }
-
-    if args.sources.is_empty() {
-        return Err("No source files specified".to_string());
-    }
-
-    let effective_sources = discover_companion_fragments(&args.sources);
-
-    let mut raw_args = vec!["-o".to_string(), args.output.clone()];
-    for src in &effective_sources {
-        raw_args.push(src.clone());
-    }
-    for def in &args.defines {
-        raw_args.push(format!("-d{def}"));
-    }
-    if args.suppress_validation {
-        raw_args.push("-sval".to_string());
-    }
-    for sice in &args.suppress_ice {
-        raw_args.push(format!("-sice:{sice}"));
-    }
-    for ice in &args.select_ice {
-        raw_args.push(format!("-ice:{ice}"));
-    }
-    for ext in &args.extensions {
-        raw_args.push("-ext".to_string());
-        raw_args.push(ext.clone());
-    }
-    if !args.arch.is_empty() {
-        raw_args.push("-arch".to_string());
-        raw_args.push(args.arch.clone());
-    }
-    for b in &args.bind_paths {
-        raw_args.push("-b".to_string());
-        raw_args.push(b.clone());
-    }
-
-    let opts = msi::wix::toolchain::WixBuildOptions::parse(&raw_args).map_err(err_to_string)?;
-    let out_path = opts.execute().map_err(err_to_string)?;
-
-    Ok(format!(
-        "Successfully compiled and linked MSI package: '{}'",
-        out_path.display()
-    ))
-}
+pub mod commands;
+pub use commands::*;
 
 /// Executes the CLI command based on parsed options.
 ///
@@ -1701,7 +247,12 @@ pub fn main() -> ExitCode {
 }
 
 #[cfg(test)]
-#[allow(clippy::option_if_let_else)]
+#[allow(
+    clippy::option_if_let_else,
+    clippy::too_many_lines,
+    clippy::cognitive_complexity,
+    clippy::shadow_unrelated
+)]
 mod tests {
     use super::*;
     use msi::wix::LinkedDatabase;
@@ -1955,7 +506,8 @@ mod tests {
             addr.as_ref().map(WorkerSocketAddress::as_str),
             Ok("/tmp/test_parse.sock")
         );
-        assert!(format!("{addr:?}").contains("WorkerSocketAddress"));
+        let addr_dbg = format!("{addr:?}");
+        assert!(addr_dbg.contains("WorkerSocketAddress"));
         assert_eq!(addr, addr.clone());
     }
 
@@ -2076,7 +628,7 @@ mod tests {
     /// # Returns
     ///
     /// The return value.
-    pub(crate) fn make_test_pkg(valid: bool) -> Package {
+    fn make_test_pkg(valid: bool) -> Package {
         let name = if valid { "Test App" } else { "" };
         if let Ok(pkg) = Package::builder()
             .product_name(name)
@@ -3491,7 +2043,7 @@ mod tests {
     /// # Returns
     ///
     /// The return value.
-    pub(crate) fn make_decompile_pkg(valid: bool) -> Package {
+    fn make_decompile_pkg(valid: bool) -> Package {
         let name = if valid { "DecompileTarget" } else { "" };
         let mut cab_writer = msi::cab::CabinetWriter::new(msi::cab::CompressionType::None);
         let _ = cab_writer.add_file("embedded.txt", b"cab content");
@@ -4205,14 +2757,14 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
-}
 
-#[cfg(test)]
-mod functional_cli_tests {
-    use super::*;
-
-    fn to_os(args: &[&str]) -> Vec<std::ffi::OsString> {
-        args.iter().map(std::ffi::OsString::from).collect()
+    #[test]
+    fn test_modular_command_helpers() {
+        let pkg = make_test_pkg(true);
+        assert!(!list_package_tables(&pkg).is_empty());
+        assert!(list_package_cabinets(&pkg).is_empty());
+        assert!(validate_package_ice(&pkg).is_ok());
+        assert_eq!(count_package_certificates(&pkg), 0);
     }
 
     #[test]
@@ -4236,7 +2788,7 @@ mod functional_cli_tests {
             "{11111111-1111-1111-1111-111111111111}",
         ];
         assert_eq!(run_with_args(to_os(&args)), ExitCode::SUCCESS);
-        assert!(std::path::Path::new("App.msi").exists());
+        assert!(Path::new("App.msi").exists());
 
         // Invalid version
         let args_invalid = [
@@ -4264,14 +2816,14 @@ mod functional_cli_tests {
 
         // Missing file
         let bad_path = temp_dir.join("missing.msi");
-        let args = ["msi", "info", bad_path.to_str().unwrap()];
+        let args = ["msi", "info", bad_path.to_str().unwrap_or("")];
         assert_eq!(run_with_args(to_os(&args)), ExitCode::FAILURE);
 
         // Valid file
         let valid_path = temp_dir.join("valid.msi");
-        let pkg = crate::tests::make_test_pkg(false);
-        pkg.save(&valid_path).unwrap();
-        let args = ["msi", "info", valid_path.to_str().unwrap()];
+        let pkg = make_test_pkg(false);
+        assert!(pkg.save(&valid_path).is_ok());
+        let args = ["msi", "info", valid_path.to_str().unwrap_or("")];
         assert_eq!(run_with_args(to_os(&args)), ExitCode::SUCCESS);
 
         let _ = std::fs::remove_dir_all(&temp_dir);
@@ -4285,18 +2837,18 @@ mod functional_cli_tests {
         let _ = std::fs::create_dir_all(&temp_dir);
 
         let pkg_path = temp_dir.join("pkg.msi");
-        let pkg = crate::tests::make_test_pkg(true);
-        pkg.save(&pkg_path).unwrap();
+        let pkg = make_test_pkg(true);
+        assert!(pkg.save(&pkg_path).is_ok());
         let log_path = temp_dir.join("install.log");
 
         let args = [
             "msi",
             "install",
-            pkg_path.to_str().unwrap(),
+            pkg_path.to_str().unwrap_or(""),
             "--ui",
             "quiet",
             "--log",
-            log_path.to_str().unwrap(),
+            log_path.to_str().unwrap_or(""),
             "--tui",
             "PROP=VAL",
         ];
@@ -4313,18 +2865,18 @@ mod functional_cli_tests {
         let _ = std::fs::create_dir_all(&temp_dir);
 
         let pkg_path = temp_dir.join("pkg.msi");
-        let pkg = crate::tests::make_test_pkg(true);
-        pkg.save(&pkg_path).unwrap();
+        let pkg = make_test_pkg(true);
+        assert!(pkg.save(&pkg_path).is_ok());
         let log_path = temp_dir.join("uninstall.log");
 
         let args = [
             "msi",
             "uninstall",
-            pkg_path.to_str().unwrap(),
+            pkg_path.to_str().unwrap_or(""),
             "--ui",
             "basic",
             "--log",
-            log_path.to_str().unwrap(),
+            log_path.to_str().unwrap_or(""),
         ];
         assert_eq!(run_with_args(to_os(&args)), ExitCode::SUCCESS);
 
@@ -4339,10 +2891,16 @@ mod functional_cli_tests {
         let _ = std::fs::create_dir_all(&temp_dir);
 
         let pkg_path = temp_dir.join("pkg.msi");
-        let pkg = crate::tests::make_test_pkg(true);
-        pkg.save(&pkg_path).unwrap();
+        let pkg = make_test_pkg(true);
+        assert!(pkg.save(&pkg_path).is_ok());
 
-        let args = ["msi", "admin", pkg_path.to_str().unwrap(), "--ui", "quiet"];
+        let args = [
+            "msi",
+            "admin",
+            pkg_path.to_str().unwrap_or(""),
+            "--ui",
+            "quiet",
+        ];
         assert_eq!(run_with_args(to_os(&args)), ExitCode::SUCCESS);
 
         let _ = std::fs::remove_dir_all(&temp_dir);
@@ -4356,14 +2914,14 @@ mod functional_cli_tests {
         let _ = std::fs::create_dir_all(&temp_dir);
 
         let pkg_path = temp_dir.join("pkg.msi");
-        let pkg = crate::tests::make_test_pkg(true);
-        pkg.save(&pkg_path).unwrap();
+        let pkg = make_test_pkg(true);
+        assert!(pkg.save(&pkg_path).is_ok());
 
         // Valid flag
         let args = [
             "msi",
             "repair",
-            pkg_path.to_str().unwrap(),
+            pkg_path.to_str().unwrap_or(""),
             "--flags",
             "omus",
         ];
@@ -4373,7 +2931,7 @@ mod functional_cli_tests {
         let args_invalid = [
             "msi",
             "repair",
-            pkg_path.to_str().unwrap(),
+            pkg_path.to_str().unwrap_or(""),
             "--flags",
             "invalid_flag",
         ];
@@ -4390,10 +2948,15 @@ mod functional_cli_tests {
         let _ = std::fs::create_dir_all(&temp_dir);
 
         let pkg_path = temp_dir.join("pkg.msi");
-        let pkg = crate::tests::make_test_pkg(true);
-        pkg.save(&pkg_path).unwrap();
+        let pkg = make_test_pkg(true);
+        assert!(pkg.save(&pkg_path).is_ok());
 
-        let args = ["msi", "advertise", pkg_path.to_str().unwrap(), "--user"];
+        let args = [
+            "msi",
+            "advertise",
+            pkg_path.to_str().unwrap_or(""),
+            "--user",
+        ];
         assert_eq!(run_with_args(to_os(&args)), ExitCode::SUCCESS);
 
         let _ = std::fs::remove_dir_all(&temp_dir);
@@ -4407,20 +2970,20 @@ mod functional_cli_tests {
         let _ = std::fs::create_dir_all(&temp_dir);
 
         let pkg_path = temp_dir.join("pkg.msi");
-        let pkg = crate::tests::make_test_pkg(true);
-        pkg.save(&pkg_path).unwrap();
+        let pkg = make_test_pkg(true);
+        assert!(pkg.save(&pkg_path).is_ok());
 
         let patch_path = temp_dir.join("patch.msp");
         let patch_builder =
             msi::wix::patch::PatchPackageBuilder::new("{99999999-9999-9999-9999-999999999999}");
         let patch_bytes = patch_builder.build().unwrap_or_default();
-        std::fs::write(&patch_path, patch_bytes).unwrap();
+        assert!(std::fs::write(&patch_path, patch_bytes).is_ok());
 
         let args = [
             "msi",
             "patch",
-            pkg_path.to_str().unwrap(),
-            patch_path.to_str().unwrap(),
+            pkg_path.to_str().unwrap_or(""),
+            patch_path.to_str().unwrap_or(""),
             "--ui",
             "quiet",
         ];
@@ -4437,10 +3000,10 @@ mod functional_cli_tests {
         let _ = std::fs::create_dir_all(&temp_dir);
 
         let pkg_path = temp_dir.join("pkg.msi");
-        let pkg = crate::tests::make_test_pkg(true);
-        pkg.save(&pkg_path).unwrap();
+        let pkg = make_test_pkg(true);
+        assert!(pkg.save(&pkg_path).is_ok());
 
-        let args = ["msi", "/i", pkg_path.to_str().unwrap(), "/qn"];
+        let args = ["msi", "/i", pkg_path.to_str().unwrap_or(""), "/qn"];
         assert_eq!(run_with_args(to_os(&args)), ExitCode::SUCCESS);
 
         let _ = std::fs::remove_dir_all(&temp_dir);
@@ -4464,8 +3027,8 @@ mod functional_cli_tests {
         let _ = std::fs::create_dir_all(&temp_dir);
 
         let target_dir = temp_dir.join("harvest_target");
-        std::fs::create_dir_all(&target_dir).unwrap();
-        std::fs::write(target_dir.join("file.txt"), "hello").unwrap();
+        assert!(std::fs::create_dir_all(&target_dir).is_ok());
+        assert!(std::fs::write(target_dir.join("file.txt"), "hello").is_ok());
 
         let out_xml = temp_dir.join("out.wxs");
 
@@ -4473,9 +3036,9 @@ mod functional_cli_tests {
             "msi",
             "harvest",
             "dir",
-            target_dir.to_str().unwrap(),
+            target_dir.to_str().unwrap_or(""),
             "--output",
-            out_xml.to_str().unwrap(),
+            out_xml.to_str().unwrap_or(""),
             "--mode",
             "dir",
         ];
@@ -4493,8 +3056,8 @@ mod functional_cli_tests {
         let _ = std::fs::create_dir_all(&temp_dir);
 
         let pkg_path = temp_dir.join("pkg.msi");
-        let pkg = crate::tests::make_decompile_pkg(true);
-        pkg.save(&pkg_path).unwrap();
+        let pkg = make_decompile_pkg(true);
+        assert!(pkg.save(&pkg_path).is_ok());
 
         let out_xml = temp_dir.join("out.wxs");
         let asset_dir = temp_dir.join("assets");
@@ -4502,11 +3065,11 @@ mod functional_cli_tests {
         let args = [
             "msi",
             "decompile",
-            pkg_path.to_str().unwrap(),
+            pkg_path.to_str().unwrap_or(""),
             "--output",
-            out_xml.to_str().unwrap(),
+            out_xml.to_str().unwrap_or(""),
             "--extract-assets",
-            asset_dir.to_str().unwrap(),
+            asset_dir.to_str().unwrap_or(""),
         ];
         assert_eq!(run_with_args(to_os(&args)), ExitCode::SUCCESS);
         assert!(out_xml.exists());
@@ -4521,7 +3084,7 @@ mod functional_cli_tests {
         let _ = std::fs::create_dir_all(&temp_dir);
 
         let src_wxs = temp_dir.join("src.wxs");
-        std::fs::write(&src_wxs, r#"<?xml version="1.0"?><Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"><Product Id="*" Name="A" Language="1033" Version="1.0" Manufacturer="B" UpgradeCode="{11111111-1111-1111-1111-111111111111}"><Package InstallerVersion="200" Compressed="yes"/><Media Id="1" Cabinet="c.cab" EmbedCab="yes"/><Feature Id="F" Level="1"/></Product></Wix>"#).unwrap();
+        assert!(std::fs::write(&src_wxs, r#"<?xml version="1.0"?><Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"><Product Id="*" Name="A" Language="1033" Version="1.0" Manufacturer="B" UpgradeCode="{11111111-1111-1111-1111-111111111111}"><Package InstallerVersion="200" Compressed="yes"/><Media Id="1" Cabinet="c.cab" EmbedCab="yes"/><Feature Id="F" Level="1"/></Product></Wix>"#).is_ok());
         let out_msi = temp_dir.join("out.msi");
 
         // Note: msi pack handles wxs compilation if we simulate candle/light, but for simplicity here we just run it and let it fail if it can't find tools, or test parsing only
@@ -4529,8 +3092,8 @@ mod functional_cli_tests {
             "msi",
             "pack",
             "--output",
-            out_msi.to_str().unwrap(),
-            src_wxs.to_str().unwrap(),
+            out_msi.to_str().unwrap_or(""),
+            src_wxs.to_str().unwrap_or(""),
             "--define",
             "VAR=1",
             "--verbose",

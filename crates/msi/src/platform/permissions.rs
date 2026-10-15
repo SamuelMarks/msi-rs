@@ -1047,6 +1047,41 @@ mod tests {
         assert_eq!(PosixMode::infer_from_path("document.txt").as_octal(), 0o644);
     }
 
+    /// Verifies the three expected ACL entries produced from `D:(A;;GA;;;BA)(A;;GRGWGX;;;BU)(A;;GR;;;WD)`.
+    fn assert_translated_sddl_entries(entries: &[AclEntry]) {
+        assert_eq!(entries.len(), 3);
+
+        let e1 = &entries[0];
+        assert_eq!(e1.access, AclAccessType::Allow);
+        assert_eq!(e1.principal_name, "root");
+        assert!(e1.read && e1.write && e1.execute);
+        assert_eq!(e1.to_posix_1e_string(), "u:root:rwx");
+        assert_eq!(e1.to_nfsv4_zfs_string(), "user:root:rwx:allow");
+        assert_eq!(
+            e1.to_macos_kauth_string(),
+            "user:root allow read,write,execute"
+        );
+
+        let e2 = &entries[1];
+        assert_eq!(e2.access, AclAccessType::Allow);
+        assert_eq!(e2.principal_name, "users");
+        assert!(e2.read && e2.write && e2.execute);
+        assert_eq!(e2.to_posix_1e_string(), "g:users:rwx");
+        assert_eq!(e2.to_nfsv4_zfs_string(), "group:users:rwx:allow");
+        assert_eq!(
+            e2.to_macos_kauth_string(),
+            "group:users allow read,write,execute"
+        );
+
+        let e3 = &entries[2];
+        assert_eq!(e3.access, AclAccessType::Allow);
+        assert_eq!(e3.principal_name, "everyone");
+        assert!(e3.read && !e3.write && !e3.execute);
+        assert_eq!(e3.to_posix_1e_string(), "o:everyone:r--");
+        assert_eq!(e3.to_nfsv4_zfs_string(), "everyone@:everyone:r:allow");
+        assert_eq!(e3.to_macos_kauth_string(), "everyone:everyone allow read");
+    }
+
     /// Tests SDDL translation into POSIX.1e, `NFSv4` ZFS, and macOS kauth ACL formats.
     #[test]
     fn test_sddl_translation_and_formatting() {
@@ -1055,46 +1090,7 @@ mod tests {
             .into_iter()
             .flatten()
         {
-            assert_eq!(entries.len(), 3);
-
-            // First ACE: Administrators Generic All -> root allow rwx
-            let e1 = &entries[0];
-            assert_eq!(e1.access, AclAccessType::Allow);
-            assert_eq!(e1.principal_name, "root");
-            assert!(e1.read);
-            assert!(e1.write);
-            assert!(e1.execute);
-            assert_eq!(e1.to_posix_1e_string(), "u:root:rwx");
-            assert_eq!(e1.to_nfsv4_zfs_string(), "user:root:rwx:allow");
-            assert_eq!(
-                e1.to_macos_kauth_string(),
-                "user:root allow read,write,execute"
-            );
-
-            // Second ACE: Built-in Users Generic Read + Write + Execute -> users allow rwx
-            let e2 = &entries[1];
-            assert_eq!(e2.access, AclAccessType::Allow);
-            assert_eq!(e2.principal_name, "users");
-            assert!(e2.read);
-            assert!(e2.write);
-            assert!(e2.execute);
-            assert_eq!(e2.to_posix_1e_string(), "g:users:rwx");
-            assert_eq!(e2.to_nfsv4_zfs_string(), "group:users:rwx:allow");
-            assert_eq!(
-                e2.to_macos_kauth_string(),
-                "group:users allow read,write,execute"
-            );
-
-            // Third ACE: Everyone Generic Read -> everyone allow r--
-            let e3 = &entries[2];
-            assert_eq!(e3.access, AclAccessType::Allow);
-            assert_eq!(e3.principal_name, "everyone");
-            assert!(e3.read);
-            assert!(!e3.write);
-            assert!(!e3.execute);
-            assert_eq!(e3.to_posix_1e_string(), "o:everyone:r--");
-            assert_eq!(e3.to_nfsv4_zfs_string(), "everyone@:everyone:r:allow");
-            assert_eq!(e3.to_macos_kauth_string(), "everyone:everyone allow read");
+            assert_translated_sddl_entries(&entries);
         }
 
         // Empty / incomplete ACE handling

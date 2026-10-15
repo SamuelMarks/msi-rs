@@ -223,7 +223,7 @@ def calculate_doc_coverage(repo_root: Path, force_run: bool = True) -> float:
                         total_items += stats["total"]
                         with_docs += stats["with_docs"]
         except Exception as err:
-            print(f"Warning: Failed to parse {json_file}: {err}", file=sys.stderr)
+            raise RuntimeError(f"Failed to parse rustdoc JSON {json_file}: {err}") from err
 
     if total_items == 0:
         return 100.0
@@ -234,7 +234,7 @@ def calculate_doc_coverage(repo_root: Path, force_run: bool = True) -> float:
 
 
 def calculate_test_coverage(repo_root: Path, force_run: bool = True) -> float:
-    """Calculates aggregate test line coverage via cargo llvm-cov."""
+    """Calculates aggregate test function, line, and branch coverage via cargo llvm-cov."""
     cov_path = repo_root / "target" / "llvm-cov" / "coverage.json"
 
     if force_run and cov_path.exists():
@@ -265,12 +265,26 @@ def calculate_test_coverage(repo_root: Path, force_run: bool = True) -> float:
     with open(cov_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    lines_info = data["data"][0]["totals"]["lines"]
+    totals = data["data"][0]["totals"]
+    lines_info = totals["lines"]
     total_lines = lines_info["count"]
     covered_lines = lines_info["covered"]
-    pct = lines_info["percent"]
+    line_pct = float(lines_info["percent"])
+
+    funcs_info = totals.get("functions", {})
+    func_pct = float(funcs_info.get("percent", line_pct))
+
+    branches_info = totals.get("branches", {})
+    branch_pct = (
+        float(branches_info["percent"])
+        if branches_info.get("count", 0) > 0
+        else line_pct
+    )
+
+    pct = min(line_pct, func_pct, branch_pct)
     print(
-        f"==> [shields] Test coverage: {covered_lines}/{total_lines} lines ({pct:.2f}%)"
+        f"==> [shields] Test coverage: {covered_lines}/{total_lines} lines "
+        f"(lines: {line_pct:.2f}%, functions: {func_pct:.2f}%, branches: {branch_pct:.2f}%)"
     )
     return pct
 

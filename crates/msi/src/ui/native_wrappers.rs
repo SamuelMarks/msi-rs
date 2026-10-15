@@ -187,7 +187,8 @@ mod tests {
     #[allow(clippy::redundant_clone)]
     fn test_windows_user32_ui() {
         let mut ui = WindowsUser32UI::default();
-        assert!(format!("{ui:?}").contains("WindowsUser32UI"));
+        let ui_dbg = format!("{ui:?}");
+        assert!(ui_dbg.contains("WindowsUser32UI"));
         let engine = UiEngine::new(EvaluationContext::new());
 
         assert!(ui.initialize(&engine).is_ok());
@@ -230,6 +231,7 @@ mod tests {
 
         let stub = DlgTemplateStub::new(dialog.clone());
         let _stub_clone = stub.clone();
-        assert!(format!("{stub:?}").contains("DlgTemplateStub"));
+        let stub_dbg = format!("{stub:?}");
+        assert!(stub_dbg.contains("DlgTemplateStub"));
     }
 }

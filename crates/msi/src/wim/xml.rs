@@ -199,8 +199,6 @@ impl WimManifest {
 
 #[cfg(test)]
 #[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
     clippy::field_reassign_with_default,
     clippy::shadow_unrelated,
     clippy::unreadable_literal,
@@ -285,27 +283,31 @@ mod tests {
     #[test]
     fn test_wim_xml_parse_errors() {
         // Empty bytes
-        let err = WimManifest::parse(&[]).unwrap_err();
+        let err = WimManifest::parse(&[]).err().unwrap_or_default();
         assert!(matches!(err, MsiError::WimXmlParseError { .. }));
 
         // Invalid root node
         let xml_invalid_root = b"<ROOT><IMAGE INDEX=\"1\"></IMAGE></ROOT>";
-        let err = WimManifest::parse(xml_invalid_root).unwrap_err();
+        let err = WimManifest::parse(xml_invalid_root)
+            .err()
+            .unwrap_or_default();
         assert!(matches!(err, MsiError::WimXmlParseError { .. }));
 
         // Missing IMAGE index
         let xml_missing_index = b"<WIM><IMAGE><NAME>Test</NAME></IMAGE></WIM>";
-        let err = WimManifest::parse(xml_missing_index).unwrap_err();
+        let err = WimManifest::parse(xml_missing_index)
+            .err()
+            .unwrap_or_default();
         assert!(matches!(err, MsiError::WimXmlParseError { .. }));
 
         // Invalid IMAGE index type
         let xml_bad_index = b"<WIM><IMAGE INDEX=\"ABC\"><NAME>Test</NAME></IMAGE></WIM>";
-        let err = WimManifest::parse(xml_bad_index).unwrap_err();
+        let err = WimManifest::parse(xml_bad_index).err().unwrap_or_default();
         assert!(matches!(err, MsiError::WimXmlParseError { .. }));
 
         // Malformed XML structure
         let xml_malformed = b"<WIM><IMAGE INDEX=\"1\"><NAME>Unclosed</IMAGE></WIM>";
-        let err = WimManifest::parse(xml_malformed).unwrap_err();
+        let err = WimManifest::parse(xml_malformed).err().unwrap_or_default();
         assert!(matches!(err, MsiError::WimXmlParseError { .. }));
     }
     #[test]

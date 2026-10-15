@@ -1,9 +1,3 @@
-#![allow(
-    clippy::cognitive_complexity,
-    clippy::literal_string_with_formatting_args,
-    clippy::too_many_lines
-)]
-#![cfg_attr(test, allow(clippy::redundant_clone))]
 //! # heat
 //!
 //! `WiX` v3 Source Harvester executable shim replicating `heat.exe`.
@@ -319,114 +313,14 @@ pub fn main() -> ExitCode {
 mod tests {
     use super::*;
 
-    /// Tests all branches and error handling of `heat` binary execution.
-    #[test]
-    #[allow(clippy::too_many_lines)]
-    fn test_heat_run_all_branches() {
-        let temp_dir = std::env::temp_dir().join("msi_cli_test_heat_bin");
-        let _ = fs::create_dir_all(&temp_dir);
-        let sample_file = temp_dir.join("sample.txt");
-        let reg_file = temp_dir.join("test.reg");
-        let empty_reg_file = temp_dir.join("empty.reg");
-        let project_file = temp_dir.join("app.csproj");
-        let out_wxs = temp_dir.join("sub_dir").join("harvested.wxs");
-
-        assert!(fs::write(&sample_file, "Sample Content").is_ok());
-        let reg_content = r#"Windows Registry Editor Version 5.00
-
-[HKEY_LOCAL_MACHINE\Software\Test]
-"Value"="1"
-"#;
-        assert!(fs::write(&reg_file, reg_content).is_ok());
-        assert!(fs::write(&empty_reg_file, "").is_ok());
-        assert!(fs::write(&project_file, "<Project />").is_ok());
-
-        // 1. Parse errors
-        assert_eq!(run(&[]), 1);
-        assert_eq!(run(&["-nologo".to_string()]), 1);
-        assert_eq!(run(&["dir".to_string()]), 1);
-        assert_eq!(
-            run(&[
-                "dir".to_string(),
-                "/nonexistent_path_that_does_not_exist_xyz123".to_string(),
-            ]),
-            1
-        );
-        assert_eq!(run(&["dir".to_string(), "-cg".to_string()]), 1);
-        assert_eq!(run(&["dir".to_string(), "/cg".to_string()]), 1);
-        assert_eq!(run(&["dir".to_string(), "-dr".to_string()]), 1);
-        assert_eq!(run(&["dir".to_string(), "/dr".to_string()]), 1);
-        assert_eq!(run(&["dir".to_string(), "-var".to_string()]), 1);
-        assert_eq!(run(&["dir".to_string(), "/var".to_string()]), 1);
-        assert_eq!(run(&["dir".to_string(), "-o".to_string()]), 1);
-        assert_eq!(run(&["dir".to_string(), "/o".to_string()]), 1);
-        assert_eq!(run(&["dir".to_string(), "-out".to_string()]), 1);
-        assert_eq!(run(&["dir".to_string(), "/out".to_string()]), 1);
-
-        // Parsing with slash options
-        assert!(HeatOptions::parse(&[
-            "/nologo".to_string(),
-            "/gg".to_string(),
-            "/g1".to_string(),
-            "/sfrag".to_string(),
-            "/srd".to_string(),
-            "/sreg".to_string(),
-            "/suid".to_string(),
-            "/cg".to_string(),
-            "CGSlash".to_string(),
-            "/dr".to_string(),
-            "DRSlash".to_string(),
-            "/var".to_string(),
-            "VARSlash".to_string(),
-            "/out".to_string(),
-            out_wxs.to_string_lossy().to_string(),
-            "/extra_flag".to_string(),
-            "dir".to_string(),
-            temp_dir.to_string_lossy().to_string(),
-        ])
-        .is_ok());
-
-        // 2. Unsupported harvest type
-        assert_eq!(
-            run(&[
-                "unknown".to_string(),
-                temp_dir.to_string_lossy().to_string()
-            ]),
-            1
-        );
-
-        // 3. Harvest directory with banner and stdout
-        assert_eq!(
-            run(&["dir".to_string(), temp_dir.to_string_lossy().to_string()]),
-            0
-        );
-
-        // 4. Harvest directory with all options and output file
-        let full_dir_args = vec![
-            "-nologo".to_string(),
-            "-gg".to_string(),
-            "-g1".to_string(),
-            "-sfrag".to_string(),
-            "-srd".to_string(),
-            "-sreg".to_string(),
-            "-suid".to_string(),
-            "-cg".to_string(),
-            "CustomCG".to_string(),
-            "-dr".to_string(),
-            "CustomDir".to_string(),
-            "-var".to_string(),
-            "var.TargetDir".to_string(),
-            "-o".to_string(),
-            out_wxs.to_string_lossy().to_string(),
-            "-unknown".to_string(),
-            "dir".to_string(),
-            temp_dir.to_string_lossy().to_string(),
-        ];
-        assert_eq!(run(&full_dir_args), 0);
-        assert_eq!(run_app(&full_dir_args), ExitCode::SUCCESS);
-        assert!(out_wxs.exists());
-
-        // 5. Harvest directory and build output failure (unreadable subdirectory)
+    /// Exercises file, registry, project, website, and error cases for `heat`.
+    fn run_heat_non_dir_and_error_cases(
+        temp_dir: &Path,
+        sample_file: &Path,
+        reg_file: &Path,
+        empty_reg_file: &Path,
+        project_file: &Path,
+    ) {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -459,7 +353,6 @@ mod tests {
             );
         }
 
-        // 6. Harvest file
         assert_eq!(
             run(&[
                 "file".to_string(),
@@ -468,7 +361,6 @@ mod tests {
             0
         );
 
-        // Harvest file with no stem (empty path)
         let no_stem_file_opts = HeatOptions {
             harvest_type: "file".to_string(),
             target_path: PathBuf::from(""),
@@ -476,17 +368,14 @@ mod tests {
         };
         assert!(no_stem_file_opts.execute().is_ok());
 
-        // 7. Harvest reg
         assert_eq!(
             run(&["reg".to_string(), reg_file.to_string_lossy().to_string()]),
             0
         );
-        // Harvest reg non-existent file
         assert_eq!(
             run(&["reg".to_string(), "missing_reg_rel.reg".to_string()]),
             1
         );
-        // Harvest reg empty file
         assert_eq!(
             run(&[
                 "reg".to_string(),
@@ -495,7 +384,6 @@ mod tests {
             1
         );
 
-        // 8. Harvest project / perf / website
         assert_eq!(
             run(&[
                 "project".to_string(),
@@ -503,7 +391,6 @@ mod tests {
             ]),
             0
         );
-        // Project on a file (target_path.is_dir() is false)
         assert_eq!(
             run(&[
                 "project".to_string(),
@@ -511,7 +398,6 @@ mod tests {
             ]),
             0
         );
-        // Website on a relative empty path (parent() is None)
         let empty_proj_opts = HeatOptions {
             harvest_type: "website".to_string(),
             target_path: PathBuf::from(""),
@@ -519,7 +405,6 @@ mod tests {
         };
         let _ = empty_proj_opts.execute();
 
-        // 9. Output failure on write
         let blocking_file = temp_dir.join("blocking_output_file");
         assert!(fs::write(&blocking_file, "blocking").is_ok());
         assert_eq!(
@@ -533,16 +418,121 @@ mod tests {
             1
         );
 
-        // Direct execute with empty output path (parent is None)
         let empty_out_opts = HeatOptions {
             harvest_type: "file".to_string(),
-            target_path: sample_file,
+            target_path: sample_file.to_path_buf(),
             output: Some(PathBuf::from("")),
             ..HeatOptions::default()
         };
         assert!(empty_out_opts.execute().is_err());
+    }
 
-        // 10. Derives testing
+    /// Tests all branches and error handling of `heat` binary execution.
+    #[test]
+    fn test_heat_run_all_branches() {
+        let temp_dir = std::env::temp_dir().join("msi_cli_test_heat_bin");
+        let _ = fs::create_dir_all(&temp_dir);
+        let sample_file = temp_dir.join("sample.txt");
+        let reg_file = temp_dir.join("test.reg");
+        let empty_reg_file = temp_dir.join("empty.reg");
+        let project_file = temp_dir.join("app.csproj");
+        let out_wxs = temp_dir.join("sub_dir").join("harvested.wxs");
+
+        assert!(fs::write(&sample_file, "Sample Content").is_ok());
+        let reg_content = r#"Windows Registry Editor Version 5.00
+
+[HKEY_LOCAL_MACHINE\Software\Test]
+"Value"="1"
+"#;
+        assert!(fs::write(&reg_file, reg_content).is_ok());
+        assert!(fs::write(&empty_reg_file, "").is_ok());
+        assert!(fs::write(&project_file, "<Project />").is_ok());
+
+        assert_eq!(run(&[]), 1);
+        assert_eq!(run(&["-nologo".to_string()]), 1);
+        assert_eq!(run(&["dir".to_string()]), 1);
+        for flag in &[
+            "/nonexistent_path_that_does_not_exist_xyz123",
+            "-cg",
+            "/cg",
+            "-dr",
+            "/dr",
+            "-var",
+            "/var",
+            "-o",
+            "/o",
+            "-out",
+            "/out",
+        ] {
+            assert_eq!(run(&["dir".to_string(), (*flag).to_string()]), 1);
+        }
+
+        let slash_opts = [
+            "/nologo", "/gg", "/g1", "/sfrag", "/srd", "/sreg", "/suid", "/cg", "CGSlash", "/dr",
+            "DRSlash", "/var", "VARSlash", "/out",
+        ];
+        let mut parse_args: Vec<String> = slash_opts.iter().map(|s| (*s).to_string()).collect();
+        parse_args.extend([
+            out_wxs.to_string_lossy().to_string(),
+            "/extra_flag".to_string(),
+            "dir".to_string(),
+            temp_dir.to_string_lossy().to_string(),
+        ]);
+        assert!(HeatOptions::parse(&parse_args).is_ok());
+
+        assert_eq!(
+            run(&[
+                "unknown".to_string(),
+                temp_dir.to_string_lossy().to_string()
+            ]),
+            1
+        );
+        assert_eq!(
+            run(&["dir".to_string(), temp_dir.to_string_lossy().to_string()]),
+            0
+        );
+
+        let full_flags = [
+            "-nologo",
+            "-gg",
+            "-g1",
+            "-sfrag",
+            "-srd",
+            "-sreg",
+            "-suid",
+            "-cg",
+            "CustomCG",
+            "-dr",
+            "CustomDir",
+            "-var",
+            "var.TargetDir",
+            "-o",
+        ];
+        let mut full_dir_args: Vec<String> = full_flags.iter().map(|s| (*s).to_string()).collect();
+        full_dir_args.extend([
+            out_wxs.to_string_lossy().to_string(),
+            "-unknown".to_string(),
+            "dir".to_string(),
+            temp_dir.to_string_lossy().to_string(),
+        ]);
+        assert_eq!(run(&full_dir_args), 0);
+        assert_eq!(run_app(&full_dir_args), ExitCode::SUCCESS);
+        assert!(out_wxs.exists());
+
+        run_heat_non_dir_and_error_cases(
+            &temp_dir,
+            &sample_file,
+            &reg_file,
+            &empty_reg_file,
+            &project_file,
+        );
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    /// Tests `HeatOptions` trait implementations and default entry points.
+    #[test]
+    fn test_heat_options_traits_and_main() {
         let default_opts = HeatOptions::default();
         let mut cloned_opts = default_opts.clone();
         cloned_opts.clone_from(&default_opts);
@@ -552,13 +542,11 @@ mod tests {
         };
         assert_eq!(default_opts, cloned_opts);
         assert_ne!(default_opts, different_opts);
-        assert!(format!("{default_opts:?}").contains("HeatOptions"));
+        let opts_dbg = format!("{default_opts:?}");
+        assert!(opts_dbg.contains("HeatOptions"));
 
-        // 11. Test run_app error and main
         assert_eq!(run_app(&[]), ExitCode::FAILURE);
         let code = main();
         assert_eq!(code, ExitCode::FAILURE);
-
-        let _ = fs::remove_dir_all(&temp_dir);
     }
 }

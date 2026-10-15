@@ -1001,11 +1001,12 @@ mod tests {
         );
 
         // Debug formatting for types
-        assert!(format!("{:?}", TargetOs::Windows).contains("Windows"));
-        assert!(
-            format!("{:?}", StandardDirectoryId::ProgramFilesFolder).contains("ProgramFilesFolder")
-        );
-        assert!(format!("{custom_root:?}").contains("PathResolver"));
+        let os_dbg = format!("{:?}", TargetOs::Windows);
+        let dir_dbg = format!("{:?}", StandardDirectoryId::ProgramFilesFolder);
+        let root_dbg = format!("{custom_root:?}");
+        assert!(os_dbg.contains("Windows"));
+        assert!(dir_dbg.contains("ProgramFilesFolder"));
+        assert!(root_dbg.contains("PathResolver"));
     }
 
     /// Tests offline sysroot path resolution on Windows.

@@ -33,7 +33,7 @@ pub extern "C" fn SysAllocString(s: *const u16) -> BSTR {
 }
 
 /// Allocates raw 4-byte-aligned heap memory for a `BSTR` buffer of `total_alloc` bytes.
-#[inline(always)]
+#[inline]
 fn alloc_bstr_memory(total_alloc: u32) -> *mut u8 {
     #[cfg(test)]
     if total_alloc == u32::MAX - 3 {

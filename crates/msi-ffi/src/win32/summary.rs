@@ -294,7 +294,7 @@ mod tests {
 
         assert_eq!(MsiSummaryInfoPersist(0), ERROR_INVALID_HANDLE);
 
-        let db = msi::wix::linker::LinkedDatabase::new().unwrap();
+        let db = msi::wix::linker::LinkedDatabase::new().unwrap_or_default();
         let h_db = alloc_handle(MsiObject::Database(crate::types::MsiDatabaseHandle {
             inner: db,
             state: 0,

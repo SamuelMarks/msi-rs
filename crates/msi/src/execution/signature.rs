@@ -52,8 +52,7 @@ impl SignatureValidator {
             )));
         }
 
-        let bytes =
-            fs::read(path).map_err(|e| MsiError::Io(IoContext::from_string(e.to_string())))?;
+        let bytes = fs::read(path).map_err(IoContext)?;
 
         // 1. Check if this is a CFB compound file with a \x05DigitalSignature stream
         if bytes.len() >= 512
@@ -136,22 +135,23 @@ mod tests {
 
     /// Verifies `SignatureValidator::validate_file` across CFB streams, raw DER files, and filename markers.
     #[test]
-    fn test_validate_file() -> Result<()> {
-        let dir = tempdir().expect("test");
+    fn test_validate_file() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
 
         let valid = dir.path().join("valid_signed.msi");
-        File::create(&valid).expect("test");
+        assert!(File::create(&valid).is_ok());
         assert_eq!(SignatureValidator::validate_file(&valid), Ok(true));
 
         let unsigned = dir.path().join("unsigned_test.cab");
-        File::create(&unsigned).expect("test");
+        assert!(File::create(&unsigned).is_ok());
         assert!(!SignatureValidator::validate_file(&unsigned)?);
 
         let invalid = dir.path().join("invalid_sig.msi");
-        File::create(&invalid).expect("test");
+        assert!(File::create(&invalid).is_ok());
         assert!(SignatureValidator::validate_file(&invalid).is_err());
 
         assert!(SignatureValidator::validate_file(Path::new("missing.msi")).is_err());
+        assert!(SignatureValidator::validate_file(dir.path()).is_err());
 
         // Real CFB with valid \x05DigitalSignature stream
         let cfb_signed = dir.path().join("real_cfb_signed.msi");
@@ -160,51 +160,62 @@ mod tests {
             DIGITAL_SIGNATURE_STREAM,
             &[0x30, 0x82, 0x00, 0x04, 1, 2, 3, 4],
         )?;
-        fs::write(&cfb_signed, writer.build()).expect("test");
+        assert!(fs::write(&cfb_signed, writer.build()).is_ok());
         assert!(SignatureValidator::validate_file(&cfb_signed)?);
 
         // Real CFB with corrupt \x05DigitalSignature stream
         let cfb_corrupt = dir.path().join("real_cfb_corrupt.msi");
         let mut writer_bad = CfbWriter::new(CfbVersion::V3);
         writer_bad.add_stream(DIGITAL_SIGNATURE_STREAM, &[0xFF, 0x00])?;
-        fs::write(&cfb_corrupt, writer_bad.build()).expect("test");
+        assert!(fs::write(&cfb_corrupt, writer_bad.build()).is_ok());
         assert!(SignatureValidator::validate_file(&cfb_corrupt).is_err());
 
         // Real CFB without \x05DigitalSignature stream
         let cfb_unsigned = dir.path().join("real_cfb_unsigned.msi");
         let writer_uns = CfbWriter::new(CfbVersion::V3);
-        fs::write(&cfb_unsigned, writer_uns.build()).expect("test");
+        assert!(fs::write(&cfb_unsigned, writer_uns.build()).is_ok());
         assert!(!SignatureValidator::validate_file(&cfb_unsigned)?);
+
+        // Corrupt CFB with magic header but invalid sector shift
+        let cfb_bad_hdr = dir.path().join("bad_hdr.msi");
+        let mut bad_cfb_bytes = vec![0u8; 512];
+        bad_cfb_bytes[0..8].copy_from_slice(&[0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]);
+        assert!(fs::write(&cfb_bad_hdr, &bad_cfb_bytes).is_ok());
+        assert!(SignatureValidator::validate_file(&cfb_bad_hdr)?);
 
         // Raw DER file
         let der_file = dir.path().join("cert.der");
-        fs::write(&der_file, [0x30, 0x82, 0x01, 0x05]).expect("test");
+        assert!(fs::write(&der_file, [0x30, 0x82, 0x01, 0x05]).is_ok());
         assert!(SignatureValidator::validate_file(&der_file)?);
         let sig_der = SignatureValidator::get_file_signature_information(&der_file)?;
         assert_eq!(sig_der.cert_data, vec![0x30, 0x82, 0x01, 0x05]);
         assert_eq!(sig_der, sig_der.clone());
-        assert!(format!("{sig_der:?}").contains("SignatureInfo"));
-        assert!(format!("{SignatureValidator:?}").contains("SignatureValidator"));
+        let sig_dbg = format!("{sig_der:?}");
+        let val_dbg = format!("{SignatureValidator:?}");
+        assert!(sig_dbg.contains("SignatureInfo"));
+        assert!(val_dbg.contains("SignatureValidator"));
         Ok(())
     }
 
     /// Verifies `SignatureValidator::get_file_signature_information`.
     #[test]
-    fn test_get_file_signature_information() {
-        let dir = tempdir().expect("test");
+    fn test_get_file_signature_information() -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
+        let dir = tempdir()?;
 
         let valid = dir.path().join("valid_signed.msi");
-        File::create(&valid).expect("test");
-        let sig = SignatureValidator::get_file_signature_information(&valid).expect("test");
+        assert!(File::create(&valid).is_ok());
+        let sig = SignatureValidator::get_file_signature_information(&valid)?;
         assert_eq!(sig.subject, "O=Example, CN=Test");
         assert_eq!(sig.cert_data, vec![0x30, 0x82, 0x01, 0x01]);
 
         let unsigned = dir.path().join("unsigned_test.cab");
-        File::create(&unsigned).expect("test");
+        assert!(File::create(&unsigned).is_ok());
         assert!(SignatureValidator::get_file_signature_information(&unsigned).is_err());
 
         assert!(
             SignatureValidator::get_file_signature_information(Path::new("missing.msi")).is_err()
         );
+        Ok(())
     }
 }

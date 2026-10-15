@@ -315,7 +315,11 @@ mod tests {
         let data = vec![0; 4];
         let res = TrueTypeHeader::parse(&data);
         assert!(res.is_err());
-        assert!(res.unwrap_err().to_string().contains("Font file too small"));
+        assert!(res
+            .err()
+            .unwrap_or_default()
+            .to_string()
+            .contains("Font file too small"));
     }
 
     #[test]
@@ -323,11 +327,15 @@ mod tests {
         let data = vec![0x12, 0x34, 0x56, 0x78, 0, 0, 0, 0, 0, 0, 0, 0];
         let res = TrueTypeHeader::parse(&data);
         assert!(res.is_err());
-        assert!(res.unwrap_err().to_string().contains("Invalid font magic"));
+        assert!(res
+            .err()
+            .unwrap_or_default()
+            .to_string()
+            .contains("Invalid font magic"));
     }
 
     #[test]
-    fn test_truetype_header_parse_success() {
+    fn test_truetype_header_parse_success() -> std::result::Result<(), Box<dyn std::error::Error>> {
         // Construct a minimal TTF header
         let mut data = vec![];
         data.extend(0x0001_0000u32.to_be_bytes()); // magic
@@ -342,9 +350,10 @@ mod tests {
         data.extend(128u32.to_be_bytes()); // offset
         data.extend(0u32.to_be_bytes()); // length
 
-        let header = TrueTypeHeader::parse(&data).expect("failed to parse");
+        let header = TrueTypeHeader::parse(&data)?;
         assert_eq!(header.num_tables, 1);
         assert_eq!(header.name_table_offset, 128);
+        Ok(())
     }
 
     #[test]
@@ -364,7 +373,7 @@ mod tests {
 
         let res = TrueTypeHeader::parse(&data);
         assert!(res.is_err());
-        let err = res.unwrap_err();
+        let err = res.err().unwrap_or_default();
         assert!(err.to_string().contains("Table directory out of bounds"));
     }
 
@@ -385,17 +394,17 @@ mod tests {
 
         let res = TrueTypeHeader::parse(&data);
         assert!(res.is_err());
-        let err = res.unwrap_err();
+        let err = res.err().unwrap_or_default();
         assert!(err.to_string().contains("Missing 'name' table in font"));
     }
 
     #[test]
-    fn test_font_manager_lifecycle() {
+    fn test_font_manager_lifecycle() -> std::result::Result<(), Box<dyn std::error::Error>> {
         #[allow(clippy::default_constructed_unit_structs)]
         let mgr = FontManager::default();
-        let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
+        let temp_dir = tempfile::tempdir()?;
         let font_path = temp_dir.path().join("dummy.ttf");
-        fs::write(&font_path, b"DUMMY").expect("failed to write");
+        assert!(fs::write(&font_path, b"DUMMY").is_ok());
 
         let file = FontFile::new(font_path);
         let name = FontName::new("Dummy");
@@ -406,5 +415,6 @@ mod tests {
         let bad_file = FontFile::new("/does/not/exist.ttf");
         assert!(mgr.register_font(&name, &bad_file).is_err());
         assert!(mgr.unregister_font(&name, &bad_file).is_err());
+        Ok(())
     }
 }

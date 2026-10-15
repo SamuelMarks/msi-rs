@@ -316,7 +316,8 @@ mod tests {
         mock.link_database(&mut db).unwrap_or_default();
 
         // Verify Debug representation
-        assert!(format!("{registry:?}").contains("MockExtension"));
+        let reg_dbg = format!("{registry:?}");
+        assert!(reg_dbg.contains("MockExtension"));
     }
 
     /// Tests that `with_builtin_extensions` registers all expected standard extensions.

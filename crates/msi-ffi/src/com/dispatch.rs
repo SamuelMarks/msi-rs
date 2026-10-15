@@ -15,7 +15,6 @@ const DISP_E_UNKNOWNNAME: HRESULT = -2_147_352_570; // 0x80020006
 const DISP_E_MEMBERNOTFOUND: HRESULT = -2_147_352_573; // 0x80020003
 
 /// Maps a single member and an optional set of argument names to a corresponding set of integer DISPIDs.
-
 #[inline(never)]
 #[allow(non_snake_case)]
 /// # Safety
@@ -112,7 +111,6 @@ pub unsafe extern "system" fn IDispatch_GetIDsOfNames(
 }
 
 /// Provides access to properties and methods exposed by an object.
-
 #[inline(never)]
 #[allow(non_snake_case, unused_variables)]
 /// # Safety

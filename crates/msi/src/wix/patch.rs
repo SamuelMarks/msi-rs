@@ -1652,7 +1652,7 @@ mod tests {
         let copy_cloned = instr_copy.clone();
         assert_eq!(copy_cloned, instr_copy);
         assert_ne!(instr_copy, instr_insert);
-        assert!(format!("{instr_copy:?}").contains("Copy"));
+        assert!(format!("{instr_copy:?}").contains("Copy"), "format check");
 
         let delta_obj = BinaryDelta {
             baseline_size: 10,
@@ -1662,7 +1662,8 @@ mod tests {
         #[allow(clippy::redundant_clone)]
         let delta_cloned = delta_obj.clone();
         assert_eq!(delta_cloned, delta_obj);
-        assert!(format!("{delta_obj:?}").contains("BinaryDelta"));
+        let delta_dbg = format!("{delta_obj:?}");
+        assert!(delta_dbg.contains("BinaryDelta"));
 
         // Compression when baseline is shorter than MIN_MATCH (8 bytes)
         // and updated ends with unmatched bytes
@@ -1766,43 +1767,50 @@ mod tests {
         #[allow(clippy::redundant_clone)]
         let frag_cloned = def_frag.clone();
         assert_eq!(frag_cloned, def_frag);
-        assert!(format!("{def_frag:?}").contains("CPackWiXFragment"));
+        let frag_dbg = format!("{def_frag:?}");
+        assert!(frag_dbg.contains("CPackWiXFragment"));
 
         let def_info = PatchInformation::default();
         #[allow(clippy::redundant_clone)]
         let info_cloned = def_info.clone();
         assert_eq!(info_cloned, def_info);
-        assert!(format!("{def_info:?}").contains("PatchInformation"));
+        let info_dbg = format!("{def_info:?}");
+        assert!(info_dbg.contains("PatchInformation"));
 
         let def_meta = PatchMetadata::default();
         #[allow(clippy::redundant_clone)]
         let meta_cloned = def_meta.clone();
         assert_eq!(meta_cloned, def_meta);
-        assert!(format!("{def_meta:?}").contains("PatchMetadata"));
+        let meta_dbg = format!("{def_meta:?}");
+        assert!(meta_dbg.contains("PatchMetadata"));
 
         let def_fam = PatchFamily::default();
         #[allow(clippy::redundant_clone)]
         let fam_cloned = def_fam.clone();
         assert_eq!(fam_cloned, def_fam);
-        assert!(format!("{def_fam:?}").contains("PatchFamily"));
+        let fam_dbg = format!("{def_fam:?}");
+        assert!(fam_dbg.contains("PatchFamily"));
 
         let def_target_image = TargetImage::default();
         #[allow(clippy::redundant_clone)]
         let target_image_cloned = def_target_image.clone();
         assert_eq!(target_image_cloned, def_target_image);
-        assert!(format!("{def_target_image:?}").contains("TargetImage"));
+        let ti_dbg = format!("{def_target_image:?}");
+        assert!(ti_dbg.contains("TargetImage"));
 
         let def_upgrade_image = UpgradeImage::default();
         #[allow(clippy::redundant_clone)]
         let upgrade_image_cloned = def_upgrade_image.clone();
         assert_eq!(upgrade_image_cloned, def_upgrade_image);
-        assert!(format!("{def_upgrade_image:?}").contains("UpgradeImage"));
+        let ui_dbg = format!("{def_upgrade_image:?}");
+        assert!(ui_dbg.contains("UpgradeImage"));
 
         let def_pc = PatchCreation::default();
         #[allow(clippy::redundant_clone)]
         let pc_cloned = def_pc.clone();
         assert_eq!(pc_cloned, def_pc);
-        assert!(format!("{def_pc:?}").contains("PatchCreation"));
+        let pc_dbg = format!("{def_pc:?}");
+        assert!(pc_dbg.contains("PatchCreation"));
 
         // XML root with <Patch> instead of <PatchCreation>, boolean variations,
         // and nested child tag branches
