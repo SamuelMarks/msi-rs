@@ -189,11 +189,11 @@ jobs:
       - name: Generate Code Coverage Report (JSON)
         run: |
           mkdir -p target/llvm-cov
-          cargo llvm-cov --workspace --all-targets --all-features --exclude msi-python --summary-only --json --output-path target/llvm-cov/coverage.json -- --test-threads=1
+          cargo llvm-cov report --summary-only --json --output-path target/llvm-cov/coverage.json
 
       - name: Enforce 100% Coverage
         run: |
-          python -c "import sys; from pathlib import Path; sys.path.insert(0, 'scripts'); from pre_commit import calculate_test_coverage; pct = calculate_test_coverage(Path('.'), force_run=False); print(f'Test coverage: {pct:.2f}%'); sys.exit(0 if pct >= 100.0 else 1)"
+          python -c "import json, sys; from pathlib import Path; sys.path.insert(0, 'scripts'); from pre_commit import calculate_test_coverage; data = json.load(open('target/llvm-cov/coverage.json')); [print('UNCOVERED:', f['filename'], f['summary']['lines']) for f in data['data'][0]['files'] if f['summary']['lines']['percent'] < 100.0 or f['summary']['functions']['percent'] < 100.0]; pct = calculate_test_coverage(Path('.'), force_run=False); print(f'Test coverage: {pct:.2f}%'); sys.exit(0 if pct >= 100.0 else 1)"
 
       - name: Upload Coverage Artifact
         uses: actions/upload-artifact@v7

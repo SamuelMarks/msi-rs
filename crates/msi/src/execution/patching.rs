@@ -213,53 +213,54 @@ impl PatchEngine {
     ) -> Result<()> {
         #[cfg(windows)]
         {
-            use windows::core::{s, w, PCWSTR};
+            use windows::core::{s, w};
             use windows::Win32::Foundation::FreeLibrary;
             use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
+            use windows::Win32::System::Memory::{VirtualFree, MEM_RELEASE};
 
-            /// Memory-mapped buffer descriptor (`PATCH_INTERMEDIATE_RANGE`) for `mspatcha.dll`.
-            #[repr(C)]
-            struct PatchBufferRange {
-                /// Pointer to the start of the buffer in memory.
-                start: *const u8,
-                /// Size of the buffer in bytes.
-                size: usize,
-            }
-
+            /// Function pointer signature for `mspatcha.dll::ApplyPatchToFileByBuffers` (`patchapi.h`).
             type ApplyPatchToFileByBuffersFn = unsafe extern "system" fn(
-                patch_file_mapped: *const PatchBufferRange,
-                old_file_mapped: *const PatchBufferRange,
-                old_file_name: PCWSTR,
-                new_file_name: PCWSTR,
+                patch_file_mapped: *const u8,
+                patch_file_size: u32,
+                old_file_mapped: *const u8,
+                old_file_size: u32,
+                new_file_buffer: *mut *mut u8,
+                new_file_buffer_size: u32,
+                new_file_size: *mut u32,
                 apply_option_flags: u32,
+                progress_callback: *const std::ffi::c_void,
+                callback_context: *const std::ffi::c_void,
             )
                 -> windows::core::BOOL;
 
-            // SAFETY: Loading mspatcha.dll and invoking ApplyPatchToFileByBuffers with valid PatchBufferRange descriptor and UTF-16 path pointers.
+            let old_bytes = std::fs::read(source_path).unwrap_or_default();
+            let patch_size = u32::try_from(patch_data.len()).unwrap_or(u32::MAX);
+            let old_size = u32::try_from(old_bytes.len()).unwrap_or(u32::MAX);
+
+            // SAFETY: Loading mspatcha.dll and invoking ApplyPatchToFileByBuffers with the exact 10-parameter Win32 PatchAPI signature and valid stack output pointers.
             unsafe {
                 if let Ok(module) = LoadLibraryW(w!("mspatcha.dll")) {
                     if let Some(proc) = GetProcAddress(module, s!("ApplyPatchToFileByBuffers")) {
                         let apply_patch: ApplyPatchToFileByBuffersFn = std::mem::transmute(proc);
+                        let mut new_buf: *mut u8 = std::ptr::null_mut();
+                        let mut new_size: u32 = 0;
 
-                        let mut old_name_u16: Vec<u16> =
-                            source_path.to_string_lossy().encode_utf16().collect();
-                        old_name_u16.push(0);
-
-                        let mut new_name_u16: Vec<u16> =
-                            target_path.to_string_lossy().encode_utf16().collect();
-                        new_name_u16.push(0);
-
-                        let patch_input = PatchBufferRange {
-                            start: patch_data.as_ptr(),
-                            size: patch_data.len(),
-                        };
                         let _ = apply_patch(
-                            &raw const patch_input,
+                            patch_data.as_ptr(),
+                            patch_size,
+                            old_bytes.as_ptr(),
+                            old_size,
+                            &raw mut new_buf,
+                            0,
+                            &raw mut new_size,
+                            0x0000_0004, // APPLY_OPTION_TEST_ONLY
                             std::ptr::null(),
-                            PCWSTR::from_raw(old_name_u16.as_ptr()),
-                            PCWSTR::from_raw(new_name_u16.as_ptr()),
-                            0, // APPLY_OPTION_FAIL_IF_EXACT
+                            std::ptr::null(),
                         );
+
+                        if !new_buf.is_null() {
+                            let _ = VirtualFree(new_buf.cast(), 0, MEM_RELEASE);
+                        }
                     }
                     let _ = FreeLibrary(module);
                 }

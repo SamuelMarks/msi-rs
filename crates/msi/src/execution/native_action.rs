@@ -1483,6 +1483,14 @@ mod tests {
             let mut auto_pe_loader = NativeLibraryLoader::new();
             let _ = auto_pe_loader.load_library(&temp_pe);
 
+            // Also exercise Auto mode with mock_wine_dir in PATH so the Some(wine_bin) branch is covered even on hosts without system wine
+            let old_path = std::env::var_os("PATH").unwrap_or_default();
+            std::env::set_var("PATH", &mock_wine_dir);
+            let mut auto_with_wine_loader = NativeLibraryLoader::new();
+            assert!(auto_with_wine_loader.load_library(&temp_pe).is_ok());
+            assert!(auto_with_wine_loader.wine_executable().is_some());
+            std::env::set_var("PATH", old_path);
+
             let _ = fs::remove_dir_all(&mock_wine_dir);
         }
         let _ = fs::remove_file(&temp_pe);
