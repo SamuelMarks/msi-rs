@@ -2659,6 +2659,7 @@ mod tests {
 
     /// Tests executing a shell script custom action with a relative script path and explicit working directory.
     #[test]
+    #[cfg(not(target_os = "windows"))]
     fn test_custom_action_sh_relative_script_with_working_dir() {
         let temp_dir = std::env::temp_dir().join("msi_test_sh_relative");
         let _ = std::fs::create_dir_all(&temp_dir);

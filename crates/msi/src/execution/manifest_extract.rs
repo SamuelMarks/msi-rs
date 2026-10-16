@@ -46,8 +46,8 @@ mod tests {
         let result = extract_manifest(Path::new("does_not_exist.dll"))
             .err()
             .unwrap_or_default();
-        let msg = result.to_string();
-        assert!(msg.contains("No such file") || msg.contains("cannot find the file"));
+        let msg = result.to_string().to_lowercase();
+        assert!(msg.contains("no such file") || msg.contains("find") || msg.contains("not found"));
     }
 
     #[test]

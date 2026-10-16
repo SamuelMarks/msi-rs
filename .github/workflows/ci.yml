@@ -184,12 +184,12 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Generate Code Coverage Report (LCOV)
-        run: cargo llvm-cov --workspace --all-targets --all-features --exclude msi-python --lcov --output-path lcov.info
+        run: cargo llvm-cov --workspace --all-targets --all-features --exclude msi-python --lcov --output-path lcov.info -- --test-threads=1
 
       - name: Generate Code Coverage Report (JSON)
         run: |
           mkdir -p target/llvm-cov
-          cargo llvm-cov --workspace --all-targets --all-features --exclude msi-python --summary-only --json --output-path target/llvm-cov/coverage.json
+          cargo llvm-cov --workspace --all-targets --all-features --exclude msi-python --summary-only --json --output-path target/llvm-cov/coverage.json -- --test-threads=1
 
       - name: Enforce 100% Coverage
         run: |

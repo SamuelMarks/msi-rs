@@ -1190,7 +1190,14 @@ impl HostSupervisorExecutor {
     ///
     /// The resulting value or `Ok(())` on success.
     fn run_supervisor_command(cmd_str: &str, timeout_ms: u64) -> Result<()> {
-        Self::run_supervisor_command_with_shell("sh", cmd_str, timeout_ms)
+        #[cfg(windows)]
+        {
+            Self::run_supervisor_command_with_shell("cmd.exe", cmd_str, timeout_ms)
+        }
+        #[cfg(not(windows))]
+        {
+            Self::run_supervisor_command_with_shell("sh", cmd_str, timeout_ms)
+        }
     }
 
     /// Executes a supervisor command using a specific shell binary.
@@ -1216,7 +1223,15 @@ impl HostSupervisorExecutor {
         use std::io::Read as _;
 
         let mut cmd = Command::new(shell);
-        cmd.arg("-c").arg(cmd_str);
+        #[cfg(windows)]
+        let flag = if shell.to_ascii_lowercase().contains("cmd") {
+            "/C"
+        } else {
+            "-c"
+        };
+        #[cfg(not(windows))]
+        let flag = "-c";
+        cmd.arg(flag).arg(cmd_str);
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
 
@@ -1459,16 +1474,18 @@ mod tests {
         assert_eq!(executor.timeout_ms(), 5000);
 
         // Test run_supervisor_command success
-        assert!(
-            HostSupervisorExecutor::run_supervisor_command("echo hello > /dev/null", 5000).is_ok()
-        );
+        assert!(HostSupervisorExecutor::run_supervisor_command("echo hello", 5000).is_ok());
 
         // Test run_supervisor_command failure
         let res_err = HostSupervisorExecutor::run_supervisor_command("exit 1", 5000);
         assert!(res_err.is_err());
 
         // Test run_supervisor_command timeout
-        let res_timeout = HostSupervisorExecutor::run_supervisor_command("sleep 1", 50);
+        #[cfg(windows)]
+        let sleep_cmd = "ping -n 3 127.0.0.1";
+        #[cfg(not(windows))]
+        let sleep_cmd = "sleep 1";
+        let res_timeout = HostSupervisorExecutor::run_supervisor_command(sleep_cmd, 50);
         assert!(res_timeout.is_err());
     }
 

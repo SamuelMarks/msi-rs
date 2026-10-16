@@ -1414,6 +1414,18 @@ mod tests {
 
         // Test find_wine_binary and find_wine_binary_in
         let _ = NativeLibraryLoader::find_wine_binary();
+        {
+            let mock_wine_dir =
+                std::env::temp_dir().join(format!("mock_wine_env_{}", std::process::id()));
+            let _ = fs::create_dir_all(&mock_wine_dir);
+            let mock_wine_bin = mock_wine_dir.join("wine");
+            let _ = fs::write(&mock_wine_bin, b"#!/bin/sh\nexit 0\n");
+            let old_path = std::env::var_os("PATH").unwrap_or_default();
+            std::env::set_var("PATH", &mock_wine_dir);
+            assert!(NativeLibraryLoader::find_wine_binary().is_some());
+            std::env::set_var("PATH", old_path);
+            let _ = fs::remove_dir_all(&mock_wine_dir);
+        }
 
         // Test loading PE DLL on non-Windows
         let temp_pe = std::env::temp_dir().join(format!("test_mock_pe_{}.dll", std::process::id()));
@@ -1466,6 +1478,10 @@ mod tests {
                 Err(MsiError::UnsupportedPlatform { .. })
             ));
             assert!(disabled_loader.wine_executable().is_none());
+
+            // 5. In Auto mode, load_library resolves Wine if installed on host or returns UnsupportedPlatform
+            let mut auto_pe_loader = NativeLibraryLoader::new();
+            let _ = auto_pe_loader.load_library(&temp_pe);
 
             let _ = fs::remove_dir_all(&mock_wine_dir);
         }
@@ -2270,21 +2286,13 @@ mod native_action_additional_tests {
 
     #[test]
     fn test_load_pe_without_wine() -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let mut loader = NativeLibraryLoader::new();
+        let mut loader = NativeLibraryLoader::new().with_wine_mode(WineMode::Disabled);
         // Create a dummy PE file
         let temp_dir = tempfile::tempdir()?;
         let pe_path = temp_dir.path().join("dummy.dll");
         assert!(fs::write(&pe_path, b"MZ\x00\x00").is_ok());
 
-        // Temporarily clear PATH to ensure wine is not found
-        let old_path = std::env::var_os("PATH");
-        std::env::remove_var("PATH");
-
         let res = loader.load_library(&pe_path);
-
-        if let Some(path) = old_path {
-            std::env::set_var("PATH", path);
-        }
 
         #[cfg(windows)]
         let _ = res;

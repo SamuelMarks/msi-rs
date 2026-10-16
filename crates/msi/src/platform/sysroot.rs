@@ -433,6 +433,7 @@ mod tests {
     fn test_sysroot_mount_guard_lifecycle() {
         let temp_dir =
             std::env::temp_dir().join(format!("msi_test_sysroot_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&temp_dir);
         let target_dev = BlockDevicePath::new("/dev/nvme0n1p3");
         let esp_dev = BlockDevicePath::new("/dev/nvme0n1p1");
 
@@ -520,12 +521,11 @@ mod tests {
         assert!(guard_nonexistent.unmount_all().is_ok());
 
         // Pseudofs mounting failure when target sub-path is blocked by a regular file
-        let bad_sub = temp_dir.join("dev");
-        let _ = std::fs::remove_dir_all(&bad_sub);
-        assert!(std::fs::write(&bad_sub, b"blocking_file").is_ok());
-        let mut fail_guard = SysrootMountGuard::new(target_dev, None, &temp_dir);
+        let blocked_scratch = temp_dir.join("blocked_scratch_file");
+        assert!(std::fs::write(&blocked_scratch, b"blocking_file").is_ok());
+        let mut fail_guard = SysrootMountGuard::new(target_dev, None, &blocked_scratch);
         assert!(fail_guard.mount_pseudofs().is_err());
-        let _ = std::fs::remove_file(&bad_sub);
+        let _ = std::fs::remove_file(&blocked_scratch);
 
         // Clean up
         let _ = std::fs::remove_dir_all(&temp_dir);

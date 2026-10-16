@@ -563,12 +563,21 @@ mod worker_executor_additional_tests {
         assert!(fs::write(non_empty_dir.join("file"), "data").is_ok());
         exec.created_directories.push(non_empty_dir);
 
-        // 3.c remove_dir fails on empty directory ending in `.` (EINVAL on all OSes even as root)
+        // 3.c remove_dir fails on empty directory
         let unremovable_child = q_dir.join("unremovable_child");
         assert!(fs::create_dir_all(&unremovable_child).is_ok());
+        #[cfg(windows)]
+        let prev_cwd = std::env::current_dir()?;
+        #[cfg(windows)]
+        std::env::set_current_dir(&unremovable_child)?;
+        #[cfg(windows)]
+        exec.created_directories.push(unremovable_child);
+        #[cfg(not(windows))]
         exec.created_directories.push(unremovable_child.join("."));
 
         let res = exec.rollback();
+        #[cfg(windows)]
+        let _ = std::env::set_current_dir(prev_cwd);
         assert!(res.is_err());
         let err_msg = res.err().unwrap_or_default().to_string();
         assert!(err_msg.contains("remove newly created file"));

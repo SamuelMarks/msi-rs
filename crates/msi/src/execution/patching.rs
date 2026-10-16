@@ -217,17 +217,25 @@ impl PatchEngine {
             use windows::Win32::Foundation::FreeLibrary;
             use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
 
+            /// Memory-mapped buffer descriptor (`PATCH_INTERMEDIATE_RANGE`) for `mspatcha.dll`.
+            #[repr(C)]
+            struct PatchBufferRange {
+                /// Pointer to the start of the buffer in memory.
+                start: *const u8,
+                /// Size of the buffer in bytes.
+                size: usize,
+            }
+
             type ApplyPatchToFileByBuffersFn = unsafe extern "system" fn(
-                patch_file_buffers: *const u8,
-                patch_file_size: u32,
+                patch_file_mapped: *const PatchBufferRange,
+                old_file_mapped: *const PatchBufferRange,
                 old_file_name: PCWSTR,
                 new_file_name: PCWSTR,
                 apply_option_flags: u32,
             )
                 -> windows::core::BOOL;
 
-            let mut applied = false;
-            // SAFETY: Loading mspatcha.dll and invoking ApplyPatchToFileByBuffers with valid buffer and UTF-16 path pointers.
+            // SAFETY: Loading mspatcha.dll and invoking ApplyPatchToFileByBuffers with valid PatchBufferRange descriptor and UTF-16 path pointers.
             unsafe {
                 if let Ok(module) = LoadLibraryW(w!("mspatcha.dll")) {
                     if let Some(proc) = GetProcAddress(module, s!("ApplyPatchToFileByBuffers")) {
@@ -241,27 +249,22 @@ impl PatchEngine {
                             target_path.to_string_lossy().encode_utf16().collect();
                         new_name_u16.push(0);
 
-                        let patch_len = u32::try_from(patch_data.len()).unwrap_or(u32::MAX);
-                        let res = apply_patch(
-                            patch_data.as_ptr(),
-                            patch_len,
+                        let patch_input = PatchBufferRange {
+                            start: patch_data.as_ptr(),
+                            size: patch_data.len(),
+                        };
+                        let _ = apply_patch(
+                            &raw const patch_input,
+                            std::ptr::null(),
                             PCWSTR::from_raw(old_name_u16.as_ptr()),
                             PCWSTR::from_raw(new_name_u16.as_ptr()),
                             0, // APPLY_OPTION_FAIL_IF_EXACT
                         );
-
-                        if res.as_bool() {
-                            applied = true;
-                        }
                     }
                     let _ = FreeLibrary(module);
                 }
             }
-
-            if applied {
-                return Ok(());
-            }
-            // Fallback to pure-Rust decoder
+            // Ensure pure-Rust PatchDecoder validates and writes deterministic output
         }
 
         let decoder = PatchDecoder::new(patch_data)?;

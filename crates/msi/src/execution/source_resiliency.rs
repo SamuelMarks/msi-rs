@@ -470,17 +470,20 @@ mod source_resiliency_additional_tests {
             list.resolve_file(Path::new("last_used.txt"), None::<fn(&str) -> bool>)?;
         assert_eq!(resolved_none_cb, file_path);
 
-        let mnt_dir = PathBuf::from("/tmp/msi_test_mnt/srv_none/share_none");
-        let _ = std::fs::create_dir_all(&mnt_dir);
-        let net_file = mnt_dir.join("net_found.txt");
-        let _ = std::fs::write(&net_file, "net");
-        list.sources.push(SourcePath::Network(NetworkSource {
-            unc_path: r"\\srv_none\share_none".to_string(),
-        }));
-        let resolved_net_none =
-            list.resolve_file(Path::new("net_found.txt"), None::<fn(&str) -> bool>)?;
-        assert_eq!(resolved_net_none, net_file);
-        let _ = std::fs::remove_dir_all("/tmp/msi_test_mnt/srv_none");
+        #[cfg(not(windows))]
+        {
+            let mnt_dir = PathBuf::from("/tmp/msi_test_mnt/srv_none/share_none");
+            let _ = std::fs::create_dir_all(&mnt_dir);
+            let net_file = mnt_dir.join("net_found.txt");
+            let _ = std::fs::write(&net_file, "net");
+            list.sources.push(SourcePath::Network(NetworkSource {
+                unc_path: r"\\srv_none\share_none".to_string(),
+            }));
+            let resolved_net_none =
+                list.resolve_file(Path::new("net_found.txt"), None::<fn(&str) -> bool>)?;
+            assert_eq!(resolved_net_none, net_file);
+            let _ = std::fs::remove_dir_all("/tmp/msi_test_mnt/srv_none");
+        }
 
         {
             static FN_PTR_CALLS: std::sync::atomic::AtomicUsize =
