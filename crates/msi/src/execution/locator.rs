@@ -328,13 +328,8 @@ mod tests {
             Some(&prod_squid),
             crate::platform::registry_store::RegistryValue::Sz("C:/App/bin.exe".to_string()),
         );
-        let found = provide_component_with_store(
-            &store,
-            prod_guid,
-            "Feature1",
-            comp_guid,
-            InstallMode::default(),
-        )?;
+        let mode = InstallMode::default();
+        let found = provide_component_with_store(&store, prod_guid, "Feature1", comp_guid, mode)?;
         assert_eq!(found, "C:/App/bin.exe");
         Ok(())
     }

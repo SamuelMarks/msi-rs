@@ -197,11 +197,8 @@ mod sql_tests_extended {
         );
 
         // Test JOIN
-        let res = execute_sql(
-            &mut db,
-            "SELECT T1.Name, T2.Color FROM T1, T2 WHERE T1.Id = T2.Id",
-            &[],
-        )?;
+        let query = "SELECT T1.Name, T2.Color FROM T1, T2 WHERE T1.Id = T2.Id";
+        let res = execute_sql(&mut db, query, &[])?;
         let expected = QueryResult::Select {
             columns: vec!["T1.Name".to_string(), "T2.Color".to_string()],
             rows: vec![

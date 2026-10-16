@@ -17,6 +17,7 @@ fn is_elevated_impl() -> bool {
     unsafe { libc::geteuid() == 0 }
 }
 
+/// Determines if the current process is running with elevated privileges (Administrator/root).
 #[cfg(target_os = "windows")]
 fn is_elevated_impl() -> bool {
     // Stub for Windows elevation check without heavy winapi dependencies.
@@ -24,6 +25,7 @@ fn is_elevated_impl() -> bool {
     std::env::var("UAC_ELEVATED").is_ok()
 }
 
+/// Determines if the current process is running with elevated privileges (Administrator/root).
 #[cfg(not(any(target_family = "unix", target_os = "windows")))]
 fn is_elevated_impl() -> bool {
     false

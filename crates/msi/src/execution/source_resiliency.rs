@@ -188,10 +188,7 @@ impl SourceList {
             let stripped = unc.strip_prefix(r"\\").unwrap_or(unc);
             let normalized = stripped.replace('\\', "/");
 
-            #[cfg(not(test))]
-            let base = "/mnt/";
-            #[cfg(test)]
-            let base = "/tmp/msi_test_mnt/";
+            let base = ["/mnt/", "/tmp/msi_test_mnt/"][usize::from(cfg!(test))];
             PathBuf::from(format!("{base}{normalized}"))
         }
     }

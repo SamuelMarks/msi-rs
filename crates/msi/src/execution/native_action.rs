@@ -1479,18 +1479,22 @@ mod tests {
             ));
             assert!(disabled_loader.wine_executable().is_none());
 
-            // 5. In Auto mode, load_library resolves Wine if installed on host or returns UnsupportedPlatform
+            // 5. In Auto mode, exercise both when Wine is absent and when Wine is present in PATH
+            let empty_path_dir =
+                std::env::temp_dir().join(format!("empty_wine_path_{}", std::process::id()));
+            let _ = fs::create_dir_all(&empty_path_dir);
+            let old_path = std::env::var_os("PATH").unwrap_or_default();
+            std::env::set_var("PATH", &empty_path_dir);
             let mut auto_pe_loader = NativeLibraryLoader::new();
             let _ = auto_pe_loader.load_library(&temp_pe);
 
-            // Also exercise Auto mode with mock_wine_dir in PATH so the Some(wine_bin) branch is covered even on hosts without system wine
-            let old_path = std::env::var_os("PATH").unwrap_or_default();
             std::env::set_var("PATH", &mock_wine_dir);
             let mut auto_with_wine_loader = NativeLibraryLoader::new();
             assert!(auto_with_wine_loader.load_library(&temp_pe).is_ok());
             assert!(auto_with_wine_loader.wine_executable().is_some());
             std::env::set_var("PATH", old_path);
 
+            let _ = fs::remove_dir_all(&empty_path_dir);
             let _ = fs::remove_dir_all(&mock_wine_dir);
         }
         let _ = fs::remove_file(&temp_pe);
@@ -1579,22 +1583,21 @@ mod tests {
                 Path::new("libc.so.7"),
                 Path::new("libc.so"),
             ];
-            if let Some(lib_sys) = lib_candidates
+            let lib_sys = lib_candidates
                 .into_iter()
                 .find(|p| dl_loader.load_library(p).is_ok())
-            {
-                // Loading another library when handle is Some covers closing previous handle:
-                assert!(dl_loader.load_library(lib_sys).is_ok());
+                .unwrap_or(Path::new("libc.so.6"));
+            // Loading another library when handle is Some covers closing previous handle:
+            assert!(dl_loader.load_library(lib_sys).is_ok());
 
-                // Symbol that exists in libc and returns 0 for char 'A' (65): isspace('A') == 0
-                assert_eq!(dl_loader.invoke_action("isspace", 65), Ok(ERROR_SUCCESS));
-                // Symbol that does not exist
-                assert!(dl_loader
-                    .invoke_action("non_existent_symbol_xyz", 0)
-                    .is_err());
-                // Symbol with interior null
-                assert!(dl_loader.invoke_action("invalid\0symbol", 0).is_err());
-            }
+            // Symbol that exists in libc and returns 0 for char 'A' (65): isspace('A') == 0
+            assert_eq!(dl_loader.invoke_action("isspace", 65), Ok(ERROR_SUCCESS));
+            // Symbol that does not exist
+            assert!(dl_loader
+                .invoke_action("non_existent_symbol_xyz", 0)
+                .is_err());
+            // Symbol with interior null
+            assert!(dl_loader.invoke_action("invalid\0symbol", 0).is_err());
         }
     }
 

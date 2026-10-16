@@ -102,7 +102,7 @@ impl NativeRegistryDriver {
                 PCWSTR(path_w.as_ptr()),
                 Some(0),
                 KEY_READ,
-                &mut hkey,
+                &raw mut hkey,
             )
         };
         if open_res == ERROR_SUCCESS {
@@ -115,7 +115,6 @@ impl NativeRegistryDriver {
     }
 
     /// Enumerates subkeys for a given registry key.
-    #[must_use]
     pub fn get_subkeys<'a>(
         &'a self,
         root: RegistryRoot,
@@ -130,7 +129,7 @@ impl NativeRegistryDriver {
                 PCWSTR(path_w.as_ptr()),
                 Some(0),
                 KEY_READ,
-                &mut hkey,
+                &raw mut hkey,
             )
         };
         if open_res != ERROR_SUCCESS {
@@ -149,7 +148,7 @@ impl NativeRegistryDriver {
                     hkey,
                     index,
                     Some(PWSTR(name_buf.as_mut_ptr())),
-                    &mut name_len,
+                    &raw mut name_len,
                     None,
                     Some(PWSTR(std::ptr::null_mut())),
                     None,
@@ -171,7 +170,6 @@ impl NativeRegistryDriver {
     }
 
     /// Enumerates value names for a given registry key.
-    #[must_use]
     pub fn get_value_names<'a>(
         &'a self,
         root: RegistryRoot,
@@ -186,7 +184,7 @@ impl NativeRegistryDriver {
                 PCWSTR(path_w.as_ptr()),
                 Some(0),
                 KEY_READ,
-                &mut hkey,
+                &raw mut hkey,
             )
         };
         if open_res != ERROR_SUCCESS {
@@ -205,7 +203,7 @@ impl NativeRegistryDriver {
                     hkey,
                     index,
                     Some(PWSTR(name_buf.as_mut_ptr())),
-                    &mut name_len,
+                    &raw mut name_len,
                     None,
                     None,
                     None,
@@ -243,7 +241,7 @@ impl NativeRegistryDriver {
                 PCWSTR(path_w.as_ptr()),
                 Some(0),
                 KEY_READ,
-                &mut hkey,
+                &raw mut hkey,
             )
         };
         if open_res != ERROR_SUCCESS {
@@ -263,9 +261,9 @@ impl NativeRegistryDriver {
                 hkey,
                 name_pcwstr,
                 None,
-                Some(&mut val_type),
+                Some(&raw mut val_type),
                 None,
-                Some(&mut val_len),
+                Some(&raw mut val_len),
             )
         };
 
@@ -282,9 +280,9 @@ impl NativeRegistryDriver {
                 hkey,
                 name_pcwstr,
                 None,
-                Some(&mut val_type),
+                Some(&raw mut val_type),
                 Some(data.as_mut_ptr()),
-                Some(&mut val_len),
+                Some(&raw mut val_len),
             )
         };
         // SAFETY: Closing key handle opened by RegOpenKeyExW.
@@ -313,7 +311,7 @@ impl NativeRegistryDriver {
         let path_w = to_pcwstr(key);
         // SAFETY: Creating or opening registry key with a valid null-terminated UTF-16 subkey buffer.
         let create_res =
-            unsafe { RegCreateKeyW(root_to_hkey(root), PCWSTR(path_w.as_ptr()), &mut hkey) };
+            unsafe { RegCreateKeyW(root_to_hkey(root), PCWSTR(path_w.as_ptr()), &raw mut hkey) };
         if create_res != ERROR_SUCCESS {
             return Ok(());
         }
@@ -375,7 +373,7 @@ impl NativeRegistryDriver {
                 PCWSTR(path_w.as_ptr()),
                 Some(0),
                 KEY_WRITE,
-                &mut hkey,
+                &raw mut hkey,
             )
         };
         if open_res != ERROR_SUCCESS {

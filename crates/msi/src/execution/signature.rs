@@ -156,10 +156,8 @@ mod tests {
         // Real CFB with valid \x05DigitalSignature stream
         let cfb_signed = dir.path().join("real_cfb_signed.msi");
         let mut writer = CfbWriter::new(CfbVersion::V3);
-        writer.add_stream(
-            DIGITAL_SIGNATURE_STREAM,
-            &[0x30, 0x82, 0x00, 0x04, 1, 2, 3, 4],
-        )?;
+        let sig_bytes = [0x30, 0x82, 0x00, 0x04, 1, 2, 3, 4];
+        writer.add_stream(DIGITAL_SIGNATURE_STREAM, &sig_bytes)?;
         assert!(fs::write(&cfb_signed, writer.build()).is_ok());
         assert!(SignatureValidator::validate_file(&cfb_signed)?);
 

@@ -300,7 +300,7 @@ pub mod windows_impl {
                             std::mem::transmute(proc);
                         let mut asm_cache_ptr: *mut std::ffi::c_void = std::ptr::null_mut();
 
-                        let hr = create_assembly_cache(&mut asm_cache_ptr, 0);
+                        let hr = create_assembly_cache(&raw mut asm_cache_ptr, 0);
                         if hr.is_ok() && !asm_cache_ptr.is_null() {
                             let asm_cache: IAssemblyCache = std::mem::transmute(asm_cache_ptr);
                             let mut path_u16: Vec<u16> =
@@ -362,7 +362,7 @@ pub mod windows_impl {
                             std::mem::transmute(proc);
                         let mut asm_cache_ptr: *mut std::ffi::c_void = std::ptr::null_mut();
 
-                        if create_assembly_cache(&mut asm_cache_ptr, 0).is_ok() {
+                        if create_assembly_cache(&raw mut asm_cache_ptr, 0).is_ok() {
                             let asm_cache: IAssemblyCache = std::mem::transmute(asm_cache_ptr);
                             let mut name_u16: Vec<u16> = assembly_name.encode_utf16().collect();
                             name_u16.push(0);
@@ -588,9 +588,9 @@ mod tests {
     #[test]
     fn test_from_pe_file_mocked() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let valid_path = Path::new("mock_valid_pe.dll");
-        let asm = AssemblyManifest::from_pe_file_with_extractor(valid_path, |_| {
-            Ok("<assemblyIdentity name=\"App\" version=\"1.0\" />".to_string())
-        })?;
+        let extract_ok =
+            |_: &Path| Ok("<assemblyIdentity name=\"App\" version=\"1.0\" />".to_string());
+        let asm = AssemblyManifest::from_pe_file_with_extractor(valid_path, extract_ok)?;
         assert_eq!(asm.identity.name, "App");
 
         let invalid_xml_path = Path::new("mock_invalid_xml.dll");

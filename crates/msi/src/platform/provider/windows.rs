@@ -148,12 +148,8 @@ mod tests {
     #[test]
     fn test_shell_registration() -> Result<(), MsiError> {
         let provider = WindowsProvider::default();
-        provider.register_file_association(
-            ".txt",
-            "txtfile",
-            "Text File",
-            Path::new("C:/Windows/notepad.exe"),
-        )?;
+        let notepad = Path::new("C:/Windows/notepad.exe");
+        provider.register_file_association(".txt", "txtfile", "Text File", notepad)?;
         assert_eq!(
             provider.read_registry_string(0, ".txt", "")?.as_deref(),
             Some("txtfile")

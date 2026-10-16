@@ -155,12 +155,12 @@ def test_hook_clippy(tmp_path: Path) -> None:
         mock_cmd.assert_called_once()
 
 
-
 @patch("pre_commit.run_command")
 def test_hook_pytest(mock_run: MagicMock, tmp_path: Path) -> None:
     """Test hook_pytest."""
     assert pre_commit.hook_pytest(tmp_path) == 0
     mock_run.assert_called_once_with(["pytest", "tests/python"], cwd=tmp_path)
+
 
 def test_hook_test(tmp_path: Path) -> None:
     """Verifies hook_test runs cargo test."""

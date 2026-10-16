@@ -155,12 +155,8 @@ mod tests {
     #[test]
     fn test_shell_registration() -> Result<(), MsiError> {
         let provider = LinuxProvider::new();
-        provider.register_file_association(
-            ".txt",
-            "txtfile",
-            "Text File",
-            Path::new("/usr/bin/nvim"),
-        )?;
+        let nvim = Path::new("/usr/bin/nvim");
+        provider.register_file_association(".txt", "txtfile", "Text File", nvim)?;
         assert_eq!(
             provider.read_registry_string(0, ".txt", "")?.as_deref(),
             Some("txtfile")

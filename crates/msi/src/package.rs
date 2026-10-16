@@ -2883,12 +2883,11 @@ mod tests {
         let _ = package.to_bytes()?; // Covers line 387, 388
 
         // Cover line 883: 2 PKs, first is equal
-        package.database.catalog.add_table(
-            TableSchema::new("TwoPKs")
-                .with_column(ColumnDef::new("PK1", DataType::String { max_len: 32 }).primary_key())
-                .with_column(ColumnDef::new("PK2", DataType::String { max_len: 32 }).primary_key())
-                .with_column(ColumnDef::new("Val", DataType::String { max_len: 32 }).nullable()),
-        )?;
+        let two_pks_schema = TableSchema::new("TwoPKs")
+            .with_column(ColumnDef::new("PK1", DataType::String { max_len: 32 }).primary_key())
+            .with_column(ColumnDef::new("PK2", DataType::String { max_len: 32 }).primary_key())
+            .with_column(ColumnDef::new("Val", DataType::String { max_len: 32 }).nullable());
+        package.database.catalog.add_table(two_pks_schema)?;
         for pk2 in ["A", "B"] {
             package.database.add_record(
                 "TwoPKs",

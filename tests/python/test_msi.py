@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 import msi
 
+
 def test_product_version_parsing_and_comparisons() -> None:
     """Verifies that ProductVersion parsing, instantiation, and property access work correctly."""
     v1 = msi.ProductVersion(1, 0, 0)

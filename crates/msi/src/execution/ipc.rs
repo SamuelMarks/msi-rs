@@ -32,6 +32,22 @@ impl<T: Read + Write + std::fmt::Debug> IpcConnection<T> {
         Self { stream }
     }
 
+    /// Maps a stream I/O error into a [`MsiError::WorkerIpcError`].
+    ///
+    /// # Arguments
+    ///
+    /// * `context` - Context message describing the failed I/O operation.
+    /// * `err` - Underlying standard I/O error.
+    ///
+    /// # Returns
+    ///
+    /// Constructed [`MsiError::WorkerIpcError`].
+    fn map_io_err(context: &str, err: &std::io::Error) -> MsiError {
+        MsiError::WorkerIpcError {
+            reason: format!("{context}: {err}"),
+        }
+    }
+
     /// Sends an RPC message over the connection.
     ///
     /// # Errors
@@ -49,17 +65,13 @@ impl<T: Read + Write + std::fmt::Debug> IpcConnection<T> {
         let len = u32::try_from(data.len()).unwrap_or(u32::MAX);
         self.stream
             .write_all(&len.to_le_bytes())
-            .map_err(|e| MsiError::WorkerIpcError {
-                reason: format!("Failed to write length: {e}"),
-            })?;
+            .map_err(|e| Self::map_io_err("Failed to write length", &e))?;
         self.stream
             .write_all(&data)
-            .map_err(|e| MsiError::WorkerIpcError {
-                reason: format!("Failed to write payload: {e}"),
-            })?;
-        self.stream.flush().map_err(|e| MsiError::WorkerIpcError {
-            reason: format!("Failed to flush stream: {e}"),
-        })?;
+            .map_err(|e| Self::map_io_err("Failed to write payload", &e))?;
+        self.stream
+            .flush()
+            .map_err(|e| Self::map_io_err("Failed to flush stream", &e))?;
         Ok(())
     }
 
@@ -75,9 +87,7 @@ impl<T: Read + Write + std::fmt::Debug> IpcConnection<T> {
         let mut len_buf = [0u8; 4];
         self.stream
             .read_exact(&mut len_buf)
-            .map_err(|e| MsiError::WorkerIpcError {
-                reason: format!("Failed to read length: {e}"),
-            })?;
+            .map_err(|e| Self::map_io_err("Failed to read length", &e))?;
         let len = u32::from_le_bytes(len_buf) as usize;
 
         if len > 1024 * 1024 {
@@ -89,9 +99,7 @@ impl<T: Read + Write + std::fmt::Debug> IpcConnection<T> {
         let mut data = vec![0u8; len];
         self.stream
             .read_exact(&mut data)
-            .map_err(|e| MsiError::WorkerIpcError {
-                reason: format!("Failed to read payload: {e}"),
-            })?;
+            .map_err(|e| Self::map_io_err("Failed to read payload", &e))?;
         RpcMessage::from_bytes(&data)
     }
 }

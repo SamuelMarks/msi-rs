@@ -117,10 +117,11 @@ impl SysrootMountGuard {
     #[allow(clippy::unnecessary_wraps, clippy::missing_const_for_fn)]
     fn perform_mount(source: &Path, target: &Path, fstype: Option<&str>, flags: u64) -> Result<()> {
         #[cfg(target_os = "linux")]
-        if let (Ok(c_src), Ok(c_tgt)) = (
-            std::ffi::CString::new(source.as_os_str().as_encoded_bytes()),
-            std::ffi::CString::new(target.as_os_str().as_encoded_bytes()),
-        ) {
+        {
+            let c_src =
+                std::ffi::CString::new(source.as_os_str().as_encoded_bytes()).unwrap_or_default();
+            let c_tgt =
+                std::ffi::CString::new(target.as_os_str().as_encoded_bytes()).unwrap_or_default();
             let c_type = fstype.and_then(|s| std::ffi::CString::new(s).ok());
             let type_ptr = c_type.as_ref().map_or(std::ptr::null(), |c| c.as_ptr());
             let flags_bytes = flags.to_ne_bytes();
@@ -157,7 +158,9 @@ impl SysrootMountGuard {
     #[allow(clippy::unnecessary_wraps, clippy::missing_const_for_fn)]
     fn perform_unmount(target: &Path, lazy: bool) -> Result<()> {
         #[cfg(target_os = "linux")]
-        if let Ok(c_tgt) = std::ffi::CString::new(target.as_os_str().as_encoded_bytes()) {
+        {
+            let c_tgt =
+                std::ffi::CString::new(target.as_os_str().as_encoded_bytes()).unwrap_or_default();
             let flags = if lazy { libc::MNT_DETACH } else { 0 };
             // SAFETY: libc::umount2 is called with valid C string.
             let ret = unsafe { libc::umount2(c_tgt.as_ptr(), flags) };

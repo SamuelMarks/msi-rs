@@ -639,26 +639,26 @@ mod tests {
 
     /// Tests empty cabinet archive.
     #[test]
-    fn test_cabinet_writer_continuation_folders(
-    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    fn test_cabinet_writer_continuation_folders() {
         let mut writer = CabinetWriter::new(CompressionType::None);
         // Add file with continuation folder to empty folders array
-        writer.add_file_with_folder_index(
+        let res1 = writer.add_file_with_folder_index(
             "cont.txt",
             b"cont_data",
             FolderIndex::ContinuedToNext,
-        )?;
+        );
+        assert!(res1.is_ok());
 
         // Add another to hit the `!self.folders.is_empty()` branch in the continuation folder block
-        writer.add_file_with_folder_index(
+        let res2 = writer.add_file_with_folder_index(
             "cont2.txt",
             b"cont_data_2",
             FolderIndex::ContinuedFromPrev,
-        )?;
+        );
+        assert!(res2.is_ok());
 
         let cab = writer.build().unwrap_or_default();
         assert!(!cab.is_empty());
-        Ok(())
     }
 
     #[test]

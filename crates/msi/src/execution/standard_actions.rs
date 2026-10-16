@@ -1494,12 +1494,10 @@ mod tests {
         )
         .map_err(crate::error::IoContext)?;
         engine.install_driver(&inf_path)?;
+        let drv_key = r"SYSTEM\CurrentControlSet\Control\Class\Net";
+        let provider_val = engine.get_registry_value(2, drv_key, Some("Provider"))?;
         assert_eq!(
-            engine.get_registry_value(
-                2,
-                r"SYSTEM\CurrentControlSet\Control\Class\Net",
-                Some("Provider")
-            )?,
+            provider_val,
             Some(RegistryValue::Sz("AcmeCorp".to_string()))
         );
         Ok(())

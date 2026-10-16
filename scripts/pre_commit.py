@@ -72,9 +72,7 @@ def run_command(
     )
 
 
-def re_stage_git_files(
-    repo_root: Path, file_paths: list[Path] | None = None
-) -> None:
+def re_stage_git_files(repo_root: Path, file_paths: list[Path] | None = None) -> None:
     """Re-stages files in git index if git repository is present."""
     git_bin = shutil.which("git", path=get_augmented_env().get("PATH"))
     if not git_bin:
@@ -149,6 +147,8 @@ def hook_clippy(repo_root: Path) -> int:
             "clippy::pedantic",
             "-A",
             "clippy::const_is_empty",
+            "-A",
+            "clippy::assert_is_empty",
         ],
         cwd=repo_root,
     )
@@ -204,7 +204,9 @@ def calculate_doc_coverage(repo_root: Path, force_run: bool = True) -> float:
         env = get_augmented_env()
         env["RUSTDOCFLAGS"] = "-Z unstable-options --show-coverage --output-format json"
         run_command(
-            ["cargo", "+nightly", "doc", "--workspace", "--no-deps"], cwd=repo_root, env=env
+            ["cargo", "+nightly", "doc", "--workspace", "--no-deps"],
+            cwd=repo_root,
+            env=env,
         )
         doc_json_files = list(doc_dir.glob("*.json")) if doc_dir.exists() else []
 
@@ -223,7 +225,9 @@ def calculate_doc_coverage(repo_root: Path, force_run: bool = True) -> float:
                         total_items += stats["total"]
                         with_docs += stats["with_docs"]
         except Exception as err:
-            raise RuntimeError(f"Failed to parse rustdoc JSON {json_file}: {err}") from err
+            raise RuntimeError(
+                f"Failed to parse rustdoc JSON {json_file}: {err}"
+            ) from err
 
     if total_items == 0:
         return 100.0
@@ -374,13 +378,13 @@ def hook_shields(repo_root: Path, force_run: bool = True) -> int:
     return 0
 
 
-
 def hook_pytest(repo_root: Path) -> int:
     """Runs all pytest tests for msi-python."""
     print("==> [pytest] Running pytest tests (pytest tests/python)...")
     run_command(["pytest", "tests/python"], cwd=repo_root)
     print("==> [pytest] All pytest tests passed.")
     return 0
+
 
 def hook_all(repo_root: Path) -> int:
     """Executes the complete pre-commit validation pipeline in sequence."""

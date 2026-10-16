@@ -940,6 +940,17 @@ mod tests {
             ],
         );
 
+        module_db.tables.insert(
+            "ModuleConfiguration".to_string(),
+            vec![Record::with_fields(vec![
+                FieldValue::String("NO_DEFAULT_PARAM".to_string()),
+                FieldValue::Short(0),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+            ])],
+        );
+
         let module = MergeModule {
             id: "Mod.Guid".to_string(),
             language: 1033,

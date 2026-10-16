@@ -575,14 +575,18 @@ def capture_workspace_artifacts(repo_root: Path) -> CapturedWorkspaceArtifacts:
         tmp_dir = Path(tmp_str)
         target_root = tmp_dir / "target_root"
         target_root.mkdir(parents=True, exist_ok=True)
-        target_prop = f'    <Property Id="TARGETDIR" Value="{target_root}" />\n  </Product>'
+        target_prop = (
+            f'    <Property Id="TARGETDIR" Value="{target_root}" />\n  </Product>'
+        )
 
         # Write real payload binaries and license file for ExampleApp.msi
         (tmp_dir / "LICENSE.txt").write_text(license_text, encoding="utf-8")
         (tmp_dir / "server.bin").write_bytes(b"\x7fELF" + b"\x00" * 24_576)
         (tmp_dir / "libcore.dylib").write_bytes(b"\xcf\xfa\xed\xfe" + b"\x00" * 16_384)
         (tmp_dir / "msi-cli.bin").write_bytes(b"\x7fELF" + b"\x00" * 12_288)
-        (tmp_dir / "docs.md").write_text("# ExampleApp SDK Documentation", encoding="utf-8")
+        (tmp_dir / "docs.md").write_text(
+            "# ExampleApp SDK Documentation", encoding="utf-8"
+        )
         (tmp_dir / "symbols.dbg").write_bytes(b"DWARF" + b"\x00" * 8_192)
         (tmp_dir / "ExampleApp.wxs").write_text(
             EXAMPLE_APP_WXS.replace("  </Product>", target_prop),
@@ -703,7 +707,11 @@ def capture_workspace_artifacts(repo_root: Path) -> CapturedWorkspaceArtifacts:
             text=True,
         )
         raw_tui_lines = tui_proc.stdout.splitlines()
-        tui_frame_lines = [line for line in raw_tui_lines if not line.startswith("Successfully installed")]
+        tui_frame_lines = [
+            line
+            for line in raw_tui_lines
+            if not line.startswith("Successfully installed")
+        ]
 
         # 6. Run real `msi-gui` binary for WelcomeDlg, LicenseAgreementDlg, CustomizeDlg, and ProgressDlg
         welcome_dump = tmp_dir / "welcome_state.txt"
@@ -791,7 +799,9 @@ def capture_workspace_artifacts(repo_root: Path) -> CapturedWorkspaceArtifacts:
 
         welcome_state = parse_runtime_state(welcome_dump.read_text(encoding="utf-8"))
         license_state = parse_runtime_state(license_dump.read_text(encoding="utf-8"))
-        customize_state = parse_runtime_state(customize_dump.read_text(encoding="utf-8"))
+        customize_state = parse_runtime_state(
+            customize_dump.read_text(encoding="utf-8")
+        )
         progress_state = parse_runtime_state(progress_dump.read_text(encoding="utf-8"))
 
         # Assemble real CLI install + info lines
@@ -1052,7 +1062,11 @@ def render_gui_welcome_from_state(
         [(sidebar_w + 1, title_h + 1), (width - 2, footer_y - 1)],
         fill=CONTENT_BG,
     )
-    draw.line([(sidebar_w, title_h + 1), (sidebar_w, footer_y - 1)], fill=BORDER_COLOR, width=1)
+    draw.line(
+        [(sidebar_w, title_h + 1), (sidebar_w, footer_y - 1)],
+        fill=BORDER_COLOR,
+        width=1,
+    )
 
     # Extract evaluated `Title` and `Description` controls from `WelcomeDlg`
     title_ctrl = next(
@@ -1166,7 +1180,9 @@ def render_gui_welcome_from_state(
         [sb_x, st_box_y + 1, width - 19, st_box_bottom - 1],
         fill=(242, 244, 248),
     )
-    draw.line([(sb_x, st_box_y + 1), (sb_x, st_box_bottom - 1)], fill=(220, 224, 232), width=1)
+    draw.line(
+        [(sb_x, st_box_y + 1), (sb_x, st_box_bottom - 1)], fill=(220, 224, 232), width=1
+    )
     draw.rounded_rectangle(
         [sb_x + 2, st_box_y + 6, width - 21, st_box_y + 42],
         radius=3,
@@ -1198,7 +1214,9 @@ def render_gui_welcome_from_state(
         None,
     )
     next_label = clean_msi_text(next_ctrl.text) if next_ctrl is not None else "I agree"
-    cancel_label = clean_msi_text(cancel_ctrl.text) if cancel_ctrl is not None else "Cancel"
+    cancel_label = (
+        clean_msi_text(cancel_ctrl.text) if cancel_ctrl is not None else "Cancel"
+    )
 
     btn_y1 = footer_y + 11
     btn_y2 = height - 11
@@ -1229,18 +1247,24 @@ def render_gui_feature_tree_from_state(state: GuiRuntimeState) -> Image.Image:
 
     # White top header banner (`WixUI_Bmp_Banner`)
     draw.rectangle([(1, title_h + 1), (width - 2, banner_bottom)], fill=(255, 255, 255))
-    draw.line([(1, banner_bottom), (width - 1, banner_bottom)], fill=BORDER_COLOR, width=1)
+    draw.line(
+        [(1, banner_bottom), (width - 1, banner_bottom)], fill=BORDER_COLOR, width=1
+    )
 
     title_ctrl = next((c for c in state.controls if c.control_id == "Title"), None)
     desc_ctrl = next((c for c in state.controls if c.control_id == "Description"), None)
-    title_str = clean_msi_text(title_ctrl.text) if title_ctrl is not None else "Custom Setup"
+    title_str = (
+        clean_msi_text(title_ctrl.text) if title_ctrl is not None else "Custom Setup"
+    )
     desc_str = (
         clean_msi_text(desc_ctrl.text)
         if desc_ctrl is not None
         else "Select the way you want features to be installed."
     )
 
-    draw.text((22, title_h + 10), title_str, fill=TEXT_PRIMARY, font=load_font(15, bold=True))
+    draw.text(
+        (22, title_h + 10), title_str, fill=TEXT_PRIMARY, font=load_font(15, bold=True)
+    )
     draw.text((22, title_h + 32), desc_str, fill=TEXT_SECONDARY, font=load_font(12))
 
     # Top-right package emblem
@@ -1302,8 +1326,12 @@ def render_gui_feature_tree_from_state(state: GuiRuntimeState) -> Image.Image:
             nx += 14
         else:
             # Tree connector branch line
-            draw.line([(nx - 8, ry + 2), (nx - 8, ry + 11)], fill=(185, 192, 204), width=1)
-            draw.line([(nx - 8, ry + 11), (nx - 2, ry + 11)], fill=(185, 192, 204), width=1)
+            draw.line(
+                [(nx - 8, ry + 2), (nx - 8, ry + 11)], fill=(185, 192, 204), width=1
+            )
+            draw.line(
+                [(nx - 8, ry + 11), (nx - 2, ry + 11)], fill=(185, 192, 204), width=1
+            )
 
         # Native GUI checkbox widget (no ASCII brackets)
         cb_x1, cb_y1 = nx, ry + 4
@@ -1317,7 +1345,11 @@ def render_gui_feature_tree_from_state(state: GuiRuntimeState) -> Image.Image:
                 width=1,
             )
             draw.line(
-                [(cb_x1 + 3, cb_y1 + 7), (cb_x1 + 6, cb_y1 + 10), (cb_x1 + 10, cb_y1 + 4)],
+                [
+                    (cb_x1 + 3, cb_y1 + 7),
+                    (cb_x1 + 6, cb_y1 + 10),
+                    (cb_x1 + 10, cb_y1 + 4),
+                ],
                 fill=(255, 255, 255),
                 width=2,
             )
@@ -1357,7 +1389,12 @@ def render_gui_feature_tree_from_state(state: GuiRuntimeState) -> Image.Image:
     )
     font_bold = load_font(12, bold=True)
     font_body = load_font(12)
-    draw.text((desc_x1 + 12, desc_y1 + 10), "Feature Description:", fill=TEXT_PRIMARY, font=font_bold)
+    draw.text(
+        (desc_x1 + 12, desc_y1 + 10),
+        "Feature Description:",
+        fill=TEXT_PRIMARY,
+        font=font_bold,
+    )
     draw.line(
         [(desc_x1 + 12, desc_y1 + 28), (desc_x2 - 12, desc_y1 + 28)],
         fill=(225, 229, 236),
@@ -1410,9 +1447,21 @@ def render_gui_feature_tree_from_state(state: GuiRuntimeState) -> Image.Image:
 
     req_kb = max(1, req_bytes // 1024)
     free_gb = free_bytes / (1024**3)
-    draw.text((desc_x1 + 12, cost_y1 + 36), f"Volume '{vol_name}' Required:", fill=TEXT_SECONDARY, font=font_body)
-    draw.text((desc_x1 + 145, cost_y1 + 36), f"{req_kb} KB", fill=TEXT_PRIMARY, font=font_bold)
-    draw.text((desc_x1 + 12, cost_y1 + 56), "Volume Available:", fill=TEXT_SECONDARY, font=font_body)
+    draw.text(
+        (desc_x1 + 12, cost_y1 + 36),
+        f"Volume '{vol_name}' Required:",
+        fill=TEXT_SECONDARY,
+        font=font_body,
+    )
+    draw.text(
+        (desc_x1 + 145, cost_y1 + 36), f"{req_kb} KB", fill=TEXT_PRIMARY, font=font_bold
+    )
+    draw.text(
+        (desc_x1 + 12, cost_y1 + 56),
+        "Volume Available:",
+        fill=TEXT_SECONDARY,
+        font=font_body,
+    )
     draw.text(
         (desc_x1 + 145, cost_y1 + 56),
         f"{free_gb:.1f} GB",
@@ -1430,7 +1479,9 @@ def render_gui_feature_tree_from_state(state: GuiRuntimeState) -> Image.Image:
     next_label = clean_msi_text(next_ctrl.text) if next_ctrl is not None else "Next >"
     if next_label == "Next":
         next_label = "Next >"
-    cancel_label = clean_msi_text(cancel_ctrl.text) if cancel_ctrl is not None else "Cancel"
+    cancel_label = (
+        clean_msi_text(cancel_ctrl.text) if cancel_ctrl is not None else "Cancel"
+    )
     btn_y1 = footer_y + 11
     btn_y2 = height - 11
     draw_gui_button(draw, (274, btn_y1, 356, btn_y2), back_label)
@@ -1459,7 +1510,9 @@ def render_gui_progress_from_state(state: GuiRuntimeState) -> Image.Image:
     footer_y = height - 52
 
     draw.rectangle([(1, title_h + 1), (width - 2, banner_bottom)], fill=(255, 255, 255))
-    draw.line([(1, banner_bottom), (width - 1, banner_bottom)], fill=BORDER_COLOR, width=1)
+    draw.line(
+        [(1, banner_bottom), (width - 1, banner_bottom)], fill=BORDER_COLOR, width=1
+    )
 
     title_ctrl = next((c for c in state.controls if c.control_id == "Title"), None)
     title_str = (
@@ -1467,7 +1520,9 @@ def render_gui_progress_from_state(state: GuiRuntimeState) -> Image.Image:
         if title_ctrl is not None
         else f"Installing {state.properties.get('ProductName', 'Open edX Stack')}"
     )
-    draw.text((22, title_h + 10), title_str, fill=TEXT_PRIMARY, font=load_font(15, bold=True))
+    draw.text(
+        (22, title_h + 10), title_str, fill=TEXT_PRIMARY, font=load_font(15, bold=True)
+    )
     draw.text(
         (22, title_h + 32),
         "Please wait while the Setup Wizard installs and configures packages.",
@@ -1486,7 +1541,9 @@ def render_gui_progress_from_state(state: GuiRuntimeState) -> Image.Image:
     draw.line([(ix + 8, iy + 14), (ix + 26, iy + 14)], fill=(255, 255, 255), width=2)
     draw.line([(ix + 17, iy + 8), (ix + 17, iy + 26)], fill=(255, 255, 255), width=2)
 
-    action_ctrl = next((c for c in state.controls if c.control_id == "ActionText"), None)
+    action_ctrl = next(
+        (c for c in state.controls if c.control_id == "ActionText"), None
+    )
     prog_ctrl = next((c for c in state.controls if c.control_id == "ProgressBar"), None)
     action_str = (
         clean_msi_text(action_ctrl.text)
@@ -1665,7 +1722,9 @@ def render_tui_from_lines(tui_lines: Sequence[str]) -> Image.Image:
                 continue
             x = pad_x + col_idx * cell_w
             if ch in BOX_DRAWING_CHARS:
-                box_col = TERM_BLUE if is_title_border or ch in "┌┐└┘─│├┤" else TERM_GREEN
+                box_col = (
+                    TERM_BLUE if is_title_border or ch in "┌┐└┘─│├┤" else TERM_GREEN
+                )
                 draw_box_drawing_cell(draw, ch, x, y, cell_w, cell_h, box_col)
             else:
                 fg = (
@@ -1677,7 +1736,9 @@ def render_tui_from_lines(tui_lines: Sequence[str]) -> Image.Image:
                     (x, y),
                     ch,
                     fill=fg,
-                    font=font_bold if (is_focused_btn or is_title_border) else font_mono,
+                    font=font_bold
+                    if (is_focused_btn or is_title_border)
+                    else font_mono,
                 )
 
     return img
@@ -1751,7 +1812,9 @@ def render_terminal_session(
     return img
 
 
-def generate_gui_welcome(artifacts: CapturedWorkspaceArtifacts | None = None) -> Image.Image:
+def generate_gui_welcome(
+    artifacts: CapturedWorkspaceArtifacts | None = None,
+) -> Image.Image:
     """Generates `gui_welcome_dialog.png` from real `msi-gui` execution.
 
     Args:
@@ -1781,7 +1844,9 @@ def generate_gui_feature_tree(
     return render_gui_feature_tree_from_state(cap.customize_state)
 
 
-def generate_gui_progress(artifacts: CapturedWorkspaceArtifacts | None = None) -> Image.Image:
+def generate_gui_progress(
+    artifacts: CapturedWorkspaceArtifacts | None = None,
+) -> Image.Image:
     """Generates `gui_progress_dialog.png` from real `msi-gui` execution.
 
     Args:
@@ -1795,7 +1860,9 @@ def generate_gui_progress(artifacts: CapturedWorkspaceArtifacts | None = None) -
     return render_gui_progress_from_state(cap.progress_state)
 
 
-def generate_tui_wizard(artifacts: CapturedWorkspaceArtifacts | None = None) -> Image.Image:
+def generate_tui_wizard(
+    artifacts: CapturedWorkspaceArtifacts | None = None,
+) -> Image.Image:
     """Generates `tui_wizard.png` from real `msi install --tui` execution.
 
     Args:
@@ -1809,7 +1876,9 @@ def generate_tui_wizard(artifacts: CapturedWorkspaceArtifacts | None = None) -> 
     return render_tui_from_lines(cap.tui_lines)
 
 
-def generate_cli_install(artifacts: CapturedWorkspaceArtifacts | None = None) -> Image.Image:
+def generate_cli_install(
+    artifacts: CapturedWorkspaceArtifacts | None = None,
+) -> Image.Image:
     """Generates `cli_install_output.png` from real `msi install` and `msi info` execution.
 
     Args:
@@ -1826,7 +1895,9 @@ def generate_cli_install(artifacts: CapturedWorkspaceArtifacts | None = None) ->
     )
 
 
-def generate_cli_chainer(artifacts: CapturedWorkspaceArtifacts | None = None) -> Image.Image:
+def generate_cli_chainer(
+    artifacts: CapturedWorkspaceArtifacts | None = None,
+) -> Image.Image:
     """Generates `cli_chainer_output.png` from real `msi-cli pack -v` and `msi-cli msiexec` execution.
 
     Args:

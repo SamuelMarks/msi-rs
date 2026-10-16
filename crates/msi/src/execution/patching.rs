@@ -216,7 +216,6 @@ impl PatchEngine {
             use windows::core::{s, w};
             use windows::Win32::Foundation::FreeLibrary;
             use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
-            use windows::Win32::System::Memory::{VirtualFree, MEM_RELEASE};
 
             /// Function pointer signature for `mspatcha.dll::ApplyPatchToFileByBuffers` (`patchapi.h`).
             type ApplyPatchToFileByBuffersFn = unsafe extern "system" fn(
@@ -257,10 +256,6 @@ impl PatchEngine {
                             std::ptr::null(),
                             std::ptr::null(),
                         );
-
-                        if !new_buf.is_null() {
-                            let _ = VirtualFree(new_buf.cast(), 0, MEM_RELEASE);
-                        }
                     }
                     let _ = FreeLibrary(module);
                 }

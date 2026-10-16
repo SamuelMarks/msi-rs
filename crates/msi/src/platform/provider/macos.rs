@@ -152,12 +152,8 @@ mod tests {
     #[test]
     fn test_shell_registration() -> Result<(), MsiError> {
         let provider = MacOsProvider::default();
-        provider.register_file_association(
-            ".txt",
-            "txtfile",
-            "Text File",
-            Path::new("/Applications/TextEdit.app"),
-        )?;
+        let app = Path::new("/Applications/TextEdit.app");
+        provider.register_file_association(".txt", "txtfile", "Text File", app)?;
         assert_eq!(
             provider.read_registry_string(0, ".txt", "")?.as_deref(),
             Some("txtfile")

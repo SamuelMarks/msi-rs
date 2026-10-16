@@ -45,7 +45,9 @@ def _make_sample_artifacts() -> generate_screenshots.CapturedWorkspaceArtifacts:
                 True,
                 False,
                 0,
-                "{" + chr(92) + "WixUI_Font_Bigger}Welcome to the ExampleApp Setup Wizard",
+                "{"
+                + chr(92)
+                + "WixUI_Font_Bigger}Welcome to the ExampleApp Setup Wizard",
             ),
             generate_screenshots.GuiControlRecord(
                 "Description",
@@ -327,8 +329,13 @@ def test_clean_msi_text_and_strip_rtf() -> None:
     assert "{brace}" in cleaned
     assert "Line 2" + chr(10) + "Line 3" in cleaned
 
-    assert generate_screenshots.strip_rtf_text("{" + bs + "rtf1 Trailing" + bs) == "Trailing"
-    assert generate_screenshots.strip_rtf_text("{" + bs + "rtf1 A" + bs + ".B}") == "A.B"
+    assert (
+        generate_screenshots.strip_rtf_text("{" + bs + "rtf1 Trailing" + bs)
+        == "Trailing"
+    )
+    assert (
+        generate_screenshots.strip_rtf_text("{" + bs + "rtf1 A" + bs + ".B}") == "A.B"
+    )
 
 
 def test_parse_runtime_state() -> None:
@@ -414,9 +421,10 @@ def test_rendering_functions_and_fallbacks() -> None:
     # Test draw_box_drawing_cell with unknown char
     draw = ImageDraw.Draw(img4)
     generate_screenshots.draw_box_drawing_cell(draw, "?", 0, 0, 8, 16, (255, 255, 255))
-    assert generate_screenshots.wrap_text_lines(
-        draw, "", ImageFont.load_default(), 100
-    ) == []
+    assert (
+        generate_screenshots.wrap_text_lines(draw, "", ImageFont.load_default(), 100)
+        == []
+    )
 
     # Test render_terminal_session with long spaced and unspaced lines
     long_spaced = "word " * 30
@@ -490,9 +498,7 @@ def test_ensure_binaries_and_capture_artifacts(tmp_path: Path) -> None:
                 encoding="utf-8",
             )
         res = MagicMock()
-        res.stdout = (
-            f"[INFO] Media cabinets: 4{nl}  * DiskId 1: #engine.cab{nl}Successfully installed{nl}"
-        )
+        res.stdout = f"[INFO] Media cabinets: 4{nl}  * DiskId 1: #engine.cab{nl}Successfully installed{nl}"
         return res
 
     with patch("subprocess.run", side_effect=fake_run):
@@ -531,16 +537,24 @@ def test_main_and_dunder_main(tmp_path: Path) -> None:
             "capture_workspace_artifacts",
             return_value=artifacts,
         ),
-        patch.object(generate_screenshots, "generate_gui_welcome", return_value=small_img),
+        patch.object(
+            generate_screenshots, "generate_gui_welcome", return_value=small_img
+        ),
         patch.object(
             generate_screenshots, "generate_gui_feature_tree", return_value=small_img
         ),
         patch.object(
             generate_screenshots, "generate_gui_progress", return_value=small_img
         ),
-        patch.object(generate_screenshots, "generate_tui_wizard", return_value=small_img),
-        patch.object(generate_screenshots, "generate_cli_install", return_value=small_img),
-        patch.object(generate_screenshots, "generate_cli_chainer", return_value=small_img),
+        patch.object(
+            generate_screenshots, "generate_tui_wizard", return_value=small_img
+        ),
+        patch.object(
+            generate_screenshots, "generate_cli_install", return_value=small_img
+        ),
+        patch.object(
+            generate_screenshots, "generate_cli_chainer", return_value=small_img
+        ),
         patch.object(Image.Image, "save") as mock_save,
     ):
         generate_screenshots.main()
