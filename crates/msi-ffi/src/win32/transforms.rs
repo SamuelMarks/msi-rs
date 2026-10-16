@@ -417,8 +417,14 @@ mod transform_and_record_tests {
             ERROR_INVALID_PARAMETER
         );
 
-        let valid_w: Vec<u16> = "valid".encode_utf16().chain(std::iter::once(0)).collect();
-        let valid_a = b"valid\0";
+        let temp_file = std::env::temp_dir().join("test_transform_stubs_valid.mst");
+        let temp_file_str = temp_file.to_string_lossy().into_owned();
+        let valid_w: Vec<u16> = temp_file_str
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        let mut valid_a = temp_file_str.into_bytes();
+        valid_a.push(0);
 
         assert_eq!(
             MsiDatabaseGenerateTransformW(0, 0, valid_w.as_ptr(), 0, 0),
@@ -465,6 +471,7 @@ mod transform_and_record_tests {
             ERROR_SUCCESS
         );
 
+        let _ = std::fs::remove_file(&temp_file);
         let _ = crate::handles::close_handle(db_handle);
         let _ = crate::handles::close_handle(db_handle2);
 

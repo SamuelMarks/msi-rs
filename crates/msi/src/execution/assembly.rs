@@ -291,44 +291,44 @@ pub mod windows_impl {
                 let _manifest = super::AssemblyManifest::from_file(mp)?;
             }
 
-            // SAFETY: Loading fusion.dll and invoking CreateAssemblyCache with valid COM out-pointers.
+            // SAFETY: Loading fusion.dll (if available in the DLL search path) and invoking CreateAssemblyCache with valid COM out-pointers.
             unsafe {
-                let module = LoadLibraryW(w!("fusion.dll")).map_err(|e| {
-                    MsiError::AssemblyError(format!("Failed to load fusion.dll: {e}"))
-                })?;
+                if let Ok(module) = LoadLibraryW(w!("fusion.dll")) {
+                    let proc_addr = GetProcAddress(module, s!("CreateAssemblyCache"));
+                    if let Some(proc) = proc_addr {
+                        let create_assembly_cache: CreateAssemblyCacheFn =
+                            std::mem::transmute(proc);
+                        let mut asm_cache_ptr: *mut std::ffi::c_void = std::ptr::null_mut();
 
-                let proc_addr = GetProcAddress(module, s!("CreateAssemblyCache"));
-                if let Some(proc) = proc_addr {
-                    let create_assembly_cache: CreateAssemblyCacheFn = std::mem::transmute(proc);
-                    let mut asm_cache_ptr: *mut std::ffi::c_void = std::ptr::null_mut();
+                        let hr = create_assembly_cache(&mut asm_cache_ptr, 0);
+                        if hr.is_ok() && !asm_cache_ptr.is_null() {
+                            let asm_cache: IAssemblyCache = std::mem::transmute(asm_cache_ptr);
+                            let mut path_u16: Vec<u16> =
+                                assembly_path.to_string_lossy().encode_utf16().collect();
+                            path_u16.push(0);
 
-                    let hr = create_assembly_cache(&mut asm_cache_ptr, 0);
-                    if hr.is_ok() {
-                        let asm_cache: IAssemblyCache = std::mem::transmute(asm_cache_ptr);
-                        let mut path_u16: Vec<u16> =
-                            assembly_path.to_string_lossy().encode_utf16().collect();
-                        path_u16.push(0);
-
-                        let hr_install = asm_cache.InstallAssembly(
-                            0,
-                            PCWSTR::from_raw(path_u16.as_ptr()),
-                            std::ptr::null_mut(),
-                        );
-                        if hr_install.is_err()
-                            && goblin::pe::PE::parse(
-                                &std::fs::read(assembly_path).unwrap_or_default(),
-                            )
-                            .is_ok()
-                        {
-                            let _ = FreeLibrary(module);
-                            return Err(MsiError::AssemblyError(format!(
-                                "IAssemblyCache::InstallAssembly failed: {hr_install:?}"
-                            )));
+                            let hr_install = asm_cache.InstallAssembly(
+                                0,
+                                PCWSTR::from_raw(path_u16.as_ptr()),
+                                std::ptr::null_mut(),
+                            );
+                            drop(asm_cache);
+                            if hr_install.is_err()
+                                && goblin::pe::PE::parse(
+                                    &std::fs::read(assembly_path).unwrap_or_default(),
+                                )
+                                .is_ok()
+                            {
+                                let _ = FreeLibrary(module);
+                                return Err(MsiError::AssemblyError(format!(
+                                    "IAssemblyCache::InstallAssembly failed: {hr_install:?}"
+                                )));
+                            }
                         }
                     }
-                }
 
-                let _ = FreeLibrary(module);
+                    let _ = FreeLibrary(module);
+                }
             }
 
             Ok(())
