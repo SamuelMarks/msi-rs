@@ -1040,6 +1040,11 @@ pub enum MsiError {
     #[display("User management error: {_0}")]
     #[error(ignore)]
     UserManagementError(String),
+
+    /// A command-line tool argument or execution failure occurred.
+    #[display("{_0}")]
+    #[error(ignore)]
+    CommandLineError(String),
 }
 
 impl Default for MsiError {
@@ -2384,6 +2389,13 @@ mod tests {
         assert_eq!(
             err_act_exec,
             MsiError::ActionExecutionError("failed to execute".to_string())
+        );
+
+        let err_cli = MsiError::CommandLineError("missing required flag".to_string());
+        assert_eq!(format!("{err_cli}"), "missing required flag");
+        assert_eq!(
+            err_cli,
+            MsiError::CommandLineError("missing required flag".to_string())
         );
     }
 

@@ -1,7 +1,7 @@
 //! `WiX` source and manifest compilation (`pack`) subcommand handler.
 
-use crate::commands::info::err_to_string;
 use clap::Args;
+use msi::MsiError;
 use std::path::{Path, PathBuf};
 
 /// Arguments for compiling and linking `WiX` source manifests into an MSI package.
@@ -129,22 +129,31 @@ pub fn discover_companion_fragments(sources: &[String]) -> Vec<String> {
 ///
 /// # Errors
 ///
-/// Returns an error message if source files are missing, compilation fails, or linking fails.
-pub fn handle_pack(args: &PackArgs) -> Result<String, String> {
+/// Returns an [`MsiError`] if source files are missing, compilation fails, or linking fails.
+#[allow(clippy::too_many_lines)]
+pub fn handle_pack(args: &PackArgs) -> Result<String, MsiError> {
     if args.output.trim().is_empty() {
-        return Err("Output path cannot be empty".to_string());
+        return Err(MsiError::CommandLineError(
+            "Output path cannot be empty".to_string(),
+        ));
     }
 
     if let Some(ref manifest_path) = args.manifest {
-        let manifest_content = std::fs::read_to_string(manifest_path)
-            .map_err(|e| format!("Failed to read packaging manifest '{manifest_path}': {e}"))?;
+        let manifest_content = std::fs::read_to_string(manifest_path).map_err(|e| {
+            MsiError::CommandLineError(format!(
+                "Failed to read packaging manifest '{manifest_path}': {e}"
+            ))
+        })?;
 
         let mut synth =
             msi::wix::ManifestMsiSynthesizer::new(manifest_content).with_arch(&args.arch);
 
         if let Some(ref schema_path) = args.schema {
-            let schema_content = std::fs::read_to_string(schema_path)
-                .map_err(|e| format!("Failed to read variable schema '{schema_path}': {e}"))?;
+            let schema_content = std::fs::read_to_string(schema_path).map_err(|e| {
+                MsiError::CommandLineError(format!(
+                    "Failed to read variable schema '{schema_path}': {e}"
+                ))
+            })?;
             synth = synth.with_schema(schema_content);
         }
 
@@ -153,7 +162,7 @@ pub fn handle_pack(args: &PackArgs) -> Result<String, String> {
         }
 
         let out_p = Path::new(&args.output);
-        let out_path = synth.build_msi(out_p).map_err(err_to_string)?;
+        let out_path = synth.build_msi(out_p)?;
 
         return Ok(format!(
             "Successfully synthesized and linked MSI package from manifest: '{}'",
@@ -162,7 +171,9 @@ pub fn handle_pack(args: &PackArgs) -> Result<String, String> {
     }
 
     if args.sources.is_empty() {
-        return Err("No source files specified".to_string());
+        return Err(MsiError::CommandLineError(
+            "No source files specified".to_string(),
+        ));
     }
 
     let effective_sources = discover_companion_fragments(&args.sources);
@@ -196,22 +207,23 @@ pub fn handle_pack(args: &PackArgs) -> Result<String, String> {
         raw_args.push(b.clone());
     }
 
-    let opts = msi::wix::toolchain::WixBuildOptions::parse(&raw_args).map_err(err_to_string)?;
-    let out_path = opts.execute().map_err(err_to_string)?;
+    let opts = msi::wix::toolchain::WixBuildOptions::parse(&raw_args)?;
+    let out_path = opts.execute()?;
 
     let mut summary = format!(
         "Successfully compiled and linked MSI package: '{}'",
         out_path.display()
     );
     if args.verbose {
-        let pkg = msi::Package::open(&out_path).map_err(err_to_string)?;
+        let pkg = msi::Package::open(&out_path)?;
         let media_recs = pkg.database().get_records("Media");
         let file_count = pkg.database().get_records("File").len();
         let chainer_count = pkg.database().get_records("MsiEmbeddedChainer").len();
         let _ = std::fmt::Write::write_fmt(
             &mut summary,
             format_args!(
-                "\n[INFO] Media cabinets: {}, Files: {file_count}, EmbeddedChainers: {chainer_count}",
+                "
+[INFO] Media cabinets: {}, Files: {file_count}, EmbeddedChainers: {chainer_count}",
                 media_recs.len()
             ),
         );
@@ -224,7 +236,10 @@ pub fn handle_pack(args: &PackArgs) -> Result<String, String> {
             {
                 let _ = std::fmt::Write::write_fmt(
                     &mut summary,
-                    format_args!("\n  * DiskId {disk_id}: {cab_name} (LastSequence: {last_seq})"),
+                    format_args!(
+                        "
+  * DiskId {disk_id}: {cab_name} (LastSequence: {last_seq})"
+                    ),
                 );
             }
         }

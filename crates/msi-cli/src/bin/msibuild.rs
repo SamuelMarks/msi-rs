@@ -14,6 +14,7 @@
 //! ```
 
 use msi::package::{Package, ProductVersion};
+use msi::MsiError;
 use std::fs;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -59,13 +60,13 @@ impl MsiBuildOptions {
     ///
     /// # Errors
     ///
-    /// Returns error string on missing arguments or target files.
-    pub fn parse(args: &[String]) -> Result<Self, String> {
+    /// Returns [`MsiError`] on missing arguments or target files.
+    pub fn parse(args: &[String]) -> Result<Self, MsiError> {
         if args.is_empty() || args[0].starts_with('-') {
-            return Err(
+            return Err(MsiError::CommandLineError(
                 "missing arguments. Usage: msibuild <msi> [-a <stream> <file>] [-s <stream>]"
                     .to_string(),
-            );
+            ));
         }
 
         let msi_path = PathBuf::from(&args[0]);
@@ -77,12 +78,16 @@ impl MsiBuildOptions {
             if arg == "-a" {
                 idx += 1;
                 if idx >= args.len() {
-                    return Err("missing stream name for '-a'".to_string());
+                    return Err(MsiError::CommandLineError(
+                        "missing stream name for '-a'".to_string(),
+                    ));
                 }
                 let stream_name = args[idx].clone();
                 idx += 1;
                 if idx >= args.len() {
-                    return Err("missing file path for '-a'".to_string());
+                    return Err(MsiError::CommandLineError(
+                        "missing file path for '-a'".to_string(),
+                    ));
                 }
                 let file_path = PathBuf::from(&args[idx]);
                 operation = MsiBuildOperation::AddStream {
@@ -92,7 +97,9 @@ impl MsiBuildOptions {
             } else if arg == "-s" {
                 idx += 1;
                 if idx >= args.len() {
-                    return Err("missing stream name for '-s'".to_string());
+                    return Err(MsiError::CommandLineError(
+                        "missing stream name for '-s'".to_string(),
+                    ));
                 }
                 let stream_name = args[idx].clone();
                 operation = MsiBuildOperation::RemoveStream { stream_name };
@@ -114,11 +121,15 @@ impl MsiBuildOptions {
     ///
     /// # Errors
     ///
-    /// Returns error string on I/O or database failure.
-    pub fn execute(&self) -> Result<(), String> {
+    /// Returns [`MsiError`] on I/O or database failure.
+    pub fn execute(&self) -> Result<(), MsiError> {
         let mut pkg = if self.msi_path.exists() {
-            Package::open(&self.msi_path)
-                .map_err(|e| format!("failed opening package '{}': {e}", self.msi_path.display()))?
+            Package::open(&self.msi_path).map_err(|e| {
+                MsiError::CommandLineError(format!(
+                    "failed opening package '{}': {e}",
+                    self.msi_path.display()
+                ))
+            })?
         } else {
             let p = Package::new(
                 msi::package::PackageMetadata::new(
@@ -134,8 +145,9 @@ impl MsiBuildOptions {
             if let Some(parent) = self.msi_path.parent() {
                 let _ = fs::create_dir_all(parent);
             }
-            p.save(&self.msi_path)
-                .map_err(|e| format!("failed creating new package: {e}"))?;
+            p.save(&self.msi_path).map_err(|e| {
+                MsiError::CommandLineError(format!("failed creating new package: {e}"))
+            })?;
             p
         };
 
@@ -144,11 +156,16 @@ impl MsiBuildOptions {
                 stream_name,
                 file_path,
             } => {
-                let bytes = fs::read(file_path)
-                    .map_err(|e| format!("failed reading file '{}': {e}", file_path.display()))?;
+                let bytes = fs::read(file_path).map_err(|e| {
+                    MsiError::CommandLineError(format!(
+                        "failed reading file '{}': {e}",
+                        file_path.display()
+                    ))
+                })?;
                 pkg.add_embedded_cabinet(stream_name, bytes);
-                pkg.save(&self.msi_path)
-                    .map_err(|e| format!("failed saving package: {e}"))?;
+                pkg.save(&self.msi_path).map_err(|e| {
+                    MsiError::CommandLineError(format!("failed saving package: {e}"))
+                })?;
                 println!(
                     "msibuild: added stream '{stream_name}' into '{}'",
                     self.msi_path.display()
@@ -157,8 +174,9 @@ impl MsiBuildOptions {
             MsiBuildOperation::RemoveStream { stream_name } => {
                 pkg.embedded_cabinets_mut()
                     .retain(|name, _| name != stream_name);
-                pkg.save(&self.msi_path)
-                    .map_err(|e| format!("failed saving package: {e}"))?;
+                pkg.save(&self.msi_path).map_err(|e| {
+                    MsiError::CommandLineError(format!("failed saving package: {e}"))
+                })?;
                 println!(
                     "msibuild: removed stream '{stream_name}' from '{}'",
                     self.msi_path.display()

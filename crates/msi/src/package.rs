@@ -14,7 +14,7 @@ use crate::cfb::{
 use crate::database::catalogs::{TableSchema, COLUMN_CATALOG_NAME, TABLE_CATALOG_NAME};
 use crate::database::column::{ColumnDef, DataType};
 use crate::database::physical::LogicalIndex;
-use crate::database::string_pool::{StringPool, CODEPAGE_UTF8};
+use crate::database::string_pool::{StringPool, CODEPAGE_ANSI_1252};
 use crate::database::summary_info::{Architecture, SummaryInfo};
 use crate::database::tables::core::{
     ComponentRow, DirectoryRow, FeatureRow, FileRow, MediaRow, PropertyRow,
@@ -396,7 +396,7 @@ impl Package {
         let codepage = find_prop("ProductCodepage")
             .or_else(|| find_prop("SummaryCodepage"))
             .and_then(|cp| cp.parse::<u16>().ok())
-            .unwrap_or(CODEPAGE_UTF8);
+            .unwrap_or(CODEPAGE_ANSI_1252);
 
         let summary_info = SummaryInfo {
             codepage: Some(codepage),
@@ -593,7 +593,7 @@ impl Package {
 
         let pool = match (pool_bytes, data_bytes) {
             (Some(ref pb), Some(ref db)) => StringPool::deserialize(pb, db)?,
-            _ => StringPool::new(crate::database::string_pool::CODEPAGE_ANSI_1252),
+            _ => StringPool::new(CODEPAGE_ANSI_1252),
         };
 
         let mut database = LinkedDatabase {
@@ -777,7 +777,7 @@ impl Package {
         clippy::cast_possible_wrap
     )]
     pub fn to_bytes(&self) -> Result<Vec<u8>> {
-        let mut pool = StringPool::new(crate::database::string_pool::CODEPAGE_ANSI_1252);
+        let mut pool = StringPool::new(CODEPAGE_ANSI_1252);
 
         let mut synthesized_tables: HashMap<String, Vec<Record>> = self.database.tables.clone();
 
@@ -1332,7 +1332,7 @@ impl PackageBuilder {
             .unwrap_or_else(|| format!("{};{}", arch.template_name(), product_language));
 
         let summary_info = SummaryInfo {
-            codepage: Some(CODEPAGE_UTF8),
+            codepage: Some(CODEPAGE_ANSI_1252),
             title: Some("Installation Database".to_string()),
             subject: Some(product_name),
             author: Some(manufacturer),
@@ -1357,6 +1357,7 @@ impl PackageBuilder {
 #[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
+    use crate::database::string_pool::CODEPAGE_UTF8;
 
     #[test]
     fn test_package_empty_stream_name_fallback(
@@ -1985,7 +1986,7 @@ mod tests {
             out
         }
 
-        let mut pool = StringPool::new(crate::database::string_pool::CODEPAGE_ANSI_1252);
+        let mut pool = StringPool::new(CODEPAGE_ANSI_1252);
         let columns_schema = TableSchema::new(COLUMN_CATALOG_NAME)
             .with_column(ColumnDef::new("Table", DataType::String { max_len: 64 }).primary_key())
             .with_column(ColumnDef::new("Number", DataType::Short).primary_key())
@@ -2506,7 +2507,7 @@ mod tests {
     #[test]
     fn test_package_from_bytes_with_corrupted_summary_info() {
         let mut writer = CfbWriter::new(CfbVersion::V4);
-        let pool = StringPool::new(crate::database::string_pool::CODEPAGE_ANSI_1252);
+        let pool = StringPool::new(CODEPAGE_ANSI_1252);
         let (pool_bytes, data_bytes) = pool.serialize();
         let enc_pool = encode_msi_stream_name("_StringPool", true).unwrap_or_default();
         let enc_data = encode_msi_stream_name("_StringData", true).unwrap_or_default();
@@ -2820,7 +2821,6 @@ mod tests {
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         use crate::cfb::header::CfbVersion;
         use crate::cfb::writer::CfbWriter;
-        use crate::database::string_pool::CODEPAGE_UTF8;
         use encode_msi_stream_name;
 
         let mut w = CfbWriter::new(CfbVersion::V4);

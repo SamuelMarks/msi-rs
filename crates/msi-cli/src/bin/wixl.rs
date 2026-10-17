@@ -13,6 +13,7 @@
 //! ```
 
 use msi::wix::toolchain::WixBuildOptions;
+use msi::MsiError;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -50,13 +51,13 @@ impl WixlOptions {
     ///
     /// # Errors
     ///
-    /// Returns error string on missing arguments or target files.
-    pub fn parse(args: &[String]) -> Result<Self, String> {
+    /// Returns [`MsiError`] on missing arguments or target files.
+    pub fn parse(args: &[String]) -> Result<Self, MsiError> {
         if args.is_empty() {
-            return Err(
+            return Err(MsiError::CommandLineError(
                 "missing arguments. Usage: wixl [-a <arch>] [-o <output.msi>] [-D <VAR=VAL>] <source.wxs...>"
                     .to_string(),
-            );
+            ));
         }
 
         let mut opts = Self::default();
@@ -130,7 +131,9 @@ impl WixlOptions {
         }
 
         if opts.sources.is_empty() {
-            return Err("no input .wxs source files specified".to_string());
+            return Err(MsiError::CommandLineError(
+                "no input .wxs source files specified".to_string(),
+            ));
         }
 
         Ok(opts)

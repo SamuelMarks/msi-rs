@@ -94,6 +94,16 @@ impl PreprocessorContext {
         self.include_paths.push(path.into());
     }
 
+    /// Returns the list of configured include search directories.
+    ///
+    /// # Returns
+    ///
+    /// Slice of configured include paths.
+    #[must_use]
+    pub fn include_paths(&self) -> &[PathBuf] {
+        &self.include_paths
+    }
+
     /// Overrides an environment variable in this context.
     ///
     /// # Arguments

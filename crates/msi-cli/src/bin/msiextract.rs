@@ -12,6 +12,7 @@
 
 use msi::cab::reader::CabinetReader;
 use msi::package::Package;
+use msi::MsiError;
 use std::fs;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -82,10 +83,13 @@ impl MsiExtractOptions {
     ///
     /// # Errors
     ///
-    /// Returns error string on missing arguments or target files.
-    pub fn parse(args: &[String]) -> Result<Self, String> {
+    /// Returns [`MsiError`] on missing arguments or target files.
+    pub fn parse(args: &[String]) -> Result<Self, MsiError> {
         if args.is_empty() {
-            return Err("missing arguments. Usage: msiextract [-C <dir>] [-l|--list] [--component <comp>] [--feature <feat>] <package.msi>".to_string());
+            return Err(MsiError::CommandLineError(
+                "missing arguments. Usage: msiextract [-C <dir>] [-l|--list] [--component <comp>] [--feature <feat>] <package.msi>"
+                    .to_string(),
+            ));
         }
 
         let mut dest_dir = PathBuf::from(".");
@@ -141,7 +145,9 @@ impl MsiExtractOptions {
         }
 
         if input_msi.as_os_str().is_empty() {
-            return Err("no input MSI package specified".to_string());
+            return Err(MsiError::CommandLineError(
+                "no input MSI package specified".to_string(),
+            ));
         }
 
         Ok(Self {
@@ -170,16 +176,20 @@ impl MsiExtractOptions {
     ///
     /// # Errors
     ///
-    /// Returns an error string if reading or parsing the WIM image fails.
+    /// Returns [`MsiError`] if reading or parsing the WIM image fails.
     ///
     /// # Returns
     ///
     /// `Ok(())` when listing or extraction completes.
-    fn execute_wim(&self) -> Result<(), String> {
-        let bytes = fs::read(&self.input_msi)
-            .map_err(|e| format!("failed reading file '{}': {e}", self.input_msi.display()))?;
-        let wim_reader =
-            msi::wim::WimReader::new(&bytes).map_err(|e| format!("WIM parse error: {e}"))?;
+    fn execute_wim(&self) -> Result<(), MsiError> {
+        let bytes = fs::read(&self.input_msi).map_err(|e| {
+            MsiError::CommandLineError(format!(
+                "failed reading file '{}': {e}",
+                self.input_msi.display()
+            ))
+        })?;
+        let wim_reader = msi::wim::WimReader::new(&bytes)
+            .map_err(|e| MsiError::CommandLineError(format!("WIM parse error: {e}")))?;
 
         if self.list_only {
             println!("Contained files in WIM '{}':", self.input_msi.display());
@@ -190,9 +200,9 @@ impl MsiExtractOptions {
         }
 
         let idx = self.wim_index.unwrap_or(1);
-        let _ = wim_reader
-            .extract_image(&self.dest_dir, idx)
-            .map_err(|e| format!("failed extracting WIM image {idx}: {e}"))?;
+        let _ = wim_reader.extract_image(&self.dest_dir, idx).map_err(|e| {
+            MsiError::CommandLineError(format!("failed extracting WIM image {idx}: {e}"))
+        })?;
         println!(
             "msiextract: extracted WIM image {} into '{}'",
             idx,
@@ -313,14 +323,18 @@ impl MsiExtractOptions {
     ///
     /// # Errors
     ///
-    /// Returns error string on I/O or extraction failure.
-    pub fn execute(&self) -> Result<(), String> {
+    /// Returns [`MsiError`] on I/O or extraction failure.
+    pub fn execute(&self) -> Result<(), MsiError> {
         if self.is_wim {
             return self.execute_wim();
         }
 
-        let pkg = Package::open(&self.input_msi)
-            .map_err(|e| format!("failed opening package '{}': {e}", self.input_msi.display()))?;
+        let pkg = Package::open(&self.input_msi).map_err(|e| {
+            MsiError::CommandLineError(format!(
+                "failed opening package '{}': {e}",
+                self.input_msi.display()
+            ))
+        })?;
 
         let file_map = Self::build_file_map(&pkg);
 
@@ -344,10 +358,10 @@ impl MsiExtractOptions {
         }
 
         fs::create_dir_all(&self.dest_dir).map_err(|e| {
-            format!(
+            MsiError::CommandLineError(format!(
                 "failed creating target directory '{}': {e}",
                 self.dest_dir.display()
-            )
+            ))
         })?;
 
         let mut extracted_count = 0;

@@ -88,7 +88,10 @@ pub fn compile_wix(source: &str, ctx: &mut PreprocessorContext) -> Result<WixObj
     let xml_parser = XmlParser::new();
     let root = xml_parser.parse(&preprocessed_source)?;
 
-    let compiler = Compiler::new();
+    let mut compiler = Compiler::new();
+    if let Some(first_inc) = ctx.include_paths().first() {
+        compiler = compiler.with_source_dir(first_inc);
+    }
     compiler.compile(&root)
 }
 

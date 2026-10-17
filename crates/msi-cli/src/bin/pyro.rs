@@ -14,6 +14,7 @@
 use msi::cfb::header::CfbVersion;
 use msi::cfb::writer::CfbWriter;
 use msi::database::summary_info::SummaryInfo;
+use msi::MsiError;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -48,9 +49,9 @@ impl PyroOptions {
     ///
     /// # Errors
     ///
-    /// Returns error string on missing arguments or input files.
+    /// Returns [`MsiError`] on missing arguments or input files.
     #[allow(clippy::too_many_lines, clippy::branches_sharing_code)]
-    pub fn parse(args: &[String]) -> Result<Self, String> {
+    pub fn parse(args: &[String]) -> Result<Self, MsiError> {
         let mut opts = Self::default();
         let mut positional = Vec::new();
         let mut idx = 0;
@@ -67,12 +68,16 @@ impl PyroOptions {
             } else if arg.eq_ignore_ascii_case("-t") || arg.eq_ignore_ascii_case("/t") {
                 idx += 1;
                 if idx >= args.len() {
-                    return Err("missing family name for '-t'".to_string());
+                    return Err(MsiError::CommandLineError(
+                        "missing family name for '-t'".to_string(),
+                    ));
                 }
                 let family = args[idx].clone();
                 idx += 1;
                 if idx >= args.len() {
-                    return Err("missing transform path for '-t'".to_string());
+                    return Err(MsiError::CommandLineError(
+                        "missing transform path for '-t'".to_string(),
+                    ));
                 }
                 let mst_path = PathBuf::from(&args[idx]);
                 opts.transforms.insert(family, mst_path);
@@ -84,7 +89,9 @@ impl PyroOptions {
             {
                 idx += 1;
                 if idx >= args.len() {
-                    return Err("missing output path for '-out'".to_string());
+                    return Err(MsiError::CommandLineError(
+                        "missing output path for '-out'".to_string(),
+                    ));
                 }
                 opts.output = Some(PathBuf::from(&args[idx]));
                 idx += 1;
@@ -105,11 +112,15 @@ impl PyroOptions {
         }
 
         if positional.is_empty() {
-            return Err("missing input patch object. Usage: pyro [options] <patch.wixobj> -t <Family> <trans.mst> -o <out.msp>".to_string());
+            return Err(MsiError::CommandLineError(
+                "missing input patch object. Usage: pyro [options] <patch.wixobj> -t <Family> <trans.mst> -o <out.msp>".to_string(),
+            ));
         }
 
         if opts.output.is_none() {
-            return Err("missing required output path '-o <out.msp>'".to_string());
+            return Err(MsiError::CommandLineError(
+                "missing required output path '-o <out.msp>'".to_string(),
+            ));
         }
 
         opts.input_patch.clone_from(&positional[0]);
@@ -124,8 +135,8 @@ impl PyroOptions {
     ///
     /// # Errors
     ///
-    /// Returns error string on I/O or assembly failure.
-    pub fn execute(&self) -> Result<(), String> {
+    /// Returns [`MsiError`] on I/O or assembly failure.
+    pub fn execute(&self) -> Result<(), MsiError> {
         let mut writer = CfbWriter::new(CfbVersion::V4);
 
         // Author patch summary info stream
@@ -140,30 +151,30 @@ impl PyroOptions {
         // Ingest transforms into sub-storages
         for (family, mst_path) in &self.transforms {
             let mst_bytes = fs::read(mst_path).map_err(|e| {
-                format!(
+                MsiError::CommandLineError(format!(
                     "failed reading transform '{}' for family '{family}': {e}",
                     mst_path.display()
-                )
+                ))
             })?;
-            writer
-                .add_stream(family, &mst_bytes)
-                .map_err(|e| format!("failed embedding transform '{family}': {e}"))?;
+            writer.add_stream(family, &mst_bytes).map_err(|e| {
+                MsiError::CommandLineError(format!("failed embedding transform '{family}': {e}"))
+            })?;
         }
 
         let out_path = self
             .output
             .as_ref()
-            .ok_or_else(|| "missing output path".to_string())?;
+            .ok_or_else(|| MsiError::CommandLineError("missing output path".to_string()))?;
         if let Some(parent) = out_path.parent() {
             let _ = fs::create_dir_all(parent);
         }
 
         let bytes = writer.build();
         fs::write(out_path, bytes).map_err(|e| {
-            format!(
+            MsiError::CommandLineError(format!(
                 "failed writing output patch file '{}': {e}",
                 out_path.display()
-            )
+            ))
         })?;
 
         Ok(())

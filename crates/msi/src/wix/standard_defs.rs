@@ -310,6 +310,11 @@ pub const STANDARD_INSTALL_EXECUTE_ACTIONS: &[StandardActionOrder] = &[
         condition: Some("VersionNT"),
     },
     StandardActionOrder {
+        name: "RemoveShortcuts",
+        sequence: 3200,
+        condition: None,
+    },
+    StandardActionOrder {
         name: "RemoveFiles",
         sequence: 3500,
         condition: None,

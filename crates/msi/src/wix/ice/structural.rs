@@ -168,13 +168,17 @@ pub fn validate_ice35(db: &LinkedDatabase) -> Option<IceReport> {
 
 /// ICE37: Verifies that standard system directory properties are not defined in Property table.
 ///
+/// Also warns when a `<Property>` shares the exact same `Id` as a `<Directory>` without using a
+/// Type 51 `SetDirectory` action scheduled after `CostInitialize`.
+///
 /// # Arguments
 ///
 /// * `db` - The [`LinkedDatabase`] to inspect.
 ///
 /// # Returns
 ///
-/// `Some(IceReport)` if standard folder property is overridden in Property table.
+/// `Some(IceReport)` if standard folder property is overridden in Property table or a custom
+/// directory property lacks a Type 51 `SetDirectory` action after `CostInitialize`.
 #[must_use]
 pub fn validate_ice37(db: &LinkedDatabase) -> Option<IceReport> {
     const STANDARD_DIRS: &[&str] = &[
@@ -197,6 +201,49 @@ pub fn validate_ice37(db: &LinkedDatabase) -> Option<IceReport> {
         "TemplateFolder",
     ];
 
+    let custom_dirs: HashSet<String> = db
+        .get_records("Directory")
+        .iter()
+        .filter_map(|r| match r.get(0) {
+            Some(FieldValue::String(d)) if d != "TARGETDIR" => Some(d.clone()),
+            _ => None,
+        })
+        .collect();
+
+    let mut set_dir_actions: HashSet<String> = HashSet::new();
+    for r in db.get_records("CustomAction") {
+        if let (
+            Some(FieldValue::String(act_name)),
+            Some(FieldValue::Short(act_type)),
+            Some(FieldValue::String(source_dir)),
+        ) = (r.get(0), r.get(1), r.get(2))
+        {
+            if (*act_type & 0x003F) == 35 || (*act_type & 0x003F) == 51 {
+                for seq_tbl in ["InstallExecuteSequence", "InstallUISequence"] {
+                    let mut cost_init_seq = 800i16;
+                    for sr in db.get_records(seq_tbl) {
+                        if let (Some(FieldValue::String(s_act)), Some(FieldValue::Short(s_seq))) =
+                            (sr.get(0), sr.get(2))
+                        {
+                            if s_act == "CostInitialize" {
+                                cost_init_seq = *s_seq;
+                            }
+                        }
+                    }
+                    for sr in db.get_records(seq_tbl) {
+                        if let (Some(FieldValue::String(s_act)), Some(FieldValue::Short(s_seq))) =
+                            (sr.get(0), sr.get(2))
+                        {
+                            if s_act == act_name && *s_seq > cost_init_seq {
+                                set_dir_actions.insert(source_dir.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     for r in db.get_records("Property") {
         if let Some(FieldValue::String(prop)) = r.get(0) {
             if STANDARD_DIRS.iter().any(|&d| d == prop) {
@@ -204,6 +251,17 @@ pub fn validate_ice37(db: &LinkedDatabase) -> Option<IceReport> {
                     IceReport::error(
                         "ICE37",
                         format!("Standard directory property '{prop}' must not be defined in Property table"),
+                    )
+                    .with_table("Property"),
+                );
+            }
+            if custom_dirs.contains(prop) && !set_dir_actions.contains(prop) {
+                return Some(
+                    IceReport::warning(
+                        "ICE37",
+                        format!(
+                            "Property '{prop}' shares the same Id as a Directory without a Type 51 SetDirectory action scheduled after CostInitialize"
+                        ),
                     )
                     .with_table("Property"),
                 );
@@ -1110,6 +1168,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_ice37_standard_directory_properties() {
         let db_good = make_test_db(
             "Property",
@@ -1131,6 +1190,98 @@ mod tests {
             ])],
         );
         assert!(validate_ice37(&db_bad).is_some());
+
+        // Custom Directory matching Property without SetDirectory -> Warning
+        let mut db_dir_prop = LinkedDatabase::default();
+        db_dir_prop.add_record(
+            "Directory",
+            Record::with_fields(vec![
+                FieldValue::String("TARGETDIR".to_string()),
+                FieldValue::Null,
+                FieldValue::String("SourceDir".to_string()),
+            ]),
+        );
+        db_dir_prop.add_record(
+            "Directory",
+            Record::with_fields(vec![
+                FieldValue::String("DATAFOLDER".to_string()),
+                FieldValue::String("TARGETDIR".to_string()),
+                FieldValue::String("data".to_string()),
+            ]),
+        );
+        db_dir_prop.add_record("Directory", Record::with_fields(vec![FieldValue::Short(1)]));
+        db_dir_prop.add_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("DATAFOLDER".to_string()),
+                FieldValue::String("data".to_string()),
+            ]),
+        );
+        let warn_report = validate_ice37(&db_dir_prop);
+        assert!(warn_report.is_some());
+
+        // With Type 51 SetDirectory scheduled after CostInitialize -> None
+        db_dir_prop.add_record(
+            "CustomAction",
+            Record::with_fields(vec![
+                FieldValue::String("Set_DATAFOLDER".to_string()),
+                FieldValue::Short(51),
+                FieldValue::String("DATAFOLDER".to_string()),
+                FieldValue::String("[WindowsVolume]data".to_string()),
+            ]),
+        );
+        db_dir_prop.add_record(
+            "CustomAction",
+            Record::with_fields(vec![
+                FieldValue::String("Other_CA".to_string()),
+                FieldValue::Short(1),
+                FieldValue::String("Bin".to_string()),
+                FieldValue::String("Fn".to_string()),
+            ]),
+        );
+        db_dir_prop.add_record(
+            "CustomAction",
+            Record::with_fields(vec![FieldValue::Short(1)]),
+        );
+        db_dir_prop.add_record(
+            "InstallExecuteSequence",
+            Record::with_fields(vec![
+                FieldValue::String("CostInitialize".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(800),
+            ]),
+        );
+        db_dir_prop.add_record(
+            "InstallExecuteSequence",
+            Record::with_fields(vec![
+                FieldValue::String("Other_Action".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(700),
+            ]),
+        );
+        db_dir_prop.add_record(
+            "InstallExecuteSequence",
+            Record::with_fields(vec![
+                FieldValue::String("Set_DATAFOLDER".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(700), // Before CostInitialize
+            ]),
+        );
+        db_dir_prop.add_record(
+            "InstallExecuteSequence",
+            Record::with_fields(vec![FieldValue::Short(1)]),
+        );
+        assert!(validate_ice37(&db_dir_prop).is_some());
+
+        db_dir_prop.add_record(
+            "InstallUISequence",
+            Record::with_fields(vec![
+                FieldValue::String("Set_DATAFOLDER".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(850), // After CostInitialize
+            ]),
+        );
+        assert!(validate_ice37(&db_dir_prop).is_none());
     }
 
     #[test]

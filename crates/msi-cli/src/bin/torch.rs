@@ -14,6 +14,7 @@
 use msi::database::transform::DatabaseTransform;
 use msi::package::Package;
 use msi::wix::linker::LinkedDatabase;
+use msi::MsiError;
 use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::fs;
@@ -55,9 +56,9 @@ impl TorchOptions {
     ///
     /// # Errors
     ///
-    /// Returns error string on missing arguments or target files.
+    /// Returns [`MsiError`] on missing arguments or target files.
     #[allow(clippy::too_many_lines, clippy::branches_sharing_code)]
-    pub fn parse(args: &[String]) -> Result<Self, String> {
+    pub fn parse(args: &[String]) -> Result<Self, MsiError> {
         let mut opts = Self::default();
         let mut positional = Vec::new();
         let mut idx = 0;
@@ -80,7 +81,9 @@ impl TorchOptions {
             } else if arg.eq_ignore_ascii_case("-val") || arg.eq_ignore_ascii_case("/val") {
                 idx += 1;
                 if idx >= args.len() {
-                    return Err("missing validation flags value for '-val'".to_string());
+                    return Err(MsiError::CommandLineError(
+                        "missing validation flags value for '-val'".to_string(),
+                    ));
                 }
                 opts.validation_flags = args[idx].parse::<u32>().unwrap_or(0);
                 idx += 1;
@@ -91,7 +94,9 @@ impl TorchOptions {
             {
                 idx += 1;
                 if idx >= args.len() {
-                    return Err("missing output path for '-out'".to_string());
+                    return Err(MsiError::CommandLineError(
+                        "missing output path for '-out'".to_string(),
+                    ));
                 }
                 opts.output = Some(PathBuf::from(&args[idx]));
                 idx += 1;
@@ -110,14 +115,16 @@ impl TorchOptions {
         }
 
         if positional.len() < 2 {
-            return Err(
+            return Err(MsiError::CommandLineError(
                 "missing input databases. Usage: torch [options] -o <out.mst> <baseline.msi> <updated.msi>"
                     .to_string(),
-            );
+            ));
         }
 
         if opts.output.is_none() {
-            return Err("missing required output path '-o <out.mst>'".to_string());
+            return Err(MsiError::CommandLineError(
+                "missing required output path '-o <out.mst>'".to_string(),
+            ));
         }
 
         opts.baseline_msi.clone_from(&positional[0]);
@@ -134,16 +141,19 @@ impl TorchOptions {
     ///
     /// # Errors
     ///
-    /// Returns error string on I/O or diff failure.
+    /// Returns [`MsiError`] on I/O or diff failure.
     #[allow(clippy::too_many_lines)]
-    pub fn execute(&self) -> Result<(), String> {
+    pub fn execute(&self) -> Result<(), MsiError> {
         let (base_db, upd_db, preserved_cabs) = if self.xml_input {
-            let read_xml_or_pkg = |path: &std::path::Path| -> Result<LinkedDatabase, String> {
+            let read_xml_or_pkg = |path: &std::path::Path| -> Result<LinkedDatabase, MsiError> {
                 if let Ok(content) = fs::read_to_string(path) {
                     let parser = msi::wix::xml::XmlParser::new();
-                    let root = parser
-                        .parse(&content)
-                        .map_err(|e| format!("failed parsing XML '{}': {e}", path.display()))?;
+                    let root = parser.parse(&content).map_err(|e| {
+                        MsiError::CommandLineError(format!(
+                            "failed parsing XML '{}': {e}",
+                            path.display()
+                        ))
+                    })?;
                     let mut db = LinkedDatabase::new().unwrap_or_default();
                     for child in &root.children {
                         if let Some(name) = child.attribute("Name") {
@@ -158,8 +168,12 @@ impl TorchOptions {
                     }
                     Ok(db)
                 } else {
-                    let pkg = Package::open(path)
-                        .map_err(|e| format!("failed opening package '{}': {e}", path.display()))?;
+                    let pkg = Package::open(path).map_err(|e| {
+                        MsiError::CommandLineError(format!(
+                            "failed opening package '{}': {e}",
+                            path.display()
+                        ))
+                    })?;
                     Ok(pkg.database().clone())
                 }
             };
@@ -168,16 +182,16 @@ impl TorchOptions {
             (base_db, upd_db, HashMap::new())
         } else {
             let base_pkg = Package::open(&self.baseline_msi).map_err(|e| {
-                format!(
+                MsiError::CommandLineError(format!(
                     "failed opening baseline MSI '{}': {e}",
                     self.baseline_msi.display()
-                )
+                ))
             })?;
             let upd_pkg = Package::open(&self.updated_msi).map_err(|e| {
-                format!(
+                MsiError::CommandLineError(format!(
                     "failed opening updated MSI '{}': {e}",
                     self.updated_msi.display()
-                )
+                ))
             })?;
 
             let mut cabs = HashMap::new();
@@ -211,7 +225,7 @@ impl TorchOptions {
         let out_path = self
             .output
             .as_ref()
-            .ok_or_else(|| "missing output path".to_string())?;
+            .ok_or_else(|| MsiError::CommandLineError("missing output path".to_string()))?;
         if let Some(parent) = out_path.parent() {
             let _ = fs::create_dir_all(parent);
         }
@@ -242,17 +256,21 @@ impl TorchOptions {
             }
             xml.push_str("</Transform>\n");
             fs::write(out_path, xml.as_bytes()).map_err(|e| {
-                format!(
+                MsiError::CommandLineError(format!(
                     "failed writing XML output file '{}': {e}",
                     out_path.display()
-                )
+                ))
             })?;
         } else {
-            let bytes = transform
-                .to_bytes()
-                .map_err(|e| format!("failed serializing transform: {e}"))?;
-            fs::write(out_path, bytes)
-                .map_err(|e| format!("failed writing output file '{}': {e}", out_path.display()))?;
+            let bytes = transform.to_bytes().map_err(|e| {
+                MsiError::CommandLineError(format!("failed serializing transform: {e}"))
+            })?;
+            fs::write(out_path, bytes).map_err(|e| {
+                MsiError::CommandLineError(format!(
+                    "failed writing output file '{}': {e}",
+                    out_path.display()
+                ))
+            })?;
         }
 
         Ok(())

@@ -9,6 +9,7 @@
 //!
 //! ```sh
 //! msiinfo <msi> [options]
+//! msiinfo suminfo <msi> [options]
 //! msiinfo tables <msi>
 //! msiinfo schema <msi> [table]
 //! msiinfo streams <msi>
@@ -19,9 +20,45 @@
 use msi::cfb::directory::ObjectType;
 use msi::cfb::reader::CfbReader;
 use msi::package::Package;
+use msi::MsiError;
 use std::fs;
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::ExitCode;
+
+/// Writes a line to the provided writer, gracefully ignoring [`std::io::ErrorKind::BrokenPipe`].
+///
+/// # Arguments
+///
+/// * `writer` - Destination writer (such as [`std::io::Stdout`]).
+/// * `line` - Text line to write.
+///
+/// # Errors
+///
+/// Returns an [`MsiError`] if an I/O error other than `BrokenPipe` occurs.
+fn write_stdout_line<W: Write>(writer: &mut W, line: &str) -> Result<(), MsiError> {
+    if let Err(err) = writeln!(writer, "{line}") {
+        if err.kind() != std::io::ErrorKind::BrokenPipe {
+            return Err(MsiError::CommandLineError(format!(
+                "stdout write error: {err}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Prints a line to standard output, gracefully ignoring [`std::io::ErrorKind::BrokenPipe`].
+///
+/// # Arguments
+///
+/// * `line` - Text line to write to stdout.
+///
+/// # Errors
+///
+/// Returns an [`MsiError`] if an I/O error other than `BrokenPipe` occurs.
+fn print_line(line: &str) -> Result<(), MsiError> {
+    write_stdout_line(&mut std::io::stdout(), line)
+}
 
 /// Parsed options for `msiinfo`.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -51,6 +88,50 @@ pub struct MsiInfoOptions {
 }
 
 impl MsiInfoOptions {
+    /// Parses summary modification flags from an argument slice into `self`.
+    ///
+    /// # Arguments
+    ///
+    /// * `args` - Slice of trailing arguments after the MSI path / `suminfo` subcommand.
+    fn parse_summary_flags(&mut self, args: &[String]) {
+        let mut idx = 0;
+        while idx < args.len() {
+            let arg = &args[idx];
+            if arg == "-t" || arg == "--title" {
+                idx += 1;
+                if idx < args.len() {
+                    self.set_title = Some(args[idx].clone());
+                }
+            } else if arg == "-j" || arg == "--subject" {
+                idx += 1;
+                if idx < args.len() {
+                    self.set_subject = Some(args[idx].clone());
+                }
+            } else if arg == "-a" || arg == "--author" {
+                idx += 1;
+                if idx < args.len() {
+                    self.set_author = Some(args[idx].clone());
+                }
+            } else if arg == "-k" || arg == "--keywords" {
+                idx += 1;
+                if idx < args.len() {
+                    self.set_keywords = Some(args[idx].clone());
+                }
+            } else if arg == "-c" || arg == "--comments" {
+                idx += 1;
+                if idx < args.len() {
+                    self.set_comments = Some(args[idx].clone());
+                }
+            } else if arg == "-p" || arg == "--template" {
+                idx += 1;
+                if idx < args.len() {
+                    self.set_template = Some(args[idx].clone());
+                }
+            }
+            idx += 1;
+        }
+    }
+
     /// Parses arguments into [`MsiInfoOptions`].
     ///
     /// # Arguments
@@ -63,31 +144,46 @@ impl MsiInfoOptions {
     ///
     /// # Errors
     ///
-    /// Returns error string on missing arguments or target files.
+    /// Returns [`MsiError`] on missing arguments or target files.
     #[allow(clippy::too_many_lines)]
-    pub fn parse(args: &[String]) -> Result<Self, String> {
+    pub fn parse(args: &[String]) -> Result<Self, MsiError> {
         if args.is_empty() {
-            return Err("missing arguments. Usage: msiinfo <msi> [options] | msiinfo <tables|schema|streams|export|extract> <msi> [args]".to_string());
+            return Err(MsiError::CommandLineError(
+                "missing arguments. Usage: msiinfo <msi> [options] | msiinfo <suminfo|tables|schema|streams|export|extract> <msi> [args]"
+                    .to_string(),
+            ));
         }
 
         let first = &args[0];
-        if first == "tables"
+        if first == "suminfo"
+            || first == "summary"
+            || first == "tables"
             || first == "schema"
             || first == "streams"
             || first == "export"
             || first == "extract"
         {
             if args.len() < 2 {
-                return Err(format!("missing package path for '{first}' command"));
+                return Err(MsiError::CommandLineError(format!(
+                    "missing package path for '{first}' command"
+                )));
             }
+            let action = if first == "suminfo" {
+                "summary".to_string()
+            } else {
+                first.clone()
+            };
             let msi_path = PathBuf::from(&args[1]);
             let mut opts = Self {
-                action: first.clone(),
+                action,
                 msi_path,
                 ..Self::default()
             };
 
             match first.as_str() {
+                "suminfo" | "summary" => {
+                    opts.parse_summary_flags(&args[2..]);
+                }
                 "schema" => {
                     if args.len() >= 3 {
                         opts.table = Some(args[2].clone());
@@ -95,13 +191,17 @@ impl MsiInfoOptions {
                 }
                 "export" => {
                     if args.len() < 3 {
-                        return Err("missing table name for 'export' command".to_string());
+                        return Err(MsiError::CommandLineError(
+                            "missing table name for 'export' command".to_string(),
+                        ));
                     }
                     opts.table = Some(args[2].clone());
                 }
                 "extract" => {
                     if args.len() < 3 {
-                        return Err("missing stream name for 'extract' command".to_string());
+                        return Err(MsiError::CommandLineError(
+                            "missing stream name for 'extract' command".to_string(),
+                        ));
                     }
                     opts.stream = Some(args[2].clone());
                     if args.len() >= 4 {
@@ -115,10 +215,65 @@ impl MsiInfoOptions {
         }
 
         if first.starts_with('-') {
-            return Err(
-                "missing arguments. Usage: msiinfo <msi> [options] | msiinfo <tables|schema|streams|export|extract> <msi> [args]"
+            return Err(MsiError::CommandLineError(
+                "missing arguments. Usage: msiinfo <msi> [options] | msiinfo <suminfo|tables|schema|streams|export|extract> <msi> [args]"
                     .to_string(),
-            );
+            ));
+        }
+
+        // Check if second argument is a subcommand (`msiinfo <file.msi> <subcommand> [args...]`)
+        if args.len() >= 2 {
+            let second = &args[1];
+            if second == "suminfo"
+                || second == "summary"
+                || second == "tables"
+                || second == "schema"
+                || second == "streams"
+                || second == "export"
+                || second == "extract"
+            {
+                let action = if second == "suminfo" {
+                    "summary".to_string()
+                } else {
+                    second.clone()
+                };
+                let mut opts = Self {
+                    action,
+                    msi_path: PathBuf::from(first),
+                    ..Self::default()
+                };
+                match second.as_str() {
+                    "suminfo" | "summary" => {
+                        opts.parse_summary_flags(&args[2..]);
+                    }
+                    "schema" => {
+                        if args.len() >= 3 {
+                            opts.table = Some(args[2].clone());
+                        }
+                    }
+                    "export" => {
+                        if args.len() < 3 {
+                            return Err(MsiError::CommandLineError(
+                                "missing table name for 'export' command".to_string(),
+                            ));
+                        }
+                        opts.table = Some(args[2].clone());
+                    }
+                    "extract" => {
+                        if args.len() < 3 {
+                            return Err(MsiError::CommandLineError(
+                                "missing stream name for 'extract' command".to_string(),
+                            ));
+                        }
+                        opts.stream = Some(args[2].clone());
+                        if args.len() >= 4 {
+                            opts.out_file = Some(PathBuf::from(&args[3]));
+                        }
+                    }
+                    _ => {}
+                }
+                return Ok(opts);
+            }
         }
 
         // Default mode: summary inspection or property editing
@@ -129,42 +284,7 @@ impl MsiInfoOptions {
             ..Self::default()
         };
 
-        let mut idx = 1;
-        while idx < args.len() {
-            let arg = &args[idx];
-            if arg == "-t" || arg == "--title" {
-                idx += 1;
-                if idx < args.len() {
-                    opts.set_title = Some(args[idx].clone());
-                }
-            } else if arg == "-j" || arg == "--subject" {
-                idx += 1;
-                if idx < args.len() {
-                    opts.set_subject = Some(args[idx].clone());
-                }
-            } else if arg == "-a" || arg == "--author" {
-                idx += 1;
-                if idx < args.len() {
-                    opts.set_author = Some(args[idx].clone());
-                }
-            } else if arg == "-k" || arg == "--keywords" {
-                idx += 1;
-                if idx < args.len() {
-                    opts.set_keywords = Some(args[idx].clone());
-                }
-            } else if arg == "-c" || arg == "--comments" {
-                idx += 1;
-                if idx < args.len() {
-                    opts.set_comments = Some(args[idx].clone());
-                }
-            } else if arg == "-p" || arg == "--template" {
-                idx += 1;
-                if idx < args.len() {
-                    opts.set_template = Some(args[idx].clone());
-                }
-            }
-            idx += 1;
-        }
+        opts.parse_summary_flags(&args[1..]);
 
         Ok(opts)
     }
@@ -177,13 +297,16 @@ impl MsiInfoOptions {
     ///
     /// # Errors
     ///
-    /// Returns error string on I/O or database failure.
+    /// Returns [`MsiError`] on I/O or database failure.
     #[allow(clippy::too_many_lines)]
-    pub fn execute(&self) -> Result<(), String> {
+    pub fn execute(&self) -> Result<(), MsiError> {
         match self.action.as_str() {
             "summary" => {
                 let mut pkg = Package::open(&self.msi_path).map_err(|e| {
-                    format!("failed opening MSI '{}': {e}", self.msi_path.display())
+                    MsiError::CommandLineError(format!(
+                        "failed opening MSI '{}': {e}",
+                        self.msi_path.display()
+                    ))
                 })?;
 
                 let has_edits = self.set_title.is_some()
@@ -212,81 +335,108 @@ impl MsiInfoOptions {
                     if let Some(ref template) = self.set_template {
                         pkg.summary_info_mut().template = Some(template.clone());
                     }
-                    pkg.save(&self.msi_path)
-                        .map_err(|e| format!("failed saving updated MSI: {e}"))?;
-                    println!(
+                    pkg.save(&self.msi_path).map_err(|e| {
+                        MsiError::CommandLineError(format!("failed saving updated MSI: {e}"))
+                    })?;
+                    print_line(&format!(
                         "msiinfo: updated summary information in '{}'",
                         self.msi_path.display()
-                    );
+                    ))?;
                 } else {
                     let s = pkg.summary_info();
-                    println!("Title: {}", s.title.as_deref().unwrap_or(""));
-                    println!("Subject: {}", s.subject.as_deref().unwrap_or(""));
-                    println!("Author: {}", s.author.as_deref().unwrap_or(""));
-                    println!("Keywords: {}", s.keywords.as_deref().unwrap_or(""));
-                    println!("Comments: {}", s.comments.as_deref().unwrap_or(""));
-                    println!("Template: {}", s.template.as_deref().unwrap_or(""));
-                    println!("PackageCode: {}", s.rev_number.as_deref().unwrap_or(""));
-                    println!("SchemaVersion: {}", s.page_count.unwrap_or(0));
-                    println!("WordCount: {}", s.word_count.unwrap_or(0));
+                    for line in [
+                        format!("Title: {}", s.title.as_deref().unwrap_or("")),
+                        format!("Subject: {}", s.subject.as_deref().unwrap_or("")),
+                        format!("Author: {}", s.author.as_deref().unwrap_or("")),
+                        format!("Keywords: {}", s.keywords.as_deref().unwrap_or("")),
+                        format!("Comments: {}", s.comments.as_deref().unwrap_or("")),
+                        format!("Template: {}", s.template.as_deref().unwrap_or("")),
+                        format!("PackageCode: {}", s.rev_number.as_deref().unwrap_or("")),
+                        format!("SchemaVersion: {}", s.page_count.unwrap_or(0)),
+                        format!("WordCount: {}", s.word_count.unwrap_or(0)),
+                    ] {
+                        print_line(&line)?;
+                    }
                 }
                 Ok(())
             }
             "tables" => {
                 let pkg = Package::open(&self.msi_path).map_err(|e| {
-                    format!("failed opening MSI '{}': {e}", self.msi_path.display())
+                    MsiError::CommandLineError(format!(
+                        "failed opening MSI '{}': {e}",
+                        self.msi_path.display()
+                    ))
                 })?;
                 for name in pkg.database().catalog.table_names() {
-                    println!("{name}");
+                    print_line(name)?;
                 }
                 Ok(())
             }
             "schema" => {
                 let pkg = Package::open(&self.msi_path).map_err(|e| {
-                    format!("failed opening MSI '{}': {e}", self.msi_path.display())
+                    MsiError::CommandLineError(format!(
+                        "failed opening MSI '{}': {e}",
+                        self.msi_path.display()
+                    ))
                 })?;
                 let catalog = &pkg.database().catalog;
 
                 if let Some(ref table_name) = self.table {
                     if let Some(schema) = catalog.get_table(table_name) {
-                        println!("Table: {table_name}");
+                        print_line(&format!("Table: {table_name}"))?;
                         for col in &schema.columns {
                             let pk_str = if col.primary_key { " [PK]" } else { "" };
                             let null_str = if col.nullable { " [Nullable]" } else { "" };
-                            println!("  - {}: {:?}{pk_str}{null_str}", col.name, col.data_type);
+                            print_line(&format!(
+                                "  - {}: {:?}{pk_str}{null_str}",
+                                col.name, col.data_type
+                            ))?;
                         }
                     } else {
-                        return Err(format!("table '{table_name}' not found in database"));
+                        return Err(MsiError::CommandLineError(format!(
+                            "table '{table_name}' not found in database"
+                        )));
                     }
                 } else {
                     for name in catalog.table_names() {
                         let col_count = catalog.get_table(name).map_or(0, |s| s.columns.len());
-                        println!("Table: {name} ({col_count} columns)");
+                        print_line(&format!("Table: {name} ({col_count} columns)"))?;
                     }
                 }
                 Ok(())
             }
             "streams" => {
                 let bytes = fs::read(&self.msi_path).map_err(|e| {
-                    format!("failed reading file '{}': {e}", self.msi_path.display())
+                    MsiError::CommandLineError(format!(
+                        "failed reading file '{}': {e}",
+                        self.msi_path.display()
+                    ))
                 })?;
-                let reader = CfbReader::new(&bytes)
-                    .map_err(|e| format!("failed reading CFB container: {e}"))?;
+                let reader = CfbReader::new(&bytes).map_err(|e| {
+                    MsiError::CommandLineError(format!("failed reading CFB container: {e}"))
+                })?;
 
                 for entry in reader.entries() {
                     if entry.object_type() == ObjectType::Stream {
-                        println!("{} ({} bytes)", entry.name(), entry.stream_size());
+                        print_line(&format!("{} ({} bytes)", entry.name(), entry.stream_size()))?;
                     }
                 }
                 Ok(())
             }
             "export" => {
                 let pkg = Package::open(&self.msi_path).map_err(|e| {
-                    format!("failed opening MSI '{}': {e}", self.msi_path.display())
+                    MsiError::CommandLineError(format!(
+                        "failed opening MSI '{}': {e}",
+                        self.msi_path.display()
+                    ))
                 })?;
                 let table_name = self.table.as_deref().unwrap_or("");
                 pkg.database().tables.get(table_name).map_or_else(
-                    || Err(format!("table '{table_name}' not found in database")),
+                    || {
+                        Err(MsiError::CommandLineError(format!(
+                            "table '{table_name}' not found in database"
+                        )))
+                    },
                     |rows| {
                         for r in rows {
                             let line = r
@@ -294,8 +444,8 @@ impl MsiInfoOptions {
                                 .iter()
                                 .map(ToString::to_string)
                                 .collect::<Vec<_>>()
-                                .join("\t");
-                            println!("{line}");
+                                .join("	");
+                            print_line(&line)?;
                         }
                         Ok(())
                     },
@@ -303,29 +453,44 @@ impl MsiInfoOptions {
             }
             "extract" => {
                 let bytes = fs::read(&self.msi_path).map_err(|e| {
-                    format!("failed reading file '{}': {e}", self.msi_path.display())
+                    MsiError::CommandLineError(format!(
+                        "failed reading file '{}': {e}",
+                        self.msi_path.display()
+                    ))
                 })?;
-                let reader = CfbReader::new(&bytes)
-                    .map_err(|e| format!("failed reading CFB container: {e}"))?;
+                let reader = CfbReader::new(&bytes).map_err(|e| {
+                    MsiError::CommandLineError(format!("failed reading CFB container: {e}"))
+                })?;
 
                 let stream_name = self.stream.as_deref().unwrap_or("");
-                let data = reader
-                    .read_stream(stream_name)
-                    .map_err(|e| format!("failed reading stream '{stream_name}': {e}"))?;
+                let data = reader.read_stream(stream_name).map_err(|e| {
+                    MsiError::CommandLineError(format!(
+                        "failed reading stream '{stream_name}': {e}"
+                    ))
+                })?;
 
                 if let Some(ref out_p) = self.out_file {
                     if let Some(parent) = out_p.parent() {
                         let _ = fs::create_dir_all(parent);
                     }
-                    fs::write(out_p, &data)
-                        .map_err(|e| format!("failed writing output file: {e}"))?;
-                    println!("msiinfo: extracted {stream_name} to '{}'", out_p.display());
+                    fs::write(out_p, &data).map_err(|e| {
+                        MsiError::CommandLineError(format!("failed writing output file: {e}"))
+                    })?;
+                    print_line(&format!(
+                        "msiinfo: extracted {stream_name} to '{}'",
+                        out_p.display()
+                    ))?;
                 } else {
-                    println!("msiinfo: extracted {stream_name} ({} bytes)", data.len());
+                    print_line(&format!(
+                        "msiinfo: extracted {stream_name} ({} bytes)",
+                        data.len()
+                    ))?;
                 }
                 Ok(())
             }
-            other => Err(format!("unknown msiinfo command '{other}'")),
+            other => Err(MsiError::CommandLineError(format!(
+                "unknown msiinfo command '{other}'"
+            ))),
         }
     }
 }
@@ -392,10 +557,33 @@ mod tests {
     use super::*;
     use std::path::Path;
 
+    /// Mock writer that simulates a `BrokenPipe` or other I/O error.
+    struct MockStdoutWriter {
+        /// Error kind to return on write.
+        error_kind: Option<std::io::ErrorKind>,
+    }
+
+    impl Write for MockStdoutWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.error_kind.map_or_else(
+                || Ok(buf.len()),
+                |kind| Err(std::io::Error::new(kind, "mock write error")),
+            )
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
     /// Exercises `tables`, `schema`, and `streams` subcommands in `msiinfo`.
     fn run_msiinfo_tables_schema_streams_cases(temp_dir: &Path, msi_file: &Path) {
         assert_eq!(
             run(&["tables".to_string(), msi_file.to_string_lossy().to_string()]),
+            0
+        );
+        assert_eq!(
+            run(&[msi_file.to_string_lossy().to_string(), "tables".to_string()]),
             0
         );
         assert_eq!(
@@ -407,11 +595,23 @@ mod tests {
             run(&["schema".to_string(), msi_file.to_string_lossy().to_string()]),
             0
         );
+        assert_eq!(
+            run(&[msi_file.to_string_lossy().to_string(), "schema".to_string()]),
+            0
+        );
         for tbl in &["Property", "Directory"] {
             assert_eq!(
                 run(&[
                     "schema".to_string(),
                     msi_file.to_string_lossy().to_string(),
+                    (*tbl).to_string(),
+                ]),
+                0
+            );
+            assert_eq!(
+                run(&[
+                    msi_file.to_string_lossy().to_string(),
+                    "schema".to_string(),
                     (*tbl).to_string(),
                 ]),
                 0
@@ -438,6 +638,13 @@ mod tests {
             0
         );
         assert_eq!(
+            run(&[
+                msi_file.to_string_lossy().to_string(),
+                "streams".to_string(),
+            ]),
+            0
+        );
+        assert_eq!(
             run(&["streams".to_string(), "nonexistent.msi".to_string()]),
             1
         );
@@ -454,6 +661,7 @@ mod tests {
     }
 
     /// Exercises `export` and `extract` subcommands in `msiinfo`.
+    #[allow(clippy::too_many_lines)]
     fn run_msiinfo_export_and_extract_cases(temp_dir: &Path, msi_file: &Path, out_extract: &Path) {
         let corrupt_msi = temp_dir.join("corrupt.msi");
         assert_eq!(
@@ -463,6 +671,18 @@ mod tests {
                 "Property".to_string(),
             ]),
             0
+        );
+        assert_eq!(
+            run(&[
+                msi_file.to_string_lossy().to_string(),
+                "export".to_string(),
+                "Property".to_string(),
+            ]),
+            0
+        );
+        assert_eq!(
+            run(&[msi_file.to_string_lossy().to_string(), "export".to_string()]),
+            1
         );
         assert_eq!(
             run(&[
@@ -488,6 +708,30 @@ mod tests {
                 "\u{0005}SummaryInformation".to_string(),
             ]),
             0
+        );
+        assert_eq!(
+            run(&[
+                msi_file.to_string_lossy().to_string(),
+                "extract".to_string(),
+                "\u{0005}SummaryInformation".to_string(),
+            ]),
+            0
+        );
+        assert_eq!(
+            run(&[
+                msi_file.to_string_lossy().to_string(),
+                "extract".to_string(),
+                "\u{0005}SummaryInformation".to_string(),
+                out_extract.to_string_lossy().to_string(),
+            ]),
+            0
+        );
+        assert_eq!(
+            run(&[
+                msi_file.to_string_lossy().to_string(),
+                "extract".to_string(),
+            ]),
+            1
         );
         assert_eq!(
             run(&[
@@ -542,6 +786,7 @@ mod tests {
     }
 
     /// Exercises summary editing options and read-only failures in `msiinfo`.
+    #[allow(clippy::too_many_lines)]
     fn run_msiinfo_summary_edit_cases(temp_dir: &Path, msi_file: &Path) {
         let long_edit_args = vec![
             msi_file.to_string_lossy().to_string(),
@@ -559,6 +804,36 @@ mod tests {
             "Intel;1033".to_string(),
         ];
         assert_eq!(run(&long_edit_args), 0);
+
+        // Both `msiinfo suminfo <file.msi>` and `msiinfo <file.msi> suminfo`
+        assert_eq!(
+            run(&[
+                "suminfo".to_string(),
+                msi_file.to_string_lossy().to_string(),
+            ]),
+            0
+        );
+        assert_eq!(
+            run(&[
+                "summary".to_string(),
+                msi_file.to_string_lossy().to_string(),
+            ]),
+            0
+        );
+        assert_eq!(
+            run(&[
+                msi_file.to_string_lossy().to_string(),
+                "suminfo".to_string(),
+            ]),
+            0
+        );
+        assert_eq!(
+            run(&[
+                msi_file.to_string_lossy().to_string(),
+                "summary".to_string(),
+            ]),
+            0
+        );
 
         for opt in [
             "-t",
@@ -675,7 +950,9 @@ mod tests {
         .execute();
 
         assert_eq!(run(&[]), 1);
-        for sub in &["-invalid", "tables", "schema", "streams"] {
+        for sub in &[
+            "-invalid", "suminfo", "summary", "tables", "schema", "streams",
+        ] {
             assert_eq!(run(&[(*sub).to_string()]), 1);
         }
         for sub in &["export", "extract"] {
@@ -684,6 +961,19 @@ mod tests {
                 1
             );
         }
+
+        // Test BrokenPipe handling on write_stdout_line
+        let mut ok_writer = MockStdoutWriter { error_kind: None };
+        assert!(write_stdout_line(&mut ok_writer, "ok").is_ok());
+        assert!(ok_writer.flush().is_ok());
+        let mut broken_pipe_writer = MockStdoutWriter {
+            error_kind: Some(std::io::ErrorKind::BrokenPipe),
+        };
+        assert!(write_stdout_line(&mut broken_pipe_writer, "ignored").is_ok());
+        let mut other_err_writer = MockStdoutWriter {
+            error_kind: Some(std::io::ErrorKind::PermissionDenied),
+        };
+        assert!(write_stdout_line(&mut other_err_writer, "failed").is_err());
 
         run_msiinfo_summary_edit_cases(&temp_dir, &msi_file);
         run_msiinfo_tables_schema_streams_cases(&temp_dir, &msi_file);

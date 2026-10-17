@@ -1,8 +1,7 @@
 //! Internal Consistency Evaluator (ICE) validation utilities for `msi-cli`.
 
-use crate::commands::info::err_to_string;
 use msi::wix::Linker;
-use msi::Package;
+use msi::{MsiError, Package};
 
 /// Validates an opened [`Package`] against the standard ICE ruleset.
 ///
@@ -12,11 +11,11 @@ use msi::Package;
 ///
 /// # Errors
 ///
-/// Returns an error message string if any ICE validation rule fails.
+/// Returns an [`MsiError`] if any ICE validation rule fails.
 ///
 /// # Returns
 ///
 /// `Ok(())` when all active ICE validation rules pass.
-pub fn validate_package_ice(pkg: &Package) -> Result<(), String> {
-    Linker::run_ice_validations(pkg.database()).map_err(err_to_string)
+pub fn validate_package_ice(pkg: &Package) -> Result<(), MsiError> {
+    Linker::run_ice_validations(pkg.database())
 }

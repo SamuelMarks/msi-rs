@@ -39,15 +39,15 @@ pub fn convert_text_to_rtf(input: &str) -> String {
         return input.to_string();
     }
 
+    let normalized = input.replace("\r\n", "\n");
     let mut out = String::from(
-        r"{\rtf1\ansi\ansicpg1252\deff0\nouicompat{\fonttbl{\f0\fnil\fcharset0 Arial;}}{\colortbl ;\red0\green0\blue0;}\viewkind4\uc1\pard\cf1\f0\fs20 ",
+        r"{\rtf1\ansi\ansicpg1252\deff0\nouicompat{\fonttbl{\f0\fnil\fcharset0 Tahoma;}}{\colortbl ;\red0\green0\blue0;}\viewkind4\uc1\pard\cf1\f0\fs16 ",
     );
-    for ch in input.chars() {
+    for ch in normalized.chars() {
         match ch {
             '\\' => out.push_str(r"\\"),
             '{' => out.push_str(r"\{"),
             '}' => out.push_str(r"\}"),
-            '\r' => {}
             '\n' => out.push_str(r"\par "),
             c if (c as u32) < 128 => out.push(c),
             c => {
@@ -73,6 +73,7 @@ pub fn convert_text_to_rtf(input: &str) -> String {
 use crate::wix::extensions::ExtensionRegistry;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 /// `WiX` compiler translating XML documents into [`WixObject`].
 #[derive(Debug, Default)]
@@ -81,6 +82,8 @@ pub struct Compiler {
     extension_registry: ExtensionRegistry,
     /// Namespace prefixes declared on the root element.
     prefixes: RefCell<HashMap<String, String>>,
+    /// Optional source file parent directory for resolving relative paths during compilation.
+    source_dir: Option<PathBuf>,
 }
 
 impl Compiler {
@@ -94,6 +97,7 @@ impl Compiler {
         Self {
             extension_registry: ExtensionRegistry::with_builtin_extensions(),
             prefixes: RefCell::new(HashMap::new()),
+            source_dir: None,
         }
     }
 
@@ -111,7 +115,23 @@ impl Compiler {
         Self {
             extension_registry: registry,
             prefixes: RefCell::new(HashMap::new()),
+            source_dir: None,
         }
+    }
+
+    /// Sets the source file's parent directory for resolving relative paths.
+    ///
+    /// # Arguments
+    ///
+    /// * `dir` - Parent directory path.
+    ///
+    /// # Returns
+    ///
+    /// Updated [`Compiler`] instance.
+    #[must_use]
+    pub fn with_source_dir(mut self, dir: impl Into<PathBuf>) -> Self {
+        self.source_dir = Some(dir.into());
+        self
     }
 
     /// Compiles a root XML document into a [`WixObject`].
@@ -590,7 +610,11 @@ impl Compiler {
                         })?;
                     let file_name = child
                         .attribute("Name")
-                        .or_else(|| child.attribute("Source"))
+                        .or_else(|| {
+                            child
+                                .attribute("Source")
+                                .map(|src| src.rsplit(['/', '\\']).next().unwrap_or(src))
+                        })
                         .unwrap_or(file_id_str);
                     let file_key = FileKey::new(file_id_str)?;
                     let comp_name = parent_id.map_or_else(
@@ -667,33 +691,17 @@ impl Compiler {
                         .map(ToString::to_string);
 
                     let short_name = child.attribute("ShortName");
-                    let final_file_name = short_name.map_or_else(
-                        || {
-                            if file_name.contains(' ') || file_name.len() > 12 {
-                                let parts: Vec<&str> = file_name.split('.').collect();
-                                let base = parts[0];
-                                let ext = if parts.len() > 1 { parts[1] } else { "" };
-                                let short_base = if base.len() > 6 {
-                                    format!("{}~1", base[..6].to_ascii_uppercase())
-                                } else {
-                                    base.to_ascii_uppercase()
-                                };
-                                let short_ext = if ext.len() > 3 {
-                                    &ext[..3].to_ascii_uppercase()
-                                } else {
-                                    ext
-                                };
-                                if short_ext.is_empty() {
-                                    format!("{short_base}|{file_name}")
-                                } else {
-                                    format!("{short_base}.{short_ext}|{file_name}")
-                                }
-                            } else {
-                                file_name.to_string()
-                            }
-                        },
-                        |sn| format!("{sn}|{file_name}"),
-                    );
+                    let existing_file_names: Vec<String> = tables
+                        .get("File")
+                        .map(|t| {
+                            t.records
+                                .iter()
+                                .filter_map(|r| r.get(2).map(ToString::to_string))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    let final_file_name =
+                        format_msi_filename(short_name, file_name, &existing_file_names);
 
                     let row = FileRow {
                         file: file_key.clone(),
@@ -1458,7 +1466,7 @@ impl Compiler {
                     self.compile_element_tree(child, child.attribute("Id"), section, tables)?;
                 }
                 "Control" => {
-                    Self::compile_control(child, parent_id, section, tables)?;
+                    self.compile_control(child, parent_id, section, tables)?;
                 }
                 "TextStyle" => {
                     Self::compile_text_style(child, section, tables);
@@ -1769,7 +1777,18 @@ impl Compiler {
             section.add_reference(Reference::new("Icon", ic));
         }
 
-        let sc_name_str = sc_name.to_string();
+        let sc_short_name = child.attribute("ShortName");
+        let existing_sc_names: Vec<String> = tables
+            .get("Shortcut")
+            .map(|t| {
+                t.records
+                    .iter()
+                    .filter(|r| r.get(1) == Some(&FieldValue::String(sc_dir.to_string())))
+                    .filter_map(|r| r.get(2).map(ToString::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let sc_name_str = format_msi_filename(sc_short_name, sc_name, &existing_sc_names);
         let rec = Record::with_fields(vec![
             FieldValue::String(sc_id),
             FieldValue::String(sc_dir.to_string()),
@@ -2464,6 +2483,7 @@ impl Compiler {
     /// The resulting value or `Ok(())` on success.
     #[allow(clippy::too_many_lines)]
     fn compile_control(
+        &self,
         child: &XmlNode,
         parent_id: Option<&str>,
         section: &mut IntermediateSection,
@@ -2495,7 +2515,12 @@ impl Compiler {
         if resolved_text.is_none() {
             if let Some(text_sub) = child.children.iter().find(|c| c.tag == "Text") {
                 if let Some(src) = text_sub.attribute("SourceFile") {
-                    if let Ok(content) = std::fs::read_to_string(src) {
+                    let candidate_content = self
+                        .source_dir
+                        .as_ref()
+                        .and_then(|dir| std::fs::read_to_string(dir.join(src)).ok())
+                        .or_else(|| std::fs::read_to_string(src).ok());
+                    if let Some(content) = candidate_content {
                         if std::path::Path::new(src)
                             .extension()
                             .is_some_and(|ext| ext.eq_ignore_ascii_case("rtf"))
@@ -2504,12 +2529,31 @@ impl Compiler {
                         } else {
                             resolved_text = Some(convert_text_to_rtf(&content));
                         }
+                    } else if ctrl_type.eq_ignore_ascii_case("ScrollableText") {
+                        resolved_text = Some(format!("!(bindpath.rtf:{src})"));
                     } else {
                         resolved_text = Some(src.to_string());
                     }
                 } else if !text_sub.text.is_empty() {
-                    resolved_text = Some(text_sub.text.clone());
+                    if ctrl_type.eq_ignore_ascii_case("ScrollableText")
+                        && !text_sub.text.trim_start().starts_with(r"{\rtf")
+                        && !text_sub.text.trim_start().starts_with("!(wix.")
+                    {
+                        resolved_text = Some(convert_text_to_rtf(&text_sub.text));
+                    } else {
+                        resolved_text = Some(text_sub.text.clone());
+                    }
                 }
+            }
+        } else if ctrl_type.eq_ignore_ascii_case("ScrollableText") {
+            let attr_val = resolved_text.as_deref().unwrap_or("");
+            let trimmed = attr_val.trim_start();
+            if !trimmed.is_empty()
+                && !trimmed.starts_with(r"{\rtf")
+                && !trimmed.starts_with("!(wix.")
+                && !trimmed.starts_with("!(bindpath.rtf:")
+            {
+                resolved_text = Some(convert_text_to_rtf(attr_val));
             }
         }
         let prop = child.attribute("Property").map(ToString::to_string);
@@ -3725,6 +3769,19 @@ impl Compiler {
             .entry("Icon".to_string())
             .or_insert_with(|| IntermediateTable::new("Icon"))
             .push_record(rec);
+
+        if let Some(src) = child
+            .attribute("SourceFile")
+            .or_else(|| child.attribute("Source"))
+        {
+            let mut wix_icon = Record::new();
+            wix_icon.push(FieldValue::String(id.to_string()));
+            wix_icon.push(FieldValue::String(src.to_string()));
+            tables
+                .entry("WixIcon".to_string())
+                .or_insert_with(|| IntermediateTable::new("WixIcon"))
+                .push_record(wix_icon);
+        }
     }
 
     /// Compiles a `<ProgId>` element into `ProgId` table.
@@ -4832,6 +4889,109 @@ impl Compiler {
             .entry(format!("_{tag}"))
             .or_insert_with(|| IntermediateTable::new(format!("_{tag}")))
             .push_record(rec);
+    }
+}
+
+/// Formats an MSI `Filename` column value (`ShortName|LongName` or `Name`) with 8.3 sanitization
+/// and collision disambiguation (`~1`, `~2`, ...).
+///
+/// # Arguments
+///
+/// * `short_name` - Optional explicit short name.
+/// * `long_name` - The long file or shortcut name.
+/// * `existing` - Existing formatted `Filename` entries in the table/directory for collision tracking.
+///
+/// # Returns
+///
+/// Formatted MSI `Filename` string.
+#[must_use]
+pub fn format_msi_filename(
+    short_name: Option<&str>,
+    long_name: &str,
+    existing: &[String],
+) -> String {
+    if let Some(sn) = short_name {
+        return format!("{sn}|{long_name}");
+    }
+    if long_name.contains('|') {
+        return long_name.to_string();
+    }
+
+    let is_invalid_83_char = |c: char| -> bool {
+        matches!(
+            c,
+            '+' | '='
+                | '['
+                | ']'
+                | ';'
+                | ','
+                | '/'
+                | '\\'
+                | ':'
+                | '*'
+                | '?'
+                | '"'
+                | '<'
+                | '>'
+                | '|'
+                | '.'
+                | ' '
+        ) || !c.is_ascii()
+    };
+
+    let (raw_base, raw_ext) = match long_name.rsplit_once('.') {
+        Some((b, e)) if !b.is_empty() => (b, e),
+        _ => (long_name, ""),
+    };
+
+    let needs_short = long_name.len() > 12
+        || raw_base.len() > 8
+        || raw_ext.len() > 3
+        || raw_base.chars().any(is_invalid_83_char)
+        || raw_ext.chars().any(is_invalid_83_char);
+
+    if !needs_short {
+        return long_name.to_string();
+    }
+
+    let clean_base: String = raw_base
+        .chars()
+        .filter(|&c| !is_invalid_83_char(c))
+        .map(|c| c.to_ascii_uppercase())
+        .collect();
+    let clean_ext: String = raw_ext
+        .chars()
+        .filter(|&c| !is_invalid_83_char(c))
+        .take(3)
+        .map(|c| c.to_ascii_uppercase())
+        .collect();
+
+    let base_prefix = if clean_base.is_empty() {
+        "FILE".to_string()
+    } else if clean_base.len() > 6 {
+        clean_base[..6].to_string()
+    } else {
+        clean_base
+    };
+
+    let mut idx = 1usize;
+    loop {
+        let suffix = format!("~{idx}");
+        let max_prefix = 8usize.saturating_sub(suffix.len()).min(base_prefix.len());
+        let pfx = &base_prefix[..max_prefix];
+        let candidate_short = if clean_ext.is_empty() {
+            format!("{pfx}{suffix}")
+        } else {
+            format!("{pfx}{suffix}.{clean_ext}")
+        };
+        let collides = existing.iter().any(|ex| {
+            let ex_short = ex.split('|').next().unwrap_or(ex);
+            ex_short.eq_ignore_ascii_case(&candidate_short)
+        });
+        if !collides {
+            return format!("{candidate_short}|{long_name}");
+        }
+        idx += 1;
     }
 }
 
@@ -7412,7 +7572,7 @@ mod tests {
         );
         assert_eq!(
             sc_rec.get(2),
-            Some(&FieldValue::String("Open edX".to_string()))
+            Some(&FieldValue::String("OPENED~1|Open edX".to_string()))
         );
         assert_eq!(
             sc_rec.get(3),
@@ -7844,5 +8004,119 @@ mod tests {
         assert_eq!(upg_tbl.records.len(), 1);
         let upg_rec = &upg_tbl.records[0];
         assert_eq!(upg_rec.get(4), Some(&FieldValue::Long(519)));
+    }
+
+    /// Tests `<File Source="a/b/c/my_long_script_name.sh" />` basename extraction without slashes,
+    /// `Compiler::with_source_dir`, and `ScrollableText` RTF conversion branches.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_file_source_basename_and_scrollable_text_branches() {
+        let temp_dir = std::env::temp_dir().join("msi_test_compiler_src_dir_scroll");
+        let _ = fs::create_dir_all(&temp_dir);
+        let rtf_path = temp_dir.join("rel_lic.rtf");
+        let txt_path = temp_dir.join("rel_lic.txt");
+        let _ = fs::write(&rtf_path, r"{\rtf1\ansi Relative RTF}");
+        let _ = fs::write(&txt_path, "Relative Plain Text");
+
+        let xml = r#"<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="*" Name="T" Version="1.0.0" Manufacturer="M">
+        <Package Description="D" SummaryCodepage="1252" />
+        <Directory Id="TARGETDIR" Name="SourceDir">
+            <Component Id="C1" Guid="{11111111-2222-3333-4444-555555555555}">
+                <File Id="F1" Source="a/b/c/my_long_script_name.sh" />
+                <File Id="F2" Source="x\y\z\my_long_script_two.sh" />
+            </Component>
+        </Directory>
+        <UI>
+            <Dialog Id="D1" Width="370" Height="270" Title="T">
+                <Control Id="S1" Type="ScrollableText" X="0" Y="0" Width="100" Height="50">
+                    <Text SourceFile="rel_lic.rtf" />
+                </Control>
+                <Control Id="S2" Type="ScrollableText" X="0" Y="0" Width="100" Height="50">
+                    <Text SourceFile="rel_lic.txt" />
+                </Control>
+                <Control Id="S3" Type="ScrollableText" X="0" Y="0" Width="100" Height="50">
+                    <Text SourceFile="missing_deferred.txt" />
+                </Control>
+                <Control Id="S4" Type="Text" X="0" Y="0" Width="100" Height="50">
+                    <Text SourceFile="missing_non_scroll.txt" />
+                </Control>
+                <Control Id="S5" Type="ScrollableText" X="0" Y="0" Width="100" Height="50">
+                    <Text>Inline Plain License Text</Text>
+                </Control>
+                <Control Id="S6" Type="ScrollableText" X="0" Y="0" Width="100" Height="50">
+                    <Text>{\rtf1 Already RTF}</Text>
+                </Control>
+                <Control Id="S7" Type="ScrollableText" X="0" Y="0" Width="100" Height="50">
+                    <Text>!(wix.WixUILicenseRtf)</Text>
+                </Control>
+                <Control Id="S8" Type="ScrollableText" X="0" Y="0" Width="100" Height="50" Text="Attr Plain Text" />
+                <Control Id="S9" Type="ScrollableText" X="0" Y="0" Width="100" Height="50" Text="{\rtf1 Attr RTF}" />
+                <Control Id="S10" Type="ScrollableText" X="0" Y="0" Width="100" Height="50" Text="!(wix.WixUILicenseRtf)" />
+                <Control Id="S11" Type="ScrollableText" X="0" Y="0" Width="100" Height="50" Text="!(bindpath.rtf:lic.rtf)" />
+                <Control Id="S12" Type="ScrollableText" X="0" Y="0" Width="100" Height="50" Text="" />
+            </Dialog>
+        </UI>
+    </Product>
+</Wix>"#;
+        let parser = XmlParser::new();
+        let root = parser.parse(xml).unwrap_or_default();
+        let compiler = Compiler::new().with_source_dir(&temp_dir);
+        let obj = compiler.compile(&root).unwrap_or_default();
+        let sec = &obj.sections[0];
+
+        assert_eq!(
+            format_msi_filename(None, "SHORT~1.SH|already_formatted.sh", &[]),
+            "SHORT~1.SH|already_formatted.sh"
+        );
+        assert_eq!(
+            format_msi_filename(None, "   +++   .txt", &[]),
+            "FILE~1.TXT|   +++   .txt"
+        );
+
+        let file_tbl = get_table(sec, "File");
+        assert_eq!(file_tbl.records.len(), 2);
+        for rec in &file_tbl.records {
+            let fname = rec.get(2).map(ToString::to_string).unwrap_or_default();
+            assert!(!fname.contains('/'));
+            assert!(!fname.contains('\\'));
+        }
+        assert_eq!(
+            file_tbl.records[0].get(2),
+            Some(&FieldValue::String(
+                "MY_LON~1.SH|my_long_script_name.sh".to_string()
+            ))
+        );
+        assert_eq!(
+            file_tbl.records[1].get(2),
+            Some(&FieldValue::String(
+                "MY_LON~2.SH|my_long_script_two.sh".to_string()
+            ))
+        );
+
+        let ctrl_tbl = get_table(sec, "Control");
+        assert_eq!(ctrl_tbl.records.len(), 12);
+        assert_eq!(
+            ctrl_tbl.records[2].get(9),
+            Some(&FieldValue::String(
+                "!(bindpath.rtf:missing_deferred.txt)".to_string()
+            ))
+        );
+        assert_eq!(
+            ctrl_tbl.records[3].get(9),
+            Some(&FieldValue::String("missing_non_scroll.txt".to_string()))
+        );
+        let s5 = ctrl_tbl.records[4]
+            .get(9)
+            .map(ToString::to_string)
+            .unwrap_or_default();
+        assert!(s5.starts_with(r"{\rtf1\ansi\ansicpg1252"));
+        let s8 = ctrl_tbl.records[7]
+            .get(9)
+            .map(ToString::to_string)
+            .unwrap_or_default();
+        assert!(s8.starts_with(r"{\rtf1\ansi\ansicpg1252"));
+
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 }

@@ -1,7 +1,7 @@
 //! Filesystem and registry harvesting (`harvest`) subcommand handler.
 
-use crate::commands::info::err_to_string;
 use clap::Args;
+use msi::MsiError;
 use std::path::{Path, PathBuf};
 
 /// Arguments for harvesting files or registries into `WiX` XML fragments.
@@ -102,12 +102,12 @@ pub struct HarvestArgs {
 ///
 /// # Errors
 ///
-/// Returns an error string if harvesting or output file writing fails.
+/// Returns an [`MsiError`] if harvesting or output file writing fails.
 ///
 /// # Returns
 ///
 /// The return value.
-pub fn handle_harvest(args: &HarvestArgs) -> Result<String, String> {
+pub fn handle_harvest(args: &HarvestArgs) -> Result<String, MsiError> {
     let raw_target = if args.target.is_empty() {
         args.source_dir.as_deref().unwrap_or(".")
     } else {
@@ -134,9 +134,7 @@ pub fn handle_harvest(args: &HarvestArgs) -> Result<String, String> {
         harvester.set_split_size(split);
     }
     if let Some(ref gitignore) = args.gitignore {
-        harvester
-            .load_gitignore(Path::new(gitignore))
-            .map_err(err_to_string)?;
+        harvester.load_gitignore(Path::new(gitignore))?;
     }
     for rule in &args.disk_rules {
         if let Some((pat, disk_str)) = rule.split_once('=') {
@@ -181,20 +179,18 @@ pub fn handle_harvest(args: &HarvestArgs) -> Result<String, String> {
     };
 
     let xml = if effective_mode == "reg" {
-        let content = std::fs::read_to_string(target_path)
-            .map_err(|e| format!("Failed to read registry file '{target_path}': {e}"))?;
-        let res = harvester
-            .harvest_registry(&content, &args.group)
-            .map_err(err_to_string)?;
+        let content = std::fs::read_to_string(target_path).map_err(|e| {
+            MsiError::CommandLineError(format!("Failed to read registry file '{target_path}': {e}"))
+        })?;
+        let res = harvester.harvest_registry(&content, &args.group)?;
         if let Some(out_file) = effective_output {
-            std::fs::write(out_file, res.as_bytes())
-                .map_err(|e| format!("Failed to write output to '{out_file}': {e}"))?;
+            std::fs::write(out_file, res.as_bytes()).map_err(|e| {
+                MsiError::CommandLineError(format!("Failed to write output to '{out_file}': {e}"))
+            })?;
         }
         res
     } else {
-        let result = harvester
-            .harvest_payload(Path::new(target_path), &payload_opts)
-            .map_err(err_to_string)?;
+        let result = harvester.harvest_payload(Path::new(target_path), &payload_opts)?;
         result.wix_fragment
     };
 

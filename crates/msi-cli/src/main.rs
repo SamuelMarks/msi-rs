@@ -106,12 +106,12 @@ pub use commands::*;
 ///
 /// # Returns
 ///
-/// A message string describing the outcome on success, or an error string on failure.
+/// A message string describing the outcome on success, or an [`msi::MsiError`] on failure.
 ///
 /// # Errors
 ///
-/// Returns an error message if argument validation or package construction fails.
-pub fn run(cli: &Cli) -> Result<String, String> {
+/// Returns an [`msi::MsiError`] if argument validation or package construction fails.
+pub fn run(cli: &Cli) -> Result<String, msi::MsiError> {
     match &cli.command {
         Commands::Create(args) => handle_create(args),
         Commands::Info(args) => handle_info(args),
@@ -508,7 +508,8 @@ mod tests {
         );
         let addr_dbg = format!("{addr:?}");
         assert!(addr_dbg.contains("WorkerSocketAddress"));
-        assert_eq!(addr, addr.clone());
+        let addr_val = addr.ok();
+        assert_eq!(addr_val, addr_val.clone());
     }
 
     /// Tests [`repair_flags_to_string`] serialization across all flag configurations.
@@ -604,7 +605,12 @@ mod tests {
                 path: "   ".to_string(),
             }),
         };
-        assert_eq!(run(&cli_empty), Err("Path cannot be empty".to_string()));
+        assert_eq!(
+            run(&cli_empty),
+            Err(msi::MsiError::CommandLineError(
+                "Path cannot be empty".to_string()
+            ))
+        );
 
         let cli_nonexistent = Cli {
             command: Commands::Info(InfoArgs {
@@ -613,7 +619,9 @@ mod tests {
         };
         assert_eq!(
             run(&cli_nonexistent),
-            Err("File not found: /nonexistent/path/package.msi".to_string())
+            Err(msi::MsiError::CommandLineError(
+                "File not found: /nonexistent/path/package.msi".to_string()
+            ))
         );
 
         let _ = std::fs::remove_dir_all(&temp_dir);

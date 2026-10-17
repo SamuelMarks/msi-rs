@@ -1,6 +1,5 @@
 //! Installation, maintenance, repair, advertisement, `msiexec`, and worker daemon handlers.
 
-use crate::commands::info::err_to_string;
 use crate::commands::patch::{handle_patch, PatchArgs};
 use clap::{Args, ValueEnum};
 use msi::database::FieldValue;
@@ -8,7 +7,7 @@ use msi::execution::{
     ActionMode, AdvertiseScope, DiskCostEngine, EvaluationContext, LoggingOptions, MsiExecOptions,
     RepairFlags, Transaction, UiLevel, WorkerContext,
 };
-use msi::Package;
+use msi::{MsiError, Package};
 use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -184,12 +183,12 @@ impl LoggingDispatcher {
     ///
     /// # Errors
     ///
-    /// Returns error string if writing or flushing to file fails.
+    /// Returns an [`MsiError`] if writing or flushing to file fails.
     ///
     /// # Returns
     ///
     /// The return value.
-    pub fn log(&self, message_type: char, message: &str) -> Result<(), String> {
+    pub fn log(&self, message_type: char, message: &str) -> Result<(), MsiError> {
         let should_log = match message_type {
             'i' => self.options.status,
             'w' => self.options.warnings,
@@ -222,7 +221,9 @@ impl LoggingDispatcher {
                 .create(true)
                 .append(true)
                 .open(path)
-                .map_err(|e| format!("Failed to open log file '{path}': {e}"))?;
+                .map_err(|e| {
+                    MsiError::CommandLineError(format!("Failed to open log file '{path}': {e}"))
+                })?;
 
             let _ = file.write_all(line.as_bytes());
             if self.options.flush_immediately {
@@ -263,20 +264,20 @@ pub fn load_package_properties(pkg: &Package, context: &mut EvaluationContext) {
 ///
 /// # Errors
 ///
-/// Returns an error string if transaction preparation or execution fails.
+/// Returns an [`MsiError`] if transaction preparation or execution fails.
 ///
 /// # Returns
 ///
 /// The return value.
 pub fn run_installer_transaction(
     tx: Transaction<msi::execution::transaction::Uninitialized>,
-) -> Result<(), String> {
-    let prep_tx = tx.prepare().map_err(err_to_string)?;
+) -> Result<(), MsiError> {
+    let prep_tx = tx.prepare()?;
     let quarantine_dir = std::env::temp_dir().join("msi-quarantine");
     let session_id = format!("tx_{}", std::process::id());
     let executor = msi::execution::LiveWorkerExecutor::new(&quarantine_dir, &session_id);
     let mut worker = WorkerContext::new().with_live_executor(executor);
-    let exec_tx = prep_tx.execute(&mut worker).map_err(err_to_string)?;
+    let exec_tx = prep_tx.execute(&mut worker)?;
     let _ = exec_tx.commit(&mut worker);
     Ok(())
 }
@@ -289,19 +290,25 @@ pub fn run_installer_transaction(
 ///
 /// # Errors
 ///
-/// Returns an error string if the package is missing, invalid, or installation fails.
+/// Returns an [`MsiError`] if the package is missing, invalid, or installation fails.
 ///
 /// # Returns
 ///
 /// The return value.
-pub fn handle_install(args: &InstallArgs) -> Result<String, String> {
+#[allow(clippy::too_many_lines)]
+pub fn handle_install(args: &InstallArgs) -> Result<String, MsiError> {
     if args.package.trim().is_empty() {
-        return Err("Package path cannot be empty".to_string());
+        return Err(MsiError::CommandLineError(
+            "Package path cannot be empty".to_string(),
+        ));
     }
 
     let path = Path::new(&args.package);
     if !path.exists() {
-        return Err(format!("Package file not found: '{}'", args.package));
+        return Err(MsiError::CommandLineError(format!(
+            "Package file not found: '{}'",
+            args.package
+        )));
     }
 
     let mut props = HashMap::new();
@@ -320,8 +327,9 @@ pub fn handle_install(args: &InstallArgs) -> Result<String, String> {
         None
     };
 
-    let pkg = Package::open(path)
-        .map_err(|e| format!("Failed opening package '{}': {e}", args.package))?;
+    let pkg = Package::open(path).map_err(|e| {
+        MsiError::CommandLineError(format!("Failed opening package '{}': {e}", args.package))
+    })?;
     let mut context = EvaluationContext::new();
     load_package_properties(&pkg, &mut context);
     for (k, v) in &props {
@@ -392,7 +400,10 @@ pub fn handle_install(args: &InstallArgs) -> Result<String, String> {
         props.len()
     );
     if let Some(frame_str) = tui_rendered {
-        Ok(format!("{frame_str}\n{summary}"))
+        Ok(format!(
+            "{frame_str}
+{summary}"
+        ))
     } else {
         Ok(summary)
     }
@@ -406,19 +417,24 @@ pub fn handle_install(args: &InstallArgs) -> Result<String, String> {
 ///
 /// # Errors
 ///
-/// Returns an error string if the package or product is not found or uninstallation fails.
+/// Returns an [`MsiError`] if the package or product is not found or uninstallation fails.
 ///
 /// # Returns
 ///
 /// The return value.
-pub fn handle_uninstall(args: &UninstallArgs) -> Result<String, String> {
+pub fn handle_uninstall(args: &UninstallArgs) -> Result<String, MsiError> {
     if args.package.trim().is_empty() {
-        return Err("Package path cannot be empty".to_string());
+        return Err(MsiError::CommandLineError(
+            "Package path cannot be empty".to_string(),
+        ));
     }
 
     let path = Path::new(&args.package);
     if !path.exists() && !args.package.starts_with('{') {
-        return Err(format!("Product or package not found: '{}'", args.package));
+        return Err(MsiError::CommandLineError(format!(
+            "Product or package not found: '{}'",
+            args.package
+        )));
     }
 
     let logger = if let Some(ref p) = args.log {
@@ -431,8 +447,9 @@ pub fn handle_uninstall(args: &UninstallArgs) -> Result<String, String> {
     };
 
     if path.exists() {
-        let pkg = Package::open(path)
-            .map_err(|e| format!("Failed opening package '{}': {e}", args.package))?;
+        let pkg = Package::open(path).map_err(|e| {
+            MsiError::CommandLineError(format!("Failed opening package '{}': {e}", args.package))
+        })?;
         let mut context = EvaluationContext::new();
         load_package_properties(&pkg, &mut context);
         context.set_property("REMOVE", "ALL");
@@ -474,18 +491,23 @@ pub fn handle_uninstall(args: &UninstallArgs) -> Result<String, String> {
 ///
 /// # Errors
 ///
-/// Returns an error string if the package file is missing or administrative extraction fails.
+/// Returns an [`MsiError`] if the package file is missing or administrative extraction fails.
 ///
 /// # Returns
 ///
 /// The return value.
-pub fn handle_admin(args: &AdminArgs) -> Result<String, String> {
+pub fn handle_admin(args: &AdminArgs) -> Result<String, MsiError> {
     if args.package.trim().is_empty() {
-        return Err("Package path cannot be empty".to_string());
+        return Err(MsiError::CommandLineError(
+            "Package path cannot be empty".to_string(),
+        ));
     }
     let path = Path::new(&args.package);
     if !path.exists() {
-        return Err(format!("Package file not found: '{}'", args.package));
+        return Err(MsiError::CommandLineError(format!(
+            "Package file not found: '{}'",
+            args.package
+        )));
     }
 
     let logger = if let Some(ref p) = args.log {
@@ -500,8 +522,9 @@ pub fn handle_admin(args: &AdminArgs) -> Result<String, String> {
         None
     };
 
-    let pkg = Package::open(path)
-        .map_err(|e| format!("Failed opening package '{}': {e}", args.package))?;
+    let pkg = Package::open(path).map_err(|e| {
+        MsiError::CommandLineError(format!("Failed opening package '{}': {e}", args.package))
+    })?;
     let mut context = EvaluationContext::new();
     load_package_properties(&pkg, &mut context);
     context.set_property("ACTION", "ADMIN");
@@ -533,21 +556,26 @@ pub fn handle_admin(args: &AdminArgs) -> Result<String, String> {
 ///
 /// # Errors
 ///
-/// Returns an error string if repair flags are invalid or the target package is missing.
+/// Returns an [`MsiError`] if repair flags are invalid or the target package is missing.
 ///
 /// # Returns
 ///
 /// The return value.
-pub fn handle_repair(args: &RepairArgs) -> Result<String, String> {
+pub fn handle_repair(args: &RepairArgs) -> Result<String, MsiError> {
     if args.package.trim().is_empty() {
-        return Err("Package path cannot be empty".to_string());
+        return Err(MsiError::CommandLineError(
+            "Package path cannot be empty".to_string(),
+        ));
     }
     let path = Path::new(&args.package);
     if !path.exists() && !args.package.starts_with('{') {
-        return Err(format!("Product or package not found: '{}'", args.package));
+        return Err(MsiError::CommandLineError(format!(
+            "Product or package not found: '{}'",
+            args.package
+        )));
     }
 
-    let flags = RepairFlags::parse(&args.flags).map_err(err_to_string)?;
+    let flags = RepairFlags::parse(&args.flags)?;
     let logger = if let Some(ref p) = args.log {
         let opts = LoggingOptions::parse("*v", p).unwrap_or_default();
         let l = LoggingDispatcher::new(opts);
@@ -561,8 +589,9 @@ pub fn handle_repair(args: &RepairArgs) -> Result<String, String> {
     };
 
     if path.exists() {
-        let pkg = Package::open(path)
-            .map_err(|e| format!("Failed opening package '{}': {e}", args.package))?;
+        let pkg = Package::open(path).map_err(|e| {
+            MsiError::CommandLineError(format!("Failed opening package '{}': {e}", args.package))
+        })?;
         let mut context = EvaluationContext::new();
         load_package_properties(&pkg, &mut context);
         context.set_property("REINSTALL", "ALL");
@@ -600,18 +629,23 @@ pub fn handle_repair(args: &RepairArgs) -> Result<String, String> {
 ///
 /// # Errors
 ///
-/// Returns an error string if the package path is empty or invalid.
+/// Returns an [`MsiError`] if the package path is empty or invalid.
 ///
 /// # Returns
 ///
 /// The return value.
-pub fn handle_advertise(args: &AdvertiseArgs) -> Result<String, String> {
+pub fn handle_advertise(args: &AdvertiseArgs) -> Result<String, MsiError> {
     if args.package.trim().is_empty() {
-        return Err("Package path cannot be empty".to_string());
+        return Err(MsiError::CommandLineError(
+            "Package path cannot be empty".to_string(),
+        ));
     }
     let path = Path::new(&args.package);
     if !path.exists() && !args.package.starts_with('{') {
-        return Err(format!("Product or package not found: '{}'", args.package));
+        return Err(MsiError::CommandLineError(format!(
+            "Product or package not found: '{}'",
+            args.package
+        )));
     }
 
     let scope = if args.user {
@@ -621,8 +655,9 @@ pub fn handle_advertise(args: &AdvertiseArgs) -> Result<String, String> {
     };
 
     if path.exists() {
-        let pkg = Package::open(path)
-            .map_err(|e| format!("Failed opening package '{}': {e}", args.package))?;
+        let pkg = Package::open(path).map_err(|e| {
+            MsiError::CommandLineError(format!("Failed opening package '{}': {e}", args.package))
+        })?;
         let mut context = EvaluationContext::new();
         context.set_property("ADVERTISE", "ALL");
         let cost_engine = DiskCostEngine::new();
@@ -695,12 +730,12 @@ pub fn repair_flags_to_string(flags: &RepairFlags) -> String {
 ///
 /// # Errors
 ///
-/// Returns an error string if `msiexec` flags are invalid or the delegated action fails.
+/// Returns an [`MsiError`] if `msiexec` flags are invalid or the delegated action fails.
 ///
 /// # Returns
 ///
 /// The return value.
-pub fn handle_msiexec(args: &MsiexecArgs) -> Result<String, String> {
+pub fn handle_msiexec(args: &MsiexecArgs) -> Result<String, MsiError> {
     let has_tui = args
         .raw_args
         .iter()
@@ -716,7 +751,7 @@ pub fn handle_msiexec(args: &MsiexecArgs) -> Result<String, String> {
         })
         .cloned()
         .collect();
-    let parsed = MsiExecOptions::parse(&filtered_args).map_err(err_to_string)?;
+    let parsed = MsiExecOptions::parse(&filtered_args)?;
     let log_file = parsed.logging.as_ref().map(|l| l.log_file.clone());
     let result = match parsed.action {
         ActionMode::Install { ref package_path } => {
@@ -794,15 +829,17 @@ impl WorkerSocketAddress {
     ///
     /// # Errors
     ///
-    /// Returns error string if path is empty.
+    /// Returns an [`MsiError`] if path is empty.
     ///
     /// # Returns
     ///
     /// The return value.
-    pub fn parse(path: &str) -> Result<Self, String> {
+    pub fn parse(path: &str) -> Result<Self, MsiError> {
         let trimmed = path.trim();
         if trimmed.is_empty() {
-            return Err("Worker socket path cannot be empty".to_string());
+            return Err(MsiError::CommandLineError(
+                "Worker socket path cannot be empty".to_string(),
+            ));
         }
         Ok(Self(trimmed.to_string()))
     }
@@ -826,12 +863,12 @@ impl WorkerSocketAddress {
 ///
 /// # Errors
 ///
-/// Returns an error string if the worker socket address is empty or fails to bind.
+/// Returns an [`MsiError`] if the worker socket address is empty or fails to bind.
 ///
 /// # Returns
 ///
 /// The return value.
-pub fn handle_worker(args: &WorkerArgs) -> Result<String, String> {
+pub fn handle_worker(args: &WorkerArgs) -> Result<String, MsiError> {
     let socket_addr = WorkerSocketAddress::parse(&args.socket)?;
     let path = Path::new(socket_addr.as_str());
 
@@ -844,8 +881,12 @@ pub fn handle_worker(args: &WorkerArgs) -> Result<String, String> {
             let _ = std::fs::create_dir_all(parent);
         }
 
-        let listener = std::os::unix::net::UnixListener::bind(path)
-            .map_err(|e| format!("Failed to bind worker socket '{}': {e}", path.display()))?;
+        let listener = std::os::unix::net::UnixListener::bind(path).map_err(|e| {
+            MsiError::CommandLineError(format!(
+                "Failed to bind worker socket '{}': {e}",
+                path.display()
+            ))
+        })?;
 
         let _ = listener.set_nonblocking(true);
 
@@ -870,10 +911,10 @@ pub fn handle_worker(args: &WorkerArgs) -> Result<String, String> {
     #[cfg(not(unix))]
     {
         if !path.to_string_lossy().starts_with(r"\\.\pipe\") {
-            return Err(
-                "Windows worker socket must be a named pipe path starting with \\\\.\\pipe\\"
+            return Err(MsiError::CommandLineError(
+                r"Windows worker socket must be a named pipe path starting with \\.\pipe\"
                     .to_string(),
-            );
+            ));
         }
     }
 

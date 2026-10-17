@@ -533,6 +533,9 @@ impl CandleOptions {
             for inc in &self.include_dirs {
                 ctx.add_include_path(inc);
             }
+            if let Some(parent) = src_path.parent().filter(|p| !p.as_os_str().is_empty()) {
+                ctx.add_include_path(parent);
+            }
 
             if let Some(ref p_target) = self.preprocess_only {
                 let prep = crate::wix::Preprocessor::new();
@@ -1566,6 +1569,9 @@ impl WixBuildOptions {
             }
             for inc in &self.include_dirs {
                 ctx.add_include_path(inc);
+            }
+            if let Some(parent) = src.parent().filter(|p| !p.as_os_str().is_empty()) {
+                ctx.add_include_path(parent);
             }
 
             let obj = crate::wix::compile_wix(&content, &mut ctx)?;

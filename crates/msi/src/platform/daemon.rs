@@ -1196,7 +1196,7 @@ impl HostSupervisorExecutor {
         }
         #[cfg(not(windows))]
         {
-            Self::run_supervisor_command_with_shell("sh", cmd_str, timeout_ms)
+            Self::run_supervisor_command_with_shell("/bin/sh", cmd_str, timeout_ms)
         }
     }
 
@@ -1484,7 +1484,7 @@ mod tests {
         #[cfg(windows)]
         let sleep_cmd = "ping -n 3 127.0.0.1";
         #[cfg(not(windows))]
-        let sleep_cmd = "sleep 1";
+        let sleep_cmd = "/bin/sleep 1";
         let res_timeout = HostSupervisorExecutor::run_supervisor_command(sleep_cmd, 50);
         assert!(res_timeout.is_err());
     }

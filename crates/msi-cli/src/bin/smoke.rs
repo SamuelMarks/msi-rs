@@ -13,6 +13,7 @@
 
 use msi::package::Package;
 use msi::wix::linker::Linker;
+use msi::MsiError;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -42,9 +43,9 @@ impl SmokeOptions {
     ///
     /// # Errors
     ///
-    /// Returns error string on missing arguments or input file.
+    /// Returns [`MsiError`] on missing arguments or input file.
     #[allow(clippy::branches_sharing_code)]
-    pub fn parse(args: &[String]) -> Result<Self, String> {
+    pub fn parse(args: &[String]) -> Result<Self, MsiError> {
         let mut opts = Self::default();
         let mut idx = 0;
 
@@ -77,7 +78,9 @@ impl SmokeOptions {
         }
 
         if opts.input_package.as_os_str().is_empty() {
-            return Err("missing input package. Usage: smoke [options] <package.msi>".to_string());
+            return Err(MsiError::CommandLineError(
+                "missing input package. Usage: smoke [options] <package.msi>".to_string(),
+            ));
         }
 
         Ok(opts)
@@ -91,13 +94,13 @@ impl SmokeOptions {
     ///
     /// # Errors
     ///
-    /// Returns error string if validation fails or ICE errors are encountered.
-    pub fn execute(&self) -> Result<(), String> {
+    /// Returns [`MsiError`] if validation fails or ICE errors are encountered.
+    pub fn execute(&self) -> Result<(), MsiError> {
         let pkg = Package::open(&self.input_package).map_err(|e| {
-            format!(
+            MsiError::CommandLineError(format!(
                 "failed opening package '{}': {e}",
                 self.input_package.display()
-            )
+            ))
         })?;
 
         let reports = Linker::run_ice_validations_filtered(
@@ -105,7 +108,7 @@ impl SmokeOptions {
             &self.selected_ice,
             &self.suppressed_ice,
         )
-        .map_err(|e| format!("validation error: {e}"))?;
+        .map_err(|e| MsiError::CommandLineError(format!("validation error: {e}")))?;
 
         for rep in &reports {
             println!("smoke.exe : warning {}: {}", rep.ice, rep.message);

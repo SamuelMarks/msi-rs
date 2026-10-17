@@ -1,8 +1,7 @@
 //! MSI package decompilation (`decompile`) subcommand handler.
 
-use crate::commands::info::err_to_string;
 use clap::Args;
-use msi::Package;
+use msi::{MsiError, Package};
 use std::path::Path;
 
 /// Arguments for decompiling an MSI package into `WiX` source XML.
@@ -29,30 +28,28 @@ pub struct DecompileArgs {
 ///
 /// # Errors
 ///
-/// Returns an error string if package opening, asset extraction, or XML writing fails.
+/// Returns an [`MsiError`] if package opening, asset extraction, or XML writing fails.
 ///
 /// # Returns
 ///
 /// The return value.
-pub fn handle_decompile(args: &DecompileArgs) -> Result<String, String> {
-    let pkg = Package::open(&args.package)
-        .map_err(|e| format!("Failed to open package '{}': {e}", args.package))?;
+pub fn handle_decompile(args: &DecompileArgs) -> Result<String, MsiError> {
+    let pkg = Package::open(&args.package).map_err(|e| {
+        MsiError::CommandLineError(format!("Failed to open package '{}': {e}", args.package))
+    })?;
     let decompiler = msi::wix::MsiDecompiler::new(msi::wix::WixSchemaVersion::V4);
 
     if let Some(ref asset_dir) = args.extract_assets {
-        let extracted = decompiler
-            .extract_assets(&pkg, Path::new(asset_dir))
-            .map_err(err_to_string)?;
+        let extracted = decompiler.extract_assets(&pkg, Path::new(asset_dir))?;
         println!("Extracted {} assets into '{}'", extracted.len(), asset_dir);
     }
 
-    let xml = decompiler
-        .decompile(pkg.database())
-        .map_err(err_to_string)?;
+    let xml = decompiler.decompile(pkg.database())?;
 
     if let Some(ref out_file) = args.output {
-        std::fs::write(out_file, xml.as_bytes())
-            .map_err(|e| format!("Failed to write output to '{out_file}': {e}"))?;
+        std::fs::write(out_file, xml.as_bytes()).map_err(|e| {
+            MsiError::CommandLineError(format!("Failed to write output to '{out_file}': {e}"))
+        })?;
         Ok(format!("Decompiled WiX source written to '{out_file}'"))
     } else {
         Ok(xml)

@@ -917,3 +917,298 @@ fn test_wix_negative_undefined_symbol_references() -> Result<()> {
     let _ = fs::remove_dir_all(&temp_dir);
     Ok(())
 }
+
+/// Tests that `candle` + `light -b <dir>` resolves `<Control Type="ScrollableText"><Text SourceFile="..."/></Control>`
+/// via `light`'s bind path and embeds valid RTF (`{\rtf1...}`) into `Control.Text`.
+///
+/// # Errors
+///
+/// Returns [`msi::MsiError`] on compilation, linking, or verification failure.
+#[test]
+fn test_scrollable_text_source_file_via_light_bind_path() -> Result<()> {
+    let temp_dir = create_test_temp_dir("scrollable_bind")?;
+    let wxs_dir = temp_dir.join("wxs_src");
+    let bind_dir = temp_dir.join("bind_assets");
+    fs::create_dir_all(&wxs_dir)?;
+    fs::create_dir_all(&bind_dir)?;
+
+    let _lic_file = write_test_file(
+        &bind_dir,
+        "deferred_eula.txt",
+        "Deferred EULA Line 1\r\nLine 2 © 2026",
+    )?;
+    let dummy_bin = write_test_file(&bind_dir, "app.exe", "MZ_PAYLOAD")?;
+
+    let product_wxs = write_test_file(
+        &wxs_dir,
+        "Product.wxs",
+        &format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="{{12345678-1111-2222-3333-444455556666}}" Name="ScrollBindApp" Language="1033" Version="1.0.0" Manufacturer="Vendor" UpgradeCode="{{87654321-1111-2222-3333-444455556666}}">
+    <Package Description="ScrollableText Bind Path Test" />
+    <Media Id="1" Cabinet="engine.cab" EmbedCab="yes" />
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Component Id="CmpApp" Guid="*">
+        <File Id="FilApp" Source="{}" KeyPath="yes" />
+      </Component>
+    </Directory>
+    <Feature Id="Main" Title="Main" Level="1">
+      <ComponentRef Id="CmpApp" />
+    </Feature>
+    <UI>
+      <Dialog Id="Dlg_License" Width="370" Height="270" Title="License">
+        <Control Id="LicenseText" Type="ScrollableText" X="20" Y="60" Width="330" Height="140" Sunken="yes">
+          <Text SourceFile="deferred_eula.txt" />
+        </Control>
+      </Dialog>
+    </UI>
+  </Product>
+</Wix>
+"#,
+            dummy_bin.display()
+        ),
+    )?;
+
+    // 1. Compile with candle (deferred_eula.txt is NOT in wxs_dir or CWD)
+    let wixobj_path = temp_dir.join("Product.wixobj");
+    let candle_opts = CandleOptions {
+        sources: vec![product_wxs],
+        output: Some(wixobj_path.clone()),
+        arch: Some("x64".to_string()),
+        ..CandleOptions::new()
+    };
+    let objs = candle_opts.execute()?;
+    assert_eq!(objs.len(), 1);
+
+    // 2. Link with light WITHOUT bind_dir -> should fail with hard linker error
+    let out_fail = temp_dir.join("Fail.msi");
+    let fail_opts = msi::wix::toolchain::LightOptions {
+        inputs: vec![wixobj_path.clone()],
+        output: Some(out_fail),
+        suppress_ice: true,
+        ..msi::wix::toolchain::LightOptions::new()
+    };
+    assert!(fail_opts.execute().is_err());
+
+    // 3. Link with light WITH -b bind_dir -> succeeds and embeds RTF
+    let out_msi = temp_dir.join("ScrollBindApp.msi");
+    let light_opts = msi::wix::toolchain::LightOptions {
+        inputs: vec![wixobj_path],
+        output: Some(out_msi.clone()),
+        base_dirs: vec![bind_dir],
+        suppress_ice: true,
+        ..msi::wix::toolchain::LightOptions::new()
+    };
+    let linked = light_opts.execute()?;
+    assert!(linked.exists());
+
+    let pkg = Package::open(&out_msi)?;
+    let ctrls = pkg.database().get_records("Control");
+    let lic_ctrl = ctrls
+        .iter()
+        .find(|r| r.get(1) == Some(&FieldValue::String("LicenseText".to_string())));
+    assert!(lic_ctrl.is_some());
+    let rtf = lic_ctrl
+        .and_then(|r| r.get(9))
+        .map(ToString::to_string)
+        .unwrap_or_default();
+    assert!(rtf.starts_with(r"{\rtf1\ansi\ansicpg1252"));
+    assert!(rtf.contains("Deferred EULA Line 1"));
+    assert!(rtf.contains(r"\u169?"));
+
+    let _ = fs::remove_dir_all(&temp_dir);
+    Ok(())
+}
+
+/// Tests that `<WixVariable Id="WixUILicenseRtf" Value="..."/>` populates `ScrollableText` controls
+/// even when the control initially has a fallback placeholder or unresolved path.
+///
+/// # Errors
+///
+/// Returns [`msi::MsiError`] on compilation, linking, or verification failure.
+#[test]
+fn test_scrollable_text_wix_ui_license_rtf_override() -> Result<()> {
+    let temp_dir = create_test_temp_dir("scrollable_wixvar")?;
+    let eula_file = write_test_file(&temp_dir, "custom_eula.txt", "Custom EULA Override Text")?;
+    let dummy_bin = write_test_file(&temp_dir, "app.exe", "MZ_PAYLOAD")?;
+
+    let product_wxs = write_test_file(
+        &temp_dir,
+        "Product.wxs",
+        &format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="{{22345678-1111-2222-3333-444455556666}}" Name="WixVarEulaApp" Language="1033" Version="1.0.0" Manufacturer="Vendor" UpgradeCode="{{97654321-1111-2222-3333-444455556666}}">
+    <Package Description="WixUILicenseRtf Override Test" />
+    <Media Id="1" Cabinet="engine.cab" EmbedCab="yes" />
+    <WixVariable Id="WixUILicenseRtf" Value="{}" />
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Component Id="CmpApp" Guid="*">
+        <File Id="FilApp" Source="{}" KeyPath="yes" />
+      </Component>
+    </Directory>
+    <Feature Id="Main" Title="Main" Level="1">
+      <ComponentRef Id="CmpApp" />
+    </Feature>
+    <UI>
+      <Dialog Id="LicenseAgreementDlg" Width="370" Height="270" Title="License">
+        <Control Id="LicenseText" Type="ScrollableText" X="20" Y="60" Width="330" Height="140" Sunken="yes" Text="!(wix.WixUILicenseRtf)" />
+      </Dialog>
+    </UI>
+  </Product>
+</Wix>
+"#,
+            eula_file.display(),
+            dummy_bin.display()
+        ),
+    )?;
+
+    let out_msi = temp_dir.join("WixVarEulaApp.msi");
+    let build_opts = WixBuildOptions {
+        sources: vec![product_wxs],
+        output: Some(out_msi.clone()),
+        suppress_ice: true,
+        ..WixBuildOptions::new()
+    };
+    let res = build_opts.execute()?;
+    assert!(res.exists());
+
+    let pkg = Package::open(&out_msi)?;
+    let ctrls = pkg.database().get_records("Control");
+    let lic_ctrl = ctrls
+        .iter()
+        .find(|r| r.get(1) == Some(&FieldValue::String("LicenseText".to_string())));
+    assert!(lic_ctrl.is_some());
+    let rtf = lic_ctrl
+        .and_then(|r| r.get(9))
+        .map(ToString::to_string)
+        .unwrap_or_default();
+    assert!(rtf.starts_with(r"{\rtf1\ansi\ansicpg1252"));
+    assert!(rtf.contains("Custom EULA Override Text"));
+
+    let _ = fs::remove_dir_all(&temp_dir);
+    Ok(())
+}
+
+/// Tests desktop shortcut creation, 8.3|LongName formatting, `InstallUISequence` `ExecuteAction` (1300),
+/// `InstallExecuteSequence` `CreateShortcuts` (4500), `ALLUSERS=1` for `perMachine`, `PID_CODEPAGE == 1252`,
+/// and `Icon` stream embedding.
+///
+/// # Errors
+///
+/// Returns [`msi::MsiError`] on compilation, linking, or verification failure.
+#[test]
+fn test_desktop_shortcut_creation_and_icon_stream() -> Result<()> {
+    let temp_dir = create_test_temp_dir("desktop_shortcut_icon")?;
+    let dummy_bin = write_test_file(&temp_dir, "openedx.exe", "MZ_PAYLOAD")?;
+    let dummy_ico = write_test_file(&temp_dir, "app_icon.ico", "ICO_BINARY_DATA")?;
+
+    let product_wxs = write_test_file(
+        &temp_dir,
+        "Product.wxs",
+        &format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="{{32345678-1111-2222-3333-444455556666}}" Name="OpenEdXSetup" Language="1033" Version="1.0.0" Manufacturer="OpenEdX" UpgradeCode="{{A7654321-1111-2222-3333-444455556666}}">
+    <Package Description="OpenEdX Setup" InstallScope="perMachine" />
+    <Media Id="1" Cabinet="engine.cab" EmbedCab="yes" />
+    <Icon Id="AppIcon.ico" SourceFile="{}" />
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="DesktopFolder" Name="Desktop" />
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="INSTALLFOLDER" Name="OpenEdX">
+          <Component Id="CmpShortcut" Guid="{{42345678-1111-2222-3333-444455556666}}">
+            <File Id="FilExe" Source="{}" KeyPath="yes" />
+            <Shortcut Id="ScLms" Directory="DesktopFolder" Name="Open edX LMS" Target="[#FilExe]" Icon="AppIcon.ico" />
+            <Shortcut Id="ScStudio" Directory="DesktopFolder" Name="Open edX Studio" Target="[#FilExe]" Icon="AppIcon.ico" />
+          </Component>
+        </Directory>
+      </Directory>
+    </Directory>
+    <Feature Id="Main" Title="Main" Level="1">
+      <ComponentRef Id="CmpShortcut" />
+    </Feature>
+    <UI>
+      <Dialog Id="Dlg_Welcome" Width="370" Height="270" Title="Welcome">
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Text="Next" />
+      </Dialog>
+      <InstallUISequence>
+        <Show Dialog="Dlg_Welcome" After="CostFinalize" />
+      </InstallUISequence>
+    </UI>
+  </Product>
+</Wix>
+"#,
+            dummy_ico.display(),
+            dummy_bin.display()
+        ),
+    )?;
+
+    let out_msi = temp_dir.join("OpenEdXSetup.msi");
+    let build_opts = WixBuildOptions {
+        sources: vec![product_wxs],
+        output: Some(out_msi.clone()),
+        suppress_ice: true,
+        ..WixBuildOptions::new()
+    };
+    let res = build_opts.execute()?;
+    assert!(res.exists());
+
+    let pkg = Package::open(&out_msi)?;
+    // Verify PID_CODEPAGE == 1252 by default
+    assert_eq!(pkg.summary_info().codepage, Some(1252));
+
+    let db = pkg.database();
+    // Verify ALLUSERS = 1 from InstallScope="perMachine"
+    let props = db.get_records("Property");
+    assert!(props.iter().any(|r| {
+        r.get(0) == Some(&FieldValue::String("ALLUSERS".to_string()))
+            && r.get(1) == Some(&FieldValue::String("1".to_string()))
+    }));
+
+    // Verify Shortcut rows have 8.3|LongName syntax and collision disambiguation
+    let shortcuts = db.get_records("Shortcut");
+    assert_eq!(shortcuts.len(), 2);
+    assert_eq!(
+        shortcuts[0].get(2),
+        Some(&FieldValue::String("OPENED~1|Open edX LMS".to_string()))
+    );
+    assert_eq!(
+        shortcuts[1].get(2),
+        Some(&FieldValue::String("OPENED~2|Open edX Studio".to_string()))
+    );
+
+    // Verify ExecuteAction (1300) and CostFinalize (1000) in InstallUISequence
+    let ui_seq = db.get_records("InstallUISequence");
+    assert!(ui_seq.iter().any(|r| {
+        r.get(0) == Some(&FieldValue::String("CostFinalize".to_string()))
+            && r.get(2) == Some(&FieldValue::Short(1000))
+    }));
+    assert!(ui_seq.iter().any(|r| {
+        r.get(0) == Some(&FieldValue::String("ExecuteAction".to_string()))
+            && r.get(2) == Some(&FieldValue::Short(1300))
+    }));
+
+    // Verify CreateShortcuts (4500) and RemoveShortcuts (3200) in InstallExecuteSequence
+    let exec_seq = db.get_records("InstallExecuteSequence");
+    assert!(exec_seq.iter().any(|r| {
+        r.get(0) == Some(&FieldValue::String("CreateShortcuts".to_string()))
+            && r.get(2) == Some(&FieldValue::Short(4500))
+    }));
+    assert!(exec_seq.iter().any(|r| {
+        r.get(0) == Some(&FieldValue::String("RemoveShortcuts".to_string()))
+            && r.get(2) == Some(&FieldValue::Short(3200))
+    }));
+
+    // Verify Icon stream is embedded in the final .msi CFB container
+    let msi_bytes = fs::read(&out_msi)?;
+    let cfb = msi::cfb::CfbReader::new(&msi_bytes)?;
+    let icon_stream_name =
+        msi::cfb::stream_name::encode_msi_stream_name("Icon.AppIcon.ico", false)?;
+    let icon_data = cfb.read_stream(&icon_stream_name)?;
+    assert_eq!(icon_data, b"ICO_BINARY_DATA");
+
+    let _ = fs::remove_dir_all(&temp_dir);
+    Ok(())
+}

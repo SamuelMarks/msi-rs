@@ -12,6 +12,7 @@
 
 use msi::wix::wixlib::WixLibrary;
 use msi::wix::wixobj::WixObject;
+use msi::MsiError;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -42,9 +43,9 @@ impl LitOptions {
     ///
     /// # Errors
     ///
-    /// Returns error string on missing arguments or input files.
+    /// Returns [`MsiError`] on missing arguments or input files.
     #[allow(clippy::branches_sharing_code)]
-    pub fn parse(args: &[String]) -> Result<Self, String> {
+    pub fn parse(args: &[String]) -> Result<Self, MsiError> {
         let mut opts = Self::default();
         let mut idx = 0;
 
@@ -64,7 +65,9 @@ impl LitOptions {
             {
                 idx += 1;
                 if idx >= args.len() {
-                    return Err("missing output path for '-out'".to_string());
+                    return Err(MsiError::CommandLineError(
+                        "missing output path for '-out'".to_string(),
+                    ));
                 }
                 opts.output = Some(PathBuf::from(&args[idx]));
                 idx += 1;
@@ -83,14 +86,16 @@ impl LitOptions {
         }
 
         if opts.inputs.is_empty() {
-            return Err(
+            return Err(MsiError::CommandLineError(
                 "missing input objects. Usage: lit [options] -o <out.wixlib> <inputs.wixobj...>"
                     .to_string(),
-            );
+            ));
         }
 
         if opts.output.is_none() {
-            return Err("missing required output path '-o <out.wixlib>'".to_string());
+            return Err(MsiError::CommandLineError(
+                "missing required output path '-o <out.wixlib>'".to_string(),
+            ));
         }
 
         Ok(opts)
@@ -104,22 +109,22 @@ impl LitOptions {
     ///
     /// # Errors
     ///
-    /// Returns error string on I/O or serialization failure.
-    pub fn execute(&self) -> Result<(), String> {
+    /// Returns [`MsiError`] on I/O or serialization failure.
+    pub fn execute(&self) -> Result<(), MsiError> {
         let mut objects = Vec::new();
 
         for input_path in &self.inputs {
             let data = fs::read(input_path).map_err(|e| {
-                format!(
+                MsiError::CommandLineError(format!(
                     "failed reading input object '{}': {e}",
                     input_path.display()
-                )
+                ))
             })?;
             let obj = WixObject::deserialize(&data).map_err(|e| {
-                format!(
+                MsiError::CommandLineError(format!(
                     "failed deserializing object '{}': {e}",
                     input_path.display()
-                )
+                ))
             })?;
             objects.push(obj);
         }
@@ -140,10 +145,10 @@ impl LitOptions {
                                     let path = Path::new(source_path);
                                     if path.exists() {
                                         let file_bytes = fs::read(path).map_err(|e| {
-                                            format!(
+                                            MsiError::CommandLineError(format!(
                                                 "failed reading payload file '{}': {e}",
                                                 path.display()
-                                            )
+                                            ))
                                         })?;
                                         bound_files.insert(file_key.clone(), file_bytes);
                                     }
@@ -160,16 +165,16 @@ impl LitOptions {
         let out_path = self
             .output
             .as_ref()
-            .ok_or_else(|| "missing output path".to_string())?;
+            .ok_or_else(|| MsiError::CommandLineError("missing output path".to_string()))?;
         if let Some(parent) = out_path.parent() {
             let _ = fs::create_dir_all(parent);
         }
 
         lib.save(out_path).map_err(|e| {
-            format!(
+            MsiError::CommandLineError(format!(
                 "failed writing output library '{}': {e}",
                 out_path.display()
-            )
+            ))
         })?;
 
         Ok(())

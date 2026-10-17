@@ -12,6 +12,7 @@
 //! ```
 
 use msi::wix::harvest::Harvester;
+use msi::MsiError;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -61,9 +62,9 @@ impl HeatOptions {
     ///
     /// # Errors
     ///
-    /// Returns error string on missing arguments or target.
+    /// Returns [`MsiError`] on missing arguments or target.
     #[allow(clippy::too_many_lines, clippy::branches_sharing_code)]
-    pub fn parse(args: &[String]) -> Result<Self, String> {
+    pub fn parse(args: &[String]) -> Result<Self, MsiError> {
         let mut opts = Self {
             component_group: "HarvestedComponents".to_string(),
             directory_ref: "INSTALLFOLDER".to_string(),
@@ -71,10 +72,10 @@ impl HeatOptions {
         };
 
         if args.is_empty() {
-            return Err(
+            return Err(MsiError::CommandLineError(
                 "missing harvest type. Usage: heat <dir|file|reg|project> <path> [options]"
                     .to_string(),
-            );
+            ));
         }
 
         let mut positional = Vec::new();
@@ -107,21 +108,27 @@ impl HeatOptions {
             } else if arg.eq_ignore_ascii_case("-cg") || arg.eq_ignore_ascii_case("/cg") {
                 idx += 1;
                 if idx >= args.len() {
-                    return Err("missing ComponentGroup identifier for '-cg'".to_string());
+                    return Err(MsiError::CommandLineError(
+                        "missing ComponentGroup identifier for '-cg'".to_string(),
+                    ));
                 }
                 opts.component_group.clone_from(&args[idx]);
                 idx += 1;
             } else if arg.eq_ignore_ascii_case("-dr") || arg.eq_ignore_ascii_case("/dr") {
                 idx += 1;
                 if idx >= args.len() {
-                    return Err("missing DirectoryRef identifier for '-dr'".to_string());
+                    return Err(MsiError::CommandLineError(
+                        "missing DirectoryRef identifier for '-dr'".to_string(),
+                    ));
                 }
                 opts.directory_ref.clone_from(&args[idx]);
                 idx += 1;
             } else if arg.eq_ignore_ascii_case("-var") || arg.eq_ignore_ascii_case("/var") {
                 idx += 1;
                 if idx >= args.len() {
-                    return Err("missing variable prefix for '-var'".to_string());
+                    return Err(MsiError::CommandLineError(
+                        "missing variable prefix for '-var'".to_string(),
+                    ));
                 }
                 opts.var_prefix = Some(args[idx].clone());
                 idx += 1;
@@ -132,7 +139,9 @@ impl HeatOptions {
             {
                 idx += 1;
                 if idx >= args.len() {
-                    return Err("missing output path for '-out'".to_string());
+                    return Err(MsiError::CommandLineError(
+                        "missing output path for '-out'".to_string(),
+                    ));
                 }
                 opts.output = Some(PathBuf::from(&args[idx]));
                 idx += 1;
@@ -147,15 +156,17 @@ impl HeatOptions {
         }
 
         if positional.is_empty() {
-            return Err(
+            return Err(MsiError::CommandLineError(
                 "missing harvest type. Usage: heat <dir|file|reg|project> <path> [options]"
                     .to_string(),
-            );
+            ));
         }
         opts.harvest_type.clone_from(&positional[0]);
 
         if positional.len() < 2 {
-            return Err("missing target path to harvest".to_string());
+            return Err(MsiError::CommandLineError(
+                "missing target path to harvest".to_string(),
+            ));
         }
         opts.target_path = PathBuf::from(&positional[1]);
 
@@ -170,8 +181,8 @@ impl HeatOptions {
     ///
     /// # Errors
     ///
-    /// Returns error string on I/O or XML generation failure.
-    pub fn execute(&self) -> Result<(), String> {
+    /// Returns [`MsiError`] on I/O or XML generation failure.
+    pub fn execute(&self) -> Result<(), MsiError> {
         let harvester = Harvester::new();
         let xml = match self.harvest_type.as_str() {
             "dir" => harvester
@@ -180,7 +191,9 @@ impl HeatOptions {
                     &self.component_group,
                     &self.directory_ref,
                 )
-                .map_err(|e| format!("directory harvesting failed: {e}"))?,
+                .map_err(|e| {
+                    MsiError::CommandLineError(format!("directory harvesting failed: {e}"))
+                })?,
             "file" => {
                 let stem = self
                     .target_path
@@ -205,14 +218,16 @@ impl HeatOptions {
             }
             "reg" => {
                 let content = fs::read_to_string(&self.target_path).map_err(|e| {
-                    format!(
+                    MsiError::CommandLineError(format!(
                         "failed reading .reg file '{}': {e}",
                         self.target_path.display()
-                    )
+                    ))
                 })?;
                 harvester
                     .harvest_registry(&content, "HarvestedRegistry")
-                    .map_err(|e| format!("registry harvesting failed: {e}"))?
+                    .map_err(|e| {
+                        MsiError::CommandLineError(format!("registry harvesting failed: {e}"))
+                    })?
             }
             "project" | "perf" | "website" => {
                 let target_dir = if self.target_path.is_dir() {
@@ -225,17 +240,27 @@ impl HeatOptions {
                 };
                 harvester
                     .harvest_build_outputs(&target_dir, &self.component_group)
-                    .map_err(|e| format!("build output harvesting failed: {e}"))?
+                    .map_err(|e| {
+                        MsiError::CommandLineError(format!("build output harvesting failed: {e}"))
+                    })?
             }
-            other => return Err(format!("unsupported harvest type '{other}'")),
+            other => {
+                return Err(MsiError::CommandLineError(format!(
+                    "unsupported harvest type '{other}'"
+                )))
+            }
         };
 
         if let Some(ref out_p) = self.output {
             if let Some(parent) = out_p.parent() {
                 let _ = fs::create_dir_all(parent);
             }
-            fs::write(out_p, xml)
-                .map_err(|e| format!("failed writing output file '{}': {e}", out_p.display()))?;
+            fs::write(out_p, xml).map_err(|e| {
+                MsiError::CommandLineError(format!(
+                    "failed writing output file '{}': {e}",
+                    out_p.display()
+                ))
+            })?;
         } else {
             println!("{xml}");
         }

@@ -2,7 +2,7 @@
 
 use crate::commands::install::CliUiLevel;
 use clap::Args;
-use msi::Package;
+use msi::{MsiError, Package};
 use std::path::Path;
 
 /// Arguments for applying a patch.
@@ -33,35 +33,47 @@ pub struct PatchArgs {
 ///
 /// # Errors
 ///
-/// Returns an error string if the package or patch file is missing or invalid.
+/// Returns an [`MsiError`] if the package or patch file is missing or invalid.
 ///
 /// # Returns
 ///
 /// The return value.
-pub fn handle_patch(args: &PatchArgs) -> Result<String, String> {
+pub fn handle_patch(args: &PatchArgs) -> Result<String, MsiError> {
     if args.package.trim().is_empty() {
-        return Err("Package path cannot be empty".to_string());
+        return Err(MsiError::CommandLineError(
+            "Package path cannot be empty".to_string(),
+        ));
     }
     if args.patch.trim().is_empty() {
-        return Err("Patch path cannot be empty".to_string());
+        return Err(MsiError::CommandLineError(
+            "Patch path cannot be empty".to_string(),
+        ));
     }
 
     let pkg_path = Path::new(&args.package);
     if !pkg_path.exists() {
-        return Err(format!("Package file not found: '{}'", args.package));
+        return Err(MsiError::CommandLineError(format!(
+            "Package file not found: '{}'",
+            args.package
+        )));
     }
     let patch_path = Path::new(&args.patch);
     if !patch_path.exists() {
-        return Err(format!("Patch file not found: '{}'", args.patch));
+        return Err(MsiError::CommandLineError(format!(
+            "Patch file not found: '{}'",
+            args.patch
+        )));
     }
 
-    let mut pkg = Package::open(pkg_path)
-        .map_err(|e| format!("Failed opening package '{}': {e}", args.package))?;
-    let patch_bytes = std::fs::read(patch_path)
-        .map_err(|e| format!("Failed reading patch file '{}': {e}", args.patch))?;
+    let mut pkg = Package::open(pkg_path).map_err(|e| {
+        MsiError::CommandLineError(format!("Failed opening package '{}': {e}", args.package))
+    })?;
+    let patch_bytes = std::fs::read(patch_path).map_err(|e| {
+        MsiError::CommandLineError(format!("Failed reading patch file '{}': {e}", args.patch))
+    })?;
 
     let cfb = msi::cfb::CfbReader::new(&patch_bytes)
-        .map_err(|e| format!("Invalid patch CFB container: {e}"))?;
+        .map_err(|e| MsiError::CommandLineError(format!("Invalid patch CFB container: {e}")))?;
 
     let mut transforms_applied = 0;
     for entry in cfb.entries() {
@@ -89,7 +101,7 @@ pub fn handle_patch(args: &PatchArgs) -> Result<String, String> {
     drop(patch_bytes);
 
     pkg.save(pkg_path)
-        .map_err(|e| format!("Failed saving patched package: {e}"))?;
+        .map_err(|e| MsiError::CommandLineError(format!("Failed saving patched package: {e}")))?;
 
     Ok(format!(
         "Successfully applied patch '{}' to package '{}' (transforms: {})",

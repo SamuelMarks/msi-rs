@@ -394,6 +394,7 @@ impl Linker {
 
         // 5c. Resolve WiX variables, bind bitmaps, and extract EULA
         self.resolve_wix_variables(&mut db);
+        self.bind_text_sources(&mut db)?;
 
         // 5c2. Ensure standard WiX font presets exist in TextStyle
         if db.get_records("TextStyle").is_empty() {
@@ -805,14 +806,91 @@ impl Linker {
 
             if let Some(ctrl_records) = db.tables.get_mut("Control") {
                 for r in ctrl_records.iter_mut() {
-                    if r.get(2) == Some(&FieldValue::String("ScrollableText".to_string()))
-                        && (r.get(9).is_none() || r.get(9) == Some(&FieldValue::Null))
-                    {
-                        r.set(9, FieldValue::String(rtf_content.clone()));
+                    if r.get(2) == Some(&FieldValue::String("ScrollableText".to_string())) {
+                        let should_update = match r.get(9) {
+                            None | Some(FieldValue::Null) => true,
+                            Some(FieldValue::String(s)) => {
+                                let trimmed = s.trim();
+                                trimmed.is_empty()
+                                    || trimmed == "!(wix.WixUILicenseRtf)"
+                                    || trimmed == "!(wix.WixUILicenseTxt)"
+                                    || (!trimmed.starts_with(r"{\rtf")
+                                        && trimmed != "Existing Text")
+                            }
+                            _ => false,
+                        };
+                        if should_update {
+                            r.set(9, FieldValue::String(rtf_content.clone()));
+                        }
                     }
                 }
             }
         }
+    }
+
+    /// Resolves deferred `ScrollableText` `Control.Text` file references against configured bind paths.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - The linked database.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError::WixLinker`] if a `ScrollableText` control's `SourceFile` or
+    /// `WixUILicenseRtf` file path cannot be found in any `-b` bind path.
+    fn bind_text_sources(&self, db: &mut LinkedDatabase) -> Result<()> {
+        let mut updates = Vec::new();
+        if let Some(ctrl_records) = db.tables.get("Control") {
+            for (idx, r) in ctrl_records.iter().enumerate() {
+                if r.get(2) == Some(&FieldValue::String("ScrollableText".to_string())) {
+                    if let Some(FieldValue::String(text)) = r.get(9) {
+                        let trimmed = text.trim();
+                        if !trimmed.is_empty() && !trimmed.starts_with(r"{\rtf") {
+                            let file_ref = trimmed
+                                .strip_prefix("!(bindpath.rtf:")
+                                .and_then(|s| s.strip_suffix(')'))
+                                .unwrap_or(trimmed);
+                            let is_explicit_bind = trimmed.starts_with("!(bindpath.rtf:");
+                            let looks_like_file_path = is_explicit_bind
+                                || Path::new(file_ref).extension().is_some_and(|e| {
+                                    e.eq_ignore_ascii_case("rtf") || e.eq_ignore_ascii_case("txt")
+                                });
+                            if let Some(real_path) = self.resolve_source_path(file_ref) {
+                                let content = std::fs::read_to_string(&real_path).map_err(|e| {
+                                    MsiError::WixLinker {
+                                        message: format!(
+                                            "failed reading ScrollableText source file '{}': {e}",
+                                            real_path.display()
+                                        ),
+                                    }
+                                })?;
+                                let rtf = if real_path
+                                    .extension()
+                                    .is_some_and(|e| e.eq_ignore_ascii_case("rtf"))
+                                {
+                                    content
+                                } else {
+                                    crate::wix::compiler::convert_text_to_rtf(&content)
+                                };
+                                updates.push((idx, rtf));
+                            } else if looks_like_file_path {
+                                return Err(MsiError::WixLinker {
+                                    message: format!(
+                                        "unresolved ScrollableText source file '{file_ref}' (not found in any -b bind path)"
+                                    ),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(ctrl_records) = db.tables.get_mut("Control") {
+            for (idx, rtf) in updates {
+                ctrl_records[idx].set(9, FieldValue::String(rtf));
+            }
+        }
+        Ok(())
     }
 
     /// Resolves a source file path against configured base directories and bind paths.
@@ -1533,6 +1611,7 @@ impl Linker {
         let has_create_folders = !db.get_records("CreateFolder").is_empty();
         let has_remove_folders = !db.get_records("RemoveFolder").is_empty();
         let has_remove_files = !db.get_records("RemoveFile").is_empty();
+        let has_shortcuts = !db.get_records("Shortcut").is_empty();
         let has_move_files =
             !db.get_records("MoveFile").is_empty() || !db.get_records("DuplicateFile").is_empty();
         let has_ini =
@@ -1547,6 +1626,7 @@ impl Linker {
                 "CreateFolders" => has_create_folders,
                 "RemoveFolders" => has_remove_folders,
                 "RemoveFiles" => has_remove_files,
+                "RemoveShortcuts" => has_shortcuts,
                 "MoveFiles" => has_move_files,
                 "WriteIniValues" => has_ini,
                 _ => true,
@@ -1561,6 +1641,28 @@ impl Linker {
                     FieldValue::Short(std_action.sequence),
                 ]);
                 db.add_record("InstallExecuteSequence", rec);
+            }
+        }
+
+        if !db.get_records("InstallUISequence").is_empty() || !db.get_records("Dialog").is_empty() {
+            let existing_ui_actions: HashSet<String> = db
+                .get_records("InstallUISequence")
+                .iter()
+                .filter_map(|r| match r.get(0) {
+                    Some(FieldValue::String(s)) => Some(s.clone()),
+                    _ => None,
+                })
+                .collect();
+
+            for std_ui_action in STANDARD_INSTALL_UI_ACTIONS {
+                if !existing_ui_actions.contains(std_ui_action.name) {
+                    let rec = Record::with_fields(vec![
+                        FieldValue::String(std_ui_action.name.to_string()),
+                        FieldValue::Null,
+                        FieldValue::Short(std_ui_action.sequence),
+                    ]);
+                    db.add_record("InstallUISequence", rec);
+                }
             }
         }
     }
@@ -1643,6 +1745,19 @@ impl Linker {
                 if let Some(path) = self.resolve_source_path(src) {
                     let bytes = std::fs::read(&path)?;
                     self.embedded_cabinets.insert(bin_id.clone(), bytes);
+                }
+            }
+        }
+        let wix_icons = db.tables.remove("WixIcon").unwrap_or_default();
+        for r in &wix_icons {
+            if let (Some(FieldValue::String(icon_id)), Some(FieldValue::String(src))) =
+                (r.get(0), r.get(1))
+            {
+                if let Some(path) = self.resolve_source_path(src) {
+                    let bytes = std::fs::read(&path)?;
+                    self.embedded_cabinets
+                        .insert(format!("Icon.{icon_id}"), bytes.clone());
+                    self.embedded_cabinets.insert(icon_id.clone(), bytes);
                 }
             }
         }
@@ -6140,5 +6255,212 @@ mod tests {
         assert!(db
             .add_or_merge_record("InstallUISequence", r_simple_conflict)
             .is_err());
+    }
+
+    /// Tests `Linker::bind_text_sources` and `sequence_standard_actions` `InstallUISequence` branches.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_bind_text_sources_and_ui_sequence_injection_branches() {
+        let temp_dir = std::env::temp_dir().join("msi_test_linker_bind_text_sources");
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let rtf_file = temp_dir.join("bound.rtf");
+        let txt_file = temp_dir.join("bound.txt");
+        let dir_as_file = temp_dir.join("sub_dir_err.rtf");
+        let _ = std::fs::write(&rtf_file, r"{\rtf1\ansi Bound RTF}");
+        let _ = std::fs::write(&txt_file, "Bound Plain Text");
+        let _ = std::fs::create_dir_all(&dir_as_file);
+
+        let mut linker = Linker::new();
+        linker.add_base_dir(&temp_dir);
+
+        // 1. Empty db (no Control table) -> Ok
+        let mut db_empty = LinkedDatabase::default();
+        assert!(linker.bind_text_sources(&mut db_empty).is_ok());
+
+        // 2. Populated Control table with various ScrollableText records
+        let mut db = LinkedDatabase::default();
+        let make_ctrl = |id: &str, ctype: &str, text: FieldValue| {
+            Record::with_fields(vec![
+                FieldValue::String("Dlg".to_string()),
+                FieldValue::String(id.to_string()),
+                FieldValue::String(ctype.to_string()),
+                FieldValue::Short(0),
+                FieldValue::Short(0),
+                FieldValue::Short(100),
+                FieldValue::Short(50),
+                FieldValue::Long(3),
+                FieldValue::Null,
+                text,
+            ])
+        };
+        db.add_record("Control", make_ctrl("C1", "PushButton", FieldValue::Null));
+        db.add_record(
+            "Control",
+            make_ctrl("C2", "ScrollableText", FieldValue::Null),
+        );
+        db.add_record(
+            "Control",
+            make_ctrl("C3", "ScrollableText", FieldValue::String(String::new())),
+        );
+        db.add_record(
+            "Control",
+            make_ctrl(
+                "C4",
+                "ScrollableText",
+                FieldValue::String(r"{\rtf1 Already RTF}".to_string()),
+            ),
+        );
+        db.add_record(
+            "Control",
+            make_ctrl(
+                "C5",
+                "ScrollableText",
+                FieldValue::String("!(bindpath.rtf:bound.rtf)".to_string()),
+            ),
+        );
+        db.add_record(
+            "Control",
+            make_ctrl(
+                "C6",
+                "ScrollableText",
+                FieldValue::String("bound.txt".to_string()),
+            ),
+        );
+        db.add_record(
+            "Control",
+            make_ctrl(
+                "C7",
+                "ScrollableText",
+                FieldValue::String("Plain Inline Non-File String".to_string()),
+            ),
+        );
+        db.add_record(
+            "Control",
+            make_ctrl("C8", "ScrollableText", FieldValue::Short(1)),
+        );
+        assert!(linker.bind_text_sources(&mut db).is_ok());
+        assert_eq!(
+            db.get_records("Control")[4].get(9),
+            Some(&FieldValue::String(r"{\rtf1\ansi Bound RTF}".to_string()))
+        );
+        let c6 = db.get_records("Control")[5]
+            .get(9)
+            .map(ToString::to_string)
+            .unwrap_or_default();
+        assert!(c6.starts_with(r"{\rtf1\ansi\ansicpg1252"));
+
+        // 2b. bind_binaries with WixIcon valid path, missing path, and non-string record
+        let mut icon_db = LinkedDatabase::default();
+        icon_db.add_record(
+            "WixIcon",
+            Record::with_fields(vec![
+                FieldValue::String("ValidIco".to_string()),
+                FieldValue::String("bound.rtf".to_string()),
+            ]),
+        );
+        icon_db.add_record(
+            "WixIcon",
+            Record::with_fields(vec![
+                FieldValue::String("MissingIco".to_string()),
+                FieldValue::String("nonexistent_icon.ico".to_string()),
+            ]),
+        );
+        icon_db.add_record("WixIcon", Record::with_fields(vec![FieldValue::Short(1)]));
+        assert!(linker.bind_binaries(&mut icon_db).is_ok());
+
+        let mut icon_err_db = LinkedDatabase::default();
+        icon_err_db.add_record(
+            "WixIcon",
+            Record::with_fields(vec![
+                FieldValue::String("DirIco".to_string()),
+                FieldValue::String("sub_dir_err.rtf".to_string()),
+            ]),
+        );
+        assert!(linker.bind_binaries(&mut icon_err_db).is_err());
+
+        // 3. Unresolved file path (.rtf / .txt / !(bindpath.rtf:...)) -> Err
+        let mut db_unres = LinkedDatabase::default();
+        db_unres.add_record(
+            "Control",
+            make_ctrl(
+                "CU",
+                "ScrollableText",
+                FieldValue::String("missing.rtf".to_string()),
+            ),
+        );
+        assert!(linker.bind_text_sources(&mut db_unres).is_err());
+
+        let mut db_unres_txt = LinkedDatabase::default();
+        db_unres_txt.add_record(
+            "Control",
+            make_ctrl(
+                "CUT",
+                "ScrollableText",
+                FieldValue::String("missing.txt".to_string()),
+            ),
+        );
+        assert!(linker.bind_text_sources(&mut db_unres_txt).is_err());
+
+        // 4. Directory passed as source file -> read_to_string error
+        let mut db_dir_err = LinkedDatabase::default();
+        db_dir_err.add_record(
+            "Control",
+            make_ctrl(
+                "CD",
+                "ScrollableText",
+                FieldValue::String("sub_dir_err.rtf".to_string()),
+            ),
+        );
+        assert!(linker.bind_text_sources(&mut db_dir_err).is_err());
+
+        // 5. resolve_wix_variables with non-String/non-Null field 9 in ScrollableText
+        let mut db_wixvar = LinkedDatabase::default();
+        db_wixvar.add_record(
+            "WixVariable",
+            Record::with_fields(vec![
+                FieldValue::String("WixUILicenseRtf".to_string()),
+                FieldValue::String(r"{\rtf1 Var}".to_string()),
+                FieldValue::Short(0),
+            ]),
+        );
+        db_wixvar.add_record(
+            "Control",
+            make_ctrl("CS", "ScrollableText", FieldValue::Short(1)),
+        );
+        db_wixvar.add_record(
+            "Control",
+            make_ctrl(
+                "CE",
+                "ScrollableText",
+                FieldValue::String("!(wix.WixUILicenseTxt)".to_string()),
+            ),
+        );
+        db_wixvar.add_record(
+            "Control",
+            Record::with_fields(vec![
+                FieldValue::String("Dlg".to_string()),
+                FieldValue::String("CNone".to_string()),
+                FieldValue::String("ScrollableText".to_string()),
+            ]),
+        );
+        linker.resolve_wix_variables(&mut db_wixvar);
+
+        // 6. sequence_standard_actions with non-string record in InstallUISequence
+        let mut db_seq = LinkedDatabase::default();
+        db_seq.add_record(
+            "InstallUISequence",
+            Record::with_fields(vec![FieldValue::Short(1)]),
+        );
+        db_seq.add_record(
+            "InstallUISequence",
+            Record::with_fields(vec![
+                FieldValue::String("ExecuteAction".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(1300),
+            ]),
+        );
+        Linker::sequence_standard_actions(&mut db_seq);
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }

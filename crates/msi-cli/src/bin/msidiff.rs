@@ -12,6 +12,7 @@
 //! ```
 
 use msi::package::Package;
+use msi::MsiError;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -38,8 +39,8 @@ impl MsiDiffOptions {
     ///
     /// # Errors
     ///
-    /// Returns error string on missing arguments or target files.
-    pub fn parse(args: &[String]) -> Result<Self, String> {
+    /// Returns [`MsiError`] on missing arguments or target files.
+    pub fn parse(args: &[String]) -> Result<Self, MsiError> {
         let mut positional = Vec::new();
         for arg in args {
             if !arg.starts_with('-')
@@ -56,10 +57,10 @@ impl MsiDiffOptions {
         }
 
         if positional.len() < 2 {
-            return Err(
+            return Err(MsiError::CommandLineError(
                 "missing packages to compare. Usage: msidiff <package1.msi> <package2.msi>"
                     .to_string(),
-            );
+            ));
         }
 
         Ok(Self {
@@ -76,12 +77,20 @@ impl MsiDiffOptions {
     ///
     /// # Errors
     ///
-    /// Returns error string on I/O or package failure.
-    pub fn execute(&self) -> Result<bool, String> {
-        let p1 = Package::open(&self.package1)
-            .map_err(|e| format!("failed opening package '{}': {e}", self.package1.display()))?;
-        let p2 = Package::open(&self.package2)
-            .map_err(|e| format!("failed opening package '{}': {e}", self.package2.display()))?;
+    /// Returns [`MsiError`] on I/O or package failure.
+    pub fn execute(&self) -> Result<bool, MsiError> {
+        let p1 = Package::open(&self.package1).map_err(|e| {
+            MsiError::CommandLineError(format!(
+                "failed opening package '{}': {e}",
+                self.package1.display()
+            ))
+        })?;
+        let p2 = Package::open(&self.package2).map_err(|e| {
+            MsiError::CommandLineError(format!(
+                "failed opening package '{}': {e}",
+                self.package2.display()
+            ))
+        })?;
 
         let mut identical = true;
 

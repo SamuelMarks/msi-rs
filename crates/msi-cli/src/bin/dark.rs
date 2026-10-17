@@ -15,6 +15,7 @@ use msi::package::Package;
 use msi::wix::linker::Linker;
 use msi::wix::parity::MsiDecompiler;
 use msi::wix::schema::WixSchemaVersion;
+use msi::MsiError;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -54,9 +55,9 @@ impl DarkOptions {
     ///
     /// # Errors
     ///
-    /// Returns error string on missing arguments or input file.
+    /// Returns [`MsiError`] on missing arguments or input file.
     #[allow(clippy::branches_sharing_code)]
-    pub fn parse(args: &[String]) -> Result<Self, String> {
+    pub fn parse(args: &[String]) -> Result<Self, MsiError> {
         let mut opts = Self::default();
         let mut idx = 0;
 
@@ -82,14 +83,18 @@ impl DarkOptions {
             } else if arg.eq_ignore_ascii_case("-x") || arg.eq_ignore_ascii_case("/x") {
                 idx += 1;
                 if idx >= args.len() {
-                    return Err("missing extract directory for '-x'".to_string());
+                    return Err(MsiError::CommandLineError(
+                        "missing extract directory for '-x'".to_string(),
+                    ));
                 }
                 opts.extract_dir = Some(PathBuf::from(&args[idx]));
                 idx += 1;
             } else if arg.eq_ignore_ascii_case("-b") || arg.eq_ignore_ascii_case("/b") {
                 idx += 1;
                 if idx >= args.len() {
-                    return Err("missing base directory for '-b'".to_string());
+                    return Err(MsiError::CommandLineError(
+                        "missing base directory for '-b'".to_string(),
+                    ));
                 }
                 opts.base_dir = Some(PathBuf::from(&args[idx]));
                 idx += 1;
@@ -100,7 +105,9 @@ impl DarkOptions {
             {
                 idx += 1;
                 if idx >= args.len() {
-                    return Err("missing output path for '-out'".to_string());
+                    return Err(MsiError::CommandLineError(
+                        "missing output path for '-out'".to_string(),
+                    ));
                 }
                 opts.output = Some(PathBuf::from(&args[idx]));
                 idx += 1;
@@ -118,7 +125,9 @@ impl DarkOptions {
         }
 
         if opts.input_package.as_os_str().is_empty() {
-            return Err("no input MSI package specified".to_string());
+            return Err(MsiError::CommandLineError(
+                "no input MSI package specified".to_string(),
+            ));
         }
 
         Ok(opts)
@@ -132,13 +141,13 @@ impl DarkOptions {
     ///
     /// # Errors
     ///
-    /// Returns error string on I/O or decompilation failure.
-    pub fn execute(&self) -> Result<(), String> {
+    /// Returns [`MsiError`] on I/O or decompilation failure.
+    pub fn execute(&self) -> Result<(), MsiError> {
         let pkg = Package::open(&self.input_package).map_err(|e| {
-            format!(
+            MsiError::CommandLineError(format!(
                 "failed opening package '{}': {e}",
                 self.input_package.display()
-            )
+            ))
         })?;
 
         if !self.suppress_validation {
@@ -146,8 +155,9 @@ impl DarkOptions {
         }
 
         if let Some(ref extract_path) = self.extract_dir {
-            fs::create_dir_all(extract_path)
-                .map_err(|e| format!("failed creating extract directory: {e}"))?;
+            fs::create_dir_all(extract_path).map_err(|e| {
+                MsiError::CommandLineError(format!("failed creating extract directory: {e}"))
+            })?;
             for (cab_name, cab_data) in pkg.embedded_cabinets() {
                 if let Ok(reader) = CabinetReader::new(cab_data) {
                     for f in reader.files() {
@@ -165,14 +175,18 @@ impl DarkOptions {
         let decompiler = MsiDecompiler::new(WixSchemaVersion::V3);
         let xml = decompiler
             .decompile(pkg.database())
-            .map_err(|e| format!("decompilation failed: {e}"))?;
+            .map_err(|e| MsiError::CommandLineError(format!("decompilation failed: {e}")))?;
 
         if let Some(ref out_p) = self.output {
             if let Some(parent) = out_p.parent() {
                 let _ = fs::create_dir_all(parent);
             }
-            fs::write(out_p, xml)
-                .map_err(|e| format!("failed writing output file '{}': {e}", out_p.display()))?;
+            fs::write(out_p, xml).map_err(|e| {
+                MsiError::CommandLineError(format!(
+                    "failed writing output file '{}': {e}",
+                    out_p.display()
+                ))
+            })?;
         } else {
             println!("{xml}");
         }
