@@ -225,7 +225,8 @@ impl PatchEngine {
                 old_file_size: u32,
                 new_file_buffer: *mut *mut u8,
                 new_file_buffer_size: u32,
-                new_file_size: *mut u32,
+                new_file_actual_size: *mut u32,
+                new_file_time: *mut std::ffi::c_void,
                 apply_option_flags: u32,
                 progress_callback: *const std::ffi::c_void,
                 callback_context: *const std::ffi::c_void,
@@ -236,7 +237,7 @@ impl PatchEngine {
             let patch_size = u32::try_from(patch_data.len()).unwrap_or(u32::MAX);
             let old_size = u32::try_from(old_bytes.len()).unwrap_or(u32::MAX);
 
-            // SAFETY: Loading mspatcha.dll and invoking ApplyPatchToFileByBuffers with the exact 10-parameter Win32 PatchAPI signature and valid stack output pointers.
+            // SAFETY: Loading mspatcha.dll and invoking ApplyPatchToFileByBuffers with the exact 11-parameter Win32 PatchAPI signature and valid stack output pointers.
             unsafe {
                 if let Ok(module) = LoadLibraryW(w!("mspatcha.dll")) {
                     if let Some(proc) = GetProcAddress(module, s!("ApplyPatchToFileByBuffers")) {
@@ -252,6 +253,7 @@ impl PatchEngine {
                             &raw mut new_buf,
                             0,
                             &raw mut new_size,
+                            std::ptr::null_mut(),
                             0x0000_0004, // APPLY_OPTION_TEST_ONLY
                             std::ptr::null(),
                             std::ptr::null(),

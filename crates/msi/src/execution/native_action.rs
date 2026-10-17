@@ -1586,7 +1586,7 @@ mod tests {
             let lib_sys = lib_candidates
                 .into_iter()
                 .find(|p| dl_loader.load_library(p).is_ok())
-                .unwrap_or(Path::new("libc.so.6"));
+                .unwrap_or(lib_candidates[0]);
             // Loading another library when handle is Some covers closing previous handle:
             assert!(dl_loader.load_library(lib_sys).is_ok());
 
