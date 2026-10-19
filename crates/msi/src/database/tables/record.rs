@@ -195,9 +195,7 @@ impl Record {
 
     /// Clears all fields in the record to [`FieldValue::Null`] and removes any attached stream buffers.
     pub fn clear_data(&mut self) {
-        for field in &mut self.fields {
-            *field = FieldValue::Null;
-        }
+        self.fields.fill(FieldValue::Null);
         self.streams.clear();
     }
 

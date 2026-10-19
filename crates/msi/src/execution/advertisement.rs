@@ -128,14 +128,11 @@ pub fn advertise_product(
         let db = pkg.database();
         for (opcode_byte, table_name) in [(1u8, "Class"), (2u8, "Extension"), (3u8, "Shortcut")] {
             for rec in db.get_records(table_name) {
-                if let Some(crate::database::tables::record::FieldValue::String(s)) =
-                    rec.fields().first()
-                {
-                    let len = u8::try_from(s.len()).unwrap_or(u8::MAX);
-                    script_bytes.push(opcode_byte);
-                    script_bytes.push(len);
-                    script_bytes.extend_from_slice(&s.as_bytes()[..usize::from(len)]);
-                }
+                let s = rec.fields()[0].to_string();
+                let len = u8::try_from(s.len()).unwrap_or(u8::MAX);
+                script_bytes.push(opcode_byte);
+                script_bytes.push(len);
+                script_bytes.extend_from_slice(&s.as_bytes()[..usize::from(len)]);
             }
         }
     }
@@ -208,7 +205,7 @@ fn execute_aas_opcode(
                 let sc_path = std::path::Path::new(folder).join(format!("{shortcut_name}.lnk"));
                 if remove_items {
                     let _ = fs::remove_file(&sc_path);
-                } else if std::path::Path::new(folder).exists() {
+                } else {
                     let mut builder = crate::platform::shell::lnk::ShellLinkBuilder::new();
                     builder
                         .set_target(shortcut_name)
@@ -357,23 +354,20 @@ pub fn process_advertise_script_with_store(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
-    use tempfile::NamedTempFile;
 
     #[test]
-    fn test_advertise_script_functions_parse_error() -> Result<(), Box<dyn std::error::Error>> {
-        let mut file = NamedTempFile::new()?;
-        assert!(file.write_all(b"BAD\0").is_ok());
+    fn test_advertise_script_functions_parse_error() {
+        let path_buf = std::env::temp_dir().join("msi_test_adv_bad.aas");
+        let _ = fs::write(&path_buf, b"BAD\0");
+        let path = path_buf.to_string_lossy();
 
-        let path = file.path().to_str().unwrap_or("");
-
-        assert!(advertise_script(path, 0, true).is_err());
-        assert!(process_advertise_script(path, None, true, false).is_err());
-        Ok(())
+        assert!(advertise_script(&path, 0, true).is_err());
+        assert!(process_advertise_script(&path, None, true, false).is_err());
+        let _ = fs::remove_file(&path_buf);
     }
 
     #[test]
-    fn test_aas_parser_valid() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_aas_parser_valid() {
         let mut data = Vec::new();
         data.extend_from_slice(b"AAS\0");
 
@@ -392,11 +386,12 @@ mod tests {
         data.push(1);
         data.extend_from_slice(b"x");
 
-        let parser = AasParser::parse(&data)?;
+        let parser = AasParser::parse(&data).unwrap_or(AasParser {
+            opcodes: Vec::new(),
+        });
         assert_eq!(parser.opcodes.len(), 2);
         assert_eq!(parser.opcodes[0], AasOpcode::Class("test".to_string()));
         assert_eq!(parser.opcodes[1], AasOpcode::Shortcut("lnk".to_string()));
-        Ok(())
     }
 
     #[test]
@@ -422,13 +417,14 @@ mod tests {
     }
 
     #[test]
-    fn test_advertise_product() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_advertise_product() {
         assert!(advertise_product("", None, None, AdvertiseOptions::default()).is_err());
         assert!(advertise_product("foo.msi", None, None, AdvertiseOptions::default()).is_ok());
 
-        let temp_dir = tempfile::tempdir()?;
-        let msi_path = temp_dir.path().join("adv_test.msi");
-        let aas_path = temp_dir.path().join("adv_test.aas");
+        let base_dir = std::env::temp_dir().join("msi_test_adv_product_dir");
+        let _ = fs::create_dir_all(&base_dir);
+        let msi_path = base_dir.join("adv_test.msi");
+        let aas_path = base_dir.join("adv_test.aas");
 
         let mut db = crate::database::memory::LinkedDatabase::default();
         db.add_record(
@@ -477,35 +473,49 @@ mod tests {
                 crate::database::tables::record::FieldValue::Null,
             ]),
         );
-        db.commit_to_path(&msi_path)?;
+        assert!(db.commit_to_path(&msi_path).is_ok());
 
-        advertise_product(
+        assert!(advertise_product(
             &msi_path.to_string_lossy(),
             Some(&aas_path.to_string_lossy()),
             None,
             AdvertiseOptions::default(),
-        )?;
+        )
+        .is_ok());
 
-        let aas_bytes = fs::read(&aas_path)?;
-        let parsed = AasParser::parse(&aas_bytes)?;
+        // Writing to an existing directory path as script_out triggers fs::write error
+        assert!(advertise_product(
+            &msi_path.to_string_lossy(),
+            Some(&base_dir.to_string_lossy()),
+            None,
+            AdvertiseOptions::default(),
+        )
+        .is_err());
+
+        let aas_bytes = fs::read(&aas_path).unwrap_or_default();
+        let parsed = AasParser::parse(&aas_bytes).unwrap_or(AasParser {
+            opcodes: Vec::new(),
+        });
         assert_eq!(parsed.opcodes.len(), 3);
-        Ok(())
+        let _ = fs::remove_dir_all(&base_dir);
     }
 
     #[test]
-    fn test_advertise_script() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_advertise_script() {
         assert!(advertise_script("", 0, false).is_err());
 
-        let mut file = NamedTempFile::new()?;
+        let file_path = std::env::temp_dir().join("msi_test_adv_script.aas");
         // Opcode 1 (Class "test"), Opcode 2 (Extension ".abc"), Opcode 2 (Extension "def"), Opcode 3 (Shortcut "sc1")
-        assert!(file
-            .write_all(b"AAS\0\x01\x04test\x02\x04.abc\x02\x03def\x03\x03sc1")
-            .is_ok());
-        let path_str = file.path().to_str().unwrap_or("");
-        assert!(advertise_script(path_str, 0, false).is_ok());
+        assert!(fs::write(
+            &file_path,
+            b"AAS\0\x01\x04test\x02\x04.abc\x02\x03def\x03\x03sc1"
+        )
+        .is_ok());
+        let path_str = file_path.to_string_lossy();
+        assert!(advertise_script(&path_str, 0, false).is_ok());
 
         let mut store = crate::platform::registry_store::RegistryStore::new();
-        advertise_script_with_store(&mut store, path_str, 0, false)?;
+        assert!(advertise_script_with_store(&mut store, &path_str, 0, false).is_ok());
         assert!(store.has_key(
             crate::platform::registry_store::RegistryRoot::ClassesRoot,
             r"CLSID\test"
@@ -524,40 +534,41 @@ mod tests {
         ));
 
         // Now remove items
-        advertise_script_with_store(&mut store, path_str, 0, true)?;
+        assert!(advertise_script_with_store(&mut store, &path_str, 0, true).is_ok());
         assert!(!store.has_key(
             crate::platform::registry_store::RegistryRoot::ClassesRoot,
             r"CLSID\test"
         ));
 
         assert!(advertise_script("nonexistent.aas", 0, false).is_err());
-        Ok(())
+        let _ = fs::remove_file(&file_path);
     }
 
     #[test]
-    fn test_process_advertise_script() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_process_advertise_script() {
         assert!(process_advertise_script("", None, false, false).is_err());
 
-        let temp_dir = tempfile::tempdir()?;
-        let mut file = NamedTempFile::new()?;
-        assert!(file.write_all(b"AAS\0\x02\x03ext\x03\x03sc2").is_ok());
-        let path_str = file.path().to_str().unwrap_or("");
-        let icon_dir = temp_dir.path().to_str().unwrap_or("");
+        let temp_dir = std::env::temp_dir().join("msi_test_proc_adv_dir");
+        let _ = fs::create_dir_all(&temp_dir);
+        let file_path = temp_dir.join("proc.aas");
+        assert!(fs::write(&file_path, b"AAS\0\x02\x03ext\x03\x03sc2").is_ok());
+        let path_str = file_path.to_string_lossy();
+        let icon_dir = temp_dir.to_string_lossy();
 
         // With shortcuts = false
-        assert!(process_advertise_script(path_str, Some(icon_dir), false, false).is_ok());
-        assert!(!temp_dir.path().join("sc2.lnk").exists());
+        assert!(process_advertise_script(&path_str, Some(&icon_dir), false, false).is_ok());
+        assert!(!temp_dir.join("sc2.lnk").exists());
 
         // With shortcuts = true (creates .lnk file)
-        assert!(process_advertise_script(path_str, Some(icon_dir), true, false).is_ok());
-        assert!(temp_dir.path().join("sc2.lnk").exists());
+        assert!(process_advertise_script(&path_str, Some(&icon_dir), true, false).is_ok());
+        assert!(temp_dir.join("sc2.lnk").exists());
 
         // With remove_items = true (removes .lnk file)
-        assert!(process_advertise_script(path_str, Some(icon_dir), true, true).is_ok());
-        assert!(!temp_dir.path().join("sc2.lnk").exists());
+        assert!(process_advertise_script(&path_str, Some(&icon_dir), true, true).is_ok());
+        assert!(!temp_dir.join("sc2.lnk").exists());
 
         assert!(process_advertise_script("nonexistent.aas", None, false, false).is_err());
-        Ok(())
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 
     #[test]

@@ -118,7 +118,7 @@ impl PatchEngine {
                     .extension()
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("cab"))
                 {
-                    let cab_bytes = reader.read_stream(name)?;
+                    let cab_bytes = reader.read_stream(name).unwrap_or_default();
                     let _ = crate::cab::reader::CabinetReader::new(&cab_bytes).map_err(|e| {
                         MsiError::PatchCorruptCab {
                             reason: format!("CAB header invalid: {e}"),
@@ -328,8 +328,7 @@ impl PatchEngine {
         }
 
         let decoder = PatchDecoder::new(patch_data)?;
-        decoder.apply_to_file(source_path, target_path)?;
-        Ok(())
+        decoder.apply_to_file(source_path, target_path)
     }
 
     /// Removes patches from a product by validating each patch identifier or `.msp` package
@@ -378,17 +377,15 @@ impl PatchEngine {
                 )));
             }
 
-            if is_guid {
-                if let Ok(squid) = crate::platform::squid::encode_squid(trimmed) {
-                    let key = format!(
-                        r"Software\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Patches\{squid}"
-                    );
-                    store.delete_value(
-                        crate::platform::registry_store::RegistryRoot::LocalMachine,
-                        &key,
-                        Some("State"),
-                    );
-                }
+            if let Ok(squid) = crate::platform::squid::encode_squid(trimmed) {
+                let key = format!(
+                    r"Software\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Patches\{squid}"
+                );
+                store.delete_value(
+                    crate::platform::registry_store::RegistryRoot::LocalMachine,
+                    &key,
+                    Some("State"),
+                );
             }
         }
         store.commit();
@@ -475,14 +472,19 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_manifest_xml() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    fn test_parse_manifest_xml() {
         let valid_xml = r#"<PatchManifest TargetProductCode="TARGET-123" BaselineVersion="1.0.0" Family="FamilyA">
             <Supersedes>
                 <Patch Id="v1"/>
             </Supersedes>
         </PatchManifest>"#;
 
-        let meta = PatchEngine::parse_manifest_xml(valid_xml)?;
+        let meta = PatchEngine::parse_manifest_xml(valid_xml).unwrap_or(MspMetadata {
+            target_product_code: String::new(),
+            baseline_version: String::new(),
+            supersedes: Vec::new(),
+            family: String::new(),
+        });
         assert_eq!(meta.target_product_code, "TARGET-123");
         assert_eq!(meta.baseline_version, "1.0.0");
         assert_eq!(meta.family, "FamilyA");
@@ -508,7 +510,13 @@ mod tests {
 
         // Test without Supersedes node
         let no_supersedes_xml = r#"<PatchManifest TargetProductCode="TARGET-123" BaselineVersion="1.0.0" Family="FamilyA" />"#;
-        let meta_no_sup = PatchEngine::parse_manifest_xml(no_supersedes_xml)?;
+        let meta_no_sup =
+            PatchEngine::parse_manifest_xml(no_supersedes_xml).unwrap_or(MspMetadata {
+                target_product_code: String::new(),
+                baseline_version: String::new(),
+                supersedes: Vec::new(),
+                family: String::new(),
+            });
         assert!(meta_no_sup.supersedes.is_empty());
 
         // Test with Supersedes but without Id
@@ -518,15 +526,21 @@ mod tests {
                 <Patch Id="v2" />
             </Supersedes>
         </PatchManifest>"#;
-        let meta_no_id = PatchEngine::parse_manifest_xml(no_id_xml)?;
+        let meta_no_id = PatchEngine::parse_manifest_xml(no_id_xml).unwrap_or(MspMetadata {
+            target_product_code: String::new(),
+            baseline_version: String::new(),
+            supersedes: Vec::new(),
+            family: String::new(),
+        });
         assert_eq!(meta_no_id.supersedes, vec!["v2".to_string()]);
-        Ok(())
     }
 
     #[test]
-    fn test_patch_engine_extract_metadata() -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let temp_dir = tempfile::tempdir()?;
-        let valid_path = temp_dir.path().join("valid_v2.msp");
+    #[allow(clippy::too_many_lines)]
+    fn test_patch_engine_extract_metadata() {
+        let base_dir = std::env::temp_dir().join("msi_test_patch_extract_meta");
+        let _ = std::fs::create_dir_all(&base_dir);
+        let valid_path = base_dir.join("valid_v2.msp");
         let msp_bytes = build_test_msp_bytes(
             Some("TARGET-123"),
             Some("1.0.0"),
@@ -534,16 +548,21 @@ mod tests {
             Some("v1"),
             Some(&[1, 2, 3]),
         );
-        std::fs::write(&valid_path, &msp_bytes)?;
+        let _ = std::fs::write(&valid_path, &msp_bytes);
 
-        let meta = PatchEngine::extract_msp_metadata(&valid_path)?;
+        let meta = PatchEngine::extract_msp_metadata(&valid_path).unwrap_or(MspMetadata {
+            target_product_code: String::new(),
+            baseline_version: String::new(),
+            supersedes: Vec::new(),
+            family: String::new(),
+        });
         assert_eq!(meta.target_product_code, "TARGET-123");
         assert_eq!(meta.baseline_version, "1.0.0");
         assert_eq!(meta.supersedes, vec!["v1".to_string()]);
         assert_eq!(meta.family, "FamilyA");
 
         // Non-CFB file returns PatchApplicationError("Invalid MSP header...")
-        let invalid_path = temp_dir.path().join("not_a_cfb.msp");
+        let invalid_path = base_dir.join("not_a_cfb.msp");
         assert!(File::create(&invalid_path).is_ok());
         let err = PatchEngine::extract_msp_metadata(&invalid_path)
             .err()
@@ -551,18 +570,25 @@ mod tests {
         assert!(err.to_string().contains("Invalid MSP header"));
 
         // CFB missing SummaryInformation stream
-        let no_si_path = temp_dir.path().join("no_si.msp");
+        let no_si_path = base_dir.join("no_si.msp");
         let no_si_writer = CfbWriter::new(CfbVersion::V3);
-        std::fs::write(&no_si_path, no_si_writer.build())?;
+        let _ = std::fs::write(&no_si_path, no_si_writer.build());
         let err_no_si = PatchEngine::extract_msp_metadata(&no_si_path)
             .err()
             .unwrap_or_default();
         assert!(err_no_si.to_string().contains("Missing SummaryInformation"));
 
+        // CFB with corrupt SummaryInformation stream
+        let bad_si_path = base_dir.join("bad_si.msp");
+        let mut bad_si_writer = CfbWriter::new(CfbVersion::V3);
+        let _ = bad_si_writer.add_stream(crate::cfb::SUMMARY_INFORMATION_STREAM, b"TOO_SHORT");
+        let _ = std::fs::write(&bad_si_path, bad_si_writer.build());
+        assert!(PatchEngine::extract_msp_metadata(&bad_si_path).is_err());
+
         // CFB with empty SummaryInformation (missing target product code)
-        let empty_si_path = temp_dir.path().join("empty_si.msp");
+        let empty_si_path = base_dir.join("empty_si.msp");
         let empty_si_bytes = build_test_msp_bytes(None, None, None, None, None);
-        std::fs::write(&empty_si_path, &empty_si_bytes)?;
+        let _ = std::fs::write(&empty_si_path, &empty_si_bytes);
         let err_empty_si = PatchEngine::extract_msp_metadata(&empty_si_path)
             .err()
             .unwrap_or_default();
@@ -571,14 +597,14 @@ mod tests {
             .contains("Missing target product code"));
 
         // Missing file on disk
-        let missing_path = temp_dir.path().join("missing.msp");
+        let missing_path = base_dir.join("missing.msp");
         let err2 = PatchEngine::extract_msp_metadata(&missing_path)
             .err()
             .unwrap_or_default();
         assert!(err2.to_string().contains("Patch file not found"));
 
         // CFB with a corrupt .cab stream
-        let corrupt_path = temp_dir.path().join("corrupt_cab.msp");
+        let corrupt_path = base_dir.join("corrupt_cab.msp");
         let mut corrupt_writer = CfbWriter::new(CfbVersion::V3);
         let si = SummaryInfo {
             template: Some("TARGET-123".to_string()),
@@ -586,49 +612,68 @@ mod tests {
         };
         let _ = corrupt_writer.add_stream(crate::cfb::SUMMARY_INFORMATION_STREAM, &si.to_bytes());
         let _ = corrupt_writer.add_stream("patch.cab", b"NOT_A_CAB");
-        std::fs::write(&corrupt_path, corrupt_writer.build())?;
+        let _ = std::fs::write(&corrupt_path, corrupt_writer.build());
         let err3 = PatchEngine::extract_msp_metadata(&corrupt_path)
             .err()
             .unwrap_or_default();
         assert!(err3.to_string().contains("CAB header invalid"));
 
         // CFB with a valid .cab stream
-        let valid_cab_path = temp_dir.path().join("valid_cab.msp");
+        let valid_cab_path = base_dir.join("valid_cab.msp");
         let mut valid_cab_writer = CfbWriter::new(CfbVersion::V3);
         let _ = valid_cab_writer.add_stream(crate::cfb::SUMMARY_INFORMATION_STREAM, &si.to_bytes());
         let mut cab_builder =
             crate::cab::writer::CabinetWriter::new(crate::cab::CompressionType::None);
-        cab_builder.add_file("dummy.txt", b"hello")?;
-        let _ = valid_cab_writer.add_stream("patch.cab", &cab_builder.build()?);
-        std::fs::write(&valid_cab_path, valid_cab_writer.build())?;
-        let meta_valid_cab = PatchEngine::extract_msp_metadata(&valid_cab_path)?;
+        let _ = cab_builder.add_file("dummy.txt", b"hello");
+        let cab_data = cab_builder.build().unwrap_or_default();
+        let _ = valid_cab_writer.add_stream("patch.cab", &cab_data);
+        let _ = std::fs::write(&valid_cab_path, valid_cab_writer.build());
+        let meta_valid_cab =
+            PatchEngine::extract_msp_metadata(&valid_cab_path).unwrap_or(MspMetadata {
+                target_product_code: String::new(),
+                baseline_version: String::new(),
+                supersedes: Vec::new(),
+                family: String::new(),
+            });
         assert_eq!(meta_valid_cab.target_product_code, "TARGET-123");
 
         // CFB with explicit PatchManifest stream
-        let manifest_test_path = temp_dir.path().join("manifest_stream.msp");
+        let manifest_test_path = base_dir.join("manifest_stream.msp");
         let mut manifest_writer = CfbWriter::new(CfbVersion::V3);
         let xml = r#"<PatchManifest TargetProductCode="TARGET-123" BaselineVersion="1.0.0" Family="FamilyA"><Supersedes><Patch Id="v1"/></Supersedes></PatchManifest>"#;
         let _ = manifest_writer.add_stream("PatchManifest", xml.as_bytes());
-        std::fs::write(&manifest_test_path, manifest_writer.build())?;
-        let meta_manifest = PatchEngine::extract_msp_metadata(&manifest_test_path)?;
+        let _ = std::fs::write(&manifest_test_path, manifest_writer.build());
+        let meta_manifest =
+            PatchEngine::extract_msp_metadata(&manifest_test_path).unwrap_or(MspMetadata {
+                target_product_code: String::new(),
+                baseline_version: String::new(),
+                supersedes: Vec::new(),
+                family: String::new(),
+            });
         assert_eq!(meta_manifest.target_product_code, "TARGET-123");
 
         // CFB with PatchManifest XML inside SummaryInformation comments
-        let comment_xml_path = temp_dir.path().join("comment_xml.msp");
+        let comment_xml_path = base_dir.join("comment_xml.msp");
         let comment_xml_bytes = build_test_msp_bytes(None, Some(xml), None, None, None);
-        std::fs::write(&comment_xml_path, &comment_xml_bytes)?;
-        let meta_comment_xml = PatchEngine::extract_msp_metadata(&comment_xml_path)?;
+        let _ = std::fs::write(&comment_xml_path, &comment_xml_bytes);
+        let meta_comment_xml =
+            PatchEngine::extract_msp_metadata(&comment_xml_path).unwrap_or(MspMetadata {
+                target_product_code: String::new(),
+                baseline_version: String::new(),
+                supersedes: Vec::new(),
+                family: String::new(),
+            });
         assert_eq!(meta_comment_xml.target_product_code, "TARGET-123");
-        Ok(())
+        let _ = std::fs::remove_dir_all(&base_dir);
     }
 
     #[test]
-    fn test_determine_patch_sequence_supersedence(
-    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let temp_dir = tempfile::tempdir()?;
-        let p1 = temp_dir.path().join("patch_v1.msp");
-        let p2 = temp_dir.path().join("patch_v2.msp");
-        std::fs::write(
+    fn test_determine_patch_sequence_supersedence() {
+        let base_dir = std::env::temp_dir().join("msi_test_patch_seq_sup");
+        let _ = std::fs::create_dir_all(&base_dir);
+        let p1 = base_dir.join("patch_v1.msp");
+        let p2 = base_dir.join("patch_v2.msp");
+        let _ = std::fs::write(
             &p1,
             build_test_msp_bytes(
                 Some("TARGET-123"),
@@ -637,8 +682,8 @@ mod tests {
                 None,
                 None,
             ),
-        )?;
-        std::fs::write(
+        );
+        let _ = std::fs::write(
             &p2,
             build_test_msp_bytes(
                 Some("TARGET-123"),
@@ -647,26 +692,32 @@ mod tests {
                 Some("patch_v1"),
                 None,
             ),
-        )?;
+        );
 
         let paths: [&Path; 2] = [&p1, &p2];
-        let seq = PatchEngine::determine_patch_sequence("TARGET-123", "1.0.0", &paths)?;
+        let seq = PatchEngine::determine_patch_sequence("TARGET-123", "1.0.0", &paths)
+            .unwrap_or_default();
 
         // v2 supersedes v1, so only v2 should be returned
         assert_eq!(seq.len(), 1);
         assert_eq!(
-            seq[0].file_name().ok_or("none")?.to_string_lossy(),
+            seq[0].file_name().unwrap_or_default().to_string_lossy(),
             "patch_v2.msp"
         );
-        Ok(())
+
+        // Missing patch in sequence returns error
+        let missing = base_dir.join("missing.msp");
+        let bad_paths: [&Path; 1] = [&missing];
+        assert!(PatchEngine::determine_patch_sequence("TARGET-123", "1.0.0", &bad_paths).is_err());
+        let _ = std::fs::remove_dir_all(&base_dir);
     }
 
     #[test]
-    fn test_determine_patch_sequence_target_mismatch(
-    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let temp_dir = tempfile::tempdir()?;
-        let p1 = temp_dir.path().join("patch_v1.msp");
-        std::fs::write(
+    fn test_determine_patch_sequence_target_mismatch() {
+        let base_dir = std::env::temp_dir().join("msi_test_patch_seq_tgt");
+        let _ = std::fs::create_dir_all(&base_dir);
+        let p1 = base_dir.join("patch_v1.msp");
+        let _ = std::fs::write(
             &p1,
             build_test_msp_bytes(
                 Some("TARGET-123"),
@@ -675,22 +726,22 @@ mod tests {
                 None,
                 None,
             ),
-        )?;
+        );
 
         let paths: [&Path; 1] = [&p1];
         let err = PatchEngine::determine_patch_sequence("WRONG-TARGET", "1.0.0", &paths)
             .err()
             .unwrap_or_default();
         assert!(err.to_string().contains("Target product mismatch"));
-        Ok(())
+        let _ = std::fs::remove_dir_all(&base_dir);
     }
 
     #[test]
-    fn test_determine_patch_sequence_baseline_mismatch(
-    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let temp_dir = tempfile::tempdir()?;
-        let p1 = temp_dir.path().join("patch_v1.msp");
-        std::fs::write(
+    fn test_determine_patch_sequence_baseline_mismatch() {
+        let base_dir = std::env::temp_dir().join("msi_test_patch_seq_base");
+        let _ = std::fs::create_dir_all(&base_dir);
+        let p1 = base_dir.join("patch_v1.msp");
+        let _ = std::fs::write(
             &p1,
             build_test_msp_bytes(
                 Some("TARGET-123"),
@@ -699,21 +750,22 @@ mod tests {
                 None,
                 None,
             ),
-        )?;
+        );
 
         let paths: [&Path; 1] = [&p1];
         let err = PatchEngine::determine_patch_sequence("TARGET-123", "2.0.0", &paths)
             .err()
             .unwrap_or_default();
         assert!(err.to_string().contains("Baseline mismatch"));
-        Ok(())
+        let _ = std::fs::remove_dir_all(&base_dir);
     }
 
     #[test]
-    fn test_apply_patch_to_file() -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let temp_dir = tempfile::tempdir()?;
-        let src_path = temp_dir.path().join("src.txt");
-        let tgt_path = temp_dir.path().join("tgt.txt");
+    fn test_apply_patch_to_file() {
+        let base_dir = std::env::temp_dir().join("msi_test_apply_patch_file");
+        let _ = std::fs::create_dir_all(&base_dir);
+        let src_path = base_dir.join("src.txt");
+        let tgt_path = base_dir.join("tgt.txt");
         assert!(std::fs::write(&src_path, "dummy source").is_ok());
 
         let mut data = vec![b'P', b'A', b'3', b'0'];
@@ -722,29 +774,32 @@ mod tests {
         data.extend(16u32.to_le_bytes()); // Size
 
         assert!(PatchEngine::apply_patch_to_file(&data, &src_path, &tgt_path).is_ok());
+        assert!(PatchEngine::apply_patch_to_file(b"BAD", &src_path, &tgt_path).is_err());
 
-        let out = std::fs::read(&tgt_path)?;
+        let out = std::fs::read(&tgt_path).unwrap_or_default();
         assert_eq!(out.len(), 16);
-        Ok(())
+        let _ = std::fs::remove_dir_all(&base_dir);
     }
 
     #[test]
-    fn test_determine_patch_sequence_empty() -> std::result::Result<(), Box<dyn std::error::Error>>
-    {
+    fn test_determine_patch_sequence_empty() {
         let paths: [&Path; 0] = [];
-        let seq = PatchEngine::determine_patch_sequence("TARGET", "1.0", &paths)?;
+        let seq =
+            PatchEngine::determine_patch_sequence("TARGET", "1.0", &paths).unwrap_or_default();
         assert!(seq.is_empty());
-        Ok(())
     }
 
     #[test]
-    fn test_remove_patches() -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let temp_dir = tempfile::tempdir()?;
-        let valid_msp = temp_dir.path().join("valid.msp");
-        std::fs::write(
+    fn test_remove_patches() {
+        let base_dir = std::env::temp_dir().join("msi_test_remove_patches");
+        let _ = std::fs::create_dir_all(&base_dir);
+        let valid_msp = base_dir.join("valid.msp");
+        let _ = std::fs::write(
             &valid_msp,
             build_test_msp_bytes(Some("TARGET-123"), Some("1.0.0"), None, None, None),
-        )?;
+        );
+        let bad_msp = base_dir.join("bad.msp");
+        let _ = std::fs::write(&bad_msp, b"not a cfb");
 
         assert!(PatchEngine::remove_patches(
             &format!(
@@ -754,6 +809,7 @@ mod tests {
             "PROD"
         )
         .is_ok());
+        assert!(PatchEngine::remove_patches(&bad_msp.to_string_lossy(), "PROD").is_err());
         assert!(PatchEngine::remove_patches("", "PROD")
             .err()
             .unwrap_or_default()
@@ -774,14 +830,15 @@ mod tests {
             .unwrap_or_default()
             .to_string()
             .contains("Invalid patch"));
-        Ok(())
+        let _ = std::fs::remove_dir_all(&base_dir);
     }
 
     #[test]
-    fn test_extract_patch_transform() -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let temp_dir = tempfile::tempdir()?;
-        let valid_path = temp_dir.path().join("valid.msp");
-        std::fs::write(
+    fn test_extract_patch_transform() {
+        let base_dir = std::env::temp_dir().join("msi_test_extract_patch_mst");
+        let _ = std::fs::create_dir_all(&base_dir);
+        let valid_path = base_dir.join("valid.msp");
+        let _ = std::fs::write(
             &valid_path,
             build_test_msp_bytes(
                 Some("TARGET-123"),
@@ -790,49 +847,52 @@ mod tests {
                 None,
                 Some(&[0x01, 0x02, 0x03]),
             ),
-        )?;
+        );
 
-        let transform = PatchEngine::extract_patch_transform(&valid_path)?;
+        let transform = PatchEngine::extract_patch_transform(&valid_path).unwrap_or_default();
         assert_eq!(transform, vec![0x01, 0x02, 0x03]);
 
         // Test substorage transform extraction
-        let substorage_path = temp_dir.path().join("substorage.msp");
+        let substorage_path = base_dir.join("substorage.msp");
         let mut sub_writer = CfbWriter::new(CfbVersion::V3);
         let _ = sub_writer.add_stream("SubTransform", &[0xAA, 0xBB]);
         let mut sub_bytes = sub_writer.build();
         // Flip directory entry 1 from Stream (2) to Storage (1)
-        let root_dir_sec = u32::from_le_bytes(sub_bytes[48..52].try_into()?) as usize;
+        let root_dir_sec =
+            u32::from_le_bytes([sub_bytes[48], sub_bytes[49], sub_bytes[50], sub_bytes[51]])
+                as usize;
         let entry1_off = (root_dir_sec + 1) * 512 + 128;
         sub_bytes[entry1_off + 66] = 1;
-        std::fs::write(&substorage_path, &sub_bytes)?;
-        let sub_transform = PatchEngine::extract_patch_transform(&substorage_path)?;
+        let _ = std::fs::write(&substorage_path, &sub_bytes);
+        let sub_transform =
+            PatchEngine::extract_patch_transform(&substorage_path).unwrap_or_default();
         assert!(!sub_transform.is_empty());
 
         // Test CFB with no transform stream
-        let no_transform_path = temp_dir.path().join("no_transform.msp");
-        std::fs::write(
+        let no_transform_path = base_dir.join("no_transform.msp");
+        let _ = std::fs::write(
             &no_transform_path,
             build_test_msp_bytes(Some("TARGET-123"), Some("1.0.0"), None, None, None),
-        )?;
+        );
         let err = PatchEngine::extract_patch_transform(&no_transform_path)
             .err()
             .unwrap_or_default();
         assert!(err.to_string().contains("No transform found in MSP"));
 
         // Test invalid (non-CFB) file
-        let bad_cfb_path = temp_dir.path().join("bad_cfb.msp");
-        std::fs::write(&bad_cfb_path, b"not a cfb")?;
+        let bad_cfb_path = base_dir.join("bad_cfb.msp");
+        let _ = std::fs::write(&bad_cfb_path, b"not a cfb");
         let err_cfb = PatchEngine::extract_patch_transform(&bad_cfb_path)
             .err()
             .unwrap_or_default();
         assert!(err_cfb.to_string().contains("Invalid MSP CFB"));
 
-        let missing_path = temp_dir.path().join("missing.msp");
+        let missing_path = base_dir.join("missing.msp");
         let err2 = PatchEngine::extract_patch_transform(&missing_path)
             .err()
             .unwrap_or_default();
         assert!(err2.to_string().contains("Patch file not found"));
-        Ok(())
+        let _ = std::fs::remove_dir_all(&base_dir);
     }
 
     #[test]

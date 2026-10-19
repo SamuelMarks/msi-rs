@@ -1492,10 +1492,9 @@ mod tests {
     }
 
     #[test]
-    fn test_drop_stream_table_without_streams_table(
-    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    fn test_drop_stream_table_without_streams_table() {
         // Test dropping a table with a stream column when _Streams does not exist
-        let mut db = LinkedDatabase::new()?;
+        let mut db = LinkedDatabase::default();
         let create_sql = "CREATE TABLE StreamTab (StreamCol OBJECT) HOLD";
         assert!(execute_sql(&mut db, create_sql, &[]).is_ok());
         // db.tables doesn't have _Streams because we haven't inserted any streams.
@@ -1504,28 +1503,39 @@ mod tests {
             execute_sql(&mut db, drop_sql, &[]).as_ref(),
             Ok(&QueryResult::SchemaChanged)
         );
+        assert!(execute_select_sql(&db, "SELECT `Unclosed", &[]).is_err());
+        assert!(execute_select_sql(&db, "SELECT FROM", &[]).is_err());
         assert!(execute_select_sql(&db, "DROP TABLE Property", &[]).is_err());
         assert!(execute_select_sql(&db, "SELECT `Property`, `Value` FROM `Property`", &[]).is_ok());
 
         // Virtual _Tables and _Columns queries
-        let tables_res = execute_select_sql(&db, "SELECT `Name` FROM `_Tables`", &[])?;
-        assert!(matches!(tables_res, QueryResult::Select { ref rows, .. } if !rows.is_empty()));
+        let tables_res = execute_select_sql(&db, "SELECT `Name` FROM `_Tables`", &[]);
+        assert!(matches!(tables_res, Ok(QueryResult::Select { ref rows, .. }) if !rows.is_empty()));
         let cols_res = execute_select_sql(
             &db,
             "SELECT `Table`, `Number`, `Name`, `Type` FROM `_Columns` WHERE `Table` = 'Property'",
             &[],
-        )?;
-        assert!(matches!(cols_res, QueryResult::Select { ref rows, .. } if rows.len() == 2));
+        );
+        assert!(matches!(cols_res, Ok(QueryResult::Select { ref rows, .. }) if rows.len() == 2));
+
+        // Explicit _Tables override in db.tables
+        db.add_record(
+            "_Tables",
+            Record::with_fields(vec![FieldValue::String("CustomTable".to_string())]),
+        );
+        let custom_tables_res = execute_select_sql(&db, "SELECT `Name` FROM `_Tables`", &[]);
+        assert!(
+            matches!(custom_tables_res, Ok(QueryResult::Select { ref rows, .. }) if rows.len() == 1)
+        );
 
         // Virtual _TransformView query and >< operator
-        let tv_res = execute_select_sql(&db, "SELECT * FROM `_TransformView`", &[])?;
-        assert!(matches!(tv_res, QueryResult::Select { ref rows, .. } if rows.is_empty()));
+        let tv_res = execute_select_sql(&db, "SELECT * FROM `_TransformView`", &[]);
+        assert!(matches!(tv_res, Ok(QueryResult::Select { ref rows, .. }) if rows.is_empty()));
         let bit_res = execute_select_sql(
             &db,
             "SELECT (Table, Number) FROM `_Columns` WHERE `Number` >< 1 AND `Table` >< 'Prop'",
             &[],
-        )?;
-        assert!(matches!(bit_res, QueryResult::Select { ref rows, .. } if rows.len() == 1));
-        Ok(())
+        );
+        assert!(matches!(bit_res, Ok(QueryResult::Select { ref rows, .. }) if rows.len() == 1));
     }
 }

@@ -253,15 +253,12 @@ impl<'a> ActionDispatcher<'a> {
                     .get_property("SourceDir")
                     .is_none()
                 {
-                    let mut orig = r"C:\".to_string();
-                    if let Some(p) = self
+                    let orig = self
                         .transaction
                         .context()
                         .get_property("OriginalDatabase")
                         .and_then(|p| std::path::Path::new(p).parent())
-                    {
-                        orig = p.to_string_lossy().to_string();
-                    }
+                        .map_or_else(|| r"C:\".to_string(), |p| p.to_string_lossy().to_string());
                     self.transaction
                         .context_mut()
                         .set_property("SourceDir", orig);

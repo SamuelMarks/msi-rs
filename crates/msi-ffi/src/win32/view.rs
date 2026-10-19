@@ -765,6 +765,10 @@ mod tests {
         };
         let bad_mut_view_handle =
             crate::handles::alloc_handle(crate::handles::MsiObject::View(bad_mut_view));
+        assert_eq!(
+            MsiViewModify(bad_mut_view_handle, MSIMODIFY_SEEK, rec_handle),
+            1627
+        );
         assert_eq!(MsiViewModify(view_handle, MSIMODIFY_INSERT, rec_handle), 0);
         assert_eq!(
             MsiViewModify(view_handle, MSIMODIFY_INSERT, rec_handle),
@@ -853,32 +857,29 @@ mod tests {
         let _ = crate::handles::close_handle(col_rec_h);
 
         // Test column info on a table with Short, Long, Stream, and localizable/nullable Strings
-        crate::handles::with_handle_mut(db_handle, |obj| {
-            if let crate::handles::MsiObject::Database(db_obj) = obj {
-                use msi::database::catalogs::TableSchema;
-                use msi::database::column::{ColumnDef, DataType};
-                let _ = db_obj.inner.catalog.add_table(
-                    TableSchema::new("AllColTypes")
-                        .with_column(ColumnDef::new("C1", DataType::Short).primary_key())
-                        .with_column(ColumnDef::new("C2", DataType::Short).nullable())
-                        .with_column(ColumnDef::new("C3", DataType::Long))
-                        .with_column(ColumnDef::new("C4", DataType::Long).nullable())
-                        .with_column(ColumnDef::new("C5", DataType::Stream))
-                        .with_column(ColumnDef::new("C6", DataType::Stream).nullable())
-                        .with_column(
-                            ColumnDef::new("C7", DataType::String { max_len: 32 }).localizable(),
-                        )
-                        .with_column(
-                            ColumnDef::new("C8", DataType::String { max_len: 32 }).nullable(),
-                        )
-                        .with_column(
-                            ColumnDef::new("C9", DataType::String { max_len: 32 })
-                                .localizable()
-                                .nullable(),
-                        ),
+        {
+            use msi::database::catalogs::TableSchema;
+            use msi::database::column::{ColumnDef, DataType};
+            let schema = TableSchema::new("AllColTypes")
+                .with_column(ColumnDef::new("C1", DataType::Short).primary_key())
+                .with_column(ColumnDef::new("C2", DataType::Short).nullable())
+                .with_column(ColumnDef::new("C3", DataType::Long))
+                .with_column(ColumnDef::new("C4", DataType::Long).nullable())
+                .with_column(ColumnDef::new("C5", DataType::Stream))
+                .with_column(ColumnDef::new("C6", DataType::Stream).nullable())
+                .with_column(ColumnDef::new("C7", DataType::String { max_len: 32 }).localizable())
+                .with_column(ColumnDef::new("C8", DataType::String { max_len: 32 }).nullable())
+                .with_column(
+                    ColumnDef::new("C9", DataType::String { max_len: 32 })
+                        .localizable()
+                        .nullable(),
                 );
-            }
-        });
+            crate::handles::with_handle_mut(db_handle, |obj| {
+                if let crate::handles::MsiObject::Database(db_obj) = obj {
+                    let _ = db_obj.inner.catalog.add_table(schema);
+                }
+            });
+        }
         let all_cols_view = crate::handles::alloc_handle(crate::handles::MsiObject::View(
             crate::types::MsiViewHandle {
                 query: "SELECT * FROM AllColTypes".to_string(),

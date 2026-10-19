@@ -287,12 +287,13 @@ pub unsafe extern "system" fn MsiLocateComponentW(
         return -2; // INSTALLSTATE_INVALIDARG
     };
 
-    resolve_located_component_keypath(&comp_squid).map_or(-1, |path| {
-        if !lpPathBuf.is_null() || !pcchBuf.is_null() {
-            let _ = crate::win32::strings::string_to_lpwstr(&path, lpPathBuf, pcchBuf);
-        }
-        1 // INSTALLSTATE_LOCAL
-    })
+    let Some(path) = resolve_located_component_keypath(&comp_squid) else {
+        return -1; // INSTALLSTATE_UNKNOWN
+    };
+    if !lpPathBuf.is_null() || !pcchBuf.is_null() {
+        let _ = crate::win32::strings::string_to_lpwstr(&path, lpPathBuf, pcchBuf);
+    }
+    1 // INSTALLSTATE_LOCAL
 }
 
 /// Returns the full path to an installed component without installing it.
@@ -335,12 +336,13 @@ pub unsafe extern "system" fn MsiLocateComponentA(
         return -2; // INSTALLSTATE_INVALIDARG
     };
 
-    resolve_located_component_keypath(&comp_squid).map_or(-1, |path| {
-        if !lpPathBuf.is_null() || !pcchBuf.is_null() {
-            let _ = crate::win32::strings::string_to_lpstr(&path, lpPathBuf, pcchBuf);
-        }
-        1 // INSTALLSTATE_LOCAL
-    })
+    let Some(path) = resolve_located_component_keypath(&comp_squid) else {
+        return -1; // INSTALLSTATE_UNKNOWN
+    };
+    if !lpPathBuf.is_null() || !pcchBuf.is_null() {
+        let _ = crate::win32::strings::string_to_lpstr(&path, lpPathBuf, pcchBuf);
+    }
+    1 // INSTALLSTATE_LOCAL
 }
 
 /// Returns the full component path from a descriptor (Unicode).
@@ -393,8 +395,8 @@ pub unsafe extern "system" fn MsiProvideComponentFromDescriptorA(
 
 /// Shared helper resolving a qualified component path from `HKCR\Installer\Components\<SQUID>`.
 fn lookup_qualified_component_path(category: &str, qualifier: &str) -> String {
-    let enc = msi::platform::squid::encode_squid(category).unwrap_or_default();
-    let cat_id = if enc.is_empty() { category } else { &enc };
+    let cat_id =
+        msi::platform::squid::encode_squid(category).unwrap_or_else(|_| category.to_string());
     let key = format!(r"Installer\Components\{cat_id}");
     crate::win32::registry_backend::with_registry(|reg| {
         if let Some(msi::platform::registry_store::RegistryValue::Sz(s)) = reg.get_value(
@@ -1537,6 +1539,14 @@ mod tests {
                 .collect();
 
             assert_eq!(
+                MsiLocateComponentA(valid_a.as_ptr(), std::ptr::null_mut(), std::ptr::null_mut()),
+                1
+            );
+            assert_eq!(
+                MsiLocateComponentW(valid_w.as_ptr(), std::ptr::null_mut(), std::ptr::null_mut()),
+                1
+            );
+            assert_eq!(
                 MsiLocateComponentA(valid_a.as_ptr(), std::ptr::null_mut(), &raw mut sz),
                 1
             );
@@ -2031,8 +2041,11 @@ mod tests {
         }
 
         // Test MsiGetShortcutTargetW/A with a valid .lnk shortcut containing Darwin descriptor
-        let tmp_dir = tempfile::tempdir().unwrap_or_else(|_| std::process::abort());
-        let lnk_path = tmp_dir.path().join("app.lnk");
+        assert_eq!(
+            lookup_qualified_component_path("{11111111-1111-1111-1111-111111111111}", "q"),
+            String::new()
+        );
+        let lnk_path = std::env::temp_dir().join("msi_ffi_test_shortcut_target.lnk");
         let mut lnk_builder = msi::platform::shell::lnk::ShellLinkBuilder::new();
         lnk_builder
             .set_target(r"C:\App\app.exe")
@@ -2067,5 +2080,6 @@ mod tests {
                 0
             );
         }
+        let _ = std::fs::remove_file(&lnk_path);
     }
 }
