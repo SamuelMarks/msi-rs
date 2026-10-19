@@ -1094,7 +1094,6 @@ impl fmt::Display for PropertyName {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -1103,7 +1102,6 @@ mod tests {
         res.ok().into_iter().collect()
     }
     #[allow(clippy::cognitive_complexity)]
-    #[allow(clippy::never_loop)]
     #[test]
     fn test_guid_validation() {
         let valid = "{12345678-1234-1234-1234-1234567890AB}";
@@ -1163,7 +1161,6 @@ mod tests {
         assert!(UpgradeCode::parse(bad_hex).is_err());
     }
 
-    #[allow(clippy::never_loop)]
     #[test]
     fn test_feature_and_property_name_bounds() {
         assert!(FeatureName::new("").is_err());
@@ -1214,7 +1211,6 @@ mod tests {
         assert!(sanitized.len() <= 72);
     }
 
-    #[allow(clippy::never_loop)]
     #[test]
     fn test_table_id() {
         assert!(TableId::new("").is_err());
@@ -1225,7 +1221,6 @@ mod tests {
         }
     }
 
-    #[allow(clippy::never_loop)]
     #[test]
     fn test_column_index() {
         assert!(ColumnIndex::new(0).is_err());
@@ -1262,7 +1257,6 @@ mod tests {
         assert_eq!(format!("{s}"), "-10");
     }
 
-    #[allow(clippy::never_loop)]
     #[test]
     fn test_file_key() {
         assert!(FileKey::new("").is_err());
@@ -1276,7 +1270,6 @@ mod tests {
         }
     }
 
-    #[allow(clippy::never_loop)]
     #[test]
     fn test_feature_name() {
         assert!(FeatureName::new("").is_err());
@@ -1287,7 +1280,6 @@ mod tests {
         }
     }
 
-    #[allow(clippy::never_loop)]
     #[test]
     fn test_component_name() {
         assert!(ComponentName::new("").is_err());
@@ -1311,7 +1303,6 @@ mod tests {
         }
     }
 
-    #[allow(clippy::never_loop)]
     #[test]
     fn test_directory_id() {
         assert!(DirectoryId::new("").is_err());
@@ -1334,7 +1325,6 @@ mod tests {
         assert!(sanitized.len() <= 72);
     }
 
-    #[allow(clippy::never_loop)]
     #[test]
     fn test_property_name() {
         assert!(PropertyName::new("").is_err());

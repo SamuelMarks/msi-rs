@@ -324,12 +324,10 @@ impl CfbWriter {
     ///
     /// A [`Vec<u8>`] containing the complete, valid CFB binary package.
     #[must_use]
-    #[allow(
-        clippy::too_many_lines,
-        clippy::cast_possible_truncation,
-        clippy::manual_div_ceil,
-        clippy::cognitive_complexity
-    )]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::manual_div_ceil)]
+    #[allow(clippy::cognitive_complexity)]
     pub fn build(self) -> Vec<u8> {
         let sector_size = self.version.sector_size();
         let mini_sector_size = 1 << CFB_MINI_SECTOR_SHIFT_STANDARD; // 64
@@ -628,7 +626,7 @@ impl CfbWriter {
 }
 
 #[cfg(test)]
-#[allow(clippy::manual_flatten, clippy::redundant_clone)]
+#[allow(clippy::manual_flatten)]
 mod tests {
     use super::*;
     use crate::cfb::reader::CfbReader;
@@ -739,7 +737,8 @@ mod tests {
     /// - Red uncle on left and red uncle on right
     /// - Subtree rotations under existing parents
     #[test]
-    #[allow(clippy::similar_names, clippy::too_many_lines)]
+    #[allow(clippy::similar_names)]
+    #[allow(clippy::too_many_lines)]
     fn test_cfb_writer_rb_topologies() {
         // Case A: Right-Right (A, B, C)
         let mut w1 = CfbWriter::new(CfbVersion::V3);

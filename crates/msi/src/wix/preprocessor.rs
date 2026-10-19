@@ -256,14 +256,14 @@ impl Preprocessor {
     ///
     /// # Arguments
     ///
-    /// * `lines` - The `lines` parameter.
-    /// * `idx` - The `idx` parameter.
-    /// * `ctx` - The `ctx` parameter.
-    /// * `is_active` - The `is_active` parameter.
+    /// * `lines` - The lines value.
+    /// * `idx` - Zero-based index of the target item.
+    /// * `ctx` - Active execution or evaluation context.
+    /// * `is_active` - Boolean flag indicating whether to is active.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok((Vec<String>)` on success, or an error if the operation fails.
     #[allow(clippy::too_many_lines)]
     fn process_lines(
         &self,
@@ -489,13 +489,13 @@ impl Preprocessor {
     ///
     /// # Arguments
     ///
-    /// * `raw_path` - The `raw_path` parameter.
-    /// * `ctx` - The `ctx` parameter.
-    /// * `line` - The `line` parameter.
+    /// * `raw_path` - Filesystem path for the raw path.
+    /// * `ctx` - Active execution or evaluation context.
+    /// * `line` - Source text line to parse.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok` containing the formatted or resolved string, or an error on failure.
     #[allow(clippy::unused_self)]
     fn resolve_include(
         &self,
@@ -551,13 +551,13 @@ impl Preprocessor {
     ///
     /// # Arguments
     ///
-    /// * `left` - The `left` parameter.
-    /// * `op` - The `op` parameter.
-    /// * `right` - The `right` parameter.
+    /// * `left` - Left-hand side operand.
+    /// * `op` - Operator token or operation code.
+    /// * `right` - Right-hand side operand.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `true` if the check succeeds or state matches, `false` otherwise.
     fn eval_comparison(left: &str, op: &str, right: &str) -> bool {
         let l_clean = left.trim().trim_matches('"');
         let r_clean = right.trim().trim_matches('"');
@@ -757,11 +757,11 @@ impl Preprocessor {
     ///
     /// # Arguments
     ///
-    /// * `expr` - The `expr` parameter.
+    /// * `expr` - Condition or script expression string.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok` containing the formatted or resolved string, or an error on failure.
     fn resolve_fun_macro(expr: &str) -> Result<String> {
         let Some(paren_open) = expr.find('(') else {
             return Err(MsiError::Preprocessor {
@@ -839,12 +839,12 @@ impl Preprocessor {
     ///
     /// # Arguments
     ///
-    /// * `macro_expr` - The `macro_expr` parameter.
-    /// * `ctx` - The `ctx` parameter.
+    /// * `macro_expr` - The macro expr value.
+    /// * `ctx` - Active execution or evaluation context.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok` containing the formatted or resolved string, or an error on failure.
     #[allow(clippy::unused_self)]
     fn resolve_macro(&self, macro_expr: &str, ctx: &PreprocessorContext) -> Result<String> {
         if let Some(rest) = macro_expr.strip_prefix("fun.") {
@@ -896,7 +896,6 @@ impl Preprocessor {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

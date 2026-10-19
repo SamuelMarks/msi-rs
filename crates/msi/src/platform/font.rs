@@ -17,11 +17,11 @@ impl FontName {
     ///
     /// # Arguments
     ///
-    /// * `name` - The `name` parameter.
+    /// * `name` - Identifier or name of the target entity.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn new(name: impl Into<String>) -> Self {
         Self(name.into())
@@ -31,7 +31,7 @@ impl FontName {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -47,11 +47,11 @@ impl FontFile {
     ///
     /// # Arguments
     ///
-    /// * `path` - The `path` parameter.
+    /// * `path` - Filesystem path to the target file or directory.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn new(path: impl Into<PathBuf>) -> Self {
         Self(path.into())
@@ -61,7 +61,7 @@ impl FontFile {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&Path` value.
     #[must_use]
     pub fn as_path(&self) -> &Path {
         &self.0
@@ -85,11 +85,11 @@ impl TrueTypeHeader {
     ///
     /// # Arguments
     ///
-    /// * `data` - The `data` parameter.
+    /// * `data` - Raw byte buffer to process.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Self)` on success, or an error if the operation fails.
     pub fn parse(data: &[u8]) -> Result<Self> {
         if data.len() < 12 {
             return Err(MsiError::FontRegistrationError(
@@ -155,12 +155,12 @@ impl FontManager {
     ///
     /// # Arguments
     ///
-    /// * `_title` - The `_title` parameter.
-    /// * `file` - The `file` parameter.
+    /// * `_title` - Dialog or window title string.
+    /// * `file` - Target file path or identifier.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn register_font(&self, _title: &FontName, file: &FontFile) -> Result<()> {
         if !file.as_path().exists() {
             return Err(MsiError::FontRegistrationError(
@@ -178,12 +178,12 @@ impl FontManager {
     ///
     /// # Arguments
     ///
-    /// * `_title` - The `_title` parameter.
-    /// * `file` - The `file` parameter.
+    /// * `_title` - Dialog or window title string.
+    /// * `file` - Target file path or identifier.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn unregister_font(&self, _title: &FontName, file: &FontFile) -> Result<()> {
         if !file.as_path().exists() {
             return Err(MsiError::FontRegistrationError(
@@ -204,12 +204,12 @@ impl FontManager {
     ///
     /// # Arguments
     ///
-    /// * `_title` - The `_title` parameter.
-    /// * `file` - The `file` parameter.
+    /// * `_title` - Dialog or window title string.
+    /// * `file` - Target file path or identifier.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn register_font(&self, _title: &FontName, file: &FontFile) -> Result<()> {
         if !file.as_path().exists() {
             return Err(MsiError::FontRegistrationError(
@@ -227,12 +227,12 @@ impl FontManager {
     ///
     /// # Arguments
     ///
-    /// * `_title` - The `_title` parameter.
-    /// * `file` - The `file` parameter.
+    /// * `_title` - Dialog or window title string.
+    /// * `file` - Target file path or identifier.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn unregister_font(&self, _title: &FontName, file: &FontFile) -> Result<()> {
         if !file.as_path().exists() {
             return Err(MsiError::FontRegistrationError(
@@ -252,12 +252,12 @@ impl FontManager {
     ///
     /// # Arguments
     ///
-    /// * `_title` - The `_title` parameter.
-    /// * `file` - The `file` parameter.
+    /// * `_title` - Dialog or window title string.
+    /// * `file` - Target file path or identifier.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn register_font(&self, _title: &FontName, file: &FontFile) -> Result<()> {
         if !file.as_path().exists() {
             return Err(MsiError::FontRegistrationError(
@@ -275,12 +275,12 @@ impl FontManager {
     ///
     /// # Arguments
     ///
-    /// * `_title` - The `_title` parameter.
-    /// * `file` - The `file` parameter.
+    /// * `_title` - Dialog or window title string.
+    /// * `file` - Target file path or identifier.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn unregister_font(&self, _title: &FontName, file: &FontFile) -> Result<()> {
         if !file.as_path().exists() {
             return Err(MsiError::FontRegistrationError(
@@ -292,7 +292,6 @@ impl FontManager {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use std::fs;

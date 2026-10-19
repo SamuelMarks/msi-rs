@@ -77,6 +77,86 @@ pub fn execute_select_sql(
     }
 }
 
+/// Synthesizes virtual rows for `_Tables` and `_Columns` when not explicitly overridden in `db.tables`.
+fn get_or_synthesize_table_rows(db: &LinkedDatabase, table_name: &str) -> Vec<Record> {
+    if let Some(rows) = db.tables.get(table_name) {
+        if !rows.is_empty() || (table_name != "_Tables" && table_name != "_Columns") {
+            return rows.clone();
+        }
+    }
+    if table_name == "_Tables" {
+        let mut names: Vec<&str> = db
+            .catalog
+            .table_names()
+            .into_iter()
+            .filter(|n| !n.starts_with('_'))
+            .collect();
+        names.sort_unstable();
+        return names
+            .into_iter()
+            .map(|n| Record::with_fields(vec![FieldValue::String(n.to_string())]))
+            .collect();
+    }
+    if table_name == "_Columns" {
+        let mut names: Vec<&str> = db
+            .catalog
+            .table_names()
+            .into_iter()
+            .filter(|n| !n.starts_with('_'))
+            .collect();
+        names.sort_unstable();
+        let mut out = Vec::new();
+        for t_name in names {
+            if let Some(schema) = db.catalog.get_table(t_name) {
+                for (idx, col) in schema.columns.iter().enumerate() {
+                    let mut type_bits: u16 = match col.data_type {
+                        DataType::String { max_len } => 0x0D00 | u16::from(max_len),
+                        DataType::Short => 0x0502,
+                        DataType::Long => 0x0504,
+                        DataType::Stream => 0x0900,
+                    };
+                    if col.nullable {
+                        type_bits |= 0x1000;
+                    }
+                    if col.primary_key {
+                        type_bits |= 0x2000;
+                    }
+                    if col.localizable {
+                        type_bits |= 0x0200;
+                    }
+                    #[allow(clippy::cast_possible_truncation)]
+                    #[allow(clippy::cast_possible_wrap)]
+                    let col_num = (idx + 1) as i16;
+                    #[allow(clippy::cast_possible_wrap)]
+                    let col_type = type_bits as i16;
+                    out.push(Record::with_fields(vec![
+                        FieldValue::String(t_name.to_string()),
+                        FieldValue::Short(col_num),
+                        FieldValue::String(col.name.clone()),
+                        FieldValue::Short(col_type),
+                    ]));
+                }
+            }
+        }
+        return out;
+    }
+    Vec::new()
+}
+
+/// Synthesizes the `_TransformView` system table schema.
+pub(crate) fn transform_view_schema() -> TableSchema {
+    TableSchema::new("_TransformView")
+        .with_column(ColumnDef::new("Table", DataType::String { max_len: 64 }).primary_key())
+        .with_column(ColumnDef::new("Column", DataType::String { max_len: 64 }).primary_key())
+        .with_column(
+            ColumnDef::new("Row", DataType::String { max_len: 0 })
+                .nullable()
+                .primary_key(),
+        )
+        .with_column(ColumnDef::new("Data", DataType::String { max_len: 0 }).nullable())
+        .with_column(ColumnDef::new("Current", DataType::String { max_len: 0 }).nullable())
+}
+
 /// Executes a `SELECT` query against an immutable [`LinkedDatabase`].
 ///
 /// # Arguments
@@ -108,14 +188,19 @@ fn execute_select_query(
     order_by: &[OrderByTerm],
     params: &[FieldValue],
 ) -> Result<QueryResult> {
+    let synth_transform_view_schema = transform_view_schema();
+
     let mut schemas = Vec::new();
 
-    let primary_schema = db
-        .catalog
-        .get_table(table.as_str())
-        .ok_or_else(|| MsiError::Sql {
+    let primary_schema = if let Some(s) = db.catalog.get_table(table.as_str()) {
+        s
+    } else if table.as_str() == "_TransformView" {
+        &synth_transform_view_schema
+    } else {
+        return Err(MsiError::Sql {
             message: format!("table '{}' does not exist in database", table.as_str()),
-        })?;
+        });
+    };
     schemas.push(primary_schema);
 
     for j in joins {
@@ -130,7 +215,7 @@ fn execute_select_query(
 
     let mut all_rows = vec![Record::new()];
     for schema_ref in &schemas {
-        let table_rows = db.tables.get(&schema_ref.name).cloned().unwrap_or_default();
+        let table_rows = get_or_synthesize_table_rows(db, &schema_ref.name);
         let mut new_rows = Vec::new();
         for existing in &all_rows {
             for r in &table_rows {
@@ -681,6 +766,7 @@ fn eval_binary_op(left: &FieldValue, op: BinaryOp, right: &FieldValue) -> bool {
             BinaryOp::LessOrEqual => s1 <= s2,
             BinaryOp::GreaterOrEqual => s1 >= s2,
             BinaryOp::Like => match_like_pattern(s1, s2),
+            BinaryOp::BitwiseAnd => s1.contains(s2.as_str()),
         },
         (FieldValue::Short(n1), FieldValue::Short(n2)) => {
             eval_num_op(i32::from(*n1), op, i32::from(*n2))
@@ -712,6 +798,7 @@ const fn eval_num_op(n1: i32, op: BinaryOp, n2: i32) -> bool {
         BinaryOp::LessOrEqual => n1 <= n2,
         BinaryOp::GreaterOrEqual => n1 >= n2,
         BinaryOp::Like => false,
+        BinaryOp::BitwiseAnd => (n1 & n2) != 0,
     }
 }
 
@@ -803,7 +890,6 @@ fn sort_records(records: &mut [Record], order_by: &[OrderByTerm], schemas: &[&Ta
 }
 
 #[cfg(test)]
-#[allow(clippy::manual_flatten, clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -815,7 +901,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::too_many_lines, clippy::similar_names)]
     fn test_execute_sql_crud_and_schema_lifecycle() {
         let mut db = LinkedDatabase::default();
 
@@ -930,7 +1015,7 @@ mod tests {
     }
     #[allow(clippy::cognitive_complexity)]
     #[test]
-    #[allow(clippy::too_many_lines, clippy::similar_names)]
+    #[allow(clippy::too_many_lines)]
     fn test_executor_all_uncovered_paths() {
         let mut db = LinkedDatabase::default();
 
@@ -1414,6 +1499,34 @@ mod tests {
         );
         assert!(execute_select_sql(&db, "DROP TABLE Property", &[]).is_err());
         assert!(execute_select_sql(&db, "SELECT `Property`, `Value` FROM `Property`", &[]).is_ok());
+
+        // Virtual _Tables and _Columns queries
+        let tables_res = execute_select_sql(&db, "SELECT `Name` FROM `_Tables`", &[])?;
+        if let QueryResult::Select { rows, .. } = tables_res {
+            assert!(!rows.is_empty());
+        }
+        let cols_res = execute_select_sql(
+            &db,
+            "SELECT `Table`, `Number`, `Name`, `Type` FROM `_Columns` WHERE `Table` = 'Property'",
+            &[],
+        )?;
+        if let QueryResult::Select { rows, .. } = cols_res {
+            assert_eq!(rows.len(), 2);
+        }
+
+        // Virtual _TransformView query and >< operator
+        let tv_res = execute_select_sql(&db, "SELECT * FROM `_TransformView`", &[])?;
+        if let QueryResult::Select { rows, .. } = tv_res {
+            assert!(rows.is_empty());
+        }
+        let bit_res = execute_select_sql(
+            &db,
+            "SELECT (Table, Number) FROM `_Columns` WHERE `Number` >< 1 AND `Table` >< 'Prop'",
+            &[],
+        )?;
+        if let QueryResult::Select { rows, .. } = bit_res {
+            assert_eq!(rows.len(), 1);
+        }
         Ok(())
     }
 }

@@ -75,14 +75,14 @@ graph TB
     subgraph CORE_ENGINE["Core Library Engine (crates/msi)"]
         WIX_PIPE["WiX Toolset Pipeline<br/>(Preprocessor, Compiler, Linker, ICE, Harvester)"]
         EXEC["Execution Engine<br/>(Two-Phase Transaction, Costing, Conditions, Scripts)"]
-        DB["Database Engine<br/>(75 Relational Schemas, Catalogs, SQL Parser/Executor, IDT)"]
+        DB["Database Engine<br/>(83+ Relational Schemas, Catalogs, SQL Parser/Executor, IDT)"]
         UI_ENGINE["UI State Machine<br/>(Headless Engine, Dialog Units, Event Dispatcher)"]
         PLATFORM["Platform Translation Layer<br/>(POSIX Paths, systemd/launchd, Registry Emulation, Desktop)"]
     end
 
     subgraph STORAGE["Physical Container & Compression Layer"]
         CFB["Compound File Binary Format ([MS-CFB])<br/>(v3/v4 Sectors, FAT, MiniFAT, Red-Black Directory Tree)"]
-        CAB["Microsoft Cabinet (CAB) Engine<br/>(MSZIP, LZX 32KB-2MB, Quantum, Multi-Cabinet Split Sets)"]
+        CAB["Microsoft Cabinet (CAB) & WIM/ESD Engine<br/>(MSZIP, LZX 32KB-2MB, Quantum, XPRESS, LZMS)"]
     end
 
     subgraph HOST_OS["Host Operating Systems"]
@@ -136,10 +136,10 @@ graph TD
 
 | Crate Path | Target Output | Primary Responsibilities |
 | :--- | :--- | :--- |
-| `crates/msi` | `libmsi.rlib` | Core implementation: [MS-CFB] container, CAB compression algorithms, relational database tables, SQL parser/executor, WiX compilation/linking pipeline, two-phase transaction execution engine, POSIX translation, and headless UI engine. |
-| `crates/msi-cli` | 15 Native Binaries | Drop-in replacement for `msiexec.exe` and full suite of standalone WiX executables: `msi-cli`, `candle`, `light`, `dark`, `heat`, `lit`, `pyro`, `smoke`, `torch`, `wix`, `msiinfo`, `msibuild`, `msidump`, `msidiff`, `msiextract`. |
+| `crates/msi` | `libmsi.rlib` | Core implementation: [MS-CFB] container, CAB & WIM/ESD compression algorithms, relational database tables, SQL parser/executor, WiX compilation/linking pipeline, two-phase transaction execution engine, POSIX translation, bare-metal provisioning, and headless UI engine. |
+| `crates/msi-cli` | 17 Native Binaries | Drop-in replacement for `msiexec.exe` and full suite of standalone WiX and msitools executables: `msi-cli`, `msiexec`, `candle`, `light`, `dark`, `heat`, `lit`, `pyro`, `smoke`, `torch`, `wix`, `wixl`, `msiinfo`, `msibuild`, `msidump`, `msidiff`, `msiextract`. |
 | `crates/msi-gui` | Native Binary `msi-gui` | Interactive cross-platform desktop wizard application powered by `egui` and `eframe`. Supports `wgpu`, `glow`, and pure CPU `softbuffer` rasterizer backends with `AccessKit` screen-reader integration. |
-| `crates/msi-ffi` | `libmsi_ffi.so` / `.dylib` / `.a` | C-compatible Foreign Function Interface with C header (`include/msi.h`). Exposes handle-based APIs for C, C++, Go, C#, Swift, and Zig with strict panic isolation boundaries (`catch_unwind`). |
+| `crates/msi-ffi` | `libmsi_ffi.so` / `.dylib` / `.dll` / `.a` | C-compatible Foreign Function Interface (`include/msi.h`), binary-compatible Win32 `msi.dll` drop-in replacement (`stdcall`/`system`), and COM/OLE Automation server (`IUnknown`, `IDispatch`, `IStorage`, `Installer`) with strict panic isolation boundaries (`catch_unwind`). |
 | `crates/msi-python` | `_msi` (C-Extension) | Native Python 3 extension built with PyO3. Exposes object-oriented package creation, version parsing, inspection, and WiX compilation directly to Python codebases. |
 
 ---
@@ -291,18 +291,18 @@ All strings in the database are deduplicated and managed via two coordinated str
 2. **`_StringData`**: A raw byte stream containing concatenated string characters without null terminators.
 
 ### Standard Schema Taxonomy
-`msi-rs` defines all **75 standard and extended database table schemas**, strongly typed with compile-time descriptors:
+`msi-rs` defines all **83+ standard and extended database table schemas**, strongly typed with compile-time descriptors:
 
 ```mermaid
 graph LR
-    subgraph SCHEMAS["75 Database Schemas"]
-        CORE["Core Packaging (18 Tables)<br/>Component, Feature, File, Directory,<br/>Media, Property, Binary, Upgrade..."]
+    subgraph SCHEMAS["83+ Database Schemas"]
+        CORE["Core Packaging (18 Tables)<br/>Component, Feature, File, Directory,<br/>Media, Property, Binary, Module*..."]
         SEQ["Sequences (6 Tables)<br/>InstallExecuteSequence, InstallUISequence,<br/>AdminExecuteSequence, CustomAction..."]
-        CONFIG["Configuration (17 Tables)<br/>Registry, Environment, Shortcut,<br/>ServiceInstall, ServiceControl..."]
+        CONFIG["Configuration (19 Tables)<br/>Registry, Environment, Shortcut,<br/>ServiceInstall, ServiceControl, AppSearch..."]
         FILE_MGMT["File Mgmt (6 Tables)<br/>CreateFolder, MoveFile, DuplicateFile,<br/>RemoveFile, IniFile..."]
-        COM["COM & Shell (8 Tables)<br/>Class, ProgId, TypeLib,<br/>Extension, Verb, MIME..."]
-        UI["UI & Presentation (15 Tables)<br/>Dialog, Control, ControlEvent,<br/>ControlCondition, EventMapping..."]
-        POSIX["POSIX Extensions (5 Tables)<br/>PosixFile, PosixSymlink, PosixDaemon,<br/>PosixAcl, PosixDesktop"]
+        COM["COM, Shell & SxS (10 Tables)<br/>Class, ProgId, TypeLib, Extension,<br/>Verb, MIME, MsiAssembly..."]
+        UI["UI & Presentation (16 Tables)<br/>Dialog, Control, ControlEvent,<br/>ControlCondition, EventMapping..."]
+        POSIX["POSIX, Chainer & SQL (10 Tables)<br/>PosixFile, PosixSymlink, PosixDaemon,<br/>MsiEmbeddedChainer, SqlDatabase, _Validation..."]
     end
 ```
 
@@ -384,19 +384,10 @@ The compiler transforms preprocessed XML trees into an intermediate binary or XM
 4. **Media Binding**: Allocates sequence numbers to all files across `Media` entries, builds embedded or external CAB archives, and embeds them into the database.
 
 ### Built-In Internal Consistency Evaluators (ICE)
-`msi-rs` eliminates the requirement for external `darice.cub` evaluation by implementing native pure-Rust ICE validation rules directly in the linker:
-- **`ICE01`**: Validates basic database integrity, table catalogs, and string pool consistency.
-- **`ICE02`**: Validates circular references in the `FeatureComponents` table.
-- **`ICE03`**: Validates table field data types, primary keys, string lengths, and nullability constraints.
-- **`ICE04`**: Verifies that `File` sequence numbers are unique and contiguous.
-- **`ICE05`**: Checks for orphaned records in child tables.
-- **`ICE06`**: Validates column names, default values, and column sizing in database catalogs.
-- **`ICE07`**: Validates fonts and typography references in dialog controls.
-- **`ICE08`**: Validates component GUID formats and casing.
-- **`ICE18`**: Verifies that KeyPaths for components are valid and belong to the component.
-- **`ICE33`**: Validates registry table entries and root keys.
-- **`ICE80`**: Validates 64-bit component assignments and system directories.
-- **`ICE99`**: Verifies directory tree hierarchy and ensures a single root `TARGETDIR`.
+`msi-rs` eliminates the requirement for external `darice.cub` evaluation on Windows by implementing all **105 official ICE validation rules (`ICE01` through `ICE105`)** natively in Rust (`IceRegistry::with_standard_rules()`), alongside an external `.cub` evaluator (`CubValidator`):
+- **`ICE01`–`ICE09`**: System catalogs, circular feature dependencies, column types/nullability (`ICE03`), contiguous file sequences (`ICE04`), media sequence ranges (`ICE05`), unversioned shared files (`ICE06`), fonts (`ICE07`), duplicate component GUIDs (`ICE08`), and keypath validity (`ICE09`).
+- **`ICE10`–`ICE39`**: Advertised shortcuts, nested actions, dialog bounds/tab order (`ICE13`, `ICE23`), sequence ordering (`ICE20`, `ICE26`–`ICE28`), merge module dependencies (`ICE25`), cross-component file collisions (`ICE30`), foreign key integrity (`ICE32`), COM/Registry entries (`ICE33`), HKCU profile keypaths (`ICE38`), and summary information (`ICE39`).
+- **`ICE40`–`ICE105`**: Reserved filenames (`ICE45`), uppercase public properties (`ICE46`), per-user/per-machine mixing (`ICE57`), upgrade version bounds (`ICE61`), deferred action scheduling (`ICE77`), 32/64-bit component architecture checks (`ICE80`), digital signatures (`ICE81`), WinSxS assemblies (`ICE83`), COM+ (`ICE97`), ODBC (`ICE98`), single-root directory trees (`ICE99`), and patch transform deltas (`ICE105`).
 
 ### Decompilation, Harvesting, Patching & Libraries
 - **`dark` (Decompiler)**: Reverse-engineers an existing `.msi` package, decompiling CFB streams, tables, and embedded cabinets back into clean WiX source XML (`.wxs`).
@@ -695,11 +686,12 @@ graph TD
     PY_EXT --> CORE_API
 ```
 
-### C-ABI Shared Library (`msi-ffi`)
-- **Header File**: Distributed with `include/msi.h`.
-- **Opaque Handle Model**: Exposes heap-allocated structs behind opaque pointer types (`MsiPackageHandle`, `MsiPackageBuilderHandle`).
-- **Panic Boundary Safety**: Every exported `extern "C"` function is wrapped in `std::panic::catch_unwind`. Unhandled Rust panics cannot cross the C-ABI boundary and are safely caught, returning `MSI_ERROR_PANIC (-99)`.
-- **Return Codes & Memory Lifecycle**: Standard integer error codes (`MSI_SUCCESS`, `MSI_ERROR_NULL_POINTER`, `MSI_ERROR_INVALID_ARGUMENT`). Explicit deallocation functions (`msi_string_free`, `msi_buffer_free`, `msi_package_destroy`, `msi_package_builder_destroy`).
+### C-ABI Shared Library & Win32 `msi.dll` Drop-In (`msi-ffi`)
+- **Header File & C-ABI**: Distributed with `include/msi.h`. Exposes heap-allocated structs behind opaque pointer types (`MsiPackageHandle`, `MsiPackageBuilderHandle`, `MsiDatabaseHandle`, `MsiRecordHandle`, `MsiSummaryInfoHandle`, `MsiTransactionHandle`).
+- **Win32 `msi.dll` Drop-In Surface (`crates/msi-ffi/src/win32/`)**: Exports `stdcall` / `system` ABI functions matching Microsoft `msi.dll` and Wine (`Makefile.in`, `msi.rc`, `msi.tlb`) for database views, records, streams, summary info, product installation, patching, transforms, source lists, and UI levels.
+- **COM / OLE Automation Server (`crates/msi-ffi/src/com/`)**: Implements C-ABI vtables for `IUnknown`, `IDispatch`, `IStorage`, `IStream`, and the `WindowsInstaller.Installer` automation hierarchy (`Installer`, `Session`, `Database`, `View`, `Record`, `SummaryInfo`, `StringList`, `RecordList`, `FeatureInfo`).
+- **Panic Boundary Safety**: Every exported `extern "C"` and `extern "system"` function is wrapped in `std::panic::catch_unwind`. Unhandled Rust panics cannot cross the FFI boundary and are safely caught, returning `MSI_ERROR_PANIC (-99)`, `ERROR_INSTALL_FAILURE`, or `HRESULT` failure codes.
+- **Return Codes & Memory Lifecycle**: Standard integer error codes (`MSI_SUCCESS`, `MSI_ERROR_NULL_POINTER`, `MSI_ERROR_INVALID_ARGUMENT`). Explicit deallocation functions (`msi_string_free`, `msi_buffer_free`, `msi_package_destroy`, `msi_package_builder_destroy`, `MsiCloseHandle`, `MsiCloseAllHandles`).
 
 ### Native Python Extension (`msi-python`)
 - Implemented using PyO3, targeting Python 3.9+ with `abi3` wheel compatibility.

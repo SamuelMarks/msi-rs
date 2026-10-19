@@ -29,7 +29,7 @@ impl TargetOs {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn host() -> Self {
         #[cfg(target_os = "macos")]
@@ -133,7 +133,7 @@ impl StandardDirectoryId {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&'static str` value.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -210,11 +210,11 @@ impl PathResolver {
     ///
     /// # Arguments
     ///
-    /// * `per_machine` - The `per_machine` parameter.
+    /// * `per_machine` - The per machine value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn per_machine(mut self, per_machine: bool) -> Self {
         self.per_machine = per_machine;
@@ -225,11 +225,11 @@ impl PathResolver {
     ///
     /// # Arguments
     ///
-    /// * `vendor` - The `vendor` parameter.
+    /// * `vendor` - The vendor value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn vendor(mut self, vendor: impl Into<String>) -> Self {
         self.vendor = Some(vendor.into());
@@ -240,11 +240,11 @@ impl PathResolver {
     ///
     /// # Arguments
     ///
-    /// * `home` - The `home` parameter.
+    /// * `home` - The home value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn home_dir(mut self, home: impl Into<PathBuf>) -> Self {
         self.home_dir = home.into();
@@ -255,11 +255,11 @@ impl PathResolver {
     ///
     /// # Arguments
     ///
-    /// * `prefix` - The `prefix` parameter.
+    /// * `prefix` - String or namespace prefix.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn root_prefix(mut self, prefix: impl Into<PathBuf>) -> Self {
         self.root_prefix = prefix.into();
@@ -335,8 +335,8 @@ impl PathResolver {
     ///
     /// # Arguments
     ///
-    /// * `key` - The `key` parameter.
-    /// * `val` - The `val` parameter.
+    /// * `key` - Registry key path or lookup identifier.
+    /// * `val` - Value to store, format, or evaluate.
     pub fn set_env(&mut self, key: impl Into<String>, val: impl Into<String>) {
         self.env_vars.insert(key.into(), val.into());
     }
@@ -553,12 +553,12 @@ impl PathResolver {
     ///
     /// # Arguments
     ///
-    /// * `dir_id` - The `dir_id` parameter.
-    /// * `sysroot` - The `sysroot` parameter.
+    /// * `dir_id` - Identifier of the dir.
+    /// * `sysroot` - The sysroot value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `PathBuf` value.
     fn resolve_offline_sysroot(&self, dir_id: StandardDirectoryId, sysroot: &Path) -> PathBuf {
         match (self.target_os, dir_id) {
             (_, StandardDirectoryId::TargetDir) => sysroot.to_path_buf(),
@@ -637,7 +637,6 @@ impl PathResolver {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

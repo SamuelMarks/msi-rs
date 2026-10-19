@@ -55,12 +55,12 @@ pub trait AutomationObject: Debug + Send + Sync + 'static {
     ///
     /// # Arguments
     ///
-    /// * `name` - The `name` parameter.
-    /// * `args` - The `args` parameter.
+    /// * `name` - Identifier or name of the target entity.
+    /// * `args` - Command-line or invocation arguments slice.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Variant)` on success, or an error if the operation fails.
     fn invoke(&self, name: &str, args: &[Variant]) -> Result<Variant>;
 
     /// Retrieves a property from the automation object.
@@ -70,11 +70,11 @@ pub trait AutomationObject: Debug + Send + Sync + 'static {
     ///
     /// # Arguments
     ///
-    /// * `name` - The `name` parameter.
+    /// * `name` - Identifier or name of the target entity.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Variant)` on success, or an error if the operation fails.
     fn get_property(&self, name: &str) -> Result<Variant>;
 
     /// Sets a property on the automation object.
@@ -84,19 +84,19 @@ pub trait AutomationObject: Debug + Send + Sync + 'static {
     ///
     /// # Arguments
     ///
-    /// * `name` - The `name` parameter.
-    /// * `value` - The `value` parameter.
+    /// * `name` - Identifier or name of the target entity.
+    /// * `value` - Value to assign or compare.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     fn set_property(&mut self, name: &str, value: Variant) -> Result<()>;
 
     /// Clones this automation object into a new boxed trait object.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `Box<dyn AutomationObject>` value.
     fn clone_box(&self) -> Box<dyn AutomationObject>;
 }
 
@@ -126,7 +126,7 @@ impl Installer {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -177,7 +177,7 @@ impl Session {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn new() -> Self {
         Self { language: 1033 }
@@ -238,11 +238,11 @@ impl Record {
     ///
     /// # Arguments
     ///
-    /// * `count` - The `count` parameter.
+    /// * `count` - The count value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn new(count: usize) -> Self {
         Self {
@@ -293,7 +293,7 @@ impl StringList {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn new() -> Self {
         Self { items: Vec::new() }
@@ -303,7 +303,7 @@ impl StringList {
     ///
     /// # Arguments
     ///
-    /// * `item` - The `item` parameter.
+    /// * `item` - The item value.
     pub fn add(&mut self, item: String) {
         self.items.push(item);
     }
@@ -315,11 +315,11 @@ impl StringList {
     ///
     /// # Arguments
     ///
-    /// * `index` - The `index` parameter.
+    /// * `index` - Zero-based element index.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok` containing the formatted or resolved string, or an error on failure.
     pub fn item(&self, index: usize) -> Result<String> {
         if index == 0 || index > self.items.len() {
             return Err(MsiError::ActionExecutionError(
@@ -333,7 +333,7 @@ impl StringList {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `usize` numeric result or status code.
     #[must_use]
     pub fn count(&self) -> usize {
         self.items.len()
@@ -370,7 +370,7 @@ impl RecordList {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn new() -> Self {
         Self {
@@ -382,7 +382,7 @@ impl RecordList {
     ///
     /// # Arguments
     ///
-    /// * `record` - The `record` parameter.
+    /// * `record` - The record value.
     pub fn add(&mut self, record: u32) {
         self.records.push(record);
     }
@@ -394,11 +394,11 @@ impl RecordList {
     ///
     /// # Arguments
     ///
-    /// * `index` - The `index` parameter.
+    /// * `index` - Zero-based element index.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(u32)` on success, or an error if the operation fails.
     pub fn item(&self, index: usize) -> Result<u32> {
         if index == 0 || index > self.records.len() {
             return Err(MsiError::ActionExecutionError(
@@ -412,7 +412,7 @@ impl RecordList {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `usize` numeric result or status code.
     #[must_use]
     pub fn count(&self) -> usize {
         self.records.len()
@@ -437,11 +437,11 @@ impl UiPreview {
     ///
     /// # Arguments
     ///
-    /// * `database_path` - The `database_path` parameter.
+    /// * `database_path` - Filesystem path for the database path.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn new(database_path: String) -> Self {
         Self { database_path }
@@ -454,11 +454,11 @@ impl UiPreview {
     ///
     /// # Arguments
     ///
-    /// * `dialog` - The `dialog` parameter.
+    /// * `dialog` - Name or definition of the UI dialog.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn view_dialog(&self, dialog: &str) -> Result<()> {
         if dialog.is_empty() {
             return Err(MsiError::ActionExecutionError(
@@ -493,12 +493,12 @@ impl SummaryInfoExt {
     ///
     /// # Arguments
     ///
-    /// * `data` - The `data` parameter.
-    /// * `is_ansi` - The `is_ansi` parameter.
+    /// * `data` - Raw byte buffer to process.
+    /// * `is_ansi` - Boolean flag indicating whether to is ansi.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok` containing the formatted or resolved string, or an error on failure.
     pub fn translate_dictionary(data: &[u8], is_ansi: bool) -> Result<String> {
         if data.is_empty() {
             return Err(MsiError::ActionExecutionError(
@@ -514,7 +514,6 @@ impl SummaryInfoExt {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

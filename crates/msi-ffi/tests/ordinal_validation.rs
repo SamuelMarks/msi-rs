@@ -12,17 +12,18 @@ fn verify_export_ordinals_match_wine() {
     };
     assert_eq!(err_status, msi_ffi::MSI_ERROR_BUFFER_TOO_SMALL);
 
-    // 2. Verify Win32 Record API exports (`MsiCreateRecord`, `MsiRecordGetFieldCount`, `MsiCloseHandle`, `MsiCloseAllHandles`)
+    // 2. Verify Win32 Record API exports (`MsiCreateRecord`, `MsiRecordGetFieldCount`, `MsiRecordDataSize`, `MsiCloseHandle`, `MsiCloseAllHandles`)
     let rec_handle = msi_ffi::win32::record::MsiCreateRecord(3);
     assert_ne!(rec_handle, 0);
     assert_eq!(
         msi_ffi::win32::record_stream::MsiRecordGetFieldCount(rec_handle),
-        0
+        3
     );
     assert_eq!(
         msi_ffi::win32::record::MsiRecordSetInteger(rec_handle, 1, 42),
         0
     );
+    assert_eq!(msi_ffi::MsiRecordDataSize(rec_handle, 1), 4);
     assert_eq!(msi_ffi::MsiCloseHandle(rec_handle), 0);
     assert_eq!(msi_ffi::MsiCloseAllHandles(), 0);
 

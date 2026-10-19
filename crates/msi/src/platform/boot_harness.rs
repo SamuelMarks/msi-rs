@@ -309,7 +309,7 @@ impl InitScriptBuilder {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     fn render_pid_one(&self) -> String {
         let mut s = String::from("#!/bin/sh\n");
         s.push_str("# msi-rs bare-metal early userspace init (PID 1)\n");
@@ -349,7 +349,7 @@ impl InitScriptBuilder {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     fn render_systemd(&self) -> String {
         let mut s = String::from("[Unit]\n");
         s.push_str("Description=msi-rs Bare-Metal Installer\n");
@@ -382,7 +382,7 @@ impl InitScriptBuilder {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     fn render_openrc(&self) -> String {
         let mut s = String::from("#!/sbin/openrc-run\n");
         s.push_str("description=\"msi-rs Bare-Metal Installer\"\n\n");
@@ -624,7 +624,7 @@ impl UkiPackager {
     /// # Errors
     ///
     /// Returns [`MsiError::UkiPackageError`] if critical input components are empty.
-    #[allow(clippy::too_many_lines, clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_possible_truncation)]
     pub fn package_full(
         stub: &[u8],
         kernel: &[u8],
@@ -890,7 +890,7 @@ impl LiveMediaGenerator {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Vector of `u8` items.
     fn generate_hybrid_iso(&self) -> Vec<u8> {
         let sector_size = 2048;
         let mut image = vec![0u8; 16 * sector_size];
@@ -1016,7 +1016,7 @@ impl LiveMediaGenerator {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Vector of `u8` items.
     #[allow(clippy::cast_possible_truncation)]
     fn generate_raw_usb(&self) -> Vec<u8> {
         let sector_size = 512;
@@ -1163,7 +1163,6 @@ impl WinPeHarness {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

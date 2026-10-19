@@ -190,7 +190,8 @@ mod tests {
     use std::fs;
 
     #[test]
-    #[allow(clippy::too_many_lines, clippy::explicit_into_iter_loop)]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::explicit_into_iter_loop)]
     fn test_msidiff_run_all_branches() {
         let temp_dir = std::env::temp_dir().join("msi_cli_test_msidiff_bin");
         let _ = fs::create_dir_all(&temp_dir);

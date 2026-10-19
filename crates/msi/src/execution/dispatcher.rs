@@ -96,6 +96,206 @@ impl<'a> ActionDispatcher<'a> {
         Ok(overall_status)
     }
 
+    /// Dispatches a top-level sequence action (`INSTALL`, `ADMIN`, `ADVERTISE`, `ExecuteAction`).
+    fn dispatch_top_level_sequence(&mut self, action_name: &str) -> Result<Option<ActionStatus>> {
+        match action_name {
+            "INSTALL" => {
+                if self
+                    .transaction
+                    .database()
+                    .tables
+                    .contains_key("InstallUISequence")
+                {
+                    let ui_status =
+                        self.execute_sequence(&SequenceName::from("InstallUISequence"))?;
+                    if ui_status != ActionStatus::Success {
+                        return Ok(Some(ui_status));
+                    }
+                }
+                if self
+                    .transaction
+                    .database()
+                    .tables
+                    .contains_key("InstallExecuteSequence")
+                {
+                    return self
+                        .execute_sequence(&SequenceName::from("InstallExecuteSequence"))
+                        .map(Some);
+                }
+                Ok(Some(ActionStatus::Success))
+            }
+            "ADMIN" => {
+                if self
+                    .transaction
+                    .database()
+                    .tables
+                    .contains_key("AdminUISequence")
+                {
+                    let ui_status =
+                        self.execute_sequence(&SequenceName::from("AdminUISequence"))?;
+                    if ui_status != ActionStatus::Success {
+                        return Ok(Some(ui_status));
+                    }
+                }
+                if self
+                    .transaction
+                    .database()
+                    .tables
+                    .contains_key("AdminExecuteSequence")
+                {
+                    return self
+                        .execute_sequence(&SequenceName::from("AdminExecuteSequence"))
+                        .map(Some);
+                }
+                Ok(Some(ActionStatus::Success))
+            }
+            "ADVERTISE" => {
+                if self
+                    .transaction
+                    .database()
+                    .tables
+                    .contains_key("AdvtExecuteSequence")
+                {
+                    return self
+                        .execute_sequence(&SequenceName::from("AdvtExecuteSequence"))
+                        .map(Some);
+                }
+                Ok(Some(ActionStatus::Success))
+            }
+            "ExecuteAction" => {
+                let target_seq = self
+                    .transaction
+                    .context()
+                    .get_property("EXECUTEACTION")
+                    .unwrap_or("InstallExecuteSequence")
+                    .to_string();
+                if self.transaction.database().tables.contains_key(&target_seq) {
+                    return self
+                        .execute_sequence(&SequenceName::from(target_seq.as_str()))
+                        .map(Some);
+                }
+                Ok(Some(ActionStatus::Success))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    /// Evaluates the `CCPSearch` table and sets `CCP_SUCCESS` if any signature matches.
+    fn run_ccp_search(&mut self) {
+        let host = crate::execution::appsearch::DefaultHostSystem::new();
+        let search = crate::execution::appsearch::AppSearch::new(self.transaction.database(), host);
+        let matched = self
+            .transaction
+            .database()
+            .get_records("CCPSearch")
+            .iter()
+            .filter_map(|rec| match rec.get(0) {
+                Some(FieldValue::String(sig)) => Some(sig.as_str()),
+                _ => None,
+            })
+            .any(|sig| {
+                search.resolve_signature(sig).is_some()
+                    || self.transaction.context().get_property(sig).is_some()
+            });
+        if matched {
+            self.transaction
+                .context_mut()
+                .set_property("CCP_SUCCESS", "1");
+        }
+    }
+
+    /// Dispatches an immediate standard action (`LaunchConditions`, `AppSearch`, `CCPSearch`, etc.).
+    fn dispatch_immediate_standard_action(
+        &mut self,
+        action_name: &str,
+    ) -> Result<Option<ActionStatus>> {
+        match action_name {
+            "LaunchConditions" => {
+                for rec in self.transaction.database().get_records("LaunchCondition") {
+                    if let Some(FieldValue::String(cond)) = rec.get(0) {
+                        if !self.transaction.context().evaluate_condition(cond)? {
+                            return Ok(Some(ActionStatus::Failure));
+                        }
+                    }
+                }
+                Ok(Some(ActionStatus::Success))
+            }
+            "AppSearch" => {
+                let host = crate::execution::appsearch::DefaultHostSystem::new();
+                let search =
+                    crate::execution::appsearch::AppSearch::new(self.transaction.database(), host);
+                if let Ok(found) = search.execute() {
+                    for (prop, val) in found {
+                        self.transaction.context_mut().set_property(prop, val);
+                    }
+                }
+                Ok(Some(ActionStatus::Success))
+            }
+            "CCPSearch" | "RMCCPSearch" => {
+                self.run_ccp_search();
+                Ok(Some(ActionStatus::Success))
+            }
+            "ValidateProductID" => {
+                if let Some(pid_key) = self
+                    .transaction
+                    .context()
+                    .get_property("PIDKEY")
+                    .filter(|s| !s.is_empty())
+                    .map(ToString::to_string)
+                {
+                    self.transaction
+                        .context_mut()
+                        .set_property("ProductID", pid_key);
+                }
+                Ok(Some(ActionStatus::Success))
+            }
+            "ResolveSource" => {
+                if self
+                    .transaction
+                    .context()
+                    .get_property("SourceDir")
+                    .is_none()
+                {
+                    let mut orig = r"C:\".to_string();
+                    if let Some(p) = self
+                        .transaction
+                        .context()
+                        .get_property("OriginalDatabase")
+                        .and_then(|p| std::path::Path::new(p).parent())
+                    {
+                        orig = p.to_string_lossy().to_string();
+                    }
+                    self.transaction
+                        .context_mut()
+                        .set_property("SourceDir", orig);
+                }
+                Ok(Some(ActionStatus::Success))
+            }
+            "DisableRollback" => {
+                self.transaction
+                    .context_mut()
+                    .set_property("RollbackDisabled", "1");
+                Ok(Some(ActionStatus::Success))
+            }
+            "ScheduleReboot" => {
+                self.transaction
+                    .context_mut()
+                    .set_property("REBOOT", "Force");
+                Ok(Some(ActionStatus::Success))
+            }
+            "ForceReboot" => {
+                self.transaction
+                    .context_mut()
+                    .set_property("REBOOT", "Force");
+                self.transaction
+                    .context_mut()
+                    .set_property("ForceRebootTriggered", "1");
+                Ok(Some(ActionStatus::Success))
+            }
+            _ => Ok(None),
+        }
+    }
+
     /// Dispatches a single standard or custom action by name.
     ///
     /// Checks the `CustomAction` table first:
@@ -115,16 +315,11 @@ impl<'a> ActionDispatcher<'a> {
     ///
     /// Returns [`MsiError::ExecutionFailed`] if a Type 19 error action triggers, or [`MsiError::Validation`] if a condition expression is invalid.
     pub fn dispatch_action(&mut self, action_name: &str) -> Result<ActionStatus> {
-        if action_name == "LaunchConditions" {
-            let lc_records = self.transaction.database().get_records("LaunchCondition");
-            for rec in lc_records {
-                if let Some(FieldValue::String(cond)) = rec.get(0) {
-                    if !self.transaction.context().evaluate_condition(cond)? {
-                        return Ok(ActionStatus::Failure);
-                    }
-                }
-            }
-            return Ok(ActionStatus::Success);
+        if let Some(status) = self.dispatch_top_level_sequence(action_name)? {
+            return Ok(status);
+        }
+        if let Some(status) = self.dispatch_immediate_standard_action(action_name)? {
+            return Ok(status);
         }
 
         let ca_records = self.transaction.database().get_records("CustomAction");
@@ -172,7 +367,6 @@ impl<'a> ActionDispatcher<'a> {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::database::tables::record::{FieldValue, Record};
@@ -420,6 +614,101 @@ mod tests {
         let mut dispatcher = ActionDispatcher::new(&mut transaction);
         let result = dispatcher.execute_sequence(&SequenceName::from("InstallExecuteSequence"))?;
         assert_eq!(result, ActionStatus::Failure);
+        Ok(())
+    }
+
+    #[test]
+    fn test_dispatcher_top_level_and_immediate_actions() -> Result<()> {
+        let mut db = LinkedDatabase::default();
+        db.add_record(
+            "InstallUISequence",
+            Record::with_fields(vec![
+                FieldValue::String("ValidateProductID".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(10),
+            ]),
+        );
+        db.add_record(
+            "InstallExecuteSequence",
+            Record::with_fields(vec![
+                FieldValue::String("ResolveSource".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(20),
+            ]),
+        );
+        db.add_record(
+            "AdminUISequence",
+            Record::with_fields(vec![
+                FieldValue::String("DisableRollback".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(10),
+            ]),
+        );
+        db.add_record(
+            "AdminExecuteSequence",
+            Record::with_fields(vec![
+                FieldValue::String("ScheduleReboot".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(20),
+            ]),
+        );
+        db.add_record(
+            "AdvtExecuteSequence",
+            Record::with_fields(vec![
+                FieldValue::String("ForceReboot".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(10),
+            ]),
+        );
+        db.add_record(
+            "CCPSearch",
+            Record::with_fields(vec![FieldValue::String("CCP_PROP".to_string())]),
+        );
+
+        let mut ctx = EvaluationContext::new();
+        ctx.set_property("PIDKEY", "KEY-999");
+        ctx.set_property("CCP_PROP", "1");
+        ctx.set_property("OriginalDatabase", "/tmp/pkg/setup.msi");
+
+        let mut transaction = Transaction::new(db, ctx, crate::execution::DiskCostEngine::new());
+        let mut dispatcher = ActionDispatcher::new(&mut transaction);
+
+        assert_eq!(
+            dispatcher.dispatch_action("INSTALL")?,
+            ActionStatus::Success
+        );
+        assert_eq!(dispatcher.dispatch_action("ADMIN")?, ActionStatus::Success);
+        assert_eq!(
+            dispatcher.dispatch_action("ADVERTISE")?,
+            ActionStatus::Success
+        );
+        assert_eq!(
+            dispatcher.dispatch_action("ExecuteAction")?,
+            ActionStatus::Success
+        );
+        assert_eq!(
+            dispatcher.dispatch_action("CCPSearch")?,
+            ActionStatus::Success
+        );
+        assert_eq!(
+            dispatcher.dispatch_action("RMCCPSearch")?,
+            ActionStatus::Success
+        );
+
+        assert_eq!(
+            transaction.context().get_property("ProductID"),
+            Some("KEY-999")
+        );
+        assert_eq!(transaction.context().get_property("CCP_SUCCESS"), Some("1"));
+        assert_eq!(
+            transaction.context().get_property("RollbackDisabled"),
+            Some("1")
+        );
+        assert_eq!(
+            transaction.context().get_property("ForceRebootTriggered"),
+            Some("1")
+        );
+        assert!(transaction.context().get_property("SourceDir").is_some());
         Ok(())
     }
 }

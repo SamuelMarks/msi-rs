@@ -55,7 +55,7 @@ impl LookupEntry {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(u64)` on success, or an error if the operation fails.
     pub fn end_offset(&self) -> Result<u64> {
         self.resource
             .offset
@@ -83,11 +83,11 @@ impl LookupTable {
     ///
     /// # Arguments
     ///
-    /// * `bytes` - The `bytes` parameter.
+    /// * `bytes` - Raw binary payload byte slice.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Self)` on success, or an error if the operation fails.
     pub fn parse(bytes: &[u8]) -> Result<Self> {
         let mut entries = Vec::new();
         let mut cursor = bytes;
@@ -111,14 +111,7 @@ impl LookupTable {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::field_reassign_with_default,
-    clippy::shadow_unrelated,
-    clippy::unreadable_literal,
-    clippy::assert_is_empty,
-    clippy::cast_possible_truncation,
-    clippy::redundant_clone
-)]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
     use crate::wim::header::ResourceFlags;

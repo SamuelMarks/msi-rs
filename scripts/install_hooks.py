@@ -69,6 +69,11 @@ def find_pre_commit_cmd(env: dict[str, str]) -> list[str]:
 
 
 def main() -> int:
+    """Installs and configures git pre-commit hooks for the msi-rs workspace.
+
+    Returns:
+        int: Exit code (0 on success, non-zero on error).
+    """
     repo_root = Path(__file__).resolve().parent.parent
     env = get_augmented_env()
     print("==> Installing pre-commit hooks for msi-rs via PyPI pre-commit...")

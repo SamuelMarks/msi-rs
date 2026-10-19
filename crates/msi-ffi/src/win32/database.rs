@@ -24,6 +24,65 @@ pub const MSIDBOPEN_CREATE: Lpcwstr = 3 as Lpcwstr;
 /// Create direct mode.
 pub const MSIDBOPEN_CREATEDIRECT: Lpcwstr = 4 as Lpcwstr;
 
+/// Shared implementation for `MsiOpenDatabaseA/W`.
+fn open_database_inner(path: Option<String>, persist: usize, ph_database: *mut MsiHandle) -> Uint {
+    if ph_database.is_null() {
+        return ERROR_INVALID_PARAMETER;
+    }
+    let Some(path) = path else {
+        return ERROR_INVALID_PARAMETER;
+    };
+    let is_write = persist == MSIDBOPEN_TRANSACT as usize
+        || persist == MSIDBOPEN_DIRECT as usize
+        || persist == MSIDBOPEN_CREATE as usize
+        || persist == MSIDBOPEN_CREATEDIRECT as usize;
+    let state = if is_write {
+        MSIDBSTATE_WRITE
+    } else {
+        MSIDBSTATE_READ
+    };
+    let mut db = msi::package::Package::open(&path)
+        .map(|pkg| pkg.database().clone())
+        .unwrap_or_default();
+    db.backing_path = Some(path);
+
+    let obj = MsiObject::Database(MsiDatabaseHandle { inner: db, state });
+    unsafe {
+        *ph_database = alloc_handle(obj);
+    }
+    ERROR_SUCCESS
+}
+
+/// Shared implementation for `MsiDatabaseOpenViewA/W`.
+fn database_open_view_inner(
+    h_database: MsiHandle,
+    query_str: Option<String>,
+    ph_view: *mut MsiHandle,
+) -> Uint {
+    if ph_view.is_null() {
+        return ERROR_INVALID_PARAMETER;
+    }
+    let Some(query_str) = query_str else {
+        return ERROR_INVALID_PARAMETER;
+    };
+    let valid =
+        with_handle(h_database, |obj| matches!(obj, MsiObject::Database(_))).unwrap_or(false);
+    if valid {
+        let view = crate::types::MsiViewHandle {
+            database_handle: h_database,
+            query: query_str,
+            fetched_records: std::collections::VecDeque::new(),
+            last_error_column: None,
+        };
+        unsafe {
+            *ph_view = alloc_handle(MsiObject::View(view));
+        }
+        ERROR_SUCCESS
+    } else {
+        ERROR_INVALID_HANDLE
+    }
+}
+
 /// Opens a database for data access in Unicode (`W`).
 ///
 /// # Arguments
@@ -37,49 +96,22 @@ pub const MSIDBOPEN_CREATEDIRECT: Lpcwstr = 4 as Lpcwstr;
 /// `ERROR_SUCCESS`, `ERROR_INVALID_PARAMETER`
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "system" fn MsiOpenDatabaseW(
     szDatabasePath: Lpcwstr,
     szPersist: Lpcwstr,
     phDatabase: *mut MsiHandle,
 ) -> Uint {
-    let result = panic::catch_unwind(|| {
-        if phDatabase.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
-
-        let Some(_path) = lpcwstr_to_string(szDatabasePath) else {
-            return ERROR_INVALID_PARAMETER;
-        };
-
-        let persist = szPersist as usize;
-        let is_write = persist == MSIDBOPEN_TRANSACT as usize
-            || persist == MSIDBOPEN_DIRECT as usize
-            || persist == MSIDBOPEN_CREATE as usize
-            || persist == MSIDBOPEN_CREATEDIRECT as usize;
-        let state = if is_write {
-            MSIDBSTATE_WRITE
-        } else {
-            MSIDBSTATE_READ
-        };
-
-        let mock_db = msi::wix::linker::LinkedDatabase::default();
-
-        let obj = MsiObject::Database(MsiDatabaseHandle {
-            inner: mock_db,
-            state,
-        });
-
-        // SAFETY: We verified `phDatabase` is not null.
-        unsafe {
-            *phDatabase = alloc_handle(obj);
-        }
-
-        ERROR_SUCCESS
-    });
-
-    result.unwrap_or(ERROR_INSTALL_FAILURE)
+    panic::catch_unwind(|| {
+        open_database_inner(
+            lpcwstr_to_string(szDatabasePath),
+            szPersist as usize,
+            phDatabase,
+        )
+    })
+    .unwrap_or(ERROR_INSTALL_FAILURE)
 }
 
 /// Opens a database for data access in ANSI (`A`).
@@ -95,49 +127,22 @@ pub extern "system" fn MsiOpenDatabaseW(
 /// `ERROR_SUCCESS`, `ERROR_INVALID_PARAMETER`
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "system" fn MsiOpenDatabaseA(
     szDatabasePath: Lpcstr,
     szPersist: Lpcstr,
     phDatabase: *mut MsiHandle,
 ) -> Uint {
-    let result = panic::catch_unwind(|| {
-        if phDatabase.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
-
-        let Some(_path) = lpcstr_to_string(szDatabasePath) else {
-            return ERROR_INVALID_PARAMETER;
-        };
-
-        let persist = szPersist as usize;
-        let is_write = persist == MSIDBOPEN_TRANSACT as usize
-            || persist == MSIDBOPEN_DIRECT as usize
-            || persist == MSIDBOPEN_CREATE as usize
-            || persist == MSIDBOPEN_CREATEDIRECT as usize;
-        let state = if is_write {
-            MSIDBSTATE_WRITE
-        } else {
-            MSIDBSTATE_READ
-        };
-
-        let mock_db = msi::wix::linker::LinkedDatabase::default();
-
-        let obj = MsiObject::Database(MsiDatabaseHandle {
-            inner: mock_db,
-            state,
-        });
-
-        // SAFETY: We verified `phDatabase` is not null.
-        unsafe {
-            *phDatabase = alloc_handle(obj);
-        }
-
-        ERROR_SUCCESS
-    });
-
-    result.unwrap_or(ERROR_INSTALL_FAILURE)
+    panic::catch_unwind(|| {
+        open_database_inner(
+            lpcstr_to_string(szDatabasePath),
+            szPersist as usize,
+            phDatabase,
+        )
+    })
+    .unwrap_or(ERROR_INSTALL_FAILURE)
 }
 
 /// Prepares a database query and creates a view object in Unicode (`W`).
@@ -153,42 +158,15 @@ pub extern "system" fn MsiOpenDatabaseA(
 /// `ERROR_SUCCESS`, `ERROR_INVALID_HANDLE`, `ERROR_INVALID_PARAMETER`
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 pub extern "system" fn MsiDatabaseOpenViewW(
     hDatabase: MsiHandle,
     szQuery: Lpcwstr,
     phView: *mut MsiHandle,
 ) -> Uint {
-    let result = panic::catch_unwind(|| {
-        if phView.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
-
-        let Some(query_str) = lpcwstr_to_string(szQuery) else {
-            return ERROR_INVALID_PARAMETER;
-        };
-
-        {
-            let valid = with_handle(hDatabase, |obj| matches!(obj, MsiObject::Database(_)))
-                .unwrap_or(false);
-            if valid {
-                let view = crate::types::MsiViewHandle {
-                    database_handle: hDatabase,
-                    query: query_str,
-                    fetched_records: std::collections::VecDeque::new(),
-                    last_error_column: None,
-                };
-                unsafe {
-                    *phView = alloc_handle(MsiObject::View(view));
-                }
-                ERROR_SUCCESS
-            } else {
-                ERROR_INVALID_HANDLE
-            }
-        }
-    });
-
-    result.unwrap_or(ERROR_INSTALL_FAILURE)
+    panic::catch_unwind(|| database_open_view_inner(hDatabase, lpcwstr_to_string(szQuery), phView))
+        .unwrap_or(ERROR_INSTALL_FAILURE)
 }
 
 /// Prepares a database query and creates a view object in ANSI (`A`).
@@ -204,42 +182,15 @@ pub extern "system" fn MsiDatabaseOpenViewW(
 /// `ERROR_SUCCESS`, `ERROR_INVALID_HANDLE`, `ERROR_INVALID_PARAMETER`
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 pub extern "system" fn MsiDatabaseOpenViewA(
     hDatabase: MsiHandle,
     szQuery: Lpcstr,
     phView: *mut MsiHandle,
 ) -> Uint {
-    let result = panic::catch_unwind(|| {
-        if phView.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
-
-        let Some(query_str) = lpcstr_to_string(szQuery) else {
-            return ERROR_INVALID_PARAMETER;
-        };
-
-        {
-            let valid = with_handle(hDatabase, |obj| matches!(obj, MsiObject::Database(_)))
-                .unwrap_or(false);
-            if valid {
-                let view = crate::types::MsiViewHandle {
-                    database_handle: hDatabase,
-                    query: query_str,
-                    fetched_records: std::collections::VecDeque::new(),
-                    last_error_column: None,
-                };
-                unsafe {
-                    *phView = alloc_handle(MsiObject::View(view));
-                }
-                ERROR_SUCCESS
-            } else {
-                ERROR_INVALID_HANDLE
-            }
-        }
-    });
-
-    result.unwrap_or(ERROR_INSTALL_FAILURE)
+    panic::catch_unwind(|| database_open_view_inner(hDatabase, lpcstr_to_string(szQuery), phView))
+        .unwrap_or(ERROR_INSTALL_FAILURE)
 }
 
 /// The database state.
@@ -263,7 +214,8 @@ pub const MSIDBSTATE_WRITE: Msidbstate = 1;
 /// The database state as `MSIDBSTATE_READ` or `MSIDBSTATE_WRITE`, or `MSIDBSTATE_ERROR` on failure.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[must_use]
 pub extern "system" fn MsiGetDatabaseState(hDatabase: MsiHandle) -> Msidbstate {
     let result = panic::catch_unwind(|| {
@@ -283,7 +235,8 @@ pub extern "system" fn MsiGetDatabaseState(hDatabase: MsiHandle) -> Msidbstate {
 }
 
 #[cfg(test)]
-#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
+#[allow(clippy::too_many_lines)]
+#[allow(clippy::cognitive_complexity)]
 mod tests {
     use super::*;
 

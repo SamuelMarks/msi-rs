@@ -325,12 +325,12 @@ impl LoggingOptions {
     ///
     /// # Arguments
     ///
-    /// * `flags` - The `flags` parameter.
-    /// * `log_file` - The `log_file` parameter.
+    /// * `flags` - Bitmask of operational flags.
+    /// * `log_file` - Filesystem path for the log file.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Self)` on success, or an error if the operation fails.
     fn parse_impl(flags: &str, log_file: String) -> Result<Self> {
         let mut opts = Self {
             log_file,
@@ -421,11 +421,11 @@ impl MsiExecOptions {
     ///
     /// # Arguments
     ///
-    /// * `arg_list` - The `arg_list` parameter.
+    /// * `arg_list` - Parsed list of argument expressions.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Self)` on success, or an error if the operation fails.
     #[allow(clippy::too_many_lines)]
     fn parse_strings(arg_list: &[String]) -> Result<Self> {
         if arg_list.is_empty() {
@@ -576,14 +576,14 @@ impl MsiExecOptions {
     ///
     /// # Arguments
     ///
-    /// * `opt` - The `opt` parameter.
-    /// * `prefix` - The `prefix` parameter.
-    /// * `arg_list` - The `arg_list` parameter.
-    /// * `i` - The `i` parameter.
+    /// * `opt` - The opt value.
+    /// * `prefix` - String or namespace prefix.
+    /// * `arg_list` - Parsed list of argument expressions.
+    /// * `i` - The i value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok` containing the formatted or resolved string, or an error on failure.
     fn extract_param(
         opt: &str,
         prefix: &str,
@@ -862,7 +862,6 @@ fn write_execution_log(
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::database::{FieldValue, Record};
@@ -1497,7 +1496,8 @@ mod tests {
     #[allow(clippy::cognitive_complexity)]
     /// Tests successful execution across all action modes, logging, and TUI dialog rendering.
     #[test]
-    #[allow(clippy::too_many_lines, clippy::items_after_statements)]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::items_after_statements)]
     fn test_execute_success() {
         let temp_dir = std::env::temp_dir().join(format!("msi_exec_test_{}", std::process::id()));
         assert!(std::fs::create_dir_all(&temp_dir).is_ok());

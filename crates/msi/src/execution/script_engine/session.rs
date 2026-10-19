@@ -435,7 +435,7 @@ impl ScriptSession {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn consume_fuel(&mut self, line: usize, col: usize) -> Result<()> {
         if self.fuel == 0 {
             let stack_trace = if self.call_stack.is_empty() {
@@ -481,7 +481,6 @@ impl ScriptSession {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

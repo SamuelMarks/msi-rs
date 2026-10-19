@@ -141,7 +141,6 @@ pub fn resolve_darwin_descriptor(descriptor: &str) -> Result<String> {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

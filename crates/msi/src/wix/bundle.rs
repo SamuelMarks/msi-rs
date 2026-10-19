@@ -304,7 +304,7 @@ impl BurnCompiler {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn new() -> Self {
         Self
@@ -356,7 +356,7 @@ impl BurnLinker {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn new() -> Self {
         Self
@@ -495,7 +495,7 @@ impl BurnEngine {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn new() -> Self {
         Self
@@ -585,7 +585,6 @@ impl BurnEngine {
 }
 
 #[cfg(test)]
-#[allow(clippy::manual_flatten, clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::wix::xml::{XmlNode, XmlParser};

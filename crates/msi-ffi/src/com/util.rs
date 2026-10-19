@@ -39,13 +39,13 @@ pub trait ComObject {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `ULONG` value.
     fn add_ref(&self) -> ULONG;
     /// Decrement reference count.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `ULONG` value.
     fn release(&self) -> ULONG;
 }
 

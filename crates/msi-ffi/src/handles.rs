@@ -15,7 +15,7 @@ pub type MsiHandle = u32;
 /// A null or invalid handle value.
 pub const MSI_NULL_HANDLE: MsiHandle = 0;
 
-/// Enumeration of all possible internal objects that can be referenced by an `MseHandle`.
+/// Enumeration of all possible internal objects that can be referenced by an `MsiHandle`.
 #[derive(Debug)]
 pub enum MsiObject {
     /// A relational database.
@@ -28,6 +28,8 @@ pub enum MsiObject {
     View(crate::types::MsiViewHandle),
     /// A UI preview session.
     UiPreview(Box<crate::types::MsiUiPreviewHandle>),
+    /// Summary Information stream properties.
+    SummaryInfo(crate::types::MsiSummaryInfoHandle),
 }
 
 /// Handle table state.

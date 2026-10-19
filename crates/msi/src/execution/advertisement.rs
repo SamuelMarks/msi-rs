@@ -93,25 +93,25 @@ impl AasParser {
     }
 }
 
-/// Advertises a product package.
+/// Advertises a product package and optionally writes an advertisement script (`.aas`).
 ///
 /// # Arguments
 ///
 /// * `package_path` - Path to the `.msi` package.
-/// * `script_info` - Optional script info.
-/// * `transforms` - Optional transforms applied.
-/// * `options` - Advertisement options.
+/// * `script_info` - Optional output `.aas` script file path.
+/// * `_transforms` - Optional transforms applied.
+/// * `_options` - Advertisement options.
 ///
 /// # Errors
 ///
-/// Returns `MsiError::InvalidArgument { argument: "path".to_string(), reason: "empty".to_string() }` if `package_path` is empty.
+/// Returns [`MsiError::InvalidArgument`] if `package_path` is empty, or [`MsiError`] on I/O failure.
 ///
 /// # Returns
 ///
 /// `Ok(())` when the advertisement operation completes.
 pub fn advertise_product(
     package_path: &str,
-    _script_info: Option<&str>,
+    script_info: Option<&str>,
     _transforms: Option<&str>,
     _options: AdvertiseOptions,
 ) -> Result<(), MsiError> {
@@ -121,29 +121,155 @@ pub fn advertise_product(
             reason: "empty".to_string(),
         });
     }
-    // TODO: Implement actual advertisement logic (e.g. read MSI, generate shortcuts).
+
+    let mut script_bytes = b"AAS\0".to_vec();
+    let path = std::path::Path::new(package_path);
+    if path.exists() {
+        if let Ok(pkg) = crate::package::Package::open(path) {
+            let db = pkg.database();
+            for (opcode_byte, table_name) in [(1u8, "Class"), (2u8, "Extension"), (3u8, "Shortcut")]
+            {
+                for rec in db.get_records(table_name) {
+                    if let Some(crate::database::tables::record::FieldValue::String(val)) =
+                        rec.fields().first()
+                    {
+                        let bytes = val.as_bytes();
+                        if let Ok(len) = u8::try_from(bytes.len()) {
+                            script_bytes.push(opcode_byte);
+                            script_bytes.push(len);
+                            script_bytes.extend_from_slice(bytes);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(script_out) = script_info {
+        if !script_out.is_empty() {
+            fs::write(script_out, &script_bytes)?;
+        }
+    }
+
     Ok(())
 }
 
-/// Advertises from an advertisement script (AAS).
+/// Executes a single [`AasOpcode`] against a [`RegistryStore`](crate::platform::registry_store::RegistryStore)
+/// and optional icon/shortcut directory.
+fn execute_aas_opcode(
+    store: &mut crate::platform::registry_store::RegistryStore,
+    op: &AasOpcode,
+    icon_folder: Option<&str>,
+    process_shortcuts: bool,
+    remove_items: bool,
+) {
+    use crate::platform::registry_store::{RegistryRoot, RegistryValue};
+
+    match op {
+        AasOpcode::Class(clsid) => {
+            let key = format!(r"CLSID\{clsid}");
+            if remove_items {
+                store.delete_value(RegistryRoot::ClassesRoot, &key, None);
+            } else {
+                store.set_value(
+                    RegistryRoot::ClassesRoot,
+                    &key,
+                    None,
+                    RegistryValue::Sz(clsid.clone()),
+                );
+            }
+        }
+        AasOpcode::Extension(ext) => {
+            let key = if ext.starts_with('.') {
+                ext.clone()
+            } else {
+                format!(".{ext}")
+            };
+            if remove_items {
+                store.delete_value(RegistryRoot::ClassesRoot, &key, None);
+            } else {
+                store.set_value(
+                    RegistryRoot::ClassesRoot,
+                    &key,
+                    None,
+                    RegistryValue::Sz(format!("{ext}_auto_file")),
+                );
+            }
+        }
+        AasOpcode::Shortcut(shortcut_name) => {
+            if !process_shortcuts {
+                return;
+            }
+            let key = format!(r"Software\Microsoft\Installer\Shortcuts\{shortcut_name}");
+            if remove_items {
+                store.delete_value(RegistryRoot::CurrentUser, &key, None);
+            } else {
+                store.set_value(
+                    RegistryRoot::CurrentUser,
+                    &key,
+                    None,
+                    RegistryValue::Sz(shortcut_name.clone()),
+                );
+            }
+            if let Some(folder) = icon_folder {
+                if !folder.is_empty() {
+                    let sc_path = std::path::Path::new(folder).join(format!("{shortcut_name}.lnk"));
+                    if remove_items {
+                        let _ = fs::remove_file(&sc_path);
+                    } else if std::path::Path::new(folder).exists() {
+                        let mut builder = crate::platform::shell::lnk::ShellLinkBuilder::new();
+                        builder
+                            .set_target(shortcut_name)
+                            .set_darwin_descriptor(shortcut_name);
+                        let _ = builder.save(&sc_path);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Advertises from an advertisement script (`.aas`).
 ///
 /// # Arguments
 ///
 /// * `script_file` - Path to the `.aas` script file.
 /// * `flags` - Advertisement flags.
-/// * `remove_items` - Whether to remove items.
+/// * `remove_items` - Whether to remove advertised items instead of registering them.
 ///
 /// # Errors
 ///
-/// Returns `MsiError::InvalidArgument { argument: "path".to_string(), reason: "empty".to_string() }` if `script_file` is empty.
+/// Returns [`MsiError::InvalidArgument`] if `script_file` is empty, or [`MsiError`] on I/O or parse failure.
 ///
 /// # Returns
 ///
 /// `Ok(())` when the advertisement operation completes.
-pub fn advertise_script(
+pub fn advertise_script(script_file: &str, flags: u32, remove_items: bool) -> Result<(), MsiError> {
+    let mut store = crate::platform::registry_store::RegistryStore::new();
+    advertise_script_with_store(&mut store, script_file, flags, remove_items)
+}
+
+/// Advertises from an advertisement script (`.aas`) into the provided [`RegistryStore`](crate::platform::registry_store::RegistryStore).
+///
+/// # Arguments
+///
+/// * `store` - Registry store to mutate.
+/// * `script_file` - Path to the `.aas` script file.
+/// * `_flags` - Advertisement flags.
+/// * `remove_items` - Whether to remove advertised items instead of registering them.
+///
+/// # Errors
+///
+/// Returns [`MsiError::InvalidArgument`] if `script_file` is empty, or [`MsiError`] on I/O or parse failure.
+///
+/// # Returns
+///
+/// `Ok(())` when all opcodes in the `.aas` script have been applied.
+pub fn advertise_script_with_store(
+    store: &mut crate::platform::registry_store::RegistryStore,
     script_file: &str,
     _flags: u32,
-    _remove_items: bool,
+    remove_items: bool,
 ) -> Result<(), MsiError> {
     if script_file.is_empty() {
         return Err(MsiError::InvalidArgument {
@@ -155,35 +281,69 @@ pub fn advertise_script(
         .map_err(|e| MsiError::Io(crate::error::IoContext::from_string(e.to_string())))?;
     let parser = AasParser::parse(&data)?;
 
-    for op in parser.opcodes {
-        // Execute advertisement logic for each opcode
-        let _ = op;
+    for op in &parser.opcodes {
+        execute_aas_opcode(store, op, None, true, remove_items);
     }
+    store.commit();
 
     Ok(())
 }
 
-/// Processes an advertisement script.
+/// Processes an advertisement script (`.aas`) with optional icon folder and shortcut filtering.
 ///
 /// # Arguments
 ///
 /// * `script_file` - Path to the `.aas` script file.
-/// * `icon_folder` - Path to the icon folder.
-/// * `shortcuts` - Whether to process shortcuts.
-/// * `remove_items` - Whether to remove items.
+/// * `icon_folder` - Optional path to the icon/shortcut folder.
+/// * `shortcuts` - Whether to process `Shortcut` opcodes.
+/// * `remove_items` - Whether to remove items instead of creating them.
 ///
 /// # Errors
 ///
-/// Returns `MsiError::InvalidArgument { argument: "path".to_string(), reason: "empty".to_string() }` if `script_file` is empty.
+/// Returns [`MsiError::InvalidArgument`] if `script_file` is empty, or [`MsiError`] on I/O or parse failure.
 ///
 /// # Returns
 ///
 /// `Ok(())` when the advertisement operation completes.
 pub fn process_advertise_script(
     script_file: &str,
-    _icon_folder: Option<&str>,
-    _shortcuts: bool,
-    _remove_items: bool,
+    icon_folder: Option<&str>,
+    shortcuts: bool,
+    remove_items: bool,
+) -> Result<(), MsiError> {
+    let mut store = crate::platform::registry_store::RegistryStore::new();
+    process_advertise_script_with_store(
+        &mut store,
+        script_file,
+        icon_folder,
+        shortcuts,
+        remove_items,
+    )
+}
+
+/// Processes an advertisement script (`.aas`) against a specific [`RegistryStore`](crate::platform::registry_store::RegistryStore).
+///
+/// # Arguments
+///
+/// * `store` - Registry store to mutate.
+/// * `script_file` - Path to the `.aas` script file.
+/// * `icon_folder` - Optional path to the icon/shortcut folder.
+/// * `shortcuts` - Whether to process `Shortcut` opcodes.
+/// * `remove_items` - Whether to remove items instead of creating them.
+///
+/// # Errors
+///
+/// Returns [`MsiError::InvalidArgument`] if `script_file` is empty, or [`MsiError`] on I/O or parse failure.
+///
+/// # Returns
+///
+/// `Ok(())` when the advertisement operation completes.
+pub fn process_advertise_script_with_store(
+    store: &mut crate::platform::registry_store::RegistryStore,
+    script_file: &str,
+    icon_folder: Option<&str>,
+    shortcuts: bool,
+    remove_items: bool,
 ) -> Result<(), MsiError> {
     if script_file.is_empty() {
         return Err(MsiError::InvalidArgument {
@@ -195,16 +355,15 @@ pub fn process_advertise_script(
         .map_err(|e| MsiError::Io(crate::error::IoContext::from_string(e.to_string())))?;
     let parser = AasParser::parse(&data)?;
 
-    for op in parser.opcodes {
-        // Execute advertisement logic for each opcode, optionally filtering shortcuts
-        let _ = op;
+    for op in &parser.opcodes {
+        execute_aas_opcode(store, op, icon_folder, shortcuts, remove_items);
     }
+    store.commit();
 
     Ok(())
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use std::io::Write;
@@ -272,9 +431,74 @@ mod tests {
     }
 
     #[test]
-    fn test_advertise_product() {
+    fn test_advertise_product() -> Result<(), Box<dyn std::error::Error>> {
         assert!(advertise_product("", None, None, AdvertiseOptions::default()).is_err());
         assert!(advertise_product("foo.msi", None, None, AdvertiseOptions::default()).is_ok());
+
+        let temp_dir = tempfile::tempdir()?;
+        let msi_path = temp_dir.path().join("adv_test.msi");
+        let aas_path = temp_dir.path().join("adv_test.aas");
+
+        let mut db = crate::database::memory::LinkedDatabase::default();
+        db.add_record(
+            "Class",
+            crate::database::tables::record::Record::with_fields(vec![
+                crate::database::tables::record::FieldValue::String(
+                    "{11111111-1111-1111-1111-111111111111}".to_string(),
+                ),
+                crate::database::tables::record::FieldValue::String("InprocServer32".to_string()),
+                crate::database::tables::record::FieldValue::String("Comp1".to_string()),
+                crate::database::tables::record::FieldValue::Null,
+                crate::database::tables::record::FieldValue::Null,
+                crate::database::tables::record::FieldValue::Null,
+                crate::database::tables::record::FieldValue::Null,
+                crate::database::tables::record::FieldValue::Null,
+                crate::database::tables::record::FieldValue::Null,
+                crate::database::tables::record::FieldValue::Null,
+                crate::database::tables::record::FieldValue::Null,
+                crate::database::tables::record::FieldValue::String("Feat1".to_string()),
+            ]),
+        );
+        db.add_record(
+            "Extension",
+            crate::database::tables::record::Record::with_fields(vec![
+                crate::database::tables::record::FieldValue::String("xyz".to_string()),
+                crate::database::tables::record::FieldValue::String("Comp1".to_string()),
+                crate::database::tables::record::FieldValue::Null,
+                crate::database::tables::record::FieldValue::Null,
+                crate::database::tables::record::FieldValue::String("Feat1".to_string()),
+            ]),
+        );
+        db.add_record(
+            "Shortcut",
+            crate::database::tables::record::Record::with_fields(vec![
+                crate::database::tables::record::FieldValue::String("MyShortcut".to_string()),
+                crate::database::tables::record::FieldValue::String("DesktopFolder".to_string()),
+                crate::database::tables::record::FieldValue::String("MyApp".to_string()),
+                crate::database::tables::record::FieldValue::String("Comp1".to_string()),
+                crate::database::tables::record::FieldValue::String("Target".to_string()),
+                crate::database::tables::record::FieldValue::Null,
+                crate::database::tables::record::FieldValue::Null,
+                crate::database::tables::record::FieldValue::Null,
+                crate::database::tables::record::FieldValue::Null,
+                crate::database::tables::record::FieldValue::Null,
+                crate::database::tables::record::FieldValue::Null,
+                crate::database::tables::record::FieldValue::Null,
+            ]),
+        );
+        db.commit_to_path(&msi_path)?;
+
+        advertise_product(
+            &msi_path.to_string_lossy(),
+            Some(&aas_path.to_string_lossy()),
+            None,
+            AdvertiseOptions::default(),
+        )?;
+
+        let aas_bytes = fs::read(&aas_path)?;
+        let parsed = AasParser::parse(&aas_bytes)?;
+        assert_eq!(parsed.opcodes.len(), 3);
+        Ok(())
     }
 
     #[test]
@@ -282,8 +506,38 @@ mod tests {
         assert!(advertise_script("", 0, false).is_err());
 
         let mut file = NamedTempFile::new()?;
-        assert!(file.write_all(b"AAS\0\x01\x04test").is_ok());
-        assert!(advertise_script(file.path().to_str().unwrap_or(""), 0, false).is_ok());
+        // Opcode 1 (Class "test"), Opcode 2 (Extension ".abc"), Opcode 2 (Extension "def"), Opcode 3 (Shortcut "sc1")
+        assert!(file
+            .write_all(b"AAS\0\x01\x04test\x02\x04.abc\x02\x03def\x03\x03sc1")
+            .is_ok());
+        let path_str = file.path().to_str().unwrap_or("");
+        assert!(advertise_script(path_str, 0, false).is_ok());
+
+        let mut store = crate::platform::registry_store::RegistryStore::new();
+        advertise_script_with_store(&mut store, path_str, 0, false)?;
+        assert!(store.has_key(
+            crate::platform::registry_store::RegistryRoot::ClassesRoot,
+            r"CLSID\test"
+        ));
+        assert!(store.has_key(
+            crate::platform::registry_store::RegistryRoot::ClassesRoot,
+            ".abc"
+        ));
+        assert!(store.has_key(
+            crate::platform::registry_store::RegistryRoot::ClassesRoot,
+            ".def"
+        ));
+        assert!(store.has_key(
+            crate::platform::registry_store::RegistryRoot::CurrentUser,
+            r"Software\Microsoft\Installer\Shortcuts\sc1"
+        ));
+
+        // Now remove items
+        advertise_script_with_store(&mut store, path_str, 0, true)?;
+        assert!(!store.has_key(
+            crate::platform::registry_store::RegistryRoot::ClassesRoot,
+            r"CLSID\test"
+        ));
 
         assert!(advertise_script("nonexistent.aas", 0, false).is_err());
         Ok(())
@@ -293,12 +547,23 @@ mod tests {
     fn test_process_advertise_script() -> Result<(), Box<dyn std::error::Error>> {
         assert!(process_advertise_script("", None, false, false).is_err());
 
+        let temp_dir = tempfile::tempdir()?;
         let mut file = NamedTempFile::new()?;
-        assert!(file.write_all(b"AAS\0\x02\x03ext").is_ok());
-        assert!(
-            process_advertise_script(file.path().to_str().unwrap_or(""), None, false, false)
-                .is_ok()
-        );
+        assert!(file.write_all(b"AAS\0\x02\x03ext\x03\x03sc2").is_ok());
+        let path_str = file.path().to_str().unwrap_or("");
+        let icon_dir = temp_dir.path().to_str().unwrap_or("");
+
+        // With shortcuts = false
+        assert!(process_advertise_script(path_str, Some(icon_dir), false, false).is_ok());
+        assert!(!temp_dir.path().join("sc2.lnk").exists());
+
+        // With shortcuts = true (creates .lnk file)
+        assert!(process_advertise_script(path_str, Some(icon_dir), true, false).is_ok());
+        assert!(temp_dir.path().join("sc2.lnk").exists());
+
+        // With remove_items = true (removes .lnk file)
+        assert!(process_advertise_script(path_str, Some(icon_dir), true, true).is_ok());
+        assert!(!temp_dir.path().join("sc2.lnk").exists());
 
         assert!(process_advertise_script("nonexistent.aas", None, false, false).is_err());
         Ok(())

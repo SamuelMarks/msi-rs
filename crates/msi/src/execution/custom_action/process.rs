@@ -166,7 +166,7 @@ pub fn parse_command_line(cmd: &str) -> (PathBuf, Vec<String>) {
 ///
 /// # Returns
 ///
-/// The return value.
+/// `true` if the check succeeds or state matches, `false` otherwise.
 pub(crate) fn is_executable_in_path(prog: &Path) -> bool {
     if prog.is_absolute() {
         return prog.exists();

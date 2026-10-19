@@ -40,11 +40,11 @@ impl WimManifest {
     ///
     /// # Arguments
     ///
-    /// * `bytes` - The `bytes` parameter.
+    /// * `bytes` - Raw binary payload byte slice.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Self)` on success, or an error if the operation fails.
     pub fn parse(bytes: &[u8]) -> Result<Self> {
         if bytes.is_empty() {
             return Err(MsiError::WimXmlParseError {
@@ -87,11 +87,11 @@ impl WimManifest {
     ///
     /// # Arguments
     ///
-    /// * `bytes` - The `bytes` parameter.
+    /// * `bytes` - Raw binary payload byte slice.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     fn decode_payload(bytes: &[u8]) -> String {
         if bytes.len() >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE {
             // UTF-16LE with BOM
@@ -117,11 +117,11 @@ impl WimManifest {
     ///
     /// # Arguments
     ///
-    /// * `node` - The `node` parameter.
+    /// * `node` - Parsed XML element node being compiled.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(WimImage)` on success, or an error if the operation fails.
     fn parse_image(node: &XmlNode) -> Result<WimImage> {
         let index_str = node
             .attributes
@@ -169,12 +169,12 @@ impl WimManifest {
     ///
     /// # Arguments
     ///
-    /// * `node` - The `node` parameter.
-    /// * `name` - The `name` parameter.
+    /// * `node` - Parsed XML element node being compiled.
+    /// * `name` - Identifier or name of the target entity.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(String)` if found, or `None` if absent.
     fn get_child_text(node: &XmlNode, name: &str) -> Option<String> {
         node.children
             .iter()
@@ -186,26 +186,21 @@ impl WimManifest {
     ///
     /// # Arguments
     ///
-    /// * `node` - The `node` parameter.
-    /// * `name` - The `name` parameter.
+    /// * `node` - Parsed XML element node being compiled.
+    /// * `name` - Identifier or name of the target entity.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(u64)` if found, or `None` if absent.
     fn parse_child_u64(node: &XmlNode, name: &str) -> Option<u64> {
         Self::get_child_text(node, name).and_then(|text| text.parse::<u64>().ok())
     }
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::field_reassign_with_default,
-    clippy::shadow_unrelated,
-    clippy::unreadable_literal,
-    clippy::assert_is_empty,
-    clippy::cast_possible_truncation,
-    clippy::redundant_clone
-)]
+#[allow(clippy::field_reassign_with_default)]
+#[allow(clippy::shadow_unrelated)]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
 
@@ -213,7 +208,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     #[test]
     fn test_wim_xml_parse_utf16le_bom() -> Result<()> {
         let xml = r#"<WIM><TOTALBYTES>12345</TOTALBYTES><IMAGE INDEX="1"><NAME>Windows 10 Pro</NAME><DESCRIPTION>Description</DESCRIPTION><WINDOWS><ARCH>9</ARCH><EDITION>Professional</EDITION><LANGUAGES><DEFAULT>en-US</DEFAULT></LANGUAGES></WINDOWS></IMAGE></WIM>"#;
@@ -242,7 +237,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     #[test]
     fn test_wim_xml_parse_utf8() -> Result<()> {
         let xml = r#"<WIM><TOTALBYTES>42</TOTALBYTES><IMAGE INDEX="2"><NAME>ReactOS</NAME></IMAGE></WIM>"#;
@@ -264,7 +259,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     #[test]
     fn test_wim_xml_parse_utf16le_no_bom() -> Result<()> {
         let xml = r#"<WIM><IMAGE INDEX="1"><NAME>Test</NAME></IMAGE></WIM>"#;

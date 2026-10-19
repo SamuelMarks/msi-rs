@@ -250,11 +250,6 @@ impl CabinetWriter {
     /// # Errors
     ///
     /// Returns `MsiError::CabinetCompressionError` if compression fails.
-    #[allow(
-        clippy::too_many_lines,
-        clippy::cast_possible_truncation,
-        clippy::unreachable
-    )]
     pub fn build(self) -> Result<Vec<u8>> {
         self.build_with_block_size(CAB_BLOCK_MAX_SIZE)
     }
@@ -268,11 +263,8 @@ impl CabinetWriter {
     /// # Errors
     ///
     /// Returns `MsiError::CabinetCompressionError` if compression fails.
-    #[allow(
-        clippy::too_many_lines,
-        clippy::cast_possible_truncation,
-        clippy::unreachable
-    )]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::cast_possible_truncation)]
     pub(crate) fn build_with_block_size(self, block_size: usize) -> Result<Vec<u8>> {
         let mut cf_files = Vec::with_capacity(self.files.len());
 
@@ -333,8 +325,8 @@ impl CabinetWriter {
                 let mut header_bytes = [0u8; 4];
                 header_bytes[0..2].copy_from_slice(&compressed_size.to_le_bytes());
                 header_bytes[2..4].copy_from_slice(&uncompressed_size.to_le_bytes());
-                let mut csum = csum_compute(&header_bytes, 0);
-                csum = csum_compute(&compressed_payload, csum);
+                let csum_payload = csum_compute(&compressed_payload, 0);
+                let csum = csum_compute(&header_bytes, csum_payload);
 
                 cf_data_blocks.push(CfData {
                     checksum: csum,
@@ -417,7 +409,7 @@ impl CabinetWriter {
 }
 
 #[cfg(test)]
-#[allow(clippy::manual_flatten, clippy::redundant_clone)]
+#[allow(clippy::manual_flatten)]
 mod tests {
     use super::*;
     use crate::cab::reader::CabinetReader;

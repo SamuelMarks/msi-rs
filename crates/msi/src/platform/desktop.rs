@@ -57,11 +57,11 @@ impl XdgDesktopEntry {
     ///
     /// # Arguments
     ///
-    /// * `icon` - The `icon` parameter.
+    /// * `icon` - Icon stream or file identifier.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn icon(mut self, icon: &str) -> Self {
         self.icon = Some(icon.to_string());
@@ -72,11 +72,11 @@ impl XdgDesktopEntry {
     ///
     /// # Arguments
     ///
-    /// * `terminal` - The `terminal` parameter.
+    /// * `terminal` - The terminal value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn terminal(mut self, terminal: bool) -> Self {
         self.terminal = terminal;
@@ -87,11 +87,11 @@ impl XdgDesktopEntry {
     ///
     /// # Arguments
     ///
-    /// * `cat` - The `cat` parameter.
+    /// * `cat` - The cat value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn category(mut self, cat: &str) -> Self {
         self.categories.push(cat.to_string());
@@ -102,11 +102,11 @@ impl XdgDesktopEntry {
     ///
     /// # Arguments
     ///
-    /// * `mime` - The `mime` parameter.
+    /// * `mime` - The mime value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn mime_type(mut self, mime: &str) -> Self {
         self.mime_types.push(mime.to_string());
@@ -117,11 +117,11 @@ impl XdgDesktopEntry {
     ///
     /// # Arguments
     ///
-    /// * `comment` - The `comment` parameter.
+    /// * `comment` - The comment value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn comment(mut self, comment: &str) -> Self {
         self.comment = Some(comment.to_string());
@@ -136,7 +136,7 @@ impl XdgDesktopEntry {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `PathBuf` value.
     #[must_use]
     pub fn destination_path(&self, is_system: bool) -> PathBuf {
         let slug = self.name.to_ascii_lowercase().replace(' ', "-");
@@ -216,7 +216,7 @@ impl XdgDesktopEntry {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `PathBuf` value.
     #[must_use]
     pub fn system_applications_dir() -> PathBuf {
         PathBuf::from("/usr/share/applications")
@@ -226,7 +226,7 @@ impl XdgDesktopEntry {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `PathBuf` value.
     #[must_use]
     pub fn user_applications_dir() -> PathBuf {
         PathBuf::from("~/.local/share/applications")
@@ -310,11 +310,11 @@ impl MacOsAppBundle {
     ///
     /// # Arguments
     ///
-    /// * `icon` - The `icon` parameter.
+    /// * `icon` - Icon stream or file identifier.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn icon_file(mut self, icon: &str) -> Self {
         self.icon_file = Some(icon.to_string());
@@ -325,7 +325,7 @@ impl MacOsAppBundle {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     #[must_use]
     pub fn bundle_dir_name(&self) -> String {
         format!("{}.app", self.product_name)
@@ -682,7 +682,7 @@ impl Win32ShellLink {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn save_to_disk(&self, dest: &Path) -> Result<()> {
         let path = dest;
         if let Some(parent) = path.parent() {
@@ -696,8 +696,8 @@ impl Win32ShellLink {
     ///
     /// # Arguments
     ///
-    /// * `s` - The `s` parameter.
-    /// * `buf` - The `buf` parameter.
+    /// * `s` - Input string slice to parse or transform.
+    /// * `buf` - The buf value.
     fn encode_string_data(s: &str, buf: &mut Vec<u8>) {
         let utf16: Vec<u16> = s.encode_utf16().collect();
         let len = u16::try_from(utf16.len()).unwrap_or(u16::MAX);
@@ -709,7 +709,6 @@ impl Win32ShellLink {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

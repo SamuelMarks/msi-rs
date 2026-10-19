@@ -180,7 +180,7 @@ impl ScriptOp {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `u8` numeric result or status code.
     #[must_use]
     pub const fn opcode_id(&self) -> u8 {
         match self {
@@ -291,7 +291,7 @@ impl RollbackOp {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `u8` numeric result or status code.
     #[must_use]
     pub const fn opcode_id(&self) -> u8 {
         match self {
@@ -1101,8 +1101,8 @@ impl fmt::Display for RollbackOp {
 ///
 /// # Arguments
 ///
-/// * `out` - The `out` parameter.
-/// * `s` - The `s` parameter.
+/// * `out` - Destination output buffer or writer.
+/// * `s` - Input string slice to parse or transform.
 fn write_string(out: &mut Vec<u8>, s: &str) {
     let bytes = s.as_bytes();
     let len = u32::try_from(bytes.len()).unwrap_or(u32::MAX);
@@ -1114,8 +1114,8 @@ fn write_string(out: &mut Vec<u8>, s: &str) {
 ///
 /// # Arguments
 ///
-/// * `out` - The `out` parameter.
-/// * `s` - The `s` parameter.
+/// * `out` - Destination output buffer or writer.
+/// * `s` - Input string slice to parse or transform.
 fn write_opt_string(out: &mut Vec<u8>, s: Option<&str>) {
     if let Some(val) = s {
         out.push(1);
@@ -1129,8 +1129,8 @@ fn write_opt_string(out: &mut Vec<u8>, s: Option<&str>) {
 ///
 /// # Arguments
 ///
-/// * `out` - The `out` parameter.
-/// * `bytes` - The `bytes` parameter.
+/// * `out` - Destination output buffer or writer.
+/// * `bytes` - Raw binary payload byte slice.
 fn write_bytes(out: &mut Vec<u8>, bytes: &[u8]) {
     let len = u32::try_from(bytes.len()).unwrap_or(u32::MAX);
     out.extend_from_slice(&len.to_le_bytes());
@@ -1141,12 +1141,12 @@ fn write_bytes(out: &mut Vec<u8>, bytes: &[u8]) {
 ///
 /// # Arguments
 ///
-/// * `data` - The `data` parameter.
-/// * `offset` - The `offset` parameter.
+/// * `data` - Raw byte buffer to process.
+/// * `offset` - Byte offset within the stream or buffer.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// `Ok(u32)` on success, or an error if the operation fails.
 fn read_u32(data: &[u8], offset: &mut usize) -> Result<u32> {
     if *offset + 4 > data.len() {
         return Err(MsiError::ScriptError {
@@ -1164,12 +1164,12 @@ fn read_u32(data: &[u8], offset: &mut usize) -> Result<u32> {
 ///
 /// # Arguments
 ///
-/// * `data` - The `data` parameter.
-/// * `offset` - The `offset` parameter.
+/// * `data` - Raw byte buffer to process.
+/// * `offset` - Byte offset within the stream or buffer.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// `Ok(i32)` on success, or an error if the operation fails.
 fn read_i32(data: &[u8], offset: &mut usize) -> Result<i32> {
     if *offset + 4 > data.len() {
         return Err(MsiError::ScriptError {
@@ -1187,12 +1187,12 @@ fn read_i32(data: &[u8], offset: &mut usize) -> Result<i32> {
 ///
 /// # Arguments
 ///
-/// * `data` - The `data` parameter.
-/// * `offset` - The `offset` parameter.
+/// * `data` - Raw byte buffer to process.
+/// * `offset` - Byte offset within the stream or buffer.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// `Ok` containing the formatted or resolved string, or an error on failure.
 fn read_string(data: &[u8], offset: &mut usize) -> Result<String> {
     let len = read_u32(data, offset)? as usize;
     if *offset + len > data.len() {
@@ -1215,12 +1215,12 @@ fn read_string(data: &[u8], offset: &mut usize) -> Result<String> {
 ///
 /// # Arguments
 ///
-/// * `data` - The `data` parameter.
-/// * `offset` - The `offset` parameter.
+/// * `data` - Raw byte buffer to process.
+/// * `offset` - Byte offset within the stream or buffer.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// `Ok(Some(String))` if present, `Ok(None)` if absent, or an error on failure.
 fn read_opt_string(data: &[u8], offset: &mut usize) -> Result<Option<String>> {
     if *offset >= data.len() {
         return Err(MsiError::ScriptError {
@@ -1241,12 +1241,12 @@ fn read_opt_string(data: &[u8], offset: &mut usize) -> Result<Option<String>> {
 ///
 /// # Arguments
 ///
-/// * `data` - The `data` parameter.
-/// * `offset` - The `offset` parameter.
+/// * `data` - Raw byte buffer to process.
+/// * `offset` - Byte offset within the stream or buffer.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// `Ok` containing the collected `u8` items, or an error on failure.
 fn read_bytes(data: &[u8], offset: &mut usize) -> Result<Vec<u8>> {
     let len = read_u32(data, offset)? as usize;
     if *offset + len > data.len() {
@@ -1261,7 +1261,6 @@ fn read_bytes(data: &[u8], offset: &mut usize) -> Result<Vec<u8>> {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -1456,7 +1455,8 @@ mod tests {
 
     /// Tests error branches on deserializing malformed scripts.
     #[test]
-    #[allow(clippy::too_many_lines, clippy::similar_names)]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::similar_names)]
     fn test_script_deserialize_errors() {
         // Too short for header
         assert!(InstallScript::deserialize(&[1, 2, 3]).is_err());

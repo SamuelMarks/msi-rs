@@ -333,7 +333,7 @@ impl LocaleKeyboardDialog {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     #[must_use]
     pub fn current_locale(&self) -> &str {
         &self.locales[self.selected_locale]
@@ -343,7 +343,7 @@ impl LocaleKeyboardDialog {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     #[must_use]
     pub fn current_keymap(&self) -> &str {
         &self.keymaps[self.selected_keymap]
@@ -1088,7 +1088,7 @@ impl DiagnosticsLogConsole {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn export_to_file(&self, dest_path: &Path) -> Result<()> {
         let mut out = String::new();
         for line in &self.logs {
@@ -1349,7 +1349,6 @@ impl BareMetalInstallationWizard {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::platform::disk::{DeviceKind, SmartHealthStatus};

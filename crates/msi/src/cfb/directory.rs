@@ -906,7 +906,6 @@ pub fn compare_cfb_names(a: &str, b: &str) -> Ordering {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

@@ -14,12 +14,12 @@ use crate::error::{MsiError, Result};
 ///
 /// # Arguments
 ///
-/// * `input` - The `input` parameter.
-/// * `output_size` - The `output_size` parameter.
+/// * `input` - Input byte slice or source string.
+/// * `output_size` - Expected uncompressed output byte length.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// `Ok` containing the collected `u8` items, or an error on failure.
 pub fn decompress_xpress(input: &[u8], output_size: usize) -> Result<Vec<u8>> {
     let mut out = Vec::with_capacity(output_size);
     let mut in_pos = 0;
@@ -129,12 +129,12 @@ pub fn decompress_xpress(input: &[u8], output_size: usize) -> Result<Vec<u8>> {
 ///
 /// # Arguments
 ///
-/// * `_input` - The `_input` parameter.
-/// * `_output_size` - The `_output_size` parameter.
+/// * `_input` - Input byte slice or source string.
+/// * `_output_size` - Expected uncompressed output byte length.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// `Ok` containing the collected `u8` items, or an error on failure.
 pub fn decompress_xpress_huffman(_input: &[u8], _output_size: usize) -> Result<Vec<u8>> {
     Err(MsiError::WimDecompressionError {
         algorithm: "XPRESS Huffman".to_string(),
@@ -143,14 +143,8 @@ pub fn decompress_xpress_huffman(_input: &[u8], _output_size: usize) -> Result<V
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::field_reassign_with_default,
-    clippy::shadow_unrelated,
-    clippy::unreadable_literal,
-    clippy::assert_is_empty,
-    clippy::cast_possible_truncation,
-    clippy::redundant_clone
-)]
+#[allow(clippy::shadow_unrelated)]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
 

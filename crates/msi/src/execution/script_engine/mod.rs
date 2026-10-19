@@ -95,7 +95,7 @@ impl ScriptEngine {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -139,7 +139,6 @@ impl ScriptEngine {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

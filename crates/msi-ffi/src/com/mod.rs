@@ -25,14 +25,14 @@ impl GUID {
     ///
     /// # Arguments
     ///
-    /// * `d1` - The `d1` parameter.
-    /// * `d2` - The `d2` parameter.
-    /// * `d3` - The `d3` parameter.
-    /// * `d4` - The `d4` parameter.
+    /// * `d1` - The d1 value.
+    /// * `d2` - The d2 value.
+    /// * `d3` - The d3 value.
+    /// * `d4` - The d4 value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn new(d1: u32, d2: u16, d3: u16, d4: [u8; 8]) -> Self {
         Self {

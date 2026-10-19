@@ -69,7 +69,7 @@ impl GuiHardwareBackend {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&'static str` value.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -132,7 +132,7 @@ impl AccessKitBridge {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -312,7 +312,7 @@ impl BackgroundTransactionWorker {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn request_cancel(&mut self) -> Result<()> {
         self.cancelled = true;
         self.command_tx
@@ -326,7 +326,7 @@ impl BackgroundTransactionWorker {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `true` if the check succeeds or state matches, `false` otherwise.
     #[must_use]
     pub const fn is_cancelled(&self) -> bool {
         self.cancelled
@@ -336,7 +336,7 @@ impl BackgroundTransactionWorker {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `u32` numeric result or status code.
     #[must_use]
     pub const fn current_percent(&self) -> u32 {
         self.current_percent
@@ -346,7 +346,7 @@ impl BackgroundTransactionWorker {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     #[must_use]
     pub fn current_action_text(&self) -> &str {
         &self.current_action_text
@@ -554,7 +554,7 @@ impl GuiDesktopRuntime {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&WindowConfig` value.
     #[must_use]
     pub const fn window_config(&self) -> &WindowConfig {
         &self.window_config
@@ -564,7 +564,7 @@ impl GuiDesktopRuntime {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&mut WindowConfig` value.
     pub const fn window_config_mut(&mut self) -> &mut WindowConfig {
         &mut self.window_config
     }
@@ -573,7 +573,7 @@ impl GuiDesktopRuntime {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `GuiHardwareBackend` value.
     #[must_use]
     pub const fn hardware_backend(&self) -> GuiHardwareBackend {
         self.hardware_backend
@@ -583,7 +583,7 @@ impl GuiDesktopRuntime {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&WizardTheme` value.
     #[must_use]
     pub const fn theme(&self) -> &WizardTheme {
         &self.theme
@@ -609,7 +609,7 @@ impl GuiDesktopRuntime {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&UiEngine` value.
     #[must_use]
     pub const fn engine(&self) -> &UiEngine {
         &self.engine
@@ -619,7 +619,7 @@ impl GuiDesktopRuntime {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&mut UiEngine` value.
     pub const fn engine_mut(&mut self) -> &mut UiEngine {
         &mut self.engine
     }
@@ -628,7 +628,7 @@ impl GuiDesktopRuntime {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&AccessKitBridge` value.
     #[must_use]
     pub const fn access_bridge(&self) -> &AccessKitBridge {
         &self.access_bridge
@@ -645,11 +645,9 @@ impl GuiDesktopRuntime {
     /// # Returns
     ///
     /// Tuple of `(dialog_bounds, widget_placements, draw_commands)`.
-    #[allow(
-        clippy::cast_possible_wrap,
-        clippy::too_many_lines,
-        clippy::cast_sign_loss
-    )]
+    #[allow(clippy::cast_possible_wrap)]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::cast_sign_loss)]
     pub fn render_frame(&mut self) -> (PixelRect, Vec<(PixelRect, UiWidget)>, Vec<DrawCommand>) {
         if let Some(dlg) = self.engine.active_dialog() {
             if let Some(ref title_tmpl) = dlg.title {
@@ -804,7 +802,7 @@ impl GuiDesktopRuntime {
     /// # Errors
     ///
     /// Returns [`crate::error::MsiError`] if condition or action evaluation fails.
-    #[allow(clippy::cast_possible_wrap, clippy::too_many_lines)]
+    #[allow(clippy::too_many_lines)]
     pub fn process_event(&mut self, event: GuiInputEvent) -> Result<Option<DialogReturnCode>> {
         let Some(dlg) = self.engine.active_dialog().cloned() else {
             return Ok(None);
@@ -1008,11 +1006,11 @@ impl GuiDesktopRuntime {
     ///
     /// # Arguments
     ///
-    /// * `dialog` - The `dialog` parameter.
+    /// * `dialog` - Name or definition of the UI dialog.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `usize` numeric result or status code.
     fn get_interactive_control_count(&self, dialog: &str) -> usize {
         let mut count = 0;
         for ctrl in self.engine.get_dialog_controls(dialog) {
@@ -1039,12 +1037,12 @@ impl GuiDesktopRuntime {
     ///
     /// # Arguments
     ///
-    /// * `dialog` - The `dialog` parameter.
-    /// * `target_idx` - The `target_idx` parameter.
+    /// * `dialog` - Name or definition of the UI dialog.
+    /// * `target_idx` - The target idx value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(ControlDefinition)` if found, or `None` if absent.
     fn get_interactive_control_at_index(
         &self,
         dialog: &str,
@@ -1076,7 +1074,6 @@ impl GuiDesktopRuntime {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::ui::controls::ControlDefinition;
@@ -1086,7 +1083,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `UiEngine` value.
     fn create_test_engine() -> UiEngine {
         let context = crate::execution::properties::EvaluationContext::new();
         let mut engine = UiEngine::new(context);

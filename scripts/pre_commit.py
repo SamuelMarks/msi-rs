@@ -404,6 +404,11 @@ def hook_all(repo_root: Path) -> int:
 
 
 def main() -> int:
+    """Parses CLI arguments and executes the requested pre-commit pipeline stage.
+
+    Returns:
+        int: Process exit code (0 on success, non-zero on failure).
+    """
     parser = argparse.ArgumentParser(
         description="msi-rs Cross-Platform Pre-commit Hook Pipeline"
     )

@@ -44,7 +44,7 @@ impl HandleManager {
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -128,7 +128,7 @@ pub(crate) static GLOBAL_HANDLES: LazyLock<Mutex<HandleManager>> =
 ///
 /// # Returns
 ///
-/// The return value.
+/// Computed `std::sync::MutexGuard<'static, HandleManager>` value.
 pub(crate) fn lock_handles() -> std::sync::MutexGuard<'static, HandleManager> {
     match GLOBAL_HANDLES.lock() {
         Ok(guard) => guard,
@@ -143,7 +143,7 @@ pub(crate) fn lock_handles() -> std::sync::MutexGuard<'static, HandleManager> {
 ///
 /// # Returns
 ///
-/// The return value.
+/// Computed `&'static Mutex<HandleManager>` value.
 #[must_use]
 pub fn global_handles() -> &'static Mutex<HandleManager> {
     &GLOBAL_HANDLES
@@ -165,7 +165,7 @@ pub fn global_handles() -> &'static Mutex<HandleManager> {
 ///
 /// # Returns
 ///
-/// The return value.
+/// `Some(String)` if found, or `None` if absent.
 pub(crate) unsafe fn utf16_ptr_to_string(ptr: *const u16) -> Option<String> {
     if ptr.is_null() {
         return None;
@@ -191,11 +191,11 @@ pub(crate) unsafe fn utf16_ptr_to_string(ptr: *const u16) -> Option<String> {
 ///
 /// * `src` - The src argument.
 /// * `buf` - The buf argument.
-/// * `pcch_buf` - The `pcch_buf` argument.
+/// * `pcch_buf` - The pcch buf value.
 ///
 /// # Returns
 ///
-/// The return value.
+/// Computed `u32` numeric result or status code.
 pub(crate) unsafe fn write_utf16_buffer(src: &str, buf: *mut u16, pcch_buf: *mut u32) -> u32 {
     if pcch_buf.is_null() {
         return ERROR_INVALID_PARAMETER;

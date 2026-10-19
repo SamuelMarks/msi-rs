@@ -115,7 +115,7 @@ impl MockBlockDevice {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn write_sectors(&mut self, start_lba: u64, data: &[u8]) -> Result<()> {
         if self.read_only {
             return Err(MsiError::BlockDeviceError {
@@ -533,7 +533,6 @@ impl QemuTestRunner {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::platform::format::{

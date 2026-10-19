@@ -33,7 +33,6 @@ pub fn get_wine_prefix() -> Option<PathBuf> {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use std::env;

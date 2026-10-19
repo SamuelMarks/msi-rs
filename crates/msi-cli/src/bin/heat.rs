@@ -63,7 +63,8 @@ impl HeatOptions {
     /// # Errors
     ///
     /// Returns [`MsiError`] on missing arguments or target.
-    #[allow(clippy::too_many_lines, clippy::branches_sharing_code)]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::branches_sharing_code)]
     pub fn parse(args: &[String]) -> Result<Self, MsiError> {
         let mut opts = Self {
             component_group: "HarvestedComponents".to_string(),

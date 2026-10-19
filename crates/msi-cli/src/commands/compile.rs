@@ -60,11 +60,11 @@ pub struct PackArgs {
 ///
 /// # Arguments
 ///
-/// * `sources` - The `sources` argument.
+/// * `sources` - The sources value.
 ///
 /// # Returns
 ///
-/// The return value.
+/// Vector of `String` items.
 #[must_use]
 pub fn discover_companion_fragments(sources: &[String]) -> Vec<String> {
     let mut effective_sources = sources.to_vec();

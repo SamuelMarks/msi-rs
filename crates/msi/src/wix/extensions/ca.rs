@@ -155,7 +155,6 @@ impl CustomActionCompiler {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     /// Tests `CustomActionCompiler` creation, traits, compilation, and database injection.
     #[test]

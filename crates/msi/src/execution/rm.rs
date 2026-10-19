@@ -31,11 +31,11 @@ impl RestartManager {
     ///
     /// # Arguments
     ///
-    /// * `_target_files` - The `_target_files` parameter.
+    /// * `_target_files` - The target files value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok` containing the collected `String` items, or an error on failure.
     pub const fn detect_locking_processes(_target_files: &[&Path]) -> Result<Vec<String>> {
         #[cfg(windows)]
         {
@@ -57,12 +57,12 @@ impl RestartManager {
     ///
     /// # Arguments
     ///
-    /// * `locking_processes` - The `locking_processes` parameter.
-    /// * `unattended` - The `unattended` parameter.
+    /// * `locking_processes` - The locking processes value.
+    /// * `unattended` - The unattended value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(RmSessionOutcome)` on success, or an error if the operation fails.
     pub fn prompt_files_in_use(
         &self,
         locking_processes: &[String],
@@ -99,7 +99,6 @@ impl RestartManager {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

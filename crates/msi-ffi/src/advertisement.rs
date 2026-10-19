@@ -22,6 +22,74 @@ pub struct AdvertiseFlags(pub u32);
 #[repr(transparent)]
 pub struct ScriptContext(pub *mut c_void);
 
+/// Shared implementation for `MsiAdvertiseProductA/W` and `MsiAdvertiseProductExA/W`.
+fn advertise_product_inner(
+    package_path: Option<String>,
+    script_info: Option<&str>,
+    transforms: Option<&str>,
+    lgid_language: u16,
+    dw_platform: u32,
+    dw_options: u32,
+) -> u32 {
+    let Some(package_path) = package_path else {
+        return 87; // ERROR_INVALID_PARAMETER
+    };
+    let options = msi::execution::advertisement::AdvertiseOptions {
+        language: lgid_language,
+        platform: dw_platform,
+        options: dw_options,
+    };
+    match msi::execution::advertisement::advertise_product(
+        &package_path,
+        script_info,
+        transforms,
+        options,
+    ) {
+        Ok(()) => 0,
+        Err(e) => crate::error::map_msi_error_to_lstatus(&e),
+    }
+}
+
+/// Shared implementation for `MsiAdvertiseScriptA/W`.
+fn advertise_script_inner(
+    script_file: Option<String>,
+    dw_flags: AdvertiseFlags,
+    f_remove_items: i32,
+) -> u32 {
+    let Some(script_file) = script_file else {
+        return 87; // ERROR_INVALID_PARAMETER
+    };
+    match msi::execution::advertisement::advertise_script(
+        &script_file,
+        dw_flags.0,
+        f_remove_items != 0,
+    ) {
+        Ok(()) => 0,
+        Err(e) => crate::error::map_msi_error_to_lstatus(&e),
+    }
+}
+
+/// Shared implementation for `MsiProcessAdvertiseScriptA/W`.
+fn process_advertise_script_inner(
+    script_file: Option<String>,
+    icon_folder: Option<&str>,
+    f_shortcuts: i32,
+    f_remove_items: i32,
+) -> u32 {
+    let Some(script_file) = script_file else {
+        return 87; // ERROR_INVALID_PARAMETER
+    };
+    match msi::execution::advertisement::process_advertise_script(
+        &script_file,
+        icon_folder,
+        f_shortcuts != 0,
+        f_remove_items != 0,
+    ) {
+        Ok(()) => 0,
+        Err(e) => crate::error::map_msi_error_to_lstatus(&e),
+    }
+}
+
 /// Advertises a product using an ANSI package path.
 ///
 /// # Arguments
@@ -34,12 +102,9 @@ pub struct ScriptContext(pub *mut c_void);
 /// # Errors
 ///
 /// Returns `87` (`ERROR_INVALID_PARAMETER`) if `sz_package_path` is NULL.
-/// Returns `0` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is a stub.
 ///
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
-/// # Panics
-/// Panics if `lgid_language` is 9999.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
@@ -49,31 +114,17 @@ pub unsafe extern "system" fn MsiAdvertiseProductA(
     sz_transforms: *const c_char,
     lgid_language: u16,
 ) -> u32 {
-    let result = catch_unwind(|| {
-        if sz_package_path.is_null() {
-            return 87; // ERROR_INVALID_PARAMETER
-        }
-        let Some(package_path) = crate::win32::strings::lpcstr_to_string(sz_package_path) else {
-            return 87;
-        };
-        let script_info = crate::win32::strings::lpcstr_to_string(sz_script_info);
-        let transforms = crate::win32::strings::lpcstr_to_string(sz_transforms);
-        let options = msi::execution::advertisement::AdvertiseOptions {
-            language: lgid_language,
-            platform: 0,
-            options: 0,
-        };
-        match msi::execution::advertisement::advertise_product(
-            &package_path,
-            script_info.as_deref(),
-            transforms.as_deref(),
-            options,
-        ) {
-            Ok(()) => 0,
-            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
-        }
-    });
-    result.unwrap_or(1603) // ERROR_INSTALL_FAILURE
+    catch_unwind(|| {
+        advertise_product_inner(
+            crate::win32::strings::lpcstr_to_string(sz_package_path),
+            crate::win32::strings::lpcstr_to_string(sz_script_info).as_deref(),
+            crate::win32::strings::lpcstr_to_string(sz_transforms).as_deref(),
+            lgid_language,
+            0,
+            0,
+        )
+    })
+    .unwrap_or(1603)
 }
 
 /// Advertises a product using a Unicode package path.
@@ -88,12 +139,9 @@ pub unsafe extern "system" fn MsiAdvertiseProductA(
 /// # Errors
 ///
 /// Returns `87` (`ERROR_INVALID_PARAMETER`) if `sz_package_path` is NULL.
-/// Returns `0` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is a stub.
 ///
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
-/// # Panics
-/// Panics if `lgid_language` is 9999.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 #[must_use]
@@ -103,31 +151,17 @@ pub unsafe extern "system" fn MsiAdvertiseProductW(
     sz_transforms: *const u16,
     lgid_language: u16,
 ) -> u32 {
-    let result = catch_unwind(|| {
-        if sz_package_path.is_null() {
-            return 87; // ERROR_INVALID_PARAMETER
-        }
-        let Some(package_path) = crate::win32::strings::lpcwstr_to_string(sz_package_path) else {
-            return 87;
-        };
-        let script_info = crate::win32::strings::lpcwstr_to_string(sz_script_info);
-        let transforms = crate::win32::strings::lpcwstr_to_string(sz_transforms);
-        let options = msi::execution::advertisement::AdvertiseOptions {
-            language: lgid_language,
-            platform: 0,
-            options: 0,
-        };
-        match msi::execution::advertisement::advertise_product(
-            &package_path,
-            script_info.as_deref(),
-            transforms.as_deref(),
-            options,
-        ) {
-            Ok(()) => 0,
-            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
-        }
-    });
-    result.unwrap_or(1603)
+    catch_unwind(|| {
+        advertise_product_inner(
+            crate::win32::strings::lpcwstr_to_string(sz_package_path),
+            crate::win32::strings::lpcwstr_to_string(sz_script_info).as_deref(),
+            crate::win32::strings::lpcwstr_to_string(sz_transforms).as_deref(),
+            lgid_language,
+            0,
+            0,
+        )
+    })
+    .unwrap_or(1603)
 }
 
 /// Advertises a product with advanced options (ANSI).
@@ -146,31 +180,17 @@ pub unsafe extern "system" fn MsiAdvertiseProductExA(
     dw_platform: u32,
     dw_options: u32,
 ) -> u32 {
-    let result = catch_unwind(|| {
-        if sz_package_path.is_null() {
-            return 87; // ERROR_INVALID_PARAMETER
-        }
-        let Some(package_path) = crate::win32::strings::lpcstr_to_string(sz_package_path) else {
-            return 87;
-        };
-        let script_info = crate::win32::strings::lpcstr_to_string(sz_script_info);
-        let transforms = crate::win32::strings::lpcstr_to_string(sz_transforms);
-        let options = msi::execution::advertisement::AdvertiseOptions {
-            language: lgid_language,
-            platform: dw_platform,
-            options: dw_options,
-        };
-        match msi::execution::advertisement::advertise_product(
-            &package_path,
-            script_info.as_deref(),
-            transforms.as_deref(),
-            options,
-        ) {
-            Ok(()) => 0,
-            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
-        }
-    });
-    result.unwrap_or(1603)
+    catch_unwind(|| {
+        advertise_product_inner(
+            crate::win32::strings::lpcstr_to_string(sz_package_path),
+            crate::win32::strings::lpcstr_to_string(sz_script_info).as_deref(),
+            crate::win32::strings::lpcstr_to_string(sz_transforms).as_deref(),
+            lgid_language,
+            dw_platform,
+            dw_options,
+        )
+    })
+    .unwrap_or(1603)
 }
 
 /// Advertises a product with advanced options (Unicode).
@@ -189,31 +209,17 @@ pub unsafe extern "system" fn MsiAdvertiseProductExW(
     dw_platform: u32,
     dw_options: u32,
 ) -> u32 {
-    let result = catch_unwind(|| {
-        if sz_package_path.is_null() {
-            return 87; // ERROR_INVALID_PARAMETER
-        }
-        let Some(package_path) = crate::win32::strings::lpcwstr_to_string(sz_package_path) else {
-            return 87;
-        };
-        let script_info = crate::win32::strings::lpcwstr_to_string(sz_script_info);
-        let transforms = crate::win32::strings::lpcwstr_to_string(sz_transforms);
-        let options = msi::execution::advertisement::AdvertiseOptions {
-            language: lgid_language,
-            platform: dw_platform,
-            options: dw_options,
-        };
-        match msi::execution::advertisement::advertise_product(
-            &package_path,
-            script_info.as_deref(),
-            transforms.as_deref(),
-            options,
-        ) {
-            Ok(()) => 0,
-            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
-        }
-    });
-    result.unwrap_or(1603)
+    catch_unwind(|| {
+        advertise_product_inner(
+            crate::win32::strings::lpcwstr_to_string(sz_package_path),
+            crate::win32::strings::lpcwstr_to_string(sz_script_info).as_deref(),
+            crate::win32::strings::lpcwstr_to_string(sz_transforms).as_deref(),
+            lgid_language,
+            dw_platform,
+            dw_options,
+        )
+    })
+    .unwrap_or(1603)
 }
 
 /// Advertises a script using an ANSI file path.
@@ -223,17 +229,14 @@ pub unsafe extern "system" fn MsiAdvertiseProductExW(
 /// * `sz_script_file` - Path to the script.
 /// * `dw_flags` - Advertise flags.
 /// * `_ph_reg_data` - Registry data context.
-/// * `_f_remove_items` - Whether to remove items.
+/// * `f_remove_items` - Whether to remove items.
 ///
 /// # Errors
 ///
 /// Returns `87` (`ERROR_INVALID_PARAMETER`) if `sz_script_file` is NULL.
-/// Returns `0` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is a stub.
 ///
 /// # Safety
 /// The provided string pointer must be null-terminated if it is not null.
-/// # Panics
-/// Panics if `_f_remove_items` is -99.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiAdvertiseScriptA(
@@ -242,23 +245,14 @@ pub unsafe extern "system" fn MsiAdvertiseScriptA(
     _ph_reg_data: *mut ScriptContext,
     f_remove_items: i32,
 ) -> u32 {
-    let result = catch_unwind(|| {
-        if sz_script_file.is_null() {
-            return 87; // ERROR_INVALID_PARAMETER
-        }
-        let Some(script_file) = crate::win32::strings::lpcstr_to_string(sz_script_file) else {
-            return 87;
-        };
-        match msi::execution::advertisement::advertise_script(
-            &script_file,
-            dw_flags.0,
-            f_remove_items != 0,
-        ) {
-            Ok(()) => 0,
-            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
-        }
-    });
-    result.unwrap_or(1603)
+    catch_unwind(|| {
+        advertise_script_inner(
+            crate::win32::strings::lpcstr_to_string(sz_script_file),
+            dw_flags,
+            f_remove_items,
+        )
+    })
+    .unwrap_or(1603)
 }
 
 /// Advertises a script using a Unicode file path.
@@ -273,7 +267,6 @@ pub unsafe extern "system" fn MsiAdvertiseScriptA(
 /// # Errors
 ///
 /// Returns `87` (`ERROR_INVALID_PARAMETER`) if `sz_script_file` is NULL.
-/// Returns `0` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is a stub.
 ///
 /// # Safety
 /// The provided string pointer must be null-terminated if it is not null.
@@ -285,23 +278,14 @@ pub unsafe extern "system" fn MsiAdvertiseScriptW(
     _ph_reg_data: *mut ScriptContext,
     f_remove_items: i32,
 ) -> u32 {
-    let result = catch_unwind(|| {
-        if sz_script_file.is_null() {
-            return 87; // ERROR_INVALID_PARAMETER
-        }
-        let Some(script_file) = crate::win32::strings::lpcwstr_to_string(sz_script_file) else {
-            return 87;
-        };
-        match msi::execution::advertisement::advertise_script(
-            &script_file,
-            dw_flags.0,
-            f_remove_items != 0,
-        ) {
-            Ok(()) => 0,
-            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
-        }
-    });
-    result.unwrap_or(1603)
+    catch_unwind(|| {
+        advertise_script_inner(
+            crate::win32::strings::lpcwstr_to_string(sz_script_file),
+            dw_flags,
+            f_remove_items,
+        )
+    })
+    .unwrap_or(1603)
 }
 
 /// Processes an advertise script using an ANSI file path.
@@ -317,7 +301,6 @@ pub unsafe extern "system" fn MsiAdvertiseScriptW(
 /// # Errors
 ///
 /// Returns `87` (`ERROR_INVALID_PARAMETER`) if `sz_script_file` is NULL.
-/// Returns `0` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is a stub.
 ///
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
@@ -327,30 +310,19 @@ pub unsafe extern "system" fn MsiAdvertiseScriptW(
 pub unsafe extern "system" fn MsiProcessAdvertiseScriptA(
     sz_script_file: *const c_char,
     sz_icon_folder: *const c_char,
-    h_reg_data: ScriptContext,
+    _h_reg_data: ScriptContext,
     f_shortcuts: i32,
     f_remove_items: i32,
 ) -> u32 {
-    let result = catch_unwind(|| {
-        if sz_script_file.is_null() {
-            return 87; // ERROR_INVALID_PARAMETER
-        }
-        let Some(script_file) = crate::win32::strings::lpcstr_to_string(sz_script_file) else {
-            return 87;
-        };
-        let icon_folder = crate::win32::strings::lpcstr_to_string(sz_icon_folder);
-
-        match msi::execution::advertisement::process_advertise_script(
-            &script_file,
-            icon_folder.as_deref(),
-            f_shortcuts != 0,
-            f_remove_items != 0,
-        ) {
-            Ok(()) => 0,
-            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
-        }
-    });
-    result.unwrap_or(1603)
+    catch_unwind(|| {
+        process_advertise_script_inner(
+            crate::win32::strings::lpcstr_to_string(sz_script_file),
+            crate::win32::strings::lpcstr_to_string(sz_icon_folder).as_deref(),
+            f_shortcuts,
+            f_remove_items,
+        )
+    })
+    .unwrap_or(1603)
 }
 
 /// Processes an advertise script using a Unicode file path.
@@ -366,7 +338,6 @@ pub unsafe extern "system" fn MsiProcessAdvertiseScriptA(
 /// # Errors
 ///
 /// Returns `87` (`ERROR_INVALID_PARAMETER`) if `sz_script_file` is NULL.
-/// Returns `0` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is a stub.
 ///
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
@@ -376,30 +347,19 @@ pub unsafe extern "system" fn MsiProcessAdvertiseScriptA(
 pub unsafe extern "system" fn MsiProcessAdvertiseScriptW(
     sz_script_file: *const u16,
     sz_icon_folder: *const u16,
-    h_reg_data: ScriptContext,
+    _h_reg_data: ScriptContext,
     f_shortcuts: i32,
     f_remove_items: i32,
 ) -> u32 {
-    let result = catch_unwind(|| {
-        if sz_script_file.is_null() {
-            return 87; // ERROR_INVALID_PARAMETER
-        }
-        let Some(script_file) = crate::win32::strings::lpcwstr_to_string(sz_script_file) else {
-            return 87;
-        };
-        let icon_folder = crate::win32::strings::lpcwstr_to_string(sz_icon_folder);
-
-        match msi::execution::advertisement::process_advertise_script(
-            &script_file,
-            icon_folder.as_deref(),
-            f_shortcuts != 0,
-            f_remove_items != 0,
-        ) {
-            Ok(()) => 0,
-            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
-        }
-    });
-    result.unwrap_or(1603)
+    catch_unwind(|| {
+        process_advertise_script_inner(
+            crate::win32::strings::lpcwstr_to_string(sz_script_file),
+            crate::win32::strings::lpcwstr_to_string(sz_icon_folder).as_deref(),
+            f_shortcuts,
+            f_remove_items,
+        )
+    })
+    .unwrap_or(1603)
 }
 
 #[cfg(test)]

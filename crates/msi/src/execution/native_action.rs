@@ -164,7 +164,7 @@ impl NativeLibraryLoader {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `BinaryFormat` value.
     #[must_use]
     pub const fn library_format(&self) -> BinaryFormat {
         self.library_format
@@ -174,7 +174,7 @@ impl NativeLibraryLoader {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(&Path)` if found, or `None` if absent.
     #[must_use]
     pub fn wine_executable(&self) -> Option<&Path> {
         self.wine_executable.as_deref()
@@ -294,11 +294,11 @@ impl NativeLibraryLoader {
     ///
     /// # Arguments
     ///
-    /// * `err_ptr` - The `err_ptr` parameter.
+    /// * `err_ptr` - The err ptr value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     fn format_dlerror(err_ptr: *mut std::os::raw::c_char) -> String {
         std::ptr::NonNull::new(err_ptr).map_or_else(
             || "unknown dlopen error".to_string(),
@@ -315,7 +315,7 @@ impl NativeLibraryLoader {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(PathBuf)` if found, or `None` if absent.
     #[must_use]
     pub fn resolve_wine(&self) -> Option<PathBuf> {
         match self.wine_mode {
@@ -374,7 +374,7 @@ impl NativeLibraryLoader {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn load_library(&mut self, path: &Path) -> Result<()> {
         if let Ok(header) = fs::read(path) {
             let format = BinaryFormat::detect(&header);
@@ -635,7 +635,7 @@ impl SubprocessRunner {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn new() -> Self {
         Self {
@@ -647,11 +647,11 @@ impl SubprocessRunner {
     ///
     /// # Arguments
     ///
-    /// * `timeout_ms` - The `timeout_ms` parameter.
+    /// * `timeout_ms` - Maximum wait timeout in milliseconds.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn with_timeout(mut self, timeout_ms: u64) -> Self {
         self.timeout_ms = timeout_ms;
@@ -662,11 +662,11 @@ impl SubprocessRunner {
     ///
     /// # Arguments
     ///
-    /// * `raw_code` - The `raw_code` parameter.
+    /// * `raw_code` - The raw code value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `u32` numeric result or status code.
     #[must_use]
     pub const fn map_exit_code(raw_code: i32) -> u32 {
         if raw_code == 0 {
@@ -896,7 +896,7 @@ impl Default for SqlProvisionerConfig {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     fn default() -> Self {
         Self {
             host: "127.0.0.1".to_string(),
@@ -1137,8 +1137,7 @@ impl SqlProvisionerClient {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
-    #[allow(clippy::too_many_lines)]
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn execute_wire_session(
         &self,
         stream: &mut dyn ReadWrite,
@@ -1244,7 +1243,6 @@ impl SqlProvisionerClient {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     #[allow(clippy::missing_const_for_fn)]
@@ -1871,11 +1869,11 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `addr` - The `addr` parameter.
+    /// * `addr` - The addr value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `(Option<std::net::TcpListener>, u16)` value.
     fn make_test_listener(addr: &str) -> (Option<std::net::TcpListener>, u16) {
         std::net::TcpListener::bind(addr).map_or_else(
             |_| (None, 0),
@@ -1897,7 +1895,7 @@ mod tests {
     /// # Returns
     ///
     /// Tuple of port and thread join handle for the mock server worker thread.
-    #[allow(clippy::too_many_lines, clippy::cast_possible_truncation)]
+    #[allow(clippy::too_many_lines)]
     fn spawn_mock_mysql_server(
         listener: Option<std::net::TcpListener>,
         port: u16,
@@ -2130,11 +2128,11 @@ mod tests {
         ///
         /// # Arguments
         ///
-        /// * `bytes` - The `bytes` parameter.
+        /// * `bytes` - Raw binary payload byte slice.
         ///
         /// # Returns
         ///
-        /// The resulting value or `Ok(())` on success.
+        /// A newly constructed instance of `Self`.
         fn with_bytes(bytes: &[u8]) -> Self {
             let mut read_bytes = std::collections::VecDeque::with_capacity(bytes.len());
             read_bytes.extend(bytes.iter().copied());

@@ -17,11 +17,11 @@ impl WebAppPoolName {
     ///
     /// # Arguments
     ///
-    /// * `name` - The `name` parameter.
+    /// * `name` - Identifier or name of the target entity.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn new(name: impl Into<String>) -> Self {
         Self(name.into())
@@ -31,7 +31,7 @@ impl WebAppPoolName {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -53,11 +53,11 @@ impl WebSitePort {
     ///
     /// # Arguments
     ///
-    /// * `port` - The `port` parameter.
+    /// * `port` - TCP/UDP network port number.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn new(port: u16) -> Self {
         Self(port)
@@ -67,7 +67,7 @@ impl WebSitePort {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `u16` numeric result or status code.
     #[must_use]
     pub const fn value(&self) -> u16 {
         self.0
@@ -89,11 +89,11 @@ impl CertificateHash {
     ///
     /// # Arguments
     ///
-    /// * `hash` - The `hash` parameter.
+    /// * `hash` - The hash value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn new(hash: impl Into<String>) -> Self {
         Self(hash.into())
@@ -103,7 +103,7 @@ impl CertificateHash {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -125,11 +125,11 @@ impl VirtualDirectoryPath {
     ///
     /// # Arguments
     ///
-    /// * `path` - The `path` parameter.
+    /// * `path` - Filesystem path to the target file or directory.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn new(path: impl Into<String>) -> Self {
         Self(path.into())
@@ -139,7 +139,7 @@ impl VirtualDirectoryPath {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -161,12 +161,12 @@ pub trait WebServerConfigGenerator {
     ///
     /// # Arguments
     ///
-    /// * `name` - The `name` parameter.
-    /// * `runtime` - The `runtime` parameter.
+    /// * `name` - Identifier or name of the target entity.
+    /// * `runtime` - The runtime value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok` containing the formatted or resolved string, or an error on failure.
     fn generate_pool_config(&self, name: &WebAppPoolName, runtime: &str) -> Result<String>;
 
     /// Generates a configuration block for a website/virtual host.
@@ -176,13 +176,13 @@ pub trait WebServerConfigGenerator {
     ///
     /// # Arguments
     ///
-    /// * `name` - The `name` parameter.
-    /// * `directory` - The `directory` parameter.
-    /// * `port` - The `port` parameter.
+    /// * `name` - Identifier or name of the target entity.
+    /// * `directory` - The directory value.
+    /// * `port` - TCP/UDP network port number.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok` containing the formatted or resolved string, or an error on failure.
     fn generate_site_config(
         &self,
         name: &str,
@@ -294,7 +294,6 @@ impl WebServerConfigGenerator for WindowsIisExecutor {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

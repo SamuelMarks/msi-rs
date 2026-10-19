@@ -6,7 +6,7 @@ Whether you need to:
 1. Build Windows Installer (`.msi`) packages natively on Linux or macOS CI/CD runners without Windows or Wine,
 2. Execute, repair, or uninstall `.msi` packages on POSIX systems with two-phase rollback transactions,
 3. Replace the WiX Toolset (`candle`, `light`, `dark`, `heat`, `wix`, `torch`, `pyro`, `lit`, `smoke`),
-4. Replace GNOME MSI tools (`msiinfo`, `msibuild`, `msidump`, `msidiff`, `msiextract`),
+4. Replace GNOME MSI tools (`msiinfo`, `msibuild`, `msidump`, `msidiff`, `msiextract`, `wixl`) and `msiexec`,
 5. Embed MSI creation, manipulation, or SQL querying directly into a Rust application, or
 6. Automate installer packaging and extraction via Python scripts,
 
@@ -116,6 +116,7 @@ pip install dist/msi-*.whl
 | Binary | Description | Compatible Upstream Tool |
 | :--- | :--- | :--- |
 | `msi-cli` | Main installer runtime, manager, and `msiexec` emulator (can be aliased as `msi`) | Microsoft `msiexec.exe` |
+| `msiexec` | Standalone command-line execution shim with exact `msiexec.exe` flag parity | Microsoft `msiexec.exe` |
 | `candle` | WiX v3 XML compiler (`.wxs` -> `.wixobj`) | WiX Toolset `candle.exe` |
 | `light` | WiX v3 linker & binder (`.wixobj` -> `.msi`) | WiX Toolset `light.exe` |
 | `wix` | Unified WiX v4/v5 multi-command toolchain | WiX Toolset `wix.exe` |
@@ -130,6 +131,7 @@ pip install dist/msi-*.whl
 | `msidump` | Archive dumper (IDT tables and binary streams) | GNOME `msidump` |
 | `msidiff` | Database diff tool | GNOME `msidiff` |
 | `msiextract` | File payload extractor from cabinets | GNOME `msiextract` |
+| `wixl` | Single-step `.wxs` to `.msi` compiler and linker shim | GNOME `wixl` |
 | `msi-gui` | Desktop native GUI installer wizard | Windows Installer UI |
 
 ---

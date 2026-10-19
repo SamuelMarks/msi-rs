@@ -43,7 +43,7 @@ impl VARIANT {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn new_empty() -> Self {
         Self {
@@ -59,11 +59,11 @@ impl VARIANT {
     ///
     /// # Arguments
     ///
-    /// * `val` - The `val` parameter.
+    /// * `val` - Value to store, format, or evaluate.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn new_i4(val: i32) -> Self {
         let mut v = Self::new_empty();
@@ -77,7 +77,7 @@ impl VARIANT {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(i32)` if found, or `None` if absent.
     #[must_use]
     pub fn as_i4(&self) -> Option<i32> {
         (self.vt == VARENUM::VtI4 as u16).then(|| {
@@ -91,7 +91,7 @@ impl VARIANT {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(*mut u16)` if found, or `None` if absent.
     #[must_use]
     pub fn as_bstr(&self) -> Option<*mut u16> {
         (self.vt == VARENUM::VtBstr as u16).then(|| {

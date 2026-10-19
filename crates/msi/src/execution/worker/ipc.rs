@@ -200,7 +200,7 @@ impl Default for WorkerMessage {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     fn default() -> Self {
         Self::ProgressUpdate {
             current: 0,
@@ -391,12 +391,12 @@ impl WorkerMessage {
 ///
 /// # Arguments
 ///
-/// * `bytes` - The `bytes` parameter.
-/// * `offset` - The `offset` parameter.
+/// * `bytes` - Raw binary payload byte slice.
+/// * `offset` - Byte offset within the stream or buffer.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// `Ok(u32)` on success, or an error if the operation fails.
 fn read_u32(bytes: &[u8], offset: &mut usize) -> Result<u32> {
     if *offset + 4 > bytes.len() {
         return Err(MsiError::WorkerIpcError {
@@ -413,12 +413,12 @@ fn read_u32(bytes: &[u8], offset: &mut usize) -> Result<u32> {
 ///
 /// # Arguments
 ///
-/// * `bytes` - The `bytes` parameter.
-/// * `offset` - The `offset` parameter.
+/// * `bytes` - Raw binary payload byte slice.
+/// * `offset` - Byte offset within the stream or buffer.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// `Ok(i32)` on success, or an error if the operation fails.
 fn read_i32(bytes: &[u8], offset: &mut usize) -> Result<i32> {
     if *offset + 4 > bytes.len() {
         return Err(MsiError::WorkerIpcError {
@@ -435,13 +435,13 @@ fn read_i32(bytes: &[u8], offset: &mut usize) -> Result<i32> {
 ///
 /// # Arguments
 ///
-/// * `bytes` - The `bytes` parameter.
-/// * `offset` - The `offset` parameter.
-/// * `len` - The `len` parameter.
+/// * `bytes` - Raw binary payload byte slice.
+/// * `offset` - Byte offset within the stream or buffer.
+/// * `len` - The len value.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// `Ok` containing the collected `u8` items, or an error on failure.
 fn read_slice(bytes: &[u8], offset: &mut usize, len: usize) -> Result<Vec<u8>> {
     if *offset + len > bytes.len() {
         return Err(MsiError::WorkerIpcError {
@@ -482,12 +482,12 @@ impl IpcSocketEndpoint {
     ///
     /// # Arguments
     ///
-    /// * `guid` - The `guid` parameter.
-    /// * `is_windows` - The `is_windows` parameter.
+    /// * `guid` - The guid value.
+    /// * `is_windows` - Boolean flag indicating whether to is windows.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     #[must_use]
     pub fn socket_path_for(guid: &str, is_windows: bool) -> String {
         if is_windows {
@@ -525,13 +525,13 @@ pub fn handle_ipc_stream<R: Read, W: Write>(
 ///
 /// # Arguments
 ///
-/// * `reader` - The `reader` parameter.
-/// * `writer` - The `writer` parameter.
-/// * `executor` - The `executor` parameter.
+/// * `reader` - Underlying byte or bitstream reader.
+/// * `writer` - The writer value.
+/// * `executor` - The executor value.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// `Ok(())` on success, or an [`MsiError`] if the operation fails.
 fn handle_ipc_stream_internal(
     reader: &mut dyn Read,
     writer: &mut dyn Write,
@@ -622,7 +622,6 @@ fn handle_ipc_stream_internal(
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

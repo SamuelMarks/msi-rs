@@ -197,7 +197,6 @@ pub fn get_user_product_key(squid: &str) -> String {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

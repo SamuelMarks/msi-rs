@@ -60,7 +60,7 @@ impl DialogReturnCode {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&'static str` value.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -194,7 +194,7 @@ impl ControlEvent {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     #[must_use]
     pub fn dialog(&self) -> &str {
         &self.dialog
@@ -204,7 +204,7 @@ impl ControlEvent {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     #[must_use]
     pub fn control(&self) -> &str {
         &self.control
@@ -214,7 +214,7 @@ impl ControlEvent {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&ControlEventType` value.
     #[must_use]
     pub const fn event_type(&self) -> &ControlEventType {
         &self.event_type
@@ -224,7 +224,7 @@ impl ControlEvent {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(&str)` if found, or `None` if absent.
     #[must_use]
     pub fn condition(&self) -> Option<&str> {
         self.condition.as_deref()
@@ -234,7 +234,7 @@ impl ControlEvent {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `i16` numeric result or status code.
     #[must_use]
     pub const fn ordering(&self) -> i16 {
         self.ordering
@@ -337,7 +337,6 @@ pub struct EventMapping {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

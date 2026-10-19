@@ -73,7 +73,7 @@ impl ReinstallMode {
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// `Ok(())` on success, or an error if the operation fails.
 pub fn configure_product(
     product_code: &str,
     _level: InstallLevel,
@@ -139,7 +139,7 @@ pub fn configure_product(
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// `Ok(())` on success, or an error if the operation fails.
 pub fn reinstall_product(product_code: &str, mode: ReinstallMode) -> Result<(), MsiError> {
     if product_code.is_empty() {
         return Err(MsiError::InvalidArgument {
@@ -180,7 +180,6 @@ pub fn reinstall_product(product_code: &str, mode: ReinstallMode) -> Result<(), 
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

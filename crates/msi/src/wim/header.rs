@@ -42,11 +42,11 @@ impl WimFlags {
     ///
     /// # Arguments
     ///
-    /// * `val` - The `val` parameter.
+    /// * `val` - Value to store, format, or evaluate.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn from_bits_truncate(val: u32) -> Self {
         Self(val)
@@ -56,7 +56,7 @@ impl WimFlags {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `u32` numeric result or status code.
     #[must_use]
     pub const fn bits(self) -> u32 {
         self.0
@@ -66,11 +66,11 @@ impl WimFlags {
     ///
     /// # Arguments
     ///
-    /// * `other` - The `other` parameter.
+    /// * `other` - Other instance to compare or merge with.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `true` if the check succeeds or state matches, `false` otherwise.
     #[must_use]
     pub const fn contains(self, other: Self) -> bool {
         (self.0 & other.0) == other.0
@@ -102,11 +102,11 @@ impl ResourceFlags {
     ///
     /// # Arguments
     ///
-    /// * `val` - The `val` parameter.
+    /// * `val` - Value to store, format, or evaluate.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn from_bits_truncate(val: u8) -> Self {
         Self(val)
@@ -116,7 +116,7 @@ impl ResourceFlags {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `u8` numeric result or status code.
     #[must_use]
     pub const fn bits(self) -> u8 {
         self.0
@@ -126,11 +126,11 @@ impl ResourceFlags {
     ///
     /// # Arguments
     ///
-    /// * `other` - The `other` parameter.
+    /// * `other` - Other instance to compare or merge with.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `true` if the check succeeds or state matches, `false` otherwise.
     #[must_use]
     pub const fn contains(self, other: Self) -> bool {
         (self.0 & other.0) == other.0
@@ -291,14 +291,8 @@ impl WimHeader {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::field_reassign_with_default,
-    clippy::shadow_unrelated,
-    clippy::unreadable_literal,
-    clippy::assert_is_empty,
-    clippy::cast_possible_truncation,
-    clippy::redundant_clone
-)]
+#[allow(clippy::field_reassign_with_default)]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
     use std::io::Cursor;
@@ -307,7 +301,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     #[test]
     fn test_wim_header_read_success() -> Result<()> {
         let mut data = vec![];
@@ -424,7 +418,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     #[test]
     fn test_esd_header_magic() -> Result<()> {
         let mut data = vec![];

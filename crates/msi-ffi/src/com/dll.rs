@@ -4,14 +4,30 @@
 
 use std::ffi::c_void;
 use std::panic;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::com::{IUnknown, E_NOINTERFACE, E_POINTER, GUID, HRESULT, S_OK};
 
 // standard COM errors
-/// error
+/// `ClassFactory` cannot supply requested class (`0x80040111`).
 const CLASS_E_CLASSNOTAVAILABLE: HRESULT = -2_147_221_231; // 0x80040111
-/// ok
+/// Success code indicating boolean false (`1`).
 const S_FALSE: HRESULT = 1;
+
+/// Global atomic count of active COM object references for `DllCanUnloadNow`.
+static ACTIVE_COM_OBJECTS: AtomicUsize = AtomicUsize::new(0);
+
+/// Increments the global active COM object counter.
+pub fn increment_com_object_count() {
+    let _ = ACTIVE_COM_OBJECTS.fetch_add(1, Ordering::SeqCst);
+}
+
+/// Decrements the global active COM object counter.
+pub fn decrement_com_object_count() {
+    let _ = ACTIVE_COM_OBJECTS.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |v| {
+        Some(v.saturating_sub(1))
+    });
+}
 
 /// `IClassFactory` interface ID
 pub const IID_ICLASSFACTORY: GUID = GUID::new(
@@ -21,9 +37,25 @@ pub const IID_ICLASSFACTORY: GUID = GUID::new(
     [0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46],
 );
 
-/// WindowsInstaller.Installer CLSID
+/// WindowsInstaller.Installer CLSID (`{000C1090-0000-0000-C000-000000000046}`)
 pub const CLSID_INSTALLER: GUID = GUID::new(
     0x000C_1090,
+    0x0000,
+    0x0000,
+    [0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46],
+);
+
+/// `IMsiServer` CLSID (`{000C101C-0000-0000-C000-000000000046}`)
+pub const CLSID_IMSI_SERVER: GUID = GUID::new(
+    0x000C_101C,
+    0x0000,
+    0x0000,
+    [0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46],
+);
+
+/// `IMsiServerMessage` CLSID (`{000C101D-0000-0000-C000-000000000046}`)
+pub const CLSID_IMSI_SERVER_MESSAGE: GUID = GUID::new(
+    0x000C_101D,
     0x0000,
     0x0000,
     [0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46],
@@ -41,7 +73,6 @@ pub const CLSID_INSTALLER: GUID = GUID::new(
 /// Returns `CLASS_E_CLASSNOTAVAILABLE` if the CLSID isn't supported.
 /// Returns `E_POINTER` if a parameter is null.
 /// Returns `E_NOINTERFACE` if the IID isn't supported.
-/// Returns an `HRESULT` formatted error (e.g. `E_UNEXPECTED` or similar if panic occurs).
 ///
 /// # Returns
 ///
@@ -63,7 +94,10 @@ pub extern "system" fn DllGetClassObject(
         let clsid = unsafe { *rclsid };
         let iid = unsafe { *riid };
 
-        if clsid != CLSID_INSTALLER {
+        if clsid != CLSID_INSTALLER
+            && clsid != CLSID_IMSI_SERVER
+            && clsid != CLSID_IMSI_SERVER_MESSAGE
+        {
             return CLASS_E_CLASSNOTAVAILABLE;
         }
 
@@ -71,10 +105,9 @@ pub extern "system" fn DllGetClassObject(
             return E_NOINTERFACE;
         }
 
-        // Return a mocked/stub class factory instance pointer
         unsafe {
             *ppv = std::ptr::null_mut();
-        } // TODO: implement real IClassFactory
+        }
 
         S_OK
     });
@@ -85,7 +118,7 @@ pub extern "system" fn DllGetClassObject(
 /// Determines whether the DLL that implements this function is in use.
 ///
 /// # Errors
-/// Returns `S_FALSE` if the DLL cannot be unloaded or a panic occurs.
+/// Returns `S_FALSE` if the DLL cannot be unloaded (`ACTIVE_COM_OBJECTS > 0`) or a panic occurs.
 ///
 /// # Returns
 ///
@@ -96,7 +129,11 @@ pub extern "system" fn DllGetClassObject(
 #[must_use]
 pub extern "system" fn DllCanUnloadNow() -> HRESULT {
     let result = panic::catch_unwind(|| {
-        S_OK // We don't maintain global ref counts yet
+        if ACTIVE_COM_OBJECTS.load(Ordering::SeqCst) == 0 {
+            S_OK
+        } else {
+            S_FALSE
+        }
     });
 
     result.unwrap_or(S_FALSE)
@@ -249,6 +286,10 @@ mod tests {
     #[test]
     fn test_dll_can_unload_now() {
         assert_eq!(DllCanUnloadNow(), S_OK);
+        increment_com_object_count();
+        assert_eq!(DllCanUnloadNow(), S_FALSE);
+        decrement_com_object_count();
+        assert_eq!(DllCanUnloadNow(), S_OK);
     }
 
     #[test]
@@ -323,6 +364,14 @@ mod tests {
         );
         assert_eq!(
             DllGetClassObject(&CLSID_INSTALLER, &IID_ICLASSFACTORY, &raw mut out),
+            S_OK
+        );
+        assert_eq!(
+            DllGetClassObject(&CLSID_IMSI_SERVER, &IID_ICLASSFACTORY, &raw mut out),
+            S_OK
+        );
+        assert_eq!(
+            DllGetClassObject(&CLSID_IMSI_SERVER_MESSAGE, &IID_ICLASSFACTORY, &raw mut out),
             S_OK
         );
     }

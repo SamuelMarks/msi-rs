@@ -76,6 +76,8 @@ impl fmt::Display for FieldValue {
 pub struct Record {
     /// Ordered vector of field values in this record.
     fields: Vec<FieldValue>,
+    /// Optional binary stream buffers and read cursors indexed by field index.
+    streams: std::collections::BTreeMap<usize, (Vec<u8>, usize)>,
 }
 
 impl Record {
@@ -86,7 +88,10 @@ impl Record {
     /// An empty [`Record`].
     #[must_use]
     pub const fn new() -> Self {
-        Self { fields: Vec::new() }
+        Self {
+            fields: Vec::new(),
+            streams: std::collections::BTreeMap::new(),
+        }
     }
 
     /// Creates a [`Record`] with the specified fields.
@@ -100,7 +105,100 @@ impl Record {
     /// A new [`Record`].
     #[must_use]
     pub const fn with_fields(fields: Vec<FieldValue>) -> Self {
-        Self { fields }
+        Self {
+            fields,
+            streams: std::collections::BTreeMap::new(),
+        }
+    }
+
+    /// Stores a binary stream buffer at the given 0-based field index and resets its read cursor to `0`.
+    ///
+    /// # Arguments
+    ///
+    /// * `idx` - 0-based field index.
+    /// * `data` - Binary stream payload bytes.
+    pub fn set_stream_bytes(&mut self, idx: usize, data: Vec<u8>) {
+        if idx < self.fields.len() {
+            #[allow(clippy::cast_possible_truncation)]
+            let id = StringPoolId::new(idx as u32 + 1);
+            self.fields[idx] = FieldValue::Stream(id);
+            self.streams.insert(idx, (data, 0));
+        }
+    }
+
+    /// Resets the read cursor of the binary stream at the given 0-based field index to `0`.
+    ///
+    /// # Arguments
+    ///
+    /// * `idx` - 0-based field index.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the field holds a binary stream and its cursor was reset, `false` otherwise.
+    pub fn reset_stream_cursor(&mut self, idx: usize) -> bool {
+        if let Some((_, cursor)) = self.streams.get_mut(&idx) {
+            *cursor = 0;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Returns the total byte length of the binary stream stored at the given 0-based field index.
+    ///
+    /// # Arguments
+    ///
+    /// * `idx` - 0-based field index.
+    ///
+    /// # Returns
+    ///
+    /// Optional total stream length in bytes.
+    #[must_use]
+    pub fn stream_len(&self, idx: usize) -> Option<usize> {
+        self.streams.get(&idx).map(|(bytes, _)| bytes.len())
+    }
+
+    /// Returns the remaining unread byte count of the binary stream at the given 0-based field index.
+    ///
+    /// # Arguments
+    ///
+    /// * `idx` - 0-based field index.
+    ///
+    /// # Returns
+    ///
+    /// Optional remaining byte count from the current read cursor to the end of the stream.
+    #[must_use]
+    pub fn stream_remaining(&self, idx: usize) -> Option<usize> {
+        self.streams
+            .get(&idx)
+            .map(|(bytes, cursor)| bytes.len().saturating_sub(*cursor))
+    }
+
+    /// Reads up to `max_bytes` from the binary stream at the given 0-based field index and advances the cursor.
+    ///
+    /// # Arguments
+    ///
+    /// * `idx` - 0-based field index.
+    /// * `out` - Destination slice to receive stream bytes.
+    ///
+    /// # Returns
+    ///
+    /// Optional number of bytes copied into `out`.
+    pub fn read_stream_bytes(&mut self, idx: usize, out: &mut [u8]) -> Option<usize> {
+        let (bytes, cursor) = self.streams.get_mut(&idx)?;
+        let available = bytes.len().saturating_sub(*cursor);
+        let to_read = available.min(out.len());
+        out[..to_read].copy_from_slice(&bytes[*cursor..*cursor + to_read]);
+        *cursor += to_read;
+        Some(to_read)
+    }
+
+    /// Clears all fields in the record to [`FieldValue::Null`] and removes any attached stream buffers.
+    pub fn clear_data(&mut self) {
+        for field in &mut self.fields {
+            *field = FieldValue::Null;
+        }
+        self.streams.clear();
     }
 
     /// Adds a field to the record.
@@ -228,6 +326,9 @@ impl Record {
     /// * `val` - New [`FieldValue`].
     pub fn set(&mut self, idx: usize, val: FieldValue) {
         if idx < self.fields.len() {
+            if !matches!(val, FieldValue::Stream(_)) {
+                self.streams.remove(&idx);
+            }
             self.fields[idx] = val;
         }
     }
@@ -336,7 +437,8 @@ impl Record {
     /// # Errors
     ///
     /// Returns [`MsiError::RecordLengthMismatch`] if field count does not match column count.
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_sign_loss)]
     pub fn serialize(
         &self,
         layout: &PhysicalTableLayout<'_>,
@@ -530,14 +632,11 @@ impl Record {
             logical_fields[i] = field_val;
         }
 
-        Ok(Self {
-            fields: logical_fields,
-        })
+        Ok(Self::with_fields(logical_fields))
     }
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     #[test]
     fn test_field_value_deserialize_null_stream_and_string_3_byte_index(
@@ -577,7 +676,8 @@ mod tests {
     /// # Returns
     ///
     /// Vector of bytes on success, or empty vector on serialization failure.
-    #[allow(clippy::option_if_let_else, clippy::manual_unwrap_or_default)]
+    #[allow(clippy::option_if_let_else)]
+    #[allow(clippy::manual_unwrap_or_default)]
     fn try_serialize(
         rec: &Record,
         cols: &[ColumnDef],
@@ -1007,15 +1107,35 @@ mod tests {
             try_deserialize(&[], &bad_cols, &pool, 2),
             Vec::<Record>::new()
         );
+
+        // Stream buffer operations and clear_data coverage
+        let mut stream_rec = Record::with_fields(vec![FieldValue::Null, FieldValue::Null]);
+        stream_rec.set_stream_bytes(5, vec![1, 2, 3]); // out of bounds no-op
+        assert_eq!(stream_rec.stream_len(1), None);
+        assert_eq!(stream_rec.stream_remaining(1), None);
+        assert!(!stream_rec.reset_stream_cursor(1));
+        let mut out_buf = [0u8; 2];
+        assert_eq!(stream_rec.read_stream_bytes(1, &mut out_buf), None);
+
+        stream_rec.set_stream_bytes(1, vec![10, 20, 30, 40]);
+        assert_eq!(stream_rec.stream_len(1), Some(4));
+        assert_eq!(stream_rec.stream_remaining(1), Some(4));
+        assert_eq!(stream_rec.read_stream_bytes(1, &mut out_buf), Some(2));
+        assert_eq!(out_buf, [10, 20]);
+        assert_eq!(stream_rec.stream_remaining(1), Some(2));
+        assert!(stream_rec.reset_stream_cursor(1));
+        assert_eq!(stream_rec.stream_remaining(1), Some(4));
+
+        // Overwriting a stream field with a non-stream removes the stream buffer
+        stream_rec.set(1, FieldValue::Stream(StringPoolId::new(2)));
+        assert_eq!(stream_rec.stream_len(1), Some(4));
+        stream_rec.set(1, FieldValue::Long(99));
+        assert_eq!(stream_rec.stream_len(1), None);
+
+        stream_rec.set_stream_bytes(0, vec![1, 2]);
+        stream_rec.clear_data();
+        assert_eq!(stream_rec.get(0), Some(&FieldValue::Null));
+        assert_eq!(stream_rec.stream_len(0), None);
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod record_tests_extra {
-
-    #[cfg(test)]
-    mod extra_tests {
-        // We will append this to the test module in record.rs.
     }
 }

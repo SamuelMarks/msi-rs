@@ -10,6 +10,7 @@ pub mod installer;
 pub mod patch;
 pub mod properties;
 pub mod record;
+pub use record::MsiRecordDataSize;
 pub mod record_stream;
 pub mod registry;
 /// Shared thread-safe registry backend for Win32 MSI registry queries.
@@ -62,10 +63,14 @@ pub const ERROR_INVALID_DATA: Uint = 13;
 pub const ERROR_INVALID_PARAMETER: Uint = 87;
 /// More data is available; buffer too small.
 pub const ERROR_MORE_DATA: Uint = 234;
+/// No more data is available.
+pub const ERROR_NO_MORE_ITEMS: Uint = 259;
 /// Invalid handle.
 pub const ERROR_INVALID_HANDLE: Uint = 6;
 /// General installation failure.
 pub const ERROR_INSTALL_FAILURE: Uint = 1603;
+/// Function failed during execution.
+pub const ERROR_FUNCTION_FAILED: Uint = 1627;
 /// `ERROR_UNKNOWN_PRODUCT`
 pub const ERROR_UNKNOWN_PRODUCT: Uint = 1605;
 /// `ERROR_UNKNOWN_PATCH`

@@ -104,7 +104,6 @@ impl DatabaseTransform {
     /// # Errors
     ///
     /// Returns [`crate::error::MsiError`] on schema or diffing errors.
-    #[allow(clippy::too_many_lines)]
     pub fn diff(baseline: &LinkedDatabase, updated: &LinkedDatabase) -> Result<Self> {
         let mut transform = Self::new();
 
@@ -310,6 +309,102 @@ impl DatabaseTransform {
         Ok(())
     }
 
+    /// Populates the `_TransformView` system table in `db` with the operations in this transform
+    /// (used when `MSITRANSFORM_ERROR_VIEWTRANSFORM` `0x0100` is specified).
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - Target database to receive `_TransformView` rows.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` when `_TransformView` is populated.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::MsiError`] if transform validation fails.
+    pub fn populate_transform_view(&self, db: &mut LinkedDatabase) -> Result<()> {
+        self.validate(db)?;
+        if db.catalog.get_table("_TransformView").is_none() {
+            let _ = db
+                .catalog
+                .add_table(crate::database::sql::executor::transform_view_schema());
+        }
+
+        let view_rows = db.tables.entry("_TransformView".to_string()).or_default();
+        for (table_name, tt) in &self.tables {
+            if tt.is_added {
+                view_rows.push(Record::with_fields(vec![
+                    FieldValue::String(table_name.clone()),
+                    FieldValue::String("CREATE".to_string()),
+                    FieldValue::Null,
+                    FieldValue::Null,
+                    FieldValue::Null,
+                ]));
+            } else if tt.is_dropped {
+                view_rows.push(Record::with_fields(vec![
+                    FieldValue::String(table_name.clone()),
+                    FieldValue::String("DROP".to_string()),
+                    FieldValue::Null,
+                    FieldValue::Null,
+                    FieldValue::Null,
+                ]));
+            }
+            for op in &tt.operations {
+                match op {
+                    RowOperation::Insert(r) => {
+                        let pk = match r.get(0) {
+                            Some(FieldValue::String(s)) => s.as_str(),
+                            _ => "",
+                        };
+                        view_rows.push(Record::with_fields(vec![
+                            FieldValue::String(table_name.clone()),
+                            FieldValue::String("INSERT".to_string()),
+                            FieldValue::String(pk.to_string()),
+                            FieldValue::Null,
+                            FieldValue::Null,
+                        ]));
+                    }
+                    RowOperation::Delete(r) => {
+                        let pk = match r.get(0) {
+                            Some(FieldValue::String(s)) => s.as_str(),
+                            _ => "",
+                        };
+                        view_rows.push(Record::with_fields(vec![
+                            FieldValue::String(table_name.clone()),
+                            FieldValue::String("DELETE".to_string()),
+                            FieldValue::String(pk.to_string()),
+                            FieldValue::Null,
+                            FieldValue::Null,
+                        ]));
+                    }
+                    RowOperation::Modify { key, updated } => {
+                        let pk = match key.get(0) {
+                            Some(FieldValue::String(s)) => s.as_str(),
+                            _ => "",
+                        };
+                        let data = match updated.get(1) {
+                            Some(FieldValue::String(s)) => s.as_str(),
+                            _ => "",
+                        };
+                        let cur = match key.get(1) {
+                            Some(FieldValue::String(s)) => s.as_str(),
+                            _ => "",
+                        };
+                        view_rows.push(Record::with_fields(vec![
+                            FieldValue::String(table_name.clone()),
+                            FieldValue::String("Value".to_string()),
+                            FieldValue::String(pk.to_string()),
+                            FieldValue::String(data.to_string()),
+                            FieldValue::String(cur.to_string()),
+                        ]));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Serializes this transform into binary `.mst` Compound File Binary Format bytes.
     ///
     /// # Returns
@@ -441,7 +536,6 @@ fn rows_primary_keys_match(
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::error::MsiError;
@@ -1147,6 +1241,50 @@ mod tests {
         transform.summary_info.rev_number =
             Some("{11111111-1111-1111-1111-111111111111};".to_string());
         assert!(transform.validate(&db).is_ok());
+
+        transform.tables.insert(
+            "NewTable".to_string(),
+            TableTransform {
+                table_name: "NewTable".to_string(),
+                is_added: true,
+                is_dropped: false,
+                operations: vec![RowOperation::Insert(Record::with_fields(vec![
+                    FieldValue::String("K1".to_string()),
+                ]))],
+            },
+        );
+        transform.tables.insert(
+            "DropTable".to_string(),
+            TableTransform {
+                table_name: "DropTable".to_string(),
+                is_added: false,
+                is_dropped: true,
+                operations: vec![RowOperation::Delete(Record::with_fields(vec![
+                    FieldValue::String("K2".to_string()),
+                ]))],
+            },
+        );
+        transform.tables.insert(
+            "Property".to_string(),
+            TableTransform {
+                table_name: "Property".to_string(),
+                is_added: false,
+                is_dropped: false,
+                operations: vec![RowOperation::Modify {
+                    key: Record::with_fields(vec![
+                        FieldValue::String("ProductName".to_string()),
+                        FieldValue::String("Old".to_string()),
+                    ]),
+                    updated: Record::with_fields(vec![
+                        FieldValue::String("ProductName".to_string()),
+                        FieldValue::String("New".to_string()),
+                    ]),
+                }],
+            },
+        );
+        assert!(transform.populate_transform_view(&mut db).is_ok());
+        assert!(transform.populate_transform_view(&mut db).is_ok());
+        assert!(!db.get_records("_TransformView").is_empty());
     }
 }
 

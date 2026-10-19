@@ -45,7 +45,7 @@ impl RegistryValue {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&'static str` value.
     #[must_use]
     pub const fn type_name(&self) -> &'static str {
         match self {
@@ -103,7 +103,7 @@ impl RegistryRoot {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `u32` numeric result or status code.
     #[must_use]
     pub const fn as_u32(self) -> u32 {
         match self {
@@ -241,7 +241,7 @@ impl RegistryStore {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -251,11 +251,11 @@ impl RegistryStore {
     ///
     /// # Arguments
     ///
-    /// * `key` - The `key` parameter.
+    /// * `key` - Registry key path or lookup identifier.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     #[must_use]
     pub fn normalize_key(key: &str) -> String {
         key.trim_matches('\\').trim_matches('/').replace('/', "\\")
@@ -358,13 +358,13 @@ impl RegistryStore {
     ///
     /// # Arguments
     ///
-    /// * `root` - The `root` parameter.
-    /// * `key` - The `key` parameter.
-    /// * `name` - The `name` parameter.
+    /// * `root` - Registry root hive or XML root node.
+    /// * `key` - Registry key path or lookup identifier.
+    /// * `name` - Identifier or name of the target entity.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(&RegistryValue)` if found, or `None` if absent.
     pub fn get_value(
         &self,
         root: RegistryRoot,
@@ -374,6 +374,25 @@ impl RegistryStore {
         let norm_key = Self::normalize_key(key);
         let name_owned = name.map(ToString::to_string);
         self.values.get(&(root, norm_key, name_owned))
+    }
+
+    /// Returns the first value stored under the specified root and subkey regardless of value name.
+    ///
+    /// # Arguments
+    ///
+    /// * `root` - Root key enum.
+    /// * `key` - Subkey path.
+    ///
+    /// # Returns
+    ///
+    /// Optional reference to the first [`RegistryValue`] under `key`.
+    #[must_use]
+    pub fn get_first_value_for_key(&self, root: RegistryRoot, key: &str) -> Option<&RegistryValue> {
+        let norm_key = Self::normalize_key(key);
+        self.values
+            .iter()
+            .find(|((r, k, _), _)| *r == root && k == &norm_key)
+            .map(|(_, v)| v)
     }
 
     /// Deletes a registry value, recording the previous value in the rollback journal.
@@ -869,7 +888,7 @@ impl SqliteRegistryDriver {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&Path` value.
     #[must_use]
     pub fn db_path(&self) -> &Path {
         &self.db_path
@@ -879,7 +898,7 @@ impl SqliteRegistryDriver {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn open_in_memory() -> Self {
         Self::new(PathBuf::from(":memory:"))
@@ -889,7 +908,7 @@ impl SqliteRegistryDriver {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&'static str` value.
     #[must_use]
     pub const fn system_db_path() -> &'static str {
         "/var/lib/msi/registry.db"
@@ -899,7 +918,7 @@ impl SqliteRegistryDriver {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&'static str` value.
     #[must_use]
     pub const fn user_db_path() -> &'static str {
         "~/.config/msi/registry.db"
@@ -909,7 +928,7 @@ impl SqliteRegistryDriver {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&'static str` value.
     #[must_use]
     pub const fn initialize_schema_sql() -> &'static str {
         SQLITE_REGISTRY_INIT_SQL
@@ -934,7 +953,7 @@ impl SqliteRegistryDriver {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     #[allow(clippy::format_push_string)]
     pub fn save_to_disk(&self) -> Result<()> {
         if self.db_path == Path::new(":memory:") {
@@ -1125,7 +1144,7 @@ impl SqliteRegistryDriver {
     ///
     /// # Arguments
     ///
-    /// Checks if a key exists in the registry.
+    /// Checks if a key exists in the registry (either directly or via a child subkey), case-insensitively.
     ///
     /// # Arguments
     ///
@@ -1138,8 +1157,13 @@ impl SqliteRegistryDriver {
     #[must_use]
     pub fn has_key(&self, root: RegistryRoot, key: &str) -> bool {
         let root_id = root.as_u32();
-        let normalized = key.replace('/', "\\").to_uppercase();
-        self.keys.contains_key(&(root_id, normalized))
+        let norm = RegistryStore::normalize_key(key);
+        let prefix = format!("{norm}\\");
+        self.keys.keys().any(|(r, p)| {
+            *r == root_id
+                && (p.eq_ignore_ascii_case(&norm)
+                    || (p.len() > prefix.len() && p[..prefix.len()].eq_ignore_ascii_case(&prefix)))
+        })
     }
 
     #[must_use]
@@ -1147,13 +1171,13 @@ impl SqliteRegistryDriver {
     ///
     /// # Arguments
     ///
-    /// * `root` - The `root` parameter.
-    /// * `key` - The `key` parameter.
-    /// * `name` - The `name` parameter.
+    /// * `root` - Registry root hive or XML root node.
+    /// * `key` - Registry key path or lookup identifier.
+    /// * `name` - Identifier or name of the target entity.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(RegistryValue)` if found, or `None` if absent.
     pub fn get_value(
         &self,
         root: RegistryRoot,
@@ -1163,9 +1187,13 @@ impl SqliteRegistryDriver {
         let norm_key = RegistryStore::normalize_key(key);
         let root_id = root.as_u32();
 
-        let key_id = self.keys.get(&(root_id, norm_key))?;
+        let key_id = self
+            .keys
+            .iter()
+            .find(|((r, p), _)| *r == root_id && p.eq_ignore_ascii_case(&norm_key))
+            .map(|(_, &id)| id)?;
         let name_owned = name.map(ToString::to_string);
-        self.values.get(&(*key_id, name_owned)).cloned()
+        self.values.get(&(key_id, name_owned)).cloned()
     }
 
     /// Deletes a value, recording the deletion in the transaction log.
@@ -1260,7 +1288,7 @@ impl SqliteRegistryDriver {
         count
     }
 
-    /// Lists direct subkeys under a parent key path.
+    /// Lists direct subkeys under a parent key path (case-insensitively).
     ///
     /// # Arguments
     ///
@@ -1282,7 +1310,10 @@ impl SqliteRegistryDriver {
 
         let mut subkeys = Vec::new();
         for (r, p) in self.keys.keys() {
-            if *r == root_id && p.starts_with(&prefix) {
+            if *r == root_id
+                && p.len() > prefix.len()
+                && p[..prefix.len()].eq_ignore_ascii_case(&prefix)
+            {
                 let remainder = &p[prefix.len()..];
                 let segment = remainder.split('\\').next().unwrap_or(remainder);
                 if !subkeys.contains(&segment.to_string()) {
@@ -1291,6 +1322,39 @@ impl SqliteRegistryDriver {
             }
         }
         subkeys
+    }
+
+    /// Lists all `(value_name, value)` pairs stored directly under the specified key path (case-insensitively).
+    ///
+    /// # Arguments
+    ///
+    /// * `root` - Root key.
+    /// * `key` - Subkey path.
+    ///
+    /// # Returns
+    ///
+    /// Vector of `(Option<String>, RegistryValue)` tuples.
+    #[must_use]
+    pub fn list_values(
+        &self,
+        root: RegistryRoot,
+        key: &str,
+    ) -> Vec<(Option<String>, RegistryValue)> {
+        let norm_key = RegistryStore::normalize_key(key);
+        let root_id = root.as_u32();
+        let Some(key_id) = self
+            .keys
+            .iter()
+            .find(|((r, p), _)| *r == root_id && p.eq_ignore_ascii_case(&norm_key))
+            .map(|(_, &id)| id)
+        else {
+            return Vec::new();
+        };
+        self.values
+            .iter()
+            .filter(|((kid, _), _)| *kid == key_id)
+            .map(|((_, name), val)| (name.clone(), val.clone()))
+            .collect()
     }
 
     /// Commits the active transaction, clearing the transaction log.
@@ -1572,7 +1636,6 @@ impl Win32RegistryApi {
 }
 
 #[cfg(test)]
-#[allow(clippy::manual_flatten, clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -2569,6 +2632,20 @@ INSERT OR REPLACE INTO values VALUES (10, 'Fallback', 'REG_CUSTOM_TYPE', 'raw_te
         assert!(!p6.contains("S-1-5-18"));
         assert!(p6.contains("Installer\\\\UpgradeCodes"));
         assert!(p6.contains("76543210BA98FEDC1032547698BADCFE"));
+
+        let mut sqlite = SqliteRegistryDriver::default();
+        assert!(sqlite
+            .list_values(RegistryRoot::LocalMachine, r"Software\Nonexistent")
+            .is_empty());
+        sqlite.set_value(
+            RegistryRoot::LocalMachine,
+            r"Software\TestListValues",
+            Some("Val1"),
+            RegistryValue::Sz("Hello".to_string()),
+        );
+        let listed = sqlite.list_values(RegistryRoot::LocalMachine, r"Software\TestListValues");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].0.as_deref(), Some("Val1"));
         Ok(())
     }
 }

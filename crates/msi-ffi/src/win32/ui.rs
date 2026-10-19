@@ -3,6 +3,7 @@
 //! Provides `MsiSetInternalUI`, `MsiSetExternalUIA/W`, `MsiSetExternalUIRecord`,
 //! and `MsiProcessMessage`.
 
+use std::cell::RefCell;
 use std::ffi::c_void;
 use std::panic;
 
@@ -13,32 +14,96 @@ use crate::win32::{Dword, Lpcstr, Lpcwstr, Uint, ERROR_INSTALL_FAILURE, ERROR_SU
 pub type InstallUILevel = Dword;
 
 /// External UI message handler callback (ANSI).
-pub type InstallUIHandlerA = Option<unsafe extern "system" fn(c_void, Uint, Lpcstr) -> i32>;
+pub type InstallUIHandlerA = Option<unsafe extern "system" fn(*mut c_void, Uint, Lpcstr) -> i32>;
 /// External UI message handler callback (Unicode).
-pub type InstallUIHandlerW = Option<unsafe extern "system" fn(c_void, Uint, Lpcwstr) -> i32>;
+pub type InstallUIHandlerW = Option<unsafe extern "system" fn(*mut c_void, Uint, Lpcwstr) -> i32>;
 /// External UI record message handler callback.
-pub type InstallUIHandlerRecord = Option<unsafe extern "system" fn(c_void, Uint, MsiHandle) -> i32>;
+pub type InstallUIHandlerRecord =
+    Option<unsafe extern "system" fn(*mut c_void, Uint, MsiHandle) -> i32>;
 
-/// Sets the internal user interface level.
+/// Thread-local UI configuration state for `MsiSetInternalUI`, `MsiSetExternalUIA/W`, and `MsiSetExternalUIRecord`.
+struct ThreadUiState {
+    /// Current internal UI level (`INSTALLUILEVEL_*`, default `2` = `INSTALLUILEVEL_NONE`).
+    ui_level: InstallUILevel,
+    /// Optional parent window handle (`HWND`).
+    hwnd: *mut c_void,
+    /// Registered Unicode external UI callback.
+    handler_w: InstallUIHandlerW,
+    /// Message filter bitmask for `handler_w`.
+    filter_w: Dword,
+    /// Context pointer for `handler_w`.
+    context_w: *mut c_void,
+    /// Registered ANSI external UI callback.
+    handler_a: InstallUIHandlerA,
+    /// Message filter bitmask for `handler_a`.
+    filter_a: Dword,
+    /// Context pointer for `handler_a`.
+    context_a: *mut c_void,
+    /// Registered Record-based external UI callback.
+    handler_record: InstallUIHandlerRecord,
+    /// Message filter bitmask for `handler_record`.
+    filter_record: Dword,
+    /// Context pointer for `handler_record`.
+    context_record: *mut c_void,
+}
+
+impl Default for ThreadUiState {
+    fn default() -> Self {
+        Self {
+            ui_level: 2, // INSTALLUILEVEL_NONE
+            hwnd: std::ptr::null_mut(),
+            handler_w: None,
+            filter_w: 0,
+            context_w: std::ptr::null_mut(),
+            handler_a: None,
+            filter_a: 0,
+            context_a: std::ptr::null_mut(),
+            handler_record: None,
+            filter_record: 0,
+            context_record: std::ptr::null_mut(),
+        }
+    }
+}
+
+thread_local! {
+    /// Thread-local UI state instance.
+    static UI_STATE: RefCell<ThreadUiState> = RefCell::new(ThreadUiState::default());
+}
+
+/// Sets the internal user interface level and optional parent window handle.
 ///
 /// # Arguments
 ///
-/// * `dwUILevel` - The level of UI.
-/// * `phWnd` - Pointer to a window handle (HWND).
+/// * `dwUILevel` - Requested UI level (`INSTALLUILEVEL_*`). Passing `0` (`INSTALLUILEVEL_NOCHANGE`) queries the current level without changing it.
+/// * `phWnd` - Optional in/out pointer to the parent window handle (`HWND`).
 ///
 /// # Returns
 ///
-/// The previous UI level.
+/// Previous `InstallUILevel`.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "system" fn MsiSetInternalUI(
     dwUILevel: InstallUILevel,
     phWnd: *mut *mut c_void,
 ) -> InstallUILevel {
     let result = panic::catch_unwind(|| {
-        // Return INSTALLUILEVEL_NONE (2) as the old level
-        2
+        UI_STATE.with(|cell| {
+            let mut st = cell.borrow_mut();
+            let prev = st.ui_level;
+            if dwUILevel != 0 {
+                st.ui_level = dwUILevel & 0x07;
+            }
+            if !phWnd.is_null() {
+                let prev_hwnd = st.hwnd;
+                unsafe {
+                    st.hwnd = *phWnd;
+                    *phWnd = prev_hwnd;
+                }
+            }
+            prev
+        })
     });
 
     result.unwrap_or(0)
@@ -48,23 +113,30 @@ pub extern "system" fn MsiSetInternalUI(
 ///
 /// # Arguments
 ///
-/// * `puiHandler` - The callback function.
-/// * `dwMessageFilter` - Message filter flags.
-/// * `pvContext` - Application context.
+/// * `puiHandler` - Callback function pointer, or `None` to disable.
+/// * `dwMessageFilter` - Bitmask of `INSTALLLOGMODE_*` messages to forward to `puiHandler`.
+/// * `pvContext` - Application context pointer passed to `puiHandler`.
 ///
 /// # Returns
 ///
-/// The previous handler, or null on error.
+/// Previously registered `InstallUIHandlerW` callback.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
 pub extern "system" fn MsiSetExternalUIW(
     puiHandler: InstallUIHandlerW,
     dwMessageFilter: Dword,
     pvContext: *mut c_void,
 ) -> InstallUIHandlerW {
     let result = panic::catch_unwind(|| {
-        None // Returns old handler
+        UI_STATE.with(|cell| {
+            let mut st = cell.borrow_mut();
+            let prev = st.handler_w;
+            st.handler_w = puiHandler;
+            st.filter_w = dwMessageFilter;
+            st.context_w = pvContext;
+            prev
+        })
     });
 
     result.unwrap_or(None)
@@ -74,23 +146,30 @@ pub extern "system" fn MsiSetExternalUIW(
 ///
 /// # Arguments
 ///
-/// * `puiHandler` - The callback function.
-/// * `dwMessageFilter` - Message filter flags.
-/// * `pvContext` - Application context.
+/// * `puiHandler` - Callback function pointer, or `None` to disable.
+/// * `dwMessageFilter` - Bitmask of `INSTALLLOGMODE_*` messages to forward to `puiHandler`.
+/// * `pvContext` - Application context pointer passed to `puiHandler`.
 ///
 /// # Returns
 ///
-/// The previous handler, or null on error.
+/// Previously registered `InstallUIHandlerA` callback.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
 pub extern "system" fn MsiSetExternalUIA(
     puiHandler: InstallUIHandlerA,
     dwMessageFilter: Dword,
     pvContext: *mut c_void,
 ) -> InstallUIHandlerA {
     let result = panic::catch_unwind(|| {
-        None // Returns old handler
+        UI_STATE.with(|cell| {
+            let mut st = cell.borrow_mut();
+            let prev = st.handler_a;
+            st.handler_a = puiHandler;
+            st.filter_a = dwMessageFilter;
+            st.context_a = pvContext;
+            prev
+        })
     });
 
     result.unwrap_or(None)
@@ -100,17 +179,17 @@ pub extern "system" fn MsiSetExternalUIA(
 ///
 /// # Arguments
 ///
-/// * `puiHandler` - The callback function.
-/// * `dwMessageFilter` - Message filter flags.
-/// * `pvContext` - Application context.
-/// * `ppuiPrevHandler` - Pointer to receive the previous handler.
+/// * `puiHandler` - Record-based callback function pointer, or `None` to disable.
+/// * `dwMessageFilter` - Bitmask of `INSTALLLOGMODE_*` messages to forward to `puiHandler`.
+/// * `pvContext` - Application context pointer passed to `puiHandler`.
+/// * `ppuiPrevHandler` - Optional out pointer receiving the previously registered handler.
 ///
 /// # Returns
 ///
-/// `ERROR_SUCCESS`
+/// `ERROR_SUCCESS`.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "system" fn MsiSetExternalUIRecord(
     puiHandler: InstallUIHandlerRecord,
@@ -119,31 +198,38 @@ pub extern "system" fn MsiSetExternalUIRecord(
     ppuiPrevHandler: *mut InstallUIHandlerRecord,
 ) -> Uint {
     let result = panic::catch_unwind(|| {
-        if !ppuiPrevHandler.is_null() {
-            unsafe {
-                *ppuiPrevHandler = None;
+        UI_STATE.with(|cell| {
+            let mut st = cell.borrow_mut();
+            let prev = st.handler_record;
+            st.handler_record = puiHandler;
+            st.filter_record = dwMessageFilter;
+            st.context_record = pvContext;
+            if !ppuiPrevHandler.is_null() {
+                unsafe {
+                    *ppuiPrevHandler = prev;
+                }
             }
-        }
+        });
         ERROR_SUCCESS
     });
 
     result.unwrap_or(ERROR_INSTALL_FAILURE)
 }
 
-/// Sends an error record to the installer for processing.
+/// Sends an installer message record to registered external UI callbacks, logger, and internal UI.
 ///
 /// # Arguments
 ///
-/// * `hInstall` - The handle to the installation session.
-/// * `eMessageType` - The message type.
-/// * `hRecord` - The record containing message formatting parameters.
+/// * `hInstall` - Handle to the installation session.
+/// * `eMessageType` - Message type and button/icon flags (`INSTALLMESSAGE_*`).
+/// * `hRecord` - Handle to the record containing message parameters.
 ///
 /// # Returns
 ///
-/// Result code from the UI handler.
+/// Result code from the UI handler (e.g., `1` = `IDOK`), or `-1` if `hInstall` is invalid.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
 #[must_use]
 pub extern "system" fn MsiProcessMessage(
     hInstall: MsiHandle,
@@ -151,11 +237,72 @@ pub extern "system" fn MsiProcessMessage(
     hRecord: MsiHandle,
 ) -> i32 {
     let result = panic::catch_unwind(|| {
-        with_handle(hInstall, |_obj| {
-            // we'd dispatch to external UI handler here
-            1 // IDOK
-        })
-        .unwrap_or(-1)
+        let valid_install = with_handle(hInstall, |_| ()).is_some();
+        if !valid_install {
+            return -1;
+        }
+
+        let (rec_cb, w_cb, a_cb) = UI_STATE.with(|cell| {
+            let st = cell.borrow();
+            (
+                st.handler_record
+                    .map(|cb| (cb, st.filter_record, st.context_record)),
+                st.handler_w.map(|cb| (cb, st.filter_w, st.context_w)),
+                st.handler_a.map(|cb| (cb, st.filter_a, st.context_a)),
+            )
+        });
+
+        let msg_kind = (eMessageType >> 24) & 0xFF;
+        let msg_bit = 1u32.checked_shl(msg_kind).unwrap_or(0);
+
+        if let Some((cb, filter, ctx)) = rec_cb {
+            if filter == 0 || (filter & msg_bit) != 0 {
+                let rc = unsafe { cb(ctx, eMessageType, hRecord) };
+                if rc != 0 {
+                    return rc;
+                }
+            }
+        }
+
+        if let Some((cb, filter, ctx)) = w_cb {
+            if filter == 0 || (filter & msg_bit) != 0 {
+                let mut buf = [0u16; 512];
+                let mut len: Dword = 512;
+                if hRecord != 0 {
+                    let _ = crate::win32::format::MsiFormatRecordW(
+                        hInstall,
+                        hRecord,
+                        buf.as_mut_ptr(),
+                        &raw mut len,
+                    );
+                }
+                let rc = unsafe { cb(ctx, eMessageType, buf.as_ptr()) };
+                if rc != 0 {
+                    return rc;
+                }
+            }
+        }
+
+        if let Some((cb, filter, ctx)) = a_cb {
+            if filter == 0 || (filter & msg_bit) != 0 {
+                let mut buf = [0i8; 512];
+                let mut len: Dword = 512;
+                if hRecord != 0 {
+                    let _ = crate::win32::format::MsiFormatRecordA(
+                        hInstall,
+                        hRecord,
+                        buf.as_mut_ptr(),
+                        &raw mut len,
+                    );
+                }
+                let rc = unsafe { cb(ctx, eMessageType, buf.as_ptr()) };
+                if rc != 0 {
+                    return rc;
+                }
+            }
+        }
+
+        1 // IDOK
     });
 
     result.unwrap_or(-1)
@@ -164,7 +311,8 @@ pub extern "system" fn MsiProcessMessage(
 /// Enables UI preview mode for the installer.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "system" fn MsiEnableUIPreview(hDatabase: MsiHandle, phPreview: *mut MsiHandle) -> Uint {
     let result = panic::catch_unwind(|| {
@@ -196,7 +344,8 @@ pub extern "system" fn MsiEnableUIPreview(hDatabase: MsiHandle, phPreview: *mut 
 /// Previews a dialog box.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[must_use]
 pub extern "system" fn MsiPreviewDialogW(hPreview: MsiHandle, szDialogName: Lpcwstr) -> Uint {
     let result = panic::catch_unwind(|| {
@@ -224,7 +373,8 @@ pub extern "system" fn MsiPreviewDialogW(hPreview: MsiHandle, szDialogName: Lpcw
 /// Previews a dialog box (ANSI).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[must_use]
 pub extern "system" fn MsiPreviewDialogA(hPreview: MsiHandle, szDialogName: Lpcstr) -> Uint {
     let result = panic::catch_unwind(|| {
@@ -252,7 +402,8 @@ pub extern "system" fn MsiPreviewDialogA(hPreview: MsiHandle, szDialogName: Lpcs
 /// Displays a message box (Unicode).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 pub extern "system" fn MsiMessageBoxExW(
     hWndParent: *mut c_void,
     szText: Lpcwstr,
@@ -274,7 +425,8 @@ pub extern "system" fn MsiMessageBoxExW(
 /// Displays a message box (ANSI).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 pub extern "system" fn MsiMessageBoxExA(
     hWndParent: *mut c_void,
     szText: Lpcstr,
@@ -296,7 +448,8 @@ pub extern "system" fn MsiMessageBoxExA(
 /// Previews a billboard within a preview dialog (Unicode).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[must_use]
 pub extern "system" fn MsiPreviewBillboardW(
     hPreview: MsiHandle,
@@ -332,7 +485,8 @@ pub extern "system" fn MsiPreviewBillboardW(
 /// Previews a billboard within a preview dialog (ANSI).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[must_use]
 pub extern "system" fn MsiPreviewBillboardA(
     hPreview: MsiHandle,
@@ -366,23 +520,52 @@ pub extern "system" fn MsiPreviewBillboardA(
 }
 
 #[cfg(test)]
-#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
+#[allow(clippy::too_many_lines)]
+#[allow(clippy::cognitive_complexity)]
 mod tests {
     use super::*;
     use crate::handles::{alloc_handle, MsiObject};
 
+    unsafe extern "system" fn dummy_ui_record_cb(
+        _ctx: *mut c_void,
+        _msg_type: Uint,
+        _h_rec: MsiHandle,
+    ) -> i32 {
+        42
+    }
+
+    unsafe extern "system" fn dummy_ui_w_cb(
+        _ctx: *mut c_void,
+        _msg_type: Uint,
+        _msg: Lpcwstr,
+    ) -> i32 {
+        43
+    }
+
+    unsafe extern "system" fn dummy_ui_a_cb(
+        _ctx: *mut c_void,
+        _msg_type: Uint,
+        _msg: Lpcstr,
+    ) -> i32 {
+        44
+    }
+
     #[test]
     fn test_ui_stubs() {
-        assert_eq!(MsiSetInternalUI(2, std::ptr::null_mut()), 2);
+        let mut hwnd: *mut c_void = std::ptr::dangling_mut::<u8>().cast();
+        assert_eq!(MsiSetInternalUI(5, &raw mut hwnd), 2);
+        assert!(hwnd.is_null());
+        assert_eq!(MsiSetInternalUI(0, &raw mut hwnd), 5);
+        assert!(!hwnd.is_null());
+        assert_eq!(MsiSetInternalUI(2, std::ptr::null_mut()), 5);
+
         let prev_w = MsiSetExternalUIW(None, 0, std::ptr::null_mut());
         assert!(prev_w.is_none());
 
         let prev_a = MsiSetExternalUIA(None, 0, std::ptr::null_mut());
         assert!(prev_a.is_none());
 
-        let mut prev = Some(unsafe {
-            std::mem::transmute::<usize, unsafe extern "system" fn(c_void, u32, u32) -> i32>(1usize)
-        });
+        let mut prev: InstallUIHandlerRecord = Some(dummy_ui_record_cb);
         assert_eq!(
             MsiSetExternalUIRecord(None, 0, std::ptr::null_mut(), &raw mut prev),
             ERROR_SUCCESS
@@ -401,6 +584,29 @@ mod tests {
             inner: rec,
         }));
         assert_eq!(MsiProcessMessage(h_rec, 0, 0), 1);
+
+        // Test record, W, and A callbacks in MsiProcessMessage
+        assert_eq!(
+            MsiSetExternalUIRecord(
+                Some(dummy_ui_record_cb),
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_SUCCESS
+        );
+        assert_eq!(MsiProcessMessage(h_rec, 0, h_rec), 42);
+        let _ = MsiSetExternalUIRecord(None, 0, std::ptr::null_mut(), std::ptr::null_mut());
+
+        let _ = MsiSetExternalUIW(Some(dummy_ui_w_cb), 0, std::ptr::null_mut());
+        assert_eq!(MsiProcessMessage(h_rec, 0, h_rec), 43);
+        let _ = MsiSetExternalUIW(None, 0, std::ptr::null_mut());
+
+        let _ = MsiSetExternalUIA(Some(dummy_ui_a_cb), 0, std::ptr::null_mut());
+        assert_eq!(MsiProcessMessage(h_rec, 0, h_rec), 44);
+        let _ = MsiSetExternalUIA(None, 0, std::ptr::null_mut());
+
+        let _ = crate::handles::close_handle(h_rec);
     }
 
     #[test]

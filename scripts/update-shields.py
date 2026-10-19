@@ -19,6 +19,11 @@ from pre_commit import (
 
 
 def main() -> int:
+    """Computes doc and test coverage percentages and updates README.md shields.
+
+    Returns:
+        int: Process exit code (0 on success).
+    """
     parser = argparse.ArgumentParser(description="Update coverage shields in README.md")
     parser.add_argument(
         "--repo-root",

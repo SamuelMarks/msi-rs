@@ -43,12 +43,12 @@ pub fn format_record(template: &str, record: &Record, context: &FormatContext) -
 ///
 /// # Arguments
 ///
-/// * `template` - The `template` parameter.
-/// * `context` - The `context` parameter.
+/// * `template` - The template value.
+/// * `context` - Active property and condition evaluation context.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// `Ok` containing the formatted or resolved string, or an error on failure.
 ///
 /// # Errors
 ///
@@ -132,6 +132,42 @@ fn parse_until(
             // Parse inner
             let inner = parse_until(chars, Some(']'), record, context)?;
             resolve_bracket_token(&inner, record, context, &mut result);
+        } else if c == '{' {
+            let ahead = chars.clone();
+            let mut depth = 1usize;
+            let mut body = String::new();
+            let mut closes = false;
+            for ac in ahead {
+                if ac == '{' {
+                    depth += 1;
+                } else if ac == '}' {
+                    depth -= 1;
+                    if depth == 0 {
+                        closes = true;
+                        break;
+                    }
+                }
+                body.push(ac);
+            }
+            if !closes {
+                result.push('{');
+                continue;
+            }
+            // Advance chars past the closing '}'
+            for _ in 0..=body.chars().count() {
+                let _ = chars.next();
+            }
+            if body.contains('[') {
+                let stripped = strip_bracket_tokens(&body);
+                let expanded = format_internal(&body, record, context)?;
+                if expanded != stripped {
+                    result.push_str(&expanded);
+                }
+            } else {
+                result.push('{');
+                result.push_str(&body);
+                result.push('}');
+            }
         } else if c == ']' {
             result.push(']');
         } else {
@@ -140,6 +176,22 @@ fn parse_until(
     }
 
     Ok(result)
+}
+
+/// Strips `[...]` tokens from `s` to compare whether any token inside a `{...}` block expanded to non-empty text.
+fn strip_bracket_tokens(s: &str) -> String {
+    let mut out = String::new();
+    let mut depth = 0usize;
+    for ch in s.chars() {
+        if ch == '[' {
+            depth += 1;
+        } else if ch == ']' && depth > 0 {
+            depth -= 1;
+        } else if depth == 0 {
+            out.push(ch);
+        }
+    }
+    out
 }
 
 /// Resolves a parsed `[...]` token against `record` and `context` and appends to `result`.
@@ -157,11 +209,11 @@ fn resolve_bracket_token(
         } else if let Ok(val) = std::env::var(var) {
             result.push_str(&val);
         }
-    } else if let Some(var) = inner.strip_prefix('#') {
+    } else if let Some(var) = inner.strip_prefix('#').or_else(|| inner.strip_prefix('!')) {
         if let Some(val) = context.files.get(var) {
             result.push_str(val);
         }
-    } else if let Some(var) = inner.strip_prefix('$') {
+    } else if let Some(var) = inner.strip_prefix('$').or_else(|| inner.strip_prefix('?')) {
         if let Some(val) = context.components.get(var) {
             result.push_str(val);
         }
@@ -171,15 +223,12 @@ fn resolve_bracket_token(
                 result.push_str(&field.to_string());
             }
         }
-    } else if inner.starts_with('!') || inner.starts_with('?') {
-        // Not fully supported yet, leave empty for now as fallback
     } else if let Some(val) = context.properties.get(inner) {
         result.push_str(val);
     }
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::database::tables::FieldValue;
@@ -379,9 +428,13 @@ mod tests {
             FieldValue::String("B".to_string()),
         ]);
 
-        // $Comp1
+        // $Comp1 and ?Comp1
         assert_eq!(
             format_record("Component is [$Comp1]", &rec, &ctx),
+            Ok("Component is C:\\CompDir".to_string())
+        );
+        assert_eq!(
+            format_record("Component is [?Comp1]", &rec, &ctx),
             Ok("Component is C:\\CompDir".to_string())
         );
 
@@ -413,6 +466,28 @@ mod tests {
         assert_eq!(
             format_record("Close bracket ]", &rec, &ctx),
             Ok("Close bracket ]".to_string())
+        );
+
+        // Conditional curly-brace groups {...} matching Wine format.c
+        assert_eq!(
+            format_record("Prefix {has [MyProp]} suffix", &rec, &ctx),
+            Ok("Prefix has PropValue suffix".to_string())
+        );
+        assert_eq!(
+            format_record("Prefix {missing [MissingProp]} suffix", &rec, &ctx),
+            Ok("Prefix  suffix".to_string())
+        );
+        assert_eq!(
+            format_record("GUID {1234-5678}", &rec, &ctx),
+            Ok("GUID {1234-5678}".to_string())
+        );
+        assert_eq!(
+            format_record("Unclosed {brace [MyProp]", &rec, &ctx),
+            Ok("Unclosed {brace PropValue".to_string())
+        );
+        assert_eq!(
+            format_record("Nested {{inner} [MyProp]}", &rec, &ctx),
+            Ok("Nested {inner} PropValue".to_string())
         );
     }
 }

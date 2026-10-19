@@ -187,7 +187,7 @@ impl OfflineChrootSandbox {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn setup_environment(&mut self) -> Result<()> {
         let dev = self.sysroot.join("dev");
         let proc = self.sysroot.join("proc");
@@ -214,7 +214,7 @@ impl OfflineChrootSandbox {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub const fn teardown(&mut self) -> Result<()> {
         self.is_active = false;
         Ok(())
@@ -407,7 +407,7 @@ impl BareMetalRollbackJournal {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `std::io::Result<()>` value.
     pub fn wipe_stream(
         stream: &mut dyn SeekWrite,
         start_lba: u64,
@@ -441,7 +441,7 @@ impl BareMetalRollbackJournal {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn wipe_sector_range(
         device_path: &Path,
         start_lba: u64,
@@ -513,7 +513,7 @@ impl BareMetalRollbackJournal {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn execute_rollback(&mut self) -> Result<()> {
         while let Some(action) = self.actions.pop() {
             match action {
@@ -552,7 +552,6 @@ impl BareMetalRollbackJournal {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

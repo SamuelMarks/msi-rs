@@ -74,11 +74,11 @@ impl CfData {
         header_bytes[0..2].copy_from_slice(&compressed_size.to_le_bytes());
         header_bytes[2..4].copy_from_slice(&uncompressed_size.to_le_bytes());
 
-        let mut csum = csum_compute(&header_bytes, 0);
-        if !reserve_data.is_empty() {
-            csum = csum_compute(&reserve_data, csum);
-        }
-        csum = csum_compute(&payload, csum);
+        let csum_payload = csum_compute(&payload, 0);
+        let mut hdr_and_res = Vec::with_capacity(4 + reserve_data.len());
+        hdr_and_res.extend_from_slice(&header_bytes);
+        hdr_and_res.extend_from_slice(&reserve_data);
+        let csum = csum_compute(&hdr_and_res, csum_payload);
 
         Ok(Self {
             checksum: csum,
@@ -138,12 +138,8 @@ impl CfData {
 
         // Checksum verification (skip if checksum == 0 per spec)
         if checksum != 0 {
-            let header_bytes = &bytes[4..8];
-            let mut csum = csum_compute(header_bytes, 0);
-            if data_reserve_len > 0 {
-                csum = csum_compute(&reserve_data, csum);
-            }
-            csum = csum_compute(&payload, csum);
+            let csum_payload = csum_compute(&payload, 0);
+            let csum = csum_compute(&bytes[4..reserve_end], csum_payload);
 
             if csum != checksum {
                 return Err(MsiError::InvalidCabChecksum {

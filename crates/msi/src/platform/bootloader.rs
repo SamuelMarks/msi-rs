@@ -240,7 +240,7 @@ impl LinuxBootloaderConfig {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn write_systemd_boot(
         esp_root: &Path,
         entry_name: &str,
@@ -458,7 +458,7 @@ impl EfiNvramManager {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn create_boot_entry(
         efivarfs_root: Option<&Path>,
         boot_index: u16,
@@ -550,7 +550,7 @@ impl EfiNvramManager {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn set_boot_order(efivarfs_root: Option<&Path>, order: &[u16]) -> Result<()> {
         let root = efivarfs_root.unwrap_or_else(|| Path::new("/sys/firmware/efi/efivars"));
         let var_filename = format!("BootOrder-{}", Self::EFI_GLOBAL_VARIABLE_GUID);
@@ -572,7 +572,6 @@ impl EfiNvramManager {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

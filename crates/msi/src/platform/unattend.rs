@@ -355,7 +355,7 @@ runcmd:
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn write_to_sysroot(&self, sysroot: &Path) -> Result<()> {
         let cloud_dir = sysroot.join("etc/cloud/cloud.cfg.d");
         let sysusers_dir = sysroot.join("etc/sysusers.d");
@@ -387,7 +387,6 @@ runcmd:
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

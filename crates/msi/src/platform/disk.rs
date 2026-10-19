@@ -244,12 +244,12 @@ impl BlockDeviceScanner {
     ///
     /// # Arguments
     ///
-    /// * `dev_dir` - The `dev_dir` parameter.
-    /// * `name` - The `name` parameter.
+    /// * `dev_dir` - Filesystem path for the dev dir.
+    /// * `name` - Identifier or name of the target entity.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `BlockDevice` value.
     fn parse_sysfs_device(dev_dir: &Path, name: &str) -> BlockDevice {
         let kind = if name.starts_with("loop") {
             DeviceKind::Loopback
@@ -355,7 +355,6 @@ impl BlockDeviceScanner {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

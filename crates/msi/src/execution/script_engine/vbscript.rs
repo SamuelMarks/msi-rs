@@ -36,7 +36,7 @@ impl Variant {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `true` if the check succeeds or state matches, `false` otherwise.
     #[must_use]
     pub fn is_truthy(&self) -> bool {
         match self {
@@ -52,7 +52,7 @@ impl Variant {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `i64` numeric result or status code.
     #[must_use]
     pub fn to_integer(&self) -> i64 {
         match self {
@@ -73,7 +73,7 @@ impl Variant {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     #[must_use]
     pub fn to_string_value(&self) -> String {
         match self {
@@ -240,11 +240,11 @@ impl<'a> VbLexer<'a> {
     ///
     /// # Arguments
     ///
-    /// * `input` - The `input` parameter.
+    /// * `input` - Input byte slice or source string.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     fn new(input: &'a str) -> Self {
         Self {
             chars: input.chars().collect(),
@@ -259,7 +259,7 @@ impl<'a> VbLexer<'a> {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(char)` if found, or `None` if absent.
     fn peek(&self) -> Option<char> {
         self.chars.get(self.pos).copied()
     }
@@ -268,7 +268,7 @@ impl<'a> VbLexer<'a> {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(char)` if found, or `None` if absent.
     fn advance(&mut self) -> Option<char> {
         let ch = self.chars.get(self.pos).copied()?;
         self.pos += 1;
@@ -307,12 +307,12 @@ impl<'a> VbLexer<'a> {
     ///
     /// # Arguments
     ///
-    /// * `start_line` - The `start_line` parameter.
-    /// * `start_col` - The `start_col` parameter.
+    /// * `start_line` - 1-based starting line number.
+    /// * `start_col` - 1-based starting column number.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(VbToken)` on success, or an error if the operation fails.
     fn read_string(&mut self, start_line: usize, start_col: usize) -> Result<VbToken> {
         let mut text = String::new();
         while let Some(ch) = self.advance() {
@@ -342,7 +342,7 @@ impl<'a> VbLexer<'a> {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(VbToken)` on success, or an error if the operation fails.
     #[allow(clippy::too_many_lines)]
     fn next_token(&mut self) -> Result<VbToken> {
         self.skip_whitespace_inline();
@@ -514,7 +514,7 @@ impl<'a> VbLexer<'a> {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok` containing the collected `VbToken` items, or an error on failure.
     fn tokenize_all(&mut self) -> Result<Vec<VbToken>> {
         let mut tokens = Vec::new();
         loop {
@@ -748,11 +748,11 @@ impl VbParser {
     ///
     /// # Arguments
     ///
-    /// * `tokens` - The `tokens` parameter.
+    /// * `tokens` - Slice of lexical tokens.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     const fn new(tokens: Vec<VbToken>) -> Self {
         Self { tokens, pos: 0 }
     }
@@ -761,7 +761,7 @@ impl VbParser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&VbToken` value.
     fn peek(&self) -> &VbToken {
         self.tokens.get(self.pos).unwrap_or(&VbToken {
             kind: VbTokenKind::Eof,
@@ -774,7 +774,7 @@ impl VbParser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `VbToken` value.
     fn advance(&mut self) -> VbToken {
         let tok = self.peek().clone();
         if self.pos < self.tokens.len() {
@@ -787,11 +787,11 @@ impl VbParser {
     ///
     /// # Arguments
     ///
-    /// * `kind` - The `kind` parameter.
+    /// * `kind` - Classification or variant kind.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `true` if the check succeeds or state matches, `false` otherwise.
     fn match_token(&mut self, kind: &VbTokenKind) -> bool {
         if &self.peek().kind == kind {
             self.advance();
@@ -812,12 +812,12 @@ impl VbParser {
     ///
     /// # Arguments
     ///
-    /// * `kind` - The `kind` parameter.
-    /// * `msg` - The `msg` parameter.
+    /// * `kind` - Classification or variant kind.
+    /// * `msg` - Diagnostic or log message text.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(VbToken)` on success, or an error if the operation fails.
     fn expect(&mut self, kind: &VbTokenKind, msg: &str) -> Result<VbToken> {
         let tok = self.peek().clone();
         if &tok.kind == kind {
@@ -835,7 +835,7 @@ impl VbParser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok` containing the collected `VbStmt` items, or an error on failure.
     fn parse_program(&mut self) -> Result<Vec<VbStmt>> {
         let mut stmts = Vec::new();
         self.skip_newlines();
@@ -850,7 +850,7 @@ impl VbParser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(VbStmt)` on success, or an error if the operation fails.
     #[allow(clippy::too_many_lines)]
     fn parse_statement(&mut self) -> Result<VbStmt> {
         self.skip_newlines();
@@ -1143,7 +1143,7 @@ impl VbParser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok` containing the collected `String` items, or an error on failure.
     fn parse_parameter_list(&mut self) -> Result<Vec<String>> {
         let mut params = Vec::new();
         if self.match_token(&VbTokenKind::LeftParen) {
@@ -1167,7 +1167,7 @@ impl VbParser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `true` if the check succeeds or state matches, `false` otherwise.
     fn is_end_sub(&self) -> bool {
         self.peek().kind == VbTokenKind::KeywordEnd
             && self
@@ -1180,7 +1180,7 @@ impl VbParser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     fn expect_end_sub(&mut self) -> Result<()> {
         self.expect(&VbTokenKind::KeywordEnd, "'End'")?;
         self.advance();
@@ -1191,7 +1191,7 @@ impl VbParser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `true` if the check succeeds or state matches, `false` otherwise.
     fn is_end_function(&self) -> bool {
         self.peek().kind == VbTokenKind::KeywordEnd
             && self
@@ -1204,7 +1204,7 @@ impl VbParser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     fn expect_end_function(&mut self) -> Result<()> {
         self.expect(&VbTokenKind::KeywordEnd, "'End'")?;
         self.advance();
@@ -1215,7 +1215,7 @@ impl VbParser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `true` if the check succeeds or state matches, `false` otherwise.
     fn is_if_boundary(&self) -> bool {
         match self.peek().kind {
             VbTokenKind::KeywordElseIf | VbTokenKind::KeywordElse => true,
@@ -1227,7 +1227,7 @@ impl VbParser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `true` if the check succeeds or state matches, `false` otherwise.
     fn is_end_if(&self) -> bool {
         self.peek().kind == VbTokenKind::KeywordEnd
             && self
@@ -1240,7 +1240,7 @@ impl VbParser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     fn expect_end_if(&mut self) -> Result<()> {
         self.expect(&VbTokenKind::KeywordEnd, "'End'")?;
         self.advance();
@@ -1251,7 +1251,7 @@ impl VbParser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(VbExpr)` on success, or an error if the operation fails.
     fn parse_expression(&mut self) -> Result<VbExpr> {
         self.parse_logical_or()
     }
@@ -1260,7 +1260,7 @@ impl VbParser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(VbExpr)` on success, or an error if the operation fails.
     fn parse_logical_or(&mut self) -> Result<VbExpr> {
         let mut left = self.parse_logical_and()?;
         loop {
@@ -1287,7 +1287,7 @@ impl VbParser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(VbExpr)` on success, or an error if the operation fails.
     fn parse_logical_and(&mut self) -> Result<VbExpr> {
         let mut left = self.parse_equality()?;
         while self.match_token(&VbTokenKind::KeywordAnd) {
@@ -1307,7 +1307,7 @@ impl VbParser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(VbExpr)` on success, or an error if the operation fails.
     fn parse_equality(&mut self) -> Result<VbExpr> {
         let mut left = self.parse_addition()?;
         loop {
@@ -1338,7 +1338,7 @@ impl VbParser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(VbExpr)` on success, or an error if the operation fails.
     fn parse_addition(&mut self) -> Result<VbExpr> {
         let mut left = self.parse_multiplication()?;
         loop {
@@ -1366,7 +1366,7 @@ impl VbParser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(VbExpr)` on success, or an error if the operation fails.
     fn parse_multiplication(&mut self) -> Result<VbExpr> {
         let mut left = self.parse_unary()?;
         loop {
@@ -1394,7 +1394,7 @@ impl VbParser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(VbExpr)` on success, or an error if the operation fails.
     fn parse_unary(&mut self) -> Result<VbExpr> {
         let tok = self.peek().clone();
         match tok.kind {
@@ -1426,7 +1426,7 @@ impl VbParser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(VbExpr)` on success, or an error if the operation fails.
     fn parse_postfix(&mut self) -> Result<VbExpr> {
         let mut expr = self.parse_primary()?;
         loop {
@@ -1481,7 +1481,7 @@ impl VbParser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(VbExpr)` on success, or an error if the operation fails.
     fn parse_primary(&mut self) -> Result<VbExpr> {
         let tok = self.advance();
         match tok.kind {
@@ -1562,7 +1562,7 @@ impl VBScriptEngine {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -1601,12 +1601,12 @@ impl VBScriptEngine {
     ///
     /// # Arguments
     ///
-    /// * `name` - The `name` parameter.
-    /// * `session` - The `session` parameter.
+    /// * `name` - Identifier or name of the target entity.
+    /// * `session` - Active installer session state.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `Variant` value.
     fn get_var(&self, name: &str, session: &ScriptSession) -> Variant {
         let lower = name.to_ascii_lowercase();
         if lower == "session" {
@@ -1629,9 +1629,9 @@ impl VBScriptEngine {
     ///
     /// # Arguments
     ///
-    /// * `name` - The `name` parameter.
-    /// * `val` - The `val` parameter.
-    /// * `session` - The `session` parameter.
+    /// * `name` - Identifier or name of the target entity.
+    /// * `val` - Value to store, format, or evaluate.
+    /// * `session` - Active installer session state.
     fn set_var(&mut self, name: &str, val: &Variant, session: &mut ScriptSession) {
         let lower = name.to_ascii_lowercase();
         self.variables.insert(lower, val.clone());
@@ -1647,12 +1647,12 @@ impl VBScriptEngine {
     ///
     /// # Arguments
     ///
-    /// * `stmt` - The `stmt` parameter.
-    /// * `session` - The `session` parameter.
+    /// * `stmt` - Parsed script or SQL statement.
+    /// * `session` - Active installer session state.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Some(Variant))` if present, `Ok(None)` if absent, or an error on failure.
     #[allow(clippy::too_many_lines)]
     fn eval_statement(
         &mut self,
@@ -1867,12 +1867,12 @@ impl VBScriptEngine {
     ///
     /// # Arguments
     ///
-    /// * `expr` - The `expr` parameter.
-    /// * `session` - The `session` parameter.
+    /// * `expr` - Condition or script expression string.
+    /// * `session` - Active installer session state.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Variant)` on success, or an error if the operation fails.
     #[allow(clippy::too_many_lines)]
     fn eval_expression(&mut self, expr: &VbExpr, session: &mut ScriptSession) -> Result<Variant> {
         match expr {
@@ -2049,16 +2049,16 @@ impl VBScriptEngine {
     ///
     /// # Arguments
     ///
-    /// * `target` - The `target` parameter.
-    /// * `method` - The `method` parameter.
-    /// * `arguments` - The `arguments` parameter.
-    /// * `line` - The `line` parameter.
-    /// * `col` - The `col` parameter.
-    /// * `session` - The `session` parameter.
+    /// * `target` - Target path, property name, or destination identifier.
+    /// * `method` - Name of the method or COM member to invoke.
+    /// * `arguments` - Optional command-line arguments string.
+    /// * `line` - Source text line to parse.
+    /// * `col` - 0-based or 1-based column index.
+    /// * `session` - Active installer session state.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Variant)` on success, or an error if the operation fails.
     fn call_method(
         &mut self,
         target: Variant,
@@ -2159,15 +2159,15 @@ impl VBScriptEngine {
     ///
     /// # Arguments
     ///
-    /// * `name` - The `name` parameter.
-    /// * `arguments` - The `arguments` parameter.
-    /// * `line` - The `line` parameter.
-    /// * `col` - The `col` parameter.
-    /// * `session` - The `session` parameter.
+    /// * `name` - Identifier or name of the target entity.
+    /// * `arguments` - Optional command-line arguments string.
+    /// * `line` - Source text line to parse.
+    /// * `col` - 0-based or 1-based column index.
+    /// * `session` - Active installer session state.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Variant)` on success, or an error if the operation fails.
     fn call_function(
         &mut self,
         name: &str,
@@ -2275,13 +2275,13 @@ impl VBScriptEngine {
     ///
     /// # Arguments
     ///
-    /// * `line` - The `line` parameter.
-    /// * `col` - The `col` parameter.
-    /// * `msg` - The `msg` parameter.
+    /// * `line` - Source text line to parse.
+    /// * `col` - 0-based or 1-based column index.
+    /// * `msg` - Diagnostic or log message text.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     fn raise_error(&mut self, line: usize, col: usize, msg: &str) -> Result<()> {
         self.err.number = 5;
         self.err.description = msg.to_string();
@@ -2298,7 +2298,6 @@ impl VBScriptEngine {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::EvaluationContext;

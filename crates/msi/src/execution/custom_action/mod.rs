@@ -99,7 +99,7 @@ impl CustomActionExecutor {
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -626,7 +626,7 @@ impl CustomActionExecutor {
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(u32)` on success, or an error if the operation fails.
     fn execute_dll_action(
         &self,
         action: &CustomActionDefinition,
@@ -707,11 +707,7 @@ impl CustomActionExecutor {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::too_many_lines,
-    clippy::unnecessary_wraps,
-    clippy::redundant_clone
-)]
+#[allow(clippy::too_many_lines)]
 mod tests {
     use super::*;
 

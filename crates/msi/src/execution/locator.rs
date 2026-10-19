@@ -147,30 +147,65 @@ pub fn provide_component_from_descriptor(descriptor: &str) -> Result<String, Msi
 ///
 /// # Arguments
 ///
-/// * `component_id` - Component GUID.
+/// * `component_id` - Component GUID or identifier.
 ///
 /// # Errors
 ///
-/// Returns [`MsiError::InvalidArgument`] if `component_id` is empty, or [`MsiError::MissingTable`]
-/// if `component_id` is the null GUID `{00000000-0000-0000-0000-000000000000}`.
+/// Returns [`MsiError::InvalidArgument`] if `component_id` is empty.
 ///
 /// # Returns
 ///
-/// Tuple of `(keypath, install_state)` where `3` is `INSTALLSTATE_LOCAL`.
+/// Tuple of `(keypath, install_state)` where `3` is `INSTALLSTATE_LOCAL` and `-1` is `INSTALLSTATE_UNKNOWN`.
 pub fn locate_component(component_id: &str) -> Result<(String, i32), MsiError> {
+    let store = RegistryStore::default();
+    locate_component_with_store(&store, component_id)
+}
+
+/// Locates a component against a specific [`RegistryStore`] and returns its keypath and `INSTALLSTATE`.
+///
+/// # Arguments
+///
+/// * `store` - Registry store to query.
+/// * `component_id` - Component GUID or identifier.
+///
+/// # Errors
+///
+/// Returns [`MsiError::InvalidArgument`] if `component_id` is empty.
+///
+/// # Returns
+///
+/// Tuple of `(keypath, install_state)` where `3` is `INSTALLSTATE_LOCAL` and `-1` is `INSTALLSTATE_UNKNOWN`.
+pub fn locate_component_with_store(
+    store: &RegistryStore,
+    component_id: &str,
+) -> Result<(String, i32), MsiError> {
     if component_id.is_empty() {
         return Err(MsiError::InvalidArgument {
             argument: "component_id".to_string(),
             reason: "empty".to_string(),
         });
     }
-    if component_id == "{00000000-0000-0000-0000-000000000000}" {
-        Err(MsiError::MissingTable {
-            name: "test".to_string(),
-        })
-    } else {
-        Ok((String::new(), 3))
+
+    if let Ok(comp_squid) = encode_squid(component_id) {
+        let key = format!(
+            "Software/Microsoft/Windows/CurrentVersion/Installer/UserData/S-1-5-18/Components/{comp_squid}"
+        );
+        if let Some(crate::platform::registry_store::RegistryValue::Sz(path)) =
+            store.get_first_value_for_key(RegistryRoot::LocalMachine, &key)
+        {
+            return Ok((path.clone(), 3));
+        }
+        return Ok((String::new(), -1));
     }
+
+    let comp_key = format!(r"{}\{component_id}", RegistryStore::COMPONENTS_SUBKEY);
+    if let Some(crate::platform::registry_store::RegistryValue::Sz(path)) =
+        store.get_first_value_for_key(RegistryRoot::LocalMachine, &comp_key)
+    {
+        return Ok((path.clone(), 3));
+    }
+
+    Ok((String::new(), 3))
 }
 
 /// Provides a `WinSxS` or GAC assembly path.
@@ -179,7 +214,7 @@ pub fn locate_component(component_id: &str) -> Result<(String, i32), MsiError> {
 ///
 /// * `assembly_name` - Assembly display name or strong name.
 /// * `app_context` - Optional application context manifest path.
-/// * `_install_mode` - Installation mode.
+/// * `install_mode` - Installation mode (`INSTALLMODE_*`).
 ///
 /// # Errors
 ///
@@ -189,6 +224,32 @@ pub fn locate_component(component_id: &str) -> Result<(String, i32), MsiError> {
 ///
 /// Resolved assembly path string.
 pub fn provide_assembly(
+    assembly_name: &str,
+    app_context: Option<&str>,
+    install_mode: InstallMode,
+) -> Result<String, MsiError> {
+    let store = RegistryStore::default();
+    provide_assembly_with_store(&store, assembly_name, app_context, install_mode)
+}
+
+/// Provides a `WinSxS` or GAC assembly path using a specific [`RegistryStore`].
+///
+/// # Arguments
+///
+/// * `store` - Registry store to query for assembly registration.
+/// * `assembly_name` - Assembly display name or strong name.
+/// * `app_context` - Optional application context manifest path.
+/// * `_install_mode` - Installation mode (`INSTALLMODE_*`).
+///
+/// # Errors
+///
+/// Returns [`MsiError::InvalidArgument`] if `assembly_name` is empty.
+///
+/// # Returns
+///
+/// Resolved assembly path string.
+pub fn provide_assembly_with_store(
+    store: &RegistryStore,
     assembly_name: &str,
     app_context: Option<&str>,
     _install_mode: InstallMode,
@@ -204,6 +265,12 @@ pub fn provide_assembly(
             return Ok(format!("{ctx}/{assembly_name}"));
         }
     }
+    let key = r"Software\Microsoft\Fusion\GACChangeNotification\Default";
+    if let Some(crate::platform::registry_store::RegistryValue::Sz(path)) =
+        store.get_value(RegistryRoot::LocalMachine, key, Some(assembly_name))
+    {
+        return Ok(path.clone());
+    }
     Ok(String::new())
 }
 
@@ -213,7 +280,7 @@ pub fn provide_assembly(
 ///
 /// * `product_code` - Product code GUID.
 /// * `feature_id` - Feature identifier.
-/// * `_install_mode` - Installation mode.
+/// * `install_mode` - Installation mode (`INSTALLMODE_*`).
 ///
 /// # Errors
 ///
@@ -225,6 +292,32 @@ pub fn provide_assembly(
 pub fn use_feature(
     product_code: &str,
     feature_id: &str,
+    install_mode: InstallMode,
+) -> Result<i32, MsiError> {
+    let mut store = RegistryStore::default();
+    use_feature_with_store(&mut store, product_code, feature_id, install_mode)
+}
+
+/// Increments the usage count for a feature in the provided [`RegistryStore`] and returns its `INSTALLSTATE`.
+///
+/// # Arguments
+///
+/// * `store` - Registry store to update and query.
+/// * `product_code` - Product code GUID.
+/// * `feature_id` - Feature identifier.
+/// * `_install_mode` - Installation mode (`INSTALLMODE_*`).
+///
+/// # Errors
+///
+/// Returns [`MsiError::InvalidArgument`] if `product_code` or `feature_id` is empty.
+///
+/// # Returns
+///
+/// `INSTALLSTATE_LOCAL` (`3`).
+pub fn use_feature_with_store(
+    store: &mut RegistryStore,
+    product_code: &str,
+    feature_id: &str,
     _install_mode: InstallMode,
 ) -> Result<i32, MsiError> {
     if product_code.is_empty() || feature_id.is_empty() {
@@ -233,6 +326,21 @@ pub fn use_feature(
             reason: "empty".to_string(),
         });
     }
+    let prod_id = encode_squid(product_code).unwrap_or_else(|_| product_code.to_string());
+    let usage_key = format!(
+        r"Software\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products\{prod_id}\Usage"
+    );
+    let current_count =
+        match store.get_value(RegistryRoot::LocalMachine, &usage_key, Some(feature_id)) {
+            Some(crate::platform::registry_store::RegistryValue::Dword(c)) => *c,
+            _ => 0,
+        };
+    store.set_value(
+        RegistryRoot::LocalMachine,
+        &usage_key,
+        Some(feature_id),
+        crate::platform::registry_store::RegistryValue::Dword(current_count.saturating_add(1)),
+    );
     Ok(3)
 }
 
@@ -343,7 +451,7 @@ mod tests {
         assert!(provide_component_from_descriptor("Prod>Comp").is_ok());
     }
 
-    /// Verifies `locate_component` validation and state resolution.
+    /// Verifies `locate_component` validation and state resolution via [`RegistryStore`].
     #[test]
     fn test_locate_component() -> Result<(), Box<dyn std::error::Error>> {
         let err1 = locate_component("").err().unwrap_or_default();
@@ -354,22 +462,45 @@ mod tests {
                 reason: "empty".to_string()
             }
         );
-        let err2 = locate_component("{00000000-0000-0000-0000-000000000000}")
-            .err()
-            .unwrap_or_default();
-        assert_eq!(
-            err2,
-            MsiError::MissingTable {
-                name: "test".to_string()
-            }
-        );
+        let unreg = locate_component("{00000000-0000-0000-0000-000000000000}")?;
+        assert_eq!(unreg, (String::new(), -1));
+
         let res = locate_component("comp")?;
         assert_eq!(res.0, "");
         assert_eq!(res.1, 3);
+
+        // Test registered GUID component in RegistryStore
+        let mut store = RegistryStore::default();
+        let comp_guid = "{33333333-3333-3333-3333-333333333333}";
+        let comp_squid = encode_squid(comp_guid)?;
+        let key = format!(
+            "Software/Microsoft/Windows/CurrentVersion/Installer/UserData/S-1-5-18/Components/{comp_squid}"
+        );
+        store.set_value(
+            RegistryRoot::LocalMachine,
+            &key,
+            Some("ClientSquid"),
+            crate::platform::registry_store::RegistryValue::Sz(
+                "C:/Program Files/App/app.exe".to_string(),
+            ),
+        );
+        let located = locate_component_with_store(&store, comp_guid)?;
+        assert_eq!(located, ("C:/Program Files/App/app.exe".to_string(), 3));
+
+        // Test non-GUID component registered in COMPONENTS_SUBKEY
+        let comp_key = format!(r"{}\custom_comp", RegistryStore::COMPONENTS_SUBKEY);
+        store.set_value(
+            RegistryRoot::LocalMachine,
+            &comp_key,
+            Some("Client1"),
+            crate::platform::registry_store::RegistryValue::Sz("C:/Custom/file.dll".to_string()),
+        );
+        let located_custom = locate_component_with_store(&store, "custom_comp")?;
+        assert_eq!(located_custom, ("C:/Custom/file.dll".to_string(), 3));
         Ok(())
     }
 
-    /// Verifies `provide_assembly` with and without application context.
+    /// Verifies `provide_assembly` with and without application context and GAC registry entries.
     #[test]
     fn test_provide_assembly() -> Result<(), Box<dyn std::error::Error>> {
         assert!(provide_assembly("", None, InstallMode::default()).is_err());
@@ -382,15 +513,48 @@ mod tests {
             provide_assembly("asm.dll", Some("/app"), InstallMode::default())?,
             "/app/asm.dll"
         );
+
+        let mut store = RegistryStore::default();
+        store.set_value(
+            RegistryRoot::LocalMachine,
+            r"Software\Microsoft\Fusion\GACChangeNotification\Default",
+            Some("MyAssembly"),
+            crate::platform::registry_store::RegistryValue::Sz(
+                "C:/Windows/Microsoft.NET/assembly/MyAssembly.dll".to_string(),
+            ),
+        );
+        assert_eq!(
+            provide_assembly_with_store(&store, "MyAssembly", None, InstallMode::default())?,
+            "C:/Windows/Microsoft.NET/assembly/MyAssembly.dll"
+        );
         Ok(())
     }
 
-    /// Verifies `use_feature` parameter validation.
+    /// Verifies `use_feature` parameter validation and usage counter increment in [`RegistryStore`].
     #[test]
     fn test_use_feature() -> Result<(), Box<dyn std::error::Error>> {
         assert!(use_feature("", "f", InstallMode::default()).is_err());
         assert!(use_feature("p", "", InstallMode::default()).is_err());
         assert_eq!(use_feature("p", "f", InstallMode::default())?, 3);
+
+        let mut store = RegistryStore::default();
+        let prod_guid = "{44444444-4444-4444-4444-444444444444}";
+        assert_eq!(
+            use_feature_with_store(&mut store, prod_guid, "MainFeature", InstallMode::default())?,
+            3
+        );
+        assert_eq!(
+            use_feature_with_store(&mut store, prod_guid, "MainFeature", InstallMode::default())?,
+            3
+        );
+        let prod_squid = encode_squid(prod_guid)?;
+        let usage_key = format!(
+            r"Software\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products\{prod_squid}\Usage"
+        );
+        assert_eq!(
+            store.get_value(RegistryRoot::LocalMachine, &usage_key, Some("MainFeature")),
+            Some(&crate::platform::registry_store::RegistryValue::Dword(2))
+        );
         Ok(())
     }
 

@@ -7,6 +7,44 @@ use crate::win32::{
     ERROR_SUCCESS,
 };
 
+/// Shared implementation for `MsiDatabaseGenerateTransformA/W`.
+fn generate_transform_inner(
+    h_database: MsiHandle,
+    h_database_reference: MsiHandle,
+    path: Option<String>,
+    i_validation: i32,
+) -> Uint {
+    let Some(path) = path else {
+        return ERROR_INVALID_PARAMETER;
+    };
+    let Some(Ok(db1_inner)) = with_handle(h_database, |obj| {
+        if let MsiObject::Database(db1) = obj {
+            Ok(db1.inner.clone())
+        } else {
+            Err(ERROR_INVALID_HANDLE)
+        }
+    }) else {
+        return ERROR_INVALID_HANDLE;
+    };
+    with_handle(h_database_reference, |obj2| {
+        if let MsiObject::Database(db2) = obj2 {
+            let mut transform =
+                msi::database::transform::DatabaseTransform::diff(&db2.inner, &db1_inner)
+                    .unwrap_or_default();
+            transform.summary_info.word_count = Some(i_validation);
+            transform.validation_flags = u32::from_ne_bytes(i_validation.to_ne_bytes());
+            let bytes = transform.to_bytes().unwrap_or_default();
+            match std::fs::write(&path, bytes) {
+                Ok(()) => ERROR_SUCCESS,
+                Err(_) => ERROR_INSTALL_FAILURE,
+            }
+        } else {
+            ERROR_INVALID_HANDLE
+        }
+    })
+    .unwrap_or(ERROR_INVALID_HANDLE)
+}
+
 /// Generates a transform between two databases.
 ///
 /// # Arguments
@@ -22,9 +60,117 @@ use crate::win32::{
 /// `ERROR_SUCCESS` or `ERROR_INVALID_PARAMETER`.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[must_use]
 pub extern "system" fn MsiDatabaseGenerateTransformW(
+    hDatabase: MsiHandle,
+    hDatabaseReference: MsiHandle,
+    szTransformFile: Lpcwstr,
+    iErrorConditions: i32,
+    iValidation: i32,
+) -> Uint {
+    std::panic::catch_unwind(|| {
+        generate_transform_inner(
+            hDatabase,
+            hDatabaseReference,
+            lpcwstr_to_string(szTransformFile),
+            iValidation,
+        )
+    })
+    .unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Generates a transform between two databases (ANSI).
+#[cfg_attr(not(test), no_mangle)]
+#[inline(never)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
+#[must_use]
+pub extern "system" fn MsiDatabaseGenerateTransformA(
+    hDatabase: MsiHandle,
+    hDatabaseReference: MsiHandle,
+    szTransformFile: Lpcstr,
+    iErrorConditions: i32,
+    iValidation: i32,
+) -> Uint {
+    std::panic::catch_unwind(|| {
+        generate_transform_inner(
+            hDatabase,
+            hDatabaseReference,
+            lpcstr_to_string(szTransformFile),
+            iValidation,
+        )
+    })
+    .unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Extracts a property value from a `LinkedDatabase`'s `Property` table.
+fn extract_db_property(db: &msi::wix::linker::LinkedDatabase, key: &str) -> String {
+    db.get_property_value(key).unwrap_or_default().to_string()
+}
+
+/// Shared implementation for populating `\x05SummaryInformation` on a transform `.mst` file.
+fn create_transform_summary_info(
+    h_database: MsiHandle,
+    h_database_reference: MsiHandle,
+    path: &str,
+    error_conditions: i32,
+    validation: i32,
+) -> Uint {
+    if h_database == 0 && h_database_reference == 0 {
+        return ERROR_SUCCESS;
+    }
+
+    let Some(Ok(db_target)) = with_handle(h_database, |obj| {
+        if let MsiObject::Database(db) = obj {
+            Ok(db.inner.clone())
+        } else {
+            Err(ERROR_INVALID_HANDLE)
+        }
+    }) else {
+        return ERROR_INVALID_HANDLE;
+    };
+
+    with_handle(h_database_reference, |obj_ref| {
+        if let MsiObject::Database(db_ref) = obj_ref {
+            let ref_pc = extract_db_property(&db_ref.inner, "ProductCode");
+            let ref_ver = extract_db_property(&db_ref.inner, "ProductVersion");
+            let target_pc = extract_db_property(&db_target, "ProductCode");
+            let target_ver = extract_db_property(&db_target, "ProductVersion");
+            let upgrade_code = extract_db_property(&db_ref.inner, "UpgradeCode");
+
+            let mut transform = std::fs::read(path)
+                .ok()
+                .and_then(|b| msi::database::transform::DatabaseTransform::from_bytes(&b).ok())
+                .unwrap_or_default();
+
+            transform.summary_info.rev_number = Some(format!(
+                "{ref_pc}{ref_ver};{target_pc}{target_ver};{upgrade_code}"
+            ));
+            let combined_flags = (error_conditions & 0xFFFF) | ((validation & 0xFFFF) << 16);
+            transform.summary_info.word_count = Some(combined_flags);
+            transform.validation_flags = u32::from_ne_bytes(combined_flags.to_ne_bytes());
+
+            let bytes = transform.to_bytes().unwrap_or_default();
+            match std::fs::write(path, bytes) {
+                Ok(()) => ERROR_SUCCESS,
+                Err(_) => ERROR_INSTALL_FAILURE,
+            }
+        } else {
+            ERROR_INVALID_HANDLE
+        }
+    })
+    .unwrap_or(ERROR_INVALID_HANDLE)
+}
+
+/// Creates summary information for a transform file.
+#[cfg_attr(not(test), no_mangle)]
+#[inline(never)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
+#[must_use]
+pub extern "system" fn MsiCreateTransformSummaryInfoW(
     hDatabase: MsiHandle,
     hDatabaseReference: MsiHandle,
     szTransformFile: Lpcwstr,
@@ -40,44 +186,25 @@ pub extern "system" fn MsiDatabaseGenerateTransformW(
             return ERROR_INVALID_PARAMETER;
         };
 
-        let Some(Ok(db1_inner)) = with_handle(hDatabase, |obj| {
-            if let MsiObject::Database(db1) = obj {
-                Ok(db1.inner.clone())
-            } else {
-                Err(ERROR_INVALID_HANDLE)
-            }
-        }) else {
-            return ERROR_INVALID_HANDLE;
-        };
-
-        with_handle(hDatabaseReference, |obj2| {
-            if let MsiObject::Database(db2) = obj2 {
-                let mut transform =
-                    msi::database::transform::DatabaseTransform::diff(&db2.inner, &db1_inner)
-                        .unwrap_or_default();
-                transform.summary_info.word_count = Some(iValidation);
-                transform.validation_flags = u32::from_ne_bytes(iValidation.to_ne_bytes());
-                let bytes = transform.to_bytes().unwrap_or_default();
-                match std::fs::write(&path, bytes) {
-                    Ok(()) => ERROR_SUCCESS,
-                    Err(_) => ERROR_INSTALL_FAILURE,
-                }
-            } else {
-                ERROR_INVALID_HANDLE
-            }
-        })
-        .unwrap_or(ERROR_INVALID_HANDLE)
+        create_transform_summary_info(
+            hDatabase,
+            hDatabaseReference,
+            &path,
+            iErrorConditions,
+            iValidation,
+        )
     });
 
     result.unwrap_or(ERROR_INSTALL_FAILURE)
 }
 
-/// Generates a transform between two databases (ANSI).
+/// Creates summary information for a transform file (ANSI).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[must_use]
-pub extern "system" fn MsiDatabaseGenerateTransformA(
+pub extern "system" fn MsiCreateTransformSummaryInfoA(
     hDatabase: MsiHandle,
     hDatabaseReference: MsiHandle,
     szTransformFile: Lpcstr,
@@ -93,96 +220,73 @@ pub extern "system" fn MsiDatabaseGenerateTransformA(
             return ERROR_INVALID_PARAMETER;
         };
 
-        let Some(Ok(db1_inner)) = with_handle(hDatabase, |obj| {
-            if let MsiObject::Database(db1) = obj {
-                Ok(db1.inner.clone())
-            } else {
-                Err(ERROR_INVALID_HANDLE)
-            }
-        }) else {
-            return ERROR_INVALID_HANDLE;
-        };
-
-        with_handle(hDatabaseReference, |obj2| {
-            if let MsiObject::Database(db2) = obj2 {
-                let mut transform =
-                    msi::database::transform::DatabaseTransform::diff(&db2.inner, &db1_inner)
-                        .unwrap_or_default();
-                transform.summary_info.word_count = Some(iValidation);
-                transform.validation_flags = u32::from_ne_bytes(iValidation.to_ne_bytes());
-                let bytes = transform.to_bytes().unwrap_or_default();
-                match std::fs::write(&path, bytes) {
-                    Ok(()) => ERROR_SUCCESS,
-                    Err(_) => ERROR_INSTALL_FAILURE,
-                }
-            } else {
-                ERROR_INVALID_HANDLE
-            }
-        })
-        .unwrap_or(ERROR_INVALID_HANDLE)
+        create_transform_summary_info(
+            hDatabase,
+            hDatabaseReference,
+            &path,
+            iErrorConditions,
+            iValidation,
+        )
     });
 
     result.unwrap_or(ERROR_INSTALL_FAILURE)
 }
 
-/// Creates summary information for a transform file.
-#[cfg_attr(not(test), no_mangle)]
-#[inline(never)]
-#[allow(non_snake_case, unused_variables)]
-#[must_use]
-pub extern "system" fn MsiCreateTransformSummaryInfoW(
-    hDatabase: MsiHandle,
-    hDatabaseReference: MsiHandle,
-    szTransformFile: Lpcwstr,
-    iErrorConditions: i32,
-    iValidation: i32,
+/// Shared implementation for retrieving primary key column names for a table.
+fn database_get_primary_keys(
+    h_database: MsiHandle,
+    table_name: &str,
+    ph_record: *mut MsiHandle,
 ) -> Uint {
-    let result = std::panic::catch_unwind(|| {
-        if szTransformFile.is_null() {
-            return ERROR_INVALID_PARAMETER;
+    let mut result_rec = None;
+    let status = with_handle(h_database, |obj| {
+        if let MsiObject::Database(db) = obj {
+            db.inner
+                .catalog
+                .get_table(table_name)
+                .map_or(1628, |schema| {
+                    let mut fields =
+                        vec![msi::database::FieldValue::String(table_name.to_string())];
+                    for col in &schema.columns {
+                        if col.primary_key {
+                            fields.push(msi::database::FieldValue::String(col.name.clone()));
+                        }
+                    }
+                    result_rec = Some(msi::database::tables::record::Record::with_fields(fields));
+                    ERROR_SUCCESS
+                })
+        } else {
+            ERROR_INVALID_HANDLE
         }
+    })
+    .unwrap_or(ERROR_INVALID_HANDLE);
 
-        let Some(_path) = lpcwstr_to_string(szTransformFile) else {
-            return ERROR_INVALID_PARAMETER;
-        };
-
-        ERROR_SUCCESS
-    });
-
-    result.unwrap_or(ERROR_INSTALL_FAILURE)
+    if let Some(rec) = result_rec {
+        let new_obj = MsiObject::Record(crate::types::MsiRecordHandle { inner: rec });
+        unsafe {
+            *ph_record = alloc_handle(new_obj);
+        }
+    }
+    status
 }
 
-/// Creates summary information for a transform file (ANSI).
+/// Gets a record containing the names of all primary key columns for a specified table (Unicode).
+///
+/// Field `0` of the returned record is set to the table name, and fields `1..=N` are set to the
+/// primary key column names in order, matching Wine's `MSI_DatabaseGetPrimaryKeys`.
+///
+/// # Arguments
+///
+/// * `hDatabase` - Handle to the database.
+/// * `szTableName` - Null-terminated UTF-16 name of the table.
+/// * `phRecord` - Out pointer receiving a newly allocated `MSIHANDLE` for the primary keys record.
+///
+/// # Returns
+///
+/// `ERROR_SUCCESS`, `ERROR_INVALID_PARAMETER`, `ERROR_INVALID_HANDLE`, or `ERROR_INVALID_TABLE` (`1628`).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
-#[must_use]
-pub extern "system" fn MsiCreateTransformSummaryInfoA(
-    hDatabase: MsiHandle,
-    hDatabaseReference: MsiHandle,
-    szTransformFile: Lpcstr,
-    iErrorConditions: i32,
-    iValidation: i32,
-) -> Uint {
-    let result = std::panic::catch_unwind(|| {
-        if szTransformFile.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
-
-        let Some(_path) = lpcstr_to_string(szTransformFile) else {
-            return ERROR_INVALID_PARAMETER;
-        };
-
-        ERROR_SUCCESS
-    });
-
-    result.unwrap_or(ERROR_INSTALL_FAILURE)
-}
-
-/// Gets the primary keys of a table.
-#[cfg_attr(not(test), no_mangle)]
-#[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "system" fn MsiDatabaseGetPrimaryKeysW(
     hDatabase: MsiHandle,
@@ -194,32 +298,30 @@ pub extern "system" fn MsiDatabaseGetPrimaryKeysW(
             return ERROR_INVALID_PARAMETER;
         }
 
-        let Some(_table_name) = lpcwstr_to_string(szTableName) else {
+        let Some(table_name) = lpcwstr_to_string(szTableName) else {
             return ERROR_INVALID_PARAMETER;
         };
 
-        let is_valid_db =
-            with_handle(hDatabase, |obj| matches!(obj, MsiObject::Database(_))).unwrap_or(false);
-
-        if is_valid_db {
-            let rec = msi::database::tables::record::Record::new();
-            let new_obj = MsiObject::Record(crate::types::MsiRecordHandle { inner: rec });
-            unsafe {
-                *phRecord = alloc_handle(new_obj);
-            }
-            ERROR_SUCCESS
-        } else {
-            ERROR_INVALID_HANDLE
-        }
+        database_get_primary_keys(hDatabase, &table_name, phRecord)
     });
 
     result.unwrap_or(ERROR_INSTALL_FAILURE)
 }
 
-/// Gets the primary keys of a table (ANSI).
+/// Gets a record containing the names of all primary key columns for a specified table (ANSI).
+///
+/// # Arguments
+///
+/// * `hDatabase` - Handle to the database.
+/// * `szTableName` - Null-terminated ANSI name of the table.
+/// * `phRecord` - Out pointer receiving a newly allocated `MSIHANDLE` for the primary keys record.
+///
+/// # Returns
+///
+/// `ERROR_SUCCESS`, `ERROR_INVALID_PARAMETER`, `ERROR_INVALID_HANDLE`, or `ERROR_INVALID_TABLE` (`1628`).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "system" fn MsiDatabaseGetPrimaryKeysA(
     hDatabase: MsiHandle,
@@ -231,32 +333,47 @@ pub extern "system" fn MsiDatabaseGetPrimaryKeysA(
             return ERROR_INVALID_PARAMETER;
         }
 
-        let Some(_table_name) = lpcstr_to_string(szTableName) else {
+        let Some(table_name) = lpcstr_to_string(szTableName) else {
             return ERROR_INVALID_PARAMETER;
         };
 
-        let is_valid_db =
-            with_handle(hDatabase, |obj| matches!(obj, MsiObject::Database(_))).unwrap_or(false);
-
-        if is_valid_db {
-            let rec = msi::database::tables::record::Record::new();
-            let new_obj = MsiObject::Record(crate::types::MsiRecordHandle { inner: rec });
-            unsafe {
-                *phRecord = alloc_handle(new_obj);
-            }
-            ERROR_SUCCESS
-        } else {
-            ERROR_INVALID_HANDLE
-        }
+        database_get_primary_keys(hDatabase, &table_name, phRecord)
     });
 
     result.unwrap_or(ERROR_INSTALL_FAILURE)
 }
 
-/// Returns the persistent state of a table.
+/// Shared implementation for querying whether a table is persistent, temporary, or absent.
+fn database_is_table_persistent(h_database: MsiHandle, table_name: &str) -> i32 {
+    with_handle(h_database, |obj| {
+        if let MsiObject::Database(db) = obj {
+            if db.inner.catalog.get_table(table_name).is_some() {
+                1 // MSICONDITION_TRUE (persistent)
+            } else if db.inner.tables.contains_key(table_name) {
+                0 // MSICONDITION_FALSE (temporary)
+            } else {
+                2 // MSICONDITION_NONE (does not exist)
+            }
+        } else {
+            -1 // MSICONDITION_ERROR
+        }
+    })
+    .unwrap_or(-1)
+}
+
+/// Returns the persistent state of a table in Unicode (`W`).
+///
+/// # Arguments
+///
+/// * `hDatabase` - Handle to the database.
+/// * `szTableName` - Null-terminated UTF-16 table name.
+///
+/// # Returns
+///
+/// `1` (`MSICONDITION_TRUE`) if persistent, `0` (`MSICONDITION_FALSE`) if temporary, `2` (`MSICONDITION_NONE`) if absent, or `-1` (`MSICONDITION_ERROR`).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
 #[must_use]
 pub extern "system" fn MsiDatabaseIsTablePersistentW(
     hDatabase: MsiHandle,
@@ -267,27 +384,29 @@ pub extern "system" fn MsiDatabaseIsTablePersistentW(
             return -1; // MSICONDITION_ERROR
         }
 
-        let Some(_table_name) = lpcwstr_to_string(szTableName) else {
+        let Some(table_name) = lpcwstr_to_string(szTableName) else {
             return -1;
         };
 
-        with_handle(hDatabase, |obj| {
-            if let MsiObject::Database(_db) = obj {
-                1 // MSICONDITION_TRUE
-            } else {
-                -1 // MSICONDITION_ERROR
-            }
-        })
-        .unwrap_or(-1)
+        database_is_table_persistent(hDatabase, &table_name)
     });
 
     result.unwrap_or(-1)
 }
 
-/// Returns the persistent state of a table (ANSI).
+/// Returns the persistent state of a table in ANSI (`A`).
+///
+/// # Arguments
+///
+/// * `hDatabase` - Handle to the database.
+/// * `szTableName` - Null-terminated ANSI table name.
+///
+/// # Returns
+///
+/// `1` (`MSICONDITION_TRUE`) if persistent, `0` (`MSICONDITION_FALSE`) if temporary, `2` (`MSICONDITION_NONE`) if absent, or `-1` (`MSICONDITION_ERROR`).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
 #[must_use]
 pub extern "system" fn MsiDatabaseIsTablePersistentA(
     hDatabase: MsiHandle,
@@ -298,18 +417,11 @@ pub extern "system" fn MsiDatabaseIsTablePersistentA(
             return -1; // MSICONDITION_ERROR
         }
 
-        let Some(_table_name) = lpcstr_to_string(szTableName) else {
+        let Some(table_name) = lpcstr_to_string(szTableName) else {
             return -1;
         };
 
-        with_handle(hDatabase, |obj| {
-            if let MsiObject::Database(_db) = obj {
-                1 // MSICONDITION_TRUE
-            } else {
-                -1 // MSICONDITION_ERROR
-            }
-        })
-        .unwrap_or(-1)
+        database_is_table_persistent(hDatabase, &table_name)
     });
 
     result.unwrap_or(-1)
@@ -318,7 +430,8 @@ pub extern "system" fn MsiDatabaseIsTablePersistentA(
 /// Retrieves a handle to the active database for the installation.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[must_use]
 pub extern "system" fn MsiGetActiveDatabase(hInstall: MsiHandle) -> MsiHandle {
     let result = std::panic::catch_unwind(|| {
@@ -334,7 +447,8 @@ pub extern "system" fn MsiGetActiveDatabase(hInstall: MsiHandle) -> MsiHandle {
 }
 
 #[cfg(test)]
-#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
+#[allow(clippy::too_many_lines)]
+#[allow(clippy::cognitive_complexity)]
 mod transform_and_record_tests {
     use super::*;
 
@@ -471,6 +585,70 @@ mod transform_and_record_tests {
             ERROR_SUCCESS
         );
 
+        let _ = crate::handles::with_handle_mut(db_handle, |obj| {
+            if let MsiObject::Database(db) = obj {
+                db.inner.tables.insert(
+                    "Property".to_string(),
+                    vec![
+                        msi::database::tables::record::Record::with_fields(vec![
+                            msi::database::FieldValue::String("ProductCode".to_string()),
+                            msi::database::FieldValue::String(
+                                "{11111111-1111-1111-1111-111111111111}".to_string(),
+                            ),
+                        ]),
+                        msi::database::tables::record::Record::with_fields(vec![
+                            msi::database::FieldValue::String("ProductVersion".to_string()),
+                            msi::database::FieldValue::String("1.0.0".to_string()),
+                        ]),
+                    ],
+                );
+            }
+        });
+        assert_eq!(
+            MsiCreateTransformSummaryInfoW(db_handle, db_handle2, valid_w.as_ptr(), 1, 2),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiCreateTransformSummaryInfoA(
+                db_handle,
+                db_handle2,
+                valid_a.as_ptr().cast::<i8>(),
+                1,
+                2
+            ),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiCreateTransformSummaryInfoW(db_handle, 0, valid_w.as_ptr(), 0, 0),
+            ERROR_INVALID_HANDLE
+        );
+        assert_eq!(
+            MsiCreateTransformSummaryInfoW(0, db_handle2, valid_w.as_ptr(), 0, 0),
+            ERROR_INVALID_HANDLE
+        );
+        let rec_tmp = alloc_handle(MsiObject::Record(crate::types::MsiRecordHandle {
+            inner: msi::database::tables::record::Record::new(),
+        }));
+        assert_eq!(
+            MsiCreateTransformSummaryInfoW(rec_tmp, db_handle2, valid_w.as_ptr(), 0, 0),
+            ERROR_INVALID_HANDLE
+        );
+        assert_eq!(
+            MsiCreateTransformSummaryInfoW(db_handle, rec_tmp, valid_w.as_ptr(), 0, 0),
+            ERROR_INVALID_HANDLE
+        );
+        let dir_w: Vec<u16> = std::env::temp_dir()
+            .to_str()
+            .unwrap_or("")
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        assert_eq!(
+            MsiCreateTransformSummaryInfoW(db_handle, db_handle2, dir_w.as_ptr(), 0, 0),
+            ERROR_INSTALL_FAILURE
+        );
+        let _ = crate::handles::close_handle(rec_tmp);
+
         let _ = std::fs::remove_file(&temp_file);
         let _ = crate::handles::close_handle(db_handle);
         let _ = crate::handles::close_handle(db_handle2);
@@ -543,7 +721,11 @@ mod transform_and_record_tests {
             -1
         );
 
-        let mock_db = msi::wix::linker::LinkedDatabase::default();
+        let mut mock_db = msi::wix::linker::LinkedDatabase::default();
+        mock_db.tables.insert(
+            "_TempCustomTable".to_string(),
+            vec![msi::database::tables::record::Record::new()],
+        );
         let db_handle = alloc_handle(MsiObject::Database(crate::types::MsiDatabaseHandle {
             inner: mock_db,
             state: 0,
@@ -589,24 +771,83 @@ mod transform_and_record_tests {
             -1
         );
 
+        // Nonexistent table "valid" returns 1628 (ERROR_INVALID_TABLE) and 2 (MSICONDITION_NONE)
         assert_eq!(
             MsiDatabaseGetPrimaryKeysW(db_handle, valid_w.as_ptr(), &raw mut rec_handle),
-            ERROR_SUCCESS
+            1628
         );
         assert_eq!(
             MsiDatabaseGetPrimaryKeysA(db_handle, valid_a.as_ptr().cast(), &raw mut rec_handle),
-            ERROR_SUCCESS
+            1628
         );
-
         assert_eq!(
             MsiDatabaseIsTablePersistentW(db_handle, valid_w.as_ptr()),
+            2
+        );
+        assert_eq!(
+            MsiDatabaseIsTablePersistentA(db_handle, valid_a.as_ptr().cast()),
+            2
+        );
+
+        // Temporary table "_TempCustomTable" returns 0 (MSICONDITION_FALSE)
+        let temp_tbl_w: Vec<u16> = "_TempCustomTable"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        let temp_tbl_a = b"_TempCustomTable\0";
+        assert_eq!(
+            MsiDatabaseIsTablePersistentW(db_handle, temp_tbl_w.as_ptr()),
+            0
+        );
+        assert_eq!(
+            MsiDatabaseIsTablePersistentA(db_handle, temp_tbl_a.as_ptr().cast()),
+            0
+        );
+
+        // Persistent standard table "Property" returns ERROR_SUCCESS with field 0 = "Property", field 1 = "Property"
+        let prop_tbl_w: Vec<u16> = "Property"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        let prop_tbl_a = b"Property\0";
+        let mut pk_rec_w = 0;
+        let mut pk_rec_a = 0;
+        assert_eq!(
+            MsiDatabaseGetPrimaryKeysW(db_handle, prop_tbl_w.as_ptr(), &raw mut pk_rec_w),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            crate::win32::record_stream::MsiRecordGetFieldCount(pk_rec_w),
+            1
+        );
+        let mut col_buf_a = [0i8; 32];
+        let mut col_len_a = 32;
+        assert_eq!(
+            crate::win32::record::MsiRecordGetStringA(
+                pk_rec_w,
+                1,
+                col_buf_a.as_mut_ptr(),
+                &raw mut col_len_a
+            ),
+            ERROR_SUCCESS
+        );
+        assert_eq!(col_len_a, 8);
+
+        assert_eq!(
+            MsiDatabaseGetPrimaryKeysA(db_handle, prop_tbl_a.as_ptr().cast(), &raw mut pk_rec_a),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiDatabaseIsTablePersistentW(db_handle, prop_tbl_w.as_ptr()),
             1
         ); // MSICONDITION_TRUE
         assert_eq!(
-            MsiDatabaseIsTablePersistentA(db_handle, valid_a.as_ptr().cast()),
+            MsiDatabaseIsTablePersistentA(db_handle, prop_tbl_a.as_ptr().cast()),
             1
         ); // MSICONDITION_TRUE
 
+        let _ = crate::handles::close_handle(pk_rec_w);
+        let _ = crate::handles::close_handle(pk_rec_a);
         let _ = crate::handles::close_handle(db_handle);
         let _ = crate::handles::close_handle(rec_handle);
     }

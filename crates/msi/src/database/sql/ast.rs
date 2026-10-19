@@ -49,6 +49,8 @@ pub enum BinaryOp {
     GreaterOrEqual,
     /// Pattern matching (`LIKE`)
     Like,
+    /// Bitwise AND or substring containment (`><` or `&`)
+    BitwiseAnd,
 }
 
 /// A boolean expression inside a `WHERE` filter clause.

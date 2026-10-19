@@ -23,11 +23,11 @@ impl<T: Read + Write + std::fmt::Debug> IpcConnection<T> {
     ///
     /// # Arguments
     ///
-    /// * `stream` - The `stream` parameter.
+    /// * `stream` - The stream value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     pub const fn new(stream: T) -> Self {
         Self { stream }
     }
@@ -55,11 +55,11 @@ impl<T: Read + Write + std::fmt::Debug> IpcConnection<T> {
     ///
     /// # Arguments
     ///
-    /// * `message` - The `message` parameter.
+    /// * `message` - Diagnostic or log message text.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn send_message(&mut self, message: &RpcMessage) -> Result<()> {
         let data = message.to_bytes();
         let len = u32::try_from(data.len()).unwrap_or(u32::MAX);
@@ -82,7 +82,7 @@ impl<T: Read + Write + std::fmt::Debug> IpcConnection<T> {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(RpcMessage)` on success, or an error if the operation fails.
     pub fn receive_message(&mut self) -> Result<RpcMessage> {
         let mut len_buf = [0u8; 4];
         self.stream
@@ -134,7 +134,7 @@ impl RpcMessage {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Vector of `u8` items.
     #[must_use]
     pub fn to_bytes(&self) -> Vec<u8> {
         match self {
@@ -162,11 +162,11 @@ impl RpcMessage {
     ///
     /// # Arguments
     ///
-    /// * `data` - The `data` parameter.
+    /// * `data` - Raw byte buffer to process.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Self)` on success, or an error if the operation fails.
     pub fn from_bytes(data: &[u8]) -> Result<Self> {
         let text = std::str::from_utf8(data).map_err(|_| MsiError::WorkerIpcError {
             reason: "Invalid UTF-8".to_string(),
@@ -218,7 +218,7 @@ impl IpcRouter {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `IpcEndpoint` value.
     #[must_use]
     pub fn new_endpoint(session_id: &str) -> IpcEndpoint {
         #[cfg(unix)]
@@ -251,8 +251,7 @@ impl IpcRouter {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
-    #[allow(clippy::missing_const_for_fn)]
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn apply_impersonation(&self, no_impersonate: bool) -> Result<()> {
         if no_impersonate {
             // Leave elevated privileges intact
@@ -287,11 +286,11 @@ impl IpcRouter {
     ///
     /// # Arguments
     ///
-    /// * `endpoint` - The `endpoint` parameter.
+    /// * `endpoint` - The endpoint value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn spawn_daemon(&self, endpoint: &IpcEndpoint) -> Result<()> {
         match endpoint {
             IpcEndpoint::UnixSocket(path) => {
@@ -311,7 +310,6 @@ impl IpcRouter {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

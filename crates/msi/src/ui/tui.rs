@@ -210,9 +210,9 @@ impl TerminalBuffer {
     ///
     /// # Arguments
     ///
-    /// * `x` - The `x` parameter.
-    /// * `y` - The `y` parameter.
-    /// * `ch` - The `ch` parameter.
+    /// * `x` - Horizontal coordinate in dialog units or pixels.
+    /// * `y` - Vertical coordinate in dialog units or pixels.
+    /// * `ch` - Unicode character to inspect or render.
     pub fn set_char(&mut self, x: u16, y: u16, ch: char) {
         if x < self.width && y < self.height {
             let idx = (y as usize) * (self.width as usize) + (x as usize);
@@ -224,9 +224,9 @@ impl TerminalBuffer {
     ///
     /// # Arguments
     ///
-    /// * `x` - The `x` parameter.
-    /// * `y` - The `y` parameter.
-    /// * `text` - The `text` parameter.
+    /// * `x` - Horizontal coordinate in dialog units or pixels.
+    /// * `y` - Vertical coordinate in dialog units or pixels.
+    /// * `text` - Display text or template string.
     pub fn draw_string(&mut self, x: u16, y: u16, text: &str) {
         for (i, ch) in text.chars().enumerate() {
             let col = x.saturating_add(u16::try_from(i).unwrap_or(u16::MAX));
@@ -238,11 +238,11 @@ impl TerminalBuffer {
     ///
     /// # Arguments
     ///
-    /// * `x` - The `x` parameter.
-    /// * `y` - The `y` parameter.
-    /// * `w` - The `w` parameter.
-    /// * `h` - The `h` parameter.
-    /// * `title` - The `title` parameter.
+    /// * `x` - Horizontal coordinate in dialog units or pixels.
+    /// * `y` - Vertical coordinate in dialog units or pixels.
+    /// * `w` - Width in dialog units or pixels.
+    /// * `h` - Height in dialog units or pixels.
+    /// * `title` - Dialog or window title string.
     pub fn draw_box(&mut self, x: u16, y: u16, w: u16, h: u16, title: Option<&str>) {
         if w < 2 || h < 2 {
             return;
@@ -279,7 +279,7 @@ impl TerminalBuffer {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     #[must_use]
     pub fn render_to_string(&self) -> String {
         let mut out = String::with_capacity((self.width as usize + 1) * self.height as usize);
@@ -344,7 +344,7 @@ impl TerminalWizard {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&UiEngine` value.
     #[must_use]
     pub const fn engine(&self) -> &UiEngine {
         &self.engine
@@ -354,7 +354,7 @@ impl TerminalWizard {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&mut UiEngine` value.
     pub const fn engine_mut(&mut self) -> &mut UiEngine {
         &mut self.engine
     }
@@ -363,7 +363,7 @@ impl TerminalWizard {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `true` if the check succeeds or state matches, `false` otherwise.
     #[must_use]
     pub const fn is_diagnostics_log_open(&self) -> bool {
         self.diagnostics_log_open
@@ -387,7 +387,7 @@ impl TerminalWizard {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(&str)` if found, or `None` if absent.
     #[must_use]
     pub fn action_text(&self) -> Option<&str> {
         self.action_text.as_deref()
@@ -397,7 +397,7 @@ impl TerminalWizard {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `usize` numeric result or status code.
     #[must_use]
     pub const fn scroll_offset(&self) -> usize {
         self.scroll_offset
@@ -416,7 +416,7 @@ impl TerminalWizard {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `usize` numeric result or status code.
     #[must_use]
     pub const fn cursor_pos(&self) -> usize {
         self.cursor_pos
@@ -803,7 +803,8 @@ impl TerminalWizard {
     ///
     /// Rendered [`TerminalBuffer`].
     #[must_use]
-    #[allow(clippy::too_many_lines, clippy::cast_possible_truncation)]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::cast_possible_truncation)]
     pub fn render_frame(&self, cols: u16, rows: u16) -> TerminalBuffer {
         let mut buf = TerminalBuffer::new(cols, rows);
 
@@ -899,7 +900,7 @@ impl TerminalWizard {
                     buf.draw_string(col_x, row_y, &radio_str);
                     line_offset += 2;
                 }
-                ControlType::Edit => {
+                ControlType::Edit | ControlType::MaskedEdit | ControlType::PathEdit => {
                     let is_pwd = ctrl.is_password_input();
                     let display_text = if is_pwd {
                         "*".repeat(text.len())
@@ -972,10 +973,15 @@ impl TerminalWizard {
                     }
                     line_offset += 1;
                 }
-                ControlType::Bitmap | ControlType::Line => {}
-                ControlType::Text
+                ControlType::Bitmap | ControlType::Icon | ControlType::Line => {}
+                ControlType::Billboard
+                | ControlType::Text
+                | ControlType::GroupBox
                 | ControlType::ComboBox
+                | ControlType::DirectoryCombo
+                | ControlType::VolumeSelectCombo
                 | ControlType::ListBox
+                | ControlType::DirectoryList
                 | ControlType::ListView
                 | ControlType::VolumeCostList => {
                     let (clean_text, _, _) = crate::ui::font_rasterizer::strip_wix_font_tags(&text);
@@ -1095,7 +1101,6 @@ impl TerminalWizard {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::error::MsiError;

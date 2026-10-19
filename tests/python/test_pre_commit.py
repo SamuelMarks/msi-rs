@@ -202,6 +202,7 @@ def test_calculate_doc_coverage_force(tmp_path: Path) -> None:
     old_json.write_text("{}", encoding="utf-8")
 
     def mock_run_cmd(cmd: list, cwd: Path, env: dict | None = None) -> None:
+        """Helper test callback for mock_run_cmd."""
         report = {
             "crate_a": {"total": 50, "with_docs": 45},
             "crate_b": {"total": 50, "with_docs": 45},
@@ -252,6 +253,7 @@ def test_calculate_test_coverage_force(tmp_path: Path) -> None:
     cov_path.touch()
 
     def mock_run_cmd(cmd: list, cwd: Path, env: dict | None = None) -> None:
+        """Helper test callback for mock_run_cmd."""
         data = {
             "data": [
                 {

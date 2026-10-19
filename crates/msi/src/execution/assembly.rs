@@ -566,7 +566,6 @@ pub mod posix_mock {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use std::fs;

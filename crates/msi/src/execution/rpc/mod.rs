@@ -138,7 +138,6 @@ pub mod cross_arch;
 pub mod sandboxing;
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

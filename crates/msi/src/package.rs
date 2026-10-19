@@ -546,8 +546,8 @@ impl Package {
     /// # Errors
     ///
     /// Returns [`crate::MsiError`] if the CFB container, string pool, summary information, or table records are malformed.
-    #[allow(clippy::too_many_lines, clippy::cast_sign_loss)]
-    #[allow(clippy::cognitive_complexity)]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::cast_sign_loss)]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
         let reader = CfbReader::new(bytes)?;
 
@@ -598,6 +598,8 @@ impl Package {
 
         let mut database = LinkedDatabase {
             embedded_storages,
+            summary_info: summary_info.clone(),
+            embedded_cabinets: embedded_cabinets.clone(),
             ..LinkedDatabase::default()
         };
 
@@ -771,11 +773,9 @@ impl Package {
     /// # Errors
     ///
     /// Returns [`crate::MsiError`] if record serialization or stream name encoding fails.
-    #[allow(
-        clippy::too_many_lines,
-        clippy::cast_possible_truncation,
-        clippy::cast_possible_wrap
-    )]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_possible_wrap)]
     pub fn to_bytes(&self) -> Result<Vec<u8>> {
         let mut pool = StringPool::new(CODEPAGE_ANSI_1252);
 
@@ -1354,7 +1354,6 @@ impl PackageBuilder {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::database::string_pool::CODEPAGE_UTF8;
@@ -1481,12 +1480,8 @@ mod tests {
 
     /// Tests builder success path, metadata getters, and sub-accessors.
     #[test]
-    #[allow(
-        clippy::too_many_lines,
-        clippy::similar_names,
-        clippy::manual_flatten,
-        clippy::redundant_clone
-    )]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::manual_flatten)]
     #[allow(clippy::cognitive_complexity)]
     fn test_builder_success() {
         let mut target_dir = None;
@@ -1644,12 +1639,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(
-        clippy::too_many_lines,
-        clippy::similar_names,
-        clippy::manual_flatten,
-        clippy::redundant_clone
-    )]
     fn test_package_binary_roundtrip() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let target_dir = DirectoryId::new("TARGETDIR")?;
 
@@ -1704,9 +1693,9 @@ mod tests {
         let _ = fs::remove_dir(&temp_dir);
 
         // Also ensure an invalid directory id creation path hits coverage:ignore
-        let _ = DirectoryId::new(""); // coverage:ignore-line
-                                      // Test empty build
-        let _ = Package::builder().build(); // coverage:ignore-line
+        let _ = DirectoryId::new("");
+        // Test empty build
+        let _ = Package::builder().build();
         Ok(())
     }
 
@@ -1819,12 +1808,6 @@ mod tests {
 
     /// Tests [`Package::from_bytes`] with corrupted summary info, unencoded streams, missing pools, and unknown tables.
     #[test]
-    #[allow(
-        clippy::too_many_lines,
-        clippy::similar_names,
-        clippy::manual_flatten,
-        clippy::redundant_clone
-    )]
     fn test_package_from_bytes_edge_cases() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut writer = CfbWriter::new(CfbVersion::V4);
 
@@ -1947,11 +1930,9 @@ mod tests {
 
     /// Tests deserialization of `_Columns` table with invalid records and Property table with invalid version and extra keys.
     #[test]
-    #[allow(
-        clippy::too_many_lines,
-        clippy::similar_names,
-        clippy::cast_possible_wrap
-    )]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::similar_names)]
+    #[allow(clippy::cast_possible_wrap)]
     fn test_package_columns_and_properties_edge_cases(
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         fn transpose_table(
@@ -2181,12 +2162,7 @@ mod tests {
 
     /// Tests [`Package::to_bytes`] when `_Tables` and `_Columns` already exist and tables without schemas are present.
     #[test]
-    #[allow(
-        clippy::too_many_lines,
-        clippy::similar_names,
-        clippy::manual_flatten,
-        clippy::redundant_clone
-    )]
+    #[allow(clippy::similar_names)]
     fn test_package_to_bytes_edge_cases() {
         let builder = Package::builder()
             .product_name("Edge Product")
@@ -2816,7 +2792,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::unreachable)]
     fn test_package_missing_columns_stream_and_schema(
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         use crate::cfb::header::CfbVersion;

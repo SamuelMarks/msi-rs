@@ -243,7 +243,7 @@ impl Harvester {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn set_root_namespace_guid_str(&mut self, guid_str: &str) -> Result<()> {
         let clean = guid_str
             .trim_matches('{')
@@ -335,7 +335,7 @@ impl Harvester {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn load_gitignore(&mut self, gitignore_path: &Path) -> Result<()> {
         let content = fs::read_to_string(gitignore_path)?;
         for line in content.lines() {
@@ -383,7 +383,7 @@ impl Harvester {
     /// # Errors
     ///
     /// Returns [`crate::error::MsiError::Io`] if reading files or directories fails.
-    #[allow(clippy::too_many_lines, clippy::format_push_string)]
+    #[allow(clippy::format_push_string)]
     pub fn harvest_directory(
         &self,
         dir_path: &Path,
@@ -452,11 +452,9 @@ impl Harvester {
     }
 
     /// Recursive directory traversal worker.
-    #[allow(
-        clippy::too_many_lines,
-        clippy::too_many_arguments,
-        clippy::format_push_string
-    )]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::format_push_string)]
     fn harvest_dir_recursive(
         &self,
         root_path: &Path,
@@ -652,7 +650,7 @@ impl Harvester {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     fn collect_manifest_recursive(
         &self,
         root_path: &Path,
@@ -847,7 +845,7 @@ impl Harvester {
     /// # Errors
     ///
     /// Returns [`crate::error::MsiError::Validation`] on malformed registry syntax.
-    #[allow(clippy::too_many_lines, clippy::format_push_string)]
+    #[allow(clippy::format_push_string)]
     pub fn harvest_registry(&self, reg_text: &str, component_id: &str) -> Result<String> {
         if reg_text.trim().is_empty() {
             return Err(crate::error::MsiError::Validation {
@@ -1114,7 +1112,6 @@ pub fn generate_cmake_package_registry_fragment(
 }
 
 #[cfg(test)]
-#[allow(clippy::manual_flatten, clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::error::MsiError;
@@ -1901,7 +1898,6 @@ LineWithoutEquals
     #[allow(clippy::cognitive_complexity)]
     /// Tests `LibScript` parity: RFC 4122 v5 GUID generation, default artifact exclusions, `include_msi` toggle, and deep path ID hashing.
     #[test]
-    #[allow(clippy::too_many_lines)]
     fn test_harvest_libscript_parity_and_guid_v5() {
         use crate::database::tables::types::LIBSCRIPT_ROOT_NAMESPACE_GUID;
 

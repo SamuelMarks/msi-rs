@@ -38,11 +38,11 @@ impl MediaManager {
     ///
     /// # Arguments
     ///
-    /// * `prompt_cb` - The `prompt_cb` parameter.
+    /// * `prompt_cb` - The prompt cb value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn new(prompt_cb: Option<MediaPromptCallback>) -> Self {
         Self { prompt_cb }
@@ -56,11 +56,11 @@ impl MediaManager {
     ///
     /// # Arguments
     ///
-    /// * `path` - The `path` parameter.
+    /// * `path` - Filesystem path to the target file or directory.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(PathBuf)` on success, or an error if the operation fails.
     pub fn sanitize_target_path(path: &Path) -> Result<PathBuf> {
         let path_str = path.to_string_lossy();
         if path_str.is_empty() {
@@ -85,12 +85,12 @@ impl MediaManager {
     ///
     /// # Arguments
     ///
-    /// * `disk_id` - The `disk_id` parameter.
-    /// * `prompt_msg` - The `prompt_msg` parameter.
+    /// * `disk_id` - Identifier of the disk.
+    /// * `prompt_msg` - The prompt msg value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn prompt_for_disk(&self, disk_id: i32, prompt_msg: &str) -> Result<()> {
         self.prompt_cb.map_or_else(
             || {
@@ -117,13 +117,13 @@ impl MediaManager {
     ///
     /// # Arguments
     ///
-    /// * `_file_key` - The `_file_key` parameter.
-    /// * `is_compressed` - The `is_compressed` parameter.
-    /// * `cab_name` - The `cab_name` parameter.
+    /// * `_file_key` - The file key value.
+    /// * `is_compressed` - Boolean flag indicating whether to is compressed.
+    /// * `cab_name` - Name of the cab.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(ExtractionSource)` on success, or an error if the operation fails.
     pub fn determine_extraction_source(
         _file_key: &str,
         is_compressed: bool,
@@ -157,11 +157,11 @@ impl MediaManager {
     ///
     /// # Arguments
     ///
-    /// * `data` - The `data` parameter.
+    /// * `data` - Raw byte buffer to process.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok` containing the collected `u8` items, or an error on failure.
     pub fn decompress_stream(data: &[u8]) -> Result<Vec<u8>> {
         if data.is_empty() {
             return Err(MsiError::Io(crate::error::IoContext::from_string(
@@ -182,7 +182,6 @@ impl MediaManager {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

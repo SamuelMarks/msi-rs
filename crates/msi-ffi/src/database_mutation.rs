@@ -41,6 +41,109 @@ pub struct TransformErrorFlags(pub i32);
 /// Type alias preserving backward compatibility for [`TransformErrorFlags`].
 pub type TransformErrorCondition = TransformErrorFlags;
 
+/// Shared implementation for `MsiDatabaseMergeA/W`.
+fn database_merge_inner(
+    h_database: MSIHANDLE,
+    h_database_merge: MSIHANDLE,
+    table_name: Option<String>,
+) -> u32 {
+    crate::handles::with_handle_mut_and_read(
+        h_database,
+        h_database_merge,
+        |obj_target, obj_source| {
+            if let (
+                crate::handles::MsiObject::Database(db_target),
+                crate::handles::MsiObject::Database(db_source),
+            ) = (obj_target, obj_source)
+            {
+                let config = msi::database::merge::MergeConfig { table_name };
+                match db_target.inner.merge(&db_source.inner, &config) {
+                    Ok(()) => crate::win32::ERROR_SUCCESS,
+                    Err(_) => 1627, // ERROR_FUNCTION_FAILED
+                }
+            } else {
+                crate::win32::ERROR_INVALID_HANDLE
+            }
+        },
+    )
+    .unwrap_or(crate::win32::ERROR_INVALID_HANDLE)
+}
+
+/// Shared implementation for `MsiDatabaseExportA/W`.
+fn database_export_idt(
+    h_database: MSIHANDLE,
+    table_name: Option<String>,
+    folder_path: Option<String>,
+    file_name: Option<String>,
+) -> u32 {
+    let (Some(table_name), Some(folder_path), Some(file_name)) =
+        (table_name, folder_path, file_name)
+    else {
+        return 0;
+    };
+    crate::handles::with_handle(h_database, |obj| {
+        if let crate::handles::MsiObject::Database(db) = obj {
+            let Some(schema) = db.inner.catalog.get_table(&table_name).cloned() else {
+                return 0;
+            };
+            let records = db.inner.get_records(&table_name);
+            let idt = msi::database::idt::IdtTable {
+                schema,
+                rows: records.to_vec(),
+            };
+            let content = idt.serialize();
+            let path = std::path::Path::new(&folder_path).join(&file_name);
+            let _ = std::fs::write(&path, content);
+        }
+        0
+    })
+    .unwrap_or(0)
+}
+
+/// Shared implementation for `MsiDatabaseApplyTransformA/W`.
+fn database_apply_transform_inner(
+    h_database: MSIHANDLE,
+    path: Option<String>,
+    i_error_conditions: TransformErrorCondition,
+) -> u32 {
+    let Some(path) = path else {
+        return crate::win32::ERROR_INVALID_PARAMETER;
+    };
+    crate::handles::with_handle_mut(h_database, |obj| {
+        let crate::handles::MsiObject::Database(db_handle) = obj else {
+            return crate::win32::ERROR_INVALID_HANDLE;
+        };
+
+        let bytes = if let Some(stripped) = path.strip_prefix(':') {
+            match db_handle.inner.embedded_storages.get(stripped) {
+                Some(b) => b.clone(),
+                None => return crate::win32::ERROR_FILE_NOT_FOUND,
+            }
+        } else {
+            match std::fs::read(&path) {
+                Ok(b) => b,
+                Err(_) => return crate::win32::ERROR_FILE_NOT_FOUND,
+            }
+        };
+
+        let transform = match msi::database::transform::DatabaseTransform::from_bytes(&bytes) {
+            Ok(t) => t,
+            Err(e) => return crate::error::map_msi_error_to_lstatus(&e),
+        };
+
+        let res = if (i_error_conditions.0 & 0x0100) != 0 {
+            transform.populate_transform_view(&mut db_handle.inner)
+        } else {
+            transform.apply(&mut db_handle.inner)
+        };
+        match res {
+            Ok(()) => crate::win32::ERROR_SUCCESS,
+            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
+        }
+    })
+    .unwrap_or(crate::win32::ERROR_INVALID_HANDLE)
+}
+
 /// Merges two databases together.
 ///
 /// # Arguments
@@ -52,7 +155,6 @@ pub type TransformErrorCondition = TransformErrorFlags;
 /// # Errors
 ///
 /// Returns `87` (`ERROR_INVALID_PARAMETER`) if handles are 0.
-/// Returns `120` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is currently a stub.
 ///
 /// # Returns
 ///
@@ -73,36 +175,15 @@ pub unsafe extern "system" fn MsiDatabaseMergeW(
         if h_database == 0 || h_database_merge == 0 {
             return crate::win32::ERROR_INVALID_PARAMETER;
         }
-
         let table_name = if sz_table_name.0.is_null() {
             None
         } else {
-            match crate::win32::strings::lpcwstr_to_string(sz_table_name.0) {
-                Some(name) => Some(name),
-                None => return crate::win32::ERROR_INVALID_PARAMETER,
-            }
+            let Some(name) = crate::win32::strings::lpcwstr_to_string(sz_table_name.0) else {
+                return crate::win32::ERROR_INVALID_PARAMETER;
+            };
+            Some(name)
         };
-
-        crate::handles::with_handle_mut_and_read(
-            h_database,
-            h_database_merge,
-            |obj_target, obj_source| {
-                if let (
-                    crate::handles::MsiObject::Database(db_target),
-                    crate::handles::MsiObject::Database(db_source),
-                ) = (obj_target, obj_source)
-                {
-                    let config = msi::database::merge::MergeConfig { table_name };
-                    match db_target.inner.merge(&db_source.inner, &config) {
-                        Ok(()) => crate::win32::ERROR_SUCCESS,
-                        Err(_) => 1627, // ERROR_FUNCTION_FAILED
-                    }
-                } else {
-                    crate::win32::ERROR_INVALID_HANDLE
-                }
-            },
-        )
-        .unwrap_or(crate::win32::ERROR_INVALID_HANDLE)
+        database_merge_inner(h_database, h_database_merge, table_name)
     })
     .unwrap_or(crate::win32::ERROR_INSTALL_FAILURE)
 }
@@ -139,51 +220,50 @@ pub unsafe extern "system" fn MsiDatabaseMergeA(
         if h_database == 0 || h_database_merge == 0 {
             return crate::win32::ERROR_INVALID_PARAMETER;
         }
-
         let table_name = if sz_table_name.0.is_null() {
             None
         } else {
-            match crate::win32::strings::lpcstr_to_string(sz_table_name.0) {
-                Some(name) => Some(name),
-                None => return crate::win32::ERROR_INVALID_PARAMETER,
-            }
+            let Some(name) = crate::win32::strings::lpcstr_to_string(sz_table_name.0) else {
+                return crate::win32::ERROR_INVALID_PARAMETER;
+            };
+            Some(name)
         };
-
-        crate::handles::with_handle_mut_and_read(
-            h_database,
-            h_database_merge,
-            |obj_target, obj_source| {
-                if let (
-                    crate::handles::MsiObject::Database(db_target),
-                    crate::handles::MsiObject::Database(db_source),
-                ) = (obj_target, obj_source)
-                {
-                    let config = msi::database::merge::MergeConfig { table_name };
-                    match db_target.inner.merge(&db_source.inner, &config) {
-                        Ok(()) => crate::win32::ERROR_SUCCESS,
-                        Err(_) => 1627, // ERROR_FUNCTION_FAILED
-                    }
-                } else {
-                    crate::win32::ERROR_INVALID_HANDLE
-                }
-            },
-        )
-        .unwrap_or(crate::win32::ERROR_INVALID_HANDLE)
+        database_merge_inner(h_database, h_database_merge, table_name)
     })
     .unwrap_or(crate::win32::ERROR_INSTALL_FAILURE)
 }
 
-/// Imports an Installer Database Text (IDT) file into a database.
+/// Shared helper that imports an `.idt` file from `folder_path`/`file_name` into `h_database`.
+fn database_import_idt(h_database: MSIHANDLE, folder_path: &str, file_name: &str) -> u32 {
+    let path = std::path::Path::new(folder_path).join(file_name);
+    let Ok(content) = std::fs::read_to_string(&path) else {
+        return crate::win32::ERROR_SUCCESS;
+    };
+    let Ok(idt) = msi::database::idt::IdtTable::parse(&content) else {
+        return crate::win32::ERROR_FUNCTION_FAILED;
+    };
+    crate::handles::with_handle_mut(h_database, |obj| {
+        if let crate::handles::MsiObject::Database(db) = obj {
+            let table_name = idt.schema.name.clone();
+            let _ = db.inner.catalog.add_table(idt.schema);
+            db.inner.tables.insert(table_name, idt.rows);
+        }
+        crate::win32::ERROR_SUCCESS
+    })
+    .unwrap_or(crate::win32::ERROR_SUCCESS)
+}
+
+/// Imports an Installer Database Text (IDT) file into a database (Unicode).
 ///
 /// # Arguments
 ///
-/// * `sz_folder_path` - The folder path containing the archive file.
-/// * `sz_file_name` - The name of the file to import.
+/// * `h_database` - Handle to the target database.
+/// * `sz_folder_path` - Folder path containing the `.idt` archive file.
+/// * `sz_file_name` - Name of the `.idt` file to import.
 ///
 /// # Errors
 ///
-/// Returns `87` (`ERROR_INVALID_PARAMETER`) if strings are null.
-/// Returns `120` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is currently a stub.
+/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `h_database` is `0` or string pointers are `NULL`.
 ///
 /// # Returns
 ///
@@ -200,23 +280,32 @@ pub unsafe extern "system" fn MsiDatabaseImportW(
     sz_folder_path: ExportDirectoryW,
     sz_file_name: FilePathW,
 ) -> u32 {
-    if h_database == 0 || sz_folder_path.0.is_null() || sz_file_name.0.is_null() {
-        return 87;
-    }
-    0 // ERROR_SUCCESS
+    std::panic::catch_unwind(|| {
+        if h_database == 0 || sz_folder_path.0.is_null() || sz_file_name.0.is_null() {
+            return crate::win32::ERROR_INVALID_PARAMETER;
+        }
+        let Some(folder) = crate::win32::strings::lpcwstr_to_string(sz_folder_path.0) else {
+            return crate::win32::ERROR_SUCCESS;
+        };
+        let Some(file) = crate::win32::strings::lpcwstr_to_string(sz_file_name.0) else {
+            return crate::win32::ERROR_SUCCESS;
+        };
+        database_import_idt(h_database, &folder, &file)
+    })
+    .unwrap_or(crate::win32::ERROR_INSTALL_FAILURE)
 }
 
-/// Imports an Installer Database Text (IDT) file into a database.
+/// Imports an Installer Database Text (IDT) file into a database (ANSI).
 ///
 /// # Arguments
 ///
-/// * `sz_folder_path` - The folder path containing the archive file.
-/// * `sz_file_name` - The name of the file to import.
+/// * `h_database` - Handle to the target database.
+/// * `sz_folder_path` - Folder path containing the `.idt` archive file.
+/// * `sz_file_name` - Name of the `.idt` file to import.
 ///
 /// # Errors
 ///
-/// Returns `87` (`ERROR_INVALID_PARAMETER`) if strings are null.
-/// Returns `1603` (`ERROR_INSTALL_FAILURE`) on panic.
+/// Returns `87` (`ERROR_INVALID_PARAMETER`) if `h_database` is `0` or string pointers are `NULL`.
 ///
 /// # Returns
 ///
@@ -233,10 +322,19 @@ pub unsafe extern "system" fn MsiDatabaseImportA(
     sz_folder_path: ExportDirectoryA,
     sz_file_name: FilePathA,
 ) -> u32 {
-    if h_database == 0 || sz_folder_path.0.is_null() || sz_file_name.0.is_null() {
-        return 87;
-    }
-    0 // ERROR_SUCCESS
+    std::panic::catch_unwind(|| {
+        if h_database == 0 || sz_folder_path.0.is_null() || sz_file_name.0.is_null() {
+            return crate::win32::ERROR_INVALID_PARAMETER;
+        }
+        let Some(folder) = crate::win32::strings::lpcstr_to_string(sz_folder_path.0) else {
+            return crate::win32::ERROR_SUCCESS;
+        };
+        let Some(file) = crate::win32::strings::lpcstr_to_string(sz_file_name.0) else {
+            return crate::win32::ERROR_SUCCESS;
+        };
+        database_import_idt(h_database, &folder, &file)
+    })
+    .unwrap_or(crate::win32::ERROR_INSTALL_FAILURE)
 }
 
 /// Exports an Installer table to an IDT file.
@@ -275,40 +373,14 @@ pub unsafe extern "system" fn MsiDatabaseExportW(
             || sz_folder_path.0.is_null()
             || sz_file_name.0.is_null()
         {
-            return 87; // ERROR_INVALID_PARAMETER
+            return 87;
         }
-
-        let Some(table_name) = crate::win32::strings::lpcwstr_to_string(sz_table_name.0.cast())
-        else {
-            return 0;
-        };
-        let Some(folder_path) = crate::win32::strings::lpcwstr_to_string(sz_folder_path.0.cast())
-        else {
-            return 0;
-        };
-        let Some(file_name) = crate::win32::strings::lpcwstr_to_string(sz_file_name.0.cast())
-        else {
-            return 0;
-        };
-
-        crate::handles::with_handle(h_database, |obj| {
-            if let crate::handles::MsiObject::Database(db) = obj {
-                let schema = match db.inner.catalog.get_table(&table_name) {
-                    Some(s) => s.clone(),
-                    None => return 0,
-                };
-                let records = db.inner.get_records(&table_name);
-                let idt = msi::database::idt::IdtTable {
-                    schema,
-                    rows: records.to_vec(),
-                };
-                let content = idt.serialize();
-                let path = std::path::Path::new(&folder_path).join(&file_name);
-                let _ = std::fs::write(&path, content);
-            }
-            0
-        })
-        .unwrap_or(0)
+        database_export_idt(
+            h_database,
+            crate::win32::strings::lpcwstr_to_string(sz_table_name.0.cast()),
+            crate::win32::strings::lpcwstr_to_string(sz_folder_path.0.cast()),
+            crate::win32::strings::lpcwstr_to_string(sz_file_name.0.cast()),
+        )
     })
     .unwrap_or(1603)
 }
@@ -349,39 +421,14 @@ pub unsafe extern "system" fn MsiDatabaseExportA(
             || sz_folder_path.0.is_null()
             || sz_file_name.0.is_null()
         {
-            return 87; // ERROR_INVALID_PARAMETER
+            return 87;
         }
-
-        let Some(table_name) = crate::win32::strings::lpcstr_to_string(sz_table_name.0.cast())
-        else {
-            return 0;
-        };
-        let Some(folder_path) = crate::win32::strings::lpcstr_to_string(sz_folder_path.0.cast())
-        else {
-            return 0;
-        };
-        let Some(file_name) = crate::win32::strings::lpcstr_to_string(sz_file_name.0.cast()) else {
-            return 0;
-        };
-
-        crate::handles::with_handle(h_database, |obj| {
-            if let crate::handles::MsiObject::Database(db) = obj {
-                let schema = match db.inner.catalog.get_table(&table_name) {
-                    Some(s) => s.clone(),
-                    None => return 0,
-                };
-                let records = db.inner.get_records(&table_name);
-                let idt = msi::database::idt::IdtTable {
-                    schema,
-                    rows: records.to_vec(),
-                };
-                let content = idt.serialize();
-                let path = std::path::Path::new(&folder_path).join(&file_name);
-                let _ = std::fs::write(&path, content);
-            }
-            0
-        })
-        .unwrap_or(0)
+        database_export_idt(
+            h_database,
+            crate::win32::strings::lpcstr_to_string(sz_table_name.0.cast()),
+            crate::win32::strings::lpcstr_to_string(sz_folder_path.0.cast()),
+            crate::win32::strings::lpcstr_to_string(sz_file_name.0.cast()),
+        )
     })
     .unwrap_or(1603)
 }
@@ -397,7 +444,6 @@ pub unsafe extern "system" fn MsiDatabaseExportA(
 /// # Errors
 ///
 /// Returns `87` (`ERROR_INVALID_PARAMETER`) if strings are null.
-/// Returns `120` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is currently a stub.
 ///
 /// # Returns
 ///
@@ -418,38 +464,11 @@ pub unsafe extern "system" fn MsiDatabaseApplyTransformW(
         if h_database == 0 || sz_transform_file.0.is_null() {
             return crate::win32::ERROR_INVALID_PARAMETER;
         }
-        let Some(path) = crate::win32::strings::lpcwstr_to_string(sz_transform_file.0) else {
-            return crate::win32::ERROR_INVALID_PARAMETER;
-        };
-
-        crate::handles::with_handle_mut(h_database, |obj| {
-            let crate::handles::MsiObject::Database(db_handle) = obj else {
-                return crate::win32::ERROR_INVALID_HANDLE;
-            };
-
-            let bytes = if let Some(stripped) = path.strip_prefix(':') {
-                match db_handle.inner.embedded_storages.get(stripped) {
-                    Some(b) => b.clone(),
-                    None => return crate::win32::ERROR_FILE_NOT_FOUND,
-                }
-            } else {
-                match std::fs::read(&path) {
-                    Ok(b) => b,
-                    Err(_) => return crate::win32::ERROR_FILE_NOT_FOUND,
-                }
-            };
-
-            let transform = match msi::database::transform::DatabaseTransform::from_bytes(&bytes) {
-                Ok(t) => t,
-                Err(e) => return crate::error::map_msi_error_to_lstatus(&e),
-            };
-
-            match transform.apply(&mut db_handle.inner) {
-                Ok(()) => crate::win32::ERROR_SUCCESS,
-                Err(e) => crate::error::map_msi_error_to_lstatus(&e),
-            }
-        })
-        .unwrap_or(crate::win32::ERROR_INVALID_HANDLE)
+        database_apply_transform_inner(
+            h_database,
+            crate::win32::strings::lpcwstr_to_string(sz_transform_file.0),
+            i_error_conditions,
+        )
     })
     .unwrap_or(crate::win32::ERROR_INSTALL_FAILURE)
 }
@@ -465,7 +484,6 @@ pub unsafe extern "system" fn MsiDatabaseApplyTransformW(
 /// # Errors
 ///
 /// Returns `87` (`ERROR_INVALID_PARAMETER`) if strings are null.
-/// Returns `120` (`ERROR_CALL_NOT_IMPLEMENTED`) as this is currently a stub.
 ///
 /// # Returns
 ///
@@ -486,44 +504,18 @@ pub unsafe extern "system" fn MsiDatabaseApplyTransformA(
         if h_database == 0 || sz_transform_file.0.is_null() {
             return crate::win32::ERROR_INVALID_PARAMETER;
         }
-        let Some(path) = crate::win32::strings::lpcstr_to_string(sz_transform_file.0) else {
-            return crate::win32::ERROR_INVALID_PARAMETER;
-        };
-
-        crate::handles::with_handle_mut(h_database, |obj| {
-            let crate::handles::MsiObject::Database(db_handle) = obj else {
-                return crate::win32::ERROR_INVALID_HANDLE;
-            };
-
-            let bytes = if let Some(stripped) = path.strip_prefix(':') {
-                match db_handle.inner.embedded_storages.get(stripped) {
-                    Some(b) => b.clone(),
-                    None => return crate::win32::ERROR_FILE_NOT_FOUND,
-                }
-            } else {
-                match std::fs::read(&path) {
-                    Ok(b) => b,
-                    Err(_) => return crate::win32::ERROR_FILE_NOT_FOUND,
-                }
-            };
-
-            let transform = match msi::database::transform::DatabaseTransform::from_bytes(&bytes) {
-                Ok(t) => t,
-                Err(e) => return crate::error::map_msi_error_to_lstatus(&e),
-            };
-
-            match transform.apply(&mut db_handle.inner) {
-                Ok(()) => crate::win32::ERROR_SUCCESS,
-                Err(e) => crate::error::map_msi_error_to_lstatus(&e),
-            }
-        })
-        .unwrap_or(crate::win32::ERROR_INVALID_HANDLE)
+        database_apply_transform_inner(
+            h_database,
+            crate::win32::strings::lpcstr_to_string(sz_transform_file.0),
+            i_error_conditions,
+        )
     })
     .unwrap_or(crate::win32::ERROR_INSTALL_FAILURE)
 }
 
 #[cfg(test)]
-#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
+#[allow(clippy::too_many_lines)]
+#[allow(clippy::cognitive_complexity)]
 mod tests {
     use super::*;
     #[test]
@@ -704,6 +696,55 @@ mod tests {
             0
         );
 
+        // Import back the exported IDT file via both W and A
+        assert_eq!(
+            unsafe {
+                MsiDatabaseImportW(
+                    h_db,
+                    ExportDirectoryW(temp_dir_w.as_ptr()),
+                    FilePathW(dummy_w.as_ptr()),
+                )
+            },
+            0
+        );
+        assert_eq!(
+            unsafe {
+                MsiDatabaseImportA(
+                    h_db,
+                    ExportDirectoryA(temp_dir_a.as_ptr()),
+                    FilePathA(dummy_a.as_ptr()),
+                )
+            },
+            0
+        );
+        assert_eq!(
+            unsafe {
+                MsiDatabaseImportW(
+                    h_db,
+                    ExportDirectoryW(temp_dir_w.as_ptr()),
+                    FilePathW(invalid_w.as_ptr()),
+                )
+            },
+            0
+        );
+
+        // Invalid IDT content triggers ERROR_FUNCTION_FAILED (1627)
+        let bad_idt_path = temp_dir.join("bad_table.idt");
+        let _ = std::fs::write(&bad_idt_path, "invalid_idt_header_only");
+        let bad_idt_a = std::ffi::CString::new("bad_table.idt").unwrap_or_default();
+        assert_eq!(
+            unsafe {
+                MsiDatabaseImportA(
+                    h_db,
+                    ExportDirectoryA(temp_dir_a.as_ptr()),
+                    FilePathA(bad_idt_a.as_ptr()),
+                )
+            },
+            1627
+        );
+        let _ = std::fs::remove_file(&bad_idt_path);
+        let _ = std::fs::remove_file(temp_dir.join("dummy"));
+
         // MsiDatabaseExportA invalid string
         assert_eq!(
             unsafe {
@@ -860,10 +901,26 @@ mod tests {
                 crate::win32::ERROR_SUCCESS
             );
             assert_eq!(
+                MsiDatabaseApplyTransformW(
+                    g_handle,
+                    FilePathW(good_disk_path_w.as_ptr()),
+                    TransformErrorFlags(0x0100)
+                ),
+                crate::win32::ERROR_SUCCESS
+            );
+            assert_eq!(
                 MsiDatabaseApplyTransformA(
                     g_handle,
                     FilePathA(good_disk_path_a.as_ptr()),
                     TransformErrorFlags(0)
+                ),
+                crate::win32::ERROR_SUCCESS
+            );
+            assert_eq!(
+                MsiDatabaseApplyTransformA(
+                    g_handle,
+                    FilePathA(good_disk_path_a.as_ptr()),
+                    TransformErrorFlags(0x0100)
                 ),
                 crate::win32::ERROR_SUCCESS
             );

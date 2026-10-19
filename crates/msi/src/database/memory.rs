@@ -72,6 +72,12 @@ pub struct LinkedDatabase {
     pub catalog: DatabaseCatalog,
     /// Embedded sub-storages extracted from the CFB container (e.g., embedded transforms).
     pub embedded_storages: HashMap<String, Vec<u8>>,
+    /// Summary Information stream properties associated with this database.
+    pub summary_info: crate::database::summary_info::SummaryInfo,
+    /// Embedded cabinet or non-table streams associated with this database.
+    pub embedded_cabinets: HashMap<String, Vec<u8>>,
+    /// Optional file path on disk backing this database when opened in write/transact/direct mode.
+    pub backing_path: Option<String>,
 }
 
 impl Default for LinkedDatabase {
@@ -79,7 +85,7 @@ impl Default for LinkedDatabase {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A default empty [`LinkedDatabase`].
     fn default() -> Self {
         let mut catalog = DatabaseCatalog::new();
         let _ = crate::database::tables::populate_standard_tables(&mut catalog);
@@ -87,11 +93,13 @@ impl Default for LinkedDatabase {
             tables: HashMap::new(),
             catalog,
             embedded_storages: HashMap::new(),
+            summary_info: crate::database::summary_info::SummaryInfo::default(),
+            embedded_cabinets: HashMap::new(),
+            backing_path: None,
         }
     }
 }
 
-#[allow(clippy::multiple_inherent_impl)]
 impl LinkedDatabase {
     /// Creates a new empty [`LinkedDatabase`] with all standard schemas pre-populated.
     ///
@@ -104,6 +112,52 @@ impl LinkedDatabase {
     /// Returns [`crate::MsiError`] if catalog population fails.
     pub fn new() -> Result<Self> {
         Ok(Self::default())
+    }
+
+    /// Serializes and flushes this [`LinkedDatabase`], its [`SummaryInfo`](crate::database::summary_info::SummaryInfo),
+    /// and any embedded cabinets to the specified `.msi` file path on disk.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Target filesystem path for the `.msi` Compound File Binary container.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` when the database is written to disk.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError`] if CFB serialization or file writing fails.
+    pub fn commit_to_path(&self, path: impl AsRef<std::path::Path>) -> Result<()> {
+        let product_name = self
+            .get_property_value("ProductName")
+            .or(self.summary_info.subject.as_deref())
+            .unwrap_or("Unknown Product")
+            .to_string();
+        let manufacturer = self
+            .get_property_value("Manufacturer")
+            .or(self.summary_info.author.as_deref())
+            .unwrap_or("Unknown Manufacturer")
+            .to_string();
+        let product_code = self
+            .get_property_value("ProductCode")
+            .or(self.summary_info.rev_number.as_deref())
+            .unwrap_or("{00000000-0000-0000-0000-000000000000}")
+            .to_string();
+        let version = self
+            .get_property_value("ProductVersion")
+            .and_then(|v| crate::package::ProductVersion::parse(v).ok())
+            .unwrap_or_else(|| crate::package::ProductVersion::new(1, 0, 0));
+
+        let metadata =
+            crate::package::PackageMetadata::new(product_name, manufacturer, version, product_code);
+        let pkg = crate::package::Package::new(
+            metadata,
+            self.clone(),
+            self.summary_info.clone(),
+            self.embedded_cabinets.clone(),
+        );
+        pkg.save(path)
     }
 
     /// Adds a record to the specified table.
@@ -133,7 +187,7 @@ impl LinkedDatabase {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn add_or_merge_record(&mut self, table: &str, record: Record) -> Result<()> {
         let records = self.tables.entry(table.to_string()).or_default();
 
@@ -161,8 +215,8 @@ impl LinkedDatabase {
                     .all(|&idx| existing.get(idx) == record.get(idx))
                     && (!is_seq_table || existing.get(1) == record.get(1));
                 if matches_pk {
-                    if table == "Property" {
-                        // Product / later fragments override Property value
+                    if table == "Property" || table == "Binary" || table == "Icon" {
+                        // Product / later fragments override Property / Binary / Icon value
                         *existing = record;
                         return Ok(());
                     }
@@ -401,6 +455,84 @@ impl LinkedDatabase {
             })
     }
 
+    /// Retrieves a property value from the `Property` table.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Property identifier.
+    ///
+    /// # Returns
+    ///
+    /// Optional property value string.
+    #[must_use]
+    pub fn get_property_value(&self, name: &str) -> Option<&str> {
+        for rec in self.get_records("Property") {
+            if let (Some(FieldValue::String(k)), Some(FieldValue::String(v))) =
+                (rec.get(0), rec.get(1))
+            {
+                if k == name {
+                    return Some(v.as_str());
+                }
+            }
+        }
+        None
+    }
+
+    /// Sets or removes a property value in the `Property` table.
+    ///
+    /// Passing an empty `value` removes the property row, matching Windows Installer semantics.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Property identifier.
+    /// * `value` - New property value, or empty string to delete the property.
+    pub fn set_property_value(&mut self, name: &str, value: &str) {
+        let rows = self.tables.entry("Property".to_string()).or_default();
+        if value.is_empty() {
+            rows.retain(|r| !matches!(r.get(0), Some(FieldValue::String(k)) if k == name));
+            return;
+        }
+        for rec in rows.iter_mut() {
+            if matches!(rec.get(0), Some(FieldValue::String(k)) if k == name) {
+                rec.set(1, FieldValue::String(value.to_string()));
+                return;
+            }
+        }
+        rows.push(Record::with_fields(vec![
+            FieldValue::String(name.to_string()),
+            FieldValue::String(value.to_string()),
+        ]));
+    }
+
+    /// Builds an [`crate::execution::EvaluationContext`] populated with all `Property` rows in this database.
+    ///
+    /// # Returns
+    ///
+    /// Populated [`crate::execution::EvaluationContext`].
+    #[must_use]
+    pub fn to_evaluation_context(&self) -> crate::execution::EvaluationContext {
+        let mut ctx = crate::execution::EvaluationContext::new();
+        for rec in self.get_records("Property") {
+            if let (Some(FieldValue::String(k)), Some(FieldValue::String(v))) =
+                (rec.get(0), rec.get(1))
+            {
+                ctx.set_property(k, v);
+            }
+        }
+        ctx
+    }
+
+    /// Synchronizes all properties from an [`crate::execution::EvaluationContext`] back into the `Property` table.
+    ///
+    /// # Arguments
+    ///
+    /// * `ctx` - Source [`crate::execution::EvaluationContext`].
+    pub fn sync_from_evaluation_context(&mut self, ctx: &crate::execution::EvaluationContext) {
+        for (k, v) in ctx.properties() {
+            self.set_property_value(k, v);
+        }
+    }
+
     /// Converts this [`LinkedDatabase`] into an automation [`ScriptDatabase`].
     ///
     /// Maps all table records and columns to string representations suitable for
@@ -464,7 +596,7 @@ impl LinkedDatabase {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     #[allow(clippy::cognitive_complexity)]
     #[allow(clippy::too_many_lines)]
     pub fn merge_module(
@@ -722,6 +854,24 @@ impl LinkedDatabase {
 
         Ok(())
     }
+
+    /// Merges another database into this one.
+    ///
+    /// # Arguments
+    ///
+    /// * `other` - The database to merge into this one.
+    /// * `config` - Configuration for the merge operation.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError::DatabaseMergeError`] if a schema mismatch or primary key collision occurs.
+    pub fn merge(&mut self, other: &Self, config: &super::merge::MergeConfig) -> Result<()> {
+        super::merge::merge_databases(self, other, config)
+    }
 }
 
 #[cfg(test)]
@@ -961,6 +1111,73 @@ mod tests {
         assert!(db
             .merge_module(&module, "Feature1", "TARGETDIR", &HashMap::new())
             .is_ok());
+        Ok(())
+    }
+
+    #[test]
+    fn test_commit_to_path_roundtrip() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let mut db = LinkedDatabase::default();
+        db.summary_info.title = Some("Committed Database".to_string());
+        db.summary_info.subject = Some("Subject Product".to_string());
+        db.summary_info.author = Some("Subject Author".to_string());
+        db.summary_info.rev_number = Some("{11111111-1111-1111-1111-111111111111}".to_string());
+
+        let tmp_path = std::env::temp_dir().join("test_commit_to_path_1.msi");
+        db.commit_to_path(&tmp_path)?;
+
+        let pkg = crate::package::Package::open(&tmp_path)?;
+        assert_eq!(
+            pkg.summary_info().title.as_deref(),
+            Some("Committed Database")
+        );
+        assert_eq!(pkg.metadata().product_name(), "Subject Product");
+        let _ = std::fs::remove_file(&tmp_path);
+
+        // Also test fallback defaults when Property and SummaryInfo are empty
+        let empty_db = LinkedDatabase::default();
+        let tmp_path2 = std::env::temp_dir().join("test_commit_to_path_2.msi");
+        empty_db.commit_to_path(&tmp_path2)?;
+        let pkg2 = crate::package::Package::open(&tmp_path2)?;
+        assert_eq!(pkg2.metadata().product_name(), "Unknown Product");
+        let _ = std::fs::remove_file(&tmp_path2);
+
+        // Test with explicit Property table rows
+        let mut prop_db = LinkedDatabase::default();
+        prop_db.add_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("ProductName".to_string()),
+                FieldValue::String("PropProduct".to_string()),
+            ]),
+        );
+        prop_db.add_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("Manufacturer".to_string()),
+                FieldValue::String("PropMfr".to_string()),
+            ]),
+        );
+        prop_db.add_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("ProductCode".to_string()),
+                FieldValue::String("{22222222-2222-2222-2222-222222222222}".to_string()),
+            ]),
+        );
+        prop_db.add_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("ProductVersion".to_string()),
+                FieldValue::String("2.3.4".to_string()),
+            ]),
+        );
+        let tmp_path3 = std::env::temp_dir().join("test_commit_to_path_3.msi");
+        prop_db.commit_to_path(&tmp_path3)?;
+        let pkg3 = crate::package::Package::open(&tmp_path3)?;
+        assert_eq!(pkg3.metadata().product_name(), "PropProduct");
+        assert_eq!(pkg3.metadata().manufacturer(), "PropMfr");
+        let _ = std::fs::remove_file(&tmp_path3);
+
         Ok(())
     }
 }

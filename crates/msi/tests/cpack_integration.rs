@@ -17,7 +17,8 @@ use msi::wix::xml::XmlParser;
 use std::fs;
 
 #[test]
-#[allow(clippy::too_many_lines, clippy::similar_names)]
+#[allow(clippy::too_many_lines)]
+#[allow(clippy::similar_names)]
 fn test_cpack_wix_end_to_end_pipeline() -> Result<()> {
     let temp_dir = std::env::temp_dir().join("msi_test_cpack_e2e");
     let _ = fs::create_dir_all(&temp_dir);
@@ -241,7 +242,8 @@ fn test_cpack_wix_discovery_and_version_flags() -> Result<()> {
 /// Tests complete `CPack` `WiX` integration pipeline with component groups, hidden/required/disabled
 /// components, desktop shortcuts, `CMake` package registry, external cabinets, and patch deletion.
 #[test]
-#[allow(clippy::too_many_lines, clippy::similar_names)]
+#[allow(clippy::too_many_lines)]
+#[allow(clippy::similar_names)]
 fn test_cpack_full_features_pipeline() -> Result<()> {
     let temp_dir = std::env::temp_dir().join("msi_test_cpack_full_pipeline");
     let _ = fs::create_dir_all(&temp_dir);

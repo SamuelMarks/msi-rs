@@ -26,11 +26,11 @@ impl NativeStream {
     ///
     /// # Arguments
     ///
-    /// * `data` - The `data` parameter.
+    /// * `data` - Raw byte buffer to process.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `Box<Self>` value.
     #[must_use]
     pub fn new(data: Vec<u8>) -> Box<Self> {
         Box::new(Self {
@@ -219,7 +219,8 @@ static NATIVE_STREAM_VTBL: IStreamVtbl = IStreamVtbl {
 };
 
 #[cfg(test)]
-#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
+#[allow(clippy::too_many_lines)]
+#[allow(clippy::cognitive_complexity)]
 mod tests {
     use super::*;
     use crate::com::util::ComObject;

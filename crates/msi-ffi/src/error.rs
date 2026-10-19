@@ -186,11 +186,11 @@ pub const fn map_msi_error(err: &msi::MsiError) -> i32 {
 ///
 /// # Arguments
 ///
-/// * `code` - The `code` parameter.
+/// * `code` - Numeric status, error, or product code.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// Computed `i32` numeric result or status code.
 fn handle_success(code: i32) -> i32 {
     clear_last_error();
     code
@@ -200,12 +200,12 @@ fn handle_success(code: i32) -> i32 {
 ///
 /// # Arguments
 ///
-/// * `code` - The `code` parameter.
-/// * `msg` - The `msg` parameter.
+/// * `code` - Numeric status, error, or product code.
+/// * `msg` - Diagnostic or log message text.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// Computed `i32` numeric result or status code.
 fn handle_error(code: i32, msg: String) -> i32 {
     set_last_error(code, msg);
     code
@@ -216,11 +216,11 @@ fn handle_error(code: i32, msg: String) -> i32 {
 ///
 /// # Arguments
 ///
-/// * `panic_payload` - The `panic_payload` parameter.
+/// * `panic_payload` - The panic payload value.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// Computed `i32` numeric result or status code.
 fn handle_panic(panic_payload: &(dyn std::any::Any + Send + 'static)) -> i32 {
     let msg = panic_payload.downcast_ref::<&str>().map_or_else(
         || {
@@ -251,11 +251,11 @@ unsafe fn trampoline<F: FnOnce() -> Result<i32, (i32, String)>>(
 ///
 /// # Arguments
 ///
-/// * `caller` - The `caller` parameter.
+/// * `caller` - The caller value.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// `Ok(i32)` on success, or an error if the operation fails.
 fn ffi_boundary_impl(caller: fn(*mut ()) -> Result<i32, (i32, String)>, data: *mut ()) -> i32 {
     let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| caller(data)));
     match res {
@@ -494,7 +494,8 @@ pub const fn map_msi_error_to_lstatus(err: &msi::MsiError) -> u32 {
 }
 
 #[cfg(test)]
-#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
+#[allow(clippy::too_many_lines)]
+#[allow(clippy::cognitive_complexity)]
 mod tests {
     use super::*;
     use std::ffi::CString;

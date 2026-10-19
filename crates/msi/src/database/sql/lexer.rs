@@ -65,6 +65,8 @@ pub enum Token {
     Key,
     /// Keyword `LOCALIZABLE`
     Localizable,
+    /// Keyword `TEMPORARY`
+    Temporary,
     /// Keyword `CHAR`
     Char,
     /// Keyword `VARCHAR`
@@ -101,6 +103,8 @@ pub enum Token {
     LessOrEqual,
     /// Greater than or equal operator `>=`
     GreaterOrEqual,
+    /// Bitwise AND or substring containment operator `><` or `&`
+    BitwiseAnd,
     /// Comma `,`
     Comma,
     /// Asterisk `*`
@@ -201,9 +205,16 @@ impl Lexer {
                     if self.pos < self.chars.len() && self.chars[self.pos] == '=' {
                         tokens.push(Token::GreaterOrEqual);
                         self.pos += 1;
+                    } else if self.pos < self.chars.len() && self.chars[self.pos] == '<' {
+                        tokens.push(Token::BitwiseAnd);
+                        self.pos += 1;
                     } else {
                         tokens.push(Token::GreaterThan);
                     }
+                }
+                '&' => {
+                    tokens.push(Token::BitwiseAnd);
+                    self.pos += 1;
                 }
                 '!' => {
                     self.pos += 1;
@@ -375,6 +386,8 @@ fn match_keyword_or_ident(w: &str) -> Token {
         Token::Key
     } else if w.eq_ignore_ascii_case("LOCALIZABLE") {
         Token::Localizable
+    } else if w.eq_ignore_ascii_case("TEMPORARY") {
+        Token::Temporary
     } else if w.eq_ignore_ascii_case("CHAR") {
         Token::Char
     } else if w.eq_ignore_ascii_case("VARCHAR") {
@@ -395,7 +408,7 @@ fn match_keyword_or_ident(w: &str) -> Token {
 }
 
 #[cfg(test)]
-#[allow(clippy::manual_flatten, clippy::redundant_clone)]
+#[allow(clippy::manual_flatten)]
 mod tests {
     use super::*;
 
@@ -559,9 +572,17 @@ mod tests {
 
     #[test]
     fn test_lex_longchar() -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let mut lexer = Lexer::new("LONGCHAR");
-        let token = lexer.tokenize()?[0].clone();
-        assert_eq!(token, Token::Longchar);
+        let mut lexer = Lexer::new("LONGCHAR TEMPORARY >< &");
+        let tokens = lexer.tokenize()?;
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Longchar,
+                Token::Temporary,
+                Token::BitwiseAnd,
+                Token::BitwiseAnd,
+            ]
+        );
         Ok(())
     }
 }

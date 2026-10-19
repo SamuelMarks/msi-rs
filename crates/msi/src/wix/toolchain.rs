@@ -205,11 +205,11 @@ impl WixToolchainDiscovery {
 ///
 /// # Arguments
 ///
-/// * `arg` - The `arg` parameter.
+/// * `arg` - Argument value or expression.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// `Some(&str)` if found, or `None` if absent.
 #[allow(clippy::option_if_let_else)]
 fn strip_flag_prefix(arg: &str) -> Option<&str> {
     if let Some(rest) = arg.strip_prefix("--") {
@@ -225,11 +225,11 @@ fn strip_flag_prefix(arg: &str) -> Option<&str> {
 ///
 /// # Arguments
 ///
-/// * `arg` - The `arg` parameter.
+/// * `arg` - Argument value or expression.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// `true` if the check succeeds or state matches, `false` otherwise.
 #[must_use]
 pub fn is_flag(arg: &str) -> bool {
     arg.starts_with('@') || strip_flag_prefix(arg).is_some()
@@ -239,7 +239,7 @@ pub fn is_flag(arg: &str) -> bool {
 ///
 /// # Arguments
 ///
-/// * `path` - The `path` parameter.
+/// * `path` - Filesystem path to the target file or directory.
 fn ensure_parent_dir_exists(path: &std::path::Path) {
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
@@ -319,11 +319,8 @@ impl CandleOptions {
     /// # Errors
     ///
     /// Returns [`MsiError::WixCompiler`] on invalid flags or missing required argument values.
-    #[allow(
-        clippy::too_many_lines,
-        clippy::branches_sharing_code,
-        clippy::cognitive_complexity
-    )]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::cognitive_complexity)]
     pub fn parse(raw_args: &[String]) -> Result<Self> {
         let args = expand_response_files(raw_args)?;
         let mut opts = Self::new();
@@ -599,11 +596,11 @@ impl CandleOptions {
 ///
 /// # Arguments
 ///
-/// * `content` - The `content` parameter.
+/// * `content` - Text or binary content payload.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// Vector of `String` items.
 fn parse_response_file_tokens(content: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     for line in content.lines() {
@@ -655,12 +652,12 @@ fn parse_response_file_tokens(content: &str) -> Vec<String> {
 ///
 /// # Arguments
 ///
-/// * `args` - The `args` parameter.
-/// * `depth` - The `depth` parameter.
+/// * `args` - Command-line or invocation arguments slice.
+/// * `depth` - Maximum directory traversal recursion depth.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// `Ok` containing the collected `String` items, or an error on failure.
 fn expand_response_files_recursive(args: &[String], depth: usize) -> Result<Vec<String>> {
     if depth > 16 {
         return Err(MsiError::WixCompiler {
@@ -817,11 +814,8 @@ impl LightOptions {
     /// # Errors
     ///
     /// Returns [`MsiError::WixLinker`] on invalid flags or missing required argument values.
-    #[allow(
-        clippy::too_many_lines,
-        clippy::branches_sharing_code,
-        clippy::cognitive_complexity
-    )]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::cognitive_complexity)]
     pub fn parse(raw_args: &[String]) -> Result<Self> {
         let args = expand_response_files(raw_args)?;
         let mut opts = Self::new();
@@ -1314,7 +1308,8 @@ impl WixBuildOptions {
     /// # Errors
     ///
     /// Returns [`MsiError::WixCompiler`] on missing flags or required arguments.
-    #[allow(clippy::branches_sharing_code, clippy::too_many_lines)]
+    #[allow(clippy::branches_sharing_code)]
+    #[allow(clippy::too_many_lines)]
     pub fn parse(raw_args: &[String]) -> Result<Self> {
         let args = expand_response_files(raw_args)?;
         let mut opts = Self::new();
@@ -1648,7 +1643,6 @@ impl WixBuildOptions {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -1725,7 +1719,8 @@ mod tests {
 
     /// Tests extended compiler and linker flags, response file reading, and preprocess modes.
     #[test]
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::cognitive_complexity)]
     fn test_candle_and_light_extended_flags_and_response_file() {
         let temp_dir = std::env::temp_dir().join("msi_test_toolchain_extended");
         let _ = fs::create_dir_all(&temp_dir);
@@ -1970,7 +1965,8 @@ x64
 
     /// Tests `WixBuildOptions` parsing and end-to-end execution.
     #[test]
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::cognitive_complexity)]
     fn test_wix_build_options_parse_and_execute() {
         let temp_dir = std::env::temp_dir().join("msi_test_wix_build");
         let _ = fs::create_dir_all(&temp_dir);
@@ -2129,7 +2125,8 @@ x64
 
     /// Tests edge cases, fallback paths, Windows slash flag variations, and unknown arguments.
     #[test]
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::cognitive_complexity)]
     fn test_toolchain_edge_cases() {
         let temp_dir = std::env::temp_dir().join("msi_test_toolchain_edge");
         let _ = fs::create_dir_all(&temp_dir);
@@ -2475,7 +2472,8 @@ x64
 
     /// Tests error propagation branches across Candle, Light, and `WixBuild` options.
     #[test]
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::cognitive_complexity)]
     fn test_toolchain_error_branches() {
         let temp_dir =
             std::env::temp_dir().join(format!("msi_toolchain_err_{}", std::process::id()));

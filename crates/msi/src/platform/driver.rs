@@ -298,7 +298,7 @@ impl LinuxKernelModuleServicing {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn stage_modules(
         sysroot: &Path,
         kernel_version: &str,
@@ -381,7 +381,6 @@ impl LinuxKernelModuleServicing {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

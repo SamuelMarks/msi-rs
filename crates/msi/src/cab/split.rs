@@ -509,7 +509,7 @@ impl MultiCabinetWriter {
 }
 
 #[cfg(test)]
-#[allow(clippy::manual_flatten, clippy::redundant_clone)]
+#[allow(clippy::manual_flatten)]
 mod tests {
 
     #[test]
@@ -524,7 +524,6 @@ mod tests {
     use super::*;
 
     #[test]
-    #[allow(clippy::too_many_lines)]
     fn test_multi_cabinet_set_validator_all_checks() {
         // 1. Empty set error
         assert!(SplitSetValidator::validate_split_set(&[]).is_err());
@@ -794,7 +793,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::too_many_lines)]
     fn test_multi_cabinet_writer_chunking_and_errors() {
         // 1. Empty files packing
         let mut writer_empty =

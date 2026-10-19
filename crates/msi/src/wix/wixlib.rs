@@ -262,7 +262,7 @@ impl WixLibrary {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn save(&self, path: &Path) -> Result<()> {
         let bytes = self.to_bytes();
         fs::write(path, bytes)?;
@@ -303,7 +303,7 @@ impl WixLibrary {
 }
 
 #[cfg(test)]
-#[allow(clippy::manual_flatten, clippy::redundant_clone)]
+#[allow(clippy::manual_flatten)]
 mod tests {
     use super::*;
     use crate::wix::wixobj::{SectionType, Symbol};

@@ -7,7 +7,7 @@ use msi::package::{Package, PackageMetadata, ProductVersion};
 use msi::wix::linker::Linker;
 use msi::wix::preprocessor::PreprocessorContext;
 use pyo3::prelude::*;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 
 /// Compiles a `WiX` XML source string directly to an `.msi` file.
@@ -17,6 +17,7 @@ use std::fs;
 /// * `py` - Python GIL token.
 /// * `source` - `WiX` source code string (`.wxs`).
 /// * `output_path` - Target `.msi` file path on disk.
+/// * `variables` - Optional dictionary of preprocessor variable bindings (`$(var.Name)` / `<?ifdef Name?>`).
 ///
 /// # Errors
 ///
@@ -26,9 +27,20 @@ use std::fs;
 ///
 /// `Ok(())` when the `.msi` package is linked and written to `output_path`.
 #[pyfunction]
-pub fn compile_wix_source(py: Python<'_>, source: String, output_path: String) -> PyResult<()> {
+#[pyo3(signature = (source, output_path, variables = None))]
+pub fn compile_wix_source(
+    py: Python<'_>,
+    source: String,
+    output_path: String,
+    variables: Option<BTreeMap<String, String>>,
+) -> PyResult<()> {
     py.allow_threads(move || {
         let mut ctx = PreprocessorContext::new();
+        if let Some(vars) = variables {
+            for (k, v) in vars {
+                ctx.define_var(k, v);
+            }
+        }
         let obj = msi::wix::compile_wix(&source, &mut ctx).map_err(|e| to_py_err(&e))?;
 
         let mut linker = Linker::new();
@@ -72,6 +84,7 @@ pub fn compile_wix_source(py: Python<'_>, source: String, output_path: String) -
 /// * `py` - Python GIL token.
 /// * `wxs_path` - Path to the `.wxs` source file on disk.
 /// * `output_path` - Target `.msi` file path on disk.
+/// * `variables` - Optional dictionary of preprocessor variable bindings.
 ///
 /// # Errors
 ///
@@ -81,13 +94,19 @@ pub fn compile_wix_source(py: Python<'_>, source: String, output_path: String) -
 ///
 /// `Ok(())` when the `.wxs` file is compiled and written to `output_path`.
 #[pyfunction]
-pub fn compile_wix_file(py: Python<'_>, wxs_path: &str, output_path: String) -> PyResult<()> {
+#[pyo3(signature = (wxs_path, output_path, variables = None))]
+pub fn compile_wix_file(
+    py: Python<'_>,
+    wxs_path: &str,
+    output_path: String,
+    variables: Option<BTreeMap<String, String>>,
+) -> PyResult<()> {
     let source = fs::read_to_string(wxs_path).map_err(|e| {
         to_py_err(&msi::MsiError::Io(msi::error::IoContext::from_string(
             e.to_string(),
         )))
     })?;
-    compile_wix_source(py, source, output_path)
+    compile_wix_source(py, source, output_path, variables)
 }
 
 #[cfg(test)]
@@ -158,10 +177,13 @@ mod tests {
             let _ = fs::write(&wxs_file, VALID_WXS);
 
             // 1. Compile valid string
+            let mut vars = BTreeMap::new();
+            vars.insert("SampleVar".to_string(), "SampleVal".to_string());
             let res1 = compile_wix_source(
                 py,
                 VALID_WXS.to_string(),
                 out_msi1.to_string_lossy().into_owned(),
+                Some(vars),
             );
             assert!(res1.is_ok());
             assert!(out_msi1.exists());
@@ -171,6 +193,7 @@ mod tests {
                 py,
                 &wxs_file.to_string_lossy(),
                 out_msi2.to_string_lossy().into_owned(),
+                None,
             );
             assert!(res2.is_ok());
             assert!(out_msi2.exists());
@@ -180,6 +203,7 @@ mod tests {
                 py,
                 INVALID_VER_WXS.to_string(),
                 out_msi3.to_string_lossy().into_owned(),
+                None,
             );
             assert!(res3.is_ok());
             assert!(out_msi3.exists());
@@ -190,6 +214,7 @@ mod tests {
                 py,
                 DEFAULTS_WXS.to_string(),
                 out_msi4.to_string_lossy().into_owned(),
+                None,
             );
             assert!(res4.is_ok());
             assert!(out_msi4.exists());
@@ -225,6 +250,7 @@ mod tests {
                 py,
                 "/nonexistent/path/never_exists.wxs",
                 out_msi.to_string_lossy().into_owned(),
+                None,
             );
             assert!(res_missing.is_err());
 
@@ -233,6 +259,7 @@ mod tests {
                 py,
                 "<Wix>unclosed".to_string(),
                 out_msi.to_string_lossy().into_owned(),
+                None,
             );
             assert!(res_syntax.is_err());
 
@@ -248,12 +275,13 @@ mod tests {
                 py,
                 fragment_wxs.to_string(),
                 out_msi.to_string_lossy().into_owned(),
+                None,
             );
             assert!(res_link.is_err());
 
             // 4. Save failure (invalid destination directory)
             let invalid_out = "/nonexistent_dir_never_created_99999/out.msi".to_string();
-            let res_save = compile_wix_source(py, VALID_WXS.to_string(), invalid_out);
+            let res_save = compile_wix_source(py, VALID_WXS.to_string(), invalid_out, None);
             assert!(res_save.is_err());
 
             let _ = fs::remove_dir_all(&temp_dir);

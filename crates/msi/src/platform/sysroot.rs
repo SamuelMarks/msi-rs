@@ -106,15 +106,16 @@ impl SysrootMountGuard {
     ///
     /// # Arguments
     ///
-    /// * `source` - The `source` parameter.
-    /// * `target` - The `target` parameter.
-    /// * `fstype` - The `fstype` parameter.
-    /// * `flags` - The `flags` parameter.
+    /// * `source` - The source value.
+    /// * `target` - Target path, property name, or destination identifier.
+    /// * `fstype` - The fstype value.
+    /// * `flags` - Bitmask of operational flags.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
-    #[allow(clippy::unnecessary_wraps, clippy::missing_const_for_fn)]
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
+    #[allow(clippy::unnecessary_wraps)]
+    #[allow(clippy::missing_const_for_fn)]
     fn perform_mount(source: &Path, target: &Path, fstype: Option<&str>, flags: u64) -> Result<()> {
         #[cfg(target_os = "linux")]
         {
@@ -149,13 +150,14 @@ impl SysrootMountGuard {
     ///
     /// # Arguments
     ///
-    /// * `target` - The `target` parameter.
-    /// * `lazy` - The `lazy` parameter.
+    /// * `target` - Target path, property name, or destination identifier.
+    /// * `lazy` - The lazy value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
-    #[allow(clippy::unnecessary_wraps, clippy::missing_const_for_fn)]
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
+    #[allow(clippy::unnecessary_wraps)]
+    #[allow(clippy::missing_const_for_fn)]
     fn perform_unmount(target: &Path, lazy: bool) -> Result<()> {
         #[cfg(target_os = "linux")]
         {
@@ -183,7 +185,7 @@ impl SysrootMountGuard {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn mount_active(&mut self) -> Result<()> {
         std::fs::create_dir_all(&self.scratch_dir).map_err(|e| MsiError::SysrootMountError {
             path: self.scratch_dir.display().to_string(),
@@ -244,7 +246,7 @@ impl SysrootMountGuard {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn mount_pseudofs(&mut self) -> Result<()> {
         let pseudofs = [
             ("dev", "/dev"),
@@ -281,7 +283,7 @@ impl SysrootMountGuard {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn unmount_all(&mut self) -> Result<()> {
         if !self.is_mounted {
             return Ok(());
@@ -340,7 +342,7 @@ impl SysrootMountGuard {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn create_essential_hierarchy(&self, target_os: TargetOs) -> Result<()> {
         if !self.is_mounted {
             return Err(MsiError::SysrootMountError {
@@ -427,7 +429,6 @@ impl SysrootMountGuard {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     #[allow(clippy::cognitive_complexity)]

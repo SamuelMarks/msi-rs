@@ -26,11 +26,11 @@ impl SecurityData {
     ///
     /// # Arguments
     ///
-    /// * `bytes` - The `bytes` parameter.
+    /// * `bytes` - Raw binary payload byte slice.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Self)` on success, or an error if the operation fails.
     pub fn parse(bytes: &[u8]) -> Result<Self> {
         if bytes.len() < 8 {
             return Ok(Self::default());
@@ -89,11 +89,11 @@ impl DirectoryEntry {
     ///
     /// # Arguments
     ///
-    /// * `bytes` - The `bytes` parameter.
+    /// * `bytes` - Raw binary payload byte slice.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Self)` on success, or an error if the operation fails.
     pub fn parse(bytes: &[u8]) -> Result<Self> {
         if bytes.len() < 8 {
             return Err(MsiError::Io(crate::error::IoContext::from_string(
@@ -178,12 +178,12 @@ impl WimReader {
     ///
     /// # Arguments
     ///
-    /// * `extracted_data` - The `extracted_data` parameter.
-    /// * `expected_hash` - The `expected_hash` parameter.
+    /// * `extracted_data` - The extracted data value.
+    /// * `expected_hash` - The expected hash value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn validate_checksum(
         &self,
         extracted_data: &[u8],
@@ -207,11 +207,11 @@ impl WimReader {
     ///
     /// # Arguments
     ///
-    /// * `_path` - The `_path` parameter.
+    /// * `_path` - Filesystem path to the target file or directory.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(impl Read)` on success, or an error if the operation fails.
     pub fn get_file_stream(&self, _path: &str) -> Result<impl Read> {
         // Return dummy implementation type that meets trait bounds, wrapped in Err
         let empty_stream: &[u8] = &[];
@@ -224,14 +224,8 @@ impl WimReader {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::field_reassign_with_default,
-    clippy::shadow_unrelated,
-    clippy::unreadable_literal,
-    clippy::assert_is_empty,
-    clippy::cast_possible_truncation,
-    clippy::redundant_clone
-)]
+#[allow(clippy::field_reassign_with_default)]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
 

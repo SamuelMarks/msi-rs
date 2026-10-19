@@ -39,6 +39,12 @@ pub struct MsiRecordHandle {
 pub struct MsiSummaryInfoHandle {
     /// Inner summary information instance.
     pub inner: msi::database::summary_info::SummaryInfo,
+    /// Optional parent database handle (`MSIHANDLE`).
+    pub db_handle: u32,
+    /// Optional standalone `.msi` file path on disk.
+    pub path: Option<String>,
+    /// Remaining allowed property updates (`uiUpdateCount`).
+    pub update_count: u32,
 }
 
 /// Opaque wrapper for a multi-package transaction manager.
@@ -309,6 +315,9 @@ mod tests {
 
         let si = Box::into_raw(Box::new(MsiSummaryInfoHandle {
             inner: msi::database::summary_info::SummaryInfo::default(),
+            db_handle: 0,
+            path: None,
+            update_count: 0,
         }));
         // SAFETY: si is a valid heap allocation from Box::into_raw.
         unsafe {
@@ -372,6 +381,9 @@ mod tests {
 
         let si = MsiSummaryInfoHandle {
             inner: msi::database::summary_info::SummaryInfo::default(),
+            db_handle: 0,
+            path: None,
+            update_count: 0,
         };
         assert_ne!(format!("{si:?}"), "");
 

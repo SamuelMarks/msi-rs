@@ -189,7 +189,7 @@ impl Fat32Formatter {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn allocate_cluster_chain(
         image: &mut [u8],
         reserved_sectors: u16,
@@ -237,13 +237,13 @@ impl Fat32Formatter {
     ///
     /// # Arguments
     ///
-    /// * `total_sectors` - The `total_sectors` parameter.
-    /// * `fat_size_sectors` - The `fat_size_sectors` parameter.
-    /// * `options` - The `options` parameter.
+    /// * `total_sectors` - The total sectors value.
+    /// * `fat_size_sectors` - The fat size sectors value.
+    /// * `options` - Configuration options for the operation.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `[u8` value.
     fn generate_bpb(
         total_sectors: u32,
         fat_size_sectors: u32,
@@ -311,11 +311,11 @@ impl Fat32Formatter {
     ///
     /// # Arguments
     ///
-    /// * `free_clusters` - The `free_clusters` parameter.
+    /// * `free_clusters` - The free clusters value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `[u8` value.
     fn generate_fsinfo(free_clusters: u32) -> [u8; 512] {
         let mut fsinfo = [0u8; 512];
         // Lead signature: 0x41615252 ("RRaA")
@@ -435,12 +435,12 @@ impl NtfsFormatter {
     ///
     /// # Arguments
     ///
-    /// * `record_idx` - The `record_idx` parameter.
-    /// * `volume_label` - The `volume_label` parameter.
+    /// * `record_idx` - The record idx value.
+    /// * `volume_label` - The volume label value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `[u8` value.
     fn generate_file_record(record_idx: u32, volume_label: &str) -> [u8; 1024] {
         let mut rec = [0u8; 1024];
         // "FILE" magic
@@ -594,7 +594,7 @@ impl Ext4Formatter {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `[u8` value.
     fn generate_group_descriptor() -> [u8; 64] {
         let mut desc = [0u8; 64];
         desc[0..4].copy_from_slice(&2u32.to_le_bytes()); // Block bitmap block LBA
@@ -675,7 +675,7 @@ impl FileSystemVerifier {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn verify(fs: FileSystemKind, buffer: &[u8]) -> Result<()> {
         match fs {
             FileSystemKind::Fat32 => Self::verify_fat32(buffer),
@@ -690,11 +690,11 @@ impl FileSystemVerifier {
     ///
     /// # Arguments
     ///
-    /// * `buffer` - The `buffer` parameter.
+    /// * `buffer` - Destination byte or character buffer.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     fn verify_fat32(buffer: &[u8]) -> Result<()> {
         if buffer.len() < 1024 {
             return Err(MsiError::FileSystemFormatError {
@@ -734,11 +734,11 @@ impl FileSystemVerifier {
     ///
     /// # Arguments
     ///
-    /// * `buffer` - The `buffer` parameter.
+    /// * `buffer` - Destination byte or character buffer.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     fn verify_ntfs(buffer: &[u8]) -> Result<()> {
         if buffer.len() < 512 {
             return Err(MsiError::FileSystemFormatError {
@@ -779,11 +779,11 @@ impl FileSystemVerifier {
     ///
     /// # Arguments
     ///
-    /// * `buffer` - The `buffer` parameter.
+    /// * `buffer` - Destination byte or character buffer.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     fn verify_ext4(buffer: &[u8]) -> Result<()> {
         // Superblock starts at byte 1024 (offset 0x400)
         let sb_offset = 1024;
@@ -821,11 +821,11 @@ impl FileSystemVerifier {
     ///
     /// # Arguments
     ///
-    /// * `buffer` - The `buffer` parameter.
+    /// * `buffer` - Destination byte or character buffer.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     fn verify_btrfs(buffer: &[u8]) -> Result<()> {
         let sb_offset = 65_536;
         if buffer.len() < sb_offset + 64 {
@@ -850,11 +850,11 @@ impl FileSystemVerifier {
     ///
     /// # Arguments
     ///
-    /// * `buffer` - The `buffer` parameter.
+    /// * `buffer` - Destination byte or character buffer.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     fn verify_xfs(buffer: &[u8]) -> Result<()> {
         if buffer.len() < 512 {
             return Err(MsiError::FileSystemFormatError {
@@ -875,7 +875,6 @@ impl FileSystemVerifier {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

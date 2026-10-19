@@ -11,11 +11,18 @@
 //!   and supports embedded/external cabinets.
 //! - Internal Consistency Evaluators (ICE) validation: ICE01..ICE105.
 
-use crate::database::md5::compute_md5;
+mod binder;
+mod solver;
+
+#[cfg(test)]
+use self::binder::inspect_font_title;
+pub use self::binder::inspect_pe_version;
+#[cfg(test)]
+use self::solver::is_special_reference;
+
 pub use crate::database::memory::{LinkedDatabase, ModifyMode};
 use crate::database::tables::record::{FieldValue, Record};
 use crate::error::{MsiError, Result};
-use crate::execution::properties::EvaluationContext;
 pub use crate::wix::ice::cub::CubValidator;
 pub use crate::wix::ice::rules::{
     IceDiagnostic, IceDiagnosticType, IceRegistry, IceReport, IceRule, StandardIceRule,
@@ -26,9 +33,9 @@ pub use crate::wix::standard_defs::{
     StandardActionOrder, StandardDirectory, STANDARD_DIRECTORIES, STANDARD_INSTALL_EXECUTE_ACTIONS,
     STANDARD_INSTALL_UI_ACTIONS,
 };
-use crate::wix::wixobj::{IntermediateSection, Reference, SectionType, Symbol, WixObject};
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::path::{Path, PathBuf};
+use crate::wix::wixobj::{IntermediateSection, WixObject};
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 
 /// Sequence constraint tuple representing `(Action, Anchor, Position, Condition)`.
 type SequenceConstraint = (String, String, String, Option<String>);
@@ -40,11 +47,11 @@ use crate::wix::extensions::ExtensionRegistry;
 #[allow(clippy::struct_excessive_bools)]
 pub struct Linker {
     /// Input intermediate object files.
-    objects: Vec<WixObject>,
+    pub(super) objects: Vec<WixObject>,
     /// Base directory search paths for binding payload files (`-b`).
-    base_directories: Vec<PathBuf>,
+    pub(super) base_directories: Vec<PathBuf>,
     /// Named bind paths mapping identifier to directory (`-bd`).
-    bind_paths: HashMap<String, PathBuf>,
+    pub(super) bind_paths: HashMap<String, PathBuf>,
     /// Whether to suppress all ICE validation (`-sval`).
     suppress_ice: bool,
     /// Specific ICE validation rules to selectively run (`-ice:<ICE>`).
@@ -64,71 +71,13 @@ pub struct Linker {
     /// Localization catalog for evaluating `!(loc.Id)`.
     loc_catalog: LocalizationCatalog,
     /// Component-split media layout (one CAB per component).
-    cab_per_component: bool,
+    pub(super) cab_per_component: bool,
     /// Embedded cabinet archives generated during binding.
-    embedded_cabinets: HashMap<String, Vec<u8>>,
+    pub(super) embedded_cabinets: HashMap<String, Vec<u8>>,
     /// External cabinet archives generated during binding (non-embedded).
-    external_cabinets: HashMap<String, Vec<u8>>,
+    pub(super) external_cabinets: HashMap<String, Vec<u8>>,
     /// Extension registry.
     extension_registry: ExtensionRegistry,
-}
-
-/// Checks whether an unresolved symbol reference is a standard built-in symbol, action,
-/// dialog, property, or UI set.
-///
-/// # Arguments
-///
-/// * `rf` - Symbol reference to test.
-/// * `defined_symbols` - Map of currently defined symbols.
-///
-/// # Returns
-///
-/// The resulting value or `Ok(())` on success.
-fn is_special_reference(rf: &Reference, defined_symbols: &HashMap<Symbol, Vec<usize>>) -> bool {
-    match rf.namespace.as_str() {
-        "Directory" => STANDARD_DIRECTORIES.iter().any(|d| d.id == rf.id),
-        "Action" => {
-            STANDARD_INSTALL_EXECUTE_ACTIONS
-                .iter()
-                .any(|a| a.name == rf.id)
-                || STANDARD_INSTALL_UI_ACTIONS.iter().any(|a| a.name == rf.id)
-                || defined_symbols.contains_key(&Symbol::new("Dialog", &rf.id))
-                || defined_symbols.contains_key(&Symbol::new("CustomAction", &rf.id))
-        }
-        "UI" => rf.id.starts_with("WixUI_") || rf.id == "WixUI",
-        "Property" => {
-            rf.id.starts_with("WIXUI_") || rf.id.starts_with("ARP") || rf.id == "ALLUSERS"
-        }
-        _ => false,
-    }
-}
-
-/// Parses a `WiX` compression level string into a [`crate::cab::folder::CompressionType`].
-///
-/// Supports `none`, `mszip`, `high`, `lzx`, `lzx15`..=`lzx21`, and `quantum`.
-///
-/// # Arguments
-///
-/// * `lvl` - Compression level string.
-///
-/// # Returns
-///
-/// Configured [`crate::cab::folder::CompressionType`].
-fn parse_media_compression_level(lvl: &str) -> crate::cab::folder::CompressionType {
-    let lower = lvl.trim().to_ascii_lowercase();
-    if lower == "none" {
-        crate::cab::folder::CompressionType::None
-    } else if lower == "high" {
-        crate::cab::folder::CompressionType::Lzx { window_bits: 21 }
-    } else if let Some(lzx_part) = lower.strip_prefix("lzx") {
-        let clean = lzx_part.trim_start_matches([':', '-', '_']);
-        let bits = clean.parse::<u8>().unwrap_or(21).clamp(15, 21);
-        crate::cab::folder::CompressionType::Lzx { window_bits: bits }
-    } else if lower == "quantum" {
-        crate::cab::folder::CompressionType::Quantum
-    } else {
-        crate::cab::folder::CompressionType::Mszip
-    }
 }
 
 #[allow(clippy::multiple_inherent_impl)]
@@ -154,7 +103,7 @@ impl Linker {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn with_extensions(registry: ExtensionRegistry) -> Self {
         Self {
@@ -402,6 +351,7 @@ impl Linker {
                 ("WixUI_Font_Normal", "Tahoma", 8, 0, 0),
                 ("WixUI_Font_Bigger", "Tahoma", 12, 0, 1),
                 ("WixUI_Font_Title", "Tahoma", 9, 0, 1),
+                ("WixUI_Font_Bold", "Tahoma", 8, 0, 1),
             ];
             for (name, face, sz, color, bits) in text_styles {
                 db.add_record(
@@ -417,14 +367,14 @@ impl Linker {
             }
         }
 
-        // 5d. Validate MsiEmbeddedChainer references
+        // 5d. Bind physical binary payloads from disk into embedded streams
+        self.bind_binaries(&mut db)?;
+
+        // 5e. Validate MsiEmbeddedChainer references
         Self::validate_embedded_chainers(&db)?;
 
         // 6. Bind physical files from disk and generate cabinet archives
         self.bind_files_and_pack_cabinets(&mut db)?;
-
-        // 6b. Bind physical binary payloads from disk into embedded streams
-        self.bind_binaries(&mut db)?;
 
         // 7. Layout and sequence media files
         Self::layout_media_and_files(&mut db);
@@ -442,11 +392,11 @@ impl Linker {
     ///
     /// # Arguments
     ///
-    /// * `db` - The `db` parameter.
+    /// * `db` - In-memory linked MSI database to inspect or mutate.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     fn expand_localization_tokens(&self, db: &mut LinkedDatabase) -> Result<()> {
         for records in db.tables.values_mut() {
             for rec in records {
@@ -463,757 +413,32 @@ impl Linker {
     }
 
     /// Solves relative sequencing directives (`Before`, `After`, `OnExit`) across execution and UI sequences.
-    ///
-    /// # Arguments
-    ///
-    /// * `db` - The [`LinkedDatabase`] containing sequence tables.
-    ///
-    /// # Returns
-    ///
-    /// `Ok(())` on successful sequence resolution.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`MsiError::WixLinker`] if a cyclic dependency is detected.
-    #[allow(clippy::cognitive_complexity)]
-    #[allow(clippy::too_many_lines)]
     fn solve_relative_sequences(db: &mut LinkedDatabase) -> Result<()> {
-        let rel_records = db.tables.remove("_WixSequenceRelative").unwrap_or_default();
-        if rel_records.is_empty() {
-            return Ok(());
-        }
-
-        let mut constraints_by_table: HashMap<String, Vec<SequenceConstraint>> = HashMap::new();
-        for r in &rel_records {
-            if let (
-                Some(FieldValue::String(tbl)),
-                Some(FieldValue::String(action)),
-                Some(FieldValue::String(anchor)),
-                Some(FieldValue::String(pos)),
-            ) = (r.get(0), r.get(1), r.get(2), r.get(3))
-            {
-                let maybe_cond = match r.get(4) {
-                    Some(FieldValue::String(c)) => Some(c.clone()),
-                    _ => None,
-                };
-                constraints_by_table.entry(tbl.clone()).or_default().push((
-                    action.clone(),
-                    anchor.clone(),
-                    pos.clone(),
-                    maybe_cond,
-                ));
-            }
-        }
-
-        for (table_name, constraints) in constraints_by_table {
-            let existing_records = db.tables.entry(table_name.clone()).or_default();
-
-            for (action, anchor, pos, maybe_cond) in &constraints {
-                if pos == "OnExit" {
-                    let on_exit_seq: i16 = match anchor.as_str() {
-                        "cancel" => -2,
-                        "error" => -3,
-                        "suspend" => -4,
-                        _ => -1,
-                    };
-                    for rec in existing_records.iter_mut() {
-                        let matches_cond = maybe_cond
-                            .as_ref()
-                            .is_none_or(|c| rec.get(1) == Some(&FieldValue::String(c.clone())));
-                        if rec.get(0) == Some(&FieldValue::String(action.clone())) && matches_cond {
-                            rec.set(2, FieldValue::Short(on_exit_seq));
-                        }
-                    }
-                }
-            }
-
-            let mut action_seqs: HashMap<String, i16> = HashMap::new();
-            for rec in existing_records.iter() {
-                if let (Some(FieldValue::String(act)), Some(FieldValue::Short(s))) =
-                    (rec.get(0), rec.get(2))
-                {
-                    action_seqs.insert(act.clone(), *s);
-                }
-            }
-
-            if table_name == "InstallUISequence" {
-                for std in STANDARD_INSTALL_UI_ACTIONS {
-                    action_seqs
-                        .entry(std.name.to_string())
-                        .or_insert(std.sequence);
-                }
-            } else if table_name == "InstallExecuteSequence" {
-                for std in STANDARD_INSTALL_EXECUTE_ACTIONS {
-                    action_seqs
-                        .entry(std.name.to_string())
-                        .or_insert(std.sequence);
-                }
-            }
-
-            let mut in_degree: HashMap<String, usize> = HashMap::new();
-            let mut graph: HashMap<String, Vec<String>> = HashMap::new();
-            for (action, anchor, pos, _) in &constraints {
-                if pos == "After" {
-                    graph
-                        .entry(anchor.clone())
-                        .or_default()
-                        .push(action.clone());
-                    *in_degree.entry(action.clone()).or_insert(0) += 1;
-                    in_degree.entry(anchor.clone()).or_insert(0);
-                } else if pos == "Before" {
-                    graph
-                        .entry(action.clone())
-                        .or_default()
-                        .push(anchor.clone());
-                    *in_degree.entry(anchor.clone()).or_insert(0) += 1;
-                    in_degree.entry(action.clone()).or_insert(0);
-                }
-            }
-
-            let mut queue: VecDeque<String> = VecDeque::new();
-            for (node, &deg) in &in_degree {
-                if deg == 0 {
-                    queue.push_back(node.clone());
-                }
-            }
-
-            let mut sorted_count = 0;
-            while let Some(node) = queue.pop_front() {
-                sorted_count += 1;
-                if let Some(neighbors) = graph.get(&node) {
-                    for n in neighbors {
-                        let d = in_degree.entry(n.clone()).or_default();
-                        *d -= 1;
-                        if *d == 0 {
-                            queue.push_back(n.clone());
-                        }
-                    }
-                }
-            }
-
-            if sorted_count < in_degree.len() {
-                return Err(MsiError::WixLinker {
-                    message: format!(
-                        "cycle detected in relative sequencing constraints for {table_name}"
-                    ),
-                });
-            }
-
-            for (action, anchor, pos, maybe_cond) in &constraints {
-                if pos == "After" {
-                    let base_seq = action_seqs.get(anchor).copied().unwrap_or(1000);
-                    let mut assigned = base_seq + 25;
-                    while action_seqs.values().any(|&v| v == assigned) {
-                        assigned += 1;
-                    }
-                    action_seqs.insert(action.clone(), assigned);
-                    for rec in existing_records.iter_mut() {
-                        let matches_cond = maybe_cond
-                            .as_ref()
-                            .is_none_or(|c| rec.get(1) == Some(&FieldValue::String(c.clone())));
-                        if rec.get(0) == Some(&FieldValue::String(action.clone())) && matches_cond {
-                            rec.set(2, FieldValue::Short(assigned));
-                        }
-                    }
-                } else if pos == "Before" {
-                    let base_seq = action_seqs.get(anchor).copied().unwrap_or(1000);
-                    let mut assigned = (base_seq - 25).max(1);
-                    while action_seqs.values().any(|&v| v == assigned) {
-                        assigned = (assigned - 1).max(1);
-                    }
-                    action_seqs.insert(action.clone(), assigned);
-                    for rec in existing_records.iter_mut() {
-                        let matches_cond = maybe_cond
-                            .as_ref()
-                            .is_none_or(|c| rec.get(1) == Some(&FieldValue::String(c.clone())));
-                        if rec.get(0) == Some(&FieldValue::String(action.clone())) && matches_cond {
-                            rec.set(2, FieldValue::Short(assigned));
-                        }
-                    }
-                }
-            }
-
-            existing_records.sort_by(|a, b| {
-                let seq_a = match a.get(2) {
-                    Some(FieldValue::Short(s)) => *s,
-                    _ => 0,
-                };
-                let seq_b = match b.get(2) {
-                    Some(FieldValue::Short(s)) => *s,
-                    _ => 0,
-                };
-                seq_a.cmp(&seq_b)
-            });
-        }
-
-        Ok(())
+        solver::solve_relative_sequences(db)
     }
 
     /// Resolves `WixVariable` tokens, binds branding bitmaps, and extracts license RTF.
-    ///
-    /// # Arguments
-    ///
-    /// * `db` - The [`LinkedDatabase`] to update.
-    #[allow(clippy::cognitive_complexity)]
-    #[allow(clippy::too_many_lines)]
     fn resolve_wix_variables(&mut self, db: &mut LinkedDatabase) {
-        let wix_vars = db.tables.get("WixVariable").cloned().unwrap_or_default();
-        if wix_vars.is_empty() {
-            return;
-        }
-
-        let mut var_map: HashMap<String, String> = HashMap::new();
-        for r in &wix_vars {
-            if let (Some(FieldValue::String(k)), Some(FieldValue::String(v))) = (r.get(0), r.get(1))
-            {
-                var_map.insert(k.clone(), v.clone());
-            }
-        }
-
-        for records in db.tables.values_mut() {
-            for rec in records.iter_mut() {
-                for i in 0..rec.len() {
-                    if let Some(FieldValue::String(s)) = rec.get(i) {
-                        if s.contains("!(wix.") {
-                            let mut new_s = s.clone();
-                            for (k, v) in &var_map {
-                                let pat = format!("!(wix.{k})");
-                                if new_s.contains(&pat) {
-                                    new_s = new_s.replace(&pat, v);
-                                }
-                            }
-                            rec.set(i, FieldValue::String(new_s));
-                        }
-                    }
-                }
-            }
-        }
-
-        if let Some(banner_path) = var_map.get("WixUIBannerBmp") {
-            if let Some(real_path) = self.resolve_source_path(banner_path) {
-                if let Ok(data) = std::fs::read(&real_path) {
-                    db.add_record(
-                        "Binary",
-                        Record::with_fields(vec![
-                            FieldValue::String("WixUIBannerBmp".to_string()),
-                            FieldValue::Stream(crate::database::tables::types::StringPoolId::new(
-                                1,
-                            )),
-                        ]),
-                    );
-                    db.add_record(
-                        "Binary",
-                        Record::with_fields(vec![
-                            FieldValue::String("WixUI_Bmp_Banner".to_string()),
-                            FieldValue::Stream(crate::database::tables::types::StringPoolId::new(
-                                1,
-                            )),
-                        ]),
-                    );
-                    self.embedded_cabinets
-                        .insert("WixUIBannerBmp".to_string(), data.clone());
-                    self.embedded_cabinets
-                        .insert("WixUI_Bmp_Banner".to_string(), data);
-                }
-            }
-        }
-
-        if let Some(dialog_path) = var_map.get("WixUIDialogBmp") {
-            if let Some(real_path) = self.resolve_source_path(dialog_path) {
-                if let Ok(data) = std::fs::read(&real_path) {
-                    db.add_record(
-                        "Binary",
-                        Record::with_fields(vec![
-                            FieldValue::String("WixUIDialogBmp".to_string()),
-                            FieldValue::Stream(crate::database::tables::types::StringPoolId::new(
-                                2,
-                            )),
-                        ]),
-                    );
-                    db.add_record(
-                        "Binary",
-                        Record::with_fields(vec![
-                            FieldValue::String("WixUI_Bmp_Dialog".to_string()),
-                            FieldValue::Stream(crate::database::tables::types::StringPoolId::new(
-                                2,
-                            )),
-                        ]),
-                    );
-                    self.embedded_cabinets
-                        .insert("WixUIDialogBmp".to_string(), data.clone());
-                    self.embedded_cabinets
-                        .insert("WixUI_Bmp_Dialog".to_string(), data);
-                }
-            }
-        }
-
-        for (idx, icon_var) in [
-            "WixUIExclamationIco",
-            "WixUIInfoIco",
-            "WixUINewIco",
-            "WixUIUpIco",
-        ]
-        .iter()
-        .enumerate()
-        {
-            if let Some(ico_path) = var_map.get(*icon_var) {
-                if let Some(real_path) = self.resolve_source_path(ico_path) {
-                    if let Ok(data) = std::fs::read(&real_path) {
-                        db.add_record(
-                            "Binary",
-                            Record::with_fields(vec![
-                                FieldValue::String((*icon_var).to_string()),
-                                FieldValue::Stream(
-                                    crate::database::tables::types::StringPoolId::new(
-                                        u32::try_from(idx + 3).unwrap_or(u32::MAX),
-                                    ),
-                                ),
-                            ]),
-                        );
-                        self.embedded_cabinets.insert((*icon_var).to_string(), data);
-                    }
-                }
-            }
-        }
-
-        let (is_txt_var, lic_val) = var_map.get("WixUILicenseRtf").map_or_else(
-            || (true, var_map.get("WixUILicenseTxt")),
-            |v| (false, Some(v)),
-        );
-
-        if let Some(lic_val) = lic_val {
-            let rtf_content = if lic_val.starts_with(r"{\rtf1") {
-                lic_val.clone()
-            } else if let Some(real_path) = self.resolve_source_path(lic_val) {
-                std::fs::read_to_string(&real_path).map_or_else(
-                    |_| lic_val.clone(),
-                    |content| {
-                        if real_path
-                            .extension()
-                            .is_some_and(|e| e.eq_ignore_ascii_case("rtf"))
-                        {
-                            content
-                        } else {
-                            crate::wix::compiler::convert_text_to_rtf(&content)
-                        }
-                    },
-                )
-            } else if is_txt_var {
-                crate::wix::compiler::convert_text_to_rtf(lic_val)
-            } else {
-                lic_val.clone()
-            };
-
-            if let Some(ctrl_records) = db.tables.get_mut("Control") {
-                for r in ctrl_records.iter_mut() {
-                    if r.get(2) == Some(&FieldValue::String("ScrollableText".to_string())) {
-                        let should_update = match r.get(9) {
-                            None | Some(FieldValue::Null) => true,
-                            Some(FieldValue::String(s)) => {
-                                let trimmed = s.trim();
-                                trimmed.is_empty()
-                                    || trimmed == "!(wix.WixUILicenseRtf)"
-                                    || trimmed == "!(wix.WixUILicenseTxt)"
-                                    || (!trimmed.starts_with(r"{\rtf")
-                                        && trimmed != "Existing Text")
-                            }
-                            _ => false,
-                        };
-                        if should_update {
-                            r.set(9, FieldValue::String(rtf_content.clone()));
-                        }
-                    }
-                }
-            }
-        }
+        binder::resolve_wix_variables(self, db);
     }
 
     /// Resolves deferred `ScrollableText` `Control.Text` file references against configured bind paths.
-    ///
-    /// # Arguments
-    ///
-    /// * `db` - The linked database.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`MsiError::WixLinker`] if a `ScrollableText` control's `SourceFile` or
-    /// `WixUILicenseRtf` file path cannot be found in any `-b` bind path.
     fn bind_text_sources(&self, db: &mut LinkedDatabase) -> Result<()> {
-        let mut updates = Vec::new();
-        if let Some(ctrl_records) = db.tables.get("Control") {
-            for (idx, r) in ctrl_records.iter().enumerate() {
-                if r.get(2) == Some(&FieldValue::String("ScrollableText".to_string())) {
-                    if let Some(FieldValue::String(text)) = r.get(9) {
-                        let trimmed = text.trim();
-                        if !trimmed.is_empty() && !trimmed.starts_with(r"{\rtf") {
-                            let file_ref = trimmed
-                                .strip_prefix("!(bindpath.rtf:")
-                                .and_then(|s| s.strip_suffix(')'))
-                                .unwrap_or(trimmed);
-                            let is_explicit_bind = trimmed.starts_with("!(bindpath.rtf:");
-                            let looks_like_file_path = is_explicit_bind
-                                || Path::new(file_ref).extension().is_some_and(|e| {
-                                    e.eq_ignore_ascii_case("rtf") || e.eq_ignore_ascii_case("txt")
-                                });
-                            if let Some(real_path) = self.resolve_source_path(file_ref) {
-                                let content = std::fs::read_to_string(&real_path).map_err(|e| {
-                                    MsiError::WixLinker {
-                                        message: format!(
-                                            "failed reading ScrollableText source file '{}': {e}",
-                                            real_path.display()
-                                        ),
-                                    }
-                                })?;
-                                let rtf = if real_path
-                                    .extension()
-                                    .is_some_and(|e| e.eq_ignore_ascii_case("rtf"))
-                                {
-                                    content
-                                } else {
-                                    crate::wix::compiler::convert_text_to_rtf(&content)
-                                };
-                                updates.push((idx, rtf));
-                            } else if looks_like_file_path {
-                                return Err(MsiError::WixLinker {
-                                    message: format!(
-                                        "unresolved ScrollableText source file '{file_ref}' (not found in any -b bind path)"
-                                    ),
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        if let Some(ctrl_records) = db.tables.get_mut("Control") {
-            for (idx, rtf) in updates {
-                ctrl_records[idx].set(9, FieldValue::String(rtf));
-            }
-        }
-        Ok(())
+        binder::bind_text_sources(self, db)
     }
 
     /// Resolves a source file path against configured base directories and bind paths.
-    ///
-    /// # Arguments
-    ///
-    /// * `src_path` - The `src_path` parameter.
-    ///
-    /// # Returns
-    ///
-    /// The resulting value or `Ok(())` on success.
+    #[cfg(test)]
     fn resolve_source_path(&self, src_path: &str) -> Option<PathBuf> {
-        let p = Path::new(src_path);
-        if p.is_absolute() && p.exists() {
-            return Some(p.to_path_buf());
-        }
-
-        // Check bind paths (e.g. [BindId]/subpath or id)
-        for (id, bind_dir) in &self.bind_paths {
-            let prefix_bracket = format!("[{id}]");
-            if src_path.starts_with(&prefix_bracket) {
-                let rest = src_path[prefix_bracket.len()..].trim_start_matches(['/', '\\']);
-                let cand = bind_dir.join(rest);
-                if cand.exists() {
-                    return Some(cand);
-                }
-            }
-        }
-
-        // Check base directories
-        for base_dir in &self.base_directories {
-            let cand = base_dir.join(p);
-            if cand.exists() {
-                return Some(cand);
-            }
-        }
-
-        // Check current working directory
-        if p.exists() {
-            return Some(p.to_path_buf());
-        }
-
-        None
+        binder::resolve_source_path(self, src_path)
     }
 
     /// Binds physical file payloads from disk into File records and compresses them into embedded cabinets.
-    #[allow(
-        clippy::too_many_lines,
-        clippy::cast_possible_truncation,
-        clippy::cast_possible_wrap
-    )]
-    #[allow(clippy::cognitive_complexity)]
     fn bind_files_and_pack_cabinets(&mut self, db: &mut LinkedDatabase) -> Result<()> {
-        let wix_files = db.tables.remove("WixFile").unwrap_or_default();
-
-        let mut file_sources: HashMap<String, (String, i16)> = HashMap::new();
-        for r in &wix_files {
-            if let (Some(FieldValue::String(fid)), Some(FieldValue::String(src))) =
-                (r.get(0), r.get(1))
-            {
-                let disk_id = match r.get(2) {
-                    Some(FieldValue::Short(d)) => *d,
-                    _ => 1,
-                };
-                file_sources.insert(fid.clone(), (src.clone(), disk_id));
-            }
-        }
-
-        let mut disk_compression: HashMap<i16, crate::cab::folder::CompressionType> =
-            HashMap::new();
-        for r in db.get_records("WixMediaCompression") {
-            if let (Some(FieldValue::Short(did)), Some(FieldValue::String(lvl))) =
-                (r.get(0), r.get(1))
-            {
-                let ct = parse_media_compression_level(lvl);
-                disk_compression.insert(*did, ct);
-            }
-        }
-
-        let external_media_disks: HashSet<i16> = db
-            .get_records("WixExternalMedia")
-            .iter()
-            .filter_map(|r| match r.get(0) {
-                Some(FieldValue::Short(did)) => Some(*did),
-                _ => None,
-            })
-            .collect();
-
-        let mut disk_to_cab: HashMap<i16, String> = HashMap::new();
-        for r in db.get_records("Media") {
-            if let Some(FieldValue::Short(did)) = r.get(0) {
-                let is_ext = external_media_disks.contains(did);
-                let cab_name = match r.get(3) {
-                    Some(FieldValue::String(c)) if !c.is_empty() => {
-                        if is_ext {
-                            c.trim_start_matches('#').to_string()
-                        } else if c.starts_with('#') {
-                            c.clone()
-                        } else {
-                            format!("#{c}")
-                        }
-                    }
-                    _ => {
-                        if is_ext {
-                            format!("cab{did}.cab")
-                        } else {
-                            format!("#cab{did}.cab")
-                        }
-                    }
-                };
-                disk_to_cab.insert(*did, cab_name);
-            }
-        }
-
-        let mut file_disk_records: Vec<Record> = Vec::new();
-        for (fid, (_src, did)) in &file_sources {
-            file_disk_records.push(Record::with_fields(vec![
-                FieldValue::String(fid.clone()),
-                FieldValue::Short(*did),
-            ]));
-        }
-        db.tables
-            .insert("_FileDiskId".to_string(), file_disk_records);
-
-        let mut cab_writers: HashMap<String, crate::cab::writer::CabinetWriter> = HashMap::new();
-
-        for (disk_id, cab_name) in &disk_to_cab {
-            let comp_type = disk_compression
-                .get(disk_id)
-                .copied()
-                .unwrap_or(crate::cab::folder::CompressionType::Mszip);
-            let _ = cab_writers
-                .entry(cab_name.clone())
-                .or_insert_with(|| crate::cab::writer::CabinetWriter::new(comp_type));
-        }
-
-        let mut file_hash_records: Vec<Record> = Vec::new();
-        let mut font_records: Vec<Record> = Vec::new();
-
-        if let Some(file_records) = db.tables.get_mut("File") {
-            // Stable sort file records by disk_id so disk partitions are grouped together while preserving manifest order
-            file_records.sort_by(|a, b| {
-                let fid_a = match a.get(0) {
-                    Some(FieldValue::String(s)) => s.as_str(),
-                    _ => "",
-                };
-                let fid_b = match b.get(0) {
-                    Some(FieldValue::String(s)) => s.as_str(),
-                    _ => "",
-                };
-                let disk_a = file_sources.get(fid_a).map_or(1, |(_, d)| *d);
-                let disk_b = file_sources.get(fid_b).map_or(1, |(_, d)| *d);
-                disk_a.cmp(&disk_b)
-            });
-
-            let mut max_seq_per_disk: HashMap<i16, i32> = HashMap::new();
-            let mut disk_cab_folders: HashMap<i16, HashMap<String, u16>> = HashMap::new();
-
-            for (idx, r) in file_records.iter_mut().enumerate() {
-                let file_id = match r.get(0) {
-                    Some(FieldValue::String(s)) => s.clone(),
-                    _ => continue,
-                };
-                let comp_id = match r.get(1) {
-                    Some(FieldValue::String(s)) => s.clone(),
-                    _ => continue,
-                };
-
-                let (src_path_str, disk_id) = match file_sources.get(&file_id) {
-                    Some((s, d)) => (s.clone(), *d),
-                    None => continue,
-                };
-
-                let Some(resolved_path) = self.resolve_source_path(&src_path_str) else {
-                    if !self.base_directories.is_empty() || !self.bind_paths.is_empty() {
-                        return Err(MsiError::WixLinker {
-                            message: format!(
-                                "Source file '{src_path_str}' for File '{file_id}' not found in any base directory"
-                            ),
-                        });
-                    }
-                    continue;
-                };
-
-                let data = std::fs::read(&resolved_path)?;
-
-                let file_len = i32::try_from(data.len()).unwrap_or(i32::MAX);
-                r.set(3, FieldValue::Long(file_len));
-
-                // Check version
-                let is_unversioned = match r.get(4) {
-                    Some(FieldValue::String(s)) => s.is_empty(),
-                    _ => true,
-                };
-
-                if is_unversioned {
-                    if let Some((pe_ver, pe_lang)) = inspect_pe_version(&data) {
-                        r.set(4, FieldValue::String(pe_ver));
-                        r.set(5, FieldValue::String(pe_lang));
-                    } else {
-                        // Unversioned: compute MD5 hash for FileHash table
-                        let digest = compute_md5(&data);
-                        let h1 = i32::from_le_bytes([digest[0], digest[1], digest[2], digest[3]]);
-                        let h2 = i32::from_le_bytes([digest[4], digest[5], digest[6], digest[7]]);
-                        let h3 = i32::from_le_bytes([digest[8], digest[9], digest[10], digest[11]]);
-                        let h4 =
-                            i32::from_le_bytes([digest[12], digest[13], digest[14], digest[15]]);
-                        file_hash_records.push(Record::with_fields(vec![
-                            FieldValue::String(file_id.clone()),
-                            FieldValue::Short(0),
-                            FieldValue::Long(h1),
-                            FieldValue::Long(h2),
-                            FieldValue::Long(h3),
-                            FieldValue::Long(h4),
-                        ]));
-                    }
-                }
-
-                // Check font
-                if let Some(font_title) = inspect_font_title(&data) {
-                    font_records.push(Record::with_fields(vec![
-                        FieldValue::String(file_id.clone()),
-                        FieldValue::String(font_title),
-                    ]));
-                }
-
-                // Sequence
-                let seq = (idx + 1) as i32;
-                r.set(7, FieldValue::Short(seq as i16));
-                max_seq_per_disk.insert(disk_id, seq);
-
-                // Add to cabinet
-                let cab_name = if self.cab_per_component {
-                    format!("#comp_{comp_id}.cab")
-                } else {
-                    disk_to_cab
-                        .get(&disk_id)
-                        .cloned()
-                        .unwrap_or_else(|| format!("#cab{disk_id}.cab"))
-                };
-
-                let comp_type = disk_compression
-                    .get(&disk_id)
-                    .copied()
-                    .unwrap_or(crate::cab::folder::CompressionType::Mszip);
-
-                let writer = cab_writers
-                    .entry(cab_name)
-                    .or_insert_with(|| crate::cab::writer::CabinetWriter::new(comp_type));
-
-                let file_name_in_cab = &file_id;
-
-                let disk_folders = disk_cab_folders.entry(disk_id).or_default();
-                let next_idx = disk_folders.len() as u16;
-                let folder_idx = *disk_folders.entry(comp_id).or_insert(next_idx);
-
-                writer.add_file_with_folder_index(
-                    file_name_in_cab,
-                    &data,
-                    crate::cab::file::FolderIndex::Index(folder_idx),
-                )?;
-            }
-
-            // Update Media table LastSequence per disk
-            if let Some(media_records) = db.tables.get_mut("Media") {
-                media_records.sort_by(|a, b| {
-                    let did_a = match a.get(0) {
-                        Some(FieldValue::Short(d)) => *d,
-                        _ => 0,
-                    };
-                    let did_b = match b.get(0) {
-                        Some(FieldValue::Short(d)) => *d,
-                        _ => 0,
-                    };
-                    did_a.cmp(&did_b)
-                });
-
-                let mut cumulative_last_seq = 0;
-                for mr in media_records.iter_mut() {
-                    if let Some(FieldValue::Short(did)) = mr.get(0) {
-                        if let Some(&max_seq) = max_seq_per_disk.get(did) {
-                            cumulative_last_seq = cumulative_last_seq.max(max_seq);
-                        }
-                        mr.set(1, FieldValue::Long(cumulative_last_seq));
-                    }
-                }
-            }
-        }
-
-        // Add FileHash records to db
-        if !file_hash_records.is_empty() {
-            let hash_tbl = db.tables.entry("FileHash".to_string()).or_default();
-            hash_tbl.extend(file_hash_records);
-        }
-
-        // Add Font records to db
-        if !font_records.is_empty() {
-            let font_tbl = db.tables.entry("Font".to_string()).or_default();
-            font_tbl.extend(font_records);
-        }
-
-        // Build cabinets and populate embedded_cabinets and external_cabinets
-        for (cab_name, writer) in cab_writers {
-            let cab_bytes = writer.build().unwrap_or_default();
-            if cab_name.starts_with('#') {
-                self.embedded_cabinets.insert(cab_name, cab_bytes);
-            } else {
-                self.external_cabinets.insert(cab_name, cab_bytes);
-            }
-        }
-
-        Ok(())
+        binder::bind_files_and_pack_cabinets(self, db)
     }
 
     /// Evaluates ICE validation rules according to suppression and selection settings.
-    ///
-    /// # Arguments
-    ///
-    /// * `db` - The `db` parameter.
-    ///
-    /// # Returns
-    ///
-    /// The resulting value or `Ok(())` on success.
     pub(crate) fn run_filtered_ice_validations(&self, db: &LinkedDatabase) -> Result<()> {
         if self.suppress_ice {
             return Ok(());
@@ -1273,921 +498,53 @@ impl Linker {
 
     /// Solves the symbol graph: identifies the single entry point (`Product` or `Module`),
     /// detects duplicate symbols, and resolves all required references across sections.
-    ///
-    /// # Returns
-    ///
-    /// The resulting value or `Ok(())` on success.
-    #[allow(clippy::too_many_lines)]
     fn solve_symbol_graph(&self) -> Result<Vec<IntermediateSection>> {
-        let mut all_sections: Vec<&IntermediateSection> = Vec::new();
-        for obj in &self.objects {
-            for sec in &obj.sections {
-                all_sections.push(sec);
-            }
-        }
-
-        // Find entry point section
-        let entry_sections: Vec<&&IntermediateSection> = all_sections
-            .iter()
-            .filter(|s| {
-                s.section_type == SectionType::Product || s.section_type == SectionType::Module
-            })
-            .collect();
-
-        if entry_sections.is_empty() {
-            return Err(MsiError::WixLinker {
-                message: "no entry section (Product or Module) found in input objects".to_string(),
-            });
-        }
-        if entry_sections.len() > 1 {
-            return Err(MsiError::WixLinker {
-                message: format!(
-                    "multiple entry sections found: expected 1, found {}",
-                    entry_sections.len()
-                ),
-            });
-        }
-
-        // Collect all defined symbols and track section indices
-        let mut defined_symbols: HashMap<Symbol, Vec<usize>> = HashMap::new();
-        for (sec_idx, sec) in all_sections.iter().enumerate() {
-            for sym in &sec.symbols {
-                if let Some(existing_indices) = defined_symbols.get_mut(sym) {
-                    if existing_indices.contains(&sec_idx)
-                        || sym.namespace == "Property"
-                        || sym.namespace == "ComponentGroup"
-                        || sym.namespace == "Directory"
-                    {
-                        if !existing_indices.contains(&sec_idx) {
-                            existing_indices.push(sec_idx);
-                        }
-                        continue;
-                    }
-                    let first_idx = existing_indices[0];
-                    return Err(MsiError::WixLinker {
-                        message: format!(
-                            "duplicate symbol definition '{sym}' across sections {first_idx} and {sec_idx}"
-                        ),
-                    });
-                }
-                defined_symbols.insert(sym.clone(), vec![sec_idx]);
-            }
-        }
-
-        // Build map of feature extending sections (sections containing FeatureRef with component bindings)
-        let mut feature_extenders: HashMap<String, Vec<usize>> = HashMap::new();
-        for (sec_idx, sec) in all_sections.iter().enumerate() {
-            for rf in &sec.references {
-                if rf.namespace == "Feature" {
-                    let has_extension = sec.tables.iter().any(|t| {
-                        (t.name == "FeatureComponents" || t.name == "_FeatureComponentGroupRef")
-                            && t.records
-                                .iter()
-                                .any(|r| r.get(0) == Some(&FieldValue::String(rf.id.clone())))
-                    });
-                    if has_extension {
-                        feature_extenders
-                            .entry(rf.id.clone())
-                            .or_default()
-                            .push(sec_idx);
-                    }
-                }
-            }
-        }
-
-        // Resolve references starting from entry point
-        let mut included_section_indices: HashSet<usize> = HashSet::new();
-        let mut queue: Vec<usize> = Vec::new();
-
-        let entry_idx = all_sections
-            .iter()
-            .position(|s| {
-                s.section_type == SectionType::Product || s.section_type == SectionType::Module
-            })
-            .unwrap_or(0);
-
-        included_section_indices.insert(entry_idx);
-        queue.push(entry_idx);
-
-        while let Some(current_idx) = queue.pop() {
-            let current_sec = all_sections[current_idx];
-
-            // If this section defines features, pull in any sections extending them via FeatureRef
-            for sym in &current_sec.symbols {
-                if sym.namespace == "Feature" {
-                    if let Some(extender_indices) = feature_extenders.get(&sym.id) {
-                        for &ext_idx in extender_indices {
-                            if included_section_indices.insert(ext_idx) {
-                                queue.push(ext_idx);
-                            }
-                        }
-                    }
-                }
-            }
-
-            for rf in &current_sec.references {
-                let target_sym = Symbol::new(&rf.namespace, &rf.id);
-                let mut target_sec_indices = defined_symbols.get(&target_sym).cloned();
-                if target_sec_indices.is_none() && rf.namespace == "Action" {
-                    target_sec_indices = defined_symbols
-                        .get(&Symbol::new("CustomAction", &rf.id))
-                        .or_else(|| defined_symbols.get(&Symbol::new("Dialog", &rf.id)))
-                        .cloned();
-                }
-                if let Some(target_indices) = target_sec_indices {
-                    for target_idx in target_indices {
-                        if included_section_indices.insert(target_idx) {
-                            queue.push(target_idx);
-                        }
-                    }
-                } else if !is_special_reference(rf, &defined_symbols) {
-                    let loc_info = rf.span.map_or_else(String::new, |span| {
-                        format!(" at line {}, column {}", span.line, span.column)
-                    });
-                    return Err(MsiError::WixLinker {
-                        message: format!(
-                            "unresolved symbol reference '{rf}' in section {:?}{loc_info}",
-                            current_sec.id
-                        ),
-                    });
-                }
-            }
-        }
-
-        // Collect and return the resolved sections in deterministic order
-        let mut result = Vec::with_capacity(included_section_indices.len());
-        for (i, sec) in all_sections.into_iter().enumerate() {
-            if included_section_indices.contains(&i) {
-                result.push(sec.clone());
-            }
-        }
-
-        Ok(result)
+        solver::solve_symbol_graph(self)
     }
 
     /// Resolves multi-level nested `ComponentGroupRef` hierarchies and links components to features.
-    ///
-    /// # Arguments
-    ///
-    /// * `db` - The `db` parameter.
-    ///
-    /// # Returns
-    ///
-    /// The resulting value or `Ok(())` on success.
     fn resolve_component_groups(db: &mut LinkedDatabase) -> Result<()> {
-        let members = db.get_records("_ComponentGroupMember").to_vec();
-        let nested = db.get_records("_ComponentGroupNested").to_vec();
-        let feat_refs = db.get_records("_FeatureComponentGroupRef").to_vec();
-
-        if feat_refs.is_empty() && members.is_empty() {
-            let _ = db.tables.remove("_ComponentGroupMember");
-            let _ = db.tables.remove("_ComponentGroupNested");
-            let _ = db.tables.remove("_FeatureComponentGroupRef");
-            return Ok(());
-        }
-
-        let mut group_to_components: HashMap<String, HashSet<String>> = HashMap::new();
-        for rec in &members {
-            if let (Some(FieldValue::String(grp)), Some(FieldValue::String(comp))) =
-                (rec.get(0), rec.get(1))
-            {
-                group_to_components
-                    .entry(grp.clone())
-                    .or_default()
-                    .insert(comp.clone());
-            }
-        }
-
-        let mut group_to_children: HashMap<String, HashSet<String>> = HashMap::new();
-        for rec in &nested {
-            if let (Some(FieldValue::String(parent)), Some(FieldValue::String(child))) =
-                (rec.get(0), rec.get(1))
-            {
-                group_to_children
-                    .entry(parent.clone())
-                    .or_default()
-                    .insert(child.clone());
-            }
-        }
-
-        for rec in &feat_refs {
-            if let (Some(FieldValue::String(feat)), Some(FieldValue::String(grp))) =
-                (rec.get(0), rec.get(1))
-            {
-                let mut visited = HashSet::new();
-                let comps = Self::collect_transitive_components(
-                    grp,
-                    &group_to_components,
-                    &group_to_children,
-                    &mut visited,
-                );
-                for comp_id in comps {
-                    let fc = crate::database::tables::core::FeatureComponentsRow {
-                        feature: crate::database::tables::types::FeatureName::new(feat)?,
-                        component: crate::database::tables::types::ComponentName::new(&comp_id)?,
-                    };
-                    db.add_record("FeatureComponents", fc.to_record());
-                }
-            }
-        }
-
-        let _ = db.tables.remove("_ComponentGroupMember");
-        let _ = db.tables.remove("_ComponentGroupNested");
-        let _ = db.tables.remove("_FeatureComponentGroupRef");
-        Ok(())
-    }
-
-    /// Recursively collects all transitive component IDs from a component group graph.
-    ///
-    /// # Arguments
-    ///
-    /// * `group` - The `group` parameter.
-    /// * `group_to_components` - The `group_to_components` parameter.
-    /// * `HashSet<String>>` - The `HashSet<String>>` parameter.
-    /// * `group_to_children` - The `group_to_children` parameter.
-    /// * `HashSet<String>>` - The `HashSet<String>>` parameter.
-    /// * `visited` - The `visited` parameter.
-    ///
-    /// # Returns
-    ///
-    /// The resulting value or `Ok(())` on success.
-    fn collect_transitive_components(
-        group: &str,
-        group_to_components: &HashMap<String, HashSet<String>>,
-        group_to_children: &HashMap<String, HashSet<String>>,
-        visited: &mut HashSet<String>,
-    ) -> HashSet<String> {
-        if !visited.insert(group.to_string()) {
-            return HashSet::new();
-        }
-        let mut result = group_to_components.get(group).cloned().unwrap_or_default();
-        if let Some(children) = group_to_children.get(group) {
-            for child in children {
-                let child_comps = Self::collect_transitive_components(
-                    child,
-                    group_to_components,
-                    group_to_children,
-                    visited,
-                );
-                result.extend(child_comps);
-            }
-        }
-        result
+        solver::resolve_component_groups(db)
     }
 
     /// Resolves standard directory hierarchy rooted at `TARGETDIR`.
-    ///
-    /// # Arguments
-    ///
-    /// * `db` - The `db` parameter.
     fn resolve_standard_directories(db: &mut LinkedDatabase) {
-        let existing_dirs: HashSet<String> = db
-            .get_records("Directory")
-            .iter()
-            .filter_map(|r| match r.get(0) {
-                Some(FieldValue::String(s)) => Some(s.clone()),
-                _ => None,
-            })
-            .collect();
-
-        // Ensure root TARGETDIR exists
-        if !existing_dirs.contains("TARGETDIR") {
-            let target_dir_rec = Record::with_fields(vec![
-                FieldValue::String("TARGETDIR".to_string()),
-                FieldValue::Null,
-                FieldValue::String("SourceDir".to_string()),
-            ]);
-            db.add_record("Directory", target_dir_rec);
-        }
-
-        // Check components and shortcuts referencing standard directories
-        let needed_dirs: HashSet<String> = db
-            .get_records("Component")
-            .iter()
-            .filter_map(|r| match r.get(2) {
-                Some(FieldValue::String(d)) => Some(d.clone()),
-                _ => None,
-            })
-            .collect();
-
-        for needed in needed_dirs {
-            if !existing_dirs.contains(&needed) {
-                if let Some(std_dir) = STANDARD_DIRECTORIES
-                    .iter()
-                    .find(|d| d.id == needed.as_str())
-                {
-                    let parent = std_dir
-                        .parent_id
-                        .map_or(FieldValue::Null, |p| FieldValue::String(p.to_string()));
-                    let rec = Record::with_fields(vec![
-                        FieldValue::String(std_dir.id.to_string()),
-                        parent,
-                        FieldValue::String(std_dir.default_dir.to_string()),
-                    ]);
-                    db.add_record("Directory", rec);
-                }
-            }
-        }
+        solver::resolve_standard_directories(db);
     }
 
     /// Injects standard action sequences into `InstallExecuteSequence`.
-    ///
-    /// # Arguments
-    ///
-    /// * `db` - The `db` parameter.
     fn sequence_standard_actions(db: &mut LinkedDatabase) {
-        let existing_actions: HashSet<String> = db
-            .get_records("InstallExecuteSequence")
-            .iter()
-            .filter_map(|r| match r.get(0) {
-                Some(FieldValue::String(s)) => Some(s.clone()),
-                _ => None,
-            })
-            .collect();
-
-        let has_services = !db.get_records("ServiceInstall").is_empty()
-            || !db.get_records("ServiceControl").is_empty();
-        let has_env = !db.get_records("Environment").is_empty();
-        let has_create_folders = !db.get_records("CreateFolder").is_empty();
-        let has_remove_folders = !db.get_records("RemoveFolder").is_empty();
-        let has_remove_files = !db.get_records("RemoveFile").is_empty();
-        let has_shortcuts = !db.get_records("Shortcut").is_empty();
-        let has_move_files =
-            !db.get_records("MoveFile").is_empty() || !db.get_records("DuplicateFile").is_empty();
-        let has_ini =
-            !db.get_records("IniFile").is_empty() || !db.get_records("RemoveIniFile").is_empty();
-
-        for std_action in STANDARD_INSTALL_EXECUTE_ACTIONS {
-            let should_include = match std_action.name {
-                "StopServices" | "DeleteServices" | "InstallServices" | "StartServices" => {
-                    has_services
-                }
-                "WriteEnvironmentStrings" => has_env,
-                "CreateFolders" => has_create_folders,
-                "RemoveFolders" => has_remove_folders,
-                "RemoveFiles" => has_remove_files,
-                "RemoveShortcuts" => has_shortcuts,
-                "MoveFiles" => has_move_files,
-                "WriteIniValues" => has_ini,
-                _ => true,
-            };
-
-            if should_include && !existing_actions.contains(std_action.name) {
-                let rec = Record::with_fields(vec![
-                    FieldValue::String(std_action.name.to_string()),
-                    std_action
-                        .condition
-                        .map_or(FieldValue::Null, |c| FieldValue::String(c.to_string())),
-                    FieldValue::Short(std_action.sequence),
-                ]);
-                db.add_record("InstallExecuteSequence", rec);
-            }
-        }
-
-        if !db.get_records("InstallUISequence").is_empty() || !db.get_records("Dialog").is_empty() {
-            let existing_ui_actions: HashSet<String> = db
-                .get_records("InstallUISequence")
-                .iter()
-                .filter_map(|r| match r.get(0) {
-                    Some(FieldValue::String(s)) => Some(s.clone()),
-                    _ => None,
-                })
-                .collect();
-
-            for std_ui_action in STANDARD_INSTALL_UI_ACTIONS {
-                if !existing_ui_actions.contains(std_ui_action.name) {
-                    let rec = Record::with_fields(vec![
-                        FieldValue::String(std_ui_action.name.to_string()),
-                        FieldValue::Null,
-                        FieldValue::Short(std_ui_action.sequence),
-                    ]);
-                    db.add_record("InstallUISequence", rec);
-                }
-            }
-        }
+        solver::sequence_standard_actions(db);
     }
 
     /// Generates the standard `_Validation` table for all core MSI SDK tables.
-    ///
-    /// # Arguments
-    ///
-    /// * `db` - The linked database.
     fn generate_validation_table(db: &mut LinkedDatabase) {
-        let core_tables = [
-            "ActionText",
-            "AdminExecuteSequence",
-            "AdminUISequence",
-            "AdvtExecuteSequence",
-            "Component",
-            "CreateFolder",
-            "CustomAction",
-            "Directory",
-            "Feature",
-            "FeatureComponents",
-            "File",
-            "InstallExecuteSequence",
-            "InstallUISequence",
-            "LaunchCondition",
-            "Media",
-            "MsiFileHash",
-            "Property",
-            "Registry",
-            "Upgrade",
-        ];
-
-        let mut validation_records = Vec::new();
-
-        for tbl in &core_tables {
-            if let Some(schema) = db.catalog.get_table(tbl) {
-                for col in schema.columns() {
-                    let nullable = if col.nullable { "Y" } else { "N" };
-                    let rec = Record::with_fields(vec![
-                        FieldValue::String((*tbl).to_string()),
-                        FieldValue::String(col.name.clone()),
-                        FieldValue::String(nullable.to_string()),
-                        FieldValue::Null, // MinValue
-                        FieldValue::Null, // MaxValue
-                        FieldValue::Null, // KeyTable
-                        FieldValue::Null, // KeyColumn
-                        FieldValue::Null, // Category
-                        FieldValue::Null, // Set
-                        FieldValue::Null, // Description
-                    ]);
-                    validation_records.push(rec);
-                }
-            }
-        }
-
-        for rec in validation_records {
-            db.add_record("_Validation", rec);
-        }
+        solver::generate_validation_table(db);
     }
 
     /// Binds physical binary payloads from disk into embedded streams.
-    ///
-    /// # Arguments
-    ///
-    /// * `db` - In-memory linked database containing intermediate `WixBinary` table.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`crate::MsiError`] on filesystem read errors.
-    ///
-    /// # Returns
-    ///
-    /// The resulting value or `Ok(())` on success.
     fn bind_binaries(&mut self, db: &mut LinkedDatabase) -> Result<()> {
-        let wix_binaries = db.tables.remove("WixBinary").unwrap_or_default();
-        for r in &wix_binaries {
-            if let (Some(FieldValue::String(bin_id)), Some(FieldValue::String(src))) =
-                (r.get(0), r.get(1))
-            {
-                if let Some(path) = self.resolve_source_path(src) {
-                    let bytes = std::fs::read(&path)?;
-                    self.embedded_cabinets.insert(bin_id.clone(), bytes);
-                }
-            }
-        }
-        let wix_icons = db.tables.remove("WixIcon").unwrap_or_default();
-        for r in &wix_icons {
-            if let (Some(FieldValue::String(icon_id)), Some(FieldValue::String(src))) =
-                (r.get(0), r.get(1))
-            {
-                if let Some(path) = self.resolve_source_path(src) {
-                    let bytes = std::fs::read(&path)?;
-                    self.embedded_cabinets
-                        .insert(format!("Icon.{icon_id}"), bytes.clone());
-                    self.embedded_cabinets.insert(icon_id.clone(), bytes);
-                }
-            }
-        }
-        Ok(())
+        binder::bind_binaries(self, db)
     }
 
     /// Validates `MsiEmbeddedChainer` table records to ensure referenced binary or file streams exist.
-    ///
-    /// # Arguments
-    ///
-    /// * `db` - The [`LinkedDatabase`] to inspect.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`MsiError::WixLinker`] if a referenced `Binary` or `File` stream cannot be resolved.
-    ///
-    /// # Returns
-    ///
-    /// The resulting value or `Ok(())` on success.
     fn validate_embedded_chainers(db: &LinkedDatabase) -> Result<()> {
-        let chainers = db.get_records("MsiEmbeddedChainer");
-        if chainers.is_empty() {
-            return Ok(());
-        }
-
-        let existing_binaries: HashSet<String> = db
-            .get_records("Binary")
-            .iter()
-            .filter_map(|r| match r.get(0) {
-                Some(FieldValue::String(s)) => Some(s.clone()),
-                _ => None,
-            })
-            .collect();
-
-        let existing_files: HashSet<String> = db
-            .get_records("File")
-            .iter()
-            .filter_map(|r| match r.get(0) {
-                Some(FieldValue::String(s)) => Some(s.clone()),
-                _ => None,
-            })
-            .collect();
-
-        let eval_ctx = EvaluationContext::new();
-
-        for rec in chainers {
-            let Some(FieldValue::String(chainer_id)) = rec.get(0) else {
-                continue;
-            };
-
-            if let Some(cond) = rec.get(1).and_then(|f| match f {
-                FieldValue::String(s) if !s.trim().is_empty() => Some(s.as_str()),
-                _ => None,
-            }) {
-                if let Err(e) = eval_ctx.evaluate_condition(cond.trim()) {
-                    return Err(MsiError::WixLinker {
-                        message: format!(
-                            "invalid Condition syntax '{cond}' in EmbeddedChainer '{chainer_id}': {e}"
-                        ),
-                    });
-                }
-            }
-
-            let Some(FieldValue::String(source)) = rec.get(3) else {
-                continue;
-            };
-            let chainer_type = match rec.get(4) {
-                Some(FieldValue::Long(v)) => *v,
-                Some(FieldValue::Short(v)) => i32::from(*v),
-                _ => 1,
-            };
-
-            if chainer_type == 1 {
-                if !existing_binaries.contains(source) {
-                    return Err(MsiError::WixLinker {
-                        message: format!(
-                            "unresolved binary reference '{source}' for EmbeddedChainer '{chainer_id}'"
-                        ),
-                    });
-                }
-            } else if chainer_type == 2 {
-                if !existing_files.contains(source) {
-                    return Err(MsiError::WixLinker {
-                        message: format!(
-                            "unresolved file reference '{source}' for EmbeddedChainer '{chainer_id}'"
-                        ),
-                    });
-                }
-            } else {
-                return Err(MsiError::WixLinker {
-                    message: format!(
-                        "invalid Type '{chainer_type}' for EmbeddedChainer '{chainer_id}': expected 1 (Binary) or 2 (File)"
-                    ),
-                });
-            }
-        }
-
-        Ok(())
+        binder::validate_embedded_chainers(db)
     }
 
     /// Sequences file numbers and aligns media last sequence across partitioned disks.
-    ///
-    /// # Arguments
-    ///
-    /// * `db` - The `db` parameter.
-    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
     fn layout_media_and_files(db: &mut LinkedDatabase) {
-        let file_disk_mapping = db.tables.remove("_FileDiskId").unwrap_or_default();
-        let mut file_to_disk: HashMap<String, i16> = HashMap::new();
-        for r in &file_disk_mapping {
-            if let (Some(FieldValue::String(fid)), Some(FieldValue::Short(d))) =
-                (r.get(0), r.get(1))
-            {
-                file_to_disk.insert(fid.clone(), *d);
-            }
-        }
-
-        let file_records = db.get_records("File").to_vec();
-        let file_count = file_records.len();
-        if file_count == 0 {
-            return;
-        }
-
-        let mut sorted_files = file_records;
-        sorted_files.sort_by_key(|r| {
-            let fid = match r.get(0) {
-                Some(FieldValue::String(s)) => s.as_str(),
-                _ => "",
-            };
-            file_to_disk.get(fid).copied().unwrap_or(1)
-        });
-
-        let mut resequenced_files: Vec<Record> = Vec::with_capacity(file_count);
-        let mut disk_max_seq: HashMap<i16, i32> = HashMap::new();
-
-        for (i, r) in sorted_files.iter().enumerate() {
-            let mut fields = r.fields().to_vec();
-            let seq = (i + 1) as i16;
-            if fields.len() >= 8 {
-                fields[7] = FieldValue::Short(seq);
-            }
-            let fid = match fields.first() {
-                Some(FieldValue::String(s)) => s.as_str(),
-                _ => "",
-            };
-            let disk_id = file_to_disk.get(fid).copied().unwrap_or(1);
-            disk_max_seq.insert(disk_id, i32::from(seq));
-            resequenced_files.push(Record::with_fields(fields));
-        }
-        db.tables.insert("File".to_string(), resequenced_files);
-
-        let is_multi_cab = !file_disk_mapping.is_empty();
-
-        let media_records = db.get_records("Media");
-        if media_records.is_empty() {
-            let default_media = Record::with_fields(vec![
-                FieldValue::Short(1),
-                FieldValue::Long(file_count as i32),
-                FieldValue::Null,
-                FieldValue::String("#cab1.cab".to_string()),
-                FieldValue::Null,
-                FieldValue::Null,
-            ]);
-            db.add_record("Media", default_media);
-        } else if !is_multi_cab {
-            let mut updated_media = media_records.to_vec();
-            let last_idx = updated_media.len() - 1;
-            let mut fields = updated_media[last_idx].fields().to_vec();
-            if let Some(FieldValue::Long(last_seq)) = fields.get(1) {
-                if *last_seq < file_count as i32 {
-                    fields[1] = FieldValue::Long(file_count as i32);
-                    updated_media[last_idx] = Record::with_fields(fields);
-                    db.tables.insert("Media".to_string(), updated_media);
-                }
-            }
-        } else {
-            let mut updated_media = media_records.to_vec();
-            updated_media.sort_by_key(|r| match r.get(0) {
-                Some(FieldValue::Short(d)) => *d,
-                _ => 1,
-            });
-            let mut running_last_seq = 0;
-            for r in &mut updated_media {
-                let mut fields = r.fields().to_vec();
-                if let Some(FieldValue::Short(did)) = fields.first() {
-                    if let Some(&max_seq) = disk_max_seq.get(did) {
-                        running_last_seq = running_last_seq.max(max_seq);
-                    }
-                    let existing_last = match fields.get(1) {
-                        Some(FieldValue::Long(l)) => *l,
-                        _ => 0,
-                    };
-                    running_last_seq = running_last_seq.max(existing_last);
-                    if running_last_seq > 0 {
-                        fields[1] = FieldValue::Long(running_last_seq);
-                    }
-                    *r = Record::with_fields(fields);
-                }
-            }
-            db.tables.insert("Media".to_string(), updated_media);
-        }
+        binder::layout_media_and_files(db);
     }
-}
-
-/// Inspects executable file binary data to extract Windows PE version and language.
-///
-/// # Arguments
-///
-/// * `data` - The `data` parameter.
-///
-/// # Returns
-///
-/// The resulting value or `Ok(())` on success.
-#[allow(clippy::cast_possible_truncation, clippy::too_many_lines)]
-fn inspect_pe_version(data: &[u8]) -> Option<(String, String)> {
-    if data.len() < 64 || data.get(0..2) != Some(b"MZ") {
-        return None;
-    }
-    let lfanew = u32::from_le_bytes([data[0x3C], data[0x3D], data[0x3E], data[0x3F]]) as usize;
-
-    if data.len() < lfanew + 24 || data.get(lfanew..lfanew + 4) != Some(b"PE\0\0") {
-        return None;
-    }
-
-    let size_of_opt = u16::from_le_bytes([data[lfanew + 20], data[lfanew + 21]]) as usize;
-
-    let opt_offset = lfanew + 24;
-    if data.len() < opt_offset + 2 {
-        return None;
-    }
-    let magic = u16::from_le_bytes([data[opt_offset], data[opt_offset + 1]]);
-
-    let rsrc_dir_offset = if magic == 0x10B {
-        opt_offset + 96 + 16 // PE32
-    } else if magic == 0x20B {
-        opt_offset + 112 + 16 // PE32+
-    } else {
-        return None;
-    };
-
-    if data.len() < rsrc_dir_offset + 4 {
-        return None;
-    }
-
-    let rsrc_rva = u32::from_le_bytes([
-        data[rsrc_dir_offset],
-        data[rsrc_dir_offset + 1],
-        data[rsrc_dir_offset + 2],
-        data[rsrc_dir_offset + 3],
-    ]);
-
-    if rsrc_rva == 0 {
-        return None;
-    }
-
-    let num_sections = u16::from_le_bytes([data[lfanew + 6], data[lfanew + 7]]) as usize;
-
-    let section_headers_offset = opt_offset + size_of_opt;
-    let mut rsrc_file_offset = None;
-
-    for i in 0..num_sections {
-        let sec_offset = section_headers_offset + i * 40;
-        if data.len() < sec_offset + 40 {
-            break;
-        }
-        let virt_size = u32::from_le_bytes([
-            data[sec_offset + 8],
-            data[sec_offset + 9],
-            data[sec_offset + 10],
-            data[sec_offset + 11],
-        ]);
-        let virt_addr = u32::from_le_bytes([
-            data[sec_offset + 12],
-            data[sec_offset + 13],
-            data[sec_offset + 14],
-            data[sec_offset + 15],
-        ]);
-        let raw_ptr = u32::from_le_bytes([
-            data[sec_offset + 20],
-            data[sec_offset + 21],
-            data[sec_offset + 22],
-            data[sec_offset + 23],
-        ]);
-
-        if rsrc_rva >= virt_addr && rsrc_rva < virt_addr.saturating_add(virt_size) {
-            rsrc_file_offset = Some((raw_ptr + (rsrc_rva - virt_addr)) as usize);
-            break;
-        }
-    }
-
-    let root_rsrc = rsrc_file_offset?;
-    if data.len() < root_rsrc + 16 {
-        return None;
-    }
-    let num_named = u16::from_le_bytes([data[root_rsrc + 12], data[root_rsrc + 13]]) as usize;
-    let num_id = u16::from_le_bytes([data[root_rsrc + 14], data[root_rsrc + 15]]) as usize;
-
-    for i in 0..(num_named + num_id) {
-        let entry_offset = root_rsrc + 16 + i * 8;
-        if data.len() < entry_offset + 8 {
-            break;
-        }
-        let id_val = u32::from_le_bytes([
-            data[entry_offset],
-            data[entry_offset + 1],
-            data[entry_offset + 2],
-            data[entry_offset + 3],
-        ]);
-        let _data_offset_val = u32::from_le_bytes([
-            data[entry_offset + 4],
-            data[entry_offset + 5],
-            data[entry_offset + 6],
-            data[entry_offset + 7],
-        ]);
-
-        if id_val == 16 {
-            if let Some(pos) = data[root_rsrc..data.len().min(root_rsrc + 1024)]
-                .windows(4)
-                .position(|w| w == 0xFEEF_04BDu32.to_le_bytes())
-            {
-                let sig_pos = root_rsrc + pos;
-                if sig_pos + 20 <= data.len() {
-                    let ms = u32::from_le_bytes([
-                        data[sig_pos + 8],
-                        data[sig_pos + 9],
-                        data[sig_pos + 10],
-                        data[sig_pos + 11],
-                    ]);
-                    let ls = u32::from_le_bytes([
-                        data[sig_pos + 12],
-                        data[sig_pos + 13],
-                        data[sig_pos + 14],
-                        data[sig_pos + 15],
-                    ]);
-                    let major = ms >> 16;
-                    let minor = ms & 0xFFFF;
-                    let build = ls >> 16;
-                    let rev = ls & 0xFFFF;
-                    return Some((format!("{major}.{minor}.{build}.{rev}"), "1033".to_string()));
-                }
-            }
-        }
-    }
-
-    None
-}
-
-/// Inspects font file binary data (`.ttf`, `.otf`) to extract font title.
-///
-/// # Arguments
-///
-/// * `data` - The `data` parameter.
-///
-/// # Returns
-///
-/// The resulting value or `Ok(())` on success.
-fn inspect_font_title(data: &[u8]) -> Option<String> {
-    if data.len() < 12 {
-        return None;
-    }
-    let is_font = data.starts_with(&[0, 1, 0, 0]) || data.starts_with(b"OTTO");
-    if !is_font {
-        return None;
-    }
-
-    let num_tables = u16::from_be_bytes([data[4], data[5]]) as usize;
-    let mut name_offset = None;
-
-    for i in 0..num_tables {
-        let rec = 12 + i * 16;
-        if data.len() < rec + 16 {
-            break;
-        }
-        if &data[rec..rec + 4] == b"name" {
-            let off =
-                u32::from_be_bytes([data[rec + 8], data[rec + 9], data[rec + 10], data[rec + 11]])
-                    as usize;
-            name_offset = Some(off);
-            break;
-        }
-    }
-
-    let name_tbl = name_offset?;
-    if data.len() < name_tbl + 6 {
-        return None;
-    }
-    let count = u16::from_be_bytes([data[name_tbl + 2], data[name_tbl + 3]]) as usize;
-    let str_offset = u16::from_be_bytes([data[name_tbl + 4], data[name_tbl + 5]]) as usize;
-
-    for i in 0..count {
-        let rec = name_tbl + 6 + i * 12;
-        if data.len() < rec + 12 {
-            break;
-        }
-        let name_id = u16::from_be_bytes([data[rec + 6], data[rec + 7]]);
-        if name_id == 4 || name_id == 1 {
-            let length = u16::from_be_bytes([data[rec + 8], data[rec + 9]]) as usize;
-            let offset = u16::from_be_bytes([data[rec + 10], data[rec + 11]]) as usize;
-            let start = name_tbl + str_offset + offset;
-            if let Some(bytes) = data.get(start..start + length) {
-                let platform_id = u16::from_be_bytes([data[rec], data[rec + 1]]);
-                if platform_id == 0 || platform_id == 3 {
-                    let mut u16s = Vec::with_capacity(bytes.len() / 2);
-                    for chunk in bytes.chunks_exact(2) {
-                        u16s.push(u16::from_be_bytes([chunk[0], chunk[1]]));
-                    }
-                    if let Ok(s) = String::from_utf16(&u16s) {
-                        if !s.is_empty() {
-                            return Some(s);
-                        }
-                    }
-                } else if let Ok(s) = std::str::from_utf8(bytes) {
-                    if !s.is_empty() {
-                        return Some(s.to_string());
-                    }
-                }
-            }
-        }
-    }
-
-    None
 }
 
 #[cfg(test)]
-#[allow(clippy::unnecessary_wraps, clippy::redundant_clone)]
+#[allow(clippy::unnecessary_wraps)]
 mod tests {
     use super::*;
     use crate::wix::extensions::WixExtension;
     use crate::wix::wixlib::WixLibrary;
-    use crate::wix::wixobj::{IntermediateTable, Reference};
+    use crate::wix::wixobj::{IntermediateTable, Reference, SectionType, Symbol};
     use crate::wix::xml::XmlNode;
 
     #[test]
@@ -2472,7 +829,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::too_many_lines)]
     fn test_linker_nested_component_groups_and_posix_dirs() -> Result<()> {
         let mut obj = WixObject::new();
         let mut prod = IntermediateSection::new(SectionType::Product, Some("P1".to_string()));
@@ -2596,7 +952,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     #[test]
     fn test_linker_add_library_and_module_and_unreferenced_fragments() -> Result<()> {
         let mut obj = WixObject::new();
@@ -2651,7 +1007,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     #[test]
     fn test_linker_component_groups_edge_cases() -> Result<()> {
         let mut db_empty = LinkedDatabase::default();
@@ -2736,7 +1092,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     #[test]
     fn test_linker_directories_and_actions_edge_cases() -> Result<()> {
         let mut db = LinkedDatabase::default();
@@ -2817,7 +1173,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     #[test]
     fn test_linker_media_layout_edge_cases() -> Result<()> {
         let mut db_empty_files = LinkedDatabase::default();
@@ -3892,11 +2248,9 @@ mod tests {
     ///
     /// Returns [`crate::MsiError`] on test setup or execution failure.
     #[test]
-    #[allow(
-        clippy::too_many_lines,
-        clippy::cast_possible_truncation,
-        clippy::cast_possible_wrap
-    )]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_possible_wrap)]
     fn test_linker_libscript_parity_multi_cab_and_sequences() -> Result<()> {
         let mut db = LinkedDatabase::default();
 
@@ -5429,7 +3783,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     #[allow(clippy::cognitive_complexity)]
     #[test]
     #[allow(clippy::too_many_lines)]
@@ -5723,7 +4077,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     #[test]
     fn test_linker_add_or_merge_and_bind_binaries_edge_cases() -> Result<()> {
         let mut db = LinkedDatabase::default();
@@ -6088,7 +4442,6 @@ mod tests {
     /// Tests `solve_symbol_graph` feature extender resolution and dialog action fallback.
     struct FailingMockExtension;
     impl WixExtension for FailingMockExtension {
-        #[allow(unused_qualifications)]
         fn id(&self) -> &'static str {
             "FailingMockExtension"
         }

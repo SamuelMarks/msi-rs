@@ -51,11 +51,11 @@ impl UserName {
     ///
     /// # Arguments
     ///
-    /// * `name` - The `name` parameter.
+    /// * `name` - Identifier or name of the target entity.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn new(name: impl Into<String>) -> Self {
         Self(name.into())
@@ -65,7 +65,7 @@ impl UserName {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -87,11 +87,11 @@ impl GroupName {
     ///
     /// # Arguments
     ///
-    /// * `name` - The `name` parameter.
+    /// * `name` - Identifier or name of the target entity.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn new(name: impl Into<String>) -> Self {
         Self(name.into())
@@ -101,7 +101,7 @@ impl GroupName {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -123,11 +123,11 @@ impl SecurityIdentifier {
     ///
     /// # Arguments
     ///
-    /// * `sid` - The `sid` parameter.
+    /// * `sid` - The sid value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn new(sid: impl Into<String>) -> Self {
         Self(sid.into())
@@ -137,7 +137,7 @@ impl SecurityIdentifier {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -164,13 +164,13 @@ pub trait LocalAccountManager {
     ///
     /// # Arguments
     ///
-    /// * `name` - The `name` parameter.
-    /// * `password` - The `password` parameter.
-    /// * `fail_if_exists` - The `fail_if_exists` parameter.
+    /// * `name` - Identifier or name of the target entity.
+    /// * `password` - The password value.
+    /// * `fail_if_exists` - Whether to return an error if the destination already exists.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok` containing the formatted or resolved string, or an error on failure.
     fn create_user(
         &self,
         name: &UserName,
@@ -189,12 +189,12 @@ pub trait LocalAccountManager {
     ///
     /// # Arguments
     ///
-    /// * `name` - The `name` parameter.
-    /// * `fail_if_exists` - The `fail_if_exists` parameter.
+    /// * `name` - Identifier or name of the target entity.
+    /// * `fail_if_exists` - Whether to return an error if the destination already exists.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok` containing the formatted or resolved string, or an error on failure.
     fn create_group(&self, name: &GroupName, fail_if_exists: bool) -> Result<String>;
 
     /// Adds a user to a local group.
@@ -204,12 +204,12 @@ pub trait LocalAccountManager {
     ///
     /// # Arguments
     ///
-    /// * `user` - The `user` parameter.
-    /// * `group` - The `group` parameter.
+    /// * `user` - User account name or principal.
+    /// * `group` - Group account name or principal.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok` containing the formatted or resolved string, or an error on failure.
     fn add_user_to_group(&self, user: &UserName, group: &GroupName) -> Result<String>;
 }
 
@@ -313,7 +313,6 @@ impl LocalAccountManager for WindowsAccountManager {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

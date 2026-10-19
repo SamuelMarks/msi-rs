@@ -19,7 +19,7 @@ impl SourceChecksum {
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn new(checksum: u32) -> Self {
         Self(checksum)
@@ -29,7 +29,7 @@ impl SourceChecksum {
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// Computed `u32` numeric result or status code.
     #[must_use]
     pub const fn as_u32(self) -> u32 {
         self.0
@@ -67,7 +67,7 @@ impl PatchHeader {
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(Self)` on success, or an error if the operation fails.
     pub fn parse(data: &[u8]) -> Result<Self> {
         if data.len() < 16 {
             return Err(MsiError::DeltaDecodeError("Header too short".to_string()));
@@ -259,7 +259,6 @@ impl PatchDecoder {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

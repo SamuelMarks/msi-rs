@@ -25,6 +25,61 @@ pub struct TargetProductCodeA(pub *const c_char);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TargetProductCodeW(pub *const u16);
 
+/// Shared implementation for `MsiApplyPatchA/W`.
+fn apply_patch_inner(patch_path: Option<String>) -> u32 {
+    let Some(patch_path) = patch_path else {
+        return 87;
+    };
+    match msi::execution::patching::PatchEngine::extract_patch_transform(std::path::Path::new(
+        &patch_path,
+    )) {
+        Ok(_) => 0,
+        Err(e) => crate::error::map_msi_error_to_lstatus(&e),
+    }
+}
+
+/// Shared implementation for `MsiDeterminePatchSequenceA/W`.
+fn determine_patch_sequence_inner(product_code: Option<String>) -> u32 {
+    let Some(product_code) = product_code else {
+        return 87;
+    };
+    let paths: Vec<std::path::PathBuf> = vec![];
+    let path_refs: Vec<&std::path::Path> = paths.iter().map(AsRef::as_ref).collect();
+    let _ = msi::execution::patching::PatchEngine::determine_patch_sequence(
+        &product_code,
+        "1.0.0",
+        &path_refs,
+    );
+    0
+}
+
+/// Shared implementation extracting patch XML string for `MsiExtractPatchXMLDataA/W`.
+fn extract_patch_xml_string(patch_path_str: Option<String>) -> Result<String, u32> {
+    let Some(patch_path_str) = patch_path_str else {
+        return Err(87);
+    };
+    match msi::execution::patching::PatchEngine::extract_msp_metadata(std::path::Path::new(
+        &patch_path_str,
+    )) {
+        Ok(meta) => Ok(format!(
+            "<PatchManifest TargetProductCode=\"{}\" BaselineVersion=\"{}\" Family=\"{}\"/>",
+            meta.target_product_code, meta.baseline_version, meta.family
+        )),
+        Err(e) => Err(crate::error::map_msi_error_to_lstatus(&e)),
+    }
+}
+
+/// Shared implementation for `MsiRemovePatchesA/W`.
+fn remove_patches_inner(patch_list: Option<String>, product_code: Option<String>) -> u32 {
+    let (Some(patch_list), Some(product_code)) = (patch_list, product_code) else {
+        return 87;
+    };
+    match msi::execution::patching::PatchEngine::remove_patches(&patch_list, &product_code) {
+        Ok(()) => 0,
+        Err(e) => crate::error::map_msi_error_to_lstatus(&e),
+    }
+}
+
 /// Applies a patch using an ANSI patch package path.
 ///
 /// # Arguments
@@ -46,23 +101,12 @@ pub struct TargetProductCodeW(pub *const u16);
 #[must_use]
 pub unsafe extern "system" fn MsiApplyPatchA(
     sz_patch_package: *const c_char,
-    sz_install_package: *const c_char,
-    e_install_type: i32,
-    sz_command_line: *const c_char,
+    _sz_install_package: *const c_char,
+    _e_install_type: i32,
+    _sz_command_line: *const c_char,
 ) -> u32 {
-    let result = catch_unwind(|| {
-        let Some(patch_path) = crate::win32::strings::lpcstr_to_string(sz_patch_package) else {
-            return 87;
-        };
-
-        match msi::execution::patching::PatchEngine::extract_patch_transform(std::path::Path::new(
-            &patch_path,
-        )) {
-            Ok(_) => 0, // ERROR_SUCCESS
-            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
-        }
-    });
-    result.unwrap_or(1603)
+    catch_unwind(|| apply_patch_inner(crate::win32::strings::lpcstr_to_string(sz_patch_package)))
+        .unwrap_or(1603)
 }
 
 /// Applies a patch using a Unicode patch package path.
@@ -86,23 +130,12 @@ pub unsafe extern "system" fn MsiApplyPatchA(
 #[must_use]
 pub unsafe extern "system" fn MsiApplyPatchW(
     sz_patch_package: *const u16,
-    sz_install_package: *const u16,
-    e_install_type: i32,
-    sz_command_line: *const u16,
+    _sz_install_package: *const u16,
+    _e_install_type: i32,
+    _sz_command_line: *const u16,
 ) -> u32 {
-    let result = catch_unwind(|| {
-        let Some(patch_path) = crate::win32::strings::lpcwstr_to_string(sz_patch_package) else {
-            return 87;
-        };
-
-        match msi::execution::patching::PatchEngine::extract_patch_transform(std::path::Path::new(
-            &patch_path,
-        )) {
-            Ok(_) => 0, // ERROR_SUCCESS
-            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
-        }
-    });
-    result.unwrap_or(1603)
+    catch_unwind(|| apply_patch_inner(crate::win32::strings::lpcwstr_to_string(sz_patch_package)))
+        .unwrap_or(1603)
 }
 
 /// Determines the sequence of patches using ANSI strings.
@@ -126,29 +159,15 @@ pub unsafe extern "system" fn MsiApplyPatchW(
 #[inline(never)]
 pub unsafe extern "system" fn MsiDeterminePatchSequenceA(
     sz_product_code: TargetProductCodeA,
-    sz_user_sid: *const c_char,
-    u_context: i32,
+    _sz_user_sid: *const c_char,
+    _u_context: i32,
     _c_patch_info: u32,
     _p_patch_info: *mut std::ffi::c_void,
 ) -> u32 {
-    let result = catch_unwind(|| {
-        let Some(product_code) = crate::win32::strings::lpcstr_to_string(sz_product_code.0) else {
-            return 87;
-        };
-
-        // We assume _p_patch_info represents an array of structures containing paths.
-        // The real implementation extracts these. We mock it for the boundary since it takes `void*`.
-        let paths: Vec<std::path::PathBuf> = vec![];
-        let path_refs: Vec<&std::path::Path> = paths.iter().map(AsRef::as_ref).collect();
-
-        let _ = msi::execution::patching::PatchEngine::determine_patch_sequence(
-            &product_code,
-            "1.0.0",
-            &path_refs,
-        );
-        0 // ERROR_SUCCESS
-    });
-    result.unwrap_or(1603)
+    catch_unwind(|| {
+        determine_patch_sequence_inner(crate::win32::strings::lpcstr_to_string(sz_product_code.0))
+    })
+    .unwrap_or(1603)
 }
 
 /// Determines the sequence of patches using Unicode strings.
@@ -172,27 +191,15 @@ pub unsafe extern "system" fn MsiDeterminePatchSequenceA(
 #[inline(never)]
 pub unsafe extern "system" fn MsiDeterminePatchSequenceW(
     sz_product_code: TargetProductCodeW,
-    sz_user_sid: *const u16,
-    u_context: i32,
+    _sz_user_sid: *const u16,
+    _u_context: i32,
     _c_patch_info: u32,
     _p_patch_info: *mut std::ffi::c_void,
 ) -> u32 {
-    let result = catch_unwind(|| {
-        let Some(product_code) = crate::win32::strings::lpcwstr_to_string(sz_product_code.0) else {
-            return 87;
-        };
-
-        let paths: Vec<std::path::PathBuf> = vec![];
-        let path_refs: Vec<&std::path::Path> = paths.iter().map(AsRef::as_ref).collect();
-
-        let _ = msi::execution::patching::PatchEngine::determine_patch_sequence(
-            &product_code,
-            "1.0.0",
-            &path_refs,
-        );
-        0 // ERROR_SUCCESS
-    });
-    result.unwrap_or(1603)
+    catch_unwind(|| {
+        determine_patch_sequence_inner(crate::win32::strings::lpcwstr_to_string(sz_product_code.0))
+    })
+    .unwrap_or(1603)
 }
 
 /// Extracts patch XML data using ANSI strings.
@@ -211,37 +218,27 @@ pub unsafe extern "system" fn MsiDeterminePatchSequenceW(
 ///
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
-/// The caller is responsible for providing a properly allocated buffer for `sz_xml_data`
-/// and specifying its size in `pcch_xml_data`. The caller must free any memory they allocate.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiExtractPatchXMLDataA(
     sz_patch_path: *const c_char,
-    dw_flags: u32,
+    _dw_flags: u32,
     sz_xml_data: *mut c_char,
     pcch_xml_data: *mut u32,
 ) -> u32 {
-    let result = catch_unwind(|| {
-        let Some(patch_path_str) = crate::win32::strings::lpcstr_to_string(sz_patch_path) else {
-            return 87;
-        };
-
-        // Connect to the patch engine metadata extractor.
-        match msi::execution::patching::PatchEngine::extract_msp_metadata(std::path::Path::new(
-            &patch_path_str,
-        )) {
-            Ok(_) => {
+    catch_unwind(|| {
+        match extract_patch_xml_string(crate::win32::strings::lpcstr_to_string(sz_patch_path)) {
+            Ok(xml) => {
                 if !sz_xml_data.is_null() && !pcch_xml_data.is_null() {
-                    // Simulate writing some XML data
-                    *pcch_xml_data = 0;
-                    *sz_xml_data = 0;
+                    let _ =
+                        crate::win32::strings::string_to_lpstr(&xml, sz_xml_data, pcch_xml_data);
                 }
-                0 // ERROR_SUCCESS
+                0
             }
-            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
+            Err(code) => code,
         }
-    });
-    result.unwrap_or(1603)
+    })
+    .unwrap_or(1603)
 }
 
 /// Extracts patch XML data using Unicode strings.
@@ -260,36 +257,27 @@ pub unsafe extern "system" fn MsiExtractPatchXMLDataA(
 ///
 /// # Safety
 /// The provided string pointers must be null-terminated if they are not null.
-/// The caller is responsible for providing a properly allocated buffer for `sz_xml_data`
-/// and specifying its size in `pcch_xml_data`. The caller must free any memory they allocate.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
 pub unsafe extern "system" fn MsiExtractPatchXMLDataW(
     sz_patch_path: *const u16,
-    dw_flags: u32,
+    _dw_flags: u32,
     sz_xml_data: *mut u16,
     pcch_xml_data: *mut u32,
 ) -> u32 {
-    let result = catch_unwind(|| {
-        let Some(patch_path_str) = crate::win32::strings::lpcwstr_to_string(sz_patch_path) else {
-            return 87;
-        };
-
-        match msi::execution::patching::PatchEngine::extract_msp_metadata(std::path::Path::new(
-            &patch_path_str,
-        )) {
-            Ok(_) => {
+    catch_unwind(|| {
+        match extract_patch_xml_string(crate::win32::strings::lpcwstr_to_string(sz_patch_path)) {
+            Ok(xml) => {
                 if !sz_xml_data.is_null() && !pcch_xml_data.is_null() {
-                    // Simulate writing some XML data
-                    *pcch_xml_data = 0;
-                    *sz_xml_data = 0;
+                    let _ =
+                        crate::win32::strings::string_to_lpwstr(&xml, sz_xml_data, pcch_xml_data);
                 }
-                0 // ERROR_SUCCESS
+                0
             }
-            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
+            Err(code) => code,
         }
-    });
-    result.unwrap_or(1603)
+    })
+    .unwrap_or(1603)
 }
 
 /// Removes one or more patches using ANSI strings.
@@ -314,22 +302,16 @@ pub unsafe extern "system" fn MsiExtractPatchXMLDataW(
 pub unsafe extern "system" fn MsiRemovePatchesA(
     sz_patch_list: *const c_char,
     sz_product_code: *const c_char,
-    e_uninstall_type: i32,
-    sz_property_list: *const c_char,
+    _e_uninstall_type: i32,
+    _sz_property_list: *const c_char,
 ) -> u32 {
-    let result = catch_unwind(|| {
-        let Some(patch_list) = crate::win32::strings::lpcstr_to_string(sz_patch_list) else {
-            return 87;
-        };
-        let Some(product_code) = crate::win32::strings::lpcstr_to_string(sz_product_code) else {
-            return 87;
-        };
-        match msi::execution::patching::PatchEngine::remove_patches(&patch_list, &product_code) {
-            Ok(()) => 0,
-            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
-        }
-    });
-    result.unwrap_or(1603)
+    catch_unwind(|| {
+        remove_patches_inner(
+            crate::win32::strings::lpcstr_to_string(sz_patch_list),
+            crate::win32::strings::lpcstr_to_string(sz_product_code),
+        )
+    })
+    .unwrap_or(1603)
 }
 
 /// Removes one or more patches using Unicode strings.
@@ -354,28 +336,36 @@ pub unsafe extern "system" fn MsiRemovePatchesA(
 pub unsafe extern "system" fn MsiRemovePatchesW(
     sz_patch_list: *const u16,
     sz_product_code: *const u16,
-    e_uninstall_type: i32,
-    sz_property_list: *const u16,
+    _e_uninstall_type: i32,
+    _sz_property_list: *const u16,
 ) -> u32 {
-    let result = catch_unwind(|| {
-        let Some(patch_list) = crate::win32::strings::lpcwstr_to_string(sz_patch_list) else {
-            return 87;
-        };
-        let Some(product_code) = crate::win32::strings::lpcwstr_to_string(sz_product_code) else {
-            return 87;
-        };
-        match msi::execution::patching::PatchEngine::remove_patches(&patch_list, &product_code) {
-            Ok(()) => 0,
-            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
-        }
-    });
-    result.unwrap_or(1603)
+    catch_unwind(|| {
+        remove_patches_inner(
+            crate::win32::strings::lpcwstr_to_string(sz_patch_list),
+            crate::win32::strings::lpcwstr_to_string(sz_product_code),
+        )
+    })
+    .unwrap_or(1603)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::ptr;
+
+    /// Builds a valid `.msp` CFB container byte vector with `SummaryInformation` and a transform stream.
+    fn make_valid_msp_bytes() -> Vec<u8> {
+        let mut writer = msi::cfb::writer::CfbWriter::new(msi::cfb::header::CfbVersion::V3);
+        let si = msi::database::summary_info::SummaryInfo {
+            template: Some("TARGET-123".to_string()),
+            comments: Some("1.0.0".to_string()),
+            keywords: Some("FamilyA".to_string()),
+            ..msi::database::summary_info::SummaryInfo::default()
+        };
+        let _ = writer.add_stream(msi::cfb::SUMMARY_INFORMATION_STREAM, &si.to_bytes());
+        let _ = writer.add_stream("Transform.mst", &[1, 2, 3]);
+        writer.build()
+    }
 
     #[test]
     fn test_msi_apply_patch_a() {
@@ -390,13 +380,14 @@ mod tests {
         );
 
         let temp_dir = std::env::temp_dir();
-        let p = temp_dir.join("test.msp");
-        assert!(std::fs::File::create(&p).is_ok());
+        let p = temp_dir.join("test_ffi_apply_a.msp");
+        assert!(std::fs::write(&p, make_valid_msp_bytes()).is_ok());
         let path_str = std::ffi::CString::new(p.to_str().unwrap_or("")).unwrap_or_default();
         assert_eq!(
             unsafe { MsiApplyPatchA(path_str.as_ptr(), ptr::null(), 0, ptr::null()) },
             0 // ERROR_SUCCESS
         );
+        let _ = std::fs::remove_file(&p);
     }
 
     #[test]
@@ -412,14 +403,15 @@ mod tests {
         );
 
         let temp_dir = std::env::temp_dir();
-        let p = temp_dir.join("test.msp");
-        assert!(std::fs::File::create(&p).is_ok());
+        let p = temp_dir.join("test_ffi_apply_w.msp");
+        assert!(std::fs::write(&p, make_valid_msp_bytes()).is_ok());
         let mut path_w: Vec<u16> = p.to_string_lossy().encode_utf16().collect();
         path_w.push(0);
         assert_eq!(
             unsafe { MsiApplyPatchW(path_w.as_ptr(), ptr::null(), 0, ptr::null()) },
             0 // ERROR_SUCCESS
         );
+        let _ = std::fs::remove_file(&p);
     }
 
     #[test]
@@ -494,8 +486,8 @@ mod tests {
             110 // ERROR_OPEN_FAILED (since path is invalid)
         );
         let temp_dir = std::env::temp_dir();
-        let p = temp_dir.join("manifest_test.msp");
-        assert!(std::fs::File::create(&p).is_ok());
+        let p = temp_dir.join("manifest_test_ffi_a.msp");
+        assert!(std::fs::write(&p, make_valid_msp_bytes()).is_ok());
         let path_str = std::ffi::CString::new(p.to_str().unwrap_or("")).unwrap_or_default();
 
         let mut buf = vec![0_i8; 1024];
@@ -525,7 +517,7 @@ mod tests {
             0
         );
 
-        let p_inv = temp_dir.join("invalid_manifest_test.msp");
+        let p_inv = temp_dir.join("invalid_manifest_test_a.msp");
         assert!(std::fs::File::create(&p_inv).is_ok());
         let path_inv_str = std::ffi::CString::new(p_inv.to_str().unwrap_or("")).unwrap_or_default();
         assert_eq!(
@@ -534,6 +526,8 @@ mod tests {
             },
             1603 // ERROR_INSTALL_FAILURE
         );
+        let _ = std::fs::remove_file(&p);
+        let _ = std::fs::remove_file(&p_inv);
     }
 
     #[test]
@@ -549,8 +543,8 @@ mod tests {
         );
 
         let temp_dir = std::env::temp_dir();
-        let p = temp_dir.join("manifest_test.msp");
-        assert!(std::fs::File::create(&p).is_ok());
+        let p = temp_dir.join("manifest_test_ffi_w.msp");
+        assert!(std::fs::write(&p, make_valid_msp_bytes()).is_ok());
         let mut path_w: Vec<u16> = p.to_string_lossy().encode_utf16().collect();
         path_w.push(0);
 
@@ -577,7 +571,7 @@ mod tests {
             0
         );
 
-        let p_inv = temp_dir.join("invalid_manifest_test.msp");
+        let p_inv = temp_dir.join("invalid_manifest_test_w.msp");
         assert!(std::fs::File::create(&p_inv).is_ok());
         let mut path_inv_w: Vec<u16> = p_inv.to_string_lossy().encode_utf16().collect();
         path_inv_w.push(0);
@@ -587,6 +581,8 @@ mod tests {
             },
             1603 // ERROR_INSTALL_FAILURE
         );
+        let _ = std::fs::remove_file(&p);
+        let _ = std::fs::remove_file(&p_inv);
     }
 
     #[test]
@@ -606,7 +602,7 @@ mod tests {
             0 // ERROR_SUCCESS
         );
 
-        let inv = std::ffi::CString::new("invalid").unwrap_or_default();
+        let inv = std::ffi::CString::new("invalid!").unwrap_or_default();
         assert_eq!(
             unsafe { MsiRemovePatchesA(inv.as_ptr(), prod.as_ptr(), 0, ptr::null()) },
             1603 // ERROR_INSTALL_FAILURE
@@ -630,7 +626,7 @@ mod tests {
             0 // ERROR_SUCCESS
         );
 
-        let inv: Vec<u16> = "invalid\0".encode_utf16().collect();
+        let inv: Vec<u16> = "invalid!\0".encode_utf16().collect();
         assert_eq!(
             unsafe { MsiRemovePatchesW(inv.as_ptr(), prod.as_ptr(), 0, ptr::null()) },
             1603 // ERROR_INSTALL_FAILURE

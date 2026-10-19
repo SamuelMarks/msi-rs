@@ -263,7 +263,6 @@ impl CabinetReader {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
 
     #[test]

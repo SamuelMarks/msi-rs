@@ -15,11 +15,11 @@ impl OdbcDriverName {
     ///
     /// # Arguments
     ///
-    /// * `name` - The `name` parameter.
+    /// * `name` - Identifier or name of the target entity.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn new(name: impl Into<String>) -> Self {
         Self(name.into())
@@ -29,7 +29,7 @@ impl OdbcDriverName {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -45,11 +45,11 @@ impl OdbcDataSourceName {
     ///
     /// # Arguments
     ///
-    /// * `name` - The `name` parameter.
+    /// * `name` - Identifier or name of the target entity.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn new(name: impl Into<String>) -> Self {
         Self(name.into())
@@ -59,7 +59,7 @@ impl OdbcDataSourceName {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -121,11 +121,11 @@ pub mod posix_impl {
         ///
         /// # Arguments
         ///
-        /// * `content` - The `content` parameter.
+        /// * `content` - Text or binary content payload.
         ///
         /// # Returns
         ///
-        /// The resulting value or `Ok(())` on success.
+        /// `Ok` containing the parsed section-to-key-value map, or an error if parsing fails.
         pub fn parse_ini(content: &str) -> Result<HashMap<String, HashMap<String, String>>> {
             let mut result = HashMap::new();
             let mut current_section = String::new();
@@ -163,13 +163,11 @@ pub mod posix_impl {
         ///
         /// # Arguments
         ///
-        /// * `sections` - The `sections` parameter.
-        /// * `HashMap<String` - The `HashMap<String` parameter.
-        /// * `String>>` - The `String>>` parameter.
+        /// * `sections` - Map of section names to key-value attribute pairs.
         ///
         /// # Returns
         ///
-        /// The resulting value or `Ok(())` on success.
+        /// The serialized INI configuration string.
         #[must_use]
         pub fn write_ini(sections: &HashMap<String, HashMap<String, String>>) -> String {
             let mut result = String::new();
@@ -198,11 +196,11 @@ pub mod posix_impl {
         ///
         /// # Arguments
         ///
-        /// * `driver` - The `driver` parameter.
+        /// * `driver` - The driver value.
         ///
         /// # Returns
         ///
-        /// The resulting value or `Ok(())` on success.
+        /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
         pub fn register_driver(&self, driver: &OdbcDriver) -> Result<()> {
             if driver.name.as_str().is_empty() {
                 return Err(MsiError::OdbcConfigError("Empty driver name".to_string()));
@@ -217,11 +215,11 @@ pub mod posix_impl {
         ///
         /// # Arguments
         ///
-        /// * `dsn` - The `dsn` parameter.
+        /// * `dsn` - The dsn value.
         ///
         /// # Returns
         ///
-        /// The resulting value or `Ok(())` on success.
+        /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
         pub fn register_data_source(&self, dsn: &OdbcDataSource) -> Result<()> {
             if dsn.name.as_str().is_empty() {
                 return Err(MsiError::OdbcConfigError("Empty DSN name".to_string()));
@@ -236,11 +234,11 @@ pub mod posix_impl {
         ///
         /// # Arguments
         ///
-        /// * `translator` - The `translator` parameter.
+        /// * `translator` - The translator value.
         ///
         /// # Returns
         ///
-        /// The resulting value or `Ok(())` on success.
+        /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
         pub fn register_translator(&self, translator: &OdbcTranslator) -> Result<()> {
             if translator.name.is_empty() {
                 return Err(MsiError::OdbcConfigError(
@@ -253,7 +251,6 @@ pub mod posix_impl {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     #[allow(unused_imports)]
@@ -308,7 +305,6 @@ mod tests {
         assert!(mgr.register_translator(&trans).is_ok());
 
         let bad_trans = OdbcTranslator {
-            #[allow(clippy::string_add_assign)]
             name: String::new(),
             #[allow(clippy::manual_string_new)]
             path: "".to_string(),

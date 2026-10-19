@@ -150,11 +150,11 @@ where
 ///
 /// # Arguments
 ///
-/// * `args` - The `args` argument.
+/// * `args` - Command-line or invocation arguments slice.
 ///
 /// # Returns
 ///
-/// The return value.
+/// Vector of `std::ffi::OsString` items.
 fn normalize_pack_flags(args: Vec<std::ffi::OsString>) -> Vec<std::ffi::OsString> {
     if args.len() > 1 && args[1] == "pack" {
         args.into_iter()
@@ -182,11 +182,11 @@ fn normalize_pack_flags(args: Vec<std::ffi::OsString>) -> Vec<std::ffi::OsString
 ///
 /// # Arguments
 ///
-/// * `args_vec` - The `args_vec` argument.
+/// * `args_vec` - The args vec value.
 ///
 /// # Returns
 ///
-/// The return value.
+/// Computed `ExitCode` value.
 fn run_with_os_args(args_vec: Vec<std::ffi::OsString>) -> ExitCode {
     let args_vec = normalize_pack_flags(args_vec);
 
@@ -247,12 +247,10 @@ pub fn main() -> ExitCode {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::option_if_let_else,
-    clippy::too_many_lines,
-    clippy::cognitive_complexity,
-    clippy::shadow_unrelated
-)]
+#[allow(clippy::option_if_let_else)]
+#[allow(clippy::too_many_lines)]
+#[allow(clippy::cognitive_complexity)]
+#[allow(clippy::shadow_unrelated)]
 mod tests {
     use super::*;
     use msi::wix::LinkedDatabase;
@@ -261,11 +259,11 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `args` - The `args` argument.
+    /// * `args` - Command-line or invocation arguments slice.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// Vector of `std::ffi::OsString` items.
     fn to_os(args: &[&str]) -> Vec<std::ffi::OsString> {
         args.iter().map(std::ffi::OsString::from).collect()
     }
@@ -631,11 +629,11 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `valid` - The `valid` argument.
+    /// * `valid` - Whether the state or condition is valid.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// Computed `Package` value.
     fn make_test_pkg(valid: bool) -> Package {
         let name = if valid { "Test App" } else { "" };
         if let Ok(pkg) = Package::builder()
@@ -1387,11 +1385,11 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `valid` - The `valid` argument.
+    /// * `valid` - Whether the state or condition is valid.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// Computed `Package` value.
     fn make_real_app_pkg(valid: bool) -> Package {
         let name = if valid { "Real Cli App" } else { "" };
         if let Ok(pkg) = Package::builder()
@@ -1608,11 +1606,11 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `valid` - The `valid` argument.
+    /// * `valid` - Whether the state or condition is valid.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// Computed `Package` value.
     fn make_nolog_pkg(valid: bool) -> Package {
         let name = if valid { "NoLog App" } else { "" };
         if let Ok(pkg) = Package::builder()
@@ -2061,11 +2059,11 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `valid` - The `valid` argument.
+    /// * `valid` - Whether the state or condition is valid.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// Computed `Package` value.
     fn make_decompile_pkg(valid: bool) -> Package {
         let name = if valid { "DecompileTarget" } else { "" };
         let mut cab_writer = msi::cab::CabinetWriter::new(msi::cab::CompressionType::None);
@@ -2630,7 +2628,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// Computed `Package` value.
     fn make_bad_condition_pkg() -> Package {
         let mut pkg = make_test_pkg(true);
         let mut schema = msi::database::catalogs::TableSchema::new("InstallExecuteSequence");

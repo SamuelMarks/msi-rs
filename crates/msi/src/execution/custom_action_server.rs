@@ -42,7 +42,7 @@ impl CustomActionServer {
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub const fn spawn_out_of_process_server(_action_name: &str, _is_64bit: bool) -> Result<()> {
         // Mock server spawning
         Ok(())
@@ -55,13 +55,13 @@ impl CustomActionServer {
     ///
     /// # Arguments
     ///
-    /// * `action_name` - The `action_name` argument.
-    /// * `timeout_ms` - The `timeout_ms` argument.
-    /// * `simulate_failure` - The `simulate_failure` argument.
+    /// * `action_name` - Name of the action.
+    /// * `timeout_ms` - Maximum wait timeout in milliseconds.
+    /// * `simulate_failure` - The simulate failure value.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(u32)` on success, or an error if the operation fails.
     pub fn invoke_out_of_process_action(
         action_name: &str,
         timeout_ms: u64,
@@ -112,7 +112,6 @@ impl CustomActionServer {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

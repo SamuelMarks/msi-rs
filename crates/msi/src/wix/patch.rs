@@ -178,12 +178,12 @@ impl CPackWiXPatch {
     ///
     /// # Arguments
     ///
-    /// * `node` - The `node` parameter.
-    /// * `frag` - The `frag` parameter.
+    /// * `node` - Parsed XML element node being compiled.
+    /// * `frag` - The frag value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `true` if the check succeeds or state matches, `false` otherwise.
     fn inject_fragment(node: &mut XmlNode, frag: &CPackWiXFragment) -> bool {
         let is_match = match frag.id.as_str() {
             "#PRODUCT" => node.tag == "Product" || node.tag == "Package",
@@ -608,7 +608,6 @@ impl BinaryDelta {
     ///
     /// A computed [`BinaryDelta`].
     #[must_use]
-    #[allow(clippy::too_many_lines)]
     pub fn compress(baseline: &[u8], updated: &[u8]) -> Self {
         const MIN_MATCH: usize = 8;
         let mut instructions = Vec::new();
@@ -782,7 +781,7 @@ impl BinaryDelta {
     /// # Errors
     ///
     /// Returns [`MsiError::InvalidArgument`] if payload is corrupt or magic header is invalid.
-    #[allow(clippy::cast_possible_truncation, clippy::too_many_lines)]
+    #[allow(clippy::cast_possible_truncation)]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
         if bytes.len() < 9 + 8 + 8 + 4 || &bytes[0..9] != Self::MAGIC {
             return Err(MsiError::InvalidArgument {
@@ -1131,7 +1130,7 @@ impl PatchPackageBuilder {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn build_to_file(self, path: impl AsRef<Path>) -> Result<()> {
         self.build_to_file_path(path.as_ref())
     }
@@ -1140,11 +1139,11 @@ impl PatchPackageBuilder {
     ///
     /// # Arguments
     ///
-    /// * `path` - The `path` parameter.
+    /// * `path` - Filesystem path to the target file or directory.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     fn build_to_file_path(self, path: &Path) -> Result<()> {
         let bytes = self.build()?;
         std::fs::write(path, bytes)?;
@@ -1153,7 +1152,6 @@ impl PatchPackageBuilder {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -1161,12 +1159,13 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `res` - The `res` parameter.
+    /// * `res` - Operation result to inspect or convert.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
-    #[allow(clippy::manual_unwrap_or_default, clippy::option_if_let_else)]
+    /// Computed `CPackWiXPatch` value.
+    #[allow(clippy::manual_unwrap_or_default)]
+    #[allow(clippy::option_if_let_else)]
     fn extract_patch_or_default(res: Result<CPackWiXPatch>) -> CPackWiXPatch {
         match res {
             Ok(p) => p,
@@ -1178,12 +1177,13 @@ mod tests {
     ///
     /// # Arguments
     ///
-    /// * `res` - The `res` parameter.
+    /// * `res` - Operation result to inspect or convert.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
-    #[allow(clippy::manual_unwrap_or_default, clippy::option_if_let_else)]
+    /// Computed `XmlNode` value.
+    #[allow(clippy::manual_unwrap_or_default)]
+    #[allow(clippy::option_if_let_else)]
     fn extract_node_or_default(res: Result<XmlNode>) -> XmlNode {
         match res {
             Ok(n) => n,
@@ -1639,7 +1639,6 @@ mod tests {
 
     /// Tests all binary delta instruction branches, compression heuristics, and decoding errors.
     #[test]
-    #[allow(clippy::too_many_lines)]
     fn test_binary_delta_all_paths_and_error_cases() {
         let instr_copy = BinaryDeltaInstruction::Copy {
             offset: 10,

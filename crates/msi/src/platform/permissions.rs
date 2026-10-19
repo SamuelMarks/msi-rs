@@ -96,7 +96,7 @@ impl PosixMode {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `u32` numeric result or status code.
     #[must_use]
     pub const fn as_octal(&self) -> u32 {
         self.mode
@@ -106,7 +106,7 @@ impl PosixMode {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `true` if the check succeeds or state matches, `false` otherwise.
     #[must_use]
     pub const fn is_setuid(&self) -> bool {
         self.mode & S_ISUID != 0
@@ -116,7 +116,7 @@ impl PosixMode {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `true` if the check succeeds or state matches, `false` otherwise.
     #[must_use]
     pub const fn is_setgid(&self) -> bool {
         self.mode & S_ISGID != 0
@@ -126,7 +126,7 @@ impl PosixMode {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `true` if the check succeeds or state matches, `false` otherwise.
     #[must_use]
     pub const fn is_sticky(&self) -> bool {
         self.mode & S_ISVTX != 0
@@ -136,11 +136,11 @@ impl PosixMode {
     ///
     /// # Arguments
     ///
-    /// * `setuid` - The `setuid` parameter.
+    /// * `setuid` - The setuid value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn with_setuid(mut self, setuid: bool) -> Self {
         if setuid {
@@ -155,11 +155,11 @@ impl PosixMode {
     ///
     /// # Arguments
     ///
-    /// * `setgid` - The `setgid` parameter.
+    /// * `setgid` - The setgid value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn with_setgid(mut self, setgid: bool) -> Self {
         if setgid {
@@ -174,11 +174,11 @@ impl PosixMode {
     ///
     /// # Arguments
     ///
-    /// * `sticky` - The `sticky` parameter.
+    /// * `sticky` - The sticky value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn with_sticky(mut self, sticky: bool) -> Self {
         if sticky {
@@ -277,7 +277,7 @@ impl AclEntry {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     #[must_use]
     pub fn to_posix_1e_string(&self) -> String {
         let tag = match self.principal_type {
@@ -296,7 +296,7 @@ impl AclEntry {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     #[must_use]
     pub fn to_nfsv4_zfs_string(&self) -> String {
         let tag = match self.principal_type {
@@ -329,7 +329,7 @@ impl AclEntry {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     #[must_use]
     pub fn to_macos_kauth_string(&self) -> String {
         let tag = match self.principal_type {
@@ -463,7 +463,7 @@ impl ExtendedAttribute {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&'static str` value.
     #[must_use]
     pub const fn key_name(&self) -> &'static str {
         match self {
@@ -477,7 +477,7 @@ impl ExtendedAttribute {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     #[must_use]
     pub fn value_str(&self) -> &str {
         match self {
@@ -511,7 +511,7 @@ impl LiveSecurityApplier {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -521,11 +521,11 @@ impl LiveSecurityApplier {
     ///
     /// # Arguments
     ///
-    /// * `dry_run` - The `dry_run` parameter.
+    /// * `dry_run` - When `true`, simulates the operation without modifying the host system.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn with_dry_run(mut self, dry_run: bool) -> Self {
         self.dry_run = dry_run;
@@ -536,7 +536,7 @@ impl LiveSecurityApplier {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `true` if the check succeeds or state matches, `false` otherwise.
     #[must_use]
     pub const fn is_dry_run(&self) -> bool {
         self.dry_run
@@ -546,7 +546,7 @@ impl LiveSecurityApplier {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&[String]` value.
     #[must_use]
     pub fn executed_commands(&self) -> &[String] {
         &self.executed_commands
@@ -566,8 +566,7 @@ impl LiveSecurityApplier {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
-    #[allow(clippy::missing_const_for_fn)]
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn set_xattr(path: &Path, name: &str, value: &[u8]) -> Result<()> {
         let c_path = std::ffi::CString::new(path.as_os_str().as_encoded_bytes()).map_err(|e| {
             MsiError::Io(crate::error::IoContext::from_string(format!(
@@ -664,7 +663,6 @@ impl LiveSecurityApplier {
     /// # Errors
     ///
     /// Returns [`MsiError::Io`] on unexpected syscall failure.
-    #[allow(clippy::missing_const_for_fn)]
     pub fn get_xattr(path: &Path, name: &str) -> Result<Option<Vec<u8>>> {
         let c_path = std::ffi::CString::new(path.as_os_str().as_encoded_bytes()).map_err(|e| {
             MsiError::Io(crate::error::IoContext::from_string(format!(
@@ -760,7 +758,7 @@ impl LiveSecurityApplier {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn apply_mode(&self, path: &Path, mode: PosixMode) -> Result<()> {
         if !path.exists() {
             return Err(MsiError::Io(crate::error::IoContext::from_string(format!(
@@ -800,7 +798,7 @@ impl LiveSecurityApplier {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn apply_posix1e_acl(&mut self, path: &Path, acl_text: &str) -> Result<()> {
         let cmd = format!("setfacl -m {acl_text} {}", path.display());
         self.executed_commands.push(cmd.clone());
@@ -828,7 +826,7 @@ impl LiveSecurityApplier {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn apply_nfsv4_acl(&mut self, path: &Path, entries: &[AclEntry]) -> Result<()> {
         for entry in entries {
             let cmd = format!(
@@ -862,7 +860,7 @@ impl LiveSecurityApplier {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn apply_macos_acl(&mut self, path: &Path, entries: &[AclEntry]) -> Result<()> {
         for entry in entries {
             let cmd = format!(
@@ -896,7 +894,7 @@ impl LiveSecurityApplier {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn apply_extended_attribute(
         &mut self,
         path: &Path,
@@ -958,7 +956,7 @@ impl LiveSecurityApplier {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn apply_security_descriptor(
         &mut self,
         path: &Path,
@@ -980,7 +978,6 @@ impl LiveSecurityApplier {
 }
 
 #[cfg(test)]
-#[allow(clippy::manual_flatten, clippy::redundant_clone)]
 mod tests {
     use super::*;
 

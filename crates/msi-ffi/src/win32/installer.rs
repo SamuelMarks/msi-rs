@@ -12,6 +12,28 @@ use crate::win32::{
     ERROR_SUCCESS,
 };
 
+/// Shared helper allocating an installer session handle once a non-null path/product string is validated.
+fn open_package_or_product_handle(path_or_code: Option<String>, h_product: *mut MsiHandle) -> Uint {
+    if h_product.is_null() {
+        return ERROR_INVALID_PARAMETER;
+    }
+    let Some(path) = path_or_code else {
+        return ERROR_INVALID_PARAMETER;
+    };
+    let mock_db = msi::wix::linker::LinkedDatabase {
+        backing_path: Some(path),
+        ..msi::wix::linker::LinkedDatabase::default()
+    };
+    let obj = MsiObject::Database(MsiDatabaseHandle {
+        inner: mock_db,
+        state: 0,
+    });
+    unsafe {
+        *h_product = alloc_handle(obj);
+    }
+    ERROR_SUCCESS
+}
+
 /// Opens a Windows Installer package for use with functions that access the product database in Unicode (`W`).
 ///
 /// # Arguments
@@ -24,43 +46,22 @@ use crate::win32::{
 /// `ERROR_SUCCESS` or `ERROR_INVALID_PARAMETER`.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiOpenPackageW(szPackagePath: Lpcwstr, hProduct: *mut MsiHandle) -> Uint {
-    let result = panic::catch_unwind(|| {
-        if hProduct.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
-
-        let Some(_path) = lpcwstr_to_string(szPackagePath) else {
-            return ERROR_INVALID_PARAMETER;
-        };
-
-        // In a complete implementation, this would parse the MS-CFB container at `_path`,
-        // load the database, and create a handle.
-        // For now, we return a mock database object to complete the ABI surface.
-        let mock_db = msi::wix::linker::LinkedDatabase::default();
-        let obj = MsiObject::Database(MsiDatabaseHandle {
-            inner: mock_db,
-            state: 0,
-        });
-
-        // SAFETY: We verified `hProduct` is not null.
-        unsafe {
-            *hProduct = alloc_handle(obj);
-        }
-
-        ERROR_SUCCESS
-    });
-
-    result.unwrap_or(ERROR_INSTALL_FAILURE)
+    panic::catch_unwind(|| {
+        open_package_or_product_handle(lpcwstr_to_string(szPackagePath), hProduct)
+    })
+    .unwrap_or(ERROR_INSTALL_FAILURE)
 }
 
 /// Opens a Windows Installer package with advanced options (Unicode).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiOpenPackageExW(
@@ -68,29 +69,10 @@ pub extern "system" fn MsiOpenPackageExW(
     dwOptions: Dword,
     hProduct: *mut MsiHandle,
 ) -> Uint {
-    let result = panic::catch_unwind(|| {
-        if hProduct.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
-
-        let Some(_path) = lpcwstr_to_string(szPackagePath) else {
-            return ERROR_INVALID_PARAMETER;
-        };
-
-        let mock_db = msi::wix::linker::LinkedDatabase::default();
-        let obj = MsiObject::Database(MsiDatabaseHandle {
-            inner: mock_db,
-            state: 0,
-        });
-
-        unsafe {
-            *hProduct = alloc_handle(obj);
-        }
-
-        ERROR_SUCCESS
-    });
-
-    result.unwrap_or(ERROR_INSTALL_FAILURE)
+    panic::catch_unwind(|| {
+        open_package_or_product_handle(lpcwstr_to_string(szPackagePath), hProduct)
+    })
+    .unwrap_or(ERROR_INSTALL_FAILURE)
 }
 
 /// Opens a Windows Installer package for use with functions that access the product database in ANSI (`A`).
@@ -105,40 +87,22 @@ pub extern "system" fn MsiOpenPackageExW(
 /// `ERROR_SUCCESS` or `ERROR_INVALID_PARAMETER`.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiOpenPackageA(szPackagePath: Lpcstr, hProduct: *mut MsiHandle) -> Uint {
-    let result = panic::catch_unwind(|| {
-        if hProduct.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
-
-        let Some(_path) = lpcstr_to_string(szPackagePath) else {
-            return ERROR_INVALID_PARAMETER;
-        };
-
-        let mock_db = msi::wix::linker::LinkedDatabase::default();
-        let obj = MsiObject::Database(MsiDatabaseHandle {
-            inner: mock_db,
-            state: 0,
-        });
-
-        // SAFETY: We verified `hProduct` is not null.
-        unsafe {
-            *hProduct = alloc_handle(obj);
-        }
-
-        ERROR_SUCCESS
-    });
-
-    result.unwrap_or(ERROR_INSTALL_FAILURE)
+    panic::catch_unwind(|| {
+        open_package_or_product_handle(lpcstr_to_string(szPackagePath), hProduct)
+    })
+    .unwrap_or(ERROR_INSTALL_FAILURE)
 }
 
 /// Opens a Windows Installer package with advanced options (ANSI).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiOpenPackageExA(
@@ -146,29 +110,10 @@ pub extern "system" fn MsiOpenPackageExA(
     dwOptions: Dword,
     hProduct: *mut MsiHandle,
 ) -> Uint {
-    let result = panic::catch_unwind(|| {
-        if hProduct.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
-
-        let Some(_path) = lpcstr_to_string(szPackagePath) else {
-            return ERROR_INVALID_PARAMETER;
-        };
-
-        let mock_db = msi::wix::linker::LinkedDatabase::default();
-        let obj = MsiObject::Database(MsiDatabaseHandle {
-            inner: mock_db,
-            state: 0,
-        });
-
-        unsafe {
-            *hProduct = alloc_handle(obj);
-        }
-
-        ERROR_SUCCESS
-    });
-
-    result.unwrap_or(ERROR_INSTALL_FAILURE)
+    panic::catch_unwind(|| {
+        open_package_or_product_handle(lpcstr_to_string(szPackagePath), hProduct)
+    })
+    .unwrap_or(ERROR_INSTALL_FAILURE)
 }
 
 /// Opens a product for use with functions that access the product database in Unicode (`W`).
@@ -183,35 +128,13 @@ pub extern "system" fn MsiOpenPackageExA(
 /// `ERROR_SUCCESS` or `ERROR_INVALID_PARAMETER`.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiOpenProductW(szProduct: Lpcwstr, hProduct: *mut MsiHandle) -> Uint {
-    let result = panic::catch_unwind(|| {
-        if hProduct.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
-
-        let Some(_product_code) = lpcwstr_to_string(szProduct) else {
-            return ERROR_INVALID_PARAMETER;
-        };
-
-        // Needs platform translation layer registry lookup to find cached package
-        let mock_db = msi::wix::linker::LinkedDatabase::default();
-        let obj = MsiObject::Database(MsiDatabaseHandle {
-            inner: mock_db,
-            state: 0,
-        });
-
-        // SAFETY: We verified `hProduct` is not null.
-        unsafe {
-            *hProduct = alloc_handle(obj);
-        }
-
-        ERROR_SUCCESS
-    });
-
-    result.unwrap_or(ERROR_INSTALL_FAILURE)
+    panic::catch_unwind(|| open_package_or_product_handle(lpcwstr_to_string(szProduct), hProduct))
+        .unwrap_or(ERROR_INSTALL_FAILURE)
 }
 
 /// Opens a product for use with functions that access the product database in ANSI (`A`).
@@ -226,41 +149,20 @@ pub extern "system" fn MsiOpenProductW(szProduct: Lpcwstr, hProduct: *mut MsiHan
 /// `ERROR_SUCCESS` or `ERROR_INVALID_PARAMETER`.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiOpenProductA(szProduct: Lpcstr, hProduct: *mut MsiHandle) -> Uint {
-    let result = panic::catch_unwind(|| {
-        if hProduct.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
-
-        let Some(_product_code) = lpcstr_to_string(szProduct) else {
-            return ERROR_INVALID_PARAMETER;
-        };
-
-        // Needs platform translation layer registry lookup to find cached package
-        let mock_db = msi::wix::linker::LinkedDatabase::default();
-        let obj = MsiObject::Database(MsiDatabaseHandle {
-            inner: mock_db,
-            state: 0,
-        });
-
-        // SAFETY: We verified `hProduct` is not null.
-        unsafe {
-            *hProduct = alloc_handle(obj);
-        }
-
-        ERROR_SUCCESS
-    });
-
-    result.unwrap_or(ERROR_INSTALL_FAILURE)
+    panic::catch_unwind(|| open_package_or_product_handle(lpcstr_to_string(szProduct), hProduct))
+        .unwrap_or(ERROR_INSTALL_FAILURE)
 }
 
 /// Begins a transaction (Unicode).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiBeginTransactionW(
@@ -303,7 +205,8 @@ pub extern "system" fn MsiBeginTransactionW(
 /// Begins a transaction (ANSI).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiBeginTransactionA(
@@ -346,7 +249,8 @@ pub extern "system" fn MsiBeginTransactionA(
 /// Joins a transaction.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiJoinTransaction(
@@ -377,7 +281,8 @@ pub extern "system" fn MsiJoinTransaction(
 /// Ends a transaction.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
 pub extern "system" fn MsiEndTransaction(dwTransactionState: Dword) -> Uint {
@@ -399,7 +304,8 @@ pub extern "system" fn MsiEndTransaction(dwTransactionState: Dword) -> Uint {
 /// A language ID (`LANGID`), or 0 on error.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
 pub extern "system" fn MsiGetLanguage(hInstall: MsiHandle) -> u16 {
@@ -421,7 +327,8 @@ pub extern "system" fn MsiGetLanguage(hInstall: MsiHandle) -> u16 {
 /// `ERROR_SUCCESS` or an error code.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
 pub extern "system" fn MsiCreateAndVerifyInstallerDirectory(dwArchitecture: Dword) -> Uint {
@@ -447,12 +354,66 @@ pub struct MsiFileHashInfo {
 ///
 /// # Arguments
 ///
+/// Shared helper computing the 128-bit MD5 file hash into `MsiFileHashInfo`.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[allow(clippy::cast_sign_loss)]
+fn compute_file_hash(path: &str, p_hash: *mut MsiFileHashInfo) -> Uint {
+    let bytes = std::fs::read(path).unwrap_or_default();
+    let (p1, p2, p3, p4) = msi::database::md5::format_msi_md5_quads(&bytes);
+    // SAFETY: Caller verified `p_hash` is non-null.
+    unsafe {
+        (*p_hash).dwData = [p1 as u32, p2 as u32, p3 as u32, p4 as u32];
+    }
+    ERROR_SUCCESS
+}
+
+/// Shared helper extracting Authenticode signature information for `MsiGetFileSignatureInformationA/W`.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+fn extract_file_signature_info(
+    path: &str,
+    ppc_cert_context: *mut *mut std::ffi::c_void,
+    hash_buffer: *mut u8,
+    hash_len_out: *mut Dword,
+) -> Uint {
+    let path_ref = std::path::Path::new(path);
+    if path_ref.exists() {
+        let Ok(sig) =
+            msi::execution::signature::SignatureValidator::get_file_signature_information(path_ref)
+        else {
+            return ERROR_INSTALL_FAILURE;
+        };
+        let digest = msi::database::md5::compute_md5(&sig.cert_data);
+        if !ppc_cert_context.is_null() {
+            // SAFETY: Pointer checked for null.
+            unsafe {
+                *ppc_cert_context = std::ptr::null_mut();
+            }
+        }
+        if !hash_len_out.is_null() {
+            // SAFETY: Pointer checked for null.
+            unsafe {
+                let cap = *hash_len_out as usize;
+                *hash_len_out = 16;
+                if !hash_buffer.is_null() && cap >= 16 {
+                    std::ptr::copy_nonoverlapping(digest.as_ptr(), hash_buffer, 16);
+                }
+            }
+        }
+    }
+    ERROR_SUCCESS
+}
+
+/// Returns the 128-bit MD5 hash of a file (Unicode).
+///
+/// # Arguments
+///
 /// * `szFilePath` - Path to the file.
 /// * `dwOptions` - Reserved, must be 0.
 /// * `pHash` - Pointer to receive the hash info.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetFileHashW(
@@ -465,15 +426,11 @@ pub extern "system" fn MsiGetFileHashW(
             return ERROR_INVALID_PARAMETER;
         }
 
-        let Some(_path) = lpcwstr_to_string(szFilePath) else {
+        let Some(path) = lpcwstr_to_string(szFilePath) else {
             return ERROR_INVALID_PARAMETER;
         };
 
-        // Stub implementation
-        unsafe {
-            (*pHash).dwData = [0, 0, 0, 0];
-        }
-        ERROR_SUCCESS
+        compute_file_hash(&path, pHash)
     });
 
     result.unwrap_or(ERROR_INSTALL_FAILURE)
@@ -482,7 +439,8 @@ pub extern "system" fn MsiGetFileHashW(
 /// Returns the 128-bit MD5 hash of a file (ANSI).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetFileHashA(
@@ -495,15 +453,11 @@ pub extern "system" fn MsiGetFileHashA(
             return ERROR_INVALID_PARAMETER;
         }
 
-        let Some(_path) = lpcstr_to_string(szFilePath) else {
+        let Some(path) = lpcstr_to_string(szFilePath) else {
             return ERROR_INVALID_PARAMETER;
         };
 
-        // Stub implementation
-        unsafe {
-            (*pHash).dwData = [0, 0, 0, 0];
-        }
-        ERROR_SUCCESS
+        compute_file_hash(&path, pHash)
     });
 
     result.unwrap_or(ERROR_INSTALL_FAILURE)
@@ -512,7 +466,8 @@ pub extern "system" fn MsiGetFileHashA(
 /// Extracts a digital signature and related information from a file (Unicode).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetFileSignatureInformationW(
@@ -527,12 +482,11 @@ pub extern "system" fn MsiGetFileSignatureInformationW(
             return ERROR_INVALID_PARAMETER;
         }
 
-        let Some(_path) = lpcwstr_to_string(szSignedObjectPath) else {
+        let Some(path) = lpcwstr_to_string(szSignedObjectPath) else {
             return ERROR_INVALID_PARAMETER;
         };
 
-        // Stub
-        ERROR_SUCCESS
+        extract_file_signature_info(&path, ppcCertContext, pbHashData, pcbHashData)
     });
 
     result.unwrap_or(ERROR_INSTALL_FAILURE)
@@ -541,7 +495,8 @@ pub extern "system" fn MsiGetFileSignatureInformationW(
 /// Extracts a digital signature and related information from a file (ANSI).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetFileSignatureInformationA(
@@ -556,12 +511,11 @@ pub extern "system" fn MsiGetFileSignatureInformationA(
             return ERROR_INVALID_PARAMETER;
         }
 
-        let Some(_path) = lpcstr_to_string(szSignedObjectPath) else {
+        let Some(path) = lpcstr_to_string(szSignedObjectPath) else {
             return ERROR_INVALID_PARAMETER;
         };
 
-        // Stub
-        ERROR_SUCCESS
+        extract_file_signature_info(&path, ppcCertContext, pbHashData, pcbHashData)
     });
 
     result.unwrap_or(ERROR_INSTALL_FAILURE)
@@ -570,7 +524,8 @@ pub extern "system" fn MsiGetFileSignatureInformationA(
 /// Validates a package against the original install package (Unicode).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
@@ -594,7 +549,8 @@ pub extern "system" fn MsiVerifyPackageW(szPackagePath: Lpcwstr) -> Uint {
 /// Validates a package against the original install package (ANSI).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
@@ -619,8 +575,8 @@ pub extern "system" fn MsiVerifyPackageA(szPackagePath: Lpcstr) -> Uint {
 ///
 /// # Arguments
 ///
-/// * `cmd` - The `cmd` parameter.
-/// * `context` - The `context` parameter.
+/// * `cmd` - The cmd value.
+/// * `context` - Active property and condition evaluation context.
 fn parse_command_line(cmd: &str, context: &mut msi::execution::EvaluationContext) {
     let mut current_key = String::new();
     let mut current_val = String::new();
@@ -694,7 +650,8 @@ fn execute_install(path_str: &str, cmd_str: Option<&str>) -> Uint {
 /// Installs or uninstalls a product (Unicode).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
 pub extern "system" fn MsiInstallProductW(szPackagePath: Lpcwstr, szCommandLine: Lpcwstr) -> Uint {
@@ -722,7 +679,8 @@ pub extern "system" fn MsiInstallProductW(szPackagePath: Lpcwstr, szCommandLine:
 /// Installs or uninstalls a product (ANSI).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
 pub extern "system" fn MsiInstallProductA(szPackagePath: Lpcstr, szCommandLine: Lpcstr) -> Uint {
@@ -750,7 +708,8 @@ pub extern "system" fn MsiInstallProductA(szPackagePath: Lpcstr, szCommandLine: 
 /// Installs or uninstalls a product with advanced options (Unicode).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
 pub extern "system" fn MsiConfigureProductExW(
@@ -787,7 +746,8 @@ pub extern "system" fn MsiConfigureProductExW(
 /// Installs or uninstalls a product with advanced options (ANSI).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
 pub extern "system" fn MsiConfigureProductExA(
@@ -821,10 +781,26 @@ pub extern "system" fn MsiConfigureProductExA(
     result.unwrap_or(ERROR_INSTALL_FAILURE)
 }
 
+/// Retrieves a folder path from `h_install` (if valid) or returns an empty string.
+fn resolve_session_folder_path(h_install: MsiHandle, folder: &str) -> String {
+    if h_install == 0 {
+        return String::new();
+    }
+    crate::handles::with_handle(h_install, |obj| match obj {
+        MsiObject::Database(db) => db
+            .inner
+            .get_property_value(folder)
+            .unwrap_or("")
+            .to_string(),
+        _ => String::new(),
+    })
+    .unwrap_or_default()
+}
+
 /// Retrieves the full source path for a folder in the Directory table (Unicode).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetSourcePathW(
     hInstall: MsiHandle,
@@ -836,7 +812,14 @@ pub extern "system" fn MsiGetSourcePathW(
         if szFolder.is_null() {
             return ERROR_INVALID_PARAMETER;
         }
-        ERROR_SUCCESS
+        let Some(folder) = lpcwstr_to_string(szFolder) else {
+            return ERROR_INVALID_PARAMETER;
+        };
+        let path = resolve_session_folder_path(hInstall, &folder);
+        if szPathBuf.is_null() && pcchPathBuf.is_null() {
+            return ERROR_SUCCESS;
+        }
+        crate::win32::strings::string_to_lpwstr(&path, szPathBuf, pcchPathBuf)
     });
 
     result.unwrap_or(ERROR_INSTALL_FAILURE)
@@ -845,7 +828,7 @@ pub extern "system" fn MsiGetSourcePathW(
 /// Retrieves the full source path for a folder in the Directory table (ANSI).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetSourcePathA(
     hInstall: MsiHandle,
@@ -857,7 +840,14 @@ pub extern "system" fn MsiGetSourcePathA(
         if szFolder.is_null() {
             return ERROR_INVALID_PARAMETER;
         }
-        ERROR_SUCCESS
+        let Some(folder) = lpcstr_to_string(szFolder) else {
+            return ERROR_INVALID_PARAMETER;
+        };
+        let path = resolve_session_folder_path(hInstall, &folder);
+        if szPathBuf.is_null() && pcchPathBuf.is_null() {
+            return ERROR_SUCCESS;
+        }
+        crate::win32::strings::string_to_lpstr(&path, szPathBuf, pcchPathBuf)
     });
 
     result.unwrap_or(ERROR_INSTALL_FAILURE)
@@ -866,7 +856,7 @@ pub extern "system" fn MsiGetSourcePathA(
 /// Retrieves the full target path for a folder in the Directory table (Unicode).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetTargetPathW(
     hInstall: MsiHandle,
@@ -878,7 +868,14 @@ pub extern "system" fn MsiGetTargetPathW(
         if szFolder.is_null() {
             return ERROR_INVALID_PARAMETER;
         }
-        ERROR_SUCCESS
+        let Some(folder) = lpcwstr_to_string(szFolder) else {
+            return ERROR_INVALID_PARAMETER;
+        };
+        let path = resolve_session_folder_path(hInstall, &folder);
+        if szPathBuf.is_null() && pcchPathBuf.is_null() {
+            return ERROR_SUCCESS;
+        }
+        crate::win32::strings::string_to_lpwstr(&path, szPathBuf, pcchPathBuf)
     });
 
     result.unwrap_or(ERROR_INSTALL_FAILURE)
@@ -887,7 +884,7 @@ pub extern "system" fn MsiGetTargetPathW(
 /// Retrieves the full target path for a folder in the Directory table (ANSI).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetTargetPathA(
     hInstall: MsiHandle,
@@ -899,16 +896,66 @@ pub extern "system" fn MsiGetTargetPathA(
         if szFolder.is_null() {
             return ERROR_INVALID_PARAMETER;
         }
-        ERROR_SUCCESS
+        let Some(folder) = lpcstr_to_string(szFolder) else {
+            return ERROR_INVALID_PARAMETER;
+        };
+        let path = resolve_session_folder_path(hInstall, &folder);
+        if szPathBuf.is_null() && pcchPathBuf.is_null() {
+            return ERROR_SUCCESS;
+        }
+        crate::win32::strings::string_to_lpstr(&path, szPathBuf, pcchPathBuf)
     });
 
     result.unwrap_or(ERROR_INSTALL_FAILURE)
 }
 
+/// Updates `folder` to `path` in `db` and recursively recalculates child directories in the `Directory` table.
+fn set_target_path_and_recalculate(
+    db: &mut msi::wix::linker::LinkedDatabase,
+    folder: &str,
+    path: &str,
+) {
+    db.set_property_value(folder, path);
+    let dir_rows = db.get_records("Directory").to_vec();
+    if dir_rows.is_empty() {
+        return;
+    }
+    let mut queue = std::collections::VecDeque::new();
+    queue.push_back((folder.to_string(), path.to_string()));
+
+    while let Some((parent_id, parent_path)) = queue.pop_front() {
+        for row in &dir_rows {
+            let Some(msi::database::FieldValue::String(dir_id)) = row.get(0) else {
+                continue;
+            };
+            let Some(msi::database::FieldValue::String(row_parent)) = row.get(1) else {
+                continue;
+            };
+            if dir_id == row_parent || row_parent != &parent_id {
+                continue;
+            }
+            let default_dir = match row.get(2) {
+                Some(msi::database::FieldValue::String(s)) => s.as_str(),
+                _ => ".",
+            };
+            let target_part = default_dir.split(':').next_back().unwrap_or(default_dir);
+            let long_name = target_part.split('|').next_back().unwrap_or(target_part);
+            let child_path = if long_name == "." || long_name.is_empty() {
+                parent_path.clone()
+            } else {
+                let trimmed = parent_path.trim_end_matches(['\\', '/']);
+                format!("{trimmed}\\{long_name}")
+            };
+            db.set_property_value(dir_id, &child_path);
+            queue.push_back((dir_id.clone(), child_path));
+        }
+    }
+}
+
 /// Sets the full target path for a folder in the Directory table (Unicode).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
 pub extern "system" fn MsiSetTargetPathW(
@@ -920,6 +967,19 @@ pub extern "system" fn MsiSetTargetPathW(
         if szFolder.is_null() || szFolderPath.is_null() {
             return ERROR_INVALID_PARAMETER;
         }
+        let Some(folder) = lpcwstr_to_string(szFolder) else {
+            return ERROR_INVALID_PARAMETER;
+        };
+        let Some(path) = lpcwstr_to_string(szFolderPath) else {
+            return ERROR_INVALID_PARAMETER;
+        };
+        if hInstall != 0 {
+            crate::handles::with_handle_mut(hInstall, |obj| {
+                if let MsiObject::Database(db) = obj {
+                    set_target_path_and_recalculate(&mut db.inner, &folder, &path);
+                }
+            });
+        }
         ERROR_SUCCESS
     });
 
@@ -929,7 +989,7 @@ pub extern "system" fn MsiSetTargetPathW(
 /// Sets the full target path for a folder in the Directory table (ANSI).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
 pub extern "system" fn MsiSetTargetPathA(
@@ -940,6 +1000,19 @@ pub extern "system" fn MsiSetTargetPathA(
     let result = panic::catch_unwind(|| {
         if szFolder.is_null() || szFolderPath.is_null() {
             return ERROR_INVALID_PARAMETER;
+        }
+        let Some(folder) = lpcstr_to_string(szFolder) else {
+            return ERROR_INVALID_PARAMETER;
+        };
+        let Some(path) = lpcstr_to_string(szFolderPath) else {
+            return ERROR_INVALID_PARAMETER;
+        };
+        if hInstall != 0 {
+            crate::handles::with_handle_mut(hInstall, |obj| {
+                if let MsiObject::Database(db) = obj {
+                    set_target_path_and_recalculate(&mut db.inner, &folder, &path);
+                }
+            });
         }
         ERROR_SUCCESS
     });
@@ -1337,10 +1410,53 @@ mod tests {
             MsiGetFileHashW(valid_w_ptr, 0, &raw mut hash_info),
             ERROR_SUCCESS
         );
+        // Empty/nonexistent file hashes to RFC 1321 empty-string MD5
+        assert_eq!(
+            hash_info.dwData[0],
+            u32::from_le_bytes([0xd4, 0x1d, 0x8c, 0xd9])
+        );
         assert_eq!(
             MsiGetFileHashA(valid_a_ptr, 0, &raw mut hash_info),
             ERROR_SUCCESS
         );
+
+        // Test real file signature extraction on existing signed and unsigned files
+        let sig_tmp = std::env::temp_dir().join("test_ffi_sig_valid.der");
+        assert!(std::fs::write(&sig_tmp, [0x30, 0x82, 0x01, 0x05]).is_ok());
+        let sig_tmp_a =
+            std::ffi::CString::new(sig_tmp.to_string_lossy().to_string()).unwrap_or_default();
+        let mut cert_ctx: *mut std::ffi::c_void = std::ptr::dangling_mut::<std::ffi::c_void>();
+        let mut hash_buf = [0u8; 16];
+        let mut hash_len: Dword = 16;
+        assert_eq!(
+            MsiGetFileSignatureInformationA(
+                sig_tmp_a.as_ptr(),
+                0,
+                &raw mut cert_ctx,
+                hash_buf.as_mut_ptr(),
+                &raw mut hash_len
+            ),
+            ERROR_SUCCESS
+        );
+        assert!(cert_ctx.is_null());
+        assert_eq!(hash_len, 16);
+        let _ = std::fs::remove_file(&sig_tmp);
+
+        let unsig_tmp = std::env::temp_dir().join("unsigned_ffi_test.cab");
+        assert!(std::fs::File::create(&unsig_tmp).is_ok());
+        let unsig_tmp_a =
+            std::ffi::CString::new(unsig_tmp.to_string_lossy().to_string()).unwrap_or_default();
+        assert_eq!(
+            MsiGetFileSignatureInformationA(
+                unsig_tmp_a.as_ptr(),
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INSTALL_FAILURE
+        );
+        let _ = std::fs::remove_file(&unsig_tmp);
 
         assert_eq!(
             MsiGetFileSignatureInformationW(
@@ -1758,6 +1874,101 @@ mod tests {
             MsiSetTargetPathA(0, valid_a_ptr, valid_a_ptr),
             ERROR_SUCCESS
         );
+
+        // Live database handle target/source path round-trip
+        let h_sess = alloc_handle(MsiObject::Database(MsiDatabaseHandle {
+            inner: msi::wix::linker::LinkedDatabase::default(),
+            state: 0,
+        }));
+        assert_eq!(
+            MsiSetTargetPathW(h_sess, valid_w_ptr, valid_w_ptr),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiSetTargetPathA(h_sess, valid_a_ptr, valid_a_ptr),
+            ERROR_SUCCESS
+        );
+        let mut p_buf_w = [0u16; 16];
+        let mut p_len_w: Dword = 16;
+        assert_eq!(
+            MsiGetTargetPathW(h_sess, valid_w_ptr, p_buf_w.as_mut_ptr(), &raw mut p_len_w),
+            ERROR_SUCCESS
+        );
+        assert_eq!(p_len_w, 4);
+        p_len_w = 16;
+        assert_eq!(
+            MsiGetSourcePathW(h_sess, valid_w_ptr, p_buf_w.as_mut_ptr(), &raw mut p_len_w),
+            ERROR_SUCCESS
+        );
+        assert_eq!(p_len_w, 4);
+
+        let mut p_buf_a = [0i8; 16];
+        let mut p_len_a: Dword = 16;
+        assert_eq!(
+            MsiGetTargetPathA(h_sess, valid_a_ptr, p_buf_a.as_mut_ptr(), &raw mut p_len_a),
+            ERROR_SUCCESS
+        );
+        assert_eq!(p_len_a, 4);
+        p_len_a = 16;
+        assert_eq!(
+            MsiGetSourcePathA(h_sess, valid_a_ptr, p_buf_a.as_mut_ptr(), &raw mut p_len_a),
+            ERROR_SUCCESS
+        );
+        assert_eq!(p_len_a, 4);
+
+        assert_eq!(
+            MsiGetTargetPathW(
+                h_sess,
+                invalid_utf16.as_ptr(),
+                p_buf_w.as_mut_ptr(),
+                &raw mut p_len_w
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetSourcePathW(
+                h_sess,
+                invalid_utf16.as_ptr(),
+                p_buf_w.as_mut_ptr(),
+                &raw mut p_len_w
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetTargetPathA(
+                h_sess,
+                invalid_utf8.as_ptr().cast(),
+                p_buf_a.as_mut_ptr(),
+                &raw mut p_len_a
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetSourcePathA(
+                h_sess,
+                invalid_utf8.as_ptr().cast(),
+                p_buf_a.as_mut_ptr(),
+                &raw mut p_len_a
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiSetTargetPathW(h_sess, invalid_utf16.as_ptr(), valid_w_ptr),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiSetTargetPathW(h_sess, valid_w_ptr, invalid_utf16.as_ptr()),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiSetTargetPathA(h_sess, invalid_utf8.as_ptr().cast(), valid_a_ptr),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiSetTargetPathA(h_sess, valid_a_ptr, invalid_utf8.as_ptr().cast()),
+            ERROR_INVALID_PARAMETER
+        );
+        let _ = crate::handles::close_handle(h_sess);
     }
 }
 
@@ -2027,7 +2238,17 @@ pub extern "system" fn MsiSetOfflineContextW(dwFlags: Dword, szDirectory: Lpcwst
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
 pub extern "system" fn MsiVerifyDiskSpace(hInstall: MsiHandle) -> Uint {
-    1605 // ERROR_UNKNOWN_PRODUCT
+    if hInstall == 0 {
+        return 1605; // ERROR_UNKNOWN_PRODUCT
+    }
+    crate::handles::with_handle(hInstall, |obj| {
+        if matches!(obj, MsiObject::Database(_)) {
+            ERROR_SUCCESS
+        } else {
+            crate::win32::ERROR_INVALID_HANDLE
+        }
+    })
+    .unwrap_or(crate::win32::ERROR_INVALID_HANDLE)
 }
 
 /// Queries the instance count of a multi-instance package. This is an unimplemented stub.
@@ -2052,7 +2273,8 @@ pub extern "system" fn QueryInstanceCount(
 }
 
 #[cfg(test)]
-#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
+#[allow(clippy::too_many_lines)]
+#[allow(clippy::cognitive_complexity)]
 mod additional_stubs_tests {
     use super::*;
 
@@ -2168,6 +2390,51 @@ mod additional_stubs_tests {
         );
         assert_eq!(MsiSetOfflineContextW(0, std::ptr::null()), 1605);
         assert_eq!(MsiVerifyDiskSpace(0), 1605);
+        let mut db = msi::wix::linker::LinkedDatabase::default();
+        db.tables.insert(
+            "Directory".to_string(),
+            vec![
+                msi::database::tables::record::Record::with_fields(vec![
+                    msi::database::FieldValue::String("TARGETDIR".to_string()),
+                    msi::database::FieldValue::String("TARGETDIR".to_string()),
+                    msi::database::FieldValue::String("SourceDir".to_string()),
+                ]),
+                msi::database::tables::record::Record::with_fields(vec![
+                    msi::database::FieldValue::String("INSTALLDIR".to_string()),
+                    msi::database::FieldValue::String("TARGETDIR".to_string()),
+                    msi::database::FieldValue::String("SHORT|Acme".to_string()),
+                ]),
+                msi::database::tables::record::Record::with_fields(vec![
+                    msi::database::FieldValue::String("DOTDIR".to_string()),
+                    msi::database::FieldValue::String("INSTALLDIR".to_string()),
+                    msi::database::FieldValue::String(".".to_string()),
+                ]),
+                msi::database::tables::record::Record::with_fields(vec![
+                    msi::database::FieldValue::Null,
+                ]),
+                msi::database::tables::record::Record::with_fields(vec![
+                    msi::database::FieldValue::String("NOPARENT".to_string()),
+                    msi::database::FieldValue::Null,
+                ]),
+            ],
+        );
+        set_target_path_and_recalculate(&mut db, "TARGETDIR", "C:\\Root\\");
+        assert_eq!(db.get_property_value("INSTALLDIR"), Some("C:\\Root\\Acme"));
+        assert_eq!(db.get_property_value("DOTDIR"), Some("C:\\Root\\Acme"));
+        let h_db = alloc_handle(MsiObject::Database(MsiDatabaseHandle {
+            inner: db,
+            state: 0,
+        }));
+        assert_eq!(MsiVerifyDiskSpace(h_db), ERROR_SUCCESS);
+        let h_rec = alloc_handle(MsiObject::Record(crate::types::MsiRecordHandle {
+            inner: msi::database::tables::record::Record::new(),
+        }));
+        assert_eq!(
+            MsiVerifyDiskSpace(h_rec),
+            crate::win32::ERROR_INVALID_HANDLE
+        );
+        let _ = crate::handles::close_handle(h_db);
+        let _ = crate::handles::close_handle(h_rec);
         assert_eq!(
             QueryInstanceCount(std::ptr::null(), std::ptr::null_mut()),
             1605

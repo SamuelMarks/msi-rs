@@ -113,6 +113,7 @@ impl Parser {
         })?;
         match tok {
             Token::Identifier(s) => Ok(s),
+            Token::Table => Ok("Table".to_string()),
             other => Err(MsiError::Sql {
                 message: format!("expected identifier, found {other:?}"),
             }),
@@ -138,6 +139,12 @@ impl Parser {
         if matches!(self.peek(), Some(Token::Asterisk)) {
             self.next_token();
         } else {
+            let paren = if matches!(self.peek(), Some(Token::OpenParen)) {
+                self.next_token();
+                true
+            } else {
+                false
+            };
             loop {
                 columns.push(crate::database::sql::ast::ColumnName(self.expect_ident()?));
                 if matches!(self.peek(), Some(Token::Comma)) {
@@ -145,6 +152,9 @@ impl Parser {
                 } else {
                     break;
                 }
+            }
+            if paren {
+                self.expect(&Token::CloseParen)?;
             }
         }
 
@@ -352,6 +362,9 @@ impl Parser {
             }
         }
         self.expect(&Token::CloseParen)?;
+        if matches!(self.peek(), Some(Token::Hold | Token::Free)) {
+            self.next_token();
+        }
 
         for pk_name in primary_keys {
             for col in &mut columns {
@@ -474,6 +487,9 @@ impl Parser {
                 Token::Localizable => {
                     self.next_token();
                     localizable = true;
+                }
+                Token::Temporary => {
+                    self.next_token();
                 }
                 _ => break,
             }
@@ -598,6 +614,7 @@ impl Parser {
             Token::LessOrEqual => BinaryOp::LessOrEqual,
             Token::GreaterOrEqual => BinaryOp::GreaterOrEqual,
             Token::Like => BinaryOp::Like,
+            Token::BitwiseAnd => BinaryOp::BitwiseAnd,
             other => {
                 return Err(MsiError::Sql {
                     message: format!("unexpected comparison operator {other:?}"),
@@ -615,7 +632,6 @@ impl Parser {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -694,8 +710,11 @@ mod tests {
         let sql4 = "SELECT Col1 FROM T1 WHERE Col1 IS NOT NULL";
         assert!(parse_query(sql4).is_ok());
 
-        let sql5 = "SELECT Col1 FROM T1 WHERE NOT (Col1 < 10 AND Col2 > 20 OR Col3 <= 30 AND Col4 >= 40 OR Col5 != 50 OR Col6 LIKE 'abc%')";
+        let sql5 = "SELECT Col1 FROM T1 WHERE NOT (Col1 < 10 AND Col2 > 20 OR Col3 <= 30 AND Col4 >= 40 OR Col5 != 50 OR Col6 LIKE 'abc%' OR Col7 >< 4)";
         assert!(parse_query(sql5).is_ok());
+
+        let sql_paren = "SELECT (TABLE, Col1) FROM T1";
+        assert!(parse_query(sql_paren).is_ok());
     }
 
     #[test]
@@ -722,7 +741,7 @@ mod tests {
         assert!(parse_query(sql_del2).is_ok());
 
         // CREATE TABLE with complex column definitions
-        let sql_create1 = "CREATE TABLE T (Col1 CHAR(50) NOT NULL PRIMARY KEY, Col2 VARCHAR NOT NULL, Col3 SHORT, Col4 INT, Col5 LONG, Col6 OBJECT LOCALIZABLE, PRIMARY KEY (Col1))";
+        let sql_create1 = "CREATE TABLE T (Col1 CHAR(50) NOT NULL PRIMARY KEY, Col2 VARCHAR NOT NULL, Col3 SHORT TEMPORARY, Col4 INT, Col5 LONG, Col6 OBJECT LOCALIZABLE, PRIMARY KEY (Col1)) HOLD";
         assert!(parse_query(sql_create1).is_ok());
 
         let sql_create2 = "CREATE TABLE T (Col1 LONG, PRIMARY KEY Col1)";

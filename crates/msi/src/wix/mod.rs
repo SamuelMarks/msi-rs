@@ -96,7 +96,6 @@ pub fn compile_wix(source: &str, ctx: &mut PreprocessorContext) -> Result<WixObj
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

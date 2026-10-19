@@ -29,7 +29,7 @@ pub struct PatchArgs {
 ///
 /// # Arguments
 ///
-/// * `args` - The `args` argument.
+/// * `args` - Command-line or invocation arguments slice.
 ///
 /// # Errors
 ///
@@ -37,7 +37,7 @@ pub struct PatchArgs {
 ///
 /// # Returns
 ///
-/// The return value.
+/// `Ok` containing the formatted or resolved string, or an error on failure.
 pub fn handle_patch(args: &PatchArgs) -> Result<String, MsiError> {
     if args.package.trim().is_empty() {
         return Err(MsiError::CommandLineError(

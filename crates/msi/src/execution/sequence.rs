@@ -1,3 +1,5 @@
+//! Sequence execution status codes, sequence table names, and sequence entry types.
+
 use derive_more::Display;
 use std::fmt::Display;
 
@@ -39,7 +41,6 @@ impl From<&str> for SequenceName {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

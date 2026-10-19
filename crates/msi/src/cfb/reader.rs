@@ -59,7 +59,8 @@ impl CfbReader {
     ///
     /// Returns [`crate::MsiError`] if header validation, FAT traversal, directory parsing,
     /// or Mini-Stream extraction encounters corruption or cycles.
-    #[allow(clippy::too_many_lines, clippy::cast_possible_truncation)]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::cast_possible_truncation)]
     pub fn new(bytes: &[u8]) -> Result<Self> {
         let header = CfbHeader::parse(bytes)?;
         let data = bytes.to_vec();
@@ -466,7 +467,6 @@ impl CfbReader {
     /// # Errors
     ///
     /// Returns [`MsiError::StreamNotFound`], [`MsiError::InvalidSector`], or [`MsiError::CfbCorrupted`].
-    #[allow(clippy::cast_possible_truncation)]
     pub fn read_stream(&self, name: &str) -> Result<Vec<u8>> {
         let entry = self.find_entry(name)?;
         self.read_stream_from_entry(entry)
@@ -550,7 +550,6 @@ impl CfbReader {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -822,14 +821,13 @@ mod tests {
         let _ = CfbReader::new(&bad_fat_bytes);
         Ok(())
     }
-    #[allow(clippy::cognitive_complexity)]
     /// Tests FAT chain cycles, `MiniFAT` stream reading, `MiniFAT` cycles, and size mismatches.
     ///
     /// # Returns
     ///
     /// Synthesized CFB container byte vector or unit test completion.
     #[test]
-    #[allow(clippy::too_many_lines, clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_possible_truncation)]
     fn test_cfb_reader_chains_and_mini_stream(
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         // FAT cycle test

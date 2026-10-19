@@ -1,3 +1,5 @@
+//! Schema definition for the Windows Installer `_Validation` metadata table.
+
 use crate::database::catalogs::TableSchema;
 use crate::database::column::ColumnDef;
 
@@ -5,7 +7,7 @@ use crate::database::column::ColumnDef;
 ///
 /// # Returns
 ///
-/// An instance of this struct, or an appropriate return type.
+/// Constructed [`TableSchema`] for the `_Validation` table.
 #[must_use]
 pub fn validation_schema() -> TableSchema {
     TableSchema::new("_Validation")
@@ -63,7 +65,6 @@ pub fn validation_schema() -> TableSchema {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

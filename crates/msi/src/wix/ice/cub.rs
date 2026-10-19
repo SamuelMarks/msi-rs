@@ -84,11 +84,11 @@ impl CubValidator {
     ///
     /// # Arguments
     ///
-    /// * `p` - The `p` parameter.
+    /// * `p` - The p value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Self)` on success, or an error if the operation fails.
     fn open_path(p: &Path) -> Result<Self> {
         let name = p.file_stem().map_or_else(
             || "cub".to_string(),
@@ -164,7 +164,6 @@ impl CubValidator {
     /// # Errors
     ///
     /// Returns [`crate::MsiError`] if script execution fails unexpectedly.
-    #[allow(clippy::too_many_lines)]
     pub fn execute(&self, target_db: &LinkedDatabase) -> Result<Vec<IceDiagnostic>> {
         let mut diagnostics = Vec::new();
         let script_db = target_db.to_script_database();
@@ -268,7 +267,7 @@ impl Default for CubValidator {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     fn default() -> Self {
         Self::from_database("default", LinkedDatabase::default())
     }

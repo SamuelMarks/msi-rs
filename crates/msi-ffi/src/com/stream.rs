@@ -1,3 +1,5 @@
+//! COM `IStream` and `STATSTG` vtable and structure definitions for OLE stream objects.
+
 use super::{IUnknownVtbl, HRESULT, ULONG};
 use std::ffi::c_void;
 

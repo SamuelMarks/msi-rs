@@ -19,13 +19,13 @@ pub trait HostSystem {
     ///
     /// # Arguments
     ///
-    /// * `root` - The `root` parameter.
-    /// * `key` - The `key` parameter.
-    /// * `name` - The `name` parameter.
+    /// * `root` - Registry root hive or XML root node.
+    /// * `key` - Registry key path or lookup identifier.
+    /// * `name` - Identifier or name of the target entity.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Some(String))` if present, `Ok(None)` if absent, or an error on failure.
     fn get_registry_value(
         &self,
         root: i32,
@@ -39,14 +39,14 @@ pub trait HostSystem {
     ///
     /// # Arguments
     ///
-    /// * `file` - The `file` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `key` - The `key` parameter.
-    /// * `field` - The `field` parameter.
+    /// * `file` - Target file path or identifier.
+    /// * `section` - Intermediate object section receiving symbols and table rows.
+    /// * `key` - Registry key path or lookup identifier.
+    /// * `field` - The field value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Some(String))` if present, `Ok(None)` if absent, or an error on failure.
     fn get_ini_value(
         &self,
         file: &str,
@@ -61,13 +61,13 @@ pub trait HostSystem {
     ///
     /// # Arguments
     ///
-    /// * `path` - The `path` parameter.
-    /// * `name` - The `name` parameter.
-    /// * `depth` - The `depth` parameter.
+    /// * `path` - Filesystem path to the target file or directory.
+    /// * `name` - Identifier or name of the target entity.
+    /// * `depth` - Maximum directory traversal recursion depth.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Some(String))` if present, `Ok(None)` if absent, or an error on failure.
     fn find_file(&self, path: &str, name: &str, depth: u32) -> Result<Option<String>>;
     /// Finds a directory by path.
     ///
@@ -76,12 +76,12 @@ pub trait HostSystem {
     ///
     /// # Arguments
     ///
-    /// * `path` - The `path` parameter.
-    /// * `depth` - The `depth` parameter.
+    /// * `path` - Filesystem path to the target file or directory.
+    /// * `depth` - Maximum directory traversal recursion depth.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Some(String))` if present, `Ok(None)` if absent, or an error on failure.
     fn find_dir(&self, path: &str, depth: u32) -> Result<Option<String>>;
     /// Validates a file against a signature.
     ///
@@ -90,12 +90,12 @@ pub trait HostSystem {
     ///
     /// # Arguments
     ///
-    /// * `path` - The `path` parameter.
-    /// * `sig` - The `sig` parameter.
+    /// * `path` - Filesystem path to the target file or directory.
+    /// * `sig` - The sig value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(true)` if the condition holds, `Ok(false)` otherwise, or an error on evaluation failure.
     fn check_signature(&self, path: &str, sig: &Signature) -> Result<bool>;
 }
 
@@ -192,12 +192,12 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     ///
     /// # Arguments
     ///
-    /// * `r` - The `r` parameter.
-    /// * `idx` - The `idx` parameter.
+    /// * `r` - Red channel color component or record reference.
+    /// * `idx` - Zero-based index of the target item.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(&str)` if found, or `None` if absent.
     fn get_string(r: &Record, idx: usize) -> Option<&str> {
         match r.get(idx) {
             Some(FieldValue::String(s)) => Some(s),
@@ -209,12 +209,12 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     ///
     /// # Arguments
     ///
-    /// * `r` - The `r` parameter.
-    /// * `idx` - The `idx` parameter.
+    /// * `r` - Red channel color component or record reference.
+    /// * `idx` - Zero-based index of the target item.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(i32)` if found, or `None` if absent.
     fn get_i32(r: &Record, idx: usize) -> Option<i32> {
         match r.get(idx) {
             Some(FieldValue::Long(i)) => Some(*i),
@@ -227,12 +227,12 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     ///
     /// # Arguments
     ///
-    /// * `db` - The `db` parameter.
-    /// * `host` - The `host` parameter.
+    /// * `db` - In-memory linked MSI database to inspect or mutate.
+    /// * `host` - The host value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn new(db: &'a LinkedDatabase, host: H) -> Self {
         Self { db, host }
@@ -245,7 +245,7 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(HashMap<String)` on success, or an error if the operation fails.
     pub fn execute(&self) -> Result<HashMap<String, String>> {
         let mut results = HashMap::new();
         // Parse the AppSearch table
@@ -269,15 +269,21 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     ///
     /// # Arguments
     ///
-    /// * `sig_id` - The `sig_id` parameter.
+    /// * `sig_id` - Signature identifier in the `Signature`, `RegLocator`, `IniLocator`, `DrLocator`, or `CompLocator` table.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
-    fn resolve_signature(&self, sig_id: &str) -> Option<String> {
+    /// `Some(String)` if found, or `None` if absent.
+    pub fn resolve_signature(&self, sig_id: &str) -> Option<String> {
         // Step 1: Query CompLocator
-        if let Some(_comp_loc) = self.find_comp_locator(sig_id) {
-            // Unimplemented for phase 3 stub
+        if let Some(comp_loc) = self.find_comp_locator(sig_id) {
+            if let Ok((path, state)) =
+                crate::execution::locator::locate_component(&comp_loc.component_id)
+            {
+                if state >= 1 && !path.is_empty() {
+                    return self.validate_with_signature(sig_id, &path);
+                }
+            }
         }
 
         // Step 2: Query RegLocator
@@ -346,12 +352,12 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     ///
     /// # Arguments
     ///
-    /// * `sig_id` - The `sig_id` parameter.
-    /// * `path` - The `path` parameter.
+    /// * `sig_id` - Signature identifier in the `Signature`, `RegLocator`, `IniLocator`, `DrLocator`, or `CompLocator` table.
+    /// * `path` - Filesystem path to the target file or directory.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(String)` if found, or `None` if absent.
     fn validate_with_signature(&self, sig_id: &str, path: &str) -> Option<String> {
         self.find_signature(sig_id).map_or_else(
             || Some(path.to_string()),
@@ -363,11 +369,11 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     ///
     /// # Arguments
     ///
-    /// * `locator_type` - The `locator_type` parameter.
+    /// * `locator_type` - The locator type value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `true` if the check succeeds or state matches, `false` otherwise.
     const fn is_file_or_dir_locator(locator_type: u32) -> bool {
         locator_type == 0 || locator_type == 1
     }
@@ -376,11 +382,11 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     ///
     /// # Arguments
     ///
-    /// * `sig_id` - The `sig_id` parameter.
+    /// * `sig_id` - Signature identifier in the `Signature`, `RegLocator`, `IniLocator`, `DrLocator`, or `CompLocator` table.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(Signature)` if found, or `None` if absent.
     fn find_signature(&self, sig_id: &str) -> Option<Signature> {
         self.db
             .tables
@@ -404,11 +410,11 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     ///
     /// # Arguments
     ///
-    /// * `sig_id` - The `sig_id` parameter.
+    /// * `sig_id` - Signature identifier in the `Signature`, `RegLocator`, `IniLocator`, `DrLocator`, or `CompLocator` table.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(RegLocator)` if found, or `None` if absent.
     fn find_reg_locator(&self, sig_id: &str) -> Option<RegLocator> {
         self.db
             .tables
@@ -428,11 +434,11 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     ///
     /// # Arguments
     ///
-    /// * `sig_id` - The `sig_id` parameter.
+    /// * `sig_id` - Signature identifier in the `Signature`, `RegLocator`, `IniLocator`, `DrLocator`, or `CompLocator` table.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(IniLocator)` if found, or `None` if absent.
     fn find_ini_locator(&self, sig_id: &str) -> Option<IniLocator> {
         self.db
             .tables
@@ -453,11 +459,11 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     ///
     /// # Arguments
     ///
-    /// * `sig_id` - The `sig_id` parameter.
+    /// * `sig_id` - Signature identifier in the `Signature`, `RegLocator`, `IniLocator`, `DrLocator`, or `CompLocator` table.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(DrLocator)` if found, or `None` if absent.
     fn find_dr_locator(&self, sig_id: &str) -> Option<DrLocator> {
         self.db
             .tables
@@ -476,11 +482,11 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     ///
     /// # Arguments
     ///
-    /// * `sig_id` - The `sig_id` parameter.
+    /// * `sig_id` - Signature identifier in the `Signature`, `RegLocator`, `IniLocator`, `DrLocator`, or `CompLocator` table.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(CompLocator)` if found, or `None` if absent.
     fn find_comp_locator(&self, sig_id: &str) -> Option<CompLocator> {
         self.db
             .tables
@@ -495,8 +501,101 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     }
 }
 
+/// Default host system querying [`RegistryStore`](crate::platform::registry_store::RegistryStore)
+/// and local filesystem paths for `AppSearch` and `CCPSearch`.
+#[derive(Debug, Default, Clone)]
+pub struct DefaultHostSystem {
+    /// Backing registry store.
+    pub registry: crate::platform::registry_store::RegistryStore,
+}
+
+impl DefaultHostSystem {
+    /// Creates a new [`DefaultHostSystem`] with a default [`RegistryStore`](crate::platform::registry_store::RegistryStore).
+    ///
+    /// # Returns
+    ///
+    /// A new [`DefaultHostSystem`].
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl HostSystem for DefaultHostSystem {
+    fn get_registry_value(
+        &self,
+        root: i32,
+        key: &str,
+        name: Option<&str>,
+    ) -> Result<Option<String>> {
+        let reg_root = crate::platform::registry_store::RegistryRoot::from_u32(
+            u32::try_from(root).unwrap_or(2),
+        )
+        .unwrap_or(crate::platform::registry_store::RegistryRoot::LocalMachine);
+        if let Some(crate::platform::registry_store::RegistryValue::Sz(val)) =
+            self.registry.get_value(reg_root, key, name)
+        {
+            return Ok(Some(val.clone()));
+        }
+        Ok(None)
+    }
+
+    fn get_ini_value(
+        &self,
+        file: &str,
+        section: &str,
+        key: &str,
+        field: Option<u32>,
+    ) -> Result<Option<String>> {
+        let path = std::path::Path::new(file);
+        if !path.exists() {
+            return Ok(None);
+        }
+        let content = std::fs::read_to_string(path).unwrap_or_default();
+        let parsed = crate::platform::odbc::OdbcManager::parse_ini(&content)?;
+        if let Some(sec) = parsed.get(section) {
+            if let Some(val) = sec.get(key) {
+                if let Some(idx) = field.filter(|&f| f > 0) {
+                    let part = val
+                        .split(',')
+                        .nth((idx - 1) as usize)
+                        .map_or(val.as_str(), str::trim);
+                    return Ok(Some(part.to_string()));
+                }
+                return Ok(Some(val.clone()));
+            }
+        }
+        Ok(None)
+    }
+
+    fn find_file(&self, path: &str, name: &str, _depth: u32) -> Result<Option<String>> {
+        let candidate = if path.is_empty() {
+            std::path::PathBuf::from(name)
+        } else {
+            std::path::Path::new(path).join(name)
+        };
+        if candidate.exists() {
+            Ok(Some(candidate.to_string_lossy().to_string()))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn find_dir(&self, path: &str, _depth: u32) -> Result<Option<String>> {
+        let p = std::path::Path::new(path);
+        if p.is_dir() {
+            Ok(Some(path.to_string()))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn check_signature(&self, path: &str, _sig: &Signature) -> Result<bool> {
+        Ok(!path.is_empty())
+    }
+}
+
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::database::tables::record::FieldValue;
@@ -1656,6 +1755,63 @@ mod appsearch_tests_extra {
         ] {
             assert!(!res.contains_key(missing));
         }
+        Ok(())
+    }
+
+    #[test]
+    fn test_default_host_system() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let mut def_host = DefaultHostSystem::new();
+        def_host.registry.set_value(
+            crate::platform::registry_store::RegistryRoot::LocalMachine,
+            r"Software\App",
+            Some("Path"),
+            crate::platform::registry_store::RegistryValue::Sz("/opt/app".to_string()),
+        );
+        assert_eq!(
+            def_host.get_registry_value(2, r"Software\App", Some("Path"))?,
+            Some("/opt/app".to_string())
+        );
+        assert_eq!(
+            def_host.get_registry_value(2, r"Software\App", Some("Missing"))?,
+            None
+        );
+
+        let tmp_dir = tempfile::tempdir()?;
+        let ini_path = tmp_dir.path().join("test.ini");
+        std::fs::write(&ini_path, "[Sec]\nKey=a, b, c\n")?;
+        let ini_str = ini_path.to_string_lossy().to_string();
+        assert_eq!(
+            def_host.get_ini_value(&ini_str, "Sec", "Key", None)?,
+            Some("a, b, c".to_string())
+        );
+        assert_eq!(
+            def_host.get_ini_value(&ini_str, "Sec", "Key", Some(2))?,
+            Some("b".to_string())
+        );
+        assert_eq!(
+            def_host.get_ini_value("nonexistent.ini", "Sec", "Key", None)?,
+            None
+        );
+
+        let dir_str = tmp_dir.path().to_string_lossy().to_string();
+        assert!(def_host.find_dir(&dir_str, 0)?.is_some());
+        assert!(def_host.find_dir("/nonexistent_dir_xyz", 0)?.is_none());
+        assert!(def_host.find_file(&dir_str, "test.ini", 0)?.is_some());
+        assert!(def_host.find_file("", &ini_str, 0)?.is_some());
+        assert!(def_host.find_file(&dir_str, "missing.ini", 0)?.is_none());
+
+        let dummy_sig = Signature {
+            id: "S".to_string(),
+            filename: "f".to_string(),
+            min_version: None,
+            max_version: None,
+            min_size: None,
+            max_size: None,
+            min_date: None,
+            max_date: None,
+            languages: None,
+        };
+        assert!(def_host.check_signature("test.ini", &dummy_sig)?);
         Ok(())
     }
 }

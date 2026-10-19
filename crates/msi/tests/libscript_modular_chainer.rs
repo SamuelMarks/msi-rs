@@ -25,7 +25,9 @@ use std::fs;
 #[test]
 #[allow(clippy::too_many_lines)]
 fn test_openedx_master_orchestrator_chainer() -> Result<()> {
-    let temp_dir = std::env::temp_dir().join(format!("libscript_orch_test_{}", std::process::id()));
+    let temp_dir =
+        std::env::temp_dir().join(format!("libscript_orch_test_{}_a", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
     let _ = fs::create_dir_all(&temp_dir);
 
     let chainer_dll = temp_dir.join("libscript_chainer.dll");
@@ -467,7 +469,8 @@ fn test_side_by_side_coexistence_and_sql_provisioning() -> Result<()> {
 #[test]
 #[allow(clippy::too_many_lines)]
 fn test_openedx_master_orchestrator_deployment_and_rollback_lifecycle() -> Result<()> {
-    let temp_dir = std::env::temp_dir().join(format!("openedx_lifecycle_{}", std::process::id()));
+    let temp_dir = std::env::temp_dir().join(format!("openedx_lifecycle_{}_d", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
     let _ = fs::create_dir_all(&temp_dir);
 
     // Dummy payloads

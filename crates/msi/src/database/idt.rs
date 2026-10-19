@@ -35,7 +35,7 @@ impl IdtTable {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] on invalid header lines or format errors.
-    #[allow(clippy::too_many_lines, clippy::similar_names)]
+    #[allow(clippy::similar_names)]
     pub fn parse(content: &str) -> Result<Self> {
         let mut lines = content.lines();
 
@@ -324,7 +324,7 @@ fn unescape_idt_value(s: &str) -> String {
 }
 
 #[cfg(test)]
-#[allow(clippy::manual_flatten, clippy::redundant_clone)]
+#[allow(clippy::manual_flatten)]
 mod tests {
     use super::*;
 

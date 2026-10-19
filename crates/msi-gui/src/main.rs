@@ -526,11 +526,11 @@ pub fn run_gui(cli: &GuiCli) -> ExitCode {
 ///
 /// # Arguments
 ///
-/// * `args` - The `args` argument.
+/// * `args` - Command-line or invocation arguments slice.
 ///
 /// # Returns
 ///
-/// The return value.
+/// Computed `ExitCode` value.
 fn run_with_os_args(args: &[std::ffi::OsString]) -> ExitCode {
     GuiCli::try_parse_from(args).map_or(ExitCode::FAILURE, |cli| run_gui(&cli))
 }

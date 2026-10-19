@@ -66,3 +66,4 @@ pub use wizard::{
 };
 pub mod native_controls;
 pub mod native_wrappers;
+pub use native_controls::{DialogMetrics, DialogUnitConverter, NativeControl};

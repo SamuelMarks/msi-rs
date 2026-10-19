@@ -63,7 +63,7 @@ impl DialogDefinition {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `DluRect` value.
     #[must_use]
     pub const fn rect(&self) -> DluRect {
         DluRect::new(0, 0, self.width, self.height)
@@ -99,7 +99,7 @@ impl DialogDefinition {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `true` if the check succeeds or state matches, `false` otherwise.
     #[must_use]
     pub const fn is_modal(&self) -> bool {
         self.attributes & DIALOG_ATTR_MODAL != 0
@@ -182,7 +182,7 @@ impl UiEngine {
     ///
     /// # Arguments
     ///
-    /// * `dialog` - The `dialog` parameter.
+    /// * `dialog` - Name or definition of the UI dialog.
     pub fn add_dialog(&mut self, dialog: DialogDefinition) {
         self.dialogs.insert(dialog.name.clone(), dialog);
     }
@@ -191,7 +191,7 @@ impl UiEngine {
     ///
     /// # Arguments
     ///
-    /// * `def` - The `def` parameter.
+    /// * `def` - The def value.
     pub fn add_control(&mut self, def: ControlDefinition) {
         let state = ControlRuntimeState::from_definition(&def);
         let key = (def.dialog().to_string(), def.control().to_string());
@@ -206,7 +206,7 @@ impl UiEngine {
     ///
     /// # Arguments
     ///
-    /// * `condition` - The `condition` parameter.
+    /// * `condition` - The condition value.
     pub fn add_condition(&mut self, condition: ControlCondition) {
         self.conditions.push(condition);
     }
@@ -215,7 +215,7 @@ impl UiEngine {
     ///
     /// # Arguments
     ///
-    /// * `event` - The `event` parameter.
+    /// * `event` - UI or service control event.
     pub fn add_event(&mut self, event: ControlEvent) {
         self.events.push(event);
     }
@@ -224,7 +224,7 @@ impl UiEngine {
     ///
     /// # Arguments
     ///
-    /// * `mapping` - The `mapping` parameter.
+    /// * `mapping` - The mapping value.
     pub fn add_event_mapping(&mut self, mapping: EventMapping) {
         self.event_mappings.push(mapping);
     }
@@ -233,7 +233,7 @@ impl UiEngine {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(&DialogDefinition)` if found, or `None` if absent.
     #[must_use]
     pub fn active_dialog(&self) -> Option<&DialogDefinition> {
         self.active_dialog
@@ -253,7 +253,7 @@ impl UiEngine {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn set_active_dialog(&mut self, dialog_name: &str) -> Result<()> {
         if !self.dialogs.contains_key(dialog_name) {
             return Err(MsiError::UiError {
@@ -272,7 +272,7 @@ impl UiEngine {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&EvaluationContext` value.
     #[must_use]
     pub const fn context(&self) -> &EvaluationContext {
         &self.context
@@ -282,7 +282,7 @@ impl UiEngine {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&mut EvaluationContext` value.
     pub const fn context_mut(&mut self) -> &mut EvaluationContext {
         &mut self.context
     }
@@ -291,12 +291,12 @@ impl UiEngine {
     ///
     /// # Arguments
     ///
-    /// * `dialog` - The `dialog` parameter.
-    /// * `control` - The `control` parameter.
+    /// * `dialog` - Name or definition of the UI dialog.
+    /// * `control` - UI control definition or identifier.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(&ControlRuntimeState)` if found, or `None` if absent.
     #[must_use]
     pub fn get_control_state(&self, dialog: &str, control: &str) -> Option<&ControlRuntimeState> {
         self.control_states
@@ -307,12 +307,12 @@ impl UiEngine {
     ///
     /// # Arguments
     ///
-    /// * `dialog` - The `dialog` parameter.
-    /// * `control` - The `control` parameter.
+    /// * `dialog` - Name or definition of the UI dialog.
+    /// * `control` - UI control definition or identifier.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(&mut ControlRuntimeState)` if found, or `None` if absent.
     pub fn get_control_state_mut(
         &mut self,
         dialog: &str,
@@ -331,11 +331,11 @@ impl UiEngine {
     ///
     /// # Arguments
     ///
-    /// * `dialog` - The `dialog` parameter.
+    /// * `dialog` - Name or definition of the UI dialog.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&[ControlDefinition]` value.
     #[must_use]
     pub fn get_dialog_controls(&self, dialog: &str) -> &[ControlDefinition] {
         self.controls.get(dialog).map_or(&[], Vec::as_slice)
@@ -349,7 +349,7 @@ impl UiEngine {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn evaluate_conditions_and_formatting(&mut self) -> Result<()> {
         let Some(active_dlg) = self.active_dialog.clone() else {
             return Ok(());
@@ -550,7 +550,7 @@ impl UiEngine {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn update_control_value(&mut self, dialog: &str, control: &str, value: &str) -> Result<()> {
         let key = (dialog.to_string(), control.to_string());
         if let Some(state) = self.control_states.get_mut(&key) {
@@ -586,7 +586,7 @@ impl UiEngine {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn toggle_checkbox(&mut self, dialog: &str, control: &str) -> Result<()> {
         let key = (dialog.to_string(), control.to_string());
         let cur_val = self
@@ -612,7 +612,7 @@ impl UiEngine {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn select_radio_button(&mut self, dialog: &str, control: &str, value: &str) -> Result<()> {
         self.update_control_value(dialog, control, value)
     }
@@ -626,13 +626,10 @@ impl UiEngine {
     /// # Errors
     ///
     /// Returns [`crate::MsiError`] if loading or initial condition formatting fails.
-    #[allow(
-        clippy::too_many_lines,
-        clippy::cast_possible_truncation,
-        clippy::cast_possible_wrap,
-        clippy::many_single_char_names,
-        clippy::cast_sign_loss
-    )]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::many_single_char_names)]
+    #[allow(clippy::cast_sign_loss)]
     #[allow(clippy::cognitive_complexity)]
     pub fn load_from_database(&mut self, db: &LinkedDatabase) -> Result<()> {
         // 0. Load Property table defaults if not already overridden in context
@@ -1125,7 +1122,7 @@ impl UiEngine {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&[String]` value.
     #[must_use]
     pub fn action_log(&self) -> &[String] {
         &self.action_log
@@ -1142,7 +1139,6 @@ impl UiEngine {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::ui::controls::ControlType;
@@ -1151,7 +1147,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `UiEngine` value.
     #[allow(clippy::too_many_lines)]
     fn setup_test_wizard() -> UiEngine {
         let mut context = EvaluationContext::new();
@@ -1968,7 +1964,8 @@ mod tests {
     #[allow(clippy::cognitive_complexity)]
     /// Tests two-way data binding, checkbox toggling, radio selection, and custom actions execution.
     #[test]
-    #[allow(clippy::too_many_lines, clippy::manual_flatten)]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::manual_flatten)]
     fn test_ui_engine_two_way_binding_and_custom_actions() {
         let mut context = EvaluationContext::new();
         context.set_property("EDIT_PROP", "InitialText");

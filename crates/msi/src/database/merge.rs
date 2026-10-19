@@ -10,101 +10,86 @@ pub struct MergeConfig {
     pub table_name: Option<String>,
 }
 
-#[allow(clippy::multiple_inherent_impl)]
-impl LinkedDatabase {
-    /// Merges another database into this one.
-    ///
-    /// # Arguments
-    ///
-    /// * `other` - The database to merge into this one.
-    /// * `config` - Configuration for the merge operation.
-    ///
-    /// # Returns
-    ///
-    /// Returns `Ok(())` on success.
-    ///
-    /// # Errors
-    ///
-    /// Returns `MsiError::DatabaseMergeError` if a schema mismatch or a primary key collision occurs.
-    pub fn merge(&mut self, other: &Self, config: &MergeConfig) -> Result<()> {
-        let tables_to_merge = config
-            .table_name
-            .as_ref()
-            .map_or_else(|| other.catalog.table_names(), |name| vec![name.as_str()]);
+/// Merges `other` into `target` according to `config`.
+///
+/// # Errors
+///
+/// Returns `MsiError::DatabaseMergeError` if a schema mismatch or a primary key collision occurs.
+pub(crate) fn merge_databases(
+    target: &mut LinkedDatabase,
+    other: &LinkedDatabase,
+    config: &MergeConfig,
+) -> Result<()> {
+    let tables_to_merge = config
+        .table_name
+        .as_ref()
+        .map_or_else(|| other.catalog.table_names(), |name| vec![name.as_str()]);
 
-        for table_name in tables_to_merge {
-            if let Some(source_schema) = other.catalog.get_table(table_name) {
-                if let Some(target_schema) = self.catalog.get_table(table_name) {
-                    // Schemas must match for existing tables
-                    if source_schema.columns() != target_schema.columns() {
-                        return Err(MsiError::DatabaseMergeError(format!(
-                            "Schema mismatch for table '{table_name}'"
-                        )));
-                    }
-                } else {
-                    // Copy schema if missing in target
-                    let _ = self.catalog.add_table(source_schema.clone());
-                }
-
-                // Now merge rows
-                let source_rows: &[crate::database::tables::record::Record] =
-                    other.tables.get(table_name).map_or(&[], Vec::as_slice);
-
-                let pk_indices = source_schema
-                    .columns()
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, col)| col.primary_key)
-                    .map(|(idx, _)| idx)
-                    .collect::<Vec<_>>();
-
-                // We must avoid holding a mutable reference to self.tables while iterating.
-                // We'll collect rows to add, then add them.
-                let mut rows_to_add = Vec::new();
-
-                let target_rows: &[crate::database::tables::record::Record] =
-                    self.tables.get(table_name).map_or(&[], Vec::as_slice);
-
-                for source_row in source_rows {
-                    let mut found_collision = false;
-                    for target_row in target_rows {
-                        let same_pk = pk_indices.iter().all(|&idx| {
-                            source_row.fields().get(idx) == target_row.fields().get(idx)
-                        });
-
-                        if same_pk {
-                            // If primary keys match, rows MUST be identical
-                            if source_row.fields() != target_row.fields() {
-                                return Err(MsiError::DatabaseMergeError(format!(
-                                    "Merge conflict in table '{table_name}'"
-                                )));
-                            }
-                            found_collision = true;
-                            break;
-                        }
-                    }
-                    if !found_collision {
-                        rows_to_add.push(source_row.clone());
-                    }
-                }
-
-                if !rows_to_add.is_empty() {
-                    let target_table = self.tables.entry(table_name.to_string()).or_default();
-                    target_table.extend(rows_to_add);
+    for table_name in tables_to_merge {
+        if let Some(source_schema) = other.catalog.get_table(table_name) {
+            if let Some(target_schema) = target.catalog.get_table(table_name) {
+                if source_schema.columns() != target_schema.columns() {
+                    return Err(MsiError::DatabaseMergeError(format!(
+                        "Schema mismatch for table '{table_name}'"
+                    )));
                 }
             } else {
-                return Err(MsiError::DatabaseMergeError(format!(
-                    "Table '{table_name}' not found in source database"
-                )));
+                let _ = target.catalog.add_table(source_schema.clone());
             }
-        }
 
-        Ok(())
+            let source_rows: &[crate::database::tables::record::Record] =
+                other.tables.get(table_name).map_or(&[], Vec::as_slice);
+
+            let pk_indices = source_schema
+                .columns()
+                .iter()
+                .enumerate()
+                .filter(|(_, col)| col.primary_key)
+                .map(|(idx, _)| idx)
+                .collect::<Vec<_>>();
+
+            let mut rows_to_add = Vec::new();
+
+            let target_rows: &[crate::database::tables::record::Record] =
+                target.tables.get(table_name).map_or(&[], Vec::as_slice);
+
+            for source_row in source_rows {
+                let mut found_collision = false;
+                for target_row in target_rows {
+                    let same_pk = pk_indices
+                        .iter()
+                        .all(|&idx| source_row.fields().get(idx) == target_row.fields().get(idx));
+
+                    if same_pk {
+                        if source_row.fields() != target_row.fields() {
+                            return Err(MsiError::DatabaseMergeError(format!(
+                                "Merge conflict in table '{table_name}'"
+                            )));
+                        }
+                        found_collision = true;
+                        break;
+                    }
+                }
+                if !found_collision {
+                    rows_to_add.push(source_row.clone());
+                }
+            }
+
+            if !rows_to_add.is_empty() {
+                let target_table = target.tables.entry(table_name.to_string()).or_default();
+                target_table.extend(rows_to_add);
+            }
+        } else {
+            return Err(MsiError::DatabaseMergeError(format!(
+                "Table '{table_name}' not found in source database"
+            )));
+        }
     }
+
+    Ok(())
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::database::catalogs::TableSchema;

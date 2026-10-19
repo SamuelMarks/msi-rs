@@ -135,6 +135,7 @@ def test_build_msi_from_directory_tree() -> None:
         progress_events = []
 
         def on_progress(phase: str, cur: int, total: int) -> None:
+            """Helper test callback for on_progress."""
             progress_events.append((phase, cur, total))
 
         msi.build_msi(

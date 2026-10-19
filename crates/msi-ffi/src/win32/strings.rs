@@ -204,7 +204,8 @@ pub fn string_to_lpstr(value: &str, buffer: Lpstr, pcch: *mut Dword) -> u32 {
 /// Load localized string from resources (Unicode).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 pub extern "system" fn MsiLoadStringW(
     hInstall: crate::handles::MsiHandle,
     uStringID: Uint,
@@ -223,7 +224,8 @@ pub extern "system" fn MsiLoadStringW(
 /// Load localized string from resources (ANSI).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 pub extern "system" fn MsiLoadStringA(
     hInstall: crate::handles::MsiHandle,
     uStringID: Uint,

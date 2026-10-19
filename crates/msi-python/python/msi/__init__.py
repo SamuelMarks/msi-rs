@@ -14,7 +14,7 @@ import sys
 import uuid
 from enum import IntEnum
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypedDict, Union
 
 # Attempt importing native extension module _msi. If running from repository
 # before installation, attempt loading from target/debug or target/release.
@@ -32,7 +32,6 @@ except ImportError:  # pragma: no cover
             repo_root / "target" / "release",
             repo_root / "crates" / "target" / "debug",
             repo_root / "crates" / "target" / "release",
-            Path("/tmp"),
         ]
         loaded = False
         for c in candidates:
@@ -187,6 +186,8 @@ def build_msi(
         product_code=product_code,
         upgrade_code=upgrade_code,
     )
+    if hasattr(builder, "set_compression"):
+        builder.set_compression(int(compression))
 
     # Standard Directory Layout
     builder.add_directory("TARGETDIR", None, "SourceDir")
@@ -316,7 +317,15 @@ def compile_wix(
         _msi.compile_wix_source(content, out_str)
 
 
-def inspect_msi(msi_path: Union[str, os.PathLike[str]]) -> Dict[str, Any]:
+class MsiInspectionReport(TypedDict):
+    """Structured inspection report returned by inspect_msi."""
+
+    metadata: Dict[str, str]
+    tables: Dict[str, List[Dict[str, Any]]]
+    table_names: List[str]
+
+
+def inspect_msi(msi_path: Union[str, os.PathLike[str]]) -> MsiInspectionReport:
     """
     Inspects a Windows Installer (.msi) package and returns its relational contents.
 
@@ -340,6 +349,7 @@ __all__ = [
     "PackageBuilder",
     "Package",
     "CompressionType",
+    "MsiInspectionReport",
     "MsiError",
     "ValidationError",
     "DatabaseError",

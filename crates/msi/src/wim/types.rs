@@ -50,14 +50,7 @@ impl fmt::Debug for FileHash {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::field_reassign_with_default,
-    clippy::shadow_unrelated,
-    clippy::unreadable_literal,
-    clippy::assert_is_empty,
-    clippy::cast_possible_truncation,
-    clippy::redundant_clone
-)]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
 

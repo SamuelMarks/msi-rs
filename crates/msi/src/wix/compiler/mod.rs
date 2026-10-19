@@ -3,7 +3,10 @@
 //! Compiles preprocessed `WiX` XML documents into intermediate object models (`.wixobj`),
 //! generating symbols, unresolved references, and intermediate database tables.
 
-use crate::database::tables::config::{EnvironmentRow, RegistryRow};
+mod elements;
+mod ui_and_search;
+
+use crate::database::tables::config::EnvironmentRow;
 use crate::database::tables::core::{
     ComponentRow, DirectoryRow, FeatureComponentsRow, FeatureRow, FileRow, MediaRow, PropertyRow,
 };
@@ -11,8 +14,7 @@ use crate::database::tables::file_mgmt::{CreateFolderRow, RemoveFileRow};
 use crate::database::tables::record::{FieldValue, Record};
 use crate::database::tables::sequence::SequenceRow;
 use crate::database::tables::types::{
-    generate_deterministic_id, ComponentGuid, ComponentName, DirectoryId, FeatureName, FileKey,
-    PropertyName,
+    ComponentGuid, ComponentName, DirectoryId, FeatureName, FileKey, PropertyName,
 };
 use crate::error::{MsiError, Result};
 use crate::wix::schema::WixSchemaVersion;
@@ -33,7 +35,7 @@ use crate::wix::xml::XmlNode;
 ///
 /// Valid RTF string.
 #[must_use]
-#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+#[allow(clippy::cast_possible_truncation)]
 pub fn convert_text_to_rtf(input: &str) -> String {
     if input.trim_start().starts_with(r"{\rtf") {
         return input.to_string();
@@ -83,7 +85,7 @@ pub struct Compiler {
     /// Namespace prefixes declared on the root element.
     prefixes: RefCell<HashMap<String, String>>,
     /// Optional source file parent directory for resolving relative paths during compilation.
-    source_dir: Option<PathBuf>,
+    pub(super) source_dir: Option<PathBuf>,
 }
 
 impl Compiler {
@@ -109,7 +111,7 @@ impl Compiler {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn with_extensions(registry: ExtensionRegistry) -> Self {
         Self {
@@ -196,12 +198,12 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `node` - The `node` parameter.
-    /// * `sec_type` - The `sec_type` parameter.
+    /// * `node` - Parsed XML element node being compiled.
+    /// * `sec_type` - The sec type value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(IntermediateSection)` on success, or an error if the operation fails.
     #[allow(clippy::cognitive_complexity)]
     #[allow(clippy::too_many_lines)]
     fn compile_section(
@@ -448,17 +450,17 @@ impl Compiler {
     ///
     /// # Arguments
     ///
-    /// * `node` - The `node` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
+    /// * `node` - Parsed XML element node being compiled.
+    /// * `parent_id` - Optional identifier of the enclosing parent element or component.
+    /// * `section` - Intermediate object section receiving symbols and table rows.
+    /// * `tables` - Map of intermediate MSI tables being populated during compilation.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     #[allow(clippy::cognitive_complexity)]
-    #[allow(clippy::too_many_lines, clippy::self_only_used_in_recursion)]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::self_only_used_in_recursion)]
     fn compile_element_tree(
         &self,
         node: &XmlNode,
@@ -751,7 +753,7 @@ impl Compiler {
                             if sc_node.attribute("Target").is_none() {
                                 sc_node.attributes.insert("Target".to_string(), target);
                             }
-                            Self::compile_shortcut(&sc_node, parent_id, section, tables);
+                            elements::compile_shortcut(&sc_node, parent_id, section, tables);
                         }
                     }
                 }
@@ -1419,7 +1421,7 @@ impl Compiler {
                     let root = child.attribute("Root").unwrap_or("HKLM");
                     for sub in &child.children {
                         if sub.tag == "RegistryValue" {
-                            Self::compile_registry_value(
+                            elements::compile_registry_value(
                                 sub,
                                 parent_id,
                                 Some(root),
@@ -1433,68 +1435,70 @@ impl Compiler {
                 }
                 "RegistryValue" => {
                     if node.tag != "RegistryKey" {
-                        Self::compile_registry_value(child, parent_id, None, None, section, tables);
+                        elements::compile_registry_value(
+                            child, parent_id, None, None, section, tables,
+                        );
                     }
                 }
                 "Shortcut" => {
-                    Self::compile_shortcut(child, parent_id, section, tables);
+                    elements::compile_shortcut(child, parent_id, section, tables);
                 }
                 "ServiceInstall" => {
-                    Self::compile_service_install(child, parent_id, section, tables);
+                    elements::compile_service_install(child, parent_id, section, tables);
                 }
                 "ServiceControl" => {
-                    Self::compile_service_control(child, parent_id, section, tables);
+                    elements::compile_service_control(child, parent_id, section, tables);
                 }
                 "EmbeddedChainer" => {
-                    Self::compile_embedded_chainer(child, section, tables)?;
+                    elements::compile_embedded_chainer(child, section, tables)?;
                 }
                 "sql:SqlDatabase" | "SqlDatabase" => {
-                    Self::compile_sql_database(child, parent_id, section, tables)?;
+                    elements::compile_sql_database(child, parent_id, section, tables)?;
                     self.compile_element_tree(child, child.attribute("Id"), section, tables)?;
                 }
                 "sql:SqlString" | "SqlString" => {
-                    Self::compile_sql_string(child, parent_id, section, tables)?;
+                    elements::compile_sql_string(child, parent_id, section, tables)?;
                 }
                 "sql:SqlScript" | "SqlScript" => {
-                    Self::compile_sql_script(child, parent_id, section, tables)?;
+                    elements::compile_sql_script(child, parent_id, section, tables)?;
                 }
                 "CustomAction" => {
-                    Self::compile_custom_action(child, section, tables)?;
+                    ui_and_search::compile_custom_action(child, section, tables)?;
                 }
                 "Dialog" => {
-                    Self::compile_dialog(child, section, tables)?;
+                    ui_and_search::compile_dialog(child, section, tables)?;
                     self.compile_element_tree(child, child.attribute("Id"), section, tables)?;
                 }
                 "Control" => {
-                    self.compile_control(child, parent_id, section, tables)?;
+                    ui_and_search::compile_control(self, child, parent_id, section, tables)?;
                 }
                 "TextStyle" => {
-                    Self::compile_text_style(child, section, tables);
+                    ui_and_search::compile_text_style(child, section, tables);
                 }
                 "Upgrade" => {
-                    Self::compile_upgrade(child, section, tables);
+                    ui_and_search::compile_upgrade(child, section, tables);
                 }
                 "MajorUpgrade" => {
-                    Self::compile_major_upgrade(child, tables);
+                    ui_and_search::compile_major_upgrade(child, tables);
                 }
                 "posix:File" | "PosixFile" | "posix:Symlink" | "PosixSymlink" | "posix:Daemon"
                 | "PosixDaemon" | "posix:Acl" | "PosixAcl" | "posix:Desktop" | "PosixDesktop" => {
-                    Self::compile_posix_element(child, parent_id, section, tables);
+                    elements::compile_posix_element(child, parent_id, section, tables);
                 }
                 "Configuration" => {
-                    Self::compile_module_configuration(child, tables);
+                    elements::compile_module_configuration(child, tables);
                 }
                 "Substitution" => {
-                    Self::compile_module_substitution(child, tables);
+                    elements::compile_module_substitution(child, tables);
                 }
                 "IgnoreModularization" => {
-                    Self::compile_module_ignore_modularization(child, tables);
+                    elements::compile_module_ignore_modularization(child, tables);
                 }
                 "Dependency" | "ModuleDependency" => {
-                    Self::compile_module_dependency(child, tables);
+                    elements::compile_module_dependency(child, tables);
                 }
                 "Exclusion" | "ModuleExclusion" => {
-                    Self::compile_module_exclusion(child, tables);
+                    elements::compile_module_exclusion(child, tables);
                 }
                 "Symbol" | "PublishSymbol" => {
                     let sym_name = child
@@ -1506,49 +1510,49 @@ impl Compiler {
                     section.add_symbol(Symbol::new(sym_ns, sym_name));
                 }
                 "MediaTemplate" => {
-                    Self::compile_media_template(child, tables);
+                    elements::compile_media_template(child, tables);
                 }
                 "CopyFile" => {
-                    Self::compile_copy_file(child, parent_id, section, tables);
+                    elements::compile_copy_file(child, parent_id, section, tables);
                 }
                 "MoveFile" => {
-                    Self::compile_move_file(child, parent_id, section, tables);
+                    elements::compile_move_file(child, parent_id, section, tables);
                 }
                 "RemoveFile" => {
-                    Self::compile_remove_file(child, parent_id, section, tables);
+                    elements::compile_remove_file(child, parent_id, section, tables);
                 }
                 "SymbolicLink" | "Hardlink" => {
-                    Self::compile_symlink(child, parent_id, section, tables)?;
+                    elements::compile_symlink(child, parent_id, section, tables)?;
                 }
                 "RemoveRegistryKey" | "RemoveRegistryValue" => {
-                    Self::compile_remove_registry(child, parent_id, section, tables);
+                    elements::compile_remove_registry(child, parent_id, section, tables);
                 }
                 "IniFile" => {
-                    Self::compile_ini_file(child, parent_id, section, tables);
+                    elements::compile_ini_file(child, parent_id, section, tables);
                 }
                 "RemoveIniFile" => {
-                    Self::compile_remove_ini_file(child, parent_id, section, tables);
+                    elements::compile_remove_ini_file(child, parent_id, section, tables);
                 }
                 "Icon" => {
-                    Self::compile_icon(child, section, tables);
+                    elements::compile_icon(child, section, tables);
                 }
                 "ProgId" => {
-                    Self::compile_prog_id(child, parent_id, section, tables);
+                    elements::compile_prog_id(child, parent_id, section, tables);
                 }
                 "Extension" => {
-                    Self::compile_extension(child, parent_id, section, tables);
+                    elements::compile_extension(child, parent_id, section, tables);
                 }
                 "MIME" => {
-                    Self::compile_mime(child, section, tables);
+                    elements::compile_mime(child, section, tables);
                 }
                 "Class" => {
-                    Self::compile_class(child, parent_id, section, tables);
+                    elements::compile_class(child, parent_id, section, tables);
                 }
                 "TypeLib" => {
-                    Self::compile_type_lib(child, parent_id, section, tables);
+                    elements::compile_type_lib(child, parent_id, section, tables);
                 }
                 "AppId" => {
-                    Self::compile_app_id(child, section, tables);
+                    elements::compile_app_id(child, section, tables);
                 }
                 "PropertyRef" => {
                     if let Some(prop_ref) = child.attribute("Id") {
@@ -1556,35 +1560,35 @@ impl Compiler {
                     }
                 }
                 "SetProperty" => {
-                    Self::compile_set_property(child, section, tables)?;
+                    ui_and_search::compile_set_property(child, section, tables)?;
                 }
                 "AppSearch" => {
-                    Self::compile_app_search(child, section, tables);
+                    ui_and_search::compile_app_search(child, section, tables);
                 }
                 "RegistrySearch" => {
-                    Self::compile_registry_search(child, parent_id, section, tables);
+                    ui_and_search::compile_registry_search(child, parent_id, section, tables);
                 }
                 "DirectorySearch" => {
-                    Self::compile_directory_search(child, parent_id, section, tables);
+                    ui_and_search::compile_directory_search(child, parent_id, section, tables);
                 }
                 "FileSearch" => {
-                    Self::compile_file_search(child, parent_id, section, tables);
+                    ui_and_search::compile_file_search(child, parent_id, section, tables);
                 }
                 "IniFileSearch" => {
-                    Self::compile_ini_file_search(child, parent_id, section, tables);
+                    ui_and_search::compile_ini_file_search(child, parent_id, section, tables);
                 }
                 "ComponentSearch" => {
-                    Self::compile_component_search(child, parent_id, section, tables);
+                    ui_and_search::compile_component_search(child, parent_id, section, tables);
                 }
                 "Launch" | "Condition" => {
-                    Self::compile_launch_condition(child, tables);
+                    ui_and_search::compile_launch_condition(child, tables);
                 }
                 "InstallExecuteSequence"
                 | "InstallUISequence"
                 | "AdminExecuteSequence"
                 | "AdminUISequence"
                 | "AdvtExecuteSequence" => {
-                    Self::compile_sequence_table(child, section, tables)?;
+                    ui_and_search::compile_sequence_table(child, section, tables)?;
                 }
                 "CustomActionRef" => {
                     if let Some(ca_ref) = child.attribute("Id") {
@@ -1593,31 +1597,31 @@ impl Compiler {
                 }
                 "PatchCreation" | "PatchInformation" | "PatchMetadata" | "PatchFamily"
                 | "Patch" => {
-                    Self::compile_patch_element(child, section, tables);
+                    ui_and_search::compile_patch_element(child, section, tables);
                 }
                 "UIRef" => {
-                    Self::compile_ui_ref(child, section, tables);
+                    ui_and_search::compile_ui_ref(child, section, tables);
                 }
                 "ControlEvent" | "Publish" => {
-                    Self::compile_control_event(child, parent_id, tables);
+                    ui_and_search::compile_control_event(child, parent_id, tables);
                 }
                 "ControlCondition" => {
-                    Self::compile_control_condition(child, parent_id, tables);
+                    ui_and_search::compile_control_condition(child, parent_id, tables);
                 }
                 "Subscribe" => {
-                    Self::compile_subscribe(child, parent_id, tables);
+                    ui_and_search::compile_subscribe(child, parent_id, tables);
                 }
                 "Binary" => {
-                    Self::compile_binary(child, section, tables);
+                    ui_and_search::compile_binary(child, section, tables);
                 }
                 "Billboard" | "BillboardControl" => {
-                    Self::compile_billboard(child, section, tables);
+                    ui_and_search::compile_billboard(child, section, tables);
                 }
                 "ProgressText" => {
-                    Self::compile_progress_text(child, tables);
+                    ui_and_search::compile_progress_text(child, tables);
                 }
                 "Error" => {
-                    Self::compile_error(child, tables);
+                    ui_and_search::compile_error(child, tables);
                 }
                 "Merge" | "MergeRef" => {
                     if let Some(m_id) = child.attribute("Id") {
@@ -1635,7 +1639,9 @@ impl Compiler {
                         }
 
                         if !handled {
-                            Self::compile_extension_element(child, parent_id, section, tables);
+                            ui_and_search::compile_extension_element(
+                                child, parent_id, section, tables,
+                            );
                             self.compile_element_tree(child, parent_id, section, tables)?;
                         }
                     } else {
@@ -1646,3249 +1652,6 @@ impl Compiler {
         }
 
         Ok(())
-    }
-
-    /// Compiles a `<RegistryValue>` element.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `inherited_root` - The `inherited_root` parameter.
-    /// * `inherited_key` - The `inherited_key` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_registry_value(
-        child: &XmlNode,
-        parent_id: Option<&str>,
-        inherited_root: Option<&str>,
-        inherited_key: Option<&str>,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let comp_name = parent_id.unwrap_or("DefaultComp");
-        let comp_obj = parent_id.map_or_else(
-            || ComponentName::from_static("DefaultComp"),
-            ComponentName::from_validated,
-        );
-        let root_str = child.attribute("Root").or(inherited_root).unwrap_or("HKLM");
-        let root = parse_registry_root(root_str);
-        let key = child
-            .attribute("Key")
-            .or(inherited_key)
-            .unwrap_or("Software\\Product");
-        let name = child.attribute("Name").map(ToString::to_string);
-        let value = child.attribute("Value").map(ToString::to_string);
-
-        let reg_id = child.attribute("Id").map_or_else(
-            || {
-                let seed = format!(
-                    "{}_{}_{}_{}_{}",
-                    comp_name,
-                    root_str,
-                    key,
-                    name.as_deref().unwrap_or(""),
-                    value.as_deref().unwrap_or("")
-                );
-                generate_deterministic_id("reg", &seed)
-            },
-            ToString::to_string,
-        );
-
-        section.add_symbol(Symbol::new("Registry", &reg_id));
-        section.add_reference(Reference::new("Component", comp_name));
-
-        let row = RegistryRow {
-            registry: reg_id,
-            root,
-            key: key.to_string(),
-            name,
-            value,
-            component: comp_obj,
-        };
-        tables
-            .entry("Registry".to_string())
-            .or_insert_with(|| IntermediateTable::new("Registry"))
-            .push_record(row.to_record());
-    }
-
-    /// Compiles a `<Shortcut>` element.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_shortcut(
-        child: &XmlNode,
-        parent_id: Option<&str>,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let comp_name = parent_id.unwrap_or("DefaultComp");
-        let sc_name_attr = child.attribute("Name");
-        let sc_target = child.attribute("Target").unwrap_or("");
-        let sc_dir = child.attribute("Directory").unwrap_or("ProgramMenuFolder");
-        let sc_id = child.attribute("Id").map_or_else(
-            || {
-                let seed = format!(
-                    "{}_{}_{}_{}",
-                    comp_name,
-                    sc_dir,
-                    sc_name_attr.unwrap_or(""),
-                    sc_target
-                );
-                generate_deterministic_id("sc", &seed)
-            },
-            ToString::to_string,
-        );
-        let sc_name = sc_name_attr.unwrap_or(&sc_id);
-        let sc_desc = child.attribute("Description").map(ToString::to_string);
-        let sc_args = child.attribute("Arguments").map(ToString::to_string);
-        let sc_icon = child.attribute("Icon").map(ToString::to_string);
-        let sc_icon_index = child
-            .attribute("IconIndex")
-            .and_then(|v| v.parse::<i16>().ok());
-        let sc_show = match child
-            .attribute("Show")
-            .map(str::to_ascii_lowercase)
-            .as_deref()
-        {
-            Some("minimized") => Some(7i16),
-            Some("maximized") => Some(3i16),
-            Some("normal") => Some(1i16),
-            _ => None,
-        };
-        let sc_wkdir = child
-            .attribute("WorkingDirectory")
-            .or_else(|| child.attribute("WkDir"))
-            .map(ToString::to_string);
-
-        section.add_symbol(Symbol::new("Shortcut", &sc_id));
-        section.add_reference(Reference::new("Component", comp_name));
-        section.add_reference(Reference::new("Directory", sc_dir));
-        if let Some(ref wd) = sc_wkdir {
-            section.add_reference(Reference::new("Directory", wd));
-        }
-        if let Some(ref ic) = sc_icon {
-            section.add_reference(Reference::new("Icon", ic));
-        }
-
-        let sc_short_name = child.attribute("ShortName");
-        let existing_sc_names: Vec<String> = tables
-            .get("Shortcut")
-            .map(|t| {
-                t.records
-                    .iter()
-                    .filter(|r| r.get(1) == Some(&FieldValue::String(sc_dir.to_string())))
-                    .filter_map(|r| r.get(2).map(ToString::to_string))
-                    .collect()
-            })
-            .unwrap_or_default();
-        let sc_name_str = format_msi_filename(sc_short_name, sc_name, &existing_sc_names);
-        let rec = Record::with_fields(vec![
-            FieldValue::String(sc_id),
-            FieldValue::String(sc_dir.to_string()),
-            FieldValue::String(sc_name_str),
-            FieldValue::String(comp_name.to_string()),
-            FieldValue::String(sc_target.to_string()),
-            sc_args.map_or(FieldValue::Null, FieldValue::String),
-            sc_desc.map_or(FieldValue::Null, FieldValue::String),
-            FieldValue::Null,
-            sc_icon.map_or(FieldValue::Null, FieldValue::String),
-            sc_icon_index.map_or(FieldValue::Null, FieldValue::Short),
-            sc_show.map_or(FieldValue::Null, FieldValue::Short),
-            sc_wkdir.map_or(FieldValue::Null, FieldValue::String),
-        ]);
-        tables
-            .entry("Shortcut".to_string())
-            .or_insert_with(|| IntermediateTable::new("Shortcut"))
-            .push_record(rec);
-    }
-
-    /// Compiles a `<ServiceInstall>` element.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_service_install(
-        child: &XmlNode,
-        parent_id: Option<&str>,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let svc_id = child
-            .attribute("Id")
-            .or_else(|| child.attribute("Name"))
-            .unwrap_or("Service1");
-        let svc_name = child.attribute("Name").unwrap_or(svc_id);
-        let svc_display = child.attribute("DisplayName").map(ToString::to_string);
-        let comp_name = parent_id.unwrap_or("DefaultComp");
-        let svc_type = match child.attribute("Type").unwrap_or("ownProcess") {
-            "shareProcess" => 32,
-            "kernelDriver" => 1,
-            "systemDriver" => 2,
-            _ => 16,
-        };
-        let start_type = match child.attribute("Start").unwrap_or("auto") {
-            "boot" => 0,
-            "system" => 1,
-            "demand" | "manual" => 3,
-            "disabled" => 4,
-            _ => 2,
-        };
-        let error_control = match child.attribute("ErrorControl").unwrap_or("normal") {
-            "ignore" => 0,
-            "severe" => 2,
-            "critical" => 3,
-            _ => 1,
-        };
-
-        let load_order = child.attribute("LoadOrderGroup").map(ToString::to_string);
-        let deps = child.attribute("Dependencies").map(ToString::to_string);
-        let account = child
-            .attribute("Account")
-            .or_else(|| child.attribute("StartName"))
-            .map(ToString::to_string);
-        let password = child.attribute("Password").map(ToString::to_string);
-
-        section.add_symbol(Symbol::new("ServiceInstall", svc_id));
-        section.add_reference(Reference::new("Component", comp_name));
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(svc_id.to_string()),
-            FieldValue::String(svc_name.to_string()),
-            svc_display.map_or(FieldValue::Null, FieldValue::String),
-            FieldValue::Long(svc_type),
-            FieldValue::Long(start_type),
-            FieldValue::Long(error_control),
-            load_order.map_or(FieldValue::Null, FieldValue::String),
-            deps.map_or(FieldValue::Null, FieldValue::String),
-            account.map_or(FieldValue::Null, FieldValue::String),
-            password.map_or(FieldValue::Null, FieldValue::String),
-            FieldValue::String(comp_name.to_string()),
-        ]);
-        tables
-            .entry("ServiceInstall".to_string())
-            .or_insert_with(|| IntermediateTable::new("ServiceInstall"))
-            .push_record(rec);
-
-        if let Some(desc) = child.attribute("Description") {
-            let sc_rec = Record::with_fields(vec![
-                FieldValue::String(format!("{svc_id}_Config")),
-                FieldValue::String(svc_name.to_string()),
-                FieldValue::Long(1),
-                FieldValue::Long(1),
-                FieldValue::String(desc.to_string()),
-                FieldValue::String(comp_name.to_string()),
-            ]);
-            tables
-                .entry("MsiServiceConfig".to_string())
-                .or_insert_with(|| IntermediateTable::new("MsiServiceConfig"))
-                .push_record(sc_rec);
-        }
-    }
-
-    /// Compiles a `<ServiceControl>` element.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_service_control(
-        child: &XmlNode,
-        parent_id: Option<&str>,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let comp_name = parent_id.unwrap_or("DefaultComp");
-        let ctrl_name_attr = child.attribute("Name");
-        let mut event: i16 = 0;
-
-        if let Some(s) = child.attribute("Start") {
-            match s.to_ascii_lowercase().as_str() {
-                "install" | "yes" => event |= 0x0001,
-                "uninstall" => event |= 0x0010,
-                "both" => event |= 0x0011,
-                _ => {}
-            }
-        }
-        if let Some(s) = child.attribute("Stop") {
-            match s.to_ascii_lowercase().as_str() {
-                "install" => event |= 0x0002,
-                "uninstall" => event |= 0x0020,
-                "both" | "yes" => event |= 0x0022,
-                _ => {}
-            }
-        }
-        if let Some(s) = child.attribute("Remove") {
-            match s.to_ascii_lowercase().as_str() {
-                "install" => event |= 0x0008,
-                "uninstall" | "yes" => event |= 0x0080,
-                "both" => event |= 0x0088,
-                _ => {}
-            }
-        }
-
-        let ctrl_id = child.attribute("Id").map_or_else(
-            || {
-                let seed = format!("{comp_name}_{}_{event}", ctrl_name_attr.unwrap_or(""));
-                generate_deterministic_id("svc_ctrl", &seed)
-            },
-            ToString::to_string,
-        );
-        let ctrl_name = ctrl_name_attr.unwrap_or(&ctrl_id);
-
-        let arguments = child.attribute("Arguments").map(ToString::to_string);
-        let wait = match child
-            .attribute("Wait")
-            .map(str::to_ascii_lowercase)
-            .as_deref()
-        {
-            Some("yes" | "1") => Some(1i16),
-            Some("no" | "0") => Some(0i16),
-            _ => None,
-        };
-
-        let ctrl_name_str = ctrl_name.to_string();
-        section.add_symbol(Symbol::new("ServiceControl", &ctrl_id));
-        section.add_reference(Reference::new("Component", comp_name));
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(ctrl_id),
-            FieldValue::String(ctrl_name_str),
-            FieldValue::Short(event),
-            arguments.map_or(FieldValue::Null, FieldValue::String),
-            wait.map_or(FieldValue::Null, FieldValue::Short),
-            FieldValue::String(comp_name.to_string()),
-        ]);
-        tables
-            .entry("ServiceControl".to_string())
-            .or_insert_with(|| IntermediateTable::new("ServiceControl"))
-            .push_record(rec);
-    }
-
-    /// Compiles an `<EmbeddedChainer>` element into `MsiEmbeddedChainer` table.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    ///
-    /// # Returns
-    ///
-    /// The resulting value or `Ok(())` on success.
-    fn compile_embedded_chainer(
-        child: &XmlNode,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) -> Result<()> {
-        let id = child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
-            element: "EmbeddedChainer".to_string(),
-            message: "missing required 'Id' attribute".to_string(),
-        })?;
-
-        let binary_key = child.attribute("BinaryKey");
-        let file_key = child.attribute("FileKey");
-        let source_file = child.attribute("SourceFile");
-
-        let (source, chainer_type) = if let Some(bin) = binary_key {
-            section.add_reference(Reference::new("Binary", bin));
-            (bin.to_string(), 1)
-        } else if let Some(file) = file_key {
-            section.add_reference(Reference::new("File", file));
-            (file.to_string(), 2)
-        } else if let Some(src) = source_file {
-            let auto_bin = format!("{id}_Binary");
-            section.add_symbol(Symbol::new("Binary", &auto_bin));
-            let bin_row = crate::database::tables::core::BinaryRow {
-                name: auto_bin.clone(),
-                data: crate::database::tables::types::StringPoolId::new(1),
-            };
-            tables
-                .entry("Binary".to_string())
-                .or_insert_with(|| IntermediateTable::new("Binary"))
-                .push_record(bin_row.to_record());
-            let mut wix_bin = Record::new();
-            wix_bin.push(FieldValue::String(auto_bin.clone()));
-            wix_bin.push(FieldValue::String(src.to_string()));
-            tables
-                .entry("WixBinary".to_string())
-                .or_insert_with(|| IntermediateTable::new("WixBinary"))
-                .push_record(wix_bin);
-            (auto_bin, 1)
-        } else {
-            let def_bin = format!("{id}_Binary");
-            section.add_reference(Reference::new("Binary", &def_bin));
-            (def_bin, 1)
-        };
-
-        let cmd_line = child.attribute("CommandLine").map(ToString::to_string);
-        let condition = child.attribute("Condition").map(ToString::to_string);
-
-        section.add_symbol(Symbol::new("EmbeddedChainer", id));
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(id.to_string()),
-            condition.map_or(FieldValue::Null, FieldValue::String),
-            cmd_line.map_or(FieldValue::Null, FieldValue::String),
-            FieldValue::String(source),
-            FieldValue::Long(chainer_type),
-        ]);
-
-        tables
-            .entry("MsiEmbeddedChainer".to_string())
-            .or_insert_with(|| IntermediateTable::new("MsiEmbeddedChainer"))
-            .push_record(rec);
-
-        Ok(())
-    }
-
-    /// Compiles a `<SqlDatabase>` or `<sql:SqlDatabase>` element.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    ///
-    /// # Returns
-    ///
-    /// The resulting value or `Ok(())` on success.
-    fn compile_sql_database(
-        child: &XmlNode,
-        parent_id: Option<&str>,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) -> Result<()> {
-        let db_id = child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
-            element: "SqlDatabase".to_string(),
-            message: "missing required 'Id' attribute".to_string(),
-        })?;
-
-        let server = child.attribute("Server").unwrap_or("127.0.0.1");
-        let instance = child.attribute("Instance").map(ToString::to_string);
-        let database = child.attribute("Database").unwrap_or(db_id);
-        let comp_name = parent_id.unwrap_or("DefaultComp");
-        let user = child.attribute("User").map(ToString::to_string);
-
-        let mut attrs: i32 = 0;
-        if child.attribute("CreateOnInstall") == Some("yes") {
-            attrs |= 0x0001;
-        }
-        if child.attribute("DropOnUninstall") == Some("yes") {
-            attrs |= 0x0002;
-        }
-        if child.attribute("ContinueOnError") == Some("yes") {
-            attrs |= 0x0004;
-        }
-        if child.attribute("DropOnInstall") == Some("yes") {
-            attrs |= 0x0008;
-        }
-        if child.attribute("CreateOnUninstall") == Some("yes") {
-            attrs |= 0x0010;
-        }
-
-        section.add_symbol(Symbol::new("SqlDatabase", db_id));
-        section.add_reference(Reference::new("Component", comp_name));
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(db_id.to_string()),
-            FieldValue::String(server.to_string()),
-            instance.map_or(FieldValue::Null, FieldValue::String),
-            FieldValue::String(database.to_string()),
-            FieldValue::String(comp_name.to_string()),
-            user.map_or(FieldValue::Null, FieldValue::String),
-            FieldValue::Long(attrs),
-        ]);
-
-        tables
-            .entry("SqlDatabase".to_string())
-            .or_insert_with(|| IntermediateTable::new("SqlDatabase"))
-            .push_record(rec);
-
-        Ok(())
-    }
-
-    /// Compiles a `<SqlString>` or `<sql:SqlString>` element.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    ///
-    /// # Returns
-    ///
-    /// The resulting value or `Ok(())` on success.
-    fn compile_sql_string(
-        child: &XmlNode,
-        parent_id: Option<&str>,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) -> Result<()> {
-        let str_id = child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
-            element: "SqlString".to_string(),
-            message: "missing required 'Id' attribute".to_string(),
-        })?;
-
-        let sql_db = child
-            .attribute("SqlDb")
-            .or(parent_id)
-            .unwrap_or("DefaultSqlDb");
-
-        let sql_text = if child.text.trim().is_empty() {
-            child
-                .attribute("SQL")
-                .map(ToString::to_string)
-                .unwrap_or_default()
-        } else {
-            child.text.trim().to_string()
-        };
-
-        if sql_text.is_empty() {
-            return Err(MsiError::WixCompiler {
-                element: "SqlString".to_string(),
-                message: format!("missing SQL statement text in SqlString '{str_id}'"),
-            });
-        }
-
-        let user = child.attribute("User").map(ToString::to_string);
-        let mut attrs: i32 = 0;
-        if child.attribute("ExecuteOnInstall") == Some("yes")
-            || child.attribute("ExecuteOnInstall").is_none()
-        {
-            attrs |= 0x0001;
-        }
-        if child.attribute("ExecuteOnUninstall") == Some("yes") {
-            attrs |= 0x0002;
-        }
-        if child.attribute("Rollback") == Some("yes") {
-            attrs |= 0x0004;
-        }
-        if child.attribute("ContinueOnError") == Some("yes") {
-            attrs |= 0x0008;
-        }
-
-        let sequence = child
-            .attribute("Sequence")
-            .and_then(|s| s.parse::<i32>().ok());
-
-        section.add_symbol(Symbol::new("SqlString", str_id));
-        section.add_reference(Reference::new("SqlDatabase", sql_db));
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(str_id.to_string()),
-            FieldValue::String(sql_db.to_string()),
-            FieldValue::String(sql_text),
-            user.map_or(FieldValue::Null, FieldValue::String),
-            FieldValue::Long(attrs),
-            sequence.map_or(FieldValue::Null, FieldValue::Long),
-        ]);
-
-        tables
-            .entry("SqlString".to_string())
-            .or_insert_with(|| IntermediateTable::new("SqlString"))
-            .push_record(rec);
-
-        Ok(())
-    }
-
-    /// Compiles a `<SqlScript>` or `<sql:SqlScript>` element.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    ///
-    /// # Returns
-    ///
-    /// The resulting value or `Ok(())` on success.
-    fn compile_sql_script(
-        child: &XmlNode,
-        parent_id: Option<&str>,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) -> Result<()> {
-        let script_id = child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
-            element: "SqlScript".to_string(),
-            message: "missing required 'Id' attribute".to_string(),
-        })?;
-
-        let sql_db = child.attribute("SqlDb").unwrap_or("DefaultSqlDb");
-
-        let script_file = child
-            .attribute("ScriptFile")
-            .or_else(|| child.attribute("BinaryKey"))
-            .unwrap_or("script.sql");
-
-        let comp_name = parent_id.unwrap_or("DefaultComp");
-        let user = child.attribute("User").map(ToString::to_string);
-
-        let mut attrs: i32 = 0;
-        if child.attribute("ExecuteOnInstall") == Some("yes")
-            || child.attribute("ExecuteOnInstall").is_none()
-        {
-            attrs |= 0x0001;
-        }
-        if child.attribute("ExecuteOnUninstall") == Some("yes") {
-            attrs |= 0x0002;
-        }
-        if child.attribute("Rollback") == Some("yes") {
-            attrs |= 0x0004;
-        }
-        if child.attribute("ContinueOnError") == Some("yes") {
-            attrs |= 0x0008;
-        }
-
-        let sequence = child
-            .attribute("Sequence")
-            .and_then(|s| s.parse::<i32>().ok());
-
-        section.add_symbol(Symbol::new("SqlScript", script_id));
-        section.add_reference(Reference::new("SqlDatabase", sql_db));
-        section.add_reference(Reference::new("Component", comp_name));
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(script_id.to_string()),
-            FieldValue::String(sql_db.to_string()),
-            FieldValue::String(comp_name.to_string()),
-            FieldValue::String(script_file.to_string()),
-            user.map_or(FieldValue::Null, FieldValue::String),
-            FieldValue::Long(attrs),
-            sequence.map_or(FieldValue::Null, FieldValue::Long),
-        ]);
-
-        tables
-            .entry("SqlScript".to_string())
-            .or_insert_with(|| IntermediateTable::new("SqlScript"))
-            .push_record(rec);
-
-        Ok(())
-    }
-
-    /// Compiles a `<CustomAction>` element.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    ///
-    /// # Returns
-    ///
-    /// The resulting value or `Ok(())` on success.
-    #[allow(clippy::option_if_let_else)]
-    fn compile_custom_action(
-        child: &XmlNode,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) -> Result<()> {
-        let ca_id = child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
-            element: "CustomAction".to_string(),
-            message: "missing required 'Id' attribute".to_string(),
-        })?;
-        let (source, target, mut ca_type) = match (
-            child.attribute("BinaryKey"),
-            child.attribute("FileKey"),
-            child.attribute("Property"),
-            child.attribute("Directory"),
-            child.attribute("Script"),
-            child.attribute("Error"),
-        ) {
-            (Some(bin), _, _, _, _, _) => {
-                section.add_reference(Reference::new("Binary", bin));
-                if let Some(vbs) = child.attribute("VBScriptCall") {
-                    (bin, vbs, 6)
-                } else if let Some(js) = child.attribute("JScriptCall") {
-                    (bin, js, 5)
-                } else if let Some(dll) = child.attribute("DllEntry") {
-                    (bin, dll, 1)
-                } else if let Some(exe) = child.attribute("ExeCommand") {
-                    (bin, exe, 2)
-                } else {
-                    (bin, "", 1)
-                }
-            }
-            (None, Some(file), _, _, _, _) => {
-                section.add_reference(Reference::new("File", file));
-                (file, child.attribute("ExeCommand").unwrap_or(""), 18)
-            }
-            (None, None, Some(prop), _, _, _) => (prop, child.attribute("Value").unwrap_or(""), 51),
-            (None, None, None, Some(dir), _, _) => {
-                section.add_reference(Reference::new("Directory", dir));
-                child.attribute("Value").map_or_else(
-                    || (dir, child.attribute("ExeCommand").unwrap_or(""), 34),
-                    |val| (dir, val, 35),
-                )
-            }
-            (None, None, None, None, Some("vbscript"), _) => ("", child.text.as_str(), 6),
-            (None, None, None, None, Some("jscript"), _) => ("", child.text.as_str(), 5),
-            (None, None, None, None, _, Some(err)) => ("", err, 19),
-            _ => ("", "", 1),
-        };
-
-        // Execution mode
-        match child.attribute("Execute") {
-            Some("deferred") => ca_type |= 0x0400,
-            Some("rollback") => ca_type |= 0x0500,
-            Some("commit") => ca_type |= 0x0600,
-            Some("firstSequence") => ca_type |= 0x0100,
-            Some("oncePerProcess") => ca_type |= 0x0200,
-            _ => {}
-        }
-
-        // Return mode
-        match child.attribute("Return") {
-            Some("ignore") => ca_type |= 0x0040,
-            Some("asyncWait") => ca_type |= 0x0080,
-            Some("asyncNoWait") => ca_type |= 0x00C0,
-            _ => {}
-        }
-
-        // Impersonation
-        if child
-            .attribute("Impersonate")
-            .is_some_and(|s| s.eq_ignore_ascii_case("no"))
-        {
-            ca_type |= 0x0800;
-        }
-
-        section.add_symbol(Symbol::new("CustomAction", ca_id));
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(ca_id.to_string()),
-            FieldValue::Short(ca_type),
-            FieldValue::String(source.to_string()),
-            FieldValue::String(target.to_string()),
-            FieldValue::Null,
-        ]);
-        tables
-            .entry("CustomAction".to_string())
-            .or_insert_with(|| IntermediateTable::new("CustomAction"))
-            .push_record(rec);
-        Ok(())
-    }
-
-    /// Compiles a `<Dialog>` element.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    ///
-    /// # Returns
-    ///
-    /// The resulting value or `Ok(())` on success.
-    fn compile_dialog(
-        child: &XmlNode,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) -> Result<()> {
-        let dlg_id = child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
-            element: "Dialog".to_string(),
-            message: "missing required 'Id' attribute".to_string(),
-        })?;
-        let width: i16 = child
-            .attribute("Width")
-            .and_then(|w| w.parse().ok())
-            .unwrap_or(370);
-        let height: i16 = child
-            .attribute("Height")
-            .and_then(|h| h.parse().ok())
-            .unwrap_or(270);
-        let title = child.attribute("Title").map(ToString::to_string);
-
-        let mut first_ctrl = None;
-        let mut default_ctrl = None;
-        let mut cancel_ctrl = None;
-
-        for c in &child.children {
-            if c.tag == "Control" {
-                if let Some(cid) = c.attribute("Id") {
-                    if first_ctrl.is_none() {
-                        first_ctrl = Some(cid.to_string());
-                    }
-                    if c.attribute("Default")
-                        .is_some_and(|v| v.eq_ignore_ascii_case("yes"))
-                    {
-                        default_ctrl = Some(cid.to_string());
-                    }
-                    if c.attribute("Cancel")
-                        .is_some_and(|v| v.eq_ignore_ascii_case("yes"))
-                    {
-                        cancel_ctrl = Some(cid.to_string());
-                    }
-                }
-            }
-        }
-
-        let first = first_ctrl.unwrap_or_else(|| "FirstControl".to_string());
-
-        section.add_symbol(Symbol::new("Dialog", dlg_id));
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(dlg_id.to_string()),
-            FieldValue::Short(50),
-            FieldValue::Short(50),
-            FieldValue::Short(width),
-            FieldValue::Short(height),
-            FieldValue::Long(3),
-            title.map_or(FieldValue::Null, FieldValue::String),
-            FieldValue::String(first),
-            default_ctrl.map_or(FieldValue::Null, FieldValue::String),
-            cancel_ctrl.map_or(FieldValue::Null, FieldValue::String),
-        ]);
-        tables
-            .entry("Dialog".to_string())
-            .or_insert_with(|| IntermediateTable::new("Dialog"))
-            .push_record(rec);
-        Ok(())
-    }
-
-    /// Compiles a `<Control>` element.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    ///
-    /// # Returns
-    ///
-    /// The resulting value or `Ok(())` on success.
-    #[allow(clippy::too_many_lines)]
-    fn compile_control(
-        &self,
-        child: &XmlNode,
-        parent_id: Option<&str>,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) -> Result<()> {
-        let ctrl_id = child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
-            element: "Control".to_string(),
-            message: "missing required 'Id' attribute".to_string(),
-        })?;
-        let ctrl_type = child.attribute("Type").unwrap_or("PushButton");
-        let x: i16 = child
-            .attribute("X")
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(0);
-        let y: i16 = child
-            .attribute("Y")
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(0);
-        let w: i16 = child
-            .attribute("Width")
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(56);
-        let h: i16 = child
-            .attribute("Height")
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(17);
-        let text = child.attribute("Text").map(ToString::to_string);
-        let mut resolved_text = text;
-        if resolved_text.is_none() {
-            if let Some(text_sub) = child.children.iter().find(|c| c.tag == "Text") {
-                if let Some(src) = text_sub.attribute("SourceFile") {
-                    let candidate_content = self
-                        .source_dir
-                        .as_ref()
-                        .and_then(|dir| std::fs::read_to_string(dir.join(src)).ok())
-                        .or_else(|| std::fs::read_to_string(src).ok());
-                    if let Some(content) = candidate_content {
-                        if std::path::Path::new(src)
-                            .extension()
-                            .is_some_and(|ext| ext.eq_ignore_ascii_case("rtf"))
-                        {
-                            resolved_text = Some(content);
-                        } else {
-                            resolved_text = Some(convert_text_to_rtf(&content));
-                        }
-                    } else if ctrl_type.eq_ignore_ascii_case("ScrollableText") {
-                        resolved_text = Some(format!("!(bindpath.rtf:{src})"));
-                    } else {
-                        resolved_text = Some(src.to_string());
-                    }
-                } else if !text_sub.text.is_empty() {
-                    if ctrl_type.eq_ignore_ascii_case("ScrollableText")
-                        && !text_sub.text.trim_start().starts_with(r"{\rtf")
-                        && !text_sub.text.trim_start().starts_with("!(wix.")
-                    {
-                        resolved_text = Some(convert_text_to_rtf(&text_sub.text));
-                    } else {
-                        resolved_text = Some(text_sub.text.clone());
-                    }
-                }
-            }
-        } else if ctrl_type.eq_ignore_ascii_case("ScrollableText") {
-            let attr_val = resolved_text.as_deref().unwrap_or("");
-            let trimmed = attr_val.trim_start();
-            if !trimmed.is_empty()
-                && !trimmed.starts_with(r"{\rtf")
-                && !trimmed.starts_with("!(wix.")
-                && !trimmed.starts_with("!(bindpath.rtf:")
-            {
-                resolved_text = Some(convert_text_to_rtf(attr_val));
-            }
-        }
-        let prop = child.attribute("Property").map(ToString::to_string);
-        let dlg_name = parent_id.unwrap_or("DefaultDialog");
-
-        let mut attributes: i32 = 3; // Visible | Enabled
-        if child
-            .attribute("Hidden")
-            .is_some_and(|v| v.eq_ignore_ascii_case("yes"))
-        {
-            attributes &= !1;
-        }
-        if child
-            .attribute("Disabled")
-            .is_some_and(|v| v.eq_ignore_ascii_case("yes"))
-        {
-            attributes &= !2;
-        }
-        if child
-            .attribute("Sunken")
-            .is_some_and(|v| v.eq_ignore_ascii_case("yes"))
-        {
-            attributes |= 0x0001_0000;
-        }
-        if child
-            .attribute("Multiline")
-            .is_some_and(|v| v.eq_ignore_ascii_case("yes"))
-        {
-            attributes |= 0x0004_0000;
-        }
-        if child
-            .attribute("Password")
-            .is_some_and(|v| v.eq_ignore_ascii_case("yes"))
-        {
-            attributes |= 0x0020_0000;
-        }
-        if child
-            .attribute("NoPrefix")
-            .is_some_and(|v| v.eq_ignore_ascii_case("yes"))
-        {
-            attributes |= 0x0040_0000;
-        }
-        if child
-            .attribute("Default")
-            .is_some_and(|v| v.eq_ignore_ascii_case("yes"))
-        {
-            attributes |= 0x0000_0004;
-        }
-        if child
-            .attribute("Cancel")
-            .is_some_and(|v| v.eq_ignore_ascii_case("yes"))
-        {
-            attributes |= 0x0000_0008;
-        }
-
-        section.add_symbol(Symbol::new("Control", format!("{dlg_name}.{ctrl_id}")));
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(dlg_name.to_string()),
-            FieldValue::String(ctrl_id.to_string()),
-            FieldValue::String(ctrl_type.to_string()),
-            FieldValue::Short(x),
-            FieldValue::Short(y),
-            FieldValue::Short(w),
-            FieldValue::Short(h),
-            FieldValue::Long(attributes),
-            prop.map_or(FieldValue::Null, FieldValue::String),
-            resolved_text.map_or(FieldValue::Null, FieldValue::String),
-            FieldValue::Null,
-            FieldValue::Null,
-        ]);
-        tables
-            .entry("Control".to_string())
-            .or_insert_with(|| IntermediateTable::new("Control"))
-            .push_record(rec);
-
-        for sub in &child.children {
-            match sub.tag.as_str() {
-                "Publish" | "ControlEvent" => {
-                    let event = sub.attribute("Property").map_or_else(
-                        || sub.attribute("Event").unwrap_or("NewDialog").to_string(),
-                        |target_prop| format!("[{target_prop}]"),
-                    );
-                    let arg = sub
-                        .attribute("Argument")
-                        .or_else(|| sub.attribute("Value"))
-                        .unwrap_or("");
-                    let cond = sub
-                        .attribute("Condition")
-                        .map(ToString::to_string)
-                        .or_else(|| {
-                            if sub.text.is_empty() {
-                                None
-                            } else {
-                                Some(sub.text.clone())
-                            }
-                        });
-                    let order: Option<i16> = sub.attribute("Order").and_then(|o| o.parse().ok());
-                    let ce_rec = Record::with_fields(vec![
-                        FieldValue::String(dlg_name.to_string()),
-                        FieldValue::String(ctrl_id.to_string()),
-                        FieldValue::String(event),
-                        FieldValue::String(arg.to_string()),
-                        cond.map_or(FieldValue::Null, FieldValue::String),
-                        order.map_or(FieldValue::Null, FieldValue::Short),
-                    ]);
-                    tables
-                        .entry("ControlEvent".to_string())
-                        .or_insert_with(|| IntermediateTable::new("ControlEvent"))
-                        .push_record(ce_rec);
-                }
-                "Condition" | "ControlCondition" => {
-                    let action = sub.attribute("Action").unwrap_or("enable");
-                    let cond = sub.attribute("Condition").unwrap_or_else(|| {
-                        if sub.text.is_empty() {
-                            "1"
-                        } else {
-                            &sub.text
-                        }
-                    });
-                    let cc_rec = Record::with_fields(vec![
-                        FieldValue::String(dlg_name.to_string()),
-                        FieldValue::String(ctrl_id.to_string()),
-                        FieldValue::String(action.to_string()),
-                        FieldValue::String(cond.to_string()),
-                    ]);
-                    tables
-                        .entry("ControlCondition".to_string())
-                        .or_insert_with(|| IntermediateTable::new("ControlCondition"))
-                        .push_record(cc_rec);
-                }
-                "Subscribe" => {
-                    let event = sub.attribute("Event").unwrap_or("SetProgress");
-                    let attr = sub.attribute("Attribute").unwrap_or("Progress");
-                    let em_rec = Record::with_fields(vec![
-                        FieldValue::String(dlg_name.to_string()),
-                        FieldValue::String(ctrl_id.to_string()),
-                        FieldValue::String(event.to_string()),
-                        FieldValue::String(attr.to_string()),
-                    ]);
-                    tables
-                        .entry("EventMapping".to_string())
-                        .or_insert_with(|| IntermediateTable::new("EventMapping"))
-                        .push_record(em_rec);
-                }
-                "RadioButtonGroup" => {
-                    let rbg_prop = sub
-                        .attribute("Property")
-                        .or_else(|| child.attribute("Property"))
-                        .unwrap_or("");
-                    for (idx, rb) in sub
-                        .children
-                        .iter()
-                        .filter(|c| c.tag == "RadioButton")
-                        .enumerate()
-                    {
-                        let val = rb.attribute("Value").unwrap_or("");
-                        let rx: i16 = rb.attribute("X").and_then(|v| v.parse().ok()).unwrap_or(0);
-                        let ry: i16 = rb.attribute("Y").and_then(|v| v.parse().ok()).unwrap_or(0);
-                        let rw: i16 = rb
-                            .attribute("Width")
-                            .and_then(|v| v.parse().ok())
-                            .unwrap_or(w);
-                        let rh: i16 = rb
-                            .attribute("Height")
-                            .and_then(|v| v.parse().ok())
-                            .unwrap_or(14);
-                        let rtext = rb.attribute("Text").map_or_else(|| rb.text.as_str(), |t| t);
-                        let rhelp = rb.attribute("Help");
-                        let order = i16::try_from(idx + 1).unwrap_or(1);
-
-                        section.add_symbol(Symbol::new("RadioButton", format!("{rbg_prop}.{val}")));
-
-                        let rb_rec = Record::with_fields(vec![
-                            FieldValue::String(rbg_prop.to_string()),
-                            FieldValue::Short(order),
-                            FieldValue::String(val.to_string()),
-                            FieldValue::Short(rx),
-                            FieldValue::Short(ry),
-                            FieldValue::Short(rw),
-                            FieldValue::Short(rh),
-                            FieldValue::String(rtext.to_string()),
-                            rhelp.map_or(FieldValue::Null, |help_text| {
-                                FieldValue::String(help_text.to_string())
-                            }),
-                        ]);
-                        tables
-                            .entry("RadioButton".to_string())
-                            .or_insert_with(|| IntermediateTable::new("RadioButton"))
-                            .push_record(rb_rec);
-                    }
-                }
-                "RadioButton" => {
-                    let rbg_prop = child.attribute("Property").unwrap_or("");
-                    let val = sub.attribute("Value").unwrap_or("");
-                    let rx: i16 = sub.attribute("X").and_then(|v| v.parse().ok()).unwrap_or(0);
-                    let ry: i16 = sub.attribute("Y").and_then(|v| v.parse().ok()).unwrap_or(0);
-                    let rw: i16 = sub
-                        .attribute("Width")
-                        .and_then(|v| v.parse().ok())
-                        .unwrap_or(w);
-                    let rh: i16 = sub
-                        .attribute("Height")
-                        .and_then(|v| v.parse().ok())
-                        .unwrap_or(14);
-                    let rtext = sub
-                        .attribute("Text")
-                        .map_or_else(|| sub.text.as_str(), |t| t);
-                    let rhelp = sub.attribute("Help");
-                    let order: i16 = sub
-                        .attribute("Order")
-                        .and_then(|o| o.parse().ok())
-                        .unwrap_or(1);
-
-                    section.add_symbol(Symbol::new("RadioButton", format!("{rbg_prop}.{val}")));
-
-                    let rb_rec = Record::with_fields(vec![
-                        FieldValue::String(rbg_prop.to_string()),
-                        FieldValue::Short(order),
-                        FieldValue::String(val.to_string()),
-                        FieldValue::Short(rx),
-                        FieldValue::Short(ry),
-                        FieldValue::Short(rw),
-                        FieldValue::Short(rh),
-                        FieldValue::String(rtext.to_string()),
-                        rhelp.map_or(FieldValue::Null, |help_text| {
-                            FieldValue::String(help_text.to_string())
-                        }),
-                    ]);
-                    tables
-                        .entry("RadioButton".to_string())
-                        .or_insert_with(|| IntermediateTable::new("RadioButton"))
-                        .push_record(rb_rec);
-                }
-                _ => {}
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Compiles a `<TextStyle>` element.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_text_style(
-        child: &XmlNode,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let style_id = child.attribute("Id").unwrap_or("DefaultStyle");
-        let face = child.attribute("FaceName").unwrap_or("Tahoma");
-        let size: i16 = child
-            .attribute("Size")
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(9);
-
-        section.add_symbol(Symbol::new("TextStyle", style_id));
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(style_id.to_string()),
-            FieldValue::String(face.to_string()),
-            FieldValue::Short(size),
-            FieldValue::Null,
-            FieldValue::Null,
-        ]);
-        tables
-            .entry("TextStyle".to_string())
-            .or_insert_with(|| IntermediateTable::new("TextStyle"))
-            .push_record(rec);
-    }
-
-    /// Compiles an `<Upgrade>` element.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_upgrade(
-        child: &XmlNode,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let upg_id = child
-            .attribute("Id")
-            .unwrap_or("{00000000-0000-0000-0000-000000000000}");
-        section.add_symbol(Symbol::new("Upgrade", upg_id));
-
-        for sub in &child.children {
-            if sub.tag == "UpgradeVersion" {
-                let min = sub.attribute("Minimum").map(ToString::to_string);
-                let max = sub.attribute("Maximum").map(ToString::to_string);
-                let prop = sub.attribute("Property").unwrap_or("NEWPRODUCTFOUND");
-
-                let mut attrs: i32 = 0;
-                let inc_min = sub
-                    .attribute("IncludeMinimum")
-                    .is_none_or(|v| v.eq_ignore_ascii_case("yes"));
-                if inc_min {
-                    attrs |= 0x0000_0100;
-                }
-                if sub
-                    .attribute("IncludeMaximum")
-                    .is_some_and(|v| v.eq_ignore_ascii_case("yes"))
-                {
-                    attrs |= 0x0000_0200;
-                }
-                if sub
-                    .attribute("OnlyDetect")
-                    .is_some_and(|v| v.eq_ignore_ascii_case("yes"))
-                {
-                    attrs |= 0x0000_0002;
-                }
-                if sub
-                    .attribute("MigrateFeatures")
-                    .is_some_and(|v| v.eq_ignore_ascii_case("yes"))
-                {
-                    attrs |= 0x0000_0001;
-                }
-                if sub
-                    .attribute("IgnoreRemoveFailure")
-                    .is_some_and(|v| v.eq_ignore_ascii_case("yes"))
-                {
-                    attrs |= 0x0000_0004;
-                }
-
-                let rec = Record::with_fields(vec![
-                    FieldValue::String(upg_id.to_string()),
-                    min.map_or(FieldValue::Null, FieldValue::String),
-                    max.map_or(FieldValue::Null, FieldValue::String),
-                    FieldValue::Null,
-                    FieldValue::Long(attrs),
-                    FieldValue::Null,
-                    FieldValue::String(prop.to_string()),
-                ]);
-                tables
-                    .entry("Upgrade".to_string())
-                    .or_insert_with(|| IntermediateTable::new("Upgrade"))
-                    .push_record(rec);
-            }
-        }
-    }
-
-    /// Compiles a `<MajorUpgrade>` syntactic macro.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_major_upgrade(child: &XmlNode, tables: &mut HashMap<String, IntermediateTable>) {
-        let downgrade_err = child.attribute("DowngradeErrorMessage");
-        let schedule = child
-            .attribute("Schedule")
-            .unwrap_or("afterInstallInitialize");
-        let allow_same = child
-            .attribute("AllowSameVersionUpgrades")
-            .is_some_and(|s| s.eq_ignore_ascii_case("yes"));
-
-        let older_attrs: i32 = if allow_same { 256 | 1 } else { 256 };
-        let older_rec = Record::with_fields(vec![
-            FieldValue::String("{00000000-0000-0000-0000-000000000000}".to_string()),
-            FieldValue::Null,
-            FieldValue::Null,
-            FieldValue::Null,
-            FieldValue::Long(older_attrs),
-            FieldValue::Null,
-            FieldValue::String("WIX_UPGRADE_DETECTED".to_string()),
-        ]);
-        let mut upg_records = vec![older_rec];
-
-        if let Some(err_msg) = downgrade_err {
-            let newer_rec = Record::with_fields(vec![
-                FieldValue::String("{00000000-0000-0000-0000-000000000000}".to_string()),
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::Long(2),
-                FieldValue::Null,
-                FieldValue::String("WIX_DOWNGRADE_DETECTED".to_string()),
-            ]);
-            upg_records.push(newer_rec);
-
-            let lc_rec = Record::with_fields(vec![
-                FieldValue::String("NOT WIX_DOWNGRADE_DETECTED".to_string()),
-                FieldValue::String(err_msg.to_string()),
-            ]);
-            tables
-                .entry("LaunchCondition".to_string())
-                .or_insert_with(|| IntermediateTable::new("LaunchCondition"))
-                .push_record(lc_rec);
-        }
-
-        let upg_tbl = tables
-            .entry("Upgrade".to_string())
-            .or_insert_with(|| IntermediateTable::new("Upgrade"));
-        for r in upg_records {
-            upg_tbl.push_record(r);
-        }
-
-        let prop_rec = Record::with_fields(vec![
-            FieldValue::String("SecureCustomProperties".to_string()),
-            FieldValue::String("WIX_UPGRADE_DETECTED;WIX_DOWNGRADE_DETECTED".to_string()),
-        ]);
-        tables
-            .entry("Property".to_string())
-            .or_insert_with(|| IntermediateTable::new("Property"))
-            .push_record(prop_rec);
-
-        let rep_seq: i16 = match schedule {
-            "afterInstallValidate" => 1400,
-            "afterInstallExecute" => 6550,
-            "afterInstallFinalize" => 6601,
-            _ => 1501,
-        };
-        let rep_rec = Record::with_fields(vec![
-            FieldValue::String("RemoveExistingProducts".to_string()),
-            FieldValue::Null,
-            FieldValue::Short(rep_seq),
-        ]);
-        let frp_rec = Record::with_fields(vec![
-            FieldValue::String("FindRelatedProducts".to_string()),
-            FieldValue::Null,
-            FieldValue::Short(200),
-        ]);
-        let ies_tbl = tables
-            .entry("InstallExecuteSequence".to_string())
-            .or_insert_with(|| IntermediateTable::new("InstallExecuteSequence"));
-        ies_tbl.push_record(rep_rec);
-        ies_tbl.push_record(frp_rec);
-    }
-
-    /// Compiles cross-platform POSIX extension elements.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_posix_element(
-        child: &XmlNode,
-        parent_id: Option<&str>,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        match child.tag.as_str() {
-            "posix:File" | "PosixFile" => {
-                Self::compile_posix_file(child, parent_id, tables);
-            }
-            "posix:Symlink" | "PosixSymlink" => {
-                Self::compile_posix_symlink(child, parent_id, section, tables);
-            }
-            "posix:Daemon" | "PosixDaemon" => {
-                Self::compile_posix_daemon(child, section, tables);
-            }
-            "posix:Acl" | "PosixAcl" => {
-                Self::compile_posix_acl(child, section, tables);
-            }
-            "posix:Desktop" | "PosixDesktop" => {
-                Self::compile_posix_desktop(child, section, tables);
-            }
-            _ => {}
-        }
-    }
-
-    /// Compiles `<posix:File>` element.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_posix_file(
-        child: &XmlNode,
-        parent_id: Option<&str>,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let file_key = child.attribute("File").or(parent_id).unwrap_or("AppFile");
-        let mode: i32 = child
-            .attribute("Mode")
-            .and_then(|m| i32::from_str_radix(m.trim_start_matches("0o"), 8).ok())
-            .unwrap_or(0o755);
-        let owner = child.attribute("Owner").map(ToString::to_string);
-        let group = child.attribute("Group").map(ToString::to_string);
-        let rec = Record::with_fields(vec![
-            FieldValue::String(file_key.to_string()),
-            FieldValue::Long(mode),
-            owner.map_or(FieldValue::Null, FieldValue::String),
-            group.map_or(FieldValue::Null, FieldValue::String),
-            FieldValue::Null,
-        ]);
-        tables
-            .entry("PosixFile".to_string())
-            .or_insert_with(|| IntermediateTable::new("PosixFile"))
-            .push_record(rec);
-    }
-
-    /// Compiles `<posix:Symlink>` element.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_posix_symlink(
-        child: &XmlNode,
-        parent_id: Option<&str>,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let sym_id = child.attribute("Id").unwrap_or("Symlink1");
-        let target = child.attribute("Target").unwrap_or("");
-        let dir = child.attribute("LinkDirectory").unwrap_or("TARGETDIR");
-        let name = child.attribute("LinkName").unwrap_or(sym_id);
-        let comp = parent_id.unwrap_or("DefaultComp");
-
-        section.add_symbol(Symbol::new("PosixSymlink", sym_id));
-        section.add_reference(Reference::new("Component", comp));
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(sym_id.to_string()),
-            FieldValue::String(target.to_string()),
-            FieldValue::String(dir.to_string()),
-            FieldValue::String(name.to_string()),
-            FieldValue::String(comp.to_string()),
-        ]);
-        tables
-            .entry("PosixSymlink".to_string())
-            .or_insert_with(|| IntermediateTable::new("PosixSymlink"))
-            .push_record(rec);
-    }
-
-    /// Compiles `<posix:Daemon>` element.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_posix_daemon(
-        child: &XmlNode,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let svc = child.attribute("Service").unwrap_or("Service1");
-        let sup_str = child.attribute("SupervisorType").unwrap_or("Systemd");
-        let sup_code: i32 = match sup_str.to_ascii_lowercase().as_str() {
-            "launchd" => 1,
-            "rcd" | "rc.d" => 2,
-            "smf" => 3,
-            _ => 0,
-        };
-        let restart: i32 = match child.attribute("RestartPolicy").unwrap_or("always") {
-            "on-failure" => 1,
-            "no" => 2,
-            _ => 0,
-        };
-        let user = child.attribute("RunAsUser").map(ToString::to_string);
-
-        section.add_symbol(Symbol::new("PosixDaemon", svc));
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(svc.to_string()),
-            FieldValue::Long(sup_code),
-            FieldValue::Null,
-            FieldValue::Long(restart),
-            user.map_or(FieldValue::Null, FieldValue::String),
-        ]);
-        tables
-            .entry("PosixDaemon".to_string())
-            .or_insert_with(|| IntermediateTable::new("PosixDaemon"))
-            .push_record(rec);
-    }
-
-    /// Compiles `<posix:Acl>` element.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_posix_acl(
-        child: &XmlNode,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let acl_id = child.attribute("Id").unwrap_or("Acl1");
-        let file = child.attribute("File").unwrap_or("File1");
-        let p_type = child.attribute("PrincipalType").unwrap_or("user");
-        let p_name = child.attribute("PrincipalName").unwrap_or("root");
-        let perms: i32 = child
-            .attribute("Permissions")
-            .and_then(|p| p.parse().ok())
-            .unwrap_or(7);
-
-        section.add_symbol(Symbol::new("PosixAcl", acl_id));
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(acl_id.to_string()),
-            FieldValue::String(file.to_string()),
-            FieldValue::String(p_type.to_string()),
-            FieldValue::String(p_name.to_string()),
-            FieldValue::Long(perms),
-            FieldValue::Long(0),
-        ]);
-        tables
-            .entry("PosixAcl".to_string())
-            .or_insert_with(|| IntermediateTable::new("PosixAcl"))
-            .push_record(rec);
-    }
-
-    /// Compiles `<posix:Desktop>` element.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_posix_desktop(
-        child: &XmlNode,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let sc = child.attribute("Shortcut").unwrap_or("Shortcut1");
-        let cat = child.attribute("Categories").map(ToString::to_string);
-        let mime = child.attribute("MimeTypes").map(ToString::to_string);
-        let term: i16 = i16::from(
-            child
-                .attribute("Terminal")
-                .is_some_and(|v| v == "yes" || v == "true"),
-        );
-
-        section.add_symbol(Symbol::new("PosixDesktop", sc));
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(sc.to_string()),
-            cat.map_or(FieldValue::Null, FieldValue::String),
-            mime.map_or(FieldValue::Null, FieldValue::String),
-            FieldValue::Null,
-            FieldValue::Short(term),
-        ]);
-        tables
-            .entry("PosixDesktop".to_string())
-            .or_insert_with(|| IntermediateTable::new("PosixDesktop"))
-            .push_record(rec);
-    }
-
-    /// Compiles a `<Configuration>` element in a Merge Module.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_module_configuration(
-        child: &XmlNode,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let name = child.attribute("Name").unwrap_or("Param1");
-        let format: i32 = child
-            .attribute("Format")
-            .and_then(|f| f.parse().ok())
-            .unwrap_or(0);
-        let row = crate::database::tables::core::ModuleConfigurationRow {
-            name: name.to_string(),
-            format,
-            type_: child.attribute("Type").map(ToString::to_string),
-            context_data: child.attribute("ContextData").map(ToString::to_string),
-            default_value: child.attribute("DefaultValue").map(ToString::to_string),
-            attributes: child.attribute("Attributes").and_then(|a| a.parse().ok()),
-            display_name: child.attribute("DisplayName").map(ToString::to_string),
-            description: child.attribute("Description").map(ToString::to_string),
-            help_keyword: child.attribute("HelpKeyword").map(ToString::to_string),
-        };
-        tables
-            .entry("ModuleConfiguration".to_string())
-            .or_insert_with(|| IntermediateTable::new("ModuleConfiguration"))
-            .push_record(row.to_record());
-    }
-
-    /// Compiles a `<Substitution>` element in a Merge Module.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_module_substitution(
-        child: &XmlNode,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let table = child.attribute("Table").unwrap_or("Property");
-        let row_key = child.attribute("Row").unwrap_or("");
-        let column = child.attribute("Column").unwrap_or("Value");
-        let value = child.attribute("Value").map(ToString::to_string);
-        let row = crate::database::tables::core::ModuleSubstitutionRow {
-            table: table.to_string(),
-            row: row_key.to_string(),
-            column: column.to_string(),
-            value,
-        };
-        tables
-            .entry("ModuleSubstitution".to_string())
-            .or_insert_with(|| IntermediateTable::new("ModuleSubstitution"))
-            .push_record(row.to_record());
-    }
-
-    /// Compiles an `<IgnoreModularization>` element in a Merge Module.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_module_ignore_modularization(
-        child: &XmlNode,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let name = child.attribute("Name").unwrap_or("");
-        let type_val = child.attribute("Type").and_then(|t| t.parse().ok());
-        let row = crate::database::tables::core::ModuleIgnoreModularizationRow {
-            name: name.to_string(),
-            type_: type_val,
-        };
-        tables
-            .entry("ModuleIgnoreModularization".to_string())
-            .or_insert_with(|| IntermediateTable::new("ModuleIgnoreModularization"))
-            .push_record(row.to_record());
-    }
-
-    /// Compiles a `<Dependency>` or `<ModuleDependency>` element in a Merge Module.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_module_dependency(child: &XmlNode, tables: &mut HashMap<String, IntermediateTable>) {
-        let req_id = child
-            .attribute("RequiredId")
-            .or_else(|| child.attribute("Id"))
-            .unwrap_or("");
-        let req_lang = child
-            .attribute("RequiredLanguage")
-            .or_else(|| child.attribute("Language"))
-            .and_then(|l| l.parse().ok())
-            .unwrap_or(1033);
-        let req_ver = child
-            .attribute("RequiredVersion")
-            .or_else(|| child.attribute("Version"))
-            .map(ToString::to_string);
-        let mod_id = child.attribute("ModuleId").unwrap_or("Module");
-        let mod_lang = child
-            .attribute("ModuleLanguage")
-            .and_then(|l| l.parse().ok())
-            .unwrap_or(1033);
-
-        let row = crate::database::tables::core::ModuleDependencyRow {
-            module_id: mod_id.to_string(),
-            module_language: mod_lang,
-            required_id: req_id.to_string(),
-            required_language: req_lang,
-            required_version: req_ver,
-        };
-        tables
-            .entry("ModuleDependency".to_string())
-            .or_insert_with(|| IntermediateTable::new("ModuleDependency"))
-            .push_record(row.to_record());
-    }
-
-    /// Compiles an `<Exclusion>` or `<ModuleExclusion>` element in a Merge Module.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_module_exclusion(child: &XmlNode, tables: &mut HashMap<String, IntermediateTable>) {
-        let excl_id = child
-            .attribute("ExcludedId")
-            .or_else(|| child.attribute("Id"))
-            .unwrap_or("");
-        let excl_lang = child
-            .attribute("ExcludedLanguage")
-            .or_else(|| child.attribute("Language"))
-            .and_then(|l| l.parse().ok())
-            .unwrap_or(1033);
-        let ver_min = child
-            .attribute("ExcludedVersionMin")
-            .or_else(|| child.attribute("VersionMin"))
-            .map(ToString::to_string);
-        let ver_max = child
-            .attribute("ExcludedVersionMax")
-            .or_else(|| child.attribute("VersionMax"))
-            .map(ToString::to_string);
-        let mod_id = child.attribute("ModuleId").unwrap_or("Module");
-        let mod_lang = child
-            .attribute("ModuleLanguage")
-            .and_then(|l| l.parse().ok())
-            .unwrap_or(1033);
-
-        let row = crate::database::tables::core::ModuleExclusionRow {
-            module_id: mod_id.to_string(),
-            module_language: mod_lang,
-            excluded_id: excl_id.to_string(),
-            excluded_language: excl_lang,
-            excluded_version_min: ver_min,
-            excluded_version_max: ver_max,
-        };
-        tables
-            .entry("ModuleExclusion".to_string())
-            .or_insert_with(|| IntermediateTable::new("ModuleExclusion"))
-            .push_record(row.to_record());
-    }
-
-    /// Compiles a `<CopyFile>` element into `DuplicateFile` or `MoveFile` table.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_copy_file(
-        child: &XmlNode,
-        parent_id: Option<&str>,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let id = child.attribute("Id").unwrap_or("CopyFile1");
-        let comp = parent_id.unwrap_or("DefaultComp");
-        section.add_symbol(Symbol::new("CopyFile", id));
-        section.add_reference(Reference::new("Component", comp));
-
-        if let Some(file_id) = child.attribute("FileId") {
-            let dest_name = child.attribute("DestinationName");
-            let dest_folder = child
-                .attribute("DestinationDirectory")
-                .or_else(|| child.attribute("DestinationProperty"));
-            let rec = Record::with_fields(vec![
-                FieldValue::String(id.to_string()),
-                FieldValue::String(comp.to_string()),
-                FieldValue::String(file_id.to_string()),
-                dest_name.map_or(FieldValue::Null, |s| FieldValue::String(s.to_string())),
-                dest_folder.map_or(FieldValue::Null, |s| FieldValue::String(s.to_string())),
-            ]);
-            tables
-                .entry("DuplicateFile".to_string())
-                .or_insert_with(|| IntermediateTable::new("DuplicateFile"))
-                .push_record(rec);
-        } else {
-            let src_name = child.attribute("SourceName").unwrap_or("*");
-            let dest_name = child.attribute("DestinationName").unwrap_or(src_name);
-            let src_folder = child
-                .attribute("SourceDirectory")
-                .or_else(|| child.attribute("SourceProperty"))
-                .unwrap_or("TARGETDIR");
-            let dest_folder = child
-                .attribute("DestinationDirectory")
-                .or_else(|| child.attribute("DestinationProperty"))
-                .unwrap_or("TARGETDIR");
-            let delete = child
-                .attribute("Delete")
-                .is_some_and(|s| s.eq_ignore_ascii_case("yes"));
-            let options: i16 = i16::from(delete);
-            let rec = Record::with_fields(vec![
-                FieldValue::String(id.to_string()),
-                FieldValue::String(comp.to_string()),
-                FieldValue::String(src_name.to_string()),
-                FieldValue::String(dest_name.to_string()),
-                FieldValue::String(src_folder.to_string()),
-                FieldValue::String(dest_folder.to_string()),
-                FieldValue::Short(options),
-            ]);
-            tables
-                .entry("MoveFile".to_string())
-                .or_insert_with(|| IntermediateTable::new("MoveFile"))
-                .push_record(rec);
-        }
-    }
-
-    /// Compiles a `<MoveFile>` element into `MoveFile` table.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_move_file(
-        child: &XmlNode,
-        parent_id: Option<&str>,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let id = child.attribute("Id").unwrap_or("MoveFile1");
-        let comp = parent_id.unwrap_or("DefaultComp");
-        let src_name = child.attribute("SourceName").unwrap_or("*");
-        let dest_name = child.attribute("DestName").unwrap_or(src_name);
-        let src_folder = child.attribute("SourceFolder").unwrap_or("TARGETDIR");
-        let dest_folder = child.attribute("DestFolder").unwrap_or("TARGETDIR");
-
-        section.add_symbol(Symbol::new("MoveFile", id));
-        section.add_reference(Reference::new("Component", comp));
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(id.to_string()),
-            FieldValue::String(comp.to_string()),
-            FieldValue::String(src_name.to_string()),
-            FieldValue::String(dest_name.to_string()),
-            FieldValue::String(src_folder.to_string()),
-            FieldValue::String(dest_folder.to_string()),
-            FieldValue::Short(1),
-        ]);
-        tables
-            .entry("MoveFile".to_string())
-            .or_insert_with(|| IntermediateTable::new("MoveFile"))
-            .push_record(rec);
-    }
-
-    /// Compiles a `<RemoveFile>` element into `RemoveFile` table.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_remove_file(
-        child: &XmlNode,
-        parent_id: Option<&str>,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let id = child.attribute("Id").unwrap_or("RemoveFile1");
-        let comp = parent_id.unwrap_or("DefaultComp");
-        let comp_obj = parent_id.map_or_else(
-            || ComponentName::from_static("DefaultComp"),
-            ComponentName::from_validated,
-        );
-        let name = child.attribute("Name");
-        let dir = child
-            .attribute("Directory")
-            .or_else(|| child.attribute("Property"))
-            .unwrap_or("TARGETDIR");
-        let on = child.attribute("On").unwrap_or("uninstall");
-        let mode: i16 = match on {
-            "install" => 1,
-            "both" => 3,
-            _ => 2,
-        };
-
-        section.add_symbol(Symbol::new("RemoveFile", id));
-        section.add_reference(Reference::new("Component", comp));
-
-        let row = RemoveFileRow {
-            file_key: id.to_string(),
-            component: comp_obj,
-            file_name: name.map(ToString::to_string),
-            dir_property: dir.to_string(),
-            install_mode: mode,
-        };
-        tables
-            .entry("RemoveFile".to_string())
-            .or_insert_with(|| IntermediateTable::new("RemoveFile"))
-            .push_record(row.to_record());
-    }
-
-    /// Compiles a `<SymbolicLink>` or `<Hardlink>` element into `PosixSymlink` table.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    ///
-    /// # Returns
-    ///
-    /// The resulting value or `Ok(())` on success.
-    fn compile_symlink(
-        child: &XmlNode,
-        parent_id: Option<&str>,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) -> Result<()> {
-        let id = child.attribute("Id").unwrap_or("Symlink1");
-        let target = child
-            .attribute("Target")
-            .or_else(|| child.attribute("TargetPath"))
-            .unwrap_or("");
-        let dir = child
-            .attribute("Directory")
-            .or(parent_id)
-            .unwrap_or("TARGETDIR");
-        let name = child.attribute("Name").unwrap_or(id);
-        let comp = parent_id.unwrap_or("DefaultComp");
-        let comp_obj = parent_id.map_or_else(
-            || ComponentName::from_static("DefaultComp"),
-            ComponentName::from_validated,
-        );
-
-        section.add_symbol(Symbol::new("SymbolicLink", id));
-        section.add_reference(Reference::new("Component", comp));
-
-        let row = crate::database::tables::posix::PosixSymlinkRow {
-            symlink_key: id.to_string(),
-            target_path: target.to_string(),
-            link_directory: DirectoryId::new(dir)?,
-            link_name: name.to_string(),
-            component: comp_obj,
-        };
-        tables
-            .entry("PosixSymlink".to_string())
-            .or_insert_with(|| IntermediateTable::new("PosixSymlink"))
-            .push_record(row.to_record());
-        Ok(())
-    }
-
-    /// Compiles a `<MediaTemplate>` element into a synthesized `Media` table entry.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_media_template(child: &XmlNode, tables: &mut HashMap<String, IntermediateTable>) {
-        let cab_template = child.attribute("CabinetTemplate").unwrap_or("cab1.cab");
-        let cab_name = cab_template.replace("{0}", "1");
-        let disk_prompt = child.attribute("DiskPrompt").map(ToString::to_string);
-        let row = MediaRow {
-            disk_id: 1,
-            last_sequence: 1,
-            disk_prompt,
-            cabinet: Some(cab_name),
-            volume_label: None,
-            source: None,
-        };
-        tables
-            .entry("Media".to_string())
-            .or_insert_with(|| IntermediateTable::new("Media"))
-            .push_record(row.to_record());
-    }
-
-    /// Compiles `<RemoveRegistryKey>` or `<RemoveRegistryValue>` into `RemoveRegistry` table.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_remove_registry(
-        child: &XmlNode,
-        parent_id: Option<&str>,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let id = child.attribute("Id").unwrap_or("RemoveReg1");
-        let root_str = child.attribute("Root").unwrap_or("HKLM");
-        let root = parse_registry_root(root_str);
-        let key = child.attribute("Key").unwrap_or("");
-        let name = child.attribute("Name").map(ToString::to_string);
-        let comp = parent_id.unwrap_or("DefaultComp");
-
-        section.add_symbol(Symbol::new("RemoveRegistry", id));
-        section.add_reference(Reference::new("Component", comp));
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(id.to_string()),
-            FieldValue::Short(root),
-            FieldValue::String(key.to_string()),
-            name.map_or(FieldValue::Null, FieldValue::String),
-            FieldValue::String(comp.to_string()),
-        ]);
-        tables
-            .entry("RemoveRegistry".to_string())
-            .or_insert_with(|| IntermediateTable::new("RemoveRegistry"))
-            .push_record(rec);
-    }
-
-    /// Compiles an `<IniFile>` element into `IniFile` table.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_ini_file(
-        child: &XmlNode,
-        parent_id: Option<&str>,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let id = child.attribute("Id").unwrap_or("Ini1");
-        let file_name = child.attribute("Name").unwrap_or("config.ini");
-        let dir = child.attribute("Directory");
-        let section_name = child.attribute("Section").unwrap_or("Settings");
-        let key = child.attribute("Key").unwrap_or("Key");
-        let value = child.attribute("Value").unwrap_or("");
-        let action_str = child.attribute("Action").unwrap_or("addLine");
-        let action: i16 = match action_str {
-            "createLine" => 1,
-            "replaceLine" => 2,
-            "addTag" => 3,
-            "removeTag" => 4,
-            _ => 0,
-        };
-        let comp = parent_id.unwrap_or("DefaultComp");
-
-        section.add_symbol(Symbol::new("IniFile", id));
-        section.add_reference(Reference::new("Component", comp));
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(id.to_string()),
-            FieldValue::String(file_name.to_string()),
-            dir.map_or(FieldValue::Null, |d| FieldValue::String(d.to_string())),
-            FieldValue::String(section_name.to_string()),
-            FieldValue::String(key.to_string()),
-            FieldValue::String(value.to_string()),
-            FieldValue::Short(action),
-            FieldValue::String(comp.to_string()),
-        ]);
-        tables
-            .entry("IniFile".to_string())
-            .or_insert_with(|| IntermediateTable::new("IniFile"))
-            .push_record(rec);
-    }
-
-    /// Compiles a `<RemoveIniFile>` element into `RemoveIniFile` table.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_remove_ini_file(
-        child: &XmlNode,
-        parent_id: Option<&str>,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let id = child.attribute("Id").unwrap_or("RemoveIni1");
-        let file_name = child.attribute("Name").unwrap_or("config.ini");
-        let dir = child.attribute("Directory");
-        let section_name = child.attribute("Section").unwrap_or("Settings");
-        let key = child.attribute("Key").unwrap_or("Key");
-        let value = child.attribute("Value");
-        let comp = parent_id.unwrap_or("DefaultComp");
-
-        section.add_symbol(Symbol::new("RemoveIniFile", id));
-        section.add_reference(Reference::new("Component", comp));
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(id.to_string()),
-            FieldValue::String(file_name.to_string()),
-            dir.map_or(FieldValue::Null, |d| FieldValue::String(d.to_string())),
-            FieldValue::String(section_name.to_string()),
-            FieldValue::String(key.to_string()),
-            value.map_or(FieldValue::Null, |v| FieldValue::String(v.to_string())),
-            FieldValue::Short(4),
-            FieldValue::String(comp.to_string()),
-        ]);
-        tables
-            .entry("RemoveIniFile".to_string())
-            .or_insert_with(|| IntermediateTable::new("RemoveIniFile"))
-            .push_record(rec);
-    }
-
-    /// Compiles an `<Icon>` element into `Icon` table.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_icon(
-        child: &XmlNode,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let id = child.attribute("Id").unwrap_or("AppIcon");
-        section.add_symbol(Symbol::new("Icon", id));
-        let rec = Record::with_fields(vec![
-            FieldValue::String(id.to_string()),
-            FieldValue::Stream(crate::database::tables::types::StringPoolId::new(1)),
-        ]);
-        tables
-            .entry("Icon".to_string())
-            .or_insert_with(|| IntermediateTable::new("Icon"))
-            .push_record(rec);
-
-        if let Some(src) = child
-            .attribute("SourceFile")
-            .or_else(|| child.attribute("Source"))
-        {
-            let mut wix_icon = Record::new();
-            wix_icon.push(FieldValue::String(id.to_string()));
-            wix_icon.push(FieldValue::String(src.to_string()));
-            tables
-                .entry("WixIcon".to_string())
-                .or_insert_with(|| IntermediateTable::new("WixIcon"))
-                .push_record(wix_icon);
-        }
-    }
-
-    /// Compiles a `<ProgId>` element into `ProgId` table.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_prog_id(
-        child: &XmlNode,
-        parent_id: Option<&str>,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let id = child.attribute("Id").unwrap_or("App.Document");
-        let desc = child.attribute("Description").map(ToString::to_string);
-        let icon = child.attribute("Icon").map(ToString::to_string);
-        let icon_idx: Option<i16> = child.attribute("IconIndex").and_then(|i| i.parse().ok());
-        let class_id = parent_id.map(ToString::to_string);
-
-        section.add_symbol(Symbol::new("ProgId", id));
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(id.to_string()),
-            FieldValue::Null,
-            class_id.map_or(FieldValue::Null, FieldValue::String),
-            desc.map_or(FieldValue::Null, FieldValue::String),
-            icon.map_or(FieldValue::Null, FieldValue::String),
-            icon_idx.map_or(FieldValue::Null, FieldValue::Short),
-        ]);
-        tables
-            .entry("ProgId".to_string())
-            .or_insert_with(|| IntermediateTable::new("ProgId"))
-            .push_record(rec);
-    }
-
-    /// Compiles an `<Extension>` element into `Extension` and `Verb` tables.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_extension(
-        child: &XmlNode,
-        parent_id: Option<&str>,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let ext = child.attribute("Id").unwrap_or("txt");
-        let comp = parent_id.unwrap_or("DefaultComp");
-        let prog_id = child.attribute("ProgId");
-        let mime = child
-            .attribute("MIME")
-            .or_else(|| child.attribute("ContentType"));
-
-        section.add_symbol(Symbol::new("Extension", ext));
-        section.add_reference(Reference::new("Component", comp));
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(ext.to_string()),
-            FieldValue::String(comp.to_string()),
-            prog_id.map_or(FieldValue::Null, |p| FieldValue::String(p.to_string())),
-            mime.map_or(FieldValue::Null, |m| FieldValue::String(m.to_string())),
-            FieldValue::Null,
-        ]);
-        tables
-            .entry("Extension".to_string())
-            .or_insert_with(|| IntermediateTable::new("Extension"))
-            .push_record(rec);
-
-        for sub in &child.children {
-            if sub.tag == "Verb" {
-                let verb_id = sub.attribute("Id").unwrap_or("open");
-                let cmd = sub.attribute("Command").map(ToString::to_string);
-                let arg = sub.attribute("Argument").map(ToString::to_string);
-                let seq: Option<i16> = sub.attribute("Sequence").and_then(|s| s.parse().ok());
-
-                let verb_rec = Record::with_fields(vec![
-                    FieldValue::String(ext.to_string()),
-                    FieldValue::String(verb_id.to_string()),
-                    seq.map_or(FieldValue::Null, FieldValue::Short),
-                    cmd.map_or(FieldValue::Null, FieldValue::String),
-                    arg.map_or(FieldValue::Null, FieldValue::String),
-                ]);
-                tables
-                    .entry("Verb".to_string())
-                    .or_insert_with(|| IntermediateTable::new("Verb"))
-                    .push_record(verb_rec);
-            }
-        }
-    }
-
-    /// Compiles a `<MIME>` element into `MIME` table.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_mime(
-        child: &XmlNode,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let content_type = child
-            .attribute("ContentType")
-            .unwrap_or("application/octet-stream");
-        let ext = child
-            .attribute("DefaultExtension")
-            .or_else(|| child.attribute("Extension"))
-            .unwrap_or("");
-        let clsid = child
-            .attribute("CLSID")
-            .or_else(|| child.attribute("Class"));
-
-        section.add_symbol(Symbol::new("MIME", content_type));
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(content_type.to_string()),
-            FieldValue::String(ext.to_string()),
-            clsid.map_or(FieldValue::Null, |c| FieldValue::String(c.to_string())),
-        ]);
-        tables
-            .entry("MIME".to_string())
-            .or_insert_with(|| IntermediateTable::new("MIME"))
-            .push_record(rec);
-    }
-
-    /// Compiles a `<Class>` element into `Class` table.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_class(
-        child: &XmlNode,
-        parent_id: Option<&str>,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let clsid = child
-            .attribute("Id")
-            .unwrap_or("{00000000-0000-0000-0000-000000000000}");
-        let context = child.attribute("Context").unwrap_or("InprocServer32");
-        let comp = parent_id.unwrap_or("DefaultComp");
-        let desc = child.attribute("Description").map(ToString::to_string);
-        let prog_id = child.attribute("ProgId");
-        let app_id = child.attribute("AppId");
-
-        section.add_symbol(Symbol::new("Class", clsid));
-        section.add_reference(Reference::new("Component", comp));
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(clsid.to_string()),
-            FieldValue::String(context.to_string()),
-            FieldValue::String(comp.to_string()),
-            prog_id.map_or(FieldValue::Null, |p| FieldValue::String(p.to_string())),
-            desc.map_or(FieldValue::Null, FieldValue::String),
-            app_id.map_or(FieldValue::Null, |a| FieldValue::String(a.to_string())),
-            FieldValue::Null,
-            FieldValue::Null,
-            FieldValue::Null,
-            FieldValue::Null,
-            FieldValue::Null,
-            FieldValue::Null,
-        ]);
-        tables
-            .entry("Class".to_string())
-            .or_insert_with(|| IntermediateTable::new("Class"))
-            .push_record(rec);
-    }
-
-    /// Compiles a `<TypeLib>` element into `TypeLib` table.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_type_lib(
-        child: &XmlNode,
-        parent_id: Option<&str>,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let lib_id = child
-            .attribute("Id")
-            .unwrap_or("{00000000-0000-0000-0000-000000000000}");
-        let lang: i16 = child
-            .attribute("Language")
-            .and_then(|l| l.parse().ok())
-            .unwrap_or(0);
-        let comp = parent_id.unwrap_or("DefaultComp");
-        let desc = child.attribute("Description").map(ToString::to_string);
-        let dir = child.attribute("Directory");
-
-        section.add_symbol(Symbol::new("TypeLib", lib_id));
-        section.add_reference(Reference::new("Component", comp));
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(lib_id.to_string()),
-            FieldValue::Short(lang),
-            FieldValue::String(comp.to_string()),
-            FieldValue::Null,
-            desc.map_or(FieldValue::Null, FieldValue::String),
-            dir.map_or(FieldValue::Null, |d| FieldValue::String(d.to_string())),
-            FieldValue::Null,
-            FieldValue::Null,
-        ]);
-        tables
-            .entry("TypeLib".to_string())
-            .or_insert_with(|| IntermediateTable::new("TypeLib"))
-            .push_record(rec);
-    }
-
-    /// Compiles an `<AppId>` element into `AppId` table.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_app_id(
-        child: &XmlNode,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let app_id = child
-            .attribute("Id")
-            .unwrap_or("{00000000-0000-0000-0000-000000000000}");
-        let remote_server = child.attribute("RemoteServerName").map(ToString::to_string);
-        let local_service = child.attribute("LocalService").map(ToString::to_string);
-
-        section.add_symbol(Symbol::new("AppId", app_id));
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(app_id.to_string()),
-            remote_server.map_or(FieldValue::Null, FieldValue::String),
-            local_service.map_or(FieldValue::Null, FieldValue::String),
-            FieldValue::Null,
-            FieldValue::Null,
-            FieldValue::Null,
-            FieldValue::Null,
-        ]);
-        tables
-            .entry("AppId".to_string())
-            .or_insert_with(|| IntermediateTable::new("AppId"))
-            .push_record(rec);
-    }
-
-    /// Compiles a `<SetProperty>` element (syntactic sugar for Type 51 custom action).
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    ///
-    /// # Returns
-    ///
-    /// The resulting value or `Ok(())` on success.
-    fn compile_set_property(
-        child: &XmlNode,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) -> Result<()> {
-        let prop = child
-            .attribute("Id")
-            .or_else(|| child.attribute("Property"))
-            .unwrap_or("PROP");
-        let val = child.attribute("Value").unwrap_or("");
-        let action_name = child
-            .attribute("Action")
-            .map_or_else(|| format!("Set_{prop}"), ToString::to_string);
-
-        section.add_symbol(Symbol::new("CustomAction", &action_name));
-
-        let ca_rec = Record::with_fields(vec![
-            FieldValue::String(action_name.clone()),
-            FieldValue::Short(51),
-            FieldValue::String(prop.to_string()),
-            FieldValue::String(val.to_string()),
-            FieldValue::Null,
-        ]);
-        tables
-            .entry("CustomAction".to_string())
-            .or_insert_with(|| IntermediateTable::new("CustomAction"))
-            .push_record(ca_rec);
-
-        let seq_num = child.attribute("Sequence").and_then(|s| s.parse().ok());
-        let cond = child
-            .children
-            .iter()
-            .find(|c| c.tag == "Condition")
-            .map(|c| c.text.clone())
-            .or_else(|| child.attribute("Condition").map(ToString::to_string));
-        let seq_row = SequenceRow::new(&action_name, cond, seq_num)?;
-        tables
-            .entry("InstallExecuteSequence".to_string())
-            .or_insert_with(|| IntermediateTable::new("InstallExecuteSequence"))
-            .push_record(seq_row.to_record());
-        Ok(())
-    }
-
-    /// Compiles `<AppSearch>` element into `AppSearch` table.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_app_search(
-        child: &XmlNode,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let prop = child.attribute("Property").unwrap_or("PROP");
-        let sig = child.attribute("Id").unwrap_or(prop);
-        section.add_symbol(Symbol::new("AppSearch", prop));
-        let rec = Record::with_fields(vec![
-            FieldValue::String(prop.to_string()),
-            FieldValue::String(sig.to_string()),
-        ]);
-        tables
-            .entry("AppSearch".to_string())
-            .or_insert_with(|| IntermediateTable::new("AppSearch"))
-            .push_record(rec);
-    }
-
-    /// Compiles `<RegistrySearch>` element into `RegLocator` table.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_registry_search(
-        child: &XmlNode,
-        parent_id: Option<&str>,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let root_str = child.attribute("Root").unwrap_or("HKLM");
-        let root = parse_registry_root(root_str);
-        let key = child.attribute("Key").unwrap_or("");
-        let name = child.attribute("Name").map(ToString::to_string);
-        let sig = child.attribute("Id").map_or_else(
-            || {
-                let seed = format!(
-                    "{}_{}_{}_{}",
-                    parent_id.unwrap_or(""),
-                    root_str,
-                    key,
-                    name.as_deref().unwrap_or("")
-                );
-                generate_deterministic_id("reg_search", &seed)
-            },
-            ToString::to_string,
-        );
-        let type_str = child.attribute("Type").unwrap_or("raw");
-        let mut type_num: i16 = match type_str {
-            "directory" => 0,
-            "file" => 1,
-            _ => 2,
-        };
-
-        if child
-            .attribute("Win64")
-            .is_some_and(|v| v.eq_ignore_ascii_case("yes"))
-        {
-            type_num |= 0x0010;
-        }
-
-        // If there is a nested FileSearch, this registry search is locating a directory
-        let mut nested_file_searches = Vec::new();
-        for sub in &child.children {
-            if sub.tag == "FileSearch" {
-                type_num &= 0x0010;
-                let file_name = sub.attribute("Name").unwrap_or("target.exe");
-                let file_sig = sub.attribute("Id").map_or_else(
-                    || {
-                        let seed = format!("{sig}_{file_name}");
-                        generate_deterministic_id("file_search", &seed)
-                    },
-                    ToString::to_string,
-                );
-                let min_ver = sub.attribute("MinVersion").map(ToString::to_string);
-                let max_ver = sub.attribute("MaxVersion").map(ToString::to_string);
-                nested_file_searches.push((file_sig, file_name, min_ver, max_ver));
-            }
-        }
-
-        section.add_symbol(Symbol::new("Signature", &sig));
-        if let Some(parent_prop) = parent_id {
-            let app_search_rec = Record::with_fields(vec![
-                FieldValue::String(parent_prop.to_string()),
-                FieldValue::String(sig.clone()),
-            ]);
-            tables
-                .entry("AppSearch".to_string())
-                .or_insert_with(|| IntermediateTable::new("AppSearch"))
-                .push_record(app_search_rec);
-        }
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(sig),
-            FieldValue::Short(root),
-            FieldValue::String(key.to_string()),
-            name.map_or(FieldValue::Null, FieldValue::String),
-            FieldValue::Short(type_num),
-        ]);
-        tables
-            .entry("RegLocator".to_string())
-            .or_insert_with(|| IntermediateTable::new("RegLocator"))
-            .push_record(rec);
-
-        for (file_sig, file_name, min_ver, max_ver) in nested_file_searches {
-            section.add_symbol(Symbol::new("Signature", &file_sig));
-            let sig_rec = Record::with_fields(vec![
-                FieldValue::String(file_sig),
-                FieldValue::String(file_name.to_string()),
-                min_ver.map_or(FieldValue::Null, FieldValue::String),
-                max_ver.map_or(FieldValue::Null, FieldValue::String),
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::Null,
-                FieldValue::Null,
-            ]);
-            tables
-                .entry("Signature".to_string())
-                .or_insert_with(|| IntermediateTable::new("Signature"))
-                .push_record(sig_rec);
-        }
-    }
-
-    /// Compiles `<DirectorySearch>` element into `DrLocator` table.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_directory_search(
-        child: &XmlNode,
-        parent_id: Option<&str>,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let path = child.attribute("Path").map(ToString::to_string);
-        let depth: Option<i16> = child.attribute("Depth").and_then(|d| d.parse().ok());
-        let parent = child.attribute("Parent").or(parent_id);
-        let sig = child.attribute("Id").map_or_else(
-            || {
-                let seed = format!("{}_{}", parent.unwrap_or(""), path.as_deref().unwrap_or(""));
-                generate_deterministic_id("dir_search", &seed)
-            },
-            ToString::to_string,
-        );
-
-        section.add_symbol(Symbol::new("Signature", &sig));
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(sig),
-            parent.map_or(FieldValue::Null, |p| FieldValue::String(p.to_string())),
-            path.map_or(FieldValue::Null, FieldValue::String),
-            depth.map_or(FieldValue::Null, FieldValue::Short),
-        ]);
-        tables
-            .entry("DrLocator".to_string())
-            .or_insert_with(|| IntermediateTable::new("DrLocator"))
-            .push_record(rec);
-    }
-
-    /// Compiles `<FileSearch>` element into `FileSearch` and `Signature` tables.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_file_search(
-        child: &XmlNode,
-        parent_id: Option<&str>,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let name = child.attribute("Name").unwrap_or("target.exe");
-        let sig = child.attribute("Id").map_or_else(
-            || {
-                let seed = format!("{}_{}", parent_id.unwrap_or(""), name);
-                generate_deterministic_id("file_search", &seed)
-            },
-            ToString::to_string,
-        );
-        let min_ver = child.attribute("MinVersion").map(ToString::to_string);
-        let max_ver = child.attribute("MaxVersion").map(ToString::to_string);
-
-        section.add_symbol(Symbol::new("Signature", &sig));
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(sig.clone()),
-            FieldValue::String(name.to_string()),
-            min_ver.map_or(FieldValue::Null, FieldValue::String),
-            max_ver.map_or(FieldValue::Null, FieldValue::String),
-            FieldValue::Null,
-            FieldValue::Null,
-            FieldValue::Null,
-            FieldValue::Null,
-            FieldValue::Null,
-        ]);
-        tables
-            .entry("Signature".to_string())
-            .or_insert_with(|| IntermediateTable::new("Signature"))
-            .push_record(rec);
-
-        if let Some(prop) = parent_id {
-            let app_rec = Record::with_fields(vec![
-                FieldValue::String(prop.to_string()),
-                FieldValue::String(sig),
-            ]);
-            tables
-                .entry("AppSearch".to_string())
-                .or_insert_with(|| IntermediateTable::new("AppSearch"))
-                .push_record(app_rec);
-        }
-    }
-
-    /// Compiles `<IniFileSearch>` element into `IniLocator` table.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_ini_file_search(
-        child: &XmlNode,
-        parent_id: Option<&str>,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let file = child
-            .attribute("Name")
-            .or_else(|| child.attribute("FileName"))
-            .unwrap_or("app.ini");
-        let section_name = child.attribute("Section").unwrap_or("Config");
-        let key = child.attribute("Key").unwrap_or("Key");
-        let sig = child.attribute("Id").map_or_else(
-            || {
-                let seed = format!(
-                    "{}_{}_{}_{}",
-                    parent_id.unwrap_or(""),
-                    file,
-                    section_name,
-                    key
-                );
-                generate_deterministic_id("ini_search", &seed)
-            },
-            ToString::to_string,
-        );
-        let field: Option<i16> = child.attribute("Field").and_then(|f| f.parse().ok());
-        let type_num: Option<i16> = child.attribute("Type").and_then(|t| t.parse().ok());
-
-        section.add_symbol(Symbol::new("Signature", &sig));
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(sig.clone()),
-            FieldValue::String(file.to_string()),
-            FieldValue::String(section_name.to_string()),
-            FieldValue::String(key.to_string()),
-            field.map_or(FieldValue::Null, FieldValue::Short),
-            type_num.map_or(FieldValue::Null, FieldValue::Short),
-        ]);
-        tables
-            .entry("IniLocator".to_string())
-            .or_insert_with(|| IntermediateTable::new("IniLocator"))
-            .push_record(rec);
-
-        if let Some(prop) = parent_id {
-            let app_rec = Record::with_fields(vec![
-                FieldValue::String(prop.to_string()),
-                FieldValue::String(sig),
-            ]);
-            tables
-                .entry("AppSearch".to_string())
-                .or_insert_with(|| IntermediateTable::new("AppSearch"))
-                .push_record(app_rec);
-        }
-    }
-
-    /// Compiles `<ComponentSearch>` element into `CompLocator` table.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_component_search(
-        child: &XmlNode,
-        parent_id: Option<&str>,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let guid = child
-            .attribute("Guid")
-            .unwrap_or("{00000000-0000-0000-0000-000000000000}");
-        let sig = child.attribute("Id").map_or_else(
-            || {
-                let seed = format!("{}_{}", parent_id.unwrap_or(""), guid);
-                generate_deterministic_id("comp_search", &seed)
-            },
-            ToString::to_string,
-        );
-        let type_num: Option<i16> = child.attribute("Type").and_then(|t| t.parse().ok());
-
-        section.add_symbol(Symbol::new("Signature", &sig));
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(sig.clone()),
-            FieldValue::String(guid.to_string()),
-            type_num.map_or(FieldValue::Null, FieldValue::Short),
-        ]);
-        tables
-            .entry("CompLocator".to_string())
-            .or_insert_with(|| IntermediateTable::new("CompLocator"))
-            .push_record(rec);
-
-        if let Some(prop) = parent_id {
-            let app_rec = Record::with_fields(vec![
-                FieldValue::String(prop.to_string()),
-                FieldValue::String(sig),
-            ]);
-            tables
-                .entry("AppSearch".to_string())
-                .or_insert_with(|| IntermediateTable::new("AppSearch"))
-                .push_record(app_rec);
-        }
-    }
-
-    /// Compiles a `<Launch>` or top-level `<Condition>` element into `LaunchCondition` table.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    #[allow(clippy::option_if_let_else)]
-    fn compile_launch_condition(child: &XmlNode, tables: &mut HashMap<String, IntermediateTable>) {
-        let message = child
-            .attribute("Message")
-            .unwrap_or("System requirements not met.");
-        let condition = if let Some(cond) = child.attribute("Condition") {
-            cond
-        } else if !child.text.trim().is_empty() {
-            child.text.trim()
-        } else {
-            "1"
-        };
-        let rec = Record::with_fields(vec![
-            FieldValue::String(condition.to_string()),
-            FieldValue::String(message.to_string()),
-        ]);
-        tables
-            .entry("LaunchCondition".to_string())
-            .or_insert_with(|| IntermediateTable::new("LaunchCondition"))
-            .push_record(rec);
-    }
-
-    /// Compiles a sequence table container (e.g. `<InstallExecuteSequence>`, `<InstallUISequence>`).
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    ///
-    /// # Returns
-    ///
-    /// The resulting value or `Ok(())` on success.
-    fn compile_sequence_table(
-        child: &XmlNode,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) -> Result<()> {
-        let table_name = &child.tag;
-        for sub in &child.children {
-            let action_name = sub
-                .attribute("Action")
-                .or_else(|| sub.attribute("Dialog"))
-                .or_else(|| sub.attribute("Id"))
-                .unwrap_or(&sub.tag);
-            let cond = sub
-                .attribute("Condition")
-                .map(ToString::to_string)
-                .or_else(|| {
-                    if sub.text.is_empty() {
-                        None
-                    } else {
-                        Some(sub.text.clone())
-                    }
-                });
-            let seq: Option<i16> = sub.attribute("Sequence").and_then(|s| s.parse().ok());
-            section.add_reference(Reference::new("Action", action_name));
-
-            let cond_field = cond.clone().map_or(FieldValue::Null, FieldValue::String);
-            if let Some(after) = sub.attribute("After") {
-                let rel_rec = Record::with_fields(vec![
-                    FieldValue::String(table_name.clone()),
-                    FieldValue::String(action_name.to_string()),
-                    FieldValue::String(after.to_string()),
-                    FieldValue::String("After".to_string()),
-                    cond_field,
-                ]);
-                tables
-                    .entry("_WixSequenceRelative".to_string())
-                    .or_insert_with(|| IntermediateTable::new("_WixSequenceRelative"))
-                    .push_record(rel_rec);
-            } else if let Some(before) = sub.attribute("Before") {
-                let rel_rec = Record::with_fields(vec![
-                    FieldValue::String(table_name.clone()),
-                    FieldValue::String(action_name.to_string()),
-                    FieldValue::String(before.to_string()),
-                    FieldValue::String("Before".to_string()),
-                    cond_field,
-                ]);
-                tables
-                    .entry("_WixSequenceRelative".to_string())
-                    .or_insert_with(|| IntermediateTable::new("_WixSequenceRelative"))
-                    .push_record(rel_rec);
-            } else if let Some(on_exit) = sub.attribute("OnExit") {
-                let rel_rec = Record::with_fields(vec![
-                    FieldValue::String(table_name.clone()),
-                    FieldValue::String(action_name.to_string()),
-                    FieldValue::String(on_exit.to_string()),
-                    FieldValue::String("OnExit".to_string()),
-                    cond_field,
-                ]);
-                tables
-                    .entry("_WixSequenceRelative".to_string())
-                    .or_insert_with(|| IntermediateTable::new("_WixSequenceRelative"))
-                    .push_record(rel_rec);
-            }
-
-            let seq_row = SequenceRow::new(action_name, cond, seq)?;
-            tables
-                .entry(table_name.clone())
-                .or_insert_with(|| IntermediateTable::new(table_name))
-                .push_record(seq_row.to_record());
-        }
-        Ok(())
-    }
-
-    /// Compiles patch-related authoring elements.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_patch_element(
-        child: &XmlNode,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let id = child.attribute("Id").unwrap_or("Patch1");
-        section.add_symbol(Symbol::new("Patch", id));
-        let row = crate::database::tables::core::PatchPackageRow {
-            patch_id: id.to_string(),
-            media: 1,
-        };
-        tables
-            .entry("PatchPackage".to_string())
-            .or_insert_with(|| IntermediateTable::new("PatchPackage"))
-            .push_record(row.to_record());
-    }
-
-    /// Compiles a `<UIRef>` element, adding a reference to the target UI dialog set.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `_tables` - The `_tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_ui_ref(
-        child: &XmlNode,
-        section: &mut IntermediateSection,
-        _tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let id = child.attribute("Id").unwrap_or("WixUI_InstallDir");
-        section.add_reference(Reference::new("UI", id));
-    }
-
-    /// Compiles `<ControlEvent>` or `<Publish>` element into `ControlEvent` table.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_control_event(
-        child: &XmlNode,
-        parent_id: Option<&str>,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let dialog = child.attribute("Dialog").unwrap_or("Dialog1");
-        let control = parent_id
-            .or_else(|| child.attribute("Control"))
-            .unwrap_or("BtnNext");
-        let event = child.attribute("Property").map_or_else(
-            || child.attribute("Event").unwrap_or("NewDialog").to_string(),
-            |target_prop| format!("[{target_prop}]"),
-        );
-        let arg = child
-            .attribute("Argument")
-            .or_else(|| child.attribute("Value"))
-            .unwrap_or("");
-        let cond = child
-            .attribute("Condition")
-            .map(ToString::to_string)
-            .or_else(|| {
-                if child.text.is_empty() {
-                    None
-                } else {
-                    Some(child.text.clone())
-                }
-            });
-        let order: Option<i16> = child.attribute("Order").and_then(|o| o.parse().ok());
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(dialog.to_string()),
-            FieldValue::String(control.to_string()),
-            FieldValue::String(event),
-            FieldValue::String(arg.to_string()),
-            cond.map_or(FieldValue::Null, FieldValue::String),
-            order.map_or(FieldValue::Null, FieldValue::Short),
-        ]);
-        tables
-            .entry("ControlEvent".to_string())
-            .or_insert_with(|| IntermediateTable::new("ControlEvent"))
-            .push_record(rec);
-    }
-
-    /// Compiles `<ControlCondition>` into `ControlCondition` table.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_control_condition(
-        child: &XmlNode,
-        parent_id: Option<&str>,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let dialog = child.attribute("Dialog").unwrap_or("Dialog1");
-        let control = parent_id
-            .or_else(|| child.attribute("Control"))
-            .unwrap_or("Control1");
-        let action = child.attribute("Action").unwrap_or("enable");
-        let cond = child.attribute("Condition").map_or_else(
-            || {
-                if child.text.is_empty() {
-                    "1"
-                } else {
-                    &child.text
-                }
-            },
-            |c| c,
-        );
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(dialog.to_string()),
-            FieldValue::String(control.to_string()),
-            FieldValue::String(action.to_string()),
-            FieldValue::String(cond.to_string()),
-        ]);
-        tables
-            .entry("ControlCondition".to_string())
-            .or_insert_with(|| IntermediateTable::new("ControlCondition"))
-            .push_record(rec);
-    }
-
-    /// Compiles `<Subscribe>` element into `EventMapping` table.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_subscribe(
-        child: &XmlNode,
-        parent_id: Option<&str>,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let dialog = child.attribute("Dialog").unwrap_or("Dialog1");
-        let control = parent_id
-            .or_else(|| child.attribute("Control"))
-            .unwrap_or("Control1");
-        let event = child.attribute("Event").unwrap_or("SetProgress");
-        let attr = child.attribute("Attribute").unwrap_or("Progress");
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(dialog.to_string()),
-            FieldValue::String(control.to_string()),
-            FieldValue::String(event.to_string()),
-            FieldValue::String(attr.to_string()),
-        ]);
-        tables
-            .entry("EventMapping".to_string())
-            .or_insert_with(|| IntermediateTable::new("EventMapping"))
-            .push_record(rec);
-    }
-
-    /// Compiles a `<Binary>` element into `Binary` table.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_binary(
-        child: &XmlNode,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let id = child.attribute("Id").unwrap_or("Binary1");
-        section.add_symbol(Symbol::new("Binary", id));
-        let row = crate::database::tables::core::BinaryRow {
-            name: id.to_string(),
-            data: crate::database::tables::types::StringPoolId::new(1),
-        };
-        tables
-            .entry("Binary".to_string())
-            .or_insert_with(|| IntermediateTable::new("Binary"))
-            .push_record(row.to_record());
-
-        if let Some(src) = child.attribute("SourceFile") {
-            let mut wix_bin = Record::new();
-            wix_bin.push(FieldValue::String(id.to_string()));
-            wix_bin.push(FieldValue::String(src.to_string()));
-            tables
-                .entry("WixBinary".to_string())
-                .or_insert_with(|| IntermediateTable::new("WixBinary"))
-                .push_record(wix_bin);
-        }
-    }
-
-    /// Compiles `<Billboard>` and `<BillboardAction>` elements.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_billboard(
-        child: &XmlNode,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let id = child.attribute("Id").unwrap_or("BB1");
-        let feat = child.attribute("Feature").unwrap_or("Main");
-        let action = child.attribute("Action").unwrap_or("InstallFiles");
-        let ordering: Option<i16> = child.attribute("Ordering").and_then(|o| o.parse().ok());
-
-        section.add_symbol(Symbol::new("Billboard", id));
-
-        let rec = Record::with_fields(vec![
-            FieldValue::String(id.to_string()),
-            FieldValue::String(feat.to_string()),
-            FieldValue::String(action.to_string()),
-            ordering.map_or(FieldValue::Null, FieldValue::Short),
-        ]);
-        tables
-            .entry("Billboard".to_string())
-            .or_insert_with(|| IntermediateTable::new("Billboard"))
-            .push_record(rec);
-    }
-
-    /// Compiles a `<ProgressText>` element into `ActionText` table.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_progress_text(child: &XmlNode, tables: &mut HashMap<String, IntermediateTable>) {
-        let action = child.attribute("Action").unwrap_or("InstallFiles");
-        let template = child.attribute("Template").map(ToString::to_string);
-        let desc = if child.text.is_empty() {
-            action.to_string()
-        } else {
-            child.text.clone()
-        };
-        let rec = Record::with_fields(vec![
-            FieldValue::String(action.to_string()),
-            FieldValue::String(desc),
-            template.map_or(FieldValue::Null, FieldValue::String),
-        ]);
-        tables
-            .entry("ActionText".to_string())
-            .or_insert_with(|| IntermediateTable::new("ActionText"))
-            .push_record(rec);
-    }
-
-    /// Compiles an `<Error>` element into `Error` table.
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_error(child: &XmlNode, tables: &mut HashMap<String, IntermediateTable>) {
-        let id: i16 = child
-            .attribute("Id")
-            .and_then(|i| i.parse().ok())
-            .unwrap_or(1001);
-        let message = child.attribute("Message").map_or_else(
-            || {
-                if child.text.is_empty() {
-                    "Error occurred"
-                } else {
-                    &child.text
-                }
-            },
-            |m| m,
-        );
-        let rec = Record::with_fields(vec![
-            FieldValue::Short(id),
-            FieldValue::String(message.to_string()),
-        ]);
-        tables
-            .entry("Error".to_string())
-            .or_insert_with(|| IntermediateTable::new("Error"))
-            .push_record(rec);
-    }
-
-    /// Compiles common `WiX` extension elements (e.g. `util:*`, `netfx:*`, `firewall:*`, `sql:*`, `iis:*`, `dep:*`, `bal:*`, `http:*`).
-    ///
-    /// # Arguments
-    ///
-    /// * `child` - The `child` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `section` - The `section` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
-    fn compile_extension_element(
-        child: &XmlNode,
-        parent_id: Option<&str>,
-        section: &mut IntermediateSection,
-        tables: &mut HashMap<String, IntermediateTable>,
-    ) {
-        let id = child.attribute("Id").unwrap_or("ExtensionItem");
-        section.add_symbol(Symbol::new("Extension", id));
-        if let Some(parent) = parent_id {
-            section.add_reference(Reference::new("Component", parent));
-        }
-
-        let tag = &child.tag;
-        let mut fields = vec![
-            FieldValue::String(id.to_string()),
-            FieldValue::String(tag.clone()),
-        ];
-        if let Some(val) = child
-            .attribute("Value")
-            .or_else(|| child.attribute("Name"))
-            .or_else(|| child.attribute("Target"))
-        {
-            fields.push(FieldValue::String(val.to_string()));
-        }
-        let rec = Record::with_fields(fields);
-        tables
-            .entry(format!("_{tag}"))
-            .or_insert_with(|| IntermediateTable::new(format!("_{tag}")))
-            .push_record(rec);
     }
 }
 
@@ -4999,11 +1762,11 @@ pub fn format_msi_filename(
 ///
 /// # Arguments
 ///
-/// * `root_str` - The `root_str` parameter.
+/// * `root_str` - The root str value.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// Computed `i16` numeric result or status code.
 fn parse_registry_root(root_str: &str) -> i16 {
     match root_str.to_ascii_uppercase().as_str() {
         "HKCR" | "HKEY_CLASSES_ROOT" => 0,
@@ -5014,7 +1777,6 @@ fn parse_registry_root(root_str: &str) -> i16 {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::wix::extensions::WixExtension;
@@ -5477,7 +2239,6 @@ mod tests {
 
     struct FailingMockExtension;
     impl WixExtension for FailingMockExtension {
-        #[allow(unused_qualifications)]
         fn id(&self) -> &'static str {
             "FailingMockExtension"
         }
@@ -5793,7 +2554,6 @@ mod tests {
     ///
     /// Returns [`crate::MsiError`] if XML parsing or compilation fails.
     #[test]
-    #[allow(clippy::too_many_lines)]
     fn test_compiler_features_and_components_branches() {
         let parser = XmlParser::new();
         let compiler = Compiler::new();
@@ -5920,7 +2680,6 @@ mod tests {
     ///
     /// Returns [`crate::MsiError`] if XML parsing or compilation fails.
     #[test]
-    #[allow(clippy::too_many_lines)]
     fn test_compiler_searches_nested_and_types() {
         let parser = XmlParser::new();
         let compiler = Compiler::new();
@@ -6179,7 +2938,7 @@ mod tests {
         let dummy_node = parser.parse("<posix:UnknownTag />").unwrap_or_default();
         let mut dummy_sec = IntermediateSection::new(SectionType::Product, None);
         let mut dummy_tbls = HashMap::new();
-        Compiler::compile_posix_element(&dummy_node, None, &mut dummy_sec, &mut dummy_tbls);
+        elements::compile_posix_element(&dummy_node, None, &mut dummy_sec, &mut dummy_tbls);
 
         // Verify parse_registry_root helpers
         assert_eq!(parse_registry_root("HKEY_CLASSES_ROOT"), 0);
@@ -6236,7 +2995,8 @@ mod tests {
     /// Returns [`crate::MsiError`] if XML parsing or compilation fails.
     #[allow(clippy::cognitive_complexity)]
     #[test]
-    #[allow(clippy::too_many_lines, clippy::similar_names)]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::similar_names)]
     fn test_compiler_libscript_parity_features() {
         let parser = XmlParser::new();
         let compiler = Compiler::new();
@@ -6850,7 +3610,7 @@ mod tests {
     /// Tests compiling `<ServiceInstall>` and `<ServiceControl>` with full fidelity attributes.
     #[allow(clippy::cognitive_complexity)]
     #[test]
-    #[allow(clippy::too_many_lines, clippy::similar_names)]
+    #[allow(clippy::too_many_lines)]
     fn test_compiler_service_install_and_control_full_fidelity() {
         let xml = r#"
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
@@ -7004,7 +3764,8 @@ mod tests {
 
     /// Tests compiling declarative SQL elements (`SqlDatabase`, `SqlString`, `SqlScript`).
     #[test]
-    #[allow(clippy::too_many_lines, clippy::similar_names)]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::similar_names)]
     fn test_compiler_sql_extension_elements() {
         let xml = r#"
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi" xmlns:sql="http://schemas.microsoft.com/wix/SqlExtension">
@@ -7924,7 +4685,7 @@ mod tests {
         let mut dialog_sec =
             IntermediateSection::new(SectionType::Product, Some("Prod".to_string()));
         let mut tables = HashMap::new();
-        assert!(Compiler::compile_dialog(&dlg_node, &mut dialog_sec, &mut tables).is_ok());
+        assert!(ui_and_search::compile_dialog(&dlg_node, &mut dialog_sec, &mut tables).is_ok());
     }
 
     /// Tests `Product` with `Id="?"`, `InstallScope="perUser"`, nested file shortcut without explicit target, and full `UpgradeVersion` attribute flags.

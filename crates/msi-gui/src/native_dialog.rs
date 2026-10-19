@@ -8,101 +8,21 @@
 use msi::error::MsiError;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-/// Supported native MSI control types mapped from the `Control` table.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NativeControlType {
-    /// A Win32 billboard control (`WC_STATIC` with an image/text sequence).
-    Billboard,
-    /// A Win32 static bitmap (`WC_STATIC` with `SS_BITMAP`).
-    Bitmap,
-    /// A checkbox (`WC_BUTTON` with `BS_AUTOCHECKBOX`).
-    CheckBox,
-    /// A combo box (`WC_COMBOBOX`).
-    ComboBox,
-    /// A directory combo box (`WC_COMBOBOXEX`).
-    DirectoryCombo,
-    /// A directory list (`WC_LISTVIEW`).
-    DirectoryList,
-    /// A Win32 edit box (`WC_EDIT`).
-    Edit,
-    /// A group box (`WC_BUTTON` with `BS_GROUPBOX`).
-    GroupBox,
-    /// A static icon (`WC_STATIC` with `SS_ICON`).
-    Icon,
-    /// A horizontal etched line (`WC_STATIC` with `SS_ETCHEDHORZ`).
-    Line,
-    /// A list box (`WC_LISTBOX`).
-    ListBox,
-    /// A list view (`WC_LISTVIEW`).
-    ListView,
-    /// A masked edit box (`WC_EDIT` with custom validation).
-    MaskedEdit,
-    /// A path edit box (`WC_EDIT` with autocomplete).
-    PathEdit,
-    /// A progress bar (`PROGRESS_CLASS`).
-    ProgressBar,
-    /// A standard Win32 `PushButton` (`WC_BUTTON`).
-    PushButton,
-    /// A radio button group (container for `WC_BUTTON` with `BS_AUTORADIOBUTTON`).
-    RadioButtonGroup,
-    /// A scrollable text box (`WC_EDIT` with `ES_MULTILINE` and `WS_VSCROLL`).
-    ScrollableText,
-    /// A selection tree (`WC_TREEVIEW`).
-    SelectionTree,
-    /// A Win32 static text label (`WC_STATIC`).
-    Text,
-    /// A volume cost list (`WC_LISTVIEW`).
-    VolumeCostList,
-    /// A volume select combo box (`WC_COMBOBOX`).
-    VolumeSelectCombo,
-}
-
-impl std::str::FromStr for NativeControlType {
-    type Err = MsiError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "Billboard" => Ok(Self::Billboard),
-            "Bitmap" => Ok(Self::Bitmap),
-            "CheckBox" => Ok(Self::CheckBox),
-            "ComboBox" => Ok(Self::ComboBox),
-            "DirectoryCombo" => Ok(Self::DirectoryCombo),
-            "DirectoryList" => Ok(Self::DirectoryList),
-            "Edit" => Ok(Self::Edit),
-            "GroupBox" => Ok(Self::GroupBox),
-            "Icon" => Ok(Self::Icon),
-            "Line" => Ok(Self::Line),
-            "ListBox" => Ok(Self::ListBox),
-            "ListView" => Ok(Self::ListView),
-            "MaskedEdit" => Ok(Self::MaskedEdit),
-            "PathEdit" => Ok(Self::PathEdit),
-            "ProgressBar" => Ok(Self::ProgressBar),
-            "PushButton" => Ok(Self::PushButton),
-            "RadioButtonGroup" => Ok(Self::RadioButtonGroup),
-            "ScrollableText" => Ok(Self::ScrollableText),
-            "SelectionTree" => Ok(Self::SelectionTree),
-            "Text" => Ok(Self::Text),
-            "VolumeCostList" => Ok(Self::VolumeCostList),
-            "VolumeSelectCombo" => Ok(Self::VolumeSelectCombo),
-            _ => Err(MsiError::User32RenderError(format!(
-                "Unsupported control type: {s}"
-            ))),
-        }
-    }
-}
+/// Canonical MSI control type re-exported from [`msi::ui::ControlType`].
+pub type NativeControlType = msi::ui::ControlType;
 
 /// A parsed control definition from an MSI database.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MsiControlDefinition {
     /// The parsed native control type.
     pub control_type: NativeControlType,
-    /// The X coordinate.
+    /// The X coordinate in dialog units or pixels.
     pub x: u32,
-    /// The Y coordinate.
+    /// The Y coordinate in dialog units or pixels.
     pub y: u32,
-    /// The width.
+    /// The control width.
     pub width: u32,
-    /// The height.
+    /// The control height.
     pub height: u32,
     /// The text or property associated with the control.
     pub text: String,
@@ -115,33 +35,10 @@ impl MsiControlDefinition {
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// The Win32 control class name string (`Button`, `Static`, `Edit`, etc.).
     #[must_use]
     pub const fn to_win32_class(&self) -> &'static str {
-        match self.control_type {
-            NativeControlType::CheckBox
-            | NativeControlType::GroupBox
-            | NativeControlType::PushButton
-            | NativeControlType::RadioButtonGroup => "Button",
-            NativeControlType::Billboard
-            | NativeControlType::Bitmap
-            | NativeControlType::Icon
-            | NativeControlType::Line
-            | NativeControlType::Text => "Static",
-            NativeControlType::Edit
-            | NativeControlType::MaskedEdit
-            | NativeControlType::PathEdit
-            | NativeControlType::ScrollableText => "Edit",
-            NativeControlType::ComboBox
-            | NativeControlType::DirectoryCombo
-            | NativeControlType::VolumeSelectCombo => "ComboBox",
-            NativeControlType::DirectoryList
-            | NativeControlType::ListView
-            | NativeControlType::VolumeCostList => "SysListView32",
-            NativeControlType::ListBox => "ListBox",
-            NativeControlType::ProgressBar => "msctls_progress32",
-            NativeControlType::SelectionTree => "SysTreeView32",
-        }
+        self.control_type.to_win32_class()
     }
 }
 
@@ -154,11 +51,11 @@ impl NativeWindowHandle {
     ///
     /// # Arguments
     ///
-    /// * `ptr` - The ptr argument.
+    /// * `ptr` - Raw integer value of the native window handle (`HWND`).
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// A strongly typed [`NativeWindowHandle`].
     #[must_use]
     pub const fn new(ptr: usize) -> Self {
         Self(ptr)
@@ -168,7 +65,7 @@ impl NativeWindowHandle {
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// The raw integer window handle value.
     #[must_use]
     pub const fn as_raw(&self) -> usize {
         self.0
@@ -187,61 +84,8 @@ pub mod window_classes {
     pub const MSI_VOLUME_COST_LIST_CLASS: &str = "MsiVolumeCostList";
 }
 
-/// Dialog Unit to Pixel coordinate converter.
-#[derive(Debug, Clone)]
-pub struct DialogUnitConverter {
-    /// Base horizontal font metric in pixels.
-    base_x: u32,
-    /// Base vertical font metric in pixels.
-    base_y: u32,
-}
-
-impl DialogUnitConverter {
-    /// Creates a new `DialogUnitConverter` with base font metrics.
-    ///
-    /// On Windows, these metrics are typically obtained via `GetTextMetricsW`.
-    ///
-    /// # Arguments
-    ///
-    /// * `base_x` - The `base_x` argument.
-    /// * `base_y` - The `base_y` argument.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
-    #[must_use]
-    pub const fn new(base_x: u32, base_y: u32) -> Self {
-        Self { base_x, base_y }
-    }
-
-    /// Converts an X coordinate from Dialog Units to Pixels.
-    ///
-    /// # Arguments
-    ///
-    /// * `x` - The x argument.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
-    #[must_use]
-    pub const fn x_to_pixels(&self, x: u32) -> u32 {
-        (x * self.base_x) / 4
-    }
-
-    /// Converts a Y coordinate from Dialog Units to Pixels.
-    ///
-    /// # Arguments
-    ///
-    /// * `y` - The y argument.
-    ///
-    /// # Returns
-    ///
-    /// The return value.
-    #[must_use]
-    pub const fn y_to_pixels(&self, y: u32) -> u32 {
-        (y * self.base_y) / 8
-    }
-}
+/// Dialog Unit to Pixel coordinate converter re-exported from [`msi::ui::DialogMetrics`].
+pub type DialogUnitConverter = msi::ui::DialogMetrics;
 
 /// Message types for the dialog message loop.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -296,7 +140,7 @@ pub trait Control {
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// Computed `NativeWindowHandle` value.
     fn handle(&self) -> NativeWindowHandle;
 }
 
@@ -306,7 +150,7 @@ pub trait Window {
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// Computed `NativeWindowHandle` value.
     fn handle(&self) -> NativeWindowHandle;
 
     /// Adds a control to the window.
@@ -320,7 +164,7 @@ pub trait Window {
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(Box<dyn Control>)` on success, or an error if the operation fails.
     fn add_control(&mut self, def: &MsiControlDefinition) -> Result<Box<dyn Control>, MsiError>;
 }
 
@@ -339,7 +183,7 @@ pub trait Renderer {
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(Box<dyn Window>)` on success, or an error if the operation fails.
     fn create_window(
         &mut self,
         title: &str,
@@ -355,7 +199,7 @@ static NEXT_HWND: AtomicUsize = AtomicUsize::new(0x1000);
 ///
 /// # Returns
 ///
-/// The return value.
+/// Computed `NativeWindowHandle` value.
 #[must_use]
 pub fn allocate_simulated_hwnd() -> NativeWindowHandle {
     NativeWindowHandle::new(NEXT_HWND.fetch_add(1, Ordering::SeqCst))
@@ -417,7 +261,7 @@ pub mod windows_impl {
         ///
         /// # Returns
         ///
-        /// The return value.
+        /// A newly constructed instance of `Self`.
         #[must_use]
         pub const fn new() -> Self {
             Self
@@ -505,7 +349,7 @@ pub mod posix_impl {
         ///
         /// # Returns
         ///
-        /// The return value.
+        /// A newly constructed instance of `Self`.
         #[must_use]
         pub const fn new() -> Self {
             Self
@@ -675,7 +519,7 @@ mod tests {
 
     #[test]
     fn test_dialog_unit_converter() {
-        let converter = DialogUnitConverter::new(8, 16);
+        let converter = DialogUnitConverter::with_units(8, 16);
         assert_eq!(converter.x_to_pixels(10), 20);
         assert_eq!(converter.y_to_pixels(10), 20);
     }

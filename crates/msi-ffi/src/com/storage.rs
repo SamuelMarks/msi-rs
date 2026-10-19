@@ -1,3 +1,5 @@
+//! COM `IStorage` and `IEnumSTATSTG` vtable and interface definitions for structured storage.
+
 use super::stream::{IStream, STATSTG};
 use super::{IUnknownVtbl, HRESULT, ULONG};
 use std::ffi::c_void;

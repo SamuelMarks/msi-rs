@@ -34,7 +34,7 @@ impl SectionType {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `u8` numeric result or status code.
     #[must_use]
     pub const fn to_u8(self) -> u8 {
         match self {
@@ -54,11 +54,11 @@ impl SectionType {
     ///
     /// # Arguments
     ///
-    /// * `val` - The `val` parameter.
+    /// * `val` - Value to store, format, or evaluate.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Self)` on success, or an error if the operation fails.
     pub fn from_u8(val: u8) -> Result<Self> {
         match val {
             1 => Ok(Self::Product),
@@ -345,7 +345,7 @@ impl IntermediateTable {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn new(name: impl Into<String>) -> Self {
         Self {
@@ -389,7 +389,7 @@ impl IntermediateSection {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn new(section_type: SectionType, id: Option<String>) -> Self {
         Self {
@@ -443,7 +443,7 @@ impl IntermediateSection {
     ///
     /// # Arguments
     ///
-    /// * `table` - The `table` parameter.
+    /// * `table` - Name of the MSI database table.
     pub fn add_table(&mut self, table: IntermediateTable) {
         self.tables.push(table);
     }
@@ -461,7 +461,7 @@ impl WixObject {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn new() -> Self {
         Self {
@@ -473,7 +473,7 @@ impl WixObject {
     ///
     /// # Arguments
     ///
-    /// * `section` - The `section` parameter.
+    /// * `section` - Intermediate object section receiving symbols and table rows.
     pub fn add_section(&mut self, section: IntermediateSection) {
         self.sections.push(section);
     }
@@ -832,8 +832,8 @@ impl WixObject {
     ///
     /// # Arguments
     ///
-    /// * `out` - The `out` parameter.
-    /// * `s` - The `s` parameter.
+    /// * `out` - Destination output buffer or writer.
+    /// * `s` - Input string slice to parse or transform.
     #[allow(clippy::cast_possible_truncation)]
     fn write_string(out: &mut Vec<u8>, s: &str) {
         let bytes = s.as_bytes();
@@ -845,8 +845,8 @@ impl WixObject {
     ///
     /// # Arguments
     ///
-    /// * `out` - The `out` parameter.
-    /// * `s` - The `s` parameter.
+    /// * `out` - Destination output buffer or writer.
+    /// * `s` - Input string slice to parse or transform.
     fn write_opt_string(out: &mut Vec<u8>, s: Option<&str>) {
         match s {
             Some(val) => {
@@ -863,12 +863,12 @@ impl WixObject {
     ///
     /// # Arguments
     ///
-    /// * `bytes` - The `bytes` parameter.
-    /// * `cursor` - The `cursor` parameter.
+    /// * `bytes` - Raw binary payload byte slice.
+    /// * `cursor` - Current read/write position cursor.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok((String)` on success, or an error if the operation fails.
     fn read_string(bytes: &[u8], cursor: usize) -> Result<(String, usize)> {
         if cursor + 4 > bytes.len() {
             return Err(MsiError::InvalidWixObject {
@@ -896,12 +896,12 @@ impl WixObject {
     ///
     /// # Arguments
     ///
-    /// * `bytes` - The `bytes` parameter.
-    /// * `cursor` - The `cursor` parameter.
+    /// * `bytes` - Raw binary payload byte slice.
+    /// * `cursor` - Current read/write position cursor.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok((Option<String>)` on success, or an error if the operation fails.
     fn read_opt_string(bytes: &[u8], cursor: usize) -> Result<(Option<String>, usize)> {
         if cursor >= bytes.len() {
             return Err(MsiError::InvalidWixObject {
@@ -918,7 +918,7 @@ impl WixObject {
 }
 
 #[cfg(test)]
-#[allow(clippy::manual_flatten, clippy::redundant_clone)]
+#[allow(clippy::manual_flatten)]
 mod tests {
     use super::*;
 

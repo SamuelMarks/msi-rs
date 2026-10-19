@@ -26,7 +26,7 @@ impl DependencyExtension {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn new() -> Self {
         Self
@@ -40,14 +40,13 @@ impl DependencyExtension {
     ///
     /// # Arguments
     ///
-    /// * `node` - The `node` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
+    /// * `node` - Parsed XML element node being compiled.
+    /// * `parent_id` - Optional identifier of the enclosing parent element or component.
+    /// * `tables` - Map of intermediate MSI tables being populated during compilation.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     fn compile_provides(
         node: &XmlNode,
         parent_id: Option<&str>,
@@ -85,14 +84,13 @@ impl DependencyExtension {
     ///
     /// # Arguments
     ///
-    /// * `node` - The `node` parameter.
-    /// * `parent_id` - The `parent_id` parameter.
-    /// * `tables` - The `tables` parameter.
-    /// * `IntermediateTable>` - The `IntermediateTable>` parameter.
+    /// * `node` - Parsed XML element node being compiled.
+    /// * `parent_id` - Optional identifier of the enclosing parent element or component.
+    /// * `tables` - Map of intermediate MSI tables being populated during compilation.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     fn compile_requires(
         node: &XmlNode,
         parent_id: Option<&str>,
@@ -200,14 +198,14 @@ impl WixExtension for DependencyExtension {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::wix::wixobj::SectionType;
 
     /// Tests `DependencyExtension` constructor, traits, identifiers, and supported namespaces.
     #[test]
-    #[allow(clippy::clone_on_copy, clippy::default_constructed_unit_structs)]
+    #[allow(clippy::clone_on_copy)]
+    #[allow(clippy::default_constructed_unit_structs)]
     fn test_dependency_extension_id_and_namespaces() {
         let ext = DependencyExtension::new();
         let ext_clone = ext;

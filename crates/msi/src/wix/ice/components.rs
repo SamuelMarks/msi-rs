@@ -12,11 +12,11 @@ use std::collections::{HashMap, HashSet};
 ///
 /// # Arguments
 ///
-/// * `db` - The `db` parameter.
+/// * `db` - In-memory linked MSI database to inspect or mutate.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// Computed `HashMap<String, String>` value.
 fn get_component_directories(db: &LinkedDatabase) -> HashMap<String, String> {
     let mut map = HashMap::new();
     for r in db.get_records("Component") {
@@ -33,11 +33,11 @@ fn get_component_directories(db: &LinkedDatabase) -> HashMap<String, String> {
 ///
 /// # Arguments
 ///
-/// * `db` - The `db` parameter.
+/// * `db` - In-memory linked MSI database to inspect or mutate.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// Computed `HashMap<String, Option<String>>` value.
 fn get_component_keypaths(db: &LinkedDatabase) -> HashMap<String, Option<String>> {
     let mut map = HashMap::new();
     for r in db.get_records("Component") {
@@ -56,11 +56,11 @@ fn get_component_keypaths(db: &LinkedDatabase) -> HashMap<String, Option<String>
 ///
 /// # Arguments
 ///
-/// * `db` - The `db` parameter.
+/// * `db` - In-memory linked MSI database to inspect or mutate.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// Computed `HashMap<String, HashSet<String>>` value.
 fn get_feature_components(db: &LinkedDatabase) -> HashMap<String, HashSet<String>> {
     let mut map: HashMap<String, HashSet<String>> = HashMap::new();
     for r in db.get_records("FeatureComponents") {
@@ -675,7 +675,6 @@ pub fn validate_ice91(db: &LinkedDatabase) -> Option<IceReport> {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::database::tables::record::Record;

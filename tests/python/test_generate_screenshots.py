@@ -479,6 +479,7 @@ def test_ensure_binaries_and_capture_artifacts(tmp_path: Path) -> None:
     nl = chr(10)
 
     def fake_run(cmd: list[str], **kwargs: object) -> MagicMock:
+        """Helper test callback for fake_run."""
         cwd = kwargs.get("cwd")
         env = kwargs.get("env")
         if isinstance(cwd, Path):
@@ -511,6 +512,7 @@ def test_ensure_binaries_and_capture_artifacts(tmp_path: Path) -> None:
     (tmp_path / "LICENSE-APACHE").write_text("Apache 2.0", encoding="utf-8")
 
     def fake_run_nologs(cmd: list[str], **kwargs: object) -> MagicMock:
+        """Helper test callback for fake_run_nologs."""
         env = kwargs.get("env")
         if isinstance(env, dict) and "MSI_GUI_DUMP_STATE" in env:
             Path(str(env["MSI_GUI_DUMP_STATE"])).write_text(

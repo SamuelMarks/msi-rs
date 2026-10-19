@@ -367,13 +367,39 @@ impl SummaryInfo {
         self.template = Some(template.to_template_string());
     }
 
+    /// Returns the number of populated summary information properties.
+    ///
+    /// # Returns
+    ///
+    /// Count of non-`None` properties in this [`SummaryInfo`].
+    #[must_use]
+    pub const fn property_count(&self) -> u32 {
+        self.codepage.is_some() as u32
+            + self.title.is_some() as u32
+            + self.subject.is_some() as u32
+            + self.author.is_some() as u32
+            + self.keywords.is_some() as u32
+            + self.comments.is_some() as u32
+            + self.template.is_some() as u32
+            + self.last_author.is_some() as u32
+            + self.rev_number.is_some() as u32
+            + self.last_printed.is_some() as u32
+            + self.create_time.is_some() as u32
+            + self.last_save_time.is_some() as u32
+            + self.page_count.is_some() as u32
+            + self.word_count.is_some() as u32
+            + self.char_count.is_some() as u32
+            + self.app_name.is_some() as u32
+            + self.security.is_some() as u32
+    }
+
     /// Serializes this [`SummaryInfo`] into standard OLE Property Set binary stream format.
     ///
     /// # Returns
     ///
     /// Byte vector containing the serialized `\005SummaryInformation` stream payload.
     #[must_use]
-    #[allow(clippy::too_many_lines, clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_possible_truncation)]
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut props: Vec<(u32, u32, Vec<u8>)> = Vec::new(); // (propid, vt, raw_val)
 
@@ -516,7 +542,7 @@ impl SummaryInfo {
     /// # Errors
     ///
     /// Returns [`MsiError::InvalidSummaryInfo`] if the stream header or property set is malformed.
-    #[allow(clippy::too_many_lines, clippy::cast_possible_wrap)]
+    #[allow(clippy::too_many_lines)]
     pub fn parse(bytes: &[u8]) -> Result<Self> {
         if bytes.len() < 48 {
             return Err(MsiError::InvalidSummaryInfo {
@@ -673,7 +699,6 @@ impl SummaryInfo {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -698,6 +723,7 @@ mod tests {
         info.char_count = Some(0);
         info.app_name = Some("msi-rs".to_string());
         info.security = Some(0);
+        assert_eq!(info.property_count(), 17);
 
         let bytes = info.to_bytes();
         let parsed_res = SummaryInfo::parse(&bytes);
@@ -705,6 +731,7 @@ mod tests {
 
         // Also test empty SummaryInfo roundtrip (covers None branches in to_bytes)
         let empty_info = SummaryInfo::default();
+        assert_eq!(empty_info.property_count(), 0);
         let empty_bytes = empty_info.to_bytes();
         let parsed_empty = SummaryInfo::parse(&empty_bytes);
         assert_eq!(parsed_empty, Ok(empty_info));

@@ -4,7 +4,7 @@
 [![.github/workflows/ci.yml](https://github.com/SamuelMarks/msi-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/SamuelMarks/msi-rs/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![% doc coverage](https://img.shields.io/badge/doc%20coverage-100%25-brightgreen)](#)
-[![% test coverage](https://img.shields.io/badge/test%20coverage-100%25-brightgreen)](#)
+[![% test coverage](https://img.shields.io/badge/test%20coverage-99.8%25-brightgreen)](#)
 
 A complete, memory-safe, cross-platform implementation of the Windows Installer technology stack written in Rust.
 
@@ -127,7 +127,7 @@ CLI tool providing drop-in command-line parity with Microsoft Win32 `msiexec.exe
 | **[MS-CFB]** | Compound File Binary Format (v14.0) | `crates/msi/src/cfb/` |
 | **Cabinet (CAB)** | Microsoft Cabinet File Format & SDK | `crates/msi/src/cab/` |
 | **WIM/ESD** | Windows Imaging Format (WIM) & LZMS Solid ESD | `crates/msi/src/wim/` |
-| **LZX** | Microsoft LZX Data Compression Specification | `crates/msi/src/cab/lzx.rs` |
+| **LZX** | Microsoft LZX Data Compression Specification | `crates/msi/src/cab/lzx/` |
 | **MSZIP** | Deflate Compression with Cabinet Frame Reset | `crates/msi/src/cab/mszip.rs` |
 | **Quantum** | Adaptive Arithmetic Compression Specification | `crates/msi/src/cab/quantum.rs` |
 | **MSI Database** | Win32 SDK Table Schema & System Catalogs | `crates/msi/src/database/` |
@@ -140,21 +140,21 @@ For an in-depth reference of physical container representations, database schema
 
 ## Workspace Structure
 
-The repository is organized into five specialized crates (four in the Cargo workspace, plus the Python native module built via Maturin):
+The repository is organized as a Cargo workspace of five specialized crates (with `msi-python` also buildable into Python wheels via Maturin):
 
 ```text
 msi-rs/
 ├── crates/
-│   ├── msi/         # Core library: CFB, CAB, Database, WiX, Execution Engine, Platform translation, UI
-│   ├── msi-cli/     # msiexec-compatible CLI tool and 16 standalone WiX/msitools/msiexec binaries
-│   ├── msi-gui/     # Desktop native GUI wizard application (eframe / egui / wgpu / softbuffer)
-│   ├── msi-ffi/     # C-compatible ABI shared and static libraries (include/msi.h)
-│   └── msi-python/  # Python 3 native PyO3 extension module (built via maturin)
+│   ├── msi/         # Core library: CFB, CAB, WIM/ESD, Database, WiX, Execution Engine, Platform translation, UI
+│   ├── msi-cli/     # msiexec-compatible CLI tool (`msi`) and 16 standalone WiX/msitools/msiexec binaries
+│   ├── msi-gui/     # Desktop native GUI wizard application (eframe / egui / wgpu / glow / softbuffer)
+│   ├── msi-ffi/     # C-ABI shared/static library (`include/msi.h`), Win32 `msi.dll` replacement, and COM server
+│   └── msi-python/  # Python 3 native PyO3 extension module (`_msi`, built via maturin)
 ├── docs/
 │   └── python_guide.md # Comprehensive Python packaging guide and API reference
 ├── ARCHITECTURE.md  # In-depth architectural design, schemas, and specifications
 ├── USAGE.md         # Comprehensive usage manual, CLI recipes, library guides, and CI/CD examples
-├── Cargo.toml       # Workspace manifest (msi, msi-cli, msi-gui, msi-ffi)
+├── Cargo.toml       # Workspace manifest (msi, msi-cli, msi-gui, msi-ffi, msi-python)
 └── pyproject.toml   # Python package build configuration (maturin)
 ```
 
@@ -192,11 +192,12 @@ for table in pkg.table_names:
 
 See the complete Python guide and API documentation in [`docs/python_guide.md`](docs/python_guide.md).
 
-### C-ABI Foreign Function Interface (`msi-ffi`)
-`msi-ffi` compiles to a shared (`.so` / `.dylib` / `.dll`) and static (`.a`) library exposing a clean C-ABI with standard header [`crates/msi-ffi/include/msi.h`](crates/msi-ffi/include/msi.h):
-- **Cross-Language Interop**: Ready for C, C++, Go, C#, Swift, Zig, and Rust FFI.
-- **Safety Boundary**: Strict panic isolation boundaries (`catch_unwind`) converting internal unwinds into defined error return codes (`MSI_ERROR_*`).
-- **Handle-Based API**: Opaque handles for package construction (`MsiPackageBuilderHandle`) and inspection (`MsiPackageHandle`).
+### C-ABI Foreign Function Interface & Win32 `msi.dll` Drop-In (`msi-ffi`)
+`msi-ffi` compiles to a shared (`.so` / `.dylib` / `.dll`) and static (`.a`) library exposing both a high-level C-ABI ([`crates/msi-ffi/include/msi.h`](crates/msi-ffi/include/msi.h)) and a binary-compatible Win32 `msi.dll` export surface:
+- **Cross-Language C-ABI**: Ready for C, C++, Go, C#, Swift, Zig, and Rust FFI with opaque handles for package construction (`MsiPackageBuilderHandle`), inspection (`MsiPackageHandle`), database/record manipulation (`MsiDatabaseHandle`, `MsiRecordHandle`, `MsiSummaryInfoHandle`), and multi-package atomic transactions (`MsiTransactionHandle`: `msi_begin_transaction`, `msi_join_transaction`, `msi_install_product`, `msi_end_transaction`).
+- **Win32 `msi.dll` Drop-In Replacement (`crates/msi-ffi/src/win32/`)**: Exports `stdcall` / `system` ABI symbols matching Microsoft `msi.dll` and Wine (`Makefile.in`, `msi.rc`, `msi.tlb`), covering database & SQL views (`MsiOpenDatabaseA/W`, `MsiDatabaseOpenViewA/W`, `MsiViewExecute`, `MsiViewFetch`, `MsiDatabaseCommit`), records & streams (`MsiCreateRecord`, `MsiRecordSetInteger`, `MsiRecordSetStringA/W`, `MsiRecordReadStream`), installer execution & state (`MsiInstallProductA/W`, `MsiConfigureProductExA/W`, `MsiReinstallProductA/W`, `MsiQueryProductStateA/W`, `MsiEnumRelatedProductsA/W`), patching & transforms (`MsiApplyPatchA/W`, `MsiDatabaseApplyTransformA/W`, `MsiDatabaseGenerateTransformA/W`), source lists, summary info, and UI levels (`MsiSetInternalUI`, `MsiSetExternalUIA/W`).
+- **COM / OLE Automation Server (`crates/msi-ffi/src/com/`)**: Full C-ABI vtable implementations of `IUnknown`, `IDispatch`, `IStorage` (`msi_create_storage_from_memory`), `IStream`, and the `WindowsInstaller.Installer` automation object model (`Installer`, `Session`, `Database`, `View`, `Record`, `SummaryInfo`, `StringList`, `RecordList`, `FeatureInfo`).
+- **Safety Boundary**: Strict panic isolation boundaries (`catch_unwind`) across all C-ABI, Win32, and COM entry points, converting internal unwinds into defined status codes (`MSI_ERROR_*`, `ERROR_INSTALL_FAILURE`, or `HRESULT`).
 
 ---
 
@@ -217,23 +218,23 @@ See the complete Python guide and API documentation in [`docs/python_guide.md`](
   - Multi-cabinet split sets (`szCabinetPrev`, `szCabinetNext`, continuation indicators `0xFFFD`, `0xFFFE`, `0xFFFF`).
 
 ### 2. Relational Database Engine
-- **System Catalogs:** `_Tables`, `_Columns`, `_Streams`, `_Storages`.
-- **String Pool:** Dual-stream string pool (`_StringPool` / `_StringData`) with code page translation (ANSI 1252, UTF-8 65001).
+- **System Catalogs:** `_Tables`, `_Columns`, `_Streams`, `_Storages`, and `_Validation`.
+- **String Pool:** Dual-stream string pool (`_StringPool` / `_StringData`) with code page translation (ANSI 1252, UTF-8 65001) and MD5 stream hashing (`database::md5`).
 - **Summary Information:** Standard OLE Property Set stream (`\005SummaryInformation`) with GUIDs, creation timestamps, and wordcount flags.
-- **Relational Tables:** Complete typed representation of core MSI tables (`Component`, `Feature`, `Directory`, `File`, `FileHash`, `Media`, `Property`, `Registry`, `Shortcut`, `ServiceInstall`, `ServiceControl`, `Upgrade`, `LaunchCondition`, `Dialog`, `Control`, `ControlEvent`, `ControlCondition`).
+- **Relational Tables (83+ Standard & Extended Schemas):** Complete typed representation across core packaging (`Component`, `Feature`, `FeatureComponents`, `Directory`, `File`, `FileHash`, `Media`, `Property`, `Binary`, `Font`, `PatchPackage`, `Module*` merge module tables), sequence tables (`InstallExecuteSequence`, `InstallUISequence`, `AdminExecuteSequence`, `AdminUISequence`, `AdvtExecuteSequence`, `CustomAction`), configuration & registration (`Registry`, `RemoveRegistry`, `Environment`, `Shortcut`, `Icon`, `ServiceInstall`, `ServiceControl`, `MsiServiceConfig`, `ServiceConfig`, `Upgrade`, `Condition`, `LaunchCondition`, `AppSearch`, `CompLocator`, `DrLocator`, `FileSearch`, `IniLocator`, `RegLocator`, `Signature`), file management (`CreateFolder`, `DuplicateFile`, `MoveFile`, `RemoveFile`, `IniFile`, `RemoveIniFile`), COM/OLE & Shell (`Class`, `ProgId`, `TypeLib`, `Extension`, `Verb`, `MIME`, `AppId`, `SelfReg`), Side-by-Side & GAC assemblies (`MsiAssembly`, `MsiAssemblyName`), UI & presentation (`Dialog`, `Control`, `ControlCondition`, `ControlEvent`, `EventMapping`, `TextStyle`, `WixVariable`, `RadioButton`, `CheckBox`, `ComboBox`, `ListBox`, `ListView`, `Billboard`, `BBControl`, `ActionText`, `Error`), declarative SQL provisioning (`SqlDatabase`, `SqlString`, `SqlScript`), and multi-package chaining (`MsiEmbeddedChainer`).
 - **SQL Parser & Query Engine:** AST, lexer, recursive descent parser, and relational execution engine supporting the Windows Installer SQL dialect (`SELECT`, `INSERT`, `UPDATE`, `DELETE`, `CREATE TABLE`, `ALTER TABLE`, joins, and WHERE expressions).
-- **Transforms & IDT:** `.mst` database transform generation, diffing, and patching; IDT tab-delimited table import and export.
+- **Transforms, Merge Modules & IDT:** `.mst` database transform generation, diffing, and patching; `.msm` Merge Module merging and modularization (`database::merge`); IDT tab-delimited table import and export.
 - **POSIX Extensions:** Extension tables for POSIX permissions (`PosixFile`), symlinks (`PosixSymlink`), system daemons (`PosixDaemon`), ACLs (`PosixAcl`), and Freedesktop entries (`PosixDesktop`).
 
 ### 3. WiX Toolset Pipeline & Pure-Rust `.msi` Creation
-- **WiX Compiler & Linker:**
-  - Multi-source `.wxs` input support (`msi-cli pack -o App.msi Product.wxs Payload.wxs`).
-  - Cross-fragment symbol resolution (`<ComponentGroupRef Id="..." />`).
+- **WiX Compiler, Linker, Bundle & Merge Module Pipeline:**
+  - Multi-source `.wxs` input support (`msi pack -o App.msi Product.wxs Payload.wxs`).
+  - Cross-fragment symbol resolution (`<ComponentGroupRef Id="..." />`), `.wixlib` library archiving, `.msm` Merge Module compilation/ingestion (`wix::merge_module`), Burn bootstrapper bundle authoring (`wix::bundle`), and `.wxl` localization (`wix::localization`).
   - Preprocessor defines (`-d VAR=VAL` / `-dVAR=VAL`) and suppression flags (`-sval`, `-sice:<rule>`).
   - Authoring of platform daemons and services (`<ServiceInstall>` & `<ServiceControl>`) with automatic standard action injection (`StopServices`, `DeleteServices`, `InstallServices`, `StartServices`).
   - Authoring of desktop and Start Menu shortcuts, system environment variables, registry searches (`<RegistrySearch>`, `<FileSearch>`), and launch conditions (`<Condition Message="...">`).
   - Multi-cabinet deterministic media partitioning for offline air-gapped installers (`engine.cab`, `runtimes.cab`, `databases.cab`, `codebase.cab`) with non-overlapping sequence boundaries and compression levels (`high` with LZX vs `medium` with MSZIP).
-  - Native Payload Harvester (`msi-cli harvest`) drop-in replacement for shell harvesting scripts: strictly respects `.gitignore`, generates deterministic RFC 4122 v5 UUIDs, and auto-hashes identifiers exceeding 72 characters (`CMP_<hash>`, `FIL_<hash>`).
+  - Native Payload Harvester (`msi harvest`) drop-in replacement for shell harvesting scripts: strictly respects `.gitignore`, generates deterministic RFC 4122 v5 UUIDs, and auto-hashes identifiers exceeding 72 characters (`CMP_<hash>`, `FIL_<hash>`).
 - **Dynamic WiX Extension Ecosystem (10 Built-In Extensions):**
   - Modular extension registry (`ExtensionRegistry::with_builtin_extensions()`) executing custom XML element compilers and linker mutations natively:
     - **`WixUIExtension`**: Standard dialog presets (`WixUI_Mondo`, `WixUI_InstallDir`, `WixUI_FeatureTree`, `WixUI_Minimal`), fonts, and branding variables (`WixUIBannerBmp`, `WixUIDialogBmp`, `WixUILicenseRtf`).
@@ -247,14 +248,14 @@ See the complete Python guide and API documentation in [`docs/python_guide.md`](
     - **`WixComPlusExtension`**: COM+ application, component, and role configuration (`<complus:ComPlusApplication>`).
     - **`WixDependencyExtension`**: Inter-package ref-counting and dependency resolution (`<dep:Provides>`, `<dep:Requires>`).
 - **CMake CPack Compatibility:** Seamlessly replaces WiX in CMake `CPackWIX` workflows, supporting response files (`@response.txt`), automatic CPack properties extraction, XML patch files, and component-based multi-cabinet splitting.
-- **Complete Internal Consistency Evaluators (100% ICE Suite / 105 Rules):**
-  - Full modular validation engine (`crates/msi/src/wix/ice/`) implementing all 105 official Windows Installer rules across 7 categories:
-    - **Structural & Metadata**: `ICE16`, `ICE29`, `ICE35`, `ICE37`, `ICE39`, `ICE40`, `ICE41`, `ICE45`, `ICE46`, `ICE48`, `ICE51`, `ICE53`, `ICE58`, `ICE70`, `ICE71`, `ICE73`, `ICE74`, `ICE82`, `ICE84`, `ICE87`, `ICE92`, `ICE93`, `ICE95`.
-    - **Sequence Tables & Pipeline**: `ICE11`, `ICE12`, `ICE26`, `ICE27`, `ICE28`, `ICE42`, `ICE63`, `ICE67`, `ICE68`, `ICE72`, `ICE75`, `ICE77`, `ICE78`, `SequenceGraph`.
-    - **Components & Relational Integrity**: `ICE10`, `ICE14`, `ICE19`, `ICE21`, `ICE22`, `ICE43`, `ICE47`, `ICE57`, `ICE59`, `ICE64`, `ICE69`, `ICE79`, `ICE89`, `ICE90`, `ICE91`.
+- **Complete Internal Consistency Evaluators (100% ICE Suite / 105 Rules + `.cub` Evaluator):**
+  - Full modular validation engine (`crates/msi/src/wix/ice/`) implementing all 105 official Windows Installer rules (`ICE01` through `ICE105`) plus external `.cub` evaluation (`CubValidator`) across 7 categories:
+    - **Structural & Metadata**: `ICE01`, `ICE03`, `ICE16`, `ICE29`, `ICE35`, `ICE37`, `ICE39`, `ICE40`, `ICE41`, `ICE45`, `ICE46`, `ICE48`, `ICE51`, `ICE53`, `ICE58`, `ICE70`, `ICE71`, `ICE73`, `ICE74`, `ICE80`, `ICE82`, `ICE84`, `ICE87`, `ICE92`, `ICE93`, `ICE95`, `ICE99`.
+    - **Sequence Tables & Pipeline**: `ICE11`, `ICE12`, `ICE20`, `ICE26`, `ICE27`, `ICE28`, `ICE42`, `ICE63`, `ICE67`, `ICE68`, `ICE72`, `ICE75`, `ICE77`, `ICE78`, `SequenceGraph`.
+    - **Components & Relational Integrity**: `ICE02`, `ICE06`, `ICE08`, `ICE09`, `ICE10`, `ICE14`, `ICE18`, `ICE19`, `ICE21`, `ICE22`, `ICE38`, `ICE43`, `ICE47`, `ICE57`, `ICE59`, `ICE64`, `ICE69`, `ICE79`, `ICE89`, `ICE90`, `ICE91`.
     - **UI & Dialog Controls**: `ICE13`, `ICE23`, `ICE24`, `ICE34`, `ICE44`, `ICE86`, `ICE102`, `ICE104`.
-    - **File Table Rules**: `ICE31`, `ICE54`, `ICE60`, `ICE96`.
-    - **System & Search Tables**: `ICE15`, `ICE17`, `ICE32`, `ICE36`, `ICE49`, `ICE50`, `ICE52`, `ICE55`, `ICE56`, `ICE65`, `ICE85`, `ICE88`, `ICE100`.
+    - **File Table Rules**: `ICE04`, `ICE05`, `ICE07`, `ICE30`, `ICE31`, `ICE54`, `ICE60`, `ICE96`, `ICE101`.
+    - **System & Search Tables**: `ICE15`, `ICE17`, `ICE32`, `ICE33`, `ICE36`, `ICE49`, `ICE50`, `ICE52`, `ICE55`, `ICE56`, `ICE61`, `ICE65`, `ICE85`, `ICE88`, `ICE100`, `ICE103`.
     - **Advanced Subsystems**: `ICE25`, `ICE62`, `ICE66`, `ICE76`, `ICE81`, `ICE83`, `ICE94`, `ICE97`, `ICE98`, `ICE105`.
   - Registered in `IceRegistry::with_standard_rules()` and exposed through `smoke`, `light`, and `msibuild`.
 
@@ -273,27 +274,39 @@ See the complete Python guide and API documentation in [`docs/python_guide.md`](
   - FreeBSD `rc.d`: Auto-generates `rc.subr` scripts in `/usr/local/etc/rc.d/<service>`, managed via `sysrc` and `service`.
   - SunOS/illumos `SMF`: Auto-generates XML manifests in `/var/svc/manifest/site/`, managed via `svccfg` and `svcadm`.
   - Windows: Native Windows Service Control Manager (`sc.exe` / SCM API).
+- **Web Server, Firewall, ODBC & User Account Translation:**
+  - **IIS to Nginx (`platform::iis`)**: Translates IIS web sites, virtual directories, and application pools into native Nginx reverse-proxy/static server configurations on POSIX or native IIS administration on Windows.
+  - **Host Firewall (`platform::firewall`)**: Translates Windows Firewall exception rules to Linux `ufw`, BSD/macOS `pf`, or Windows Firewall rules.
+  - **ODBC & Accounts (`platform::odbc`, `platform::users`, `platform::linux_config`)**: Configures unixODBC (`odbcinst.ini` / `odbc.ini`) or Windows ODBC data sources, local user/group provisioning, and `/etc/fstab` mounts.
+  - **Driver & Boot Harness Servicing (`platform::driver`, `platform::boot_harness`, `platform::unattend`)**: Services Windows Driver Store INF packages or Linux kernel modules, builds WinPE/UKI live boot harnesses, and synthesizes Windows `unattend.xml` and Linux `cloud-init` seed configurations.
 - **Offline Sysroots & Bare-Metal OS Provisioning:**
   - Pre-boot sysroot targeting with configurable execution sandboxing policies (`PermissiveChroot`, `SkipWithSuccess`, `StrictReject`).
   - Synthetic in-process mocking of live subsystem APIs unavailable during offline pre-boot installation (`SCM`, `RPC`, `NetApi`).
   - UEFI bootloader staging (`/EFI/BOOT/BOOTX64.EFI`), offline Windows Boot Configuration Data (BCD) hive synthesis (`{bootmgr}`, `{default}`), and Linux bootloader generator support (`systemd-boot`, `GRUB2`, `Limine`).
   - Non-volatile EFI NVRAM variable manipulation (`efivarfs`) programming `BootXXXX` and `BootOrder` entries.
-  - Disk block device scanning, GPT partition table layout synthesis, and native filesystem formatters (FAT32, ext4, NTFS).
+  - Disk block device scanning, MBR/GPT partition table layout synthesis, and native filesystem formatters (FAT32, ext4, NTFS).
   - Offline Windows registry hive editing (`SYSTEM`, `SOFTWARE`, `BCD`) directly from disk images without requiring running Windows kernels.
 - **Strict Incompatibility Rejection:**
-  - Rejects Windows-only kernel mechanisms (`SERVICE_KERNEL_DRIVER`, file system filter drivers, COM+ DCOM catalog registration `ICE97`) with typed `Error::UnsupportedPlatformFeature { feature, target_os, reason }` ensuring zero silent failures or corruption.
+  - Rejects Windows-only kernel mechanisms (`SERVICE_KERNEL_DRIVER`, file system filter drivers, COM+ DCOM catalog registration `ICE97`) with typed `MsiError::UnsupportedPlatformFeature { feature, target_os, reason }` ensuring zero silent failures or corruption.
 - **Desktop Integration:** Freedesktop `.desktop` application launchers and macOS `.app` bundle synthesis with icon conversion.
-- **Registry Emulation:** Embedded ACID `RegistryStore` database mapping `HKLM`, `HKCU`, `HKCR`, and `HKU` to JSON or SQLite files on POSIX, and native Win32 Registry APIs on Windows.
+- **Registry Emulation & SQUID Encoding:** Embedded ACID `RegistryStore` database mapping `HKLM`, `HKCU`, `HKCR`, and `HKU` to JSON or SQLite WAL files on POSIX and native Win32 Registry APIs on Windows, complete with Windows Installer SQUID compressed GUID key encoding (`platform::squid`).
 
 ### 5. Execution Engine & Two-Phase Transaction Lifecycle
 - **Standard Actions Sequence Lifecycle:**
   - `CostInitialize`, `FileCost`, `CostFinalize` with volume and mount point space calculations.
-  - `InstallValidate` checking component run states and disk quotas.
-  - `InstallInitialize` and `InstallFinalize` managing transactional boundaries.
+  - `InstallValidate` checking component run states, disk quotas, and file-in-use detection via Restart Manager (`execution::rm`).
+  - `InstallInitialize` and `InstallFinalize` managing transactional boundaries and `.ibs`/`.rbs` binary script serialization (`execution::script`).
   - `ProcessComponents` evaluating install states and reference counting.
-  - `InstallFiles` and `RemoveFiles` with atomic writes, backup quarantine, and rollback journals.
-  - `WriteRegistryValues`, `WriteEnvironmentStrings`, `CreateShortcuts`.
-- **Custom Action Translation & Interception:**
+  - `InstallFiles` and `RemoveFiles` with atomic writes, Virtual File System staging (`execution::vfs`), backup quarantine, and rollback journals.
+  - `WriteRegistryValues`, `WriteEnvironmentStrings`, `CreateShortcuts`, `RegisterFonts`, and `BindImage` PE import table binding (`execution::bind_image`).
+- **Assemblies, Patching, Resiliency & Signatures:**
+  - **Side-by-Side (WinSxS) & .NET GAC Assemblies (`execution::assembly`, `execution::manifest_extract`)**: Extracts embedded RT_MANIFEST resources and installs fusion/WinSxS and GAC assemblies.
+  - **Binary Delta Patching (`execution::msdelta`, `execution::patching`)**: Applies `.msp` patches and MSDelta binary diffs against installed target files.
+  - **Source Resiliency, Self-Healing & Reconfiguration (`execution::source_resiliency`, `execution::self_healing`, `execution::reconfiguration`)**: Resolves media source lists, repairs broken keypaths on demand, and reconfigures installed product states.
+  - **Authenticode & Digital Signatures (`execution::signature`)**: Verifies package and cabinet digital certificates (`MsiDigitalCertificate`, `MsiDigitalSignature`).
+- **Custom Action Translation, Script Engines & RPC Sandboxing:**
+  - **Embedded VBScript & JScript Engines (`execution::script_engine`)**: Pure-Rust fuel-metered interpreters (`VBScriptEngine`, `JScriptEngine`) with full `Session` and `Database` COM automation object models.
+  - **Out-of-Process & Cross-Architecture RPC Server (`execution::custom_action_server`, `execution::com_rpc`, `execution::rpc`)**: Sandboxed custom action host supporting 32-bit/64-bit cross-architecture marshaling and remote `MSIHANDLE` session API calls.
   - **Type 18 / 34 Shell Command Translation**: Translates `cmd.exe /c [INSTALLFOLDER]libscript\libscript.cmd ...` to `/bin/sh [INSTALLFOLDER]/libscript/libscript.sh ...` on POSIX, passing `CustomActionData` in the environment.
   - **Type 6 VBScript Replacement**: Intercepts `validate_*.vbs` port checks and executes in-process socket probes using `std::net::TcpListener::bind`, setting `VALID_<pkg>="1"` / `VALID_<pkg>="0"` with diagnostics.
   - **Type 1 DLL In-Process SQL Provisioning**: Intercepts `sql_provisioner.dll` actions, running schema creation, user creation, and grants in-process via `SqlProvisionerClient`, respecting `PURGE_DATA="1"` on rollback.
@@ -424,8 +437,8 @@ This project adheres to non-negotiable software engineering constraints:
 - **100% Documentation Coverage:** Every crate, module, struct, enum variant, field, and function is fully documented with `# Errors` sections and doc-tests.
 - **100% Test Coverage:** Comprehensive unit, integration, property-based, and roundtrip tests.
 - **Zero `unwrap()` or `expect()`:** Strict lint enforcement prohibiting panics in production code.
-- **No `anyhow`:** Unified, strongly-typed error hierarchy per crate using `derive_more`.
-- **Strong Typing:** Domain newtypes (`ProductCode`, `ComponentGuid`, `TableId`, `FileKey`, `SequenceNumber`) preventing raw string and integer errors.
+- **No `anyhow`:** Unified, strongly-typed error hierarchy (`MsiError`) per crate using `derive_more`.
+- **Strong Typing:** Domain newtypes (`ProductVersion`, `ComponentGuid`, `ComponentId`, `DirectoryId`, `FeatureId`, `FileId`, `FileName`, `DiskId`, `SectorId`, `MiniSectorId`, `StreamId`, `StringPoolId`) preventing raw string and integer errors.
 
 ---
 

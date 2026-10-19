@@ -19,7 +19,6 @@ impl DialogClassManager {
     /// # Errors
     ///
     /// Returns an error if the class registration fails.
-    #[allow(clippy::unnecessary_wraps)]
     pub const fn register_classes() -> Result<()> {
         Ok(())
     }
@@ -42,7 +41,6 @@ impl ModalDialogPump {
     /// # Errors
     ///
     /// Returns an error if the message loop fails.
-    #[allow(clippy::unnecessary_wraps)]
     pub const fn pump_messages(_dialog: &DialogDef) -> Result<i32> {
         Ok(1)
     }
@@ -58,7 +56,6 @@ impl ModelessDialogManager {
     /// # Errors
     ///
     /// Returns an error if the dialog cannot be updated.
-    #[allow(clippy::unnecessary_wraps)]
     pub const fn update_modeless(_dialog: &DialogDef) -> Result<()> {
         Ok(())
     }
@@ -125,7 +122,7 @@ impl UiManager {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -138,7 +135,7 @@ impl UiManager {
     ///
     /// # Arguments
     ///
-    /// * `cb` - The `cb` parameter.
+    /// * `cb` - The cb value.
     pub fn set_external_ui(&mut self, cb: ExternalUiCallback) {
         self.external_cb = Some(cb);
     }
@@ -150,12 +147,12 @@ impl UiManager {
     ///
     /// # Arguments
     ///
-    /// * `msg_type` - The `msg_type` parameter.
-    /// * `message` - The `message` parameter.
+    /// * `msg_type` - The msg type value.
+    /// * `message` - Diagnostic or log message text.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(i32)` on success, or an error if the operation fails.
     pub fn invoke_external_ui(&self, msg_type: u32, message: &str) -> Result<i32> {
         if let Some(cb) = self.external_cb {
             let res = cb(msg_type, message);
@@ -177,12 +174,12 @@ impl UiManager {
     ///
     /// # Arguments
     ///
-    /// * `name` - The `name` parameter.
-    /// * `title` - The `title` parameter.
+    /// * `name` - Identifier or name of the target entity.
+    /// * `title` - Dialog or window title string.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn load_dialog(&mut self, name: &str, title: &str) -> Result<()> {
         if name.is_empty() {
             return Err(MsiError::ActionExecutionError(
@@ -207,12 +204,12 @@ impl UiManager {
     ///
     /// # Arguments
     ///
-    /// * `dialog_name` - The `dialog_name` parameter.
-    /// * `control` - The `control` parameter.
+    /// * `dialog_name` - Name of the dialog.
+    /// * `control` - UI control definition or identifier.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn add_control(&mut self, dialog_name: &str, control: ControlDef) -> Result<()> {
         if let Some(dlg) = self.dialogs.get_mut(dialog_name) {
             dlg.controls.push(control);
@@ -231,11 +228,11 @@ impl UiManager {
     ///
     /// # Arguments
     ///
-    /// * `event` - The `event` parameter.
+    /// * `event` - UI or service control event.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn handle_event(&self, event: &ControlEvent) -> Result<()> {
         match event {
             ControlEvent::SpawnDialog(name) | ControlEvent::NewDialog(name) => {
@@ -265,7 +262,6 @@ impl UiManager {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

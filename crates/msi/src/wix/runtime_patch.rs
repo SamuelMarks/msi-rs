@@ -26,7 +26,7 @@ impl RuntimePatchEngine {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn apply_transform(&self, _db: &mut LinkedDatabase, mst_path: &Path) -> Result<()> {
         // Reads transform payload blocks and executes them against the open View.
         // Requires completing standard `.mst` binary format parser.
@@ -52,7 +52,7 @@ impl RuntimePatchEngine {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn apply_patch(&self, _db: &mut LinkedDatabase, msp_path: &Path) -> Result<()> {
         // Disassembles `.msp` Compound File Binary container.
         // Extracts `_SummaryInformation`, `Patch`, `PatchPackage` streams.
@@ -85,7 +85,7 @@ impl MsDeltaDecoder {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok` containing the collected `u8` items, or an error on failure.
     pub fn apply_delta(_source: &[u8], _patch_blob: &[u8]) -> Result<Vec<u8>> {
         Err(MsiError::DataIntegrityError {
             reason: "MSDelta pure-Rust decoding not fully implemented yet".to_string(),
@@ -94,7 +94,6 @@ impl MsDeltaDecoder {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

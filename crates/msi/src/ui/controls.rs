@@ -53,42 +53,58 @@ pub const CONTROL_ATTR_FIXED_SIZE: u32 = 0x0008_0000;
 /// Standard MSI control types specified in the `Control` table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ControlType {
-    /// Standard push button executing events on click.
-    PushButton,
-    /// Container for grouped radio buttons bound to a shared property.
-    RadioButtonGroup,
-    /// Toggle checkbox setting or unsetting a bound property.
-    CheckBox,
-    /// Single-line or multiline text input box.
-    Edit,
-    /// Static or formatted text label with font styling and hyperlinks.
-    Text,
-    /// Drop-down combo box list populated from table records.
-    ComboBox,
-    /// Fixed list box populated from table records.
-    ListBox,
-    /// Multi-column list display with icon support.
-    ListView,
-    /// Progress bar bound to action progress updates.
-    ProgressBar,
-    /// Static image display rendering BMP, PNG, or JPEG from `Binary` table.
+    /// A Win32 billboard control (`WC_STATIC` with an image/text sequence).
+    Billboard,
+    /// Static image display rendering BMP, PNG, or JPEG from `Binary` table (`WC_STATIC` with `SS_BITMAP`).
     Bitmap,
-    /// Horizontal or vertical separator line.
+    /// Toggle checkbox setting or unsetting a bound property (`WC_BUTTON` with `BS_AUTOCHECKBOX`).
+    CheckBox,
+    /// Drop-down combo box list populated from table records (`WC_COMBOBOX`).
+    ComboBox,
+    /// A directory combo box (`WC_COMBOBOXEX`).
+    DirectoryCombo,
+    /// A directory list (`WC_LISTVIEW`).
+    DirectoryList,
+    /// Single-line or multiline text input box (`WC_EDIT`).
+    Edit,
+    /// A group box frame (`WC_BUTTON` with `BS_GROUPBOX`).
+    GroupBox,
+    /// A static icon (`WC_STATIC` with `SS_ICON`).
+    Icon,
+    /// Horizontal or vertical separator line (`WC_STATIC` with `SS_ETCHEDHORZ`).
     Line,
-    /// Rich text (RTF) or plain-text scrollable viewer for license agreements.
+    /// Fixed list box populated from table records (`WC_LISTBOX`).
+    ListBox,
+    /// Multi-column list display with icon support (`WC_LISTVIEW`).
+    ListView,
+    /// A masked edit box (`WC_EDIT` with custom template validation).
+    MaskedEdit,
+    /// A path edit box (`WC_EDIT` with path validation).
+    PathEdit,
+    /// Progress bar bound to action progress updates (`PROGRESS_CLASS`).
+    ProgressBar,
+    /// Standard push button executing events on click (`WC_BUTTON`).
+    PushButton,
+    /// Container for grouped radio buttons bound to a shared property (`WC_BUTTON` with `BS_AUTORADIOBUTTON`).
+    RadioButtonGroup,
+    /// Rich text (RTF) or plain-text scrollable viewer for license agreements (`WC_EDIT` with `ES_MULTILINE` and `WS_VSCROLL`).
     ScrollableText,
-    /// Disk space breakdown table per volume.
-    VolumeCostList,
-    /// Hierarchical feature tree control for feature selection.
+    /// Hierarchical feature tree control for feature selection (`WC_TREEVIEW`).
     SelectionTree,
+    /// Static or formatted text label with font styling and hyperlinks (`WC_STATIC`).
+    Text,
+    /// Disk space breakdown table per volume (`WC_LISTVIEW`).
+    VolumeCostList,
+    /// A volume selection combo box (`WC_COMBOBOX`).
+    VolumeSelectCombo,
 }
 
 impl ControlType {
-    /// Parses a control type string from the `Control` table.
+    /// Parses a control type string from the `Control` table into its canonical runtime [`ControlType`].
     ///
     /// # Arguments
     ///
-    /// * `s` - Raw type name string.
+    /// * `s` - Raw control type name string from the `Control` table.
     ///
     /// # Returns
     ///
@@ -102,13 +118,13 @@ impl ControlType {
             "PushButton" => Ok(Self::PushButton),
             "RadioButtonGroup" => Ok(Self::RadioButtonGroup),
             "CheckBox" => Ok(Self::CheckBox),
-            "Edit" | "PathEdit" => Ok(Self::Edit),
-            "Text" | "GroupBox" => Ok(Self::Text),
-            "ComboBox" | "DirectoryCombo" => Ok(Self::ComboBox),
+            "Edit" | "PathEdit" | "MaskedEdit" => Ok(Self::Edit),
+            "Text" | "GroupBox" | "Billboard" => Ok(Self::Text),
+            "ComboBox" | "DirectoryCombo" | "VolumeSelectCombo" => Ok(Self::ComboBox),
             "ListBox" | "DirectoryList" => Ok(Self::ListBox),
             "ListView" => Ok(Self::ListView),
             "ProgressBar" => Ok(Self::ProgressBar),
-            "Bitmap" => Ok(Self::Bitmap),
+            "Bitmap" | "Icon" => Ok(Self::Bitmap),
             "Line" => Ok(Self::Line),
             "ScrollableText" => Ok(Self::ScrollableText),
             "VolumeCostList" => Ok(Self::VolumeCostList),
@@ -120,28 +136,89 @@ impl ControlType {
         }
     }
 
-    /// Returns the standard MSI table type string.
+    /// Returns the standard MSI `Control` table type string for this variant.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The canonical MSI control type name.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::PushButton => "PushButton",
-            Self::RadioButtonGroup => "RadioButtonGroup",
+            Self::Billboard => "Billboard",
+            Self::Bitmap => "Bitmap",
             Self::CheckBox => "CheckBox",
-            Self::Edit => "Edit",
-            Self::Text => "Text",
             Self::ComboBox => "ComboBox",
+            Self::DirectoryCombo => "DirectoryCombo",
+            Self::DirectoryList => "DirectoryList",
+            Self::Edit => "Edit",
+            Self::GroupBox => "GroupBox",
+            Self::Icon => "Icon",
+            Self::Line => "Line",
             Self::ListBox => "ListBox",
             Self::ListView => "ListView",
+            Self::MaskedEdit => "MaskedEdit",
+            Self::PathEdit => "PathEdit",
             Self::ProgressBar => "ProgressBar",
-            Self::Bitmap => "Bitmap",
-            Self::Line => "Line",
+            Self::PushButton => "PushButton",
+            Self::RadioButtonGroup => "RadioButtonGroup",
             Self::ScrollableText => "ScrollableText",
-            Self::VolumeCostList => "VolumeCostList",
             Self::SelectionTree => "SelectionTree",
+            Self::Text => "Text",
+            Self::VolumeCostList => "VolumeCostList",
+            Self::VolumeSelectCombo => "VolumeSelectCombo",
+        }
+    }
+
+    /// Returns the native Win32 window class name (`CreateWindowExW` `lpClassName`) corresponding to this control type.
+    ///
+    /// # Returns
+    ///
+    /// The Win32 control class name string.
+    #[must_use]
+    pub const fn to_win32_class(self) -> &'static str {
+        match self {
+            Self::CheckBox | Self::GroupBox | Self::PushButton | Self::RadioButtonGroup => "Button",
+            Self::Billboard | Self::Bitmap | Self::Icon | Self::Line | Self::Text => "Static",
+            Self::Edit | Self::MaskedEdit | Self::PathEdit | Self::ScrollableText => "Edit",
+            Self::ComboBox | Self::DirectoryCombo | Self::VolumeSelectCombo => "ComboBox",
+            Self::DirectoryList | Self::ListView | Self::VolumeCostList => "SysListView32",
+            Self::ListBox => "ListBox",
+            Self::ProgressBar => "msctls_progress32",
+            Self::SelectionTree => "SysTreeView32",
+        }
+    }
+}
+
+impl std::str::FromStr for ControlType {
+    type Err = MsiError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "Billboard" => Ok(Self::Billboard),
+            "Bitmap" => Ok(Self::Bitmap),
+            "CheckBox" => Ok(Self::CheckBox),
+            "ComboBox" => Ok(Self::ComboBox),
+            "DirectoryCombo" => Ok(Self::DirectoryCombo),
+            "DirectoryList" => Ok(Self::DirectoryList),
+            "Edit" => Ok(Self::Edit),
+            "GroupBox" => Ok(Self::GroupBox),
+            "Icon" => Ok(Self::Icon),
+            "Line" => Ok(Self::Line),
+            "ListBox" => Ok(Self::ListBox),
+            "ListView" => Ok(Self::ListView),
+            "MaskedEdit" => Ok(Self::MaskedEdit),
+            "PathEdit" => Ok(Self::PathEdit),
+            "ProgressBar" => Ok(Self::ProgressBar),
+            "PushButton" => Ok(Self::PushButton),
+            "RadioButtonGroup" => Ok(Self::RadioButtonGroup),
+            "ScrollableText" => Ok(Self::ScrollableText),
+            "SelectionTree" => Ok(Self::SelectionTree),
+            "Text" => Ok(Self::Text),
+            "VolumeCostList" => Ok(Self::VolumeCostList),
+            "VolumeSelectCombo" => Ok(Self::VolumeSelectCombo),
+            _ => Err(MsiError::User32RenderError(format!(
+                "Unsupported control type: {s}"
+            ))),
         }
     }
 }
@@ -219,11 +296,11 @@ impl SelectionTreeNode {
     ///
     /// # Arguments
     ///
-    /// * `desc` - The `desc` parameter.
+    /// * `desc` - Human-readable description text.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn description(mut self, desc: impl Into<String>) -> Self {
         self.description = Some(desc.into());
@@ -234,7 +311,7 @@ impl SelectionTreeNode {
     ///
     /// # Arguments
     ///
-    /// * `child` - The `child` parameter.
+    /// * `child` - The child value.
     pub fn add_child(&mut self, child: Self) {
         self.children.push(child);
     }
@@ -302,11 +379,11 @@ impl ControlDefinition {
     ///
     /// # Arguments
     ///
-    /// * `prop` - The `prop` parameter.
+    /// * `prop` - The prop value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn property(mut self, prop: impl Into<String>) -> Self {
         self.property = Some(prop.into());
@@ -317,11 +394,11 @@ impl ControlDefinition {
     ///
     /// # Arguments
     ///
-    /// * `text` - The `text` parameter.
+    /// * `text` - Display text or template string.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn text(mut self, text: impl Into<String>) -> Self {
         self.text = Some(text.into());
@@ -332,11 +409,11 @@ impl ControlDefinition {
     ///
     /// # Arguments
     ///
-    /// * `next` - The `next` parameter.
+    /// * `next` - The next value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn control_next(mut self, next: impl Into<String>) -> Self {
         self.control_next = Some(next.into());
@@ -347,11 +424,11 @@ impl ControlDefinition {
     ///
     /// # Arguments
     ///
-    /// * `help` - The `help` parameter.
+    /// * `help` - The help value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn help(mut self, help: impl Into<String>) -> Self {
         self.help = Some(help.into());
@@ -362,7 +439,7 @@ impl ControlDefinition {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     #[must_use]
     pub fn dialog(&self) -> &str {
         &self.dialog
@@ -372,7 +449,7 @@ impl ControlDefinition {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     #[must_use]
     pub fn control(&self) -> &str {
         &self.control
@@ -382,7 +459,7 @@ impl ControlDefinition {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `ControlType` value.
     #[must_use]
     pub const fn control_type(&self) -> ControlType {
         self.control_type
@@ -392,7 +469,7 @@ impl ControlDefinition {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `DluRect` value.
     #[must_use]
     pub const fn rect(&self) -> DluRect {
         self.rect
@@ -402,7 +479,7 @@ impl ControlDefinition {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `u32` numeric result or status code.
     #[must_use]
     pub const fn attributes(&self) -> u32 {
         self.attributes
@@ -412,7 +489,7 @@ impl ControlDefinition {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(&str)` if found, or `None` if absent.
     #[must_use]
     pub fn property_name(&self) -> Option<&str> {
         self.property.as_deref()
@@ -422,7 +499,7 @@ impl ControlDefinition {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(&str)` if found, or `None` if absent.
     #[must_use]
     pub fn text_template(&self) -> Option<&str> {
         self.text.as_deref()
@@ -432,7 +509,7 @@ impl ControlDefinition {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(&str)` if found, or `None` if absent.
     #[must_use]
     pub fn next_control(&self) -> Option<&str> {
         self.control_next.as_deref()
@@ -442,7 +519,7 @@ impl ControlDefinition {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(&str)` if found, or `None` if absent.
     #[must_use]
     pub fn help_text(&self) -> Option<&str> {
         self.help.as_deref()
@@ -452,7 +529,7 @@ impl ControlDefinition {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `true` if the check succeeds or state matches, `false` otherwise.
     #[must_use]
     pub const fn is_visible_by_default(&self) -> bool {
         self.attributes & CONTROL_ATTR_VISIBLE != 0
@@ -462,7 +539,7 @@ impl ControlDefinition {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `true` if the check succeeds or state matches, `false` otherwise.
     #[must_use]
     pub const fn is_enabled_by_default(&self) -> bool {
         self.attributes & CONTROL_ATTR_ENABLED != 0
@@ -472,7 +549,7 @@ impl ControlDefinition {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `true` if the check succeeds or state matches, `false` otherwise.
     #[must_use]
     pub const fn is_password_input(&self) -> bool {
         self.attributes & CONTROL_ATTR_PASSWORD_INPUT != 0
@@ -482,7 +559,7 @@ impl ControlDefinition {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `true` if the check succeeds or state matches, `false` otherwise.
     #[must_use]
     pub const fn is_integer_only(&self) -> bool {
         self.attributes & CONTROL_ATTR_INTEGER != 0
@@ -539,7 +616,6 @@ impl ControlRuntimeState {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -570,9 +646,16 @@ mod tests {
         }
 
         assert_eq!(ControlType::from_name("PathEdit"), Ok(ControlType::Edit));
+        assert_eq!(ControlType::from_name("MaskedEdit"), Ok(ControlType::Edit));
         assert_eq!(ControlType::from_name("GroupBox"), Ok(ControlType::Text));
+        assert_eq!(ControlType::from_name("Billboard"), Ok(ControlType::Text));
+        assert_eq!(ControlType::from_name("Icon"), Ok(ControlType::Bitmap));
         assert_eq!(
             ControlType::from_name("DirectoryCombo"),
+            Ok(ControlType::ComboBox)
+        );
+        assert_eq!(
+            ControlType::from_name("VolumeSelectCombo"),
             Ok(ControlType::ComboBox)
         );
         assert_eq!(
@@ -581,6 +664,46 @@ mod tests {
         );
 
         assert!(ControlType::from_name("InvalidControl").is_err());
+
+        let exact_types = [
+            ("Billboard", ControlType::Billboard, "Static"),
+            ("Bitmap", ControlType::Bitmap, "Static"),
+            ("CheckBox", ControlType::CheckBox, "Button"),
+            ("ComboBox", ControlType::ComboBox, "ComboBox"),
+            ("DirectoryCombo", ControlType::DirectoryCombo, "ComboBox"),
+            ("DirectoryList", ControlType::DirectoryList, "SysListView32"),
+            ("Edit", ControlType::Edit, "Edit"),
+            ("GroupBox", ControlType::GroupBox, "Button"),
+            ("Icon", ControlType::Icon, "Static"),
+            ("Line", ControlType::Line, "Static"),
+            ("ListBox", ControlType::ListBox, "ListBox"),
+            ("ListView", ControlType::ListView, "SysListView32"),
+            ("MaskedEdit", ControlType::MaskedEdit, "Edit"),
+            ("PathEdit", ControlType::PathEdit, "Edit"),
+            ("ProgressBar", ControlType::ProgressBar, "msctls_progress32"),
+            ("PushButton", ControlType::PushButton, "Button"),
+            ("RadioButtonGroup", ControlType::RadioButtonGroup, "Button"),
+            ("ScrollableText", ControlType::ScrollableText, "Edit"),
+            ("SelectionTree", ControlType::SelectionTree, "SysTreeView32"),
+            ("Text", ControlType::Text, "Static"),
+            (
+                "VolumeCostList",
+                ControlType::VolumeCostList,
+                "SysListView32",
+            ),
+            (
+                "VolumeSelectCombo",
+                ControlType::VolumeSelectCombo,
+                "ComboBox",
+            ),
+        ];
+
+        for (name, variant, win32_class) in exact_types {
+            assert_eq!(name.parse::<ControlType>(), Ok(variant));
+            assert_eq!(variant.as_str(), name);
+            assert_eq!(variant.to_win32_class(), win32_class);
+        }
+        assert!("UnknownType".parse::<ControlType>().is_err());
     }
 
     /// Tests control definition attributes and runtime state creation.

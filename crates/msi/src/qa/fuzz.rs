@@ -106,7 +106,6 @@ pub fn fuzz_condition_eval(expression: &str) -> bool {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::cfb::header::CfbVersion;

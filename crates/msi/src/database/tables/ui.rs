@@ -442,7 +442,6 @@ pub fn error_schema() -> TableSchema {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

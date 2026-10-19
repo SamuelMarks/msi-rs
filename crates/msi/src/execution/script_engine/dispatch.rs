@@ -33,7 +33,7 @@ impl DispParams {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn new() -> Self {
         Self { args: Vec::new() }
@@ -66,11 +66,11 @@ pub trait DispatchResolver {
     ///
     /// # Arguments
     ///
-    /// * `prog_id` - The `prog_id` parameter.
+    /// * `prog_id` - Identifier of the prog.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Box<dyn DispatchObject>)` on success, or an error if the operation fails.
     fn create_object(&self, prog_id: &str) -> Result<Box<dyn DispatchObject>>;
 }
 
@@ -83,12 +83,12 @@ pub trait DispatchObject: std::fmt::Debug {
     ///
     /// # Arguments
     ///
-    /// * `name` - The `name` parameter.
-    /// * `params` - The `params` parameter.
+    /// * `name` - Identifier or name of the target entity.
+    /// * `params` - The params value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(VariantType)` on success, or an error if the operation fails.
     fn invoke(&self, name: &str, params: &DispParams) -> Result<VariantType>;
 }
 
@@ -177,7 +177,6 @@ pub mod posix_impl {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

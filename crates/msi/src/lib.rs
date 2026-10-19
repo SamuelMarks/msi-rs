@@ -40,7 +40,6 @@ pub use execution::{
 pub use package::{Package, PackageBuilder, PackageMetadata, ProductVersion};
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     #[test]

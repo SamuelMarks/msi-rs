@@ -37,7 +37,6 @@ pub fn extract_manifest(pe_path: &Path) -> Result<String> {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

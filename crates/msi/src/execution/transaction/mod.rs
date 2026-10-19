@@ -18,7 +18,13 @@
 //!   - Rollback: Reverse chronological unwinding of rollback script, restoring quarantined files,
 //!     removing installed files/directories, restoring registry keys, returning `1603` (`ERROR_INSTALL_FAILURE`).
 
-use crate::database::tables::chainer::MsiEmbeddedChainerRow;
+pub mod chainer;
+mod file_ops;
+mod registry_ops;
+mod system_ops;
+
+pub use self::chainer::{ChainedPackage, MultiPackageTransactionManager};
+
 use crate::database::tables::record::FieldValue;
 use crate::error::{MsiError, Result};
 use crate::execution::costing::DiskCostEngine;
@@ -40,11 +46,11 @@ pub const ERROR_INSTALL_FAILURE: u32 = 1603;
 ///
 /// # Arguments
 ///
-/// * `path_str` - The `path_str` parameter.
+/// * `path_str` - The path str value.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// `true` if the check succeeds or state matches, `false` otherwise.
 fn is_executable_file(path_str: &str) -> bool {
     Path::new(path_str).extension().is_some_and(|ext| {
         ext.eq_ignore_ascii_case("sh")
@@ -137,7 +143,7 @@ pub struct WorkerContext {
     /// Services currently in running state.
     running_services: HashSet<String>,
     /// List of action log records.
-    executed_actions: Vec<String>,
+    pub(super) executed_actions: Vec<String>,
     /// Name of action configured to simulate failure (for rollback testing).
     simulated_failure_action: Option<String>,
     /// Optional live worker executor for real physical disk operations and rollback quarantine.
@@ -179,7 +185,7 @@ impl WorkerContext {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn with_live_executor(mut self, executor: super::worker::LiveWorkerExecutor) -> Self {
         self.live_executor = Some(executor);
@@ -211,7 +217,7 @@ impl WorkerContext {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(&mut crate::execution::bare_metal::BareMetalRollbackJournal)` if found, or `None` if absent.
     pub const fn bare_metal_journal_mut(
         &mut self,
     ) -> Option<&mut crate::execution::bare_metal::BareMetalRollbackJournal> {
@@ -222,7 +228,7 @@ impl WorkerContext {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(&super::worker::LiveWorkerExecutor)` if found, or `None` if absent.
     #[must_use]
     pub const fn live_executor(&self) -> Option<&super::worker::LiveWorkerExecutor> {
         self.live_executor.as_ref()
@@ -232,7 +238,7 @@ impl WorkerContext {
     ///
     /// # Arguments
     ///
-    /// * `exec` - The `exec` parameter.
+    /// * `exec` - The exec value.
     pub fn set_live_executor(&mut self, exec: super::worker::LiveWorkerExecutor) {
         self.live_executor = Some(exec);
     }
@@ -250,7 +256,7 @@ impl WorkerContext {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn add_cabinet_bytes(&mut self, name: &str, bytes: &[u8]) -> Result<()> {
         let reader = crate::cab::reader::CabinetReader::new(bytes)?;
         self.cabinet_readers.insert(name.to_string(), reader);
@@ -280,7 +286,7 @@ impl WorkerContext {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Self)` on success, or an error if the operation fails.
     pub fn with_cabinet_bytes(mut self, name: &str, bytes: &[u8]) -> Result<Self> {
         self.add_cabinet_bytes(name, bytes)?;
         Ok(self)
@@ -401,7 +407,7 @@ impl WorkerContext {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&super::custom_action::CustomActionExecutor` value.
     #[must_use]
     pub const fn custom_action_executor(&self) -> &super::custom_action::CustomActionExecutor {
         &self.custom_action_executor
@@ -414,7 +420,7 @@ impl WorkerContext {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&mut super::custom_action::CustomActionExecutor` value.
     pub const fn custom_action_executor_mut(
         &mut self,
     ) -> &mut super::custom_action::CustomActionExecutor {
@@ -425,7 +431,7 @@ impl WorkerContext {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&EvaluationContext` value.
     #[must_use]
     pub const fn evaluation_context(&self) -> &EvaluationContext {
         &self.evaluation_context
@@ -435,7 +441,7 @@ impl WorkerContext {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&mut EvaluationContext` value.
     pub const fn evaluation_context_mut(&mut self) -> &mut EvaluationContext {
         &mut self.evaluation_context
     }
@@ -478,7 +484,7 @@ impl WorkerContext {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&HashMap<String, Vec<u8>>` value.
     #[must_use]
     pub const fn binaries(&self) -> &HashMap<String, Vec<u8>> {
         &self.binaries
@@ -488,7 +494,7 @@ impl WorkerContext {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&[String]` value.
     #[must_use]
     pub fn executed_actions(&self) -> &[String] {
         &self.executed_actions
@@ -666,9 +672,9 @@ impl WorkerContext {
     ///
     /// # Arguments
     ///
-    /// * `path` - The `path` parameter.
-    /// * `content` - The `content` parameter.
-    /// * `shared_dll_ref_count` - The `shared_dll_ref_count` parameter.
+    /// * `path` - Filesystem path to the target file or directory.
+    /// * `content` - Text or binary content payload.
+    /// * `shared_dll_ref_count` - The shared dll ref count value.
     fn install_component_file_impl(
         &mut self,
         path: String,
@@ -1026,7 +1032,7 @@ impl WorkerContext {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     #[allow(clippy::too_many_lines)]
     pub fn execute_script(&mut self, script: &InstallScript) -> Result<()> {
         for op in script.operations() {
@@ -1235,7 +1241,7 @@ impl WorkerContext {
                     let masked = self.evaluation_context.mask_log_string(&log_entry);
                     self.executed_actions.push(masked);
                 }
-                _ => {} // coverage:ignore-line
+                _ => {}
             }
         }
 
@@ -1254,7 +1260,7 @@ impl WorkerContext {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn execute_rollback(&mut self, script: &RollbackScript) -> Result<()> {
         for op in script.operations().iter().rev() {
             match op {
@@ -1315,7 +1321,7 @@ impl WorkerContext {
                     self.executed_actions
                         .push(format!("RollbackCustomAction({action})"));
                 }
-                _ => {} // coverage:ignore-line
+                _ => {}
             }
         }
 
@@ -1338,7 +1344,7 @@ impl WorkerContext {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn commit(&mut self) -> Result<()> {
         self.quarantine_files.clear();
         self.executed_actions.push("CommitSuccess".to_string());
@@ -1378,7 +1384,7 @@ impl InstallState {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `i32` numeric result or status code.
     #[must_use]
     pub const fn to_i32(self) -> i32 {
         self as i32
@@ -1407,828 +1413,6 @@ pub enum TransactionState {
     Committed,
     /// Transaction has aborted and all child actions have been unwound in reverse order.
     RolledBack,
-}
-
-/// Record of an individual package chained inside a multi-package transaction.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChainedPackage {
-    /// Path or stream identifier of the child package.
-    pub package_path: String,
-    /// Public properties forwarded to the child package.
-    pub properties: HashMap<String, String>,
-    /// Whether this package or service pre-existed on the host system prior to installation.
-    pub preexisting: bool,
-    /// Optional temporary file path if the MSI was extracted from an internal cabinet or binary stream.
-    pub temp_extracted_path: Option<String>,
-    /// Optional rollback script for unwinding actions performed by this package.
-    pub rollback_script: Option<RollbackScript>,
-}
-
-/// Multi-package transaction coordinator implementing Windows Installer 4.5+ transactioning.
-///
-/// Manages atomic cross-package installation sessions (`MsiBeginTransaction`, `MsiInstallProduct`,
-/// `MsiJoinTransaction`, `MsiEndTransaction`), property forwarding, and rollback reversal.
-#[derive(Debug, Default)]
-pub struct MultiPackageTransactionManager {
-    /// Identifier or name of the transaction.
-    transaction_name: String,
-    /// Current lifecycle state.
-    state: Option<TransactionState>,
-    /// Chronological log of chained child package installations.
-    chained_packages: Vec<ChainedPackage>,
-    /// Shared execution worker context.
-    worker: WorkerContext,
-    /// Host product state registry mapping `ProductCode` or `UpgradeCode` to [`InstallState`].
-    registered_products: HashMap<String, InstallState>,
-    /// Registered external session identifiers that joined this transaction.
-    joined_sessions: HashSet<String>,
-}
-
-impl MultiPackageTransactionManager {
-    /// Begins a new unified multi-package transaction (`MsiBeginTransaction`).
-    ///
-    /// # Arguments
-    ///
-    /// * `name` - Descriptive name or identifier for the transaction.
-    ///
-    /// # Returns
-    ///
-    /// An active [`MultiPackageTransactionManager`].
-    ///
-    /// # Errors
-    ///
-    /// Returns [`MsiError::Validation`] if `name` is empty.
-    pub fn begin_transaction(name: &str) -> Result<Self> {
-        if name.trim().is_empty() {
-            return Err(MsiError::Validation {
-                element: "MultiPackageTransactionManager.name".to_string(),
-                reason: "transaction name cannot be empty".to_string(),
-            });
-        }
-
-        Ok(Self {
-            transaction_name: name.to_string(),
-            state: Some(TransactionState::Active),
-            chained_packages: Vec::new(),
-            worker: WorkerContext::default(),
-            registered_products: HashMap::new(),
-            joined_sessions: HashSet::new(),
-        })
-    }
-
-    /// Allows an external installation session to join the active transaction boundary (`MsiJoinTransaction`).
-    ///
-    /// # Arguments
-    ///
-    /// * `session_id` - Identifier for the joining session.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`MsiError::Chainer`] if transaction is not in the active state.
-    ///
-    /// # Returns
-    ///
-    /// The resulting value or `Ok(())` on success.
-    pub fn join_transaction(&mut self, session_id: &str) -> Result<()> {
-        if self.state != Some(TransactionState::Active) {
-            return Err(MsiError::Chainer(
-                "cannot join transaction: transaction is not active".to_string(),
-            ));
-        }
-        self.joined_sessions.insert(session_id.to_string());
-        Ok(())
-    }
-
-    /// Queries the installation state of a product or family by `ProductCode` or `UpgradeCode` (`MsiQueryProductState`).
-    ///
-    /// Normalizes GUID formatting by handling optional enclosing braces and performing case-insensitive matching.
-    ///
-    /// # Arguments
-    ///
-    /// * `code` - GUID product or upgrade identifier.
-    ///
-    /// # Returns
-    ///
-    /// The detected [`InstallState`].
-    #[must_use]
-    pub fn query_product_state(&self, code: &str) -> InstallState {
-        if let Some(state) = self.registered_products.get(code) {
-            return *state;
-        }
-        let trimmed = code.trim().trim_matches(|c| c == '{' || c == '}');
-        for (k, v) in &self.registered_products {
-            let k_trimmed = k.trim().trim_matches(|c| c == '{' || c == '}');
-            if k_trimmed.eq_ignore_ascii_case(trimmed) {
-                return *v;
-            }
-        }
-        InstallState::Absent
-    }
-
-    /// Checks if a product or upgrade code corresponds to an installed product.
-    ///
-    /// # Arguments
-    ///
-    /// * `code` - `ProductCode` or `UpgradeCode` GUID.
-    ///
-    /// # Returns
-    ///
-    /// `true` if the state indicates the product is installed, `false` otherwise.
-    #[must_use]
-    pub fn is_product_installed(&self, code: &str) -> bool {
-        self.query_product_state(code).is_installed()
-    }
-
-    /// Determines whether a child package is pre-existing on the host system based on its
-    /// `ProductCode` or `UpgradeCode`.
-    ///
-    /// # Arguments
-    ///
-    /// * `package` - Child MSI package to check.
-    ///
-    /// # Returns
-    ///
-    /// `true` if either the `ProductCode` or `UpgradeCode` is registered as installed.
-    #[must_use]
-    pub fn is_package_preexisting(&self, package: &Package) -> bool {
-        let product_code = package.metadata().product_code();
-        if self.is_product_installed(product_code) {
-            return true;
-        }
-
-        let upgrade_code = package
-            .database()
-            .get_records("Property")
-            .iter()
-            .find_map(|r| match (r.get(0), r.get(1)) {
-                (Some(FieldValue::String(k)), Some(FieldValue::String(v)))
-                    if k == "UpgradeCode" =>
-                {
-                    Some(v.as_str())
-                }
-                _ => None,
-            });
-
-        if let Some(up_code) = upgrade_code {
-            if self.is_product_installed(up_code) {
-                return true;
-            }
-        }
-
-        false
-    }
-
-    /// Manually registers or updates the installation state for a product code or upgrade code.
-    ///
-    /// # Arguments
-    ///
-    /// * `code` - GUID product or upgrade code.
-    /// * `state` - Installation state to associate.
-    pub fn register_product(&mut self, code: &str, state: InstallState) {
-        self.registered_products.insert(code.to_string(), state);
-    }
-
-    /// Checks whether a property name adheres to the Windows Installer public property convention.
-    ///
-    /// Public properties consist strictly of uppercase ASCII alphanumeric characters and underscores.
-    ///
-    /// # Arguments
-    ///
-    /// * `name` - The property name to check.
-    ///
-    /// # Returns
-    ///
-    /// `true` if public, `false` otherwise.
-    #[must_use]
-    pub fn is_public_property(name: &str) -> bool {
-        !name.is_empty()
-            && name
-                .chars()
-                .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
-    }
-
-    /// Serializes all public properties from an [`EvaluationContext`] into a command-line string.
-    ///
-    /// # Arguments
-    ///
-    /// * `context` - The evaluation context containing active properties.
-    ///
-    /// # Returns
-    ///
-    /// A space-delimited string of `KEY=VALUE` or `KEY="VALUE"` pairs sorted alphabetically by key.
-    #[must_use]
-    pub fn forward_public_properties(context: &EvaluationContext) -> String {
-        let mut pairs: Vec<(&str, &str)> = context
-            .properties()
-            .iter()
-            .filter(|(k, _)| Self::is_public_property(k))
-            .map(|(k, v)| (k.as_str(), v.as_str()))
-            .collect();
-        pairs.sort_by(|a, b| a.0.cmp(b.0));
-        pairs
-            .into_iter()
-            .map(|(k, v)| {
-                if v.contains(' ') || v.contains('"') {
-                    format!("{k}=\"{}\"", v.replace('"', "\\\""))
-                } else {
-                    format!("{k}={v}")
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(" ")
-    }
-
-    /// Forwards all public properties from a source context into a target context.
-    ///
-    /// # Arguments
-    ///
-    /// * `source` - Source context containing properties.
-    /// * `target` - Target context receiving the public properties.
-    pub fn forward_properties_to_context(
-        source: &EvaluationContext,
-        target: &mut EvaluationContext,
-    ) {
-        for (k, v) in source.properties() {
-            if Self::is_public_property(k) {
-                target.set_property(k, v);
-            }
-        }
-    }
-
-    /// Reads and parses all [`MsiEmbeddedChainerRow`] records from the `MsiEmbeddedChainer` table of an MSI package.
-    ///
-    /// # Arguments
-    ///
-    /// * `package` - MSI package to inspect.
-    ///
-    /// # Returns
-    ///
-    /// Vector of parsed [`MsiEmbeddedChainerRow`] records.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`MsiError::Validation`] if a record in the `MsiEmbeddedChainer` table cannot be parsed.
-    pub fn read_embedded_chainers(package: &Package) -> Result<Vec<MsiEmbeddedChainerRow>> {
-        let mut chainers = Vec::new();
-        for rec in package.database().get_records("MsiEmbeddedChainer") {
-            let row = MsiEmbeddedChainerRow::from_record(rec)?;
-            chainers.push(row);
-        }
-        Ok(chainers)
-    }
-
-    /// Extracts an embedded child MSI package from internal streams or the `Binary` table
-    /// into a temporary spool directory.
-    ///
-    /// # Arguments
-    ///
-    /// * `package` - Master MSI package containing embedded child stream.
-    /// * `stream_or_binary_key` - Key identifier for the embedded child stream.
-    /// * `spool_dir` - Destination directory where the child package will be written.
-    ///
-    /// # Returns
-    ///
-    /// The [`PathBuf`] to the extracted `.msi` file.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`MsiError::Chainer`] if the stream or binary data cannot be found.
-    /// Returns [`MsiError::Io`] on filesystem write failure.
-    pub fn extract_child_package(
-        &mut self,
-        package: &Package,
-        stream_or_binary_key: &str,
-        spool_dir: &Path,
-    ) -> Result<PathBuf> {
-        let clean_name = stream_or_binary_key
-            .strip_prefix('#')
-            .unwrap_or(stream_or_binary_key);
-        let file_name = if Path::new(clean_name)
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("msi"))
-        {
-            clean_name.to_string()
-        } else {
-            format!("{clean_name}.msi")
-        };
-        let base_name = Path::new(&file_name)
-            .file_name()
-            .and_then(|f| f.to_str())
-            .unwrap_or("child.msi");
-
-        let data: Option<Vec<u8>> = package
-            .embedded_cabinets()
-            .get(stream_or_binary_key)
-            .or_else(|| package.embedded_cabinets().get(clean_name))
-            .cloned()
-            .or_else(|| {
-                package
-                    .database()
-                    .get_records("Binary")
-                    .iter()
-                    .find_map(|r| {
-                        if let Some(FieldValue::String(name)) = r.get(0) {
-                            if name == stream_or_binary_key || name == clean_name {
-                                match r.get(1) {
-                                    Some(FieldValue::String(s)) => Some(s.as_bytes().to_vec()),
-                                    _ => None,
-                                }
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
-                        }
-                    })
-            });
-
-        let payload = data.ok_or_else(|| {
-            MsiError::Chainer(format!(
-                "embedded child package '{stream_or_binary_key}' not found in streams or Binary table"
-            ))
-        })?;
-
-        std::fs::create_dir_all(spool_dir)?;
-        let dest_path = spool_dir.join(base_name);
-        std::fs::write(&dest_path, payload)?;
-
-        self.worker
-            .executed_actions
-            .push(format!("ExtractChildPackage:{base_name}"));
-
-        Ok(dest_path)
-    }
-
-    /// Extracts all embedded child packages found in internal streams or `Binary` table records.
-    ///
-    /// Any stream or binary identifier ending with `.msi` (case-insensitive) is extracted to `spool_dir`.
-    ///
-    /// # Arguments
-    ///
-    /// * `package` - Master MSI package.
-    /// * `spool_dir` - Destination spool directory.
-    ///
-    /// # Returns
-    ///
-    /// Mapping of child package identifier to extracted file path.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`crate::MsiError`] on extraction or filesystem write failure.
-    pub fn extract_all_child_packages(
-        &mut self,
-        package: &Package,
-        spool_dir: &Path,
-    ) -> Result<HashMap<String, PathBuf>> {
-        let mut extracted = HashMap::new();
-
-        for name in package.embedded_cabinets().keys() {
-            if Path::new(name)
-                .extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("msi"))
-            {
-                let path = self.extract_child_package(package, name, spool_dir)?;
-                extracted.insert(name.clone(), path);
-            }
-        }
-
-        for rec in package.database().get_records("Binary") {
-            if let Some(FieldValue::String(bin_name)) = rec.get(0) {
-                if Path::new(bin_name)
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("msi"))
-                    && !extracted.contains_key(bin_name)
-                {
-                    let path = self.extract_child_package(package, bin_name, spool_dir)?;
-                    extracted.insert(bin_name.clone(), path);
-                }
-            }
-        }
-
-        Ok(extracted)
-    }
-
-    /// Installs a child package within the active transaction (`MsiInstallProduct`).
-    ///
-    /// # Arguments
-    ///
-    /// * `package_path` - Path or stream specifier for the child `.msi` file.
-    /// * `command_line` - Public properties string (e.g. `PROP_MYSQL_PORT=3306 PREEXISTING=1`).
-    ///
-    /// # Returns
-    ///
-    /// Exit code `0` (`ERROR_SUCCESS`) on success.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`MsiError::Chainer`] if the transaction is not active or installation fails.
-    pub fn install_product_nested(
-        &mut self,
-        package_path: &str,
-        command_line: &str,
-    ) -> Result<u32> {
-        self.install_product_nested_impl(package_path.to_string(), command_line)
-    }
-
-    /// Internal implementation of nested product installation with concrete path string.
-    ///
-    /// # Arguments
-    ///
-    /// * `package_path` - The `package_path` parameter.
-    /// * `command_line` - The `command_line` parameter.
-    ///
-    /// # Returns
-    ///
-    /// The resulting value or `Ok(())` on success.
-    fn install_product_nested_impl(
-        &mut self,
-        package_path: String,
-        command_line: &str,
-    ) -> Result<u32> {
-        if self.state != Some(TransactionState::Active) {
-            return Err(MsiError::Chainer(
-                "cannot install nested package: transaction is not active".to_string(),
-            ));
-        }
-
-        let mut properties = HashMap::new();
-
-        for token in command_line.split_whitespace() {
-            if let Some((k, v)) = token.split_once('=') {
-                let val = v.trim_matches('"');
-                properties.insert(k.to_string(), val.to_string());
-            }
-        }
-
-        let preexisting = properties.get("PREEXISTING").is_some_and(|v| v == "1")
-            || self.query_product_state(&package_path) == InstallState::Default;
-
-        let temp_extracted_path = (package_path.starts_with("embedded:")
-            || package_path.starts_with("Binary:")
-            || package_path.starts_with('#'))
-        .then(|| format!("/tmp/extracted_{}", self.chained_packages.len()));
-
-        self.worker
-            .executed_actions
-            .push(format!("InstallProduct:{package_path}"));
-
-        self.chained_packages.push(ChainedPackage {
-            package_path,
-            properties,
-            preexisting,
-            temp_extracted_path,
-            rollback_script: None,
-        });
-
-        Ok(ERROR_SUCCESS)
-    }
-
-    /// Installs a child MSI package instance within the active transaction, evaluating
-    /// pre-existing status, launch conditions, and executing transactional operations.
-    ///
-    /// If the package is detected as pre-existing or skipped via launch conditions,
-    /// physical installation is skipped and recorded as pre-existing.
-    ///
-    /// # Arguments
-    ///
-    /// * `child_pkg` - The parsed child MSI package.
-    /// * `command_line` - Command line property arguments forwarded to the child.
-    ///
-    /// # Returns
-    ///
-    /// Exit code `0` (`ERROR_SUCCESS`) on success.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`MsiError::Chainer`] if the transaction is not active.
-    /// Returns [`MsiError::ExecutionFailed`] if launch conditions fail or execution fails.
-    pub fn install_child_package(
-        &mut self,
-        child_pkg: &Package,
-        command_line: &str,
-    ) -> Result<u32> {
-        if self.state != Some(TransactionState::Active) {
-            return Err(MsiError::Chainer(
-                "cannot install child package: transaction is not active".to_string(),
-            ));
-        }
-
-        let mut properties = HashMap::new();
-        for token in command_line.split_whitespace() {
-            if let Some((k, v)) = token.split_once('=') {
-                let val = v.trim_matches('"');
-                properties.insert(k.to_string(), val.to_string());
-            }
-        }
-
-        let product_code = child_pkg.metadata().product_code();
-        let product_name = child_pkg.metadata().product_name();
-        let is_pre = properties.get("PREEXISTING").is_some_and(|v| v == "1")
-            || self.is_package_preexisting(child_pkg);
-
-        // Check if an explicit skip property is set (e.g. INSTALL_MYSQL="0")
-        let skip_install = properties.iter().any(|(k, v)| {
-            k.starts_with("INSTALL_") && (v == "0" || v.eq_ignore_ascii_case("false"))
-        });
-
-        if is_pre || skip_install {
-            self.worker.executed_actions.push(format!(
-                "SkipChildPackagePreexisting:{product_name}:{product_code}"
-            ));
-            self.chained_packages.push(ChainedPackage {
-                package_path: product_name.to_string(),
-                properties,
-                preexisting: true,
-                temp_extracted_path: None,
-                rollback_script: None,
-            });
-            return Ok(ERROR_SUCCESS);
-        }
-
-        // Build child evaluation context starting with properties from the child package
-        let mut child_ctx = EvaluationContext::new();
-        for r in child_pkg.database().get_records("Property") {
-            if let (Some(FieldValue::String(k)), Some(FieldValue::String(v))) = (r.get(0), r.get(1))
-            {
-                child_ctx.set_property(k, v);
-            }
-        }
-        for (k, v) in &properties {
-            child_ctx.set_property(k, v);
-        }
-
-        // Evaluate launch conditions if present
-        for lc_rec in child_pkg.database().get_records("LaunchCondition") {
-            if let Some(FieldValue::String(cond)) = lc_rec.get(0) {
-                let desc = match lc_rec.get(1) {
-                    Some(FieldValue::String(s)) => s.as_str(),
-                    _ => "Launch condition failed",
-                };
-                if !child_ctx.evaluate_condition(cond)? {
-                    return Err(MsiError::ExecutionFailed {
-                        action: "LaunchConditions".to_string(),
-                        return_code: ERROR_INSTALL_FAILURE,
-                        message: desc.to_string(),
-                    });
-                }
-            }
-        }
-
-        let tx = Transaction::from_package(child_pkg, child_ctx, DiskCostEngine::new());
-        let prepared_tx = tx.prepare()?;
-        let rollback_script = prepared_tx.rollback_script().clone();
-
-        self.worker
-            .executed_actions
-            .push(format!("InstallProduct:{product_name}"));
-
-        let executed_tx = prepared_tx.execute(&mut self.worker)?;
-        let committed_tx = executed_tx.commit(&mut self.worker)?;
-
-        self.chained_packages.push(ChainedPackage {
-            package_path: product_name.to_string(),
-            properties,
-            preexisting: false,
-            temp_extracted_path: None,
-            rollback_script: Some(rollback_script),
-        });
-
-        Ok(committed_tx.return_code())
-    }
-
-    /// Loads a child package from disk and installs it within the active transaction.
-    ///
-    /// # Arguments
-    ///
-    /// * `path` - Filesystem path to the child `.msi` package.
-    /// * `command_line` - Command line arguments and properties forwarded to the child.
-    ///
-    /// # Returns
-    ///
-    /// Exit code `0` (`ERROR_SUCCESS`) on success.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`crate::MsiError`] if opening or installing the package fails.
-    pub fn install_child_package_from_path(
-        &mut self,
-        path: impl AsRef<Path>,
-        command_line: &str,
-    ) -> Result<u32> {
-        let pkg = Package::open(path)?;
-        self.install_child_package(&pkg, command_line)
-    }
-
-    /// Orchestrates a sequence of child [`Package`] instances within the active transaction.
-    ///
-    /// Forwards public properties from `master_context` merged with optional child-specific arguments,
-    /// installs each child package sequentially, and executes a cascading rollback if any child fails.
-    ///
-    /// # Arguments
-    ///
-    /// * `child_packages` - Slice of child package references and optional property argument strings.
-    /// * `master_context` - Evaluation context from the master package containing properties to forward.
-    ///
-    /// # Returns
-    ///
-    /// Exit code `0` (`ERROR_SUCCESS`) on success.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`crate::MsiError`] if any child package installation fails (after rolling back preceding packages).
-    pub fn orchestrate_child_packages(
-        &mut self,
-        child_packages: &[(&Package, Option<&str>)],
-        master_context: &EvaluationContext,
-    ) -> Result<u32> {
-        let forwarded = Self::forward_public_properties(master_context);
-
-        for (pkg, extra_args) in child_packages {
-            let cmdline = match extra_args {
-                Some(args) if !args.trim().is_empty() => {
-                    if forwarded.is_empty() {
-                        (*args).to_string()
-                    } else {
-                        format!("{forwarded} {args}")
-                    }
-                }
-                _ => forwarded.clone(),
-            };
-
-            if let Err(err) = self.install_child_package(pkg, &cmdline) {
-                let _ = self.end_transaction(false);
-                return Err(err);
-            }
-        }
-
-        self.end_transaction(true)
-    }
-
-    /// Orchestrates an entire multi-package deployment session from a master orchestrator package.
-    ///
-    /// Reads `MsiEmbeddedChainer` table records from `master_pkg`, extracts embedded child packages to `spool_dir`,
-    /// evaluates conditions, forwards public properties, installs child packages atomically,
-    /// and handles rollback cascade if any package fails.
-    ///
-    /// # Arguments
-    ///
-    /// * `master_pkg` - Master orchestrator MSI package.
-    /// * `master_context` - Evaluation context from the master package containing active properties.
-    /// * `spool_dir` - Destination directory for spooling embedded child packages.
-    /// * `child_packages` - Optional list of child package names and specific property overrides.
-    ///
-    /// # Returns
-    ///
-    /// Exit code `0` (`ERROR_SUCCESS`) on success, or `1603` (`ERROR_INSTALL_FAILURE`) on rollback.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`crate::MsiError`] on execution failure.
-    pub fn orchestrate_master_package(
-        &mut self,
-        master_pkg: &Package,
-        master_context: &EvaluationContext,
-        spool_dir: &Path,
-        child_packages: &[(&str, Option<&str>)],
-    ) -> Result<u32> {
-        let chainers = Self::read_embedded_chainers(master_pkg)?;
-        for chainer in &chainers {
-            if let Some(ref cond) = chainer.condition {
-                if !master_context.evaluate_condition(cond)? {
-                    self.worker
-                        .executed_actions
-                        .push(format!("SkipEmbeddedChainer:{}", chainer.chainer));
-                    return Ok(ERROR_SUCCESS);
-                }
-            }
-        }
-
-        let extracted = self.extract_all_child_packages(master_pkg, spool_dir)?;
-        let forwarded_props = Self::forward_public_properties(master_context);
-
-        for (pkg_name, child_args) in child_packages {
-            let combined_cmdline = match child_args {
-                Some(args) if !args.trim().is_empty() => {
-                    if forwarded_props.is_empty() {
-                        (*args).to_string()
-                    } else {
-                        format!("{forwarded_props} {args}")
-                    }
-                }
-                _ => forwarded_props.clone(),
-            };
-
-            let res = if let Some(path) = extracted.get(*pkg_name) {
-                self.install_child_package_from_path(path, &combined_cmdline)
-            } else if Path::new(*pkg_name).exists() {
-                self.install_child_package_from_path(*pkg_name, &combined_cmdline)
-            } else {
-                self.install_product_nested(pkg_name, &combined_cmdline)
-            };
-
-            if let Err(err) = res {
-                let _ = self.end_transaction(false);
-                return Err(err);
-            }
-        }
-
-        self.end_transaction(true)
-    }
-
-    /// Commits or rolls back all nested installations within the transaction (`MsiEndTransaction`).
-    ///
-    /// # Arguments
-    ///
-    /// * `commit` - `true` to commit all operations, `false` to rollback in reverse order.
-    ///
-    /// # Returns
-    ///
-    /// `0` (`ERROR_SUCCESS`) on commit, or `1603` (`ERROR_INSTALL_FAILURE`) on rollback.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`MsiError::Chainer`] if transaction is not active.
-    pub fn end_transaction(&mut self, commit: bool) -> Result<u32> {
-        if self.state != Some(TransactionState::Active) {
-            return Err(MsiError::Chainer(
-                "cannot end transaction: transaction is not active".to_string(),
-            ));
-        }
-
-        if commit {
-            self.state = Some(TransactionState::Committed);
-            self.worker
-                .executed_actions
-                .push("CommitAllPackages".to_string());
-            Ok(ERROR_SUCCESS)
-        } else {
-            self.state = Some(TransactionState::RolledBack);
-            for pkg in self.chained_packages.iter().rev() {
-                if pkg.preexisting {
-                    self.worker
-                        .executed_actions
-                        .push(format!("SkipRollbackPreexisting:{}", pkg.package_path));
-                } else {
-                    self.worker
-                        .executed_actions
-                        .push(format!("RollbackPackage:{}", pkg.package_path));
-                    if let Some(ref rb) = pkg.rollback_script {
-                        let _ = self.worker.execute_rollback(rb);
-                    }
-                }
-            }
-            Ok(ERROR_INSTALL_FAILURE)
-        }
-    }
-
-    /// Returns the name of the transaction.
-    ///
-    /// # Returns
-    ///
-    /// The resulting value or `Ok(())` on success.
-    #[must_use]
-    pub fn transaction_name(&self) -> &str {
-        &self.transaction_name
-    }
-
-    /// Returns the current lifecycle state of the transaction.
-    ///
-    /// # Returns
-    ///
-    /// The resulting value or `Ok(())` on success.
-    #[must_use]
-    pub const fn state(&self) -> Option<TransactionState> {
-        self.state
-    }
-
-    /// Returns the list of chained package records.
-    ///
-    /// # Returns
-    ///
-    /// The resulting value or `Ok(())` on success.
-    #[must_use]
-    pub fn chained_packages(&self) -> &[ChainedPackage] {
-        &self.chained_packages
-    }
-
-    /// Returns a reference to the shared execution worker context.
-    ///
-    /// # Returns
-    ///
-    /// The resulting value or `Ok(())` on success.
-    #[must_use]
-    pub const fn worker(&self) -> &WorkerContext {
-        &self.worker
-    }
-
-    /// Returns a mutable reference to the shared execution worker context.
-    ///
-    /// # Returns
-    ///
-    /// The resulting value or `Ok(())` on success.
-    pub const fn worker_mut(&mut self) -> &mut WorkerContext {
-        &mut self.worker
-    }
 }
 
 /// Windows Installer Transaction engine parameterized by typestate.
@@ -2276,7 +1460,7 @@ impl<State> Transaction<State> {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&LinkedDatabase` value.
     #[must_use]
     pub const fn database(&self) -> &LinkedDatabase {
         &self.database
@@ -2336,11 +1520,11 @@ struct DirEntry {
 
 /// Helper entry representing a media cabinet entry in the MSI `Media` table.
 #[derive(Debug, Clone)]
-struct MediaDisk {
+pub(super) struct MediaDisk {
     /// Maximum file sequence number stored on this media.
-    last_sequence: i32,
+    pub(super) last_sequence: i32,
     /// Cabinet archive stream or file name.
-    cabinet: Option<String>,
+    pub(super) cabinet: Option<String>,
 }
 
 /// Resolves standard Windows Installer directory properties and builds the directory graph.
@@ -2524,7 +1708,7 @@ impl Transaction<Uninitialized> {
         if let Some(allusers) = context.get_property("ALLUSERS") {
             if allusers == "2" {
                 if crate::platform::users::is_elevated() {
-                    context.set_property("ALLUSERS", "1"); // coverage:ignore-line
+                    context.set_property("ALLUSERS", "1");
                 } else {
                     context.set_property("ALLUSERS", "");
                 }
@@ -2741,165 +1925,6 @@ impl Transaction<Uninitialized> {
                 "CostFinalize" => {
                     self.cost_engine.cost_finalize()?;
                 }
-                "CreateFolders" => {
-                    let dir_records = self.database.get_records("Directory");
-                    for d in dir_records {
-                        if let Some(FieldValue::String(dir_name)) = d.get(0) {
-                            let path = resolved_dirs
-                                .get(dir_name)
-                                .map(|p| p.to_string_lossy().to_string())
-                                .unwrap_or_default(); // coverage:ignore-line
-                            self.install_script
-                                .push(ScriptOp::CreateFolder { path: path.clone() });
-                            self.rollback_script
-                                .push(RollbackOp::DeleteCreatedFolder { path });
-                        }
-                    }
-                }
-                "InstallFiles" => {
-                    let file_records = self.database.get_records("File");
-                    for f in file_records {
-                        let file_id = match f.get(0) {
-                            Some(FieldValue::String(id)) => id.clone(),
-                            _ => continue,
-                        };
-                        let comp_id = match f.get(1) {
-                            Some(FieldValue::String(c)) => c.clone(),
-                            _ => String::new(),
-                        };
-                        let filename_spec = match f.get(2) {
-                            Some(FieldValue::String(name)) => name.clone(),
-                            _ => continue,
-                        };
-                        let sequence = match f.get(7) {
-                            Some(&FieldValue::Short(s)) => i32::from(s),
-                            Some(&FieldValue::Long(l)) => l,
-                            _ => 1,
-                        };
-
-                        let filename = parse_file_name(&filename_spec);
-                        let target_path_buf = comp_to_dir
-                            .get(&comp_id)
-                            .and_then(|dir_id| resolved_dirs.get(dir_id))
-                            .map_or_else(
-                                || PathBuf::from(format!(r"C:\Program Files\App\{filename}")),
-                                |dir_path| dir_path.join(filename),
-                            );
-                        let target_path = target_path_buf.to_string_lossy().to_string();
-                        let quarantine_path = format!("{target_path}.rbf");
-
-                        // Backup existing file if present
-                        self.install_script.push(ScriptOp::BackupFile {
-                            target_path: target_path.clone(),
-                            quarantine_path: quarantine_path.clone(),
-                        });
-                        self.rollback_script
-                            .push(RollbackOp::RestoreQuarantinedFile {
-                                target_path: target_path.clone(),
-                                quarantine_path,
-                            });
-
-                        // Check media disks for cabinet
-                        let matched_cab = media_disks
-                            .iter()
-                            .find(|m| m.last_sequence >= sequence)
-                            .and_then(|m| m.cabinet.as_ref());
-
-                        if let Some(cab_name) = matched_cab {
-                            self.install_script.push(ScriptOp::ExtractCabinetFile {
-                                cabinet: cab_name.clone(),
-                                file_key: file_id,
-                                destination: target_path.clone(),
-                            });
-                        } else {
-                            self.install_script.push(ScriptOp::WriteFile {
-                                destination: target_path.clone(),
-                                content: format!("Payload of {filename}").into_bytes(),
-                            });
-                        }
-
-                        self.rollback_script
-                            .push(RollbackOp::DeleteCreatedFile { path: target_path });
-                    }
-                }
-                "WriteRegistryValues" => {
-                    let allusers = self.context.get_property("ALLUSERS").unwrap_or_default(); // coverage:ignore-line
-                    let is_per_machine = allusers == "1" || allusers == "2";
-
-                    let reg_records = self.database.get_records("Registry");
-                    for r in reg_records {
-                        let root = match r.get(1) {
-                            Some(&FieldValue::Short(-1)) => {
-                                if is_per_machine {
-                                    2 // msidbRegistryRootLocalMachine
-                                } else {
-                                    1 // msidbRegistryRootCurrentUser
-                                }
-                            }
-                            Some(&FieldValue::Short(n)) => {
-                                #[allow(clippy::cast_sign_loss)]
-                                {
-                                    n as u32
-                                }
-                            }
-                            _ => 2,
-                        };
-                        let key = match r.get(2) {
-                            Some(FieldValue::String(k)) => k.clone(),
-                            _ => r"Software\App".to_string(),
-                        };
-                        let name = match r.get(3) {
-                            Some(FieldValue::String(n)) => Some(n.clone()),
-                            _ => None,
-                        };
-                        let val = match r.get(4) {
-                            Some(FieldValue::String(v)) => Some(v.clone()),
-                            _ => None,
-                        };
-
-                        self.install_script.push(ScriptOp::WriteRegistry {
-                            root,
-                            key: key.clone(),
-                            name: name.clone(),
-                            value: val,
-                        });
-                        self.rollback_script.push(RollbackOp::RestoreRegistry {
-                            root,
-                            key,
-                            name,
-                            previous_value: None,
-                            existed: false,
-                        });
-                    }
-                }
-                "CreateShortcuts" => {
-                    let sc_records = self.database.get_records("Shortcut");
-                    for s in sc_records {
-                        if let Some(FieldValue::String(target)) = s.get(4) {
-                            let link_path = match s.get(1) {
-                                Some(FieldValue::String(dir_id)) => {
-                                    let dir =
-                                        resolved_dirs.get(dir_id).cloned().unwrap_or_else(|| {
-                                            PathBuf::from(r"C:\Users\Public\Desktop")
-                                        });
-                                    dir.join(format!("{target}.lnk"))
-                                        .to_string_lossy()
-                                        .to_string()
-                                }
-                                _ => format!(r"C:\Users\Public\Desktop\{target}.lnk"),
-                            };
-                            self.install_script.push(ScriptOp::CreateShortcut {
-                                target: target.clone(),
-                                link_path: link_path.clone(),
-                                arguments: None,
-                                icon_path: None,
-                                icon_index: None,
-                            });
-                            self.rollback_script
-                                .push(RollbackOp::DeleteShortcut { link_path });
-                        }
-                    }
-                }
                 "InstallValidate" => {
                     // Validates component install states and verifies sufficient disk quota
                     for (comp_id, comp_cond) in &comp_conditions {
@@ -2939,477 +1964,34 @@ impl Transaction<Uninitialized> {
                             .set_property(format!("ComponentClient_{comp_id}"), &prod_code);
                     }
                 }
-                "RemoveFiles" => {
-                    let remove_records = self.database.get_records("RemoveFile");
-                    for rf in remove_records {
-                        let dir_prop = match rf.get(3) {
-                            Some(FieldValue::String(d)) => d.as_str(),
-                            _ => continue,
-                        };
-                        let base_dir = resolved_dirs.get(dir_prop).cloned().unwrap_or_else(|| {
-                            PathBuf::from(self.context.get_property(dir_prop).unwrap_or(r"C:\App"))
-                        });
-                        let file_name = match rf.get(2) {
-                            Some(FieldValue::String(n)) if !n.is_empty() => n.clone(),
-                            _ => "*.*".to_string(),
-                        };
-                        let target_path = base_dir.join(&file_name).to_string_lossy().to_string();
-                        let quarantine_path = format!("{target_path}.rbf");
-
-                        self.install_script.push(ScriptOp::BackupFile {
-                            target_path: target_path.clone(),
-                            quarantine_path: quarantine_path.clone(),
-                        });
-                        self.install_script.push(ScriptOp::DeleteFile {
-                            path: target_path.clone(),
-                        });
-                        self.rollback_script
-                            .push(RollbackOp::RestoreQuarantinedFile {
-                                target_path,
-                                quarantine_path,
-                            });
-                    }
-                }
-                "RemoveRegistryValues" => {
-                    let allusers = self.context.get_property("ALLUSERS").unwrap_or_default(); // coverage:ignore-line
-                    let is_per_machine = allusers == "1" || allusers == "2";
-
-                    let remove_reg_records = self.database.get_records("RemoveRegistry");
-                    for r in remove_reg_records {
-                        let root = match r.get(1) {
-                            Some(&FieldValue::Short(-1)) => {
-                                if is_per_machine {
-                                    2 // msidbRegistryRootLocalMachine
-                                } else {
-                                    1 // msidbRegistryRootCurrentUser
-                                }
-                            }
-                            Some(&FieldValue::Short(n)) => {
-                                #[allow(clippy::cast_sign_loss)]
-                                {
-                                    n as u32
-                                }
-                            }
-                            _ => 2,
-                        };
-                        let key = match r.get(2) {
-                            Some(FieldValue::String(k)) => k.clone(),
-                            _ => continue,
-                        };
-                        let name = match r.get(3) {
-                            Some(FieldValue::String(n)) => Some(n.clone()),
-                            _ => None,
-                        };
-
-                        self.install_script.push(ScriptOp::DeleteRegistry {
-                            root,
-                            key: key.clone(),
-                            name: name.clone(),
-                        });
-                        self.rollback_script.push(RollbackOp::RestoreRegistry {
-                            root,
-                            key,
-                            name,
-                            previous_value: None,
-                            existed: true,
-                        });
-                    }
-                }
-                "WriteEnvironmentStrings" => {
-                    let env_records = self.database.get_records("Environment");
-                    for env_rec in env_records {
-                        let name_raw = match env_rec.get(1) {
-                            Some(FieldValue::String(n)) => n.clone(),
-                            _ => continue,
-                        };
-                        let val_raw = match env_rec.get(2) {
-                            Some(FieldValue::String(v)) => v.clone(),
-                            _ => String::new(),
-                        };
-                        let formatted_val = self.context.format_string(&val_raw).unwrap_or(val_raw);
-                        let clean_name = name_raw.trim_start_matches(['=', '+', '-', '!', '*']);
-
-                        // Environment variables on Windows are written to HKLM or HKCU System Environment
-                        let env_key =
-                            r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
-                                .to_string();
-                        self.install_script.push(ScriptOp::WriteRegistry {
-                            root: 2, // HKLM
-                            key: env_key.clone(),
-                            name: Some(clean_name.to_string()),
-                            value: Some(formatted_val),
-                        });
-                        self.rollback_script.push(RollbackOp::RestoreRegistry {
-                            root: 2,
-                            key: env_key,
-                            name: Some(clean_name.to_string()),
-                            previous_value: None,
-                            existed: false,
-                        });
-                    }
-                }
-                "RegisterProgIdInfo" => {
-                    let progid_records = self.database.get_records("ProgId");
-                    for r in progid_records {
-                        let progid = match r.get(0) {
-                            Some(FieldValue::String(p)) => {
-                                self.context.format_string(p).unwrap_or_default()
-                            }
-                            _ => continue, // coverage:ignore-line
-                        };
-                        let desc = match r.get(3) {
-                            Some(FieldValue::String(d)) => {
-                                Some(self.context.format_string(d).unwrap_or_default())
-                            }
-                            _ => None, // coverage:ignore-line
-                        };
-                        let clsid = match r.get(2) {
-                            Some(FieldValue::String(c)) => {
-                                Some(self.context.format_string(c).unwrap_or_default())
-                            }
-                            _ => None, // coverage:ignore-line
-                        };
-
-                        self.install_script.push(ScriptOp::WriteRegistry {
-                            root: 0, // HKCR
-                            key: progid.clone(),
-                            name: None,
-                            value: desc,
-                        });
-
-                        if let Some(c) = clsid {
-                            self.install_script.push(ScriptOp::WriteRegistry {
-                                root: 0,
-                                key: format!(r"{progid}\CLSID"),
-                                name: None,
-                                value: Some(c),
-                            });
-                        } else {
-                            // No CLSID to register
-                        }
-                    }
-                }
-                "RegisterExtensionInfo" => {
-                    let ext_records = self.database.get_records("Extension");
-                    let verb_records = self.database.get_records("Verb");
-
-                    for ext in ext_records {
-                        let ext_name = match ext.get(0) {
-                            Some(FieldValue::String(e)) => {
-                                self.context.format_string(e).unwrap_or_default()
-                            }
-                            _ => continue, // coverage:ignore-line
-                        };
-                        let progid = match ext.get(2) {
-                            Some(FieldValue::String(p)) => {
-                                Some(self.context.format_string(p).unwrap_or_default())
-                            }
-                            _ => None, // coverage:ignore-line
-                        };
-
-                        self.install_script.push(ScriptOp::WriteRegistry {
-                            root: 0, // HKCR
-                            key: format!(".{ext_name}"),
-                            name: None,
-                            value: progid.clone(),
-                        });
-
-                        if let Some(pid) = progid {
-                            for verb_rec in verb_records.iter().filter(|v| matches!(v.get(0), Some(FieldValue::String(e)) if e == &ext_name)) {
-                                let verb = match verb_rec.get(1) {
-                                    Some(FieldValue::String(v)) => self.context.format_string(v).unwrap_or_default(),
-                                    _ => continue, // coverage:ignore-line
-                                };
-                                let command = match verb_rec.get(3) {
-                                    Some(FieldValue::String(c)) => self.context.format_string(c).unwrap_or_default(),
-                                    _ => String::new(), // coverage:ignore-line
-                                };
-                                let argument = match verb_rec.get(4) {
-                                    Some(FieldValue::String(a)) => self.context.format_string(a).unwrap_or_default(),
-                                    _ => String::new(), // coverage:ignore-line
-                                };
-
-                                let full_cmd = if argument.is_empty() {
-                                    command
-                                } else {
-                                    format!("{command} {argument}")
-                                };
-
-                                self.install_script.push(ScriptOp::WriteRegistry {
-                                    root: 0,
-                                    key: format!(r"{pid}\shell\{verb}\command"),
-                                    name: None,
-                                    value: Some(full_cmd),
-                                });
-                            }
-                        }
-                    }
-                }
-                "RegisterMIMEInfo" => {
-                    let mime_records = self.database.get_records("MIME");
-                    for mime in mime_records {
-                        let content_type = match mime.get(0) {
-                            Some(FieldValue::String(c)) => {
-                                self.context.format_string(c).unwrap_or_default()
-                            }
-                            _ => continue, // coverage:ignore-line
-                        };
-                        let ext = match mime.get(1) {
-                            Some(FieldValue::String(e)) => {
-                                self.context.format_string(e).unwrap_or_default()
-                            }
-                            _ => continue, // coverage:ignore-line
-                        };
-
-                        self.install_script.push(ScriptOp::WriteRegistry {
-                            root: 0, // HKCR
-                            key: format!(r"MIME\Database\Content Type\{content_type}"),
-                            name: Some("Extension".to_string()),
-                            value: Some(format!(".{ext}")),
-                        });
-                    }
-                }
-                "StopServices" => {
-                    let sc_records = self.database.get_records("ServiceControl");
-                    for sc in sc_records {
-                        let event = match sc.get(2) {
-                            Some(&FieldValue::Short(e)) => e,
-                            _ => 0,
-                        };
-                        // Event bitmask 0x0002 = Stop during install; 0x0020 = Stop during uninstall
-                        if (event & 0x0022) != 0 {
-                            if let Some(FieldValue::String(name)) = sc.get(1) {
-                                self.install_script
-                                    .push(ScriptOp::StopService { name: name.clone() });
-                            }
-                        }
-                    }
-                }
-                "DeleteServices" => {
-                    let sc_records = self.database.get_records("ServiceControl");
-                    for sc in sc_records {
-                        let event = match sc.get(2) {
-                            Some(&FieldValue::Short(e)) => e,
-                            _ => 0,
-                        };
-                        // Event bitmask 0x0004 = Delete during install; 0x0040 = Delete during uninstall
-                        if (event & 0x0044) != 0 {
-                            if let Some(FieldValue::String(name)) = sc.get(1) {
-                                self.install_script
-                                    .push(ScriptOp::DeleteService { name: name.clone() });
-                            }
-                        }
-                    }
-                }
-                "InstallServices" => {
-                    let si_records = self.database.get_records("ServiceInstall");
-                    for si in si_records {
-                        let name = match si.get(1) {
-                            Some(FieldValue::String(n)) => n.clone(),
-                            _ => continue,
-                        };
-                        let display_name = match si.get(2) {
-                            Some(FieldValue::String(d)) => d.clone(),
-                            _ => name.clone(),
-                        };
-                        let service_type = match si.get(3) {
-                            Some(&FieldValue::Long(t)) => u32::try_from(t).unwrap_or(0x10),
-                            _ => 0x10, // SERVICE_WIN32_OWN_PROCESS
-                        };
-                        let start_type = match si.get(4) {
-                            Some(&FieldValue::Long(s)) => u32::try_from(s).unwrap_or(2),
-                            _ => 2, // SERVICE_AUTO_START
-                        };
-                        let comp = match si.get(10) {
-                            Some(FieldValue::String(c)) => c.as_str(),
-                            _ => "",
-                        };
-                        let binary_path = comp_keypaths
-                            .get(comp)
-                            .cloned()
-                            .unwrap_or_else(|| format!(r"C:\Program Files\App\{name}.exe"));
-
-                        self.install_script.push(ScriptOp::InstallService {
-                            name: name.clone(),
-                            display_name,
-                            service_type,
-                            start_type,
-                            binary_path,
-                        });
-                        self.rollback_script
-                            .push(RollbackOp::DeleteService { name });
-                    }
-                }
-                "StartServices" => {
-                    let sc_records = self.database.get_records("ServiceControl");
-                    for sc in sc_records {
-                        let event = match sc.get(2) {
-                            Some(&FieldValue::Short(e)) => e,
-                            _ => 0,
-                        };
-                        // Event bitmask 0x0001 = Start during install; 0x0010 = Start during uninstall
-                        if (event & 0x0011) != 0 {
-                            if let Some(FieldValue::String(name)) = sc.get(1) {
-                                let args = match sc.get(3) {
-                                    Some(FieldValue::String(a)) => Some(a.clone()),
-                                    _ => None,
-                                };
-                                self.install_script.push(ScriptOp::StartService {
-                                    name: name.clone(),
-                                    arguments: args,
-                                });
-                                self.rollback_script
-                                    .push(RollbackOp::StopService { name: name.clone() });
-                            }
-                        }
-                    }
-                }
-                "InstallODBC" => {
-                    let odbc_driver_records = self.database.get_records("ODBCDriver");
-                    for rec in odbc_driver_records {
-                        if let Some(FieldValue::String(driver_name)) = rec.get(1) {
-                            self.install_script.push(ScriptOp::CustomAction {
-                                action: "@@InstallODBCDriver".to_string(),
-                                action_type: 0,
-                                source: String::new(),
-                                target: driver_name.clone(),
-                            });
-                            self.rollback_script.push(RollbackOp::RollbackCustomAction {
-                                action: "@@UninstallODBCDriver".to_string(),
-                                action_type: 0,
-                                source: String::new(),
-                                target: driver_name.clone(),
-                            });
-                        }
-                    }
-                    let odbc_ds_records = self.database.get_records("ODBCDataSource");
-                    for rec in odbc_ds_records {
-                        if let Some(FieldValue::String(ds_name)) = rec.get(1) {
-                            self.install_script.push(ScriptOp::CustomAction {
-                                action: "@@InstallODBCDataSource".to_string(),
-                                action_type: 0,
-                                source: String::new(),
-                                target: ds_name.clone(),
-                            });
-                            self.rollback_script.push(RollbackOp::RollbackCustomAction {
-                                action: "@@UninstallODBCDataSource".to_string(),
-                                action_type: 0,
-                                source: String::new(),
-                                target: ds_name.clone(),
-                            });
-                        }
-                    }
-                }
-                "RegisterFonts" => {
-                    let font_records = self.database.get_records("Font");
-                    for rec in font_records {
-                        if let (
-                            Some(FieldValue::String(file_id)),
-                            Some(FieldValue::String(font_title)),
-                        ) = (rec.get(0), rec.get(1))
-                        {
-                            let file_path = self.context.get_property(file_id).map_or_else(
-                                || format!("C:\\Windows\\Fonts\\{file_id}"),
-                                ToString::to_string,
-                            );
-                            let target = format!("{file_path}|{font_title}");
-                            self.install_script.push(ScriptOp::CustomAction {
-                                action: "@@RegisterFont".to_string(),
-                                action_type: 0,
-                                source: String::new(),
-                                target: target.clone(),
-                            });
-                            self.rollback_script.push(RollbackOp::RollbackCustomAction {
-                                action: "@@UnregisterFont".to_string(),
-                                action_type: 0,
-                                source: String::new(),
-                                target,
-                            });
-                        }
-                    }
-                }
-                custom_act => {
-                    let (action_type, source, target) =
-                        if let Some(ca) = custom_actions_map.get(custom_act) {
-                            ca.clone()
-                        } else {
-                            self.install_script.push(ScriptOp::CustomAction {
-                                action: custom_act.to_string(),
-                                action_type: 1,
-                                source: "BinaryTable".to_string(),
-                                target: "EntryFn".to_string(),
-                            });
-                            self.rollback_script.push(RollbackOp::RollbackCustomAction {
-                                action: format!("{custom_act}_Rollback"),
-                                action_type: 0x501,
-                                source: "BinaryTable".to_string(),
-                                target: "RollbackFn".to_string(),
-                            });
-                            continue;
-                        };
-
-                    // Type 19: Error abort action
-                    if action_type & 0x003F == 19 {
-                        let error_msg = if target.is_empty() {
-                            format!("Installation aborted by custom action '{custom_act}'.")
-                        } else {
-                            self.context.format_string(&target)?
-                        };
-                        return Err(MsiError::CustomActionFailed {
-                            action: custom_act.to_string(),
-                            reason: error_msg,
-                        });
-                    }
-
-                    // Rollback custom action (0x0500)
-                    if (action_type & 0x0500) == 0x0500 {
-                        self.rollback_script.push(RollbackOp::RollbackCustomAction {
-                            action: custom_act.to_string(),
-                            action_type,
-                            source,
-                            target,
-                        });
-                    } else if action_type & 0x0400 == 0 {
-                        // Immediate custom action: execute during prepare
-                        if let Ok(ca_def) = super::custom_action::CustomActionDefinition::parse(
-                            custom_act,
-                            action_type,
-                            &source,
-                            &target,
-                        ) {
-                            let mut ca_exec = super::custom_action::CustomActionExecutor::new();
-                            for b in self.database.get_records("Binary") {
-                                if let Some(FieldValue::String(b_name)) = b.get(0) {
-                                    let b_data = match b.get(1) {
-                                        Some(FieldValue::String(s)) => s.as_bytes().to_vec(),
-                                        _ => Vec::new(),
-                                    };
-                                    ca_exec.add_binary(b_name.clone(), b_data);
-                                }
-                            }
-                            ca_exec.execute(&ca_def, &mut self.context)?;
-                        }
-
-                        self.install_script.push(ScriptOp::CustomAction {
-                            action: custom_act.to_string(),
-                            action_type,
-                            source,
-                            target,
-                        });
-                    } else {
-                        // Deferred custom action (0x0400)
-                        self.install_script.push(ScriptOp::CustomAction {
-                            action: custom_act.to_string(),
-                            action_type,
-                            source: source.clone(),
-                            target,
-                        });
-                        self.rollback_script.push(RollbackOp::RollbackCustomAction {
-                            action: format!("{custom_act}_Rollback"),
-                            action_type: 0x0501,
-                            source,
-                            target: "RollbackFn".to_string(),
-                        });
+                other => {
+                    let mut file_ctx = file_ops::FilePrepContext {
+                        database: &self.database,
+                        context: &self.context,
+                        resolved_dirs: &resolved_dirs,
+                        comp_to_dir: &comp_to_dir,
+                        media_disks: &media_disks,
+                        install_script: &mut self.install_script,
+                        rollback_script: &mut self.rollback_script,
+                    };
+                    if !file_ops::prepare_file_action(other, &mut file_ctx)
+                        && !registry_ops::prepare_registry_action(
+                            other,
+                            &self.database,
+                            &self.context,
+                            &mut self.install_script,
+                            &mut self.rollback_script,
+                        )
+                    {
+                        system_ops::prepare_system_or_custom_action(
+                            other,
+                            &self.database,
+                            &mut self.context,
+                            &comp_keypaths,
+                            &custom_actions_map,
+                            &mut self.install_script,
+                            &mut self.rollback_script,
+                        )?;
                     }
                 }
             }
@@ -3433,7 +2015,7 @@ impl Transaction<Prepared> {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&InstallScript` value.
     #[must_use]
     pub const fn install_script(&self) -> &InstallScript {
         &self.install_script
@@ -3443,7 +2025,7 @@ impl Transaction<Prepared> {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&RollbackScript` value.
     #[must_use]
     pub const fn rollback_script(&self) -> &RollbackScript {
         &self.rollback_script
@@ -3453,7 +2035,7 @@ impl Transaction<Prepared> {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&DiskCostEngine` value.
     #[must_use]
     pub const fn cost_engine(&self) -> &DiskCostEngine {
         &self.cost_engine
@@ -3601,7 +2183,7 @@ impl Transaction<Committed> {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `u32` numeric result or status code.
     #[must_use]
     pub const fn return_code(&self) -> u32 {
         ERROR_SUCCESS
@@ -3613,7 +2195,7 @@ impl Transaction<RolledBack> {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `u32` numeric result or status code.
     #[must_use]
     pub const fn return_code(&self) -> u32 {
         ERROR_INSTALL_FAILURE
@@ -3621,7 +2203,6 @@ impl Transaction<RolledBack> {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::database::tables::record::Record;
@@ -3637,8 +2218,9 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
-    #[allow(clippy::too_many_lines, clippy::unnecessary_wraps)]
+    /// `Ok(LinkedDatabase)` on success, or an error if the operation fails.
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::unnecessary_wraps)]
     fn create_test_database() -> Result<LinkedDatabase> {
         let mut db = unwrap_result(LinkedDatabase::new());
 
@@ -7950,7 +6532,7 @@ mod transaction_wim_tests {
                 Record::with_fields(vec![
                     FieldValue::String(act.clone()),
                     FieldValue::String(cond.clone()),
-                    FieldValue::Short(i16::try_from(i + 100).unwrap_or(0)), // coverage:ignore-line
+                    FieldValue::Short(i16::try_from(i + 100).unwrap_or(0)),
                 ]),
             );
         }
@@ -8191,6 +6773,475 @@ mod transaction_wim_tests {
             .any(|op| matches!(op, ScriptOp::DeleteService { .. }));
         assert!(has_stop);
         assert!(has_delete);
+        Ok(())
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_transaction_all_standard_actions() -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
+        use crate::database::{FieldValue, Record};
+
+        let mut db = LinkedDatabase::new()?;
+
+        db.add_record(
+            "AppSearch",
+            Record::with_fields(vec![
+                FieldValue::String("FOUND_DIR".to_string()),
+                FieldValue::String("Sig1".to_string()),
+            ]),
+        );
+        db.add_record(
+            "CCPSearch",
+            Record::with_fields(vec![FieldValue::String("CCP_SIG".to_string())]),
+        );
+        db.add_record(
+            "Upgrade",
+            Record::with_fields(vec![
+                FieldValue::String("{11111111-1111-1111-1111-111111111111}".to_string()),
+                FieldValue::String("1.0.0".to_string()),
+                FieldValue::String("2.0.0".to_string()),
+                FieldValue::Null,
+                FieldValue::Long(1), // MigrateFeatures, not OnlyDetect
+                FieldValue::Null,
+                FieldValue::String("OLDPRODUCTS".to_string()),
+            ]),
+        );
+        db.add_record(
+            "LaunchCondition",
+            Record::with_fields(vec![
+                FieldValue::String("1".to_string()),
+                FieldValue::String("OK".to_string()),
+            ]),
+        );
+        db.add_record(
+            "DuplicateFile",
+            Record::with_fields(vec![
+                FieldValue::String("Dup1".to_string()),
+                FieldValue::String("Comp1".to_string()),
+                FieldValue::String("File1".to_string()),
+                FieldValue::String("dup.exe".to_string()),
+                FieldValue::String("TARGETDIR".to_string()),
+            ]),
+        );
+        db.add_record(
+            "MoveFile",
+            Record::with_fields(vec![
+                FieldValue::String("Move1".to_string()),
+                FieldValue::String("Comp1".to_string()),
+                FieldValue::String("old.txt".to_string()),
+                FieldValue::String("new.txt".to_string()),
+                FieldValue::String("TARGETDIR".to_string()),
+                FieldValue::String("TARGETDIR".to_string()),
+                FieldValue::Short(1),
+            ]),
+        );
+        db.add_record(
+            "Patch",
+            Record::with_fields(vec![FieldValue::String("File1".to_string())]),
+        );
+        db.add_record(
+            "IniFile",
+            Record::with_fields(vec![
+                FieldValue::String("Ini1".to_string()),
+                FieldValue::String("app.ini".to_string()),
+                FieldValue::String("TARGETDIR".to_string()),
+                FieldValue::String("Main".to_string()),
+                FieldValue::String("Key1".to_string()),
+                FieldValue::String("Val1".to_string()),
+                FieldValue::Short(0),
+                FieldValue::String("Comp1".to_string()),
+            ]),
+        );
+        db.add_record(
+            "RemoveIniFile",
+            Record::with_fields(vec![
+                FieldValue::String("RemIni1".to_string()),
+                FieldValue::String("app.ini".to_string()),
+                FieldValue::String("TARGETDIR".to_string()),
+                FieldValue::String("Main".to_string()),
+                FieldValue::String("Key1".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(2),
+                FieldValue::String("Comp1".to_string()),
+            ]),
+        );
+        db.add_record(
+            "CreateFolder",
+            Record::with_fields(vec![
+                FieldValue::String("TARGETDIR".to_string()),
+                FieldValue::String("Comp1".to_string()),
+            ]),
+        );
+        db.add_record(
+            "Shortcut",
+            Record::with_fields(vec![
+                FieldValue::String("Sc1".to_string()),
+                FieldValue::String("TARGETDIR".to_string()),
+                FieldValue::String("App".to_string()),
+                FieldValue::String("Comp1".to_string()),
+                FieldValue::String("AppTarget".to_string()),
+            ]),
+        );
+        db.add_record(
+            "Environment",
+            Record::with_fields(vec![
+                FieldValue::String("Env1".to_string()),
+                FieldValue::String("=MY_VAR".to_string()),
+                FieldValue::String("1".to_string()),
+                FieldValue::String("Comp1".to_string()),
+            ]),
+        );
+        db.add_record(
+            "Class",
+            Record::with_fields(vec![
+                FieldValue::String("{22222222-2222-2222-2222-222222222222}".to_string()),
+                FieldValue::String("InprocServer32".to_string()),
+                FieldValue::String("Comp1".to_string()),
+            ]),
+        );
+        db.add_record(
+            "Extension",
+            Record::with_fields(vec![
+                FieldValue::String("abc".to_string()),
+                FieldValue::String("Comp1".to_string()),
+            ]),
+        );
+        db.add_record(
+            "ProgId",
+            Record::with_fields(vec![FieldValue::String("MyApp.Doc".to_string())]),
+        );
+        db.add_record(
+            "MIME",
+            Record::with_fields(vec![
+                FieldValue::String("application/x-abc".to_string()),
+                FieldValue::String("abc".to_string()),
+            ]),
+        );
+        db.add_record(
+            "TypeLib",
+            Record::with_fields(vec![FieldValue::String(
+                "{33333333-3333-3333-3333-333333333333}".to_string(),
+            )]),
+        );
+        db.add_record(
+            "SelfReg",
+            Record::with_fields(vec![FieldValue::String("File1".to_string())]),
+        );
+        db.add_record(
+            "ComPlus",
+            Record::with_fields(vec![FieldValue::String("Comp1".to_string())]),
+        );
+        db.add_record(
+            "MsiAssembly",
+            Record::with_fields(vec![FieldValue::String("Comp1".to_string())]),
+        );
+        db.add_record(
+            "Font",
+            Record::with_fields(vec![
+                FieldValue::String("FontFile1".to_string()),
+                FieldValue::String("Arial Custom".to_string()),
+            ]),
+        );
+        db.add_record(
+            "ODBCDriver",
+            Record::with_fields(vec![
+                FieldValue::String("Drv1".to_string()),
+                FieldValue::String("SQLite3 Driver".to_string()),
+            ]),
+        );
+        db.add_record(
+            "BindImage",
+            Record::with_fields(vec![FieldValue::String("File1".to_string())]),
+        );
+        db.add_record(
+            "IsolatedComponent",
+            Record::with_fields(vec![
+                FieldValue::String("SharedComp".to_string()),
+                FieldValue::String("AppComp".to_string()),
+            ]),
+        );
+        db.add_record(
+            "SFPCatalog",
+            Record::with_fields(vec![FieldValue::String("cat1.cat".to_string())]),
+        );
+        db.add_record(
+            "PublishComponent",
+            Record::with_fields(vec![
+                FieldValue::String("{44444444-4444-4444-4444-444444444444}".to_string()),
+                FieldValue::String("1033".to_string()),
+            ]),
+        );
+        db.add_record(
+            "Feature",
+            Record::with_fields(vec![
+                FieldValue::String("MainFeature".to_string()),
+                FieldValue::Null,
+            ]),
+        );
+
+        let all_actions = [
+            "INSTALL",
+            "ADMIN",
+            "ADVERTISE",
+            "ExecuteAction",
+            "InstallExecute",
+            "InstallExecuteAgain",
+            "InstallAdminPackage",
+            "AppSearch",
+            "CCPSearch",
+            "RMCCPSearch",
+            "FindRelatedProducts",
+            "MigrateFeatureStates",
+            "RemoveExistingProducts",
+            "LaunchConditions",
+            "ValidateProductID",
+            "DuplicateFiles",
+            "RemoveDuplicateFiles",
+            "MoveFiles",
+            "PatchFiles",
+            "WriteIniValues",
+            "RemoveIniValues",
+            "RemoveFolders",
+            "RemoveShortcuts",
+            "RemoveEnvironmentStrings",
+            "RegisterClassInfo",
+            "UnregisterClassInfo",
+            "UnregisterExtensionInfo",
+            "UnregisterProgIdInfo",
+            "UnregisterMIMEInfo",
+            "RegisterTypeLibraries",
+            "UnregisterTypeLibraries",
+            "SelfRegModules",
+            "SelfUnregModules",
+            "RegisterComPlus",
+            "UnregisterComPlus",
+            "MsiPublishAssemblies",
+            "MsiUnpublishAssemblies",
+            "UnregisterFonts",
+            "SetODBCFolders",
+            "RemoveODBC",
+            "BindImage",
+            "IsolateComponents",
+            "InstallSFPCatalogFile",
+            "PublishComponents",
+            "UnpublishComponents",
+            "PublishFeatures",
+            "UnpublishFeatures",
+            "PublishProduct",
+            "UnpublishProduct",
+            "RegisterProduct",
+            "RegisterUser",
+            "ResolveSource",
+            "AllocateRegistrySpace",
+            "DisableRollback",
+            "ScheduleReboot",
+            "ForceReboot",
+        ];
+
+        for (idx, act) in all_actions.iter().enumerate() {
+            #[allow(clippy::cast_possible_truncation)]
+            #[allow(clippy::cast_possible_wrap)]
+            let seq = (idx as i16) + 1;
+            db.add_record(
+                "InstallExecuteSequence",
+                Record::with_fields(vec![
+                    FieldValue::String((*act).to_string()),
+                    FieldValue::Null,
+                    FieldValue::Short(seq),
+                ]),
+            );
+        }
+
+        let mut ctx = EvaluationContext::new();
+        ctx.set_property("CCP_SIG", "1");
+        ctx.set_property("PIDKEY", "12345-67890");
+        let tx = Transaction::new(db, ctx, DiskCostEngine::new());
+        let prepared = tx.prepare()?;
+        assert!(!prepared.install_script().is_empty());
+
+        // Also test LaunchConditions failure during Transaction::prepare
+        let mut fail_lc_db = LinkedDatabase::new()?;
+        fail_lc_db.add_record(
+            "LaunchCondition",
+            Record::with_fields(vec![
+                FieldValue::String("0".to_string()),
+                FieldValue::String("Must fail".to_string()),
+            ]),
+        );
+        fail_lc_db.add_record(
+            "InstallExecuteSequence",
+            Record::with_fields(vec![
+                FieldValue::String("LaunchConditions".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(1),
+            ]),
+        );
+        let fail_tx = Transaction::new(fail_lc_db, EvaluationContext::new(), DiskCostEngine::new());
+        assert!(matches!(
+            fail_tx.prepare(),
+            Err(MsiError::LaunchConditionFailed { .. })
+        ));
+
+        // Cover remaining fallback branches in file_ops, registry_ops, system_ops, memory, transform, dispatcher, and properties
+        let mut edge_db = LinkedDatabase::new()?;
+        edge_db.set_property_value("P1", "V1");
+        edge_db.set_property_value("P1", "V2");
+        let eval_ctx = edge_db.to_evaluation_context();
+        assert_eq!(eval_ctx.get_property("P1"), Some("V2"));
+        edge_db.sync_from_evaluation_context(&eval_ctx);
+        edge_db.set_property_value("P1", "");
+        assert!(edge_db.get_property_value("P1").is_none());
+
+        // Add edge records with null/non-string columns to exercise fallback arms
+        edge_db.add_record(
+            "DuplicateFile",
+            Record::with_fields(vec![
+                FieldValue::String("DupNull".to_string()),
+                FieldValue::String("C1".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        edge_db.add_record(
+            "DuplicateFile",
+            Record::with_fields(vec![
+                FieldValue::String("DupDef".to_string()),
+                FieldValue::String("C1".to_string()),
+                FieldValue::String("F1".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        edge_db.add_record(
+            "MoveFile",
+            Record::with_fields(vec![
+                FieldValue::String("MvDef".to_string()),
+                FieldValue::String("C1".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        edge_db.add_record(
+            "IniFile",
+            Record::with_fields(vec![
+                FieldValue::String("IniNull".to_string()),
+                FieldValue::Null,
+            ]),
+        );
+        edge_db.add_record(
+            "IniFile",
+            Record::with_fields(vec![
+                FieldValue::String("IniDef".to_string()),
+                FieldValue::String("a.ini".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        edge_db.add_record(
+            "RemoveIniFile",
+            Record::with_fields(vec![
+                FieldValue::String("RemIniNull".to_string()),
+                FieldValue::Null,
+            ]),
+        );
+        edge_db.add_record(
+            "RemoveIniFile",
+            Record::with_fields(vec![
+                FieldValue::String("RemIniDef".to_string()),
+                FieldValue::String("a.ini".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        edge_db.add_record(
+            "Environment",
+            Record::with_fields(vec![FieldValue::String("E1".to_string()), FieldValue::Null]),
+        );
+        edge_db.add_record("Class", Record::with_fields(vec![FieldValue::Null]));
+        edge_db.add_record(
+            "Class",
+            Record::with_fields(vec![
+                FieldValue::String("{11111111-1111-1111-1111-111111111111}".to_string()),
+                FieldValue::Null,
+            ]),
+        );
+        edge_db.add_record(
+            "Feature",
+            Record::with_fields(vec![
+                FieldValue::String("ChildFeat".to_string()),
+                FieldValue::String("ParentFeat".to_string()),
+            ]),
+        );
+        edge_db.add_record("Upgrade", Record::with_fields(vec![FieldValue::Null]));
+        edge_db.add_record(
+            "Upgrade",
+            Record::with_fields(vec![
+                FieldValue::String("{22222222-2222-2222-2222-222222222222}".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Short(1),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        edge_db.add_record(
+            "Upgrade",
+            Record::with_fields(vec![
+                FieldValue::String("{33333333-3333-3333-3333-333333333333}".to_string()),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::String("UPG_PROP".to_string()),
+            ]),
+        );
+        for (idx, act) in [
+            "DuplicateFiles",
+            "RemoveDuplicateFiles",
+            "MoveFiles",
+            "WriteIniValues",
+            "RemoveIniValues",
+            "RemoveEnvironmentStrings",
+            "RegisterClassInfo",
+            "UnregisterClassInfo",
+            "PublishFeatures",
+            "FindRelatedProducts",
+            "MigrateFeatureStates",
+            "RemoveExistingProducts",
+        ]
+        .iter()
+        .enumerate()
+        {
+            #[allow(clippy::cast_possible_truncation)]
+            #[allow(clippy::cast_possible_wrap)]
+            let seq = (idx as i16) + 1;
+            edge_db.add_record(
+                "InstallExecuteSequence",
+                Record::with_fields(vec![
+                    FieldValue::String((*act).to_string()),
+                    FieldValue::Null,
+                    FieldValue::Short(seq),
+                ]),
+            );
+        }
+        let edge_tx = Transaction::new(edge_db, EvaluationContext::new(), DiskCostEngine::new());
+        let _ = edge_tx.prepare()?;
+
+        // Exercise ConditionParser unclosed parenthesis error
+        let cond_ctx = EvaluationContext::new();
+        assert!(cond_ctx.evaluate_condition("((1 = 1)").is_err());
+        assert!(cond_ctx.evaluate_condition("(5 & 1").is_err());
+
         Ok(())
     }
 }

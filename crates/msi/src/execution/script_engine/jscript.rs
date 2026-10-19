@@ -45,7 +45,7 @@ impl JsValue {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `true` if the check succeeds or state matches, `false` otherwise.
     #[must_use]
     pub fn is_truthy(&self) -> bool {
         match self {
@@ -61,7 +61,7 @@ impl JsValue {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     #[must_use]
     pub fn to_string_value(&self) -> String {
         match self {
@@ -87,7 +87,7 @@ impl JsValue {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `f64` value.
     #[must_use]
     pub fn to_number(&self) -> f64 {
         match self {
@@ -240,11 +240,11 @@ impl<'a> Lexer<'a> {
     ///
     /// # Arguments
     ///
-    /// * `input` - The `input` parameter.
+    /// * `input` - Input byte slice or source string.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     fn new(input: &'a str) -> Self {
         Self {
             chars: input.chars().collect(),
@@ -259,7 +259,7 @@ impl<'a> Lexer<'a> {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(char)` if found, or `None` if absent.
     fn peek(&self) -> Option<char> {
         self.chars.get(self.pos).copied()
     }
@@ -268,7 +268,7 @@ impl<'a> Lexer<'a> {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(char)` if found, or `None` if absent.
     fn advance(&mut self) -> Option<char> {
         let ch = self.chars.get(self.pos).copied()?;
         self.pos += 1;
@@ -313,13 +313,13 @@ impl<'a> Lexer<'a> {
     ///
     /// # Arguments
     ///
-    /// * `quote` - The `quote` parameter.
-    /// * `start_line` - The `start_line` parameter.
-    /// * `start_col` - The `start_col` parameter.
+    /// * `quote` - The quote value.
+    /// * `start_line` - 1-based starting line number.
+    /// * `start_col` - 1-based starting column number.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Token)` on success, or an error if the operation fails.
     fn read_string(&mut self, quote: char, start_line: usize, start_col: usize) -> Result<Token> {
         let mut text = String::new();
         while let Some(ch) = self.advance() {
@@ -362,7 +362,7 @@ impl<'a> Lexer<'a> {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Token)` on success, or an error if the operation fails.
     #[allow(clippy::too_many_lines)]
     fn next_token(&mut self) -> Result<Token> {
         self.skip_whitespace_and_comments();
@@ -562,7 +562,7 @@ impl<'a> Lexer<'a> {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok` containing the collected `Token` items, or an error on failure.
     fn tokenize_all(&mut self) -> Result<Vec<Token>> {
         let mut tokens = Vec::new();
         loop {
@@ -813,11 +813,11 @@ impl Parser {
     ///
     /// # Arguments
     ///
-    /// * `tokens` - The `tokens` parameter.
+    /// * `tokens` - Slice of lexical tokens.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     const fn new(tokens: Vec<Token>) -> Self {
         Self { tokens, pos: 0 }
     }
@@ -826,7 +826,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&Token` value.
     fn peek(&self) -> &Token {
         self.tokens.get(self.pos).unwrap_or(&Token {
             kind: TokenKind::Eof,
@@ -839,7 +839,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `Token` value.
     fn advance(&mut self) -> Token {
         let tok = self.peek().clone();
         if self.pos < self.tokens.len() {
@@ -852,11 +852,11 @@ impl Parser {
     ///
     /// # Arguments
     ///
-    /// * `kind` - The `kind` parameter.
+    /// * `kind` - Classification or variant kind.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `true` if the check succeeds or state matches, `false` otherwise.
     fn match_token(&mut self, kind: &TokenKind) -> bool {
         if &self.peek().kind == kind {
             self.advance();
@@ -870,12 +870,12 @@ impl Parser {
     ///
     /// # Arguments
     ///
-    /// * `kind` - The `kind` parameter.
-    /// * `msg` - The `msg` parameter.
+    /// * `kind` - Classification or variant kind.
+    /// * `msg` - Diagnostic or log message text.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Token)` on success, or an error if the operation fails.
     fn expect(&mut self, kind: &TokenKind, msg: &str) -> Result<Token> {
         let tok = self.peek().clone();
         if &tok.kind == kind {
@@ -893,7 +893,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok` containing the collected `Stmt` items, or an error on failure.
     fn parse_program(&mut self) -> Result<Vec<Stmt>> {
         let mut statements = Vec::new();
         while self.peek().kind != TokenKind::Eof {
@@ -906,7 +906,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Stmt)` on success, or an error if the operation fails.
     #[allow(clippy::too_many_lines)]
     fn parse_statement(&mut self) -> Result<Stmt> {
         let tok = self.peek().clone();
@@ -1082,7 +1082,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Expr)` on success, or an error if the operation fails.
     fn parse_expression(&mut self) -> Result<Expr> {
         self.parse_assignment()
     }
@@ -1091,7 +1091,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Expr)` on success, or an error if the operation fails.
     fn parse_assignment(&mut self) -> Result<Expr> {
         let expr = self.parse_ternary()?;
         if self.match_token(&TokenKind::Equal) {
@@ -1146,7 +1146,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Expr)` on success, or an error if the operation fails.
     fn parse_ternary(&mut self) -> Result<Expr> {
         let mut expr = self.parse_logical_or()?;
         if self.match_token(&TokenKind::Question) {
@@ -1168,7 +1168,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Expr)` on success, or an error if the operation fails.
     fn parse_logical_or(&mut self) -> Result<Expr> {
         let mut left = self.parse_logical_and()?;
         while self.match_token(&TokenKind::PipePipe) {
@@ -1188,7 +1188,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Expr)` on success, or an error if the operation fails.
     fn parse_logical_and(&mut self) -> Result<Expr> {
         let mut left = self.parse_equality()?;
         while self.match_token(&TokenKind::AmpAmp) {
@@ -1208,7 +1208,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Expr)` on success, or an error if the operation fails.
     fn parse_equality(&mut self) -> Result<Expr> {
         let mut left = self.parse_comparison()?;
         loop {
@@ -1237,7 +1237,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Expr)` on success, or an error if the operation fails.
     fn parse_comparison(&mut self) -> Result<Expr> {
         let mut left = self.parse_addition()?;
         loop {
@@ -1266,7 +1266,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Expr)` on success, or an error if the operation fails.
     fn parse_addition(&mut self) -> Result<Expr> {
         let mut left = self.parse_multiplication()?;
         loop {
@@ -1293,7 +1293,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Expr)` on success, or an error if the operation fails.
     fn parse_multiplication(&mut self) -> Result<Expr> {
         let mut left = self.parse_unary()?;
         loop {
@@ -1321,7 +1321,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Expr)` on success, or an error if the operation fails.
     fn parse_unary(&mut self) -> Result<Expr> {
         let tok = self.peek().clone();
         match tok.kind {
@@ -1373,7 +1373,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Expr)` on success, or an error if the operation fails.
     fn parse_postfix(&mut self) -> Result<Expr> {
         let mut expr = self.parse_primary()?;
         loop {
@@ -1457,7 +1457,7 @@ impl Parser {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Expr)` on success, or an error if the operation fails.
     fn parse_primary(&mut self) -> Result<Expr> {
         let tok = self.advance();
         match tok.kind {
@@ -1514,7 +1514,7 @@ impl JScriptEngine {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn new() -> Self {
         let mut engine = Self {
@@ -1557,12 +1557,12 @@ impl JScriptEngine {
     ///
     /// # Arguments
     ///
-    /// * `name` - The `name` parameter.
-    /// * `session` - The `session` parameter.
+    /// * `name` - Identifier or name of the target entity.
+    /// * `session` - Active installer session state.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(JsValue)` if found, or `None` if absent.
     fn lookup_var(&self, name: &str, session: &ScriptSession) -> Option<JsValue> {
         if name == "Session" {
             return Some(JsValue::SessionObject);
@@ -1587,9 +1587,9 @@ impl JScriptEngine {
     ///
     /// # Arguments
     ///
-    /// * `name` - The `name` parameter.
-    /// * `value` - The `value` parameter.
-    /// * `session` - The `session` parameter.
+    /// * `name` - Identifier or name of the target entity.
+    /// * `value` - Value to assign or compare.
+    /// * `session` - Active installer session state.
     fn set_var(&mut self, name: &str, value: &JsValue, session: &mut ScriptSession) {
         // Check local frames first
         for frame in self.env_stack.iter_mut().rev() {
@@ -1621,12 +1621,12 @@ impl JScriptEngine {
     ///
     /// # Arguments
     ///
-    /// * `stmt` - The `stmt` parameter.
-    /// * `session` - The `session` parameter.
+    /// * `stmt` - Parsed script or SQL statement.
+    /// * `session` - Active installer session state.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Some(JsValue))` if present, `Ok(None)` if absent, or an error on failure.
     #[allow(clippy::too_many_lines)]
     fn eval_statement(
         &mut self,
@@ -1765,12 +1765,12 @@ impl JScriptEngine {
     ///
     /// # Arguments
     ///
-    /// * `expr` - The `expr` parameter.
-    /// * `session` - The `session` parameter.
+    /// * `expr` - Condition or script expression string.
+    /// * `session` - Active installer session state.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(JsValue)` on success, or an error if the operation fails.
     #[allow(clippy::too_many_lines)]
     fn eval_expression(&mut self, expr: &Expr, session: &mut ScriptSession) -> Result<JsValue> {
         match expr {
@@ -2078,16 +2078,16 @@ impl JScriptEngine {
     ///
     /// # Arguments
     ///
-    /// * `target` - The `target` parameter.
-    /// * `method` - The `method` parameter.
-    /// * `arguments` - The `arguments` parameter.
-    /// * `line` - The `line` parameter.
-    /// * `col` - The `col` parameter.
-    /// * `session` - The `session` parameter.
+    /// * `target` - Target path, property name, or destination identifier.
+    /// * `method` - Name of the method or COM member to invoke.
+    /// * `arguments` - Optional command-line arguments string.
+    /// * `line` - Source text line to parse.
+    /// * `col` - 0-based or 1-based column index.
+    /// * `session` - Active installer session state.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(JsValue)` on success, or an error if the operation fails.
     #[allow(clippy::too_many_lines)]
     fn call_method(
         &mut self,
@@ -2214,15 +2214,15 @@ impl JScriptEngine {
     ///
     /// # Arguments
     ///
-    /// * `name` - The `name` parameter.
-    /// * `args` - The `args` parameter.
-    /// * `line` - The `line` parameter.
-    /// * `col` - The `col` parameter.
-    /// * `session` - The `session` parameter.
+    /// * `name` - Identifier or name of the target entity.
+    /// * `args` - Command-line or invocation arguments slice.
+    /// * `line` - Source text line to parse.
+    /// * `col` - 0-based or 1-based column index.
+    /// * `session` - Active installer session state.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(JsValue)` on success, or an error if the operation fails.
     fn call_function(
         &mut self,
         name: &str,
@@ -2286,7 +2286,6 @@ impl JScriptEngine {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::EvaluationContext;

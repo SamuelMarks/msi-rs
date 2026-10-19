@@ -860,7 +860,8 @@ pub unsafe extern "C" fn msi_package_builder_pack_files_from_disk(
                     .and_then(|f| f.to_str())
                     .unwrap_or(file_id);
 
-                #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+                #[allow(clippy::cast_possible_truncation)]
+                #[allow(clippy::cast_possible_wrap)]
                 let seq = (i + 1) as i16;
                 let file_size = i32::try_from(data.len()).unwrap_or(i32::MAX);
 
@@ -953,7 +954,8 @@ pub unsafe extern "C" fn msi_package_builder_build(
 }
 
 #[cfg(test)]
-#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
+#[allow(clippy::too_many_lines)]
+#[allow(clippy::cognitive_complexity)]
 mod tests {
     use super::*;
     use crate::error::*;

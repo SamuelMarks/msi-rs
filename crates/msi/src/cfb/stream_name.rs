@@ -156,7 +156,6 @@ pub fn encode_msi_stream_name(name: &str, is_table: bool) -> Result<String> {
 /// # Errors
 ///
 /// Returns [`MsiError::InvalidStreamName`] if decoding encounters malformed words.
-#[allow(clippy::cast_possible_truncation)]
 pub fn decode_msi_stream_name(encoded: &str) -> Result<(String, bool)> {
     if encoded.is_empty() {
         return Ok((String::new(), false));
@@ -199,7 +198,6 @@ pub fn decode_msi_stream_name(encoded: &str) -> Result<(String, bool)> {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

@@ -24,7 +24,7 @@ pub struct DecompileArgs {
 ///
 /// # Arguments
 ///
-/// * `args` - The `args` argument.
+/// * `args` - Command-line or invocation arguments slice.
 ///
 /// # Errors
 ///
@@ -32,7 +32,7 @@ pub struct DecompileArgs {
 ///
 /// # Returns
 ///
-/// The return value.
+/// `Ok` containing the formatted or resolved string, or an error on failure.
 pub fn handle_decompile(args: &DecompileArgs) -> Result<String, MsiError> {
     let pkg = Package::open(&args.package).map_err(|e| {
         MsiError::CommandLineError(format!("Failed to open package '{}': {e}", args.package))

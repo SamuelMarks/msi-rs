@@ -40,7 +40,7 @@ pub struct FontTitle {
 ///
 /// # Arguments
 ///
-/// * `data` - The `data` parameter.
+/// * `data` - Raw byte buffer to process.
 ///
 /// Locates and validates the `name` table slice within a TrueType/OpenType font payload.
 fn find_ttf_name_table(data: &[u8]) -> Result<&[u8], MsiError> {
@@ -212,11 +212,11 @@ pub fn extract_font_title(data: &[u8]) -> Result<FontTitle, MsiError> {
 ///
 /// # Arguments
 ///
-/// * `font_path` - The `font_path` parameter.
+/// * `font_path` - Filesystem path for the font path.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// `Ok(())` on success, or an error if the operation fails.
 pub fn register_font(font_path: &Path) -> Result<(), MsiError> {
     if !font_path.exists() {
         return Err(MsiError::FontRegistrationError(format!(
@@ -311,7 +311,6 @@ pub fn register_font(font_path: &Path) -> Result<(), MsiError> {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use std::fs;

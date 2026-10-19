@@ -42,11 +42,11 @@ pub struct InfoArgs {
 ///
 /// # Arguments
 ///
-/// * `args` - The `args` argument.
+/// * `args` - Command-line or invocation arguments slice.
 ///
 /// # Returns
 ///
-/// The return value.
+/// `Ok` containing the formatted or resolved string, or an error on failure.
 pub fn handle_create(args: &CreateArgs) -> Result<String, MsiError> {
     let version = ProductVersion::parse(&args.version)?;
     let mut builder = Package::builder();
@@ -72,7 +72,7 @@ pub fn handle_create(args: &CreateArgs) -> Result<String, MsiError> {
 ///
 /// # Arguments
 ///
-/// * `args` - The `args` argument.
+/// * `args` - Command-line or invocation arguments slice.
 ///
 /// # Errors
 ///
@@ -80,7 +80,7 @@ pub fn handle_create(args: &CreateArgs) -> Result<String, MsiError> {
 ///
 /// # Returns
 ///
-/// The return value.
+/// `Ok` containing the formatted or resolved string, or an error on failure.
 pub fn handle_info(args: &InfoArgs) -> Result<String, MsiError> {
     if args.path.trim().is_empty() {
         return Err(MsiError::CommandLineError(
@@ -112,11 +112,11 @@ ProductCode: {}",
 ///
 /// # Arguments
 ///
-/// * `err` - The `err` argument.
+/// * `err` - The err value.
 ///
 /// # Returns
 ///
-/// The return value.
+/// The resolved or formatted string value.
 #[must_use]
 pub fn err_to_string(err: MsiError) -> String {
     let s = err.to_string();

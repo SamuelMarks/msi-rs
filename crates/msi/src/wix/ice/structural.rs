@@ -14,11 +14,11 @@ use std::collections::HashSet;
 ///
 /// # Arguments
 ///
-/// * `s` - The `s` parameter.
+/// * `s` - Input string slice to parse or transform.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// `true` if the check succeeds or state matches, `false` otherwise.
 fn is_valid_uppercase_guid(s: &str) -> bool {
     let bytes = s.as_bytes();
     if bytes.len() != 38 {
@@ -991,7 +991,6 @@ pub fn validate_ice95(db: &LinkedDatabase) -> Option<IceReport> {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::database::tables::record::Record;

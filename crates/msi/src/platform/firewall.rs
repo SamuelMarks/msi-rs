@@ -17,11 +17,11 @@ impl FirewallRuleName {
     ///
     /// # Arguments
     ///
-    /// * `name` - The `name` parameter.
+    /// * `name` - Identifier or name of the target entity.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn new(name: impl Into<String>) -> Self {
         Self(name.into())
@@ -31,7 +31,7 @@ impl FirewallRuleName {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -53,11 +53,11 @@ impl PortNumber {
     ///
     /// # Arguments
     ///
-    /// * `port` - The `port` parameter.
+    /// * `port` - TCP/UDP network port number.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn new(port: u16) -> Self {
         Self(port)
@@ -67,7 +67,7 @@ impl PortNumber {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `u16` numeric result or status code.
     #[must_use]
     pub const fn value(&self) -> u16 {
         self.0
@@ -94,7 +94,7 @@ impl Protocol {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&'static str` value.
     #[must_use]
     pub const fn as_str(&self) -> &'static str {
         match self {
@@ -119,13 +119,13 @@ pub trait FirewallManager {
     ///
     /// # Arguments
     ///
-    /// * `name` - The `name` parameter.
-    /// * `port` - The `port` parameter.
-    /// * `protocol` - The `protocol` parameter.
+    /// * `name` - Identifier or name of the target entity.
+    /// * `port` - TCP/UDP network port number.
+    /// * `protocol` - Network protocol (e.g., TCP or UDP).
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok` containing the formatted or resolved string, or an error on failure.
     fn add_port_exception(
         &self,
         name: &FirewallRuleName,
@@ -140,13 +140,13 @@ pub trait FirewallManager {
     ///
     /// # Arguments
     ///
-    /// * `name` - The `name` parameter.
-    /// * `port` - The `port` parameter.
-    /// * `protocol` - The `protocol` parameter.
+    /// * `name` - Identifier or name of the target entity.
+    /// * `port` - TCP/UDP network port number.
+    /// * `protocol` - Network protocol (e.g., TCP or UDP).
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok` containing the formatted or resolved string, or an error on failure.
     fn remove_port_exception(
         &self,
         name: &FirewallRuleName,
@@ -288,7 +288,6 @@ impl FirewallManager for WindowsFirewallManager {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

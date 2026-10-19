@@ -25,7 +25,6 @@ pub const DEFAULT_CLUSTER_SIZE: u64 = 4096;
 ///
 /// A tuple containing `(available_bytes, cluster_size)`.
 #[must_use]
-#[allow(clippy::missing_const_for_fn)]
 pub fn query_host_volume_metrics(path: &str) -> (u64, u64) {
     #[cfg(unix)]
     {
@@ -40,9 +39,10 @@ pub fn query_host_volume_metrics(path: &str) -> (u64, u64) {
                 // SAFETY: c_path is a valid null-terminated C string and &raw mut stat points to valid memory.
                 let ret = unsafe { libc::statvfs(c_path.as_ptr(), &raw mut stat) };
                 if ret == 0 {
-                    #[allow(clippy::unnecessary_cast, trivial_numeric_casts)]
+                    #[allow(clippy::unnecessary_cast)]
+                    #[allow(trivial_numeric_casts)]
                     let frsize = stat.f_frsize as u64;
-                    #[allow(clippy::cast_lossless, clippy::unnecessary_cast, trivial_numeric_casts)]
+                    #[allow(clippy::cast_lossless)]
                     let bavail = stat.f_bavail as u64;
                     let available = bavail.saturating_mul(frsize);
                     return (available, frsize);
@@ -102,13 +102,13 @@ impl VolumeCost {
     ///
     /// # Arguments
     ///
-    /// * `volume` - The `volume` parameter.
-    /// * `cluster_size` - The `cluster_size` parameter.
-    /// * `available_bytes` - The `available_bytes` parameter.
+    /// * `volume` - The volume value.
+    /// * `cluster_size` - The cluster size value.
+    /// * `available_bytes` - The available bytes value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     const fn new_inner(volume: String, cluster_size: u64, available_bytes: u64) -> Self {
         let cluster = if cluster_size == 0 {
             DEFAULT_CLUSTER_SIZE
@@ -128,7 +128,7 @@ impl VolumeCost {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// The resolved or formatted string value.
     #[must_use]
     pub fn volume(&self) -> &str {
         &self.volume
@@ -138,7 +138,7 @@ impl VolumeCost {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `u64` numeric result or status code.
     #[must_use]
     pub const fn cluster_size(&self) -> u64 {
         self.cluster_size
@@ -148,7 +148,7 @@ impl VolumeCost {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `u64` numeric result or status code.
     #[must_use]
     pub const fn available_bytes(&self) -> u64 {
         self.available_bytes
@@ -158,7 +158,7 @@ impl VolumeCost {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `i64` numeric result or status code.
     #[must_use]
     pub const fn cost_bytes(&self) -> i64 {
         self.cost_bytes
@@ -168,7 +168,7 @@ impl VolumeCost {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `u32` numeric result or status code.
     #[must_use]
     pub const fn file_count(&self) -> u32 {
         self.file_count
@@ -396,7 +396,6 @@ impl DiskCostEngine {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

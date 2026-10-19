@@ -31,12 +31,12 @@ pub fn translate_e8_instructions(data: &mut [u8], file_offset: usize) {
 ///
 /// # Arguments
 ///
-/// * `input` - The `input` parameter.
-/// * `output_size` - The `output_size` parameter.
+/// * `input` - Input byte slice or source string.
+/// * `output_size` - Expected uncompressed output byte length.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// `Ok` containing the collected `u8` items, or an error on failure.
 pub fn decompress_lzx(input: &[u8], output_size: usize) -> Result<Vec<u8>> {
     decompress_lzx_internal(input, output_size, 15)
 }
@@ -44,13 +44,13 @@ pub fn decompress_lzx(input: &[u8], output_size: usize) -> Result<Vec<u8>> {
 ///
 /// # Arguments
 ///
-/// * `input` - The `input` parameter.
-/// * `output_size` - The `output_size` parameter.
-/// * `window_bits` - The `window_bits` parameter.
+/// * `input` - Input byte slice or source string.
+/// * `output_size` - Expected uncompressed output byte length.
+/// * `window_bits` - The window bits value.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// `Ok` containing the collected `u8` items, or an error on failure.
 fn decompress_lzx_internal(input: &[u8], output_size: usize, window_bits: u8) -> Result<Vec<u8>> {
     if input.is_empty() && output_size > 0 {
         return Err(MsiError::WimDecompressionError {
@@ -78,14 +78,7 @@ fn decompress_lzx_internal(input: &[u8], output_size: usize, window_bits: u8) ->
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::field_reassign_with_default,
-    clippy::shadow_unrelated,
-    clippy::unreadable_literal,
-    clippy::assert_is_empty,
-    clippy::cast_possible_truncation,
-    clippy::redundant_clone
-)]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
 

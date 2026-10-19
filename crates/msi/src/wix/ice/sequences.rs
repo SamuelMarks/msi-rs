@@ -108,11 +108,11 @@ impl SequenceGraph {
 ///
 /// # Arguments
 ///
-/// * `db` - The `db` parameter.
+/// * `db` - In-memory linked MSI database to inspect or mutate.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// Computed `HashMap<String, (i16, String, String)>` value.
 fn get_custom_actions(db: &LinkedDatabase) -> HashMap<String, (i16, String, String)> {
     let mut map = HashMap::new();
     for r in db.get_records("CustomAction") {
@@ -654,7 +654,6 @@ pub fn validate_ice78(db: &LinkedDatabase) -> Option<IceReport> {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::database::tables::record::Record;

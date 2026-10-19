@@ -330,7 +330,7 @@ impl GptTable {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn add_partition(&mut self, entry: GptPartitionEntry) -> Result<()> {
         if entry.start_lba.0 < self.first_usable_lba.0 {
             return Err(MsiError::PartitionError {
@@ -488,6 +488,19 @@ impl GptTable {
         }
         buf
     }
+
+    #[cfg(test)]
+    const fn default_mock() -> Self {
+        Self {
+            disk_guid: [0; 16],
+            header_lba: Lba(1),
+            backup_header_lba: Lba(99_999),
+            first_usable_lba: Lba(2048),
+            last_usable_lba: Lba(99_000),
+            partition_entries_lba: Lba(2),
+            partitions: Vec::new(),
+        }
+    }
 }
 
 /// Standardized operating system partition layout blueprints.
@@ -570,15 +583,15 @@ impl StandardPartitionScheme {
     ///
     /// # Arguments
     ///
-    /// * `table` - The `table` parameter.
-    /// * `sectors_per_mb` - The `sectors_per_mb` parameter.
-    /// * `esp_mb` - The `esp_mb` parameter.
-    /// * `msr_mb` - The `msr_mb` parameter.
-    /// * `recovery_mb` - The `recovery_mb` parameter.
+    /// * `table` - Name of the MSI database table.
+    /// * `sectors_per_mb` - Number of disk sectors per megabyte.
+    /// * `esp_mb` - Size of the EFI System Partition in megabytes.
+    /// * `msr_mb` - Size of the Microsoft Reserved Partition in megabytes.
+    /// * `recovery_mb` - Size of the Windows Recovery Partition in megabytes.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     fn provision_windows(
         table: &mut GptTable,
         sectors_per_mb: u64,
@@ -658,15 +671,15 @@ impl StandardPartitionScheme {
     ///
     /// # Arguments
     ///
-    /// * `table` - The `table` parameter.
-    /// * `sectors_per_mb` - The `sectors_per_mb` parameter.
-    /// * `esp_mb` - The `esp_mb` parameter.
-    /// * `boot_mb` - The `boot_mb` parameter.
-    /// * `swap_mb` - The `swap_mb` parameter.
+    /// * `table` - Name of the MSI database table.
+    /// * `sectors_per_mb` - Number of disk sectors per megabyte.
+    /// * `esp_mb` - Size of the EFI System Partition in megabytes.
+    /// * `boot_mb` - The boot mb value.
+    /// * `swap_mb` - The swap mb value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     fn provision_linux(
         table: &mut GptTable,
         sectors_per_mb: u64,
@@ -745,7 +758,6 @@ impl StandardPartitionScheme {
 pub use crate::cab::csum::compute_crc32;
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -979,20 +991,5 @@ mod tests {
             name: "Inverted".to_string(),
         };
         assert!(table.add_partition(inverted).is_err());
-    }
-    #[allow(clippy::multiple_inherent_impl)]
-    impl GptTable {
-        #[allow(clippy::missing_const_for_fn)]
-        fn default_mock() -> Self {
-            Self {
-                disk_guid: [0; 16],
-                header_lba: Lba(1),
-                backup_header_lba: Lba(99_999),
-                first_usable_lba: Lba(2048),
-                last_usable_lba: Lba(99_000),
-                partition_entries_lba: Lba(2),
-                partitions: Vec::new(),
-            }
-        }
     }
 }

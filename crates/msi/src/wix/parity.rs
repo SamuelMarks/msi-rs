@@ -55,7 +55,8 @@ impl MsiDecompiler {
     /// # Errors
     ///
     /// Returns [`crate::error::MsiError`] if required product properties are missing.
-    #[allow(clippy::too_many_lines, clippy::format_push_string)]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::format_push_string)]
     pub fn decompile(&self, database: &LinkedDatabase) -> Result<String> {
         let mut properties = HashMap::new();
         for rec in database.get_records("Property") {
@@ -435,7 +436,6 @@ impl MsiDecompiler {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::database::tables::record::Record;
@@ -444,7 +444,7 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `LinkedDatabase` value.
     fn sample_database() -> LinkedDatabase {
         let mut db = LinkedDatabase::default();
 

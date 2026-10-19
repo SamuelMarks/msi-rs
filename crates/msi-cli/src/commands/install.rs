@@ -164,11 +164,11 @@ impl LoggingDispatcher {
     ///
     /// # Arguments
     ///
-    /// * `options` - The `options` argument.
+    /// * `options` - Configuration options for the operation.
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn new(options: LoggingOptions) -> Self {
         Self { options }
@@ -187,7 +187,7 @@ impl LoggingDispatcher {
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(())` on success, or an error if the operation fails.
     pub fn log(&self, message_type: char, message: &str) -> Result<(), MsiError> {
         let should_log = match message_type {
             'i' => self.options.status,
@@ -225,9 +225,10 @@ impl LoggingDispatcher {
                     MsiError::CommandLineError(format!("Failed to open log file '{path}': {e}"))
                 })?;
 
-            let _ = file.write_all(line.as_bytes());
+            file.write_all(line.as_bytes())
+                .map_err(msi::error::IoContext)?;
             if self.options.flush_immediately {
-                let _ = file.flush();
+                file.flush().map_err(msi::error::IoContext)?;
             }
         } else if self.options.verbose || message_type == 'e' || message_type == 'w' {
             eprint!("{line}");
@@ -241,8 +242,8 @@ impl LoggingDispatcher {
 ///
 /// # Arguments
 ///
-/// * `pkg` - The `pkg` argument.
-/// * `context` - The `context` argument.
+/// * `pkg` - Source MSI [`Package`] whose `Property` table is inspected.
+/// * `context` - Target [`EvaluationContext`] populated with the package's properties.
 pub fn load_package_properties(pkg: &Package, context: &mut EvaluationContext) {
     for rec in pkg.database().get_records("Property") {
         if let (Some(FieldValue::String(k)), Some(FieldValue::String(v))) = (rec.get(0), rec.get(1))
@@ -264,11 +265,11 @@ pub fn load_package_properties(pkg: &Package, context: &mut EvaluationContext) {
 ///
 /// # Errors
 ///
-/// Returns an [`MsiError`] if transaction preparation or execution fails.
+/// Returns an [`MsiError`] if transaction preparation, execution, or commit fails.
 ///
 /// # Returns
 ///
-/// The return value.
+/// `Ok(())` when the transaction has been prepared, executed, and committed.
 pub fn run_installer_transaction(
     tx: Transaction<msi::execution::transaction::Uninitialized>,
 ) -> Result<(), MsiError> {
@@ -278,7 +279,7 @@ pub fn run_installer_transaction(
     let executor = msi::execution::LiveWorkerExecutor::new(&quarantine_dir, &session_id);
     let mut worker = WorkerContext::new().with_live_executor(executor);
     let exec_tx = prep_tx.execute(&mut worker)?;
-    let _ = exec_tx.commit(&mut worker);
+    let _committed_tx = exec_tx.commit(&mut worker)?;
     Ok(())
 }
 
@@ -286,7 +287,7 @@ pub fn run_installer_transaction(
 ///
 /// # Arguments
 ///
-/// * `args` - The `args` argument.
+/// * `args` - Command-line or invocation arguments slice.
 ///
 /// # Errors
 ///
@@ -294,7 +295,7 @@ pub fn run_installer_transaction(
 ///
 /// # Returns
 ///
-/// The return value.
+/// `Ok` containing the formatted or resolved string, or an error on failure.
 #[allow(clippy::too_many_lines)]
 pub fn handle_install(args: &InstallArgs) -> Result<String, MsiError> {
     if args.package.trim().is_empty() {
@@ -343,7 +344,7 @@ pub fn handle_install(args: &InstallArgs) -> Result<String, MsiError> {
     let use_tui = args.tui || (is_headless && args.ui != CliUiLevel::Quiet);
     if use_tui {
         let mut engine = msi::ui::UiEngine::new(context.clone());
-        let _ = engine.load_from_database(pkg.database());
+        engine.load_from_database(pkg.database())?;
         if engine.active_dialog().is_some() {
             let mut wizard = msi::ui::TerminalWizard::new(engine);
             wizard.set_action_text(format!("Installing {}...", pkg.metadata().product_name()));
@@ -413,7 +414,7 @@ pub fn handle_install(args: &InstallArgs) -> Result<String, MsiError> {
 ///
 /// # Arguments
 ///
-/// * `args` - The `args` argument.
+/// * `args` - Command-line or invocation arguments slice.
 ///
 /// # Errors
 ///
@@ -421,7 +422,7 @@ pub fn handle_install(args: &InstallArgs) -> Result<String, MsiError> {
 ///
 /// # Returns
 ///
-/// The return value.
+/// `Ok` containing the formatted or resolved string, or an error on failure.
 pub fn handle_uninstall(args: &UninstallArgs) -> Result<String, MsiError> {
     if args.package.trim().is_empty() {
         return Err(MsiError::CommandLineError(
@@ -487,7 +488,7 @@ pub fn handle_uninstall(args: &UninstallArgs) -> Result<String, MsiError> {
 ///
 /// # Arguments
 ///
-/// * `args` - The `args` argument.
+/// * `args` - Command-line or invocation arguments slice.
 ///
 /// # Errors
 ///
@@ -495,7 +496,7 @@ pub fn handle_uninstall(args: &UninstallArgs) -> Result<String, MsiError> {
 ///
 /// # Returns
 ///
-/// The return value.
+/// `Ok` containing the formatted or resolved string, or an error on failure.
 pub fn handle_admin(args: &AdminArgs) -> Result<String, MsiError> {
     if args.package.trim().is_empty() {
         return Err(MsiError::CommandLineError(
@@ -552,7 +553,7 @@ pub fn handle_admin(args: &AdminArgs) -> Result<String, MsiError> {
 ///
 /// # Arguments
 ///
-/// * `args` - The `args` argument.
+/// * `args` - Command-line or invocation arguments slice.
 ///
 /// # Errors
 ///
@@ -560,7 +561,7 @@ pub fn handle_admin(args: &AdminArgs) -> Result<String, MsiError> {
 ///
 /// # Returns
 ///
-/// The return value.
+/// `Ok` containing the formatted or resolved string, or an error on failure.
 pub fn handle_repair(args: &RepairArgs) -> Result<String, MsiError> {
     if args.package.trim().is_empty() {
         return Err(MsiError::CommandLineError(
@@ -625,7 +626,7 @@ pub fn handle_repair(args: &RepairArgs) -> Result<String, MsiError> {
 ///
 /// # Arguments
 ///
-/// * `args` - The `args` argument.
+/// * `args` - Command-line or invocation arguments slice.
 ///
 /// # Errors
 ///
@@ -633,7 +634,7 @@ pub fn handle_repair(args: &RepairArgs) -> Result<String, MsiError> {
 ///
 /// # Returns
 ///
-/// The return value.
+/// `Ok` containing the formatted or resolved string, or an error on failure.
 pub fn handle_advertise(args: &AdvertiseArgs) -> Result<String, MsiError> {
     if args.package.trim().is_empty() {
         return Err(MsiError::CommandLineError(
@@ -677,11 +678,11 @@ pub fn handle_advertise(args: &AdvertiseArgs) -> Result<String, MsiError> {
 ///
 /// # Arguments
 ///
-/// * `flags` - The `flags` argument.
+/// * `flags` - Bitmask of operational flags.
 ///
 /// # Returns
 ///
-/// The return value.
+/// The resolved or formatted string value.
 #[must_use]
 pub fn repair_flags_to_string(flags: &RepairFlags) -> String {
     let mut s = String::new();
@@ -726,7 +727,7 @@ pub fn repair_flags_to_string(flags: &RepairFlags) -> String {
 ///
 /// # Arguments
 ///
-/// * `args` - The `args` argument.
+/// * `args` - Command-line or invocation arguments slice.
 ///
 /// # Errors
 ///
@@ -734,7 +735,7 @@ pub fn repair_flags_to_string(flags: &RepairFlags) -> String {
 ///
 /// # Returns
 ///
-/// The return value.
+/// `Ok` containing the formatted or resolved string, or an error on failure.
 pub fn handle_msiexec(args: &MsiexecArgs) -> Result<String, MsiError> {
     let has_tui = args
         .raw_args
@@ -833,7 +834,7 @@ impl WorkerSocketAddress {
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// `Ok(Self)` on success, or an error if the operation fails.
     pub fn parse(path: &str) -> Result<Self, MsiError> {
         let trimmed = path.trim();
         if trimmed.is_empty() {
@@ -848,7 +849,7 @@ impl WorkerSocketAddress {
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// The resolved or formatted string value.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -859,7 +860,7 @@ impl WorkerSocketAddress {
 ///
 /// # Arguments
 ///
-/// * `args` - The `args` argument.
+/// * `args` - Command-line or invocation arguments slice.
 ///
 /// # Errors
 ///
@@ -867,7 +868,7 @@ impl WorkerSocketAddress {
 ///
 /// # Returns
 ///
-/// The return value.
+/// `Ok` containing the formatted or resolved string, or an error on failure.
 pub fn handle_worker(args: &WorkerArgs) -> Result<String, MsiError> {
     let socket_addr = WorkerSocketAddress::parse(&args.socket)?;
     let path = Path::new(socket_addr.as_str());

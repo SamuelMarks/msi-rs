@@ -369,7 +369,6 @@ pub fn validate_ice105(db: &LinkedDatabase) -> Option<IceReport> {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::database::tables::record::Record;
@@ -499,7 +498,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::too_many_lines)]
     fn test_ice66_schema_version() {
         let mut db = make_test_db();
         db.add_record(

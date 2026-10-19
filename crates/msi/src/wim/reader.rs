@@ -159,7 +159,6 @@ impl WimReader {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::wim::header::WIM_MAGIC;

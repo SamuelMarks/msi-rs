@@ -27,13 +27,13 @@ pub fn csum_compute(bytes: &[u8], seed: u32) -> u32 {
 
     let mut tail = 0u32;
     if remainder.len() == 3 {
-        tail |= u32::from(remainder[2]) << 16;
-    }
-    if remainder.len() >= 2 {
-        tail |= u32::from(remainder[1]) << 8;
-    }
-    if !remainder.is_empty() {
-        tail |= u32::from(remainder[0]);
+        tail = (u32::from(remainder[0]) << 16)
+            | (u32::from(remainder[1]) << 8)
+            | u32::from(remainder[2]);
+    } else if remainder.len() == 2 {
+        tail = (u32::from(remainder[0]) << 8) | u32::from(remainder[1]);
+    } else if remainder.len() == 1 {
+        tail = u32::from(remainder[0]);
     }
 
     csum ^ tail
@@ -113,11 +113,11 @@ mod tests {
 
         // 2 trailing bytes
         let d2 = [0x01, 0x02, 0x03, 0x04, 0xAA, 0xBB];
-        assert_eq!(csum_compute(&d2, 0), w1 ^ 0xBBAA);
+        assert_eq!(csum_compute(&d2, 0), w1 ^ 0xAABB);
 
         // 3 trailing bytes
         let d3 = [0x01, 0x02, 0x03, 0x04, 0xAA, 0xBB, 0xCC];
-        assert_eq!(csum_compute(&d3, 0), w1 ^ 0x00CC_BBAA);
+        assert_eq!(csum_compute(&d3, 0), w1 ^ 0x00AA_BBCC);
     }
 
     /// Tests incremental checksum calculation using the seed parameter.

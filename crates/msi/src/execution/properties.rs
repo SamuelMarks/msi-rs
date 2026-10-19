@@ -43,11 +43,11 @@ impl InstallState {
     ///
     /// # Arguments
     ///
-    /// * `val` - The `val` parameter.
+    /// * `val` - Value to store, format, or evaluate.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(Self)` if found, or `None` if absent.
     #[must_use]
     pub const fn from_i32(val: i32) -> Option<Self> {
         match val {
@@ -63,7 +63,7 @@ impl InstallState {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `i32` numeric result or status code.
     #[must_use]
     pub const fn as_i32(self) -> i32 {
         self as i32
@@ -157,7 +157,7 @@ impl EvaluationContext {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `InstallState` value.
     #[must_use]
     pub fn get_feature_action_state(&self, name: &str) -> InstallState {
         self.feature_action_states
@@ -173,7 +173,7 @@ impl EvaluationContext {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `InstallState` value.
     #[must_use]
     pub fn get_feature_installed_state(&self, name: &str) -> InstallState {
         self.feature_installed_states
@@ -207,7 +207,7 @@ impl EvaluationContext {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `InstallState` value.
     #[must_use]
     pub fn get_component_action_state(&self, name: &str) -> InstallState {
         self.component_action_states
@@ -223,7 +223,7 @@ impl EvaluationContext {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `InstallState` value.
     #[must_use]
     pub fn get_component_installed_state(&self, name: &str) -> InstallState {
         self.component_installed_states
@@ -348,8 +348,8 @@ impl EvaluationContext {
     ///
     /// # Arguments
     ///
-    /// * `feature` - The `feature` parameter.
-    /// * `state` - The `state` parameter.
+    /// * `feature` - Feature identifier in the `Feature` table.
+    /// * `state` - Current or requested installation state.
     pub fn set_feature_action(&mut self, feature: impl Into<String>, state: InstallState) {
         self.feature_action_states.insert(feature.into(), state);
     }
@@ -358,8 +358,8 @@ impl EvaluationContext {
     ///
     /// # Arguments
     ///
-    /// * `feature` - The `feature` parameter.
-    /// * `state` - The `state` parameter.
+    /// * `feature` - Feature identifier in the `Feature` table.
+    /// * `state` - Current or requested installation state.
     pub fn set_feature_installed(&mut self, feature: impl Into<String>, state: InstallState) {
         self.feature_installed_states.insert(feature.into(), state);
     }
@@ -368,8 +368,8 @@ impl EvaluationContext {
     ///
     /// # Arguments
     ///
-    /// * `comp` - The `comp` parameter.
-    /// * `state` - The `state` parameter.
+    /// * `comp` - Component identifier in the `Component` table.
+    /// * `state` - Current or requested installation state.
     pub fn set_component_action(&mut self, comp: impl Into<String>, state: InstallState) {
         self.component_action_states.insert(comp.into(), state);
     }
@@ -378,8 +378,8 @@ impl EvaluationContext {
     ///
     /// # Arguments
     ///
-    /// * `comp` - The `comp` parameter.
-    /// * `state` - The `state` parameter.
+    /// * `comp` - Component identifier in the `Component` table.
+    /// * `state` - Current or requested installation state.
     pub fn set_component_installed(&mut self, comp: impl Into<String>, state: InstallState) {
         self.component_installed_states.insert(comp.into(), state);
     }
@@ -388,8 +388,8 @@ impl EvaluationContext {
     ///
     /// # Arguments
     ///
-    /// * `file_key` - The `file_key` parameter.
-    /// * `path` - The `path` parameter.
+    /// * `file_key` - The file key value.
+    /// * `path` - Filesystem path to the target file or directory.
     pub fn set_file_path(&mut self, file_key: impl Into<String>, path: impl Into<String>) {
         self.file_paths.insert(file_key.into(), path.into());
     }
@@ -398,14 +398,25 @@ impl EvaluationContext {
     ///
     /// # Arguments
     ///
-    /// * `comp_key` - The `comp_key` parameter.
-    /// * `dir` - The `dir` parameter.
+    /// * `comp_key` - The comp key value.
+    /// * `dir` - Directory path or `Directory` table identifier.
     pub fn set_component_dir(&mut self, comp_key: impl Into<String>, dir: impl Into<String>) {
         self.component_directories
             .insert(comp_key.into(), dir.into());
     }
 
-    /// Formats a template string by expanding `[Property]`, `[#File]`, `[$Comp]`, `[%Env]`, etc.
+    /// Converts this evaluation context into a [`crate::execution::format::FormatContext`].
+    #[must_use]
+    pub fn to_format_context(&self) -> crate::execution::format::FormatContext {
+        crate::execution::format::FormatContext {
+            properties: self.properties.clone(),
+            env_vars: HashMap::new(),
+            files: self.file_paths.clone(),
+            components: self.component_directories.clone(),
+        }
+    }
+
+    /// Formats a template string by expanding `[Property]`, `[#File]`, `[!File]`, `[$Comp]`, `[?Comp]`, `[%Env]`, and `{...}`.
     ///
     /// # Arguments
     ///
@@ -418,82 +429,46 @@ impl EvaluationContext {
     /// # Errors
     ///
     /// Returns [`MsiError::Validation`] on unclosed brackets.
-    #[allow(clippy::too_many_lines)]
     pub fn format_string(&self, template: &str) -> Result<String> {
-        let mut out = String::new();
         let chars: Vec<char> = template.chars().collect();
         let mut i = 0;
+        let mut depth = 0usize;
+        let mut start = 0usize;
 
         while i < chars.len() {
             if chars[i] == '[' {
-                let start = i;
+                if i + 3 < chars.len() && chars[i + 1] == '\\' && chars[i + 3] == ']' {
+                    i += 4;
+                    continue;
+                }
+                if depth == 0 {
+                    start = i;
+                }
+                depth += 1;
                 i += 1;
-                let mut bracket_content = String::new();
-                let mut closed = false;
-
-                while i < chars.len() {
-                    if chars[i] == '\\'
-                        && i + 1 < chars.len()
-                        && (chars[i + 1] == ']' || chars[i + 1] == '[')
-                    {
-                        bracket_content.push(chars[i]);
-                        bracket_content.push(chars[i + 1]);
-                        i += 2;
-                        continue;
-                    }
-                    if chars[i] == ']' {
-                        closed = true;
-                        i += 1;
-                        break;
-                    }
-                    bracket_content.push(chars[i]);
-                    i += 1;
-                }
-
-                if !closed {
-                    return Err(MsiError::Validation {
-                        element: "FormattedString".to_string(),
-                        reason: format!("unclosed bracket starting at position {start}"),
-                    });
-                }
-
-                // Handle escape sequences
-                if bracket_content == r"\[" {
-                    out.push('[');
-                } else if bracket_content == r"\]" {
-                    out.push(']');
-                } else if bracket_content == r"\{" {
-                    out.push('{');
-                } else if bracket_content == r"\}" {
-                    out.push('}');
-                } else if let Some(file_key) = bracket_content.strip_prefix('#') {
-                    // File path [#FileKey]
-                    if let Some(path) = self.file_paths.get(file_key) {
-                        out.push_str(path);
-                    }
-                } else if let Some(comp_key) = bracket_content.strip_prefix('$') {
-                    // Component directory [$ComponentKey]
-                    if let Some(dir) = self.component_directories.get(comp_key) {
-                        out.push_str(dir);
-                    }
-                } else if let Some(env_var) = bracket_content.strip_prefix('%') {
-                    // Environment variable [%EnvVar]
-                    if let Ok(val) = std::env::var(env_var) {
-                        out.push_str(&val);
-                    }
-                } else {
-                    // Property lookup [PropertyName]
-                    if let Some(val) = self.get_property(&bracket_content) {
-                        out.push_str(val);
-                    }
-                }
+            } else if chars[i] == '\\' && depth > 0 {
+                return Err(MsiError::Validation {
+                    element: "FormattedString".to_string(),
+                    reason: format!(
+                        "invalid escape sequence inside bracket starting at position {start}"
+                    ),
+                });
+            } else if chars[i] == ']' && depth > 0 {
+                depth -= 1;
+                i += 1;
             } else {
-                out.push(chars[i]);
                 i += 1;
             }
         }
 
-        Ok(out)
+        if depth > 0 {
+            return Err(MsiError::Validation {
+                element: "FormattedString".to_string(),
+                reason: format!("unclosed bracket starting at position {start}"),
+            });
+        }
+
+        crate::execution::format::format_string(template, &self.to_format_context())
     }
 
     /// Evaluates a Windows Installer condition expression string to boolean.
@@ -538,11 +513,11 @@ impl EvaluationContext {
     ///
     /// # Arguments
     ///
-    /// * `c` - The `c` parameter.
+    /// * `c` - The c value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `true` if the check succeeds or state matches, `false` otherwise.
     const fn is_word_terminator(c: char) -> bool {
         matches!(
             c,
@@ -554,11 +529,11 @@ impl EvaluationContext {
     ///
     /// # Arguments
     ///
-    /// * `expr` - The `expr` parameter.
+    /// * `expr` - Condition or script expression string.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Vector of `Token` items.
     #[allow(clippy::too_many_lines)]
     fn tokenize_expression(expr: &str) -> Vec<Token> {
         let mut tokens = Vec::new();
@@ -743,6 +718,8 @@ impl EvaluationContext {
                     tokens.push(Token::Not);
                 } else if upper == "XOR" {
                     tokens.push(Token::Xor);
+                } else if upper == "IMP" {
+                    tokens.push(Token::Imp);
                 } else {
                     tokens.push(Token::Identifier(word));
                 }
@@ -768,6 +745,8 @@ enum Token {
     Not,
     /// `XOR`
     Xor,
+    /// `IMP` (logical implication)
+    Imp,
     /// `&`
     BitAnd,
     /// `|`
@@ -839,12 +818,12 @@ impl<'a> ConditionParser<'a> {
     ///
     /// # Arguments
     ///
-    /// * `tokens` - The `tokens` parameter.
-    /// * `context` - The `context` parameter.
+    /// * `tokens` - Slice of lexical tokens.
+    /// * `context` - Active property and condition evaluation context.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     const fn new(tokens: Vec<Token>, context: &'a EvaluationContext) -> Self {
         Self {
             tokens,
@@ -857,7 +836,7 @@ impl<'a> ConditionParser<'a> {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(&Token)` if found, or `None` if absent.
     fn peek(&self) -> Option<&Token> {
         self.tokens.get(self.cursor)
     }
@@ -866,7 +845,7 @@ impl<'a> ConditionParser<'a> {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(Token)` if found, or `None` if absent.
     fn advance(&mut self) -> Option<Token> {
         (self.cursor < self.tokens.len()).then(|| {
             let t = self.tokens[self.cursor].clone();
@@ -879,7 +858,7 @@ impl<'a> ConditionParser<'a> {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(true)` if the condition holds, `Ok(false)` otherwise, or an error on evaluation failure.
     fn parse_or_expr(&mut self) -> Result<bool> {
         let mut left = self.parse_xor_expr()?;
         while matches!(self.peek(), Some(Token::Or)) {
@@ -894,13 +873,28 @@ impl<'a> ConditionParser<'a> {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Boolean result of the XOR expression.
     fn parse_xor_expr(&mut self) -> Result<bool> {
-        let mut left = self.parse_and_expr()?;
+        let mut left = self.parse_imp_expr()?;
         while matches!(self.peek(), Some(Token::Xor)) {
             self.advance();
-            let right = self.parse_and_expr()?;
+            let right = self.parse_imp_expr()?;
             left ^= right;
+        }
+        Ok(left)
+    }
+
+    /// Parses an IMP (logical implication: `!left || right`) expression.
+    ///
+    /// # Returns
+    ///
+    /// Boolean result of the IMP expression.
+    fn parse_imp_expr(&mut self) -> Result<bool> {
+        let mut left = self.parse_and_expr()?;
+        while matches!(self.peek(), Some(Token::Imp)) {
+            self.advance();
+            let right = self.parse_and_expr()?;
+            left = !left || right;
         }
         Ok(left)
     }
@@ -909,7 +903,7 @@ impl<'a> ConditionParser<'a> {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(true)` if the condition holds, `Ok(false)` otherwise, or an error on evaluation failure.
     fn parse_and_expr(&mut self) -> Result<bool> {
         let mut left = self.parse_not_expr()?;
         while matches!(self.peek(), Some(Token::And)) {
@@ -924,7 +918,7 @@ impl<'a> ConditionParser<'a> {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(true)` if the condition holds, `Ok(false)` otherwise, or an error on evaluation failure.
     fn parse_not_expr(&mut self) -> Result<bool> {
         if matches!(self.peek(), Some(Token::Not)) {
             self.advance();
@@ -939,28 +933,38 @@ impl<'a> ConditionParser<'a> {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Boolean result of the relational or primary expression.
     fn parse_relational_or_primary(&mut self) -> Result<bool> {
         if matches!(self.peek(), Some(Token::OpenParen)) {
+            let saved = self.cursor;
             self.advance();
             let val = self.parse_or_expr()?;
             if matches!(self.peek(), Some(Token::CloseParen)) {
                 self.advance();
-                return Ok(val);
+                if let Some(op_token) = self.peek().cloned() {
+                    if is_relational_op(&op_token) {
+                        self.cursor = saved;
+                    } else {
+                        return Ok(val);
+                    }
+                } else {
+                    return Ok(val);
+                }
+            } else {
+                return Err(MsiError::Validation {
+                    element: "ConditionExpression".to_string(),
+                    reason: "missing closing parenthesis".to_string(),
+                });
             }
-            return Err(MsiError::Validation {
-                element: "ConditionExpression".to_string(),
-                reason: "missing closing parenthesis".to_string(),
-            });
         }
 
-        let left_val = self.parse_value()?;
+        let left_val = self.parse_value_expr()?;
 
         // Check if there is an operator
         if let Some(op_token) = self.peek().cloned() {
             if is_relational_op(&op_token) {
                 self.advance();
-                let right_val = self.parse_value()?;
+                let right_val = self.parse_value_expr()?;
                 return Ok(compare_values(&left_val, &op_token, &right_val));
             }
         }
@@ -969,11 +973,49 @@ impl<'a> ConditionParser<'a> {
         Ok(is_truthy(&left_val))
     }
 
+    /// Parses a value expression supporting integer bitwise `&` and `|` operations (`cond.y`).
+    ///
+    /// # Returns
+    ///
+    /// Evaluated string or integer representation.
+    fn parse_value_expr(&mut self) -> Result<String> {
+        let mut left = if matches!(self.peek(), Some(Token::OpenParen)) {
+            self.advance();
+            let inner = self.parse_value_expr()?;
+            if matches!(self.peek(), Some(Token::CloseParen)) {
+                self.advance();
+                inner
+            } else {
+                return Err(MsiError::Validation {
+                    element: "ConditionExpression".to_string(),
+                    reason: "missing closing parenthesis".to_string(),
+                });
+            }
+        } else {
+            self.parse_value()?
+        };
+
+        while let Some(op @ (Token::BitAnd | Token::BitOr)) = self.peek().cloned() {
+            self.advance();
+            let right = self.parse_value()?;
+            let li = left.parse::<i64>().unwrap_or(0);
+            let ri = right.parse::<i64>().unwrap_or(0);
+            let combined = if matches!(op, Token::BitAnd) {
+                li & ri
+            } else {
+                li | ri
+            };
+            left = combined.to_string();
+        }
+
+        Ok(left)
+    }
+
     /// Parses a value operand.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok` containing the formatted or resolved string, or an error on failure.
     fn parse_value(&mut self) -> Result<String> {
         match self.advance() {
             Some(Token::Literal(s)) => Ok(s),
@@ -1034,11 +1076,11 @@ impl<'a> ConditionParser<'a> {
 ///
 /// # Arguments
 ///
-/// * `t` - The `t` parameter.
+/// * `t` - The t value.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// `true` if the check succeeds or state matches, `false` otherwise.
 const fn is_relational_op(t: &Token) -> bool {
     matches!(
         t,
@@ -1060,8 +1102,6 @@ const fn is_relational_op(t: &Token) -> bool {
             | Token::CiContains
             | Token::CiStartsWith
             | Token::CiEndsWith
-            | Token::BitAnd
-            | Token::BitOr
     )
 }
 
@@ -1069,13 +1109,13 @@ const fn is_relational_op(t: &Token) -> bool {
 ///
 /// # Arguments
 ///
-/// * `left` - The `left` parameter.
-/// * `op` - The `op` parameter.
-/// * `right` - The `right` parameter.
+/// * `left` - Left-hand side operand.
+/// * `op` - Operator token or operation code.
+/// * `right` - Right-hand side operand.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// `true` if the check succeeds or state matches, `false` otherwise.
 fn compare_values(left: &str, op: &Token, right: &str) -> bool {
     // Check if both sides can be parsed as integers
     let l_int = left.parse::<i64>().ok();
@@ -1089,10 +1129,30 @@ fn compare_values(left: &str, op: &Token, right: &str) -> bool {
             Token::Gt | Token::CiGt => li > ri,
             Token::Lte | Token::CiLte => li <= ri,
             Token::Gte | Token::CiGte => li >= ri,
-            Token::BitAnd => (li & ri) != 0,
-            Token::BitOr => (li | ri) != 0,
             _ => false,
         };
+    }
+
+    // In Wine's cond.y (compare_int_str), comparing a non-empty non-numeric string
+    // with an integer using =, <>, <, >, <=, >= evaluates to FALSE.
+    if ((l_int.is_some() && !right.is_empty()) || (r_int.is_some() && !left.is_empty()))
+        && matches!(
+            op,
+            Token::Eq
+                | Token::Neq
+                | Token::Lt
+                | Token::Gt
+                | Token::Lte
+                | Token::Gte
+                | Token::CiEq
+                | Token::CiNeq
+                | Token::CiLt
+                | Token::CiGt
+                | Token::CiLte
+                | Token::CiGte
+        )
+    {
+        return false;
     }
 
     match op {
@@ -1122,11 +1182,11 @@ fn compare_values(left: &str, op: &Token, right: &str) -> bool {
 ///
 /// # Arguments
 ///
-/// * `val` - The `val` parameter.
+/// * `val` - Value to store, format, or evaluate.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// `true` if the check succeeds or state matches, `false` otherwise.
 fn is_truthy(val: &str) -> bool {
     if val.is_empty() {
         return false;
@@ -1138,7 +1198,6 @@ fn is_truthy(val: &str) -> bool {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -1310,10 +1369,17 @@ mod tests {
         ctx.set_property("FLAGS", "5");
         assert_eq!(ctx.evaluate_condition("FLAGS & 4"), Ok(true));
         assert_eq!(ctx.evaluate_condition("FLAGS & 2"), Ok(false));
+        assert_eq!(ctx.evaluate_condition("FLAGS & 1 = 1"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("(FLAGS & 4) = 4"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("(FLAGS | 2) = 7"), Ok(true));
+        assert!(ctx.evaluate_condition("((FLAGS & 4) = 4").is_err());
 
-        // Logical XOR
+        // Logical XOR and IMP
         assert_eq!(ctx.evaluate_condition("1 XOR 0"), Ok(true));
         assert_eq!(ctx.evaluate_condition("1 XOR 1"), Ok(false));
+        assert_eq!(ctx.evaluate_condition("1 IMP 0"), Ok(false));
+        assert_eq!(ctx.evaluate_condition("1 IMP 1"), Ok(true));
+        assert_eq!(ctx.evaluate_condition("0 IMP 0"), Ok(true));
 
         // Logical OR combinations
         assert_eq!(ctx.evaluate_condition("0 OR 1"), Ok(true));
@@ -1327,7 +1393,6 @@ mod tests {
     }
     #[allow(clippy::cognitive_complexity)]
     #[test]
-    #[allow(clippy::too_many_lines)]
     fn test_condition_evaluation_extended() {
         let mut ctx = EvaluationContext::new();
         ctx.set_property("VersionNT", "601");
@@ -1352,6 +1417,13 @@ mod tests {
         assert_eq!(ctx.evaluate_condition("10 >= 10"), Ok(true));
         assert_eq!(ctx.evaluate_condition("10 <> 20"), Ok(true));
         assert_eq!(ctx.evaluate_condition("FLAGS | 2"), Ok(true));
+
+        // String-vs-integer comparisons per Wine cond.y compare_int_str
+        assert_eq!(ctx.evaluate_condition(r#""abc" = 123"#), Ok(false));
+        assert_eq!(ctx.evaluate_condition(r#""abc" <> 123"#), Ok(false));
+        assert_eq!(ctx.evaluate_condition(r#"123 <> "abc""#), Ok(false));
+        assert_eq!(ctx.evaluate_condition(r#""abc" < 123"#), Ok(false));
+        assert_eq!(ctx.evaluate_condition(r#""abc" >< "b""#), Ok(true));
 
         // String non-integer comparisons for all operators
         assert_eq!(ctx.evaluate_condition("10 >< 20"), Ok(false));

@@ -27,7 +27,8 @@ mod sql_tests_extended {
 
     #[allow(clippy::cognitive_complexity)]
     #[test]
-    #[allow(clippy::too_many_lines, clippy::similar_names, clippy::manual_flatten)]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::manual_flatten)]
     fn test_sql_all_syntax_and_operators() {
         use crate::database::sql::lexer::Token;
         for db_res in [

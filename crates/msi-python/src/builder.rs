@@ -25,6 +25,8 @@ pub struct PyPackageBuilder {
     next_sequence: i16,
     /// Staged file data for automatic cabinet archive creation.
     staged_files: Vec<(String, Vec<u8>)>,
+    /// Selected cabinet compression algorithm (`0` = None, `1` = MSZIP, `2` = Quantum, `3` = LZX).
+    compression: msi::cab::folder::CompressionType,
 }
 
 #[pymethods]
@@ -72,7 +74,36 @@ impl PyPackageBuilder {
             inner: builder,
             next_sequence: 1,
             staged_files: Vec::new(),
+            compression: msi::cab::folder::CompressionType::Mszip,
         })
+    }
+
+    /// Sets the cabinet compression algorithm used when packing staged files.
+    ///
+    /// # Arguments
+    ///
+    /// * `compression` - Compression type integer (`0` = None, `1` = MSZIP, `2` = Quantum, `3` = LZX).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::ValidationError`] if `compression` is outside `0..=3`.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` when the compression mode is updated.
+    pub fn set_compression(&mut self, compression: i32) -> PyResult<()> {
+        self.compression = match compression {
+            0 => msi::cab::folder::CompressionType::None,
+            1 => msi::cab::folder::CompressionType::Mszip,
+            2 => msi::cab::folder::CompressionType::Quantum,
+            3 => msi::cab::folder::CompressionType::Lzx { window_bits: 15 },
+            other => {
+                return Err(crate::error::ValidationError::new_err(format!(
+                    "Invalid compression type {other}; expected 0 (NONE), 1 (MSZIP), 2 (QUANTUM), or 3 (LZX)"
+                )));
+            }
+        };
+        Ok(())
     }
 
     /// Sets the product name.
@@ -597,8 +628,7 @@ impl PyPackageBuilder {
     fn finalize_builder(&self) -> Result<PackageBuilder, msi::MsiError> {
         let mut builder = self.inner.clone();
         if !self.staged_files.is_empty() {
-            let mut cab_writer =
-                msi::cab::writer::CabinetWriter::new(msi::cab::folder::CompressionType::Mszip);
+            let mut cab_writer = msi::cab::writer::CabinetWriter::new(self.compression);
             for (fid, data) in &self.staged_files {
                 cab_writer.add_file(fid, data)?;
             }
@@ -729,7 +759,8 @@ mod tests {
     /// # Returns
     ///
     /// `true` if `res` is `Ok` and all component/directory/feature assertions pass, `false` otherwise.
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::cognitive_complexity)]
     fn check_builder_components(res: PyResult<PyPackageBuilder>) -> bool {
         res.is_ok_and(|mut b| {
             // Directories: with parent and without parent
@@ -1306,6 +1337,14 @@ with m.PackageBuilder("ContextApp", "ContextVendor", "1.2.3") as b:
     b.set_product_name("UpdatedContextApp")
     b.set_manufacturer("UpdatedContextVendor")
     b.set_version("2.3.4")
+    b.set_compression(0)
+    b.set_compression(2)
+    b.set_compression(3)
+    b.set_compression(1)
+    try:
+        b.set_compression(99)
+    except Exception:
+        pass
     b.set_product_code("{12345678-1234-1234-1234-123456789012}")
     b.set_upgrade_code("{87654321-4321-4321-4321-210987654321}")
     b.add_property("GREETING", "Hello")

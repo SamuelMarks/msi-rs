@@ -98,7 +98,7 @@ pub struct HarvestArgs {
 ///
 /// # Arguments
 ///
-/// * `args` - The `args` argument.
+/// * `args` - Command-line or invocation arguments slice.
 ///
 /// # Errors
 ///
@@ -106,7 +106,7 @@ pub struct HarvestArgs {
 ///
 /// # Returns
 ///
-/// The return value.
+/// `Ok` containing the formatted or resolved string, or an error on failure.
 pub fn handle_harvest(args: &HarvestArgs) -> Result<String, MsiError> {
     let raw_target = if args.target.is_empty() {
         args.source_dir.as_deref().unwrap_or(".")

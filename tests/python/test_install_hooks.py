@@ -46,6 +46,7 @@ def test_find_pre_commit_cmd_python_module() -> None:
     install_hooks = importlib.import_module("install_hooks")
 
     def mock_which(cmd: str, path: str | None = None) -> str | None:
+        """Helper test callback for mock_which."""
         return None  # pragma: no cover
 
     mock_run = MagicMock()
@@ -64,6 +65,7 @@ def test_find_pre_commit_cmd_python_module_nonzero() -> None:
     install_hooks = importlib.import_module("install_hooks")
 
     def mock_which(cmd: str, path: str | None = None) -> str | None:
+        """Helper test callback for mock_which."""
         return None  # pragma: no cover
 
     mock_run = MagicMock()
@@ -82,11 +84,13 @@ def test_find_pre_commit_cmd_python3_fallback() -> None:
     install_hooks = importlib.import_module("install_hooks")
 
     def mock_which(cmd: str, path: str | None = None) -> str | None:
+        """Helper test callback for mock_which."""
         if cmd == "python3":
             return "/usr/bin/python3"
         return None  # pragma: no cover
 
     def mock_run(args: list, **kwargs: object) -> MagicMock:
+        """Helper test callback for mock_run."""
         if args[0] == sys.executable:
             raise RuntimeError("module not found")
         if args[0] == "/usr/bin/python3":
@@ -108,11 +112,13 @@ def test_find_pre_commit_cmd_python3_nonzero_then_python() -> None:
     install_hooks = importlib.import_module("install_hooks")
 
     def mock_which(cmd: str, path: str | None = None) -> str | None:
+        """Helper test callback for mock_which."""
         if cmd == "python":
             return "/usr/bin/python"
         return None  # pragma: no cover
 
     def mock_run(args: list, **kwargs: object) -> MagicMock:
+        """Helper test callback for mock_run."""
         if args[0] == sys.executable:
             res = MagicMock()
             res.returncode = 1
@@ -136,6 +142,7 @@ def test_find_pre_commit_cmd_python_both_nonzero() -> None:
     install_hooks = importlib.import_module("install_hooks")
 
     def mock_which(cmd: str, path: str | None = None) -> str | None:
+        """Helper test callback for mock_which."""
         if cmd in ["python3", "python"]:
             return f"/usr/bin/{cmd}"
         return None  # pragma: no cover
@@ -156,11 +163,13 @@ def test_find_pre_commit_cmd_not_found() -> None:
     install_hooks = importlib.import_module("install_hooks")
 
     def mock_which(cmd: str, path: str | None = None) -> str | None:
+        """Helper test callback for mock_which."""
         if cmd in ["python3", "python"]:
             return f"/usr/bin/{cmd}"
         return None  # pragma: no cover
 
     def mock_run(args: list, **kwargs: object) -> MagicMock:
+        """Helper test callback for mock_run."""
         raise OSError("failed to spawn")
 
     with (
@@ -191,6 +200,7 @@ def test_main_success(tmp_path: Path) -> None:
     legacy_hook.touch()
 
     def mock_which(cmd: str, path: str | None = None) -> str | None:
+        """Helper test callback for mock_which."""
         if cmd == "git":
             return "/usr/bin/git"
         if cmd == "pre-commit":
@@ -217,6 +227,7 @@ def test_main_git_config_exception(tmp_path: Path) -> None:
     install_hooks = importlib.import_module("install_hooks")
 
     def mock_which(cmd: str, path: str | None = None) -> str | None:
+        """Helper test callback for mock_which."""
         if cmd == "git":
             return "/usr/bin/git"
         if cmd == "pre-commit":
@@ -224,6 +235,7 @@ def test_main_git_config_exception(tmp_path: Path) -> None:
         return None  # pragma: no cover
 
     def mock_run(cmd: list, **kwargs: object) -> MagicMock:
+        """Helper test callback for mock_run."""
         if "config" in cmd:
             raise OSError("git config error")
         res = MagicMock()
@@ -248,6 +260,7 @@ def test_main_pip_install_fallback(tmp_path: Path) -> None:
     first_call = [True]
 
     def mock_find_cmd(env: dict) -> list:
+        """Helper test callback for mock_find_cmd."""
         if first_call[0]:
             first_call[0] = False
             return []

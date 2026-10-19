@@ -1041,6 +1041,15 @@ pub enum MsiError {
     #[error(ignore)]
     UserManagementError(String),
 
+    /// A launch condition evaluated to false during `LaunchConditions`.
+    #[display("Launch condition failed: {description}")]
+    LaunchConditionFailed {
+        /// The condition expression that evaluated to false.
+        condition: String,
+        /// Localized failure description from the `LaunchCondition` table.
+        description: String,
+    },
+
     /// A command-line tool argument or execution failure occurred.
     #[display("{_0}")]
     #[error(ignore)]
@@ -1833,12 +1842,7 @@ mod tests {
     }
 
     #[test]
-    #[allow(
-        clippy::cognitive_complexity,
-        clippy::too_many_lines,
-        clippy::shadow_unrelated,
-        clippy::similar_names
-    )]
+    #[allow(clippy::too_many_lines)]
     fn test_rpc_and_server_errors_continued() {
         let errs = vec![
             (
@@ -2083,12 +2087,10 @@ mod tests {
     }
 
     #[test]
-    #[allow(
-        clippy::cognitive_complexity,
-        clippy::too_many_lines,
-        clippy::shadow_unrelated,
-        clippy::similar_names
-    )]
+    #[allow(clippy::cognitive_complexity)]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::shadow_unrelated)]
+    #[allow(clippy::similar_names)]
     fn test_rpc_and_server_errors() {
         let err_rpc = MsiError::ComRpcError("connection dropped".to_string());
         assert_eq!(
@@ -2396,6 +2398,15 @@ mod tests {
         assert_eq!(
             err_cli,
             MsiError::CommandLineError("missing required flag".to_string())
+        );
+
+        let err_lc = MsiError::LaunchConditionFailed {
+            condition: "VersionNT >= 600".to_string(),
+            description: "Requires Windows Vista or later.".to_string(),
+        };
+        assert_eq!(
+            format!("{err_lc}"),
+            "Launch condition failed: Requires Windows Vista or later."
         );
     }
 

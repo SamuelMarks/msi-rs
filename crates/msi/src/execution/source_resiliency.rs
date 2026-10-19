@@ -176,7 +176,7 @@ impl SourceList {
     ///
     /// # Returns
     ///
-    /// The return value.
+    /// Computed `PathBuf` value.
     fn map_unc_path(unc: &str) -> PathBuf {
         #[cfg(windows)]
         {
@@ -195,7 +195,6 @@ impl SourceList {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 
@@ -560,7 +559,7 @@ use std::sync::{OnceLock, RwLock};
 ///
 /// # Returns
 ///
-/// The return value.
+/// Computed `&'static RwLock<HashMap<String, SourceList>>` value.
 pub fn source_list_cache() -> &'static RwLock<HashMap<String, SourceList>> {
     static CACHE: OnceLock<RwLock<HashMap<String, SourceList>>> = OnceLock::new();
     CACHE.get_or_init(|| RwLock::new(HashMap::new()))

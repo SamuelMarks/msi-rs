@@ -26,11 +26,11 @@ impl NativeStorage {
     ///
     /// # Arguments
     ///
-    /// * `reader` - The `reader` parameter.
+    /// * `reader` - Underlying byte or bitstream reader.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `Box<Self>` value.
     #[must_use]
     pub fn new(reader: Option<CfbReader>) -> Box<Self> {
         Box::new(Self {
@@ -264,7 +264,8 @@ static NATIVE_STORAGE_VTBL: IStorageVtbl = IStorageVtbl {
 };
 
 #[cfg(test)]
-#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
+#[allow(clippy::too_many_lines)]
+#[allow(clippy::cognitive_complexity)]
 mod tests {
     use super::*;
     use crate::com::util::ComObject;

@@ -27,13 +27,13 @@ impl Color32 {
     ///
     /// # Arguments
     ///
-    /// * `r` - The `r` parameter.
-    /// * `g` - The `g` parameter.
-    /// * `b` - The `b` parameter.
+    /// * `r` - Red channel color component or record reference.
+    /// * `g` - Green channel color component.
+    /// * `b` - Blue channel color component.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn from_rgb(r: u8, g: u8, b: u8) -> Self {
         Self { r, g, b, a: 255 }
@@ -43,14 +43,14 @@ impl Color32 {
     ///
     /// # Arguments
     ///
-    /// * `r` - The `r` parameter.
-    /// * `g` - The `g` parameter.
-    /// * `b` - The `b` parameter.
-    /// * `a` - The `a` parameter.
+    /// * `r` - Red channel color component or record reference.
+    /// * `g` - Green channel color component.
+    /// * `b` - Blue channel color component.
+    /// * `a` - Alpha channel opacity component.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn from_rgba(r: u8, g: u8, b: u8, a: u8) -> Self {
         Self { r, g, b, a }
@@ -99,7 +99,7 @@ impl WizardStyle {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&'static str` value.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -155,7 +155,7 @@ impl WizardTheme {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn mondo() -> Self {
         Self {
@@ -180,7 +180,7 @@ impl WizardTheme {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn install_dir() -> Self {
         let mut t = Self::mondo();
@@ -192,7 +192,7 @@ impl WizardTheme {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn feature_tree() -> Self {
         let mut t = Self::mondo();
@@ -204,7 +204,7 @@ impl WizardTheme {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn minimal() -> Self {
         let mut t = Self::mondo();
@@ -255,11 +255,11 @@ impl AccessibilityInfo {
     ///
     /// # Arguments
     ///
-    /// * `desc` - The `desc` parameter.
+    /// * `desc` - Human-readable description text.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn description(mut self, desc: impl Into<String>) -> Self {
         self.description = Some(desc.into());
@@ -270,11 +270,11 @@ impl AccessibilityInfo {
     ///
     /// # Arguments
     ///
-    /// * `focus` - The `focus` parameter.
+    /// * `focus` - The focus value.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn with_focus(mut self, focus: bool) -> Self {
         self.has_focus = focus;
@@ -283,7 +283,6 @@ impl AccessibilityInfo {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

@@ -170,7 +170,8 @@ fn test_libscript_template_msi_workflow() -> Result<()> {
 ///
 /// Returns [`msi::MsiError`] on compilation or verification failure.
 #[test]
-#[allow(clippy::too_many_lines, clippy::needless_raw_string_hashes)]
+#[allow(clippy::too_many_lines)]
+#[allow(clippy::needless_raw_string_hashes)]
 fn test_libscript_build_msi_multicab_and_long_identifiers() -> Result<()> {
     let temp_dir = std::env::temp_dir().join(format!("libscript_mcab_test_{}", std::process::id()));
     let _ = fs::create_dir_all(&temp_dir);

@@ -247,7 +247,6 @@ impl fmt::Display for ColumnDef {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
 
     #[test]

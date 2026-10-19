@@ -220,7 +220,7 @@ impl LinuxIdentityConfig {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     pub fn write_to_sysroot(&self, sysroot: &Path) -> Result<()> {
         let etc = sysroot.join("etc");
         if let Err(e) = std::fs::create_dir_all(&etc) {
@@ -301,7 +301,6 @@ FONT=eurlatgr
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

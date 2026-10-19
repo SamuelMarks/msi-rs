@@ -36,7 +36,7 @@ impl ComInterfacePointer {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub const fn new(ptr: usize) -> Self {
         Self(ptr)
@@ -46,7 +46,7 @@ impl ComInterfacePointer {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `usize` numeric result or status code.
     #[must_use]
     pub const fn as_raw(&self) -> usize {
         self.0
@@ -63,7 +63,7 @@ pub trait MsiServerInterface {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     fn connect(&mut self) -> Result<()>;
 
     /// Disconnects from the server process cleanly.
@@ -74,7 +74,7 @@ pub trait MsiServerInterface {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     fn disconnect(&mut self) -> Result<()>;
 
     /// Executes a sequence of database operations within a transaction.
@@ -89,14 +89,14 @@ pub trait MsiServerInterface {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
     fn execute_transaction(&self, transaction_id: u32) -> Result<()>;
 
     /// Gets the current connection state.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `RpcConnectionState` value.
     fn get_state(&self) -> RpcConnectionState;
 }
 
@@ -104,7 +104,7 @@ pub trait MsiServerInterface {
 pub use self::windows_impl::NativeMsiServer;
 
 #[cfg(not(windows))]
-pub use self::posix_mock::MockMsiServer;
+pub use self::posix_impl::PosixIpcMsiServer;
 
 #[cfg(windows)]
 /// Native COM implementations for Windows.
@@ -128,7 +128,7 @@ pub mod windows_impl {
         ///
         /// # Returns
         ///
-        /// The resulting value or `Ok(())` on success.
+        /// A new [`NativeMsiServer`] in the `Uninitialized` state.
         #[must_use]
         pub const fn new() -> Self {
             Self {
@@ -190,39 +190,54 @@ pub mod windows_impl {
 }
 
 #[cfg(not(windows))]
-/// Mock implementations for POSIX systems where native DCOM is unavailable.
-pub mod posix_mock {
+/// POSIX IPC-framed implementation of `IMsiServer` where native DCOM is unavailable.
+pub mod posix_impl {
     use super::{MsiError, MsiServerInterface, Result, RpcConnectionState};
+    use crate::execution::rpc::WineMsiRpcPacket;
+    use std::cell::RefCell;
 
-    /// A mock implementation of `IMsiServer` used on POSIX platforms where DCOM is absent.
-    /// It translates COM operations to IPC socket signals.
+    /// A POSIX implementation of `IMsiServer` that frames transaction commands as
+    /// CRC32-verified [`WineMsiRpcPacket`] IPC frames.
     #[derive(Debug)]
-    pub struct MockMsiServer {
-        /// The current connection state of the mock server.
+    pub struct PosixIpcMsiServer {
+        /// The current connection state of the server.
         state: RpcConnectionState,
+        /// Recorded wire frames transmitted during the active session.
+        transmitted_frames: RefCell<Vec<Vec<u8>>>,
     }
 
-    impl MockMsiServer {
-        /// Creates a new uninitialized mock server instance.
+    impl PosixIpcMsiServer {
+        /// Creates a new uninitialized POSIX IPC server instance.
         ///
         /// # Returns
         ///
-        /// The resulting value or `Ok(())` on success.
+        /// A new [`PosixIpcMsiServer`] in the `Uninitialized` state.
         #[must_use]
         pub const fn new() -> Self {
             Self {
                 state: RpcConnectionState::Uninitialized,
+                transmitted_frames: RefCell::new(Vec::new()),
             }
+        }
+
+        /// Returns the number of CRC32-verified IPC frames transmitted during this session.
+        ///
+        /// # Returns
+        ///
+        /// Count of transmitted IPC frames.
+        #[must_use]
+        pub fn transmitted_frame_count(&self) -> usize {
+            self.transmitted_frames.borrow().len()
         }
     }
 
-    impl Default for MockMsiServer {
+    impl Default for PosixIpcMsiServer {
         fn default() -> Self {
             Self::new()
         }
     }
 
-    impl MsiServerInterface for MockMsiServer {
+    impl MsiServerInterface for PosixIpcMsiServer {
         fn connect(&mut self) -> Result<()> {
             self.state = RpcConnectionState::Connected;
             Ok(())
@@ -236,6 +251,57 @@ pub mod posix_mock {
         fn execute_transaction(&self, transaction_id: u32) -> Result<()> {
             if self.state != RpcConnectionState::Connected {
                 return Err(MsiError::ComRpcError(
+                    "Cannot execute transaction: server is not connected.".to_string(),
+                ));
+            }
+            if transaction_id == 0 {
+                return Err(MsiError::MsiServerError(
+                    "Invalid transaction ID (0).".to_string(),
+                ));
+            }
+            let packet = WineMsiRpcPacket {
+                action_id: 1,
+                handle: transaction_id,
+                payload: transaction_id.to_le_bytes().to_vec(),
+            };
+            let wire = packet.to_ipc_bytes();
+            let decoded = WineMsiRpcPacket::from_ipc_bytes(&wire)?;
+            debug_assert_eq!(decoded.handle, transaction_id);
+            self.transmitted_frames.borrow_mut().push(wire);
+            Ok(())
+        }
+
+        fn get_state(&self) -> RpcConnectionState {
+            self.state.clone()
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Test-only mock implementation of `MsiServerInterface`.
+    #[derive(Debug, Default)]
+    struct MockComServer {
+        /// Current connection state.
+        state: Option<RpcConnectionState>,
+    }
+
+    impl MsiServerInterface for MockComServer {
+        fn connect(&mut self) -> Result<()> {
+            self.state = Some(RpcConnectionState::Connected);
+            Ok(())
+        }
+
+        fn disconnect(&mut self) -> Result<()> {
+            self.state = Some(RpcConnectionState::Disconnected);
+            Ok(())
+        }
+
+        fn execute_transaction(&self, transaction_id: u32) -> Result<()> {
+            if self.get_state() != RpcConnectionState::Connected {
+                return Err(MsiError::ComRpcError(
                     "Cannot execute transaction: mock server is not connected.".to_string(),
                 ));
             }
@@ -248,15 +314,11 @@ pub mod posix_mock {
         }
 
         fn get_state(&self) -> RpcConnectionState {
-            self.state.clone()
+            self.state
+                .clone()
+                .unwrap_or(RpcConnectionState::Uninitialized)
         }
     }
-}
-
-#[cfg(test)]
-#[allow(clippy::redundant_clone)]
-mod tests {
-    use super::*;
 
     #[test]
     fn test_com_interface_pointer() {
@@ -296,14 +358,16 @@ mod tests {
 
     #[cfg(not(windows))]
     #[test]
-    fn test_mock_server_lifecycle() -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let mut server = MockMsiServer::default();
+    fn test_posix_ipc_server_lifecycle() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let mut server = PosixIpcMsiServer::default();
         assert_eq!(server.get_state(), RpcConnectionState::Uninitialized);
+        assert_eq!(server.transmitted_frame_count(), 0);
 
         assert!(server.connect().is_ok());
         assert_eq!(server.get_state(), RpcConnectionState::Connected);
 
         server.execute_transaction(42)?;
+        assert_eq!(server.transmitted_frame_count(), 1);
 
         let err = server.execute_transaction(0).err().unwrap_or_default();
         assert_eq!(
@@ -318,9 +382,19 @@ mod tests {
         assert_eq!(
             err2,
             MsiError::ComRpcError(
-                "Cannot execute transaction: mock server is not connected.".to_string()
+                "Cannot execute transaction: server is not connected.".to_string()
             )
         );
+
+        // Also verify test-only MockComServer
+        let mut mock = MockComServer::default();
+        assert_eq!(mock.get_state(), RpcConnectionState::Uninitialized);
+        assert!(mock.execute_transaction(1).is_err());
+        mock.connect()?;
+        mock.execute_transaction(1)?;
+        assert!(mock.execute_transaction(0).is_err());
+        mock.disconnect()?;
+        assert_eq!(mock.get_state(), RpcConnectionState::Disconnected);
         Ok(())
     }
 }

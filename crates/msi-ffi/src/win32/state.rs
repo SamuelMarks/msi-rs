@@ -19,7 +19,8 @@ use std::panic;
 /// `ERROR_SUCCESS` or `ERROR_INVALID_PARAMETER`.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiIsProductElevatedW(szProduct: Lpcwstr, pfElevated: *mut Bool) -> Uint {
@@ -47,7 +48,8 @@ pub extern "system" fn MsiIsProductElevatedW(szProduct: Lpcwstr, pfElevated: *mu
 /// Determines whether the product is installed with elevated privileges (ANSI).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiIsProductElevatedA(szProduct: Lpcstr, pfElevated: *mut Bool) -> Uint {
@@ -70,44 +72,57 @@ pub extern "system" fn MsiIsProductElevatedA(szProduct: Lpcstr, pfElevated: *mut
     result.unwrap_or(ERROR_INSTALL_FAILURE)
 }
 
-/// Retrieves the internal engine mode flags for an active installation session.
+/// Retrieves the internal engine mode flags (`MSIRUNMODE_*`) for an active installation session.
 ///
 /// # Arguments
 ///
-/// * `hInstall` - The handle to the installation session.
-/// * `eRunMode` - The mode to check (e.g., `MSIRUNMODE_REBOOTATEND`).
+/// * `hInstall` - Handle to the installation session.
+/// * `eRunMode` - Run mode index to query (`0..=18`, e.g., `MSIRUNMODE_REBOOTATEND`).
 ///
 /// # Returns
 ///
-/// `TRUE` if the mode is set, `FALSE` otherwise.
+/// `TRUE` (`1`) if the mode is set on `hInstall`, or `FALSE` (`0`) otherwise.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
 pub extern "system" fn MsiGetMode(hInstall: crate::handles::MsiHandle, eRunMode: Uint) -> Bool {
     let result = panic::catch_unwind(|| {
-        // TODO: Map to actual execution engine state.
-        FALSE
+        if hInstall == 0 || eRunMode > 31 {
+            return FALSE;
+        }
+        let key = format!("_MSIRUNMODE_{eRunMode}");
+        crate::handles::with_handle(hInstall, |obj| match obj {
+            crate::handles::MsiObject::Database(db) => {
+                if db.inner.get_property_value(&key) == Some("1") {
+                    crate::win32::TRUE
+                } else {
+                    FALSE
+                }
+            }
+            _ => FALSE,
+        })
+        .unwrap_or(FALSE)
     });
 
     result.unwrap_or(FALSE)
 }
 
-/// Sets an internal engine mode flag for an active installation session.
+/// Sets an internal engine mode flag (`MSIRUNMODE_*`) for an active installation session.
 ///
 /// # Arguments
 ///
-/// * `hInstall` - The handle to the installation session.
-/// * `eRunMode` - The mode to set.
-/// * `fState` - The boolean state to set it to.
+/// * `hInstall` - Handle to the installation session.
+/// * `eRunMode` - Run mode index to update (`0..=31`).
+/// * `fState` - Non-zero (`TRUE`) to enable the mode, or `0` (`FALSE`) to disable it.
 ///
 /// # Returns
 ///
-/// `ERROR_SUCCESS` on success, or an error code.
+/// `ERROR_SUCCESS` on success, or `ERROR_INVALID_PARAMETER` if `eRunMode > 31`.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
 pub extern "system" fn MsiSetMode(
@@ -116,31 +131,69 @@ pub extern "system" fn MsiSetMode(
     fState: Bool,
 ) -> Uint {
     let result = panic::catch_unwind(|| {
-        // TODO: Propagate flag into execution engine state.
+        if eRunMode > 31 {
+            return ERROR_INVALID_PARAMETER;
+        }
+        if hInstall != 0 {
+            let key = format!("_MSIRUNMODE_{eRunMode}");
+            let val = if fState != 0 { "1" } else { "" };
+            crate::handles::with_handle_mut(hInstall, |obj| {
+                if let crate::handles::MsiObject::Database(db) = obj {
+                    db.inner.set_property_value(&key, val);
+                }
+            });
+        }
         ERROR_SUCCESS
     });
 
     result.unwrap_or(ERROR_INSTALL_FAILURE)
 }
 
-/// Sets the installation level for a full product installation.
+/// Sets the installation level (`INSTALLLEVEL`) for a product installation session.
+///
+/// # Arguments
+///
+/// * `hInstall` - Handle to the installation session.
+/// * `iInstallLevel` - Requested installation level (`>= 0`).
+///
+/// # Returns
+///
+/// `ERROR_SUCCESS` or `ERROR_INVALID_PARAMETER` if `iInstallLevel < 0`.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
 pub extern "system" fn MsiSetInstallLevel(
     hInstall: crate::handles::MsiHandle,
     iInstallLevel: i32,
 ) -> Uint {
-    let result = panic::catch_unwind(|| ERROR_SUCCESS);
+    let result = panic::catch_unwind(|| {
+        if iInstallLevel < 0 {
+            return ERROR_INVALID_PARAMETER;
+        }
+        if hInstall != 0 {
+            let val = if iInstallLevel == 0 {
+                "1".to_string()
+            } else {
+                iInstallLevel.to_string()
+            };
+            crate::handles::with_handle_mut(hInstall, |obj| {
+                if let crate::handles::MsiObject::Database(db) = obj {
+                    db.inner.set_property_value("INSTALLLEVEL", &val);
+                }
+            });
+        }
+        ERROR_SUCCESS
+    });
     result.unwrap_or(ERROR_INSTALL_FAILURE)
 }
 
 /// Configures the installed state for a product feature (Unicode).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
 pub extern "system" fn MsiConfigureFeatureW(
@@ -166,7 +219,8 @@ pub extern "system" fn MsiConfigureFeatureW(
 /// Configures the installed state for a product feature (ANSI).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
 pub extern "system" fn MsiConfigureFeatureA(
@@ -192,7 +246,8 @@ pub extern "system" fn MsiConfigureFeatureA(
 /// Reinstalls a feature (Unicode).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
 pub extern "system" fn MsiReinstallFeatureW(
@@ -218,7 +273,8 @@ pub extern "system" fn MsiReinstallFeatureW(
 /// Reinstalls a feature (ANSI).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
 pub extern "system" fn MsiReinstallFeatureA(
@@ -244,7 +300,8 @@ pub extern "system" fn MsiReinstallFeatureA(
 /// Modifies the runtime attributes of a feature (Unicode).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
 pub extern "system" fn MsiSetFeatureAttributesW(
@@ -256,9 +313,17 @@ pub extern "system" fn MsiSetFeatureAttributesW(
         if szFeature.is_null() {
             return ERROR_INVALID_PARAMETER;
         }
-        let Some(_feature) = lpcwstr_to_string(szFeature) else {
+        let Some(feature) = lpcwstr_to_string(szFeature) else {
             return ERROR_INVALID_PARAMETER;
         };
+        if hInstall != 0 {
+            let key = format!("_MSI_FEAT_ATTR_{feature}");
+            crate::handles::with_handle_mut(hInstall, |obj| {
+                if let crate::handles::MsiObject::Database(db) = obj {
+                    db.inner.set_property_value(&key, &dwAttributes.to_string());
+                }
+            });
+        }
         ERROR_SUCCESS
     });
     result.unwrap_or(ERROR_INSTALL_FAILURE)
@@ -267,7 +332,8 @@ pub extern "system" fn MsiSetFeatureAttributesW(
 /// Modifies the runtime attributes of a feature (ANSI).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
 pub extern "system" fn MsiSetFeatureAttributesA(
@@ -279,9 +345,17 @@ pub extern "system" fn MsiSetFeatureAttributesA(
         if szFeature.is_null() {
             return ERROR_INVALID_PARAMETER;
         }
-        let Some(_feature) = lpcstr_to_string(szFeature) else {
+        let Some(feature) = lpcstr_to_string(szFeature) else {
             return ERROR_INVALID_PARAMETER;
         };
+        if hInstall != 0 {
+            let key = format!("_MSI_FEAT_ATTR_{feature}");
+            crate::handles::with_handle_mut(hInstall, |obj| {
+                if let crate::handles::MsiObject::Database(db) = obj {
+                    db.inner.set_property_value(&key, &dwAttributes.to_string());
+                }
+            });
+        }
         ERROR_SUCCESS
     });
     result.unwrap_or(ERROR_INSTALL_FAILURE)
@@ -290,7 +364,8 @@ pub extern "system" fn MsiSetFeatureAttributesA(
 /// Sets the installed state for a product feature (Unicode).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
 pub extern "system" fn MsiSetFeatureStateW(
@@ -302,9 +377,17 @@ pub extern "system" fn MsiSetFeatureStateW(
         if szFeature.is_null() {
             return ERROR_INVALID_PARAMETER;
         }
-        let Some(_feature) = lpcwstr_to_string(szFeature) else {
+        let Some(feature) = lpcwstr_to_string(szFeature) else {
             return ERROR_INVALID_PARAMETER;
         };
+        if hInstall != 0 {
+            let key = format!("_MSI_FEAT_ACTION_{feature}");
+            crate::handles::with_handle_mut(hInstall, |obj| {
+                if let crate::handles::MsiObject::Database(db) = obj {
+                    db.inner.set_property_value(&key, &iState.to_string());
+                }
+            });
+        }
         ERROR_SUCCESS
     });
     result.unwrap_or(ERROR_INSTALL_FAILURE)
@@ -313,7 +396,8 @@ pub extern "system" fn MsiSetFeatureStateW(
 /// Sets the installed state for a product feature (ANSI).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
 pub extern "system" fn MsiSetFeatureStateA(
@@ -325,12 +409,52 @@ pub extern "system" fn MsiSetFeatureStateA(
         if szFeature.is_null() {
             return ERROR_INVALID_PARAMETER;
         }
-        let Some(_feature) = lpcstr_to_string(szFeature) else {
+        let Some(feature) = lpcstr_to_string(szFeature) else {
             return ERROR_INVALID_PARAMETER;
         };
+        if hInstall != 0 {
+            let key = format!("_MSI_FEAT_ACTION_{feature}");
+            crate::handles::with_handle_mut(hInstall, |obj| {
+                if let crate::handles::MsiObject::Database(db) = obj {
+                    db.inner.set_property_value(&key, &iState.to_string());
+                }
+            });
+        }
         ERROR_SUCCESS
     });
     result.unwrap_or(ERROR_INSTALL_FAILURE)
+}
+
+/// Shared helper querying component install state from the global registry backend.
+fn query_component_state_in_registry(
+    product_code: &str,
+    user_sid: Option<&str>,
+    component_code: &str,
+) -> i32 {
+    let sid = user_sid.filter(|s| !s.is_empty()).unwrap_or("S-1-5-18");
+    let prod_id = msi::platform::squid::encode_squid(product_code)
+        .unwrap_or_else(|_| product_code.to_string());
+    let comp_id = msi::platform::squid::encode_squid(component_code)
+        .unwrap_or_else(|_| component_code.to_string());
+    let key = format!(
+        r"Software\Microsoft\Windows\CurrentVersion\Installer\UserData\{sid}\Components\{comp_id}"
+    );
+    crate::win32::registry_backend::with_registry(|reg| {
+        match reg.get_value(
+            msi::platform::registry_store::RegistryRoot::LocalMachine,
+            &key,
+            Some(&prod_id),
+        ) {
+            Some(msi::platform::registry_store::RegistryValue::Sz(path)) => {
+                if path.is_empty() {
+                    2 // INSTALLSTATE_ABSENT
+                } else {
+                    3 // INSTALLSTATE_LOCAL
+                }
+            }
+            _ => 1, // Default fallback
+        }
+    })
 }
 
 /// Queries the installed state of a component.
@@ -348,7 +472,8 @@ pub extern "system" fn MsiSetFeatureStateA(
 /// `ERROR_SUCCESS` or `ERROR_INVALID_PARAMETER`.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiQueryComponentStateW(
@@ -363,18 +488,21 @@ pub extern "system" fn MsiQueryComponentStateW(
             return ERROR_INVALID_PARAMETER;
         }
 
-        let Some(_product_code) = lpcwstr_to_string(szProductCode) else {
+        let Some(product_code) = lpcwstr_to_string(szProductCode) else {
             return ERROR_INVALID_PARAMETER;
         };
 
-        let Some(_component_code) = lpcwstr_to_string(szComponentCode) else {
+        let Some(component_code) = lpcwstr_to_string(szComponentCode) else {
             return ERROR_INVALID_PARAMETER;
         };
 
-        // TODO: Map to execution engine / registry component tracking
+        let sid = lpcwstr_to_string(szUserSid);
+        let state =
+            query_component_state_in_registry(&product_code, sid.as_deref(), &component_code);
+        // SAFETY: `pdwState` was verified non-null.
         unsafe {
-            *pdwState = 1;
-        } // INSTALLSTATE_LOCAL
+            *pdwState = state;
+        }
 
         ERROR_SUCCESS
     });
@@ -385,7 +513,8 @@ pub extern "system" fn MsiQueryComponentStateW(
 /// Queries the installed state of a component (ANSI).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiQueryComponentStateA(
@@ -400,17 +529,21 @@ pub extern "system" fn MsiQueryComponentStateA(
             return ERROR_INVALID_PARAMETER;
         }
 
-        let Some(_product_code) = lpcstr_to_string(szProductCode) else {
+        let Some(product_code) = lpcstr_to_string(szProductCode) else {
             return ERROR_INVALID_PARAMETER;
         };
 
-        let Some(_component_code) = lpcstr_to_string(szComponentCode) else {
+        let Some(component_code) = lpcstr_to_string(szComponentCode) else {
             return ERROR_INVALID_PARAMETER;
         };
 
+        let sid = lpcstr_to_string(szUserSid);
+        let state =
+            query_component_state_in_registry(&product_code, sid.as_deref(), &component_code);
+        // SAFETY: `pdwState` was verified non-null.
         unsafe {
-            *pdwState = 1;
-        } // INSTALLSTATE_LOCAL
+            *pdwState = state;
+        }
 
         ERROR_SUCCESS
     });
@@ -421,7 +554,8 @@ pub extern "system" fn MsiQueryComponentStateA(
 /// Sets the installed state of a component.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
 pub extern "system" fn MsiSetComponentStateW(
@@ -434,9 +568,17 @@ pub extern "system" fn MsiSetComponentStateW(
             return ERROR_INVALID_PARAMETER;
         }
 
-        let Some(_component) = lpcwstr_to_string(szComponent) else {
+        let Some(component) = lpcwstr_to_string(szComponent) else {
             return ERROR_INVALID_PARAMETER;
         };
+        if hInstall != 0 {
+            let key = format!("_MSI_COMP_ACTION_{component}");
+            crate::handles::with_handle_mut(hInstall, |obj| {
+                if let crate::handles::MsiObject::Database(db) = obj {
+                    db.inner.set_property_value(&key, &iState.to_string());
+                }
+            });
+        }
 
         ERROR_SUCCESS
     });
@@ -447,7 +589,8 @@ pub extern "system" fn MsiSetComponentStateW(
 /// Sets the installed state of a component (ANSI).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
 pub extern "system" fn MsiSetComponentStateA(
@@ -460,9 +603,17 @@ pub extern "system" fn MsiSetComponentStateA(
             return ERROR_INVALID_PARAMETER;
         }
 
-        let Some(_component) = lpcstr_to_string(szComponent) else {
+        let Some(component) = lpcstr_to_string(szComponent) else {
             return ERROR_INVALID_PARAMETER;
         };
+        if hInstall != 0 {
+            let key = format!("_MSI_COMP_ACTION_{component}");
+            crate::handles::with_handle_mut(hInstall, |obj| {
+                if let crate::handles::MsiObject::Database(db) = obj {
+                    db.inner.set_property_value(&key, &iState.to_string());
+                }
+            });
+        }
 
         ERROR_SUCCESS
     });
@@ -470,10 +621,60 @@ pub extern "system" fn MsiSetComponentStateA(
     result.unwrap_or(ERROR_INSTALL_FAILURE)
 }
 
+/// Shared helper querying feature usage metrics from the registry.
+#[allow(clippy::cast_possible_truncation)]
+fn query_feature_usage_in_registry(product: &str, feature: &str) -> (Dword, u16) {
+    let prod_id =
+        msi::platform::squid::encode_squid(product).unwrap_or_else(|_| product.to_string());
+    let key = format!(
+        r"Software\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products\{prod_id}\Usage"
+    );
+    crate::win32::registry_backend::with_registry(|reg| {
+        match reg.get_value(
+            msi::platform::registry_store::RegistryRoot::LocalMachine,
+            &key,
+            Some(feature),
+        ) {
+            Some(msi::platform::registry_store::RegistryValue::Dword(val)) => {
+                (val & 0xFFFF, (val >> 16) as u16)
+            }
+            _ => (0, 0),
+        }
+    })
+}
+
+/// Shared helper incrementing feature usage count in the registry.
+fn increment_feature_usage_in_registry(product: &str, feature: &str) {
+    let prod_id =
+        msi::platform::squid::encode_squid(product).unwrap_or_else(|_| product.to_string());
+    let key = format!(
+        r"Software\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products\{prod_id}\Usage"
+    );
+    crate::win32::registry_backend::with_registry(|reg| {
+        let cur = match reg.get_value(
+            msi::platform::registry_store::RegistryRoot::LocalMachine,
+            &key,
+            Some(feature),
+        ) {
+            Some(msi::platform::registry_store::RegistryValue::Dword(v)) => v,
+            _ => 0,
+        };
+        let count = (cur & 0xFFFF).saturating_add(1);
+        let packed = (cur & 0xFFFF_0000) | count;
+        reg.set_value(
+            msi::platform::registry_store::RegistryRoot::LocalMachine,
+            &key,
+            Some(feature),
+            msi::platform::registry_store::RegistryValue::Dword(packed),
+        );
+    });
+}
+
 /// Retrieves the usage metrics for a product feature.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetFeatureUsageW(
@@ -487,23 +688,25 @@ pub extern "system" fn MsiGetFeatureUsageW(
             return ERROR_INVALID_PARAMETER;
         }
 
-        let Some(_product) = lpcwstr_to_string(szProduct) else {
+        let Some(product) = lpcwstr_to_string(szProduct) else {
             return ERROR_INVALID_PARAMETER;
         };
 
-        let Some(_feature) = lpcwstr_to_string(szFeature) else {
+        let Some(feature) = lpcwstr_to_string(szFeature) else {
             return ERROR_INVALID_PARAMETER;
         };
+
+        let (count, date) = query_feature_usage_in_registry(&product, &feature);
 
         if !pdwUseCount.is_null() {
             unsafe {
-                *pdwUseCount = 0;
+                *pdwUseCount = count;
             }
         }
 
         if !pwDateUsed.is_null() {
             unsafe {
-                *pwDateUsed = 0;
+                *pwDateUsed = date;
             }
         }
 
@@ -516,7 +719,8 @@ pub extern "system" fn MsiGetFeatureUsageW(
 /// Retrieves the usage metrics for a product feature (ANSI).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[allow(clippy::missing_const_for_fn)]
 pub extern "system" fn MsiGetFeatureUsageA(
@@ -530,23 +734,25 @@ pub extern "system" fn MsiGetFeatureUsageA(
             return ERROR_INVALID_PARAMETER;
         }
 
-        let Some(_product) = lpcstr_to_string(szProduct) else {
+        let Some(product) = lpcstr_to_string(szProduct) else {
             return ERROR_INVALID_PARAMETER;
         };
 
-        let Some(_feature) = lpcstr_to_string(szFeature) else {
+        let Some(feature) = lpcstr_to_string(szFeature) else {
             return ERROR_INVALID_PARAMETER;
         };
+
+        let (count, date) = query_feature_usage_in_registry(&product, &feature);
 
         if !pdwUseCount.is_null() {
             unsafe {
-                *pdwUseCount = 0;
+                *pdwUseCount = count;
             }
         }
 
         if !pwDateUsed.is_null() {
             unsafe {
-                *pwDateUsed = 0;
+                *pwDateUsed = date;
             }
         }
 
@@ -559,7 +765,8 @@ pub extern "system" fn MsiGetFeatureUsageA(
 /// Increments the usage count for a particular feature and returns the installation state.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
 pub extern "system" fn MsiUseFeatureExW(
@@ -573,14 +780,15 @@ pub extern "system" fn MsiUseFeatureExW(
             return -2; // INSTALLSTATE_INVALIDARG
         }
 
-        let Some(_product) = lpcwstr_to_string(szProduct) else {
+        let Some(product) = lpcwstr_to_string(szProduct) else {
             return -2;
         };
 
-        let Some(_feature) = lpcwstr_to_string(szFeature) else {
+        let Some(feature) = lpcwstr_to_string(szFeature) else {
             return -2;
         };
 
+        increment_feature_usage_in_registry(&product, &feature);
         1 // INSTALLSTATE_LOCAL
     });
 
@@ -590,7 +798,8 @@ pub extern "system" fn MsiUseFeatureExW(
 /// Increments the usage count for a particular feature and returns the installation state (ANSI).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
 pub extern "system" fn MsiUseFeatureExA(
@@ -604,14 +813,15 @@ pub extern "system" fn MsiUseFeatureExA(
             return -2; // INSTALLSTATE_INVALIDARG
         }
 
-        let Some(_product) = lpcstr_to_string(szProduct) else {
+        let Some(product) = lpcstr_to_string(szProduct) else {
             return -2;
         };
 
-        let Some(_feature) = lpcstr_to_string(szFeature) else {
+        let Some(feature) = lpcstr_to_string(szFeature) else {
             return -2;
         };
 
+        increment_feature_usage_in_registry(&product, &feature);
         1 // INSTALLSTATE_LOCAL
     });
 
@@ -621,7 +831,8 @@ pub extern "system" fn MsiUseFeatureExA(
 /// Installs files that are unexpectedly missing.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
 pub extern "system" fn MsiInstallMissingComponentW(
@@ -651,7 +862,8 @@ pub extern "system" fn MsiInstallMissingComponentW(
 /// Installs files that are unexpectedly missing (ANSI).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[allow(clippy::missing_const_for_fn)]
 #[must_use]
 pub extern "system" fn MsiInstallMissingComponentA(
@@ -679,7 +891,8 @@ pub extern "system" fn MsiInstallMissingComponentA(
 }
 
 #[cfg(test)]
-#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
+#[allow(clippy::too_many_lines)]
+#[allow(clippy::cognitive_complexity)]
 mod tests {
 
     #[test]
@@ -771,6 +984,90 @@ mod tests {
             ),
             ERROR_SUCCESS
         );
+
+        // Test registry-backed MsiUseFeatureEx and MsiGetFeatureUsage roundtrip
+        let prod_u_w: Vec<u16> = "use_prod_1\0".encode_utf16().collect();
+        let feat_u_w: Vec<u16> = "use_feat_1\0".encode_utf16().collect();
+        assert_eq!(
+            MsiUseFeatureExW(prod_u_w.as_ptr(), feat_u_w.as_ptr(), 0, 0),
+            1
+        );
+        assert_eq!(
+            MsiUseFeatureExW(prod_u_w.as_ptr(), feat_u_w.as_ptr(), 0, 0),
+            1
+        );
+        assert_eq!(
+            MsiGetFeatureUsageW(
+                prod_u_w.as_ptr(),
+                feat_u_w.as_ptr(),
+                &raw mut count,
+                &raw mut date
+            ),
+            ERROR_SUCCESS
+        );
+        assert_eq!(count, 2);
+
+        // Test registry-backed MsiQueryComponentState with non-empty and empty keypath
+        let comp_guid = "{33333333-3333-3333-3333-333333333333}";
+        let prod_guid = "{44444444-4444-4444-4444-444444444444}";
+        let comp_squid = msi::platform::squid::encode_squid(comp_guid).unwrap_or_default();
+        let prod_squid = msi::platform::squid::encode_squid(prod_guid).unwrap_or_default();
+        let comp_key = format!(
+            r"Software\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Components\{comp_squid}"
+        );
+        crate::win32::registry_backend::with_registry(|reg| {
+            reg.set_value(
+                msi::platform::registry_store::RegistryRoot::LocalMachine,
+                &comp_key,
+                Some(&prod_squid),
+                msi::platform::registry_store::RegistryValue::Sz("C:\\App\\bin.exe".to_string()),
+            );
+        });
+        let comp_a = std::ffi::CString::new(comp_guid).unwrap_or_default();
+        let prod_a = std::ffi::CString::new(prod_guid).unwrap_or_default();
+        let mut cstate = 0;
+        assert_eq!(
+            MsiQueryComponentStateA(
+                prod_a.as_ptr(),
+                std::ptr::null(),
+                4,
+                comp_a.as_ptr(),
+                &raw mut cstate
+            ),
+            ERROR_SUCCESS
+        );
+        assert_eq!(cstate, 3);
+
+        crate::win32::registry_backend::with_registry(|reg| {
+            reg.set_value(
+                msi::platform::registry_store::RegistryRoot::LocalMachine,
+                &comp_key,
+                Some(&prod_squid),
+                msi::platform::registry_store::RegistryValue::Sz(String::new()),
+            );
+        });
+        assert_eq!(
+            MsiQueryComponentStateA(
+                prod_a.as_ptr(),
+                std::ptr::null(),
+                4,
+                comp_a.as_ptr(),
+                &raw mut cstate
+            ),
+            ERROR_SUCCESS
+        );
+        assert_eq!(cstate, 2);
+
+        crate::win32::registry_backend::with_registry(|reg| {
+            reg.delete_subtree(
+                msi::platform::registry_store::RegistryRoot::LocalMachine,
+                &comp_key,
+            );
+            reg.delete_subtree(
+                msi::platform::registry_store::RegistryRoot::LocalMachine,
+                r"Software\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products\use_prod_1",
+            );
+        });
     }
 
     use super::*;
@@ -1282,8 +1579,29 @@ mod tests {
         );
 
         assert_eq!(MsiGetMode(0, 0), FALSE);
+        assert_eq!(MsiGetMode(1, 99), FALSE);
         assert_eq!(MsiSetMode(0, 0, TRUE), ERROR_SUCCESS);
+        assert_eq!(MsiSetMode(0, 99, TRUE), ERROR_INVALID_PARAMETER);
         assert_eq!(MsiSetInstallLevel(0, 1), ERROR_SUCCESS);
+        assert_eq!(MsiSetInstallLevel(0, -1), ERROR_INVALID_PARAMETER);
+
+        let h_sess = crate::handles::alloc_handle(crate::handles::MsiObject::Database(
+            crate::types::MsiDatabaseHandle {
+                inner: msi::wix::linker::LinkedDatabase::default(),
+                state: 0,
+            },
+        ));
+        assert_eq!(MsiGetMode(h_sess, 6), FALSE);
+        assert_eq!(MsiSetMode(h_sess, 6, TRUE), ERROR_SUCCESS);
+        assert_eq!(MsiGetMode(h_sess, 6), TRUE);
+        assert_eq!(MsiSetMode(h_sess, 6, FALSE), ERROR_SUCCESS);
+        assert_eq!(MsiGetMode(h_sess, 6), FALSE);
+        assert_eq!(MsiSetInstallLevel(h_sess, 0), ERROR_SUCCESS);
+        assert_eq!(MsiSetInstallLevel(h_sess, 100), ERROR_SUCCESS);
+        let h_rec = crate::win32::record::MsiCreateRecord(1);
+        assert_eq!(MsiGetMode(h_rec, 6), FALSE);
+        let _ = crate::handles::close_handle(h_rec);
+        let _ = crate::handles::close_handle(h_sess);
 
         assert_eq!(
             MsiConfigureFeatureW(std::ptr::null(), std::ptr::null(), 0),
@@ -1509,7 +1827,8 @@ pub extern "system" fn MsiReinstallFeatureFromDescriptorW(
 }
 
 #[cfg(test)]
-#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
+#[allow(clippy::too_many_lines)]
+#[allow(clippy::cognitive_complexity)]
 mod additional_stubs_tests {
     use super::*;
 
@@ -1528,6 +1847,36 @@ mod additional_stubs_tests {
             MsiQueryFeatureStateFromDescriptorA(std::ptr::null(), std::ptr::null_mut()),
             1605
         );
+        let h_db = crate::handles::alloc_handle(crate::handles::MsiObject::Database(
+            crate::types::MsiDatabaseHandle {
+                inner: msi::wix::linker::LinkedDatabase::default(),
+                state: 0,
+            },
+        ));
+        let feat_w: Vec<u16> = "Feat1".encode_utf16().chain(std::iter::once(0)).collect();
+        let feat_a = b"Feat1\0";
+        assert_eq!(
+            MsiSetFeatureAttributesW(h_db, feat_w.as_ptr(), 4),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiSetFeatureAttributesA(h_db, feat_a.as_ptr().cast(), 4),
+            ERROR_SUCCESS
+        );
+        assert_eq!(MsiSetFeatureStateW(h_db, feat_w.as_ptr(), 3), ERROR_SUCCESS);
+        assert_eq!(
+            MsiSetFeatureStateA(h_db, feat_a.as_ptr().cast(), 3),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiSetComponentStateW(h_db, feat_w.as_ptr(), 3),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiSetComponentStateA(h_db, feat_a.as_ptr().cast(), 3),
+            ERROR_SUCCESS
+        );
+        let _ = crate::handles::close_handle(h_db);
         assert_eq!(
             MsiQueryFeatureStateFromDescriptorW(std::ptr::null(), std::ptr::null_mut()),
             1605

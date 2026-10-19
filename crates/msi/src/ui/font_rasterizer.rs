@@ -73,7 +73,7 @@ impl TextStyleDefinition {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `true` if the check succeeds or state matches, `false` otherwise.
     #[must_use]
     pub const fn is_bold(&self) -> bool {
         (self.style_bits & MSI_TEXT_STYLE_BOLD) != 0
@@ -83,7 +83,7 @@ impl TextStyleDefinition {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `true` if the check succeeds or state matches, `false` otherwise.
     #[must_use]
     pub const fn is_italic(&self) -> bool {
         (self.style_bits & MSI_TEXT_STYLE_ITALIC) != 0
@@ -93,7 +93,7 @@ impl TextStyleDefinition {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `true` if the check succeeds or state matches, `false` otherwise.
     #[must_use]
     pub const fn is_underline(&self) -> bool {
         (self.style_bits & MSI_TEXT_STYLE_UNDERLINE) != 0
@@ -103,7 +103,7 @@ impl TextStyleDefinition {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `true` if the check succeeds or state matches, `false` otherwise.
     #[must_use]
     pub const fn is_strikeout(&self) -> bool {
         (self.style_bits & MSI_TEXT_STYLE_STRIKEOUT) != 0
@@ -152,12 +152,8 @@ impl TextLayoutEngine {
     ///
     /// Tuple of `(total_bounding_rect, glyph_placements)`.
     #[must_use]
-    #[allow(
-        clippy::too_many_lines,
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        clippy::cast_precision_loss
-    )]
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_precision_loss)]
     pub fn layout_text(
         text: &str,
         default_style: &TextStyleDefinition,
@@ -269,13 +265,13 @@ impl TextLayoutEngine {
 ///
 /// # Arguments
 ///
-/// * `bg` - The `bg` parameter.
-/// * `fg` - The `fg` parameter.
-/// * `alpha_coverage` - The `alpha_coverage` parameter.
+/// * `bg` - The bg value.
+/// * `fg` - The fg value.
+/// * `alpha_coverage` - The alpha coverage value.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// Computed `Color32` value.
 #[inline]
 #[must_use]
 #[allow(clippy::cast_possible_truncation)]
@@ -509,11 +505,11 @@ const fn get_punctuation_glyph_8x8(ch: char) -> [u8; 8] {
 ///
 /// # Arguments
 ///
-/// * `ch` - The `ch` parameter.
+/// * `ch` - Unicode character to inspect or render.
 ///
 /// # Returns
 ///
-/// The resulting value or `Ok(())` on success.
+/// Computed `[u8` value.
 #[must_use]
 pub const fn get_glyph_bitmap_8x8(ch: char) -> [u8; 8] {
     match ch {
@@ -598,7 +594,7 @@ impl GlyphCache {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -615,7 +611,8 @@ impl GlyphCache {
     ///
     /// The 8x8 byte pattern.
     #[must_use]
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_sign_loss)]
     pub fn get_or_rasterize(&mut self, ch: char, style: &TextStyleDefinition) -> [u8; 8] {
         let size_pt = style.size.round() as u16;
         let key = (ch, size_pt, style.is_bold(), style.is_italic());
@@ -634,7 +631,7 @@ impl GlyphCache {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `usize` numeric result or status code.
     #[must_use]
     pub fn len(&self) -> usize {
         self.cache.len()
@@ -644,7 +641,7 @@ impl GlyphCache {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `true` if the check succeeds or state matches, `false` otherwise.
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.cache.is_empty()
@@ -662,12 +659,10 @@ impl FontVectorRasterizer {
     ///
     /// * `buffer` - Canvas buffer.
     /// * `glyph` - Positioned glyph instruction.
-    #[allow(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        clippy::cast_precision_loss,
-        clippy::similar_names
-    )]
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_sign_loss)]
+    #[allow(clippy::cast_precision_loss)]
+    #[allow(clippy::similar_names)]
     pub fn render_glyph(buffer: &mut SoftwareBuffer, glyph: &PlacedGlyph) {
         let bitmap = get_glyph_bitmap_8x8(glyph.ch);
         let scale = (glyph.style.size / 8.0).max(1.0);
@@ -753,7 +748,6 @@ impl FontVectorRasterizer {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

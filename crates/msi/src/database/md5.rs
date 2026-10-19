@@ -17,7 +17,8 @@
 ///
 /// The 16-byte (128-bit) RFC 1321 MD5 digest.
 #[must_use]
-#[allow(clippy::many_single_char_names, clippy::too_many_lines)]
+#[allow(clippy::many_single_char_names)]
+#[allow(clippy::too_many_lines)]
 pub fn compute_md5(input: &[u8]) -> [u8; 16] {
     let mut a: u32 = 0x6745_2301;
     let mut b: u32 = 0xefcd_ab89;

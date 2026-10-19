@@ -76,7 +76,7 @@ impl FromStr for WixUiDialogSet {
 ///
 /// Valid `.bmp` binary data.
 #[must_use]
-#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+#[allow(clippy::cast_possible_wrap)]
 pub fn generate_placeholder_bmp(width: u32, height: u32, red: u8, green: u8, blue: u8) -> Vec<u8> {
     let row_bytes = width * 3;
     let padding_bytes = (4 - (row_bytes % 4)) % 4;
@@ -132,7 +132,8 @@ pub fn generate_placeholder_bmp(width: u32, height: u32, red: u8, green: u8, blu
 ///
 /// Valid `.ico` binary data.
 #[must_use]
-#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+#[allow(clippy::cast_possible_truncation)]
+#[allow(clippy::cast_possible_wrap)]
 pub fn generate_placeholder_ico(width: u32, height: u32, red: u8, green: u8, blue: u8) -> Vec<u8> {
     let xor_bytes = width * height * 4;
     let and_mask_stride = width.div_ceil(32) * 4;
@@ -1172,7 +1173,6 @@ pub fn inject_ui_library(
 }
 
 #[cfg(test)]
-#[allow(clippy::manual_flatten, clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::error::MsiError;

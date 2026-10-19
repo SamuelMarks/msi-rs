@@ -128,11 +128,11 @@ impl MergeModule {
     ///
     /// # Arguments
     ///
-    /// * `path` - The `path` parameter.
+    /// * `path` - Filesystem path to the target file or directory.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Ok(Self)` on success, or an error if the operation fails.
     fn open_path(path: &Path) -> Result<Self> {
         let pkg = Package::open(path)?;
         Ok(Self::from_database(pkg.database().clone()))
@@ -158,14 +158,13 @@ impl Default for MergeModule {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// A newly constructed instance of `Self`.
     fn default() -> Self {
         Self::from_database(LinkedDatabase::default())
     }
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::database::tables::record::Record;

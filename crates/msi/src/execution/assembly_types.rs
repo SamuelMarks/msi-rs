@@ -1,3 +1,5 @@
+//! Strongly-typed processor architecture and assembly identity types for WinSxS and GAC deployment.
+
 use crate::error::{MsiError, Result};
 use std::fmt;
 
@@ -65,7 +67,6 @@ impl fmt::Display for ProcessorArchitecture {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::ProcessorArchitecture;
 

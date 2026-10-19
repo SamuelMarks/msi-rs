@@ -32,7 +32,7 @@ pub use validation::*;
 use crate::database::catalogs::{DatabaseCatalog, TableSchema};
 use crate::error::Result;
 
-/// Returns all 54 standard MSI table schemas defined across the Windows Installer specification.
+/// Returns all 83 standard and extended MSI table schemas defined across the Windows Installer specification.
 ///
 /// # Returns
 ///
@@ -156,7 +156,6 @@ pub fn populate_standard_tables(catalog: &mut DatabaseCatalog) -> Result<()> {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
 

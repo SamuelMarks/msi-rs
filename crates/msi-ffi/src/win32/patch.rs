@@ -19,7 +19,8 @@ use std::panic;
 /// `ERROR_SUCCESS` or `ERROR_INVALID_PARAMETER`.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[must_use]
 pub extern "system" fn MsiApplyMultiplePatchesW(
     szPatchPackages: Lpcwstr,
@@ -45,7 +46,8 @@ pub extern "system" fn MsiApplyMultiplePatchesW(
 /// Applies one or more patches to products that are eligible to receive the patch.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 #[must_use]
 pub extern "system" fn MsiApplyMultiplePatchesA(
     szPatchPackages: Lpcstr,
@@ -70,7 +72,8 @@ pub extern "system" fn MsiApplyMultiplePatchesA(
 /// Determines whether a set of patches apply to a product.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 pub extern "system" fn MsiDetermineApplicablePatchesW(
     szProductPackagePath: Lpcwstr,
     cPatchInfo: Dword,
@@ -94,7 +97,8 @@ pub extern "system" fn MsiDetermineApplicablePatchesW(
 /// Determines whether a set of patches apply to a product.
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 pub extern "system" fn MsiDetermineApplicablePatchesA(
     szProductPackagePath: Lpcstr,
     cPatchInfo: Dword,
@@ -118,7 +122,8 @@ pub extern "system" fn MsiDetermineApplicablePatchesA(
 /// Provides a list of the files updated by a list of patches (Unicode).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 pub extern "system" fn MsiGetPatchFileListW(
     szProductCode: Lpcwstr,
     szPatchPackages: Lpcwstr,
@@ -142,7 +147,8 @@ pub extern "system" fn MsiGetPatchFileListW(
 /// Provides a list of the files updated by a list of patches (ANSI).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 pub extern "system" fn MsiGetPatchFileListA(
     szProductCode: Lpcstr,
     szPatchPackages: Lpcstr,
@@ -163,10 +169,73 @@ pub extern "system" fn MsiGetPatchFileListA(
     result.unwrap_or(ERROR_INSTALL_FAILURE)
 }
 
+/// Shared helper querying patch metadata from `HKLM\Software\Microsoft\Windows\CurrentVersion\Installer\UserData\<SID>\Patches\<SQUID>` or `HKCR\Installer\Patches\<SQUID>`.
+fn lookup_patch_info(
+    patch_code: &str,
+    product_code: Option<&str>,
+    user_sid: Option<&str>,
+    attribute: &str,
+) -> Option<String> {
+    let sid = match user_sid {
+        Some(s) if !s.is_empty() => s,
+        _ => "S-1-5-18",
+    };
+    let patch_id = msi::platform::squid::encode_squid(patch_code)
+        .ok()
+        .unwrap_or_default();
+    let patch_id = if patch_id.is_empty() {
+        patch_code.to_string()
+    } else {
+        patch_id
+    };
+    let hklm_patch_key = format!(
+        r"Software\Microsoft\Windows\CurrentVersion\Installer\UserData\{sid}\Patches\{patch_id}"
+    );
+    let hkcr_patch_key = format!(r"Installer\Patches\{patch_id}");
+    crate::win32::registry_backend::with_registry(|reg| {
+        if let Some(prod) = product_code {
+            let prod_id = msi::platform::squid::encode_squid(prod)
+                .ok()
+                .unwrap_or_default();
+            let prod_id = if prod_id.is_empty() {
+                prod.to_string()
+            } else {
+                prod_id
+            };
+            let prod_patch_key = format!(
+                r"Software\Microsoft\Windows\CurrentVersion\Installer\UserData\{sid}\Products\{prod_id}\Patches\{patch_id}"
+            );
+            if let Some(msi::platform::registry_store::RegistryValue::Sz(s)) = reg.get_value(
+                msi::platform::registry_store::RegistryRoot::LocalMachine,
+                &prod_patch_key,
+                Some(attribute),
+            ) {
+                return Some(s);
+            }
+        }
+        if let Some(msi::platform::registry_store::RegistryValue::Sz(s)) = reg.get_value(
+            msi::platform::registry_store::RegistryRoot::LocalMachine,
+            &hklm_patch_key,
+            Some(attribute),
+        ) {
+            return Some(s);
+        }
+        if let Some(msi::platform::registry_store::RegistryValue::Sz(s)) = reg.get_value(
+            msi::platform::registry_store::RegistryRoot::ClassesRoot,
+            &hkcr_patch_key,
+            Some(attribute),
+        ) {
+            return Some(s);
+        }
+        None
+    })
+}
+
 /// Returns information about a patch (Unicode).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 pub extern "system" fn MsiGetPatchInfoW(
     szPatch: Lpcwstr,
     szAttribute: Lpcwstr,
@@ -177,6 +246,15 @@ pub extern "system" fn MsiGetPatchInfoW(
         if szPatch.is_null() || szAttribute.is_null() {
             return ERROR_INVALID_PARAMETER;
         }
+        let Some(patch) = lpcwstr_to_string(szPatch) else {
+            return ERROR_INVALID_PARAMETER;
+        };
+        let Some(attr) = lpcwstr_to_string(szAttribute) else {
+            return ERROR_INVALID_PARAMETER;
+        };
+        if let Some(val) = lookup_patch_info(&patch, None, None, &attr) {
+            return crate::win32::strings::string_to_lpwstr(&val, lpValueBuf, pcchValueBuf);
+        }
         crate::win32::ERROR_UNKNOWN_PATCH
     });
 
@@ -186,7 +264,8 @@ pub extern "system" fn MsiGetPatchInfoW(
 /// Returns information about a patch (ANSI).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 pub extern "system" fn MsiGetPatchInfoA(
     szPatch: Lpcstr,
     szAttribute: Lpcstr,
@@ -197,6 +276,15 @@ pub extern "system" fn MsiGetPatchInfoA(
         if szPatch.is_null() || szAttribute.is_null() {
             return ERROR_INVALID_PARAMETER;
         }
+        let Some(patch) = lpcstr_to_string(szPatch) else {
+            return ERROR_INVALID_PARAMETER;
+        };
+        let Some(attr) = lpcstr_to_string(szAttribute) else {
+            return ERROR_INVALID_PARAMETER;
+        };
+        if let Some(val) = lookup_patch_info(&patch, None, None, &attr) {
+            return crate::win32::strings::string_to_lpstr(&val, lpValueBuf, pcchValueBuf);
+        }
         crate::win32::ERROR_UNKNOWN_PATCH
     });
 
@@ -206,7 +294,8 @@ pub extern "system" fn MsiGetPatchInfoA(
 /// Retrieves information about the application of a patch to a specified instance of a product (Unicode).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 pub extern "system" fn MsiGetPatchInfoExW(
     szPatchCode: Lpcwstr,
     szProductCode: Lpcwstr,
@@ -220,6 +309,21 @@ pub extern "system" fn MsiGetPatchInfoExW(
         if szPatchCode.is_null() || szProductCode.is_null() || szProperty.is_null() {
             return ERROR_INVALID_PARAMETER;
         }
+        let Some(patch) = lpcwstr_to_string(szPatchCode) else {
+            return ERROR_INVALID_PARAMETER;
+        };
+        let Some(product_code) = lpcwstr_to_string(szProductCode) else {
+            return ERROR_INVALID_PARAMETER;
+        };
+        let Some(property_name) = lpcwstr_to_string(szProperty) else {
+            return ERROR_INVALID_PARAMETER;
+        };
+        let sid = lpcwstr_to_string(szUserSid);
+        if let Some(val) =
+            lookup_patch_info(&patch, Some(&product_code), sid.as_deref(), &property_name)
+        {
+            return crate::win32::strings::string_to_lpwstr(&val, lpValueBuf, pcchValueBuf);
+        }
         crate::win32::ERROR_UNKNOWN_PATCH
     });
 
@@ -229,7 +333,8 @@ pub extern "system" fn MsiGetPatchInfoExW(
 /// Retrieves information about the application of a patch to a specified instance of a product (ANSI).
 #[cfg_attr(not(test), no_mangle)]
 #[inline(never)]
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
+#[allow(unused_variables)]
 pub extern "system" fn MsiGetPatchInfoExA(
     szPatchCode: Lpcstr,
     szProductCode: Lpcstr,
@@ -242,6 +347,21 @@ pub extern "system" fn MsiGetPatchInfoExA(
     let result = panic::catch_unwind(|| {
         if szPatchCode.is_null() || szProductCode.is_null() || szProperty.is_null() {
             return ERROR_INVALID_PARAMETER;
+        }
+        let Some(patch) = lpcstr_to_string(szPatchCode) else {
+            return ERROR_INVALID_PARAMETER;
+        };
+        let Some(product_code) = lpcstr_to_string(szProductCode) else {
+            return ERROR_INVALID_PARAMETER;
+        };
+        let Some(property_name) = lpcstr_to_string(szProperty) else {
+            return ERROR_INVALID_PARAMETER;
+        };
+        let sid = lpcstr_to_string(szUserSid);
+        if let Some(val) =
+            lookup_patch_info(&patch, Some(&product_code), sid.as_deref(), &property_name)
+        {
+            return crate::win32::strings::string_to_lpstr(&val, lpValueBuf, pcchValueBuf);
         }
         crate::win32::ERROR_UNKNOWN_PATCH
     });
@@ -478,5 +598,105 @@ mod tests {
             ),
             crate::win32::ERROR_UNKNOWN_PATCH
         );
+    }
+
+    #[test]
+    fn test_get_patch_info_registry() {
+        use msi::platform::registry_store::{RegistryRoot, RegistryValue};
+        let patch_guid = "{55555555-5555-5555-5555-555555555555}";
+        let prod_guid = "{66666666-6666-6666-6666-666666666666}";
+        let patch_squid = msi::platform::squid::encode_squid(patch_guid).unwrap_or_default();
+        let prod_squid = msi::platform::squid::encode_squid(prod_guid).unwrap_or_default();
+        let hklm_patch_key = format!(
+            r"Software\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Patches\{patch_squid}"
+        );
+        let prod_patch_key = format!(
+            r"Software\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products\{prod_squid}\Patches\{patch_squid}"
+        );
+        let hkcr_patch_key = format!(r"Installer\Patches\{patch_squid}");
+        crate::win32::registry_backend::with_registry(|reg| {
+            reg.set_value(
+                RegistryRoot::LocalMachine,
+                &hklm_patch_key,
+                Some("LocalPackage"),
+                RegistryValue::Sz("C:\\Windows\\Installer\\p1.msp".to_string()),
+            );
+            reg.set_value(
+                RegistryRoot::LocalMachine,
+                &prod_patch_key,
+                Some("State"),
+                RegistryValue::Sz("1".to_string()),
+            );
+            reg.set_value(
+                RegistryRoot::ClassesRoot,
+                &hkcr_patch_key,
+                Some("DisplayName"),
+                RegistryValue::Sz("KB12345".to_string()),
+            );
+        });
+
+        let patch_w: Vec<u16> = format!("{patch_guid}\0").encode_utf16().collect();
+        let patch_a = std::ffi::CString::new(patch_guid).unwrap_or_default();
+        let product_w: Vec<u16> = format!("{prod_guid}\0").encode_utf16().collect();
+        let product_a = std::ffi::CString::new(prod_guid).unwrap_or_default();
+        let attr_lp_w: Vec<u16> = "LocalPackage\0".encode_utf16().collect();
+        let attr_dn_a = std::ffi::CString::new("DisplayName").unwrap_or_default();
+        let attr_st_w: Vec<u16> = "State\0".encode_utf16().collect();
+        let attr_st_a = std::ffi::CString::new("State").unwrap_or_default();
+
+        let mut out_w = [0u16; 64];
+        let mut cch_w: Dword = 64;
+        assert_eq!(
+            MsiGetPatchInfoW(
+                patch_w.as_ptr(),
+                attr_lp_w.as_ptr(),
+                out_w.as_mut_ptr(),
+                &raw mut cch_w
+            ),
+            ERROR_SUCCESS
+        );
+        let mut out_a = [0i8; 64];
+        let mut cch_a: Dword = 64;
+        assert_eq!(
+            MsiGetPatchInfoA(
+                patch_a.as_ptr(),
+                attr_dn_a.as_ptr(),
+                out_a.as_mut_ptr(),
+                &raw mut cch_a
+            ),
+            ERROR_SUCCESS
+        );
+        cch_w = 64;
+        assert_eq!(
+            MsiGetPatchInfoExW(
+                patch_w.as_ptr(),
+                product_w.as_ptr(),
+                std::ptr::null(),
+                4,
+                attr_st_w.as_ptr(),
+                out_w.as_mut_ptr(),
+                &raw mut cch_w
+            ),
+            ERROR_SUCCESS
+        );
+        cch_a = 64;
+        assert_eq!(
+            MsiGetPatchInfoExA(
+                patch_a.as_ptr(),
+                product_a.as_ptr(),
+                std::ptr::null(),
+                4,
+                attr_st_a.as_ptr(),
+                out_a.as_mut_ptr(),
+                &raw mut cch_a
+            ),
+            ERROR_SUCCESS
+        );
+
+        crate::win32::registry_backend::with_registry(|reg| {
+            reg.delete_subtree(RegistryRoot::LocalMachine, &hklm_patch_key);
+            reg.delete_subtree(RegistryRoot::LocalMachine, &prod_patch_key);
+            reg.delete_subtree(RegistryRoot::ClassesRoot, &hkcr_patch_key);
+        });
     }
 }

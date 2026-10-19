@@ -30,7 +30,7 @@ impl DisplayBackendType {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `&'static str` value.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -223,13 +223,11 @@ impl EguiLayoutMapper {
     ///
     /// Tuple of `(dialog_pixel_bounds, widget_placements, draw_commands)`.
     #[must_use]
-    #[allow(
-        clippy::too_many_lines,
-        clippy::cast_possible_truncation,
-        clippy::cast_precision_loss,
-        clippy::cast_sign_loss,
-        clippy::cast_possible_wrap
-    )]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_precision_loss)]
+    #[allow(clippy::cast_sign_loss)]
+    #[allow(clippy::cast_possible_wrap)]
     pub fn map_active_dialog(
         &self,
         engine: &UiEngine,
@@ -372,10 +370,11 @@ impl EguiLayoutMapper {
                         is_enabled,
                     }
                 }
-                ControlType::Edit => {
-                    let is_path_edit = def.property_name().is_some_and(|p| {
-                        p.ends_with("DIR") || p.ends_with("FOLDER") || p.ends_with("PATH")
-                    });
+                ControlType::Edit | ControlType::MaskedEdit | ControlType::PathEdit => {
+                    let is_path_edit = def.control_type() == ControlType::PathEdit
+                        || def.property_name().is_some_and(|p| {
+                            p.ends_with("DIR") || p.ends_with("FOLDER") || p.ends_with("PATH")
+                        });
                     draws.push(DrawCommand::FillRect {
                         rect: ctrl_bounds,
                         color: Color32::WHITE,
@@ -487,7 +486,7 @@ impl EguiLayoutMapper {
                         color: Color32::LINE_GRAY,
                     }
                 }
-                ControlType::Bitmap => {
+                ControlType::Bitmap | ControlType::Icon => {
                     if def.property_name() == Some("WixUI_Bmp_Dialog") || ctrl_bounds.height > 200 {
                         let sidebar_w = 180.min(dialog_bounds.width / 3);
                         let sidebar_h = (dialog_bounds.height - 46).max(60);
@@ -658,9 +657,14 @@ impl EguiLayoutMapper {
                         value: clean_label,
                     }
                 }
-                ControlType::Text
+                ControlType::Billboard
+                | ControlType::Text
+                | ControlType::GroupBox
                 | ControlType::ComboBox
+                | ControlType::DirectoryCombo
+                | ControlType::VolumeSelectCombo
                 | ControlType::ListBox
+                | ControlType::DirectoryList
                 | ControlType::ListView => {
                     let (clean_text, _is_bold, size_override) =
                         crate::ui::font_rasterizer::strip_wix_font_tags(&current_text);
@@ -729,7 +733,7 @@ impl SoftwareBuffer {
     ///
     /// # Arguments
     ///
-    /// * `color` - The `color` parameter.
+    /// * `color` - RGBA or RGB color value.
     pub fn clear(&mut self, color: Color32) {
         self.pixels.fill(color);
     }
@@ -738,8 +742,8 @@ impl SoftwareBuffer {
     ///
     /// # Arguments
     ///
-    /// * `rect` - The `rect` parameter.
-    /// * `color` - The `color` parameter.
+    /// * `rect` - Bounding rectangle coordinates.
+    /// * `color` - RGBA or RGB color value.
     #[allow(clippy::cast_sign_loss)]
     pub fn fill_rect(&mut self, rect: PixelRect, color: Color32) {
         let x0 = rect.x.max(0) as u32;
@@ -759,8 +763,8 @@ impl SoftwareBuffer {
     ///
     /// # Arguments
     ///
-    /// * `rect` - The `rect` parameter.
-    /// * `color` - The `color` parameter.
+    /// * `rect` - Bounding rectangle coordinates.
+    /// * `color` - RGBA or RGB color value.
     pub fn stroke_rect(&mut self, rect: PixelRect, color: Color32) {
         let top = PixelRect::new(rect.x, rect.y, rect.width, 1);
         let bottom = PixelRect::new(rect.x, rect.y + rect.height - 1, rect.width, 1);
@@ -777,12 +781,12 @@ impl SoftwareBuffer {
     ///
     /// # Arguments
     ///
-    /// * `x` - The `x` parameter.
-    /// * `y` - The `y` parameter.
+    /// * `x` - Horizontal coordinate in dialog units or pixels.
+    /// * `y` - Vertical coordinate in dialog units or pixels.
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// `Some(Color32)` if found, or `None` if absent.
     #[must_use]
     pub fn get_pixel(&self, x: u32, y: u32) -> Option<Color32> {
         if x < self.width && y < self.height {
@@ -797,7 +801,7 @@ impl SoftwareBuffer {
     ///
     /// # Arguments
     ///
-    /// * `commands` - The `commands` parameter.
+    /// * `commands` - The commands value.
     pub fn render_commands(&mut self, commands: &[DrawCommand]) {
         for cmd in commands {
             match cmd {
@@ -839,7 +843,6 @@ impl SoftwareBuffer {
     ///
     /// Returns [`crate::error::MsiError`] if zlib compression fails.
     #[must_use]
-    #[allow(clippy::cast_possible_truncation)]
     pub fn to_png_bytes(&self) -> Vec<u8> {
         let mut out = Vec::new();
         out.extend_from_slice(b"\x89PNG\r\n\x1a\n");
@@ -909,7 +912,6 @@ fn write_png_chunk(out: &mut Vec<u8>, chunk_type: [u8; 4], data: &[u8]) {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use crate::execution::properties::EvaluationContext;
@@ -1065,9 +1067,10 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// The resulting value or `Ok(())` on success.
+    /// Computed `crate::error::Result<()>` value.
     #[test]
-    #[allow(clippy::too_many_lines, clippy::unnecessary_wraps)]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::unnecessary_wraps)]
     fn test_layout_mapper_all_control_variants() -> crate::error::Result<()> {
         let mapper = EguiLayoutMapper::new(WizardTheme::mondo(), FontMetrics::default());
         let mut engine = UiEngine::new(EvaluationContext::new());
