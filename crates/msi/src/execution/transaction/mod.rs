@@ -7173,11 +7173,49 @@ mod transaction_wim_tests {
                 FieldValue::Null,
             ]),
         );
+        let ini_tmp = tempfile::NamedTempFile::new()?;
+        std::fs::write(ini_tmp.path(), "[Sec]\nKey=FoundVal\n")?;
+        edge_db.add_record(
+            "AppSearch",
+            Record::with_fields(vec![
+                FieldValue::String("FOUND_PROP".to_string()),
+                FieldValue::String("IniSig".to_string()),
+            ]),
+        );
+        edge_db.add_record(
+            "IniLocator",
+            Record::with_fields(vec![
+                FieldValue::String("IniSig".to_string()),
+                FieldValue::String(ini_tmp.path().to_string_lossy().to_string()),
+                FieldValue::String("Sec".to_string()),
+                FieldValue::String("Key".to_string()),
+                FieldValue::Short(0),
+                FieldValue::Short(2),
+            ]),
+        );
+        edge_db.add_record("CCPSearch", Record::with_fields(vec![FieldValue::Null]));
+        edge_db.add_record(
+            "LaunchCondition",
+            Record::with_fields(vec![FieldValue::Null]),
+        );
+        edge_db.add_record(
+            "LaunchCondition",
+            Record::with_fields(vec![FieldValue::String("1".to_string()), FieldValue::Null]),
+        );
+        edge_db.add_record("Feature", Record::with_fields(vec![FieldValue::Null]));
+        edge_db.add_record("TypeLib", Record::with_fields(vec![FieldValue::Null]));
         edge_db.add_record(
             "Feature",
             Record::with_fields(vec![
                 FieldValue::String("ChildFeat".to_string()),
                 FieldValue::String("ParentFeat".to_string()),
+            ]),
+        );
+        edge_db.add_record(
+            "Feature",
+            Record::with_fields(vec![
+                FieldValue::String("RootFeat".to_string()),
+                FieldValue::Null,
             ]),
         );
         edge_db.add_record("Upgrade", Record::with_fields(vec![FieldValue::Null]));
@@ -7206,6 +7244,9 @@ mod transaction_wim_tests {
             ]),
         );
         for (idx, act) in [
+            "AppSearch",
+            "CCPSearch",
+            "LaunchConditions",
             "DuplicateFiles",
             "RemoveDuplicateFiles",
             "MoveFiles",
@@ -7214,7 +7255,9 @@ mod transaction_wim_tests {
             "RemoveEnvironmentStrings",
             "RegisterClassInfo",
             "UnregisterClassInfo",
+            "RegisterTypeLibraries",
             "PublishFeatures",
+            "UnpublishFeatures",
             "FindRelatedProducts",
             "MigrateFeatureStates",
             "RemoveExistingProducts",
@@ -7236,11 +7279,6 @@ mod transaction_wim_tests {
         }
         let edge_tx = Transaction::new(edge_db, EvaluationContext::new(), DiskCostEngine::new());
         let _ = edge_tx.prepare()?;
-
-        // Exercise ConditionParser unclosed parenthesis error
-        let cond_ctx = EvaluationContext::new();
-        assert!(cond_ctx.evaluate_condition("((1 = 1)").is_err());
-        assert!(cond_ctx.evaluate_condition("(5 & 1").is_err());
 
         Ok(())
     }

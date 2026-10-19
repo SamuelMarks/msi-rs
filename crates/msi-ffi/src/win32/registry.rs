@@ -25,29 +25,36 @@ const INSTALLSTATE_UNKNOWN: i32 = -1;
 
 /// Helper decoding a SQUID subkey name into a formatted GUID string if possible.
 fn subkey_to_guid(subkey: &str) -> String {
-    let dec = decode_squid(subkey).ok().unwrap_or_default();
-    if dec.is_empty() {
-        subkey.to_string()
-    } else {
-        dec
-    }
+    let dec = decode_squid(subkey).unwrap_or_default();
+    if dec.is_empty() { subkey } else { &dec }.to_string()
 }
 
 /// Helper encoding a GUID string into a SQUID or returning the input string if not a valid GUID.
 fn guid_to_squid_or_raw(guid: &str) -> String {
-    let enc = encode_squid(guid).ok().unwrap_or_default();
-    if enc.is_empty() {
-        guid.to_string()
-    } else {
-        enc
-    }
+    let enc = encode_squid(guid).unwrap_or_default();
+    if enc.is_empty() { guid } else { &enc }.to_string()
 }
 
 /// Helper normalizing an optional user SID into a non-empty SID string (`S-1-5-18` default).
 fn resolve_user_sid(user_sid: Option<&str>) -> &str {
-    match user_sid {
-        Some(s) if !s.is_empty() => s,
-        _ => "S-1-5-18",
+    let sid = user_sid.unwrap_or("S-1-5-18");
+    if sid.is_empty() {
+        "S-1-5-18"
+    } else {
+        sid
+    }
+}
+
+/// Writes `dw_context` (defaulting `0` to `4` / `MSIINSTALLCONTEXT_MACHINE`) to `pdw_out` if non-null.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+fn write_opt_context(pdw_out: *mut Dword, dw_context: Dword) {
+    if pdw_out.is_null() {
+        return;
+    }
+    let val = if dw_context == 0 { 4 } else { dw_context };
+    // SAFETY: Pointer checked for null.
+    unsafe {
+        *pdw_out = val;
     }
 }
 
@@ -141,17 +148,12 @@ fn list_product_features(product: &str) -> Vec<(String, String)> {
         if vals.is_empty() {
             vals = reg.list_values(RegistryRoot::LocalMachine, &hklm_key);
         }
-        let mut out: Vec<(String, String)> = vals
-            .into_iter()
-            .filter_map(|(name, val)| {
-                let feat = name?;
-                let parent = match val {
-                    RegistryValue::Sz(s) => s,
-                    _ => String::new(),
-                };
-                Some((feat, parent))
-            })
-            .collect();
+        let mut out = Vec::new();
+        for (name, val) in vals {
+            if let (Some(feat), RegistryValue::Sz(parent)) = (name, val) {
+                out.push((feat, parent));
+            }
+        }
         out.sort();
         out
     })
@@ -170,10 +172,7 @@ pub extern "system" fn MsiEnumFeaturesW(
     lpParentBuf: Lpwstr,
 ) -> Uint {
     let result = panic::catch_unwind(|| {
-        if szProduct.is_null() || lpFeatureBuf.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
-        let Some(prod) = lpcwstr_to_string(szProduct) else {
+        let (Some(prod), false) = (lpcwstr_to_string(szProduct), lpFeatureBuf.is_null()) else {
             return ERROR_INVALID_PARAMETER;
         };
         let features = list_product_features(&prod);
@@ -205,10 +204,7 @@ pub extern "system" fn MsiEnumFeaturesA(
     lpParentBuf: Lpstr,
 ) -> Uint {
     let result = panic::catch_unwind(|| {
-        if szProduct.is_null() || lpFeatureBuf.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
-        let Some(prod) = lpcstr_to_string(szProduct) else {
+        let (Some(prod), false) = (lpcstr_to_string(szProduct), lpFeatureBuf.is_null()) else {
             return ERROR_INVALID_PARAMETER;
         };
         let features = list_product_features(&prod);
@@ -371,13 +367,8 @@ fn query_feature_state_in_registry(
 #[must_use]
 pub extern "system" fn MsiQueryFeatureStateW(szProduct: Lpcwstr, szFeature: Lpcwstr) -> i32 {
     let result = panic::catch_unwind(|| {
-        if szProduct.is_null() || szFeature.is_null() {
-            return INSTALLSTATE_UNKNOWN;
-        }
-        let Some(prod) = lpcwstr_to_string(szProduct) else {
-            return INSTALLSTATE_UNKNOWN;
-        };
-        let Some(feat) = lpcwstr_to_string(szFeature) else {
+        let (Some(prod), Some(feat)) = (lpcwstr_to_string(szProduct), lpcwstr_to_string(szFeature))
+        else {
             return INSTALLSTATE_UNKNOWN;
         };
         query_feature_state_in_registry(&prod, &feat, None).unwrap_or(INSTALLSTATE_UNKNOWN)
@@ -395,13 +386,8 @@ pub extern "system" fn MsiQueryFeatureStateW(szProduct: Lpcwstr, szFeature: Lpcw
 #[must_use]
 pub extern "system" fn MsiQueryFeatureStateA(szProduct: Lpcstr, szFeature: Lpcstr) -> i32 {
     let result = panic::catch_unwind(|| {
-        if szProduct.is_null() || szFeature.is_null() {
-            return INSTALLSTATE_UNKNOWN;
-        }
-        let Some(prod) = lpcstr_to_string(szProduct) else {
-            return INSTALLSTATE_UNKNOWN;
-        };
-        let Some(feat) = lpcstr_to_string(szFeature) else {
+        let (Some(prod), Some(feat)) = (lpcstr_to_string(szProduct), lpcstr_to_string(szFeature))
+        else {
             return INSTALLSTATE_UNKNOWN;
         };
         query_feature_state_in_registry(&prod, &feat, None).unwrap_or(INSTALLSTATE_UNKNOWN)
@@ -412,7 +398,7 @@ pub extern "system" fn MsiQueryFeatureStateA(szProduct: Lpcstr, szFeature: Lpcst
 
 /// Shared helper querying product info from `InstallProperties` or `HKCR\Installer\Products\<SQUID>`.
 fn query_product_info_in_registry(product: &str, attribute: &str) -> Option<String> {
-    let prod_id = encode_squid(product).unwrap_or_else(|_| product.to_string());
+    let prod_id = guid_to_squid_or_raw(product);
     let prop_key = format!(
         r"Software\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products\{prod_id}\InstallProperties"
     );
@@ -445,13 +431,9 @@ pub extern "system" fn MsiGetProductInfoW(
     pcchValueBuf: *mut Dword,
 ) -> Uint {
     let result = panic::catch_unwind(|| {
-        if szProduct.is_null() || szAttribute.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
-        let Some(prod) = lpcwstr_to_string(szProduct) else {
-            return ERROR_INVALID_PARAMETER;
-        };
-        let Some(attr) = lpcwstr_to_string(szAttribute) else {
+        let (Some(prod), Some(attr)) =
+            (lpcwstr_to_string(szProduct), lpcwstr_to_string(szAttribute))
+        else {
             return ERROR_INVALID_PARAMETER;
         };
         if let Some(val) = query_product_info_in_registry(&prod, &attr) {
@@ -476,13 +458,8 @@ pub extern "system" fn MsiGetProductInfoA(
     pcchValueBuf: *mut Dword,
 ) -> Uint {
     let result = panic::catch_unwind(|| {
-        if szProduct.is_null() || szAttribute.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
-        let Some(prod) = lpcstr_to_string(szProduct) else {
-            return ERROR_INVALID_PARAMETER;
-        };
-        let Some(attr) = lpcstr_to_string(szAttribute) else {
+        let (Some(prod), Some(attr)) = (lpcstr_to_string(szProduct), lpcstr_to_string(szAttribute))
+        else {
             return ERROR_INVALID_PARAMETER;
         };
         if let Some(val) = query_product_info_in_registry(&prod, &attr) {
@@ -527,10 +504,7 @@ pub extern "system" fn MsiEnumClientsW(
     lpProductBuf: Lpwstr,
 ) -> Uint {
     let result = panic::catch_unwind(|| {
-        if szComponent.is_null() || lpProductBuf.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
-        let Some(comp) = lpcwstr_to_string(szComponent) else {
+        let (Some(comp), false) = (lpcwstr_to_string(szComponent), lpProductBuf.is_null()) else {
             return ERROR_INVALID_PARAMETER;
         };
         let clients = list_component_clients(&comp, None);
@@ -555,10 +529,7 @@ pub extern "system" fn MsiEnumClientsA(
     lpProductBuf: Lpstr,
 ) -> Uint {
     let result = panic::catch_unwind(|| {
-        if szComponent.is_null() || lpProductBuf.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
-        let Some(comp) = lpcstr_to_string(szComponent) else {
+        let (Some(comp), false) = (lpcstr_to_string(szComponent), lpProductBuf.is_null()) else {
             return ERROR_INVALID_PARAMETER;
         };
         let clients = list_component_clients(&comp, None);
@@ -588,9 +559,6 @@ pub extern "system" fn MsiEnumClientsExW(
     pcchSidBuf: *mut Dword,
 ) -> Uint {
     let result = panic::catch_unwind(|| {
-        if szComponent.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
         let Some(comp) = lpcwstr_to_string(szComponent) else {
             return ERROR_INVALID_PARAMETER;
         };
@@ -599,19 +567,11 @@ pub extern "system" fn MsiEnumClientsExW(
         let Some(prod_guid) = clients.get(dwProductIndex as usize) else {
             return ERROR_NO_MORE_ITEMS;
         };
-        if !szProductBuf.is_null() {
-            let mut cch: Dword = 39;
-            let _ = string_to_lpwstr(prod_guid, szProductBuf, &raw mut cch);
-        }
-        if !pdwContext.is_null() {
-            unsafe {
-                *pdwContext = if dwContext == 0 { 4 } else { dwContext };
-            }
-        }
-        if !szSidBuf.is_null() || !pcchSidBuf.is_null() {
-            let sid_str = sid.as_deref().unwrap_or("S-1-5-18");
-            return string_to_lpwstr(sid_str, szSidBuf, pcchSidBuf);
-        }
+        let mut cch: Dword = 39;
+        let _ = string_to_lpwstr(prod_guid, szProductBuf, &raw mut cch);
+        write_opt_context(pdwContext, dwContext);
+        let sid_str = sid.as_deref().unwrap_or("S-1-5-18");
+        let _ = string_to_lpwstr(sid_str, szSidBuf, pcchSidBuf);
         ERROR_SUCCESS
     });
     result.unwrap_or(ERROR_INSTALL_FAILURE)
@@ -634,9 +594,6 @@ pub extern "system" fn MsiEnumClientsExA(
     pcchSidBuf: *mut Dword,
 ) -> Uint {
     let result = panic::catch_unwind(|| {
-        if szComponent.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
         let Some(comp) = lpcstr_to_string(szComponent) else {
             return ERROR_INVALID_PARAMETER;
         };
@@ -645,19 +602,11 @@ pub extern "system" fn MsiEnumClientsExA(
         let Some(prod_guid) = clients.get(dwProductIndex as usize) else {
             return ERROR_NO_MORE_ITEMS;
         };
-        if !szProductBuf.is_null() {
-            let mut cch: Dword = 39;
-            let _ = string_to_lpstr(prod_guid, szProductBuf, &raw mut cch);
-        }
-        if !pdwContext.is_null() {
-            unsafe {
-                *pdwContext = if dwContext == 0 { 4 } else { dwContext };
-            }
-        }
-        if !szSidBuf.is_null() || !pcchSidBuf.is_null() {
-            let sid_str = sid.as_deref().unwrap_or("S-1-5-18");
-            return string_to_lpstr(sid_str, szSidBuf, pcchSidBuf);
-        }
+        let mut cch: Dword = 39;
+        let _ = string_to_lpstr(prod_guid, szProductBuf, &raw mut cch);
+        write_opt_context(pdwContext, dwContext);
+        let sid_str = sid.as_deref().unwrap_or("S-1-5-18");
+        let _ = string_to_lpstr(sid_str, szSidBuf, pcchSidBuf);
         ERROR_SUCCESS
     });
     result.unwrap_or(ERROR_INSTALL_FAILURE)
@@ -668,18 +617,12 @@ fn list_component_qualifiers(component: &str) -> Vec<(String, String)> {
     let comp_id = guid_to_squid_or_raw(component);
     let key = format!(r"Installer\Components\{comp_id}");
     crate::win32::registry_backend::with_registry(|reg| {
-        let mut out: Vec<(String, String)> = reg
-            .list_values(RegistryRoot::ClassesRoot, &key)
-            .into_iter()
-            .filter_map(|(name, val)| {
-                let q = name?;
-                let data = match val {
-                    RegistryValue::Sz(s) => s,
-                    _ => String::new(),
-                };
-                Some((q, data))
-            })
-            .collect();
+        let mut out = Vec::new();
+        for (name, val) in reg.list_values(RegistryRoot::ClassesRoot, &key) {
+            if let (Some(q), RegistryValue::Sz(data)) = (name, val) {
+                out.push((q, data));
+            }
+        }
         out.sort();
         out
     })
@@ -700,9 +643,6 @@ pub extern "system" fn MsiEnumComponentQualifiersW(
     pcchApplicationDataBuf: *mut Dword,
 ) -> Uint {
     let result = panic::catch_unwind(|| {
-        if szComponent.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
         let Some(comp) = lpcwstr_to_string(szComponent) else {
             return ERROR_INVALID_PARAMETER;
         };
@@ -710,16 +650,8 @@ pub extern "system" fn MsiEnumComponentQualifiersW(
         let Some((qual, app_data)) = quals.get(iIndex as usize) else {
             return ERROR_NO_MORE_ITEMS;
         };
-        if !lpQualifierBuf.is_null() || !pcchQualifierBuf.is_null() {
-            let status = string_to_lpwstr(qual, lpQualifierBuf, pcchQualifierBuf);
-            if status != ERROR_SUCCESS {
-                return status;
-            }
-        }
-        if !lpApplicationDataBuf.is_null() || !pcchApplicationDataBuf.is_null() {
-            return string_to_lpwstr(app_data, lpApplicationDataBuf, pcchApplicationDataBuf);
-        }
-        ERROR_SUCCESS
+        let _ = string_to_lpwstr(qual, lpQualifierBuf, pcchQualifierBuf);
+        string_to_lpwstr(app_data, lpApplicationDataBuf, pcchApplicationDataBuf)
     });
     result.unwrap_or(ERROR_INSTALL_FAILURE)
 }
@@ -739,9 +671,6 @@ pub extern "system" fn MsiEnumComponentQualifiersA(
     pcchApplicationDataBuf: *mut Dword,
 ) -> Uint {
     let result = panic::catch_unwind(|| {
-        if szComponent.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
         let Some(comp) = lpcstr_to_string(szComponent) else {
             return ERROR_INVALID_PARAMETER;
         };
@@ -749,16 +678,8 @@ pub extern "system" fn MsiEnumComponentQualifiersA(
         let Some((qual, app_data)) = quals.get(iIndex as usize) else {
             return ERROR_NO_MORE_ITEMS;
         };
-        if !lpQualifierBuf.is_null() || !pcchQualifierBuf.is_null() {
-            let status = string_to_lpstr(qual, lpQualifierBuf, pcchQualifierBuf);
-            if status != ERROR_SUCCESS {
-                return status;
-            }
-        }
-        if !lpApplicationDataBuf.is_null() || !pcchApplicationDataBuf.is_null() {
-            return string_to_lpstr(app_data, lpApplicationDataBuf, pcchApplicationDataBuf);
-        }
-        ERROR_SUCCESS
+        let _ = string_to_lpstr(qual, lpQualifierBuf, pcchQualifierBuf);
+        string_to_lpstr(app_data, lpApplicationDataBuf, pcchApplicationDataBuf)
     });
     result.unwrap_or(ERROR_INSTALL_FAILURE)
 }
@@ -777,11 +698,12 @@ fn list_product_patches(product: &str, user_sid: Option<&str>) -> Vec<(String, S
             .map(|patch_squid| {
                 let patch_guid = subkey_to_guid(&patch_squid);
                 let sub = format!(r"{patches_key}\{patch_squid}");
-                let transforms =
-                    match reg.get_value(RegistryRoot::LocalMachine, &sub, Some("Transforms")) {
-                        Some(RegistryValue::Sz(s)) => s,
-                        _ => String::new(),
-                    };
+                let mut transforms = String::new();
+                if let Some(RegistryValue::Sz(s)) =
+                    reg.get_value(RegistryRoot::LocalMachine, &sub, Some("Transforms"))
+                {
+                    transforms = s;
+                }
                 (patch_guid, transforms)
             })
             .collect()
@@ -802,10 +724,7 @@ pub extern "system" fn MsiEnumPatchesW(
     pcchTransformsBuf: *mut Dword,
 ) -> Uint {
     let result = panic::catch_unwind(|| {
-        if szProduct.is_null() || lpPatchBuf.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
-        let Some(prod) = lpcwstr_to_string(szProduct) else {
+        let (Some(prod), false) = (lpcwstr_to_string(szProduct), lpPatchBuf.is_null()) else {
             return ERROR_INVALID_PARAMETER;
         };
         let patches = list_product_patches(&prod, None);
@@ -814,10 +733,7 @@ pub extern "system" fn MsiEnumPatchesW(
         };
         let mut cch: Dword = 39;
         let _ = string_to_lpwstr(patch_guid, lpPatchBuf, &raw mut cch);
-        if !lpTransformsBuf.is_null() || !pcchTransformsBuf.is_null() {
-            return string_to_lpwstr(transforms, lpTransformsBuf, pcchTransformsBuf);
-        }
-        ERROR_SUCCESS
+        string_to_lpwstr(transforms, lpTransformsBuf, pcchTransformsBuf)
     });
     result.unwrap_or(ERROR_INSTALL_FAILURE)
 }
@@ -836,10 +752,7 @@ pub extern "system" fn MsiEnumPatchesA(
     pcchTransformsBuf: *mut Dword,
 ) -> Uint {
     let result = panic::catch_unwind(|| {
-        if szProduct.is_null() || lpPatchBuf.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
-        let Some(prod) = lpcstr_to_string(szProduct) else {
+        let (Some(prod), false) = (lpcstr_to_string(szProduct), lpPatchBuf.is_null()) else {
             return ERROR_INVALID_PARAMETER;
         };
         let patches = list_product_patches(&prod, None);
@@ -848,10 +761,7 @@ pub extern "system" fn MsiEnumPatchesA(
         };
         let mut cch: Dword = 39;
         let _ = string_to_lpstr(patch_guid, lpPatchBuf, &raw mut cch);
-        if !lpTransformsBuf.is_null() || !pcchTransformsBuf.is_null() {
-            return string_to_lpstr(transforms, lpTransformsBuf, pcchTransformsBuf);
-        }
-        ERROR_SUCCESS
+        string_to_lpstr(transforms, lpTransformsBuf, pcchTransformsBuf)
     });
     result.unwrap_or(ERROR_INSTALL_FAILURE)
 }
@@ -875,9 +785,6 @@ pub extern "system" fn MsiEnumPatchesExW(
     pcchTargetUserSid: *mut Dword,
 ) -> Uint {
     let result = panic::catch_unwind(|| {
-        if szProductCode.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
         let Some(prod) = lpcwstr_to_string(szProductCode) else {
             return ERROR_INVALID_PARAMETER;
         };
@@ -886,23 +793,13 @@ pub extern "system" fn MsiEnumPatchesExW(
         let Some((patch_guid, _)) = patches.get(dwIndex as usize) else {
             return ERROR_NO_MORE_ITEMS;
         };
-        if !szPatchCode.is_null() {
-            let mut cch: Dword = 39;
-            let _ = string_to_lpwstr(patch_guid, szPatchCode, &raw mut cch);
-        }
-        if !szTargetProductCode.is_null() {
-            let mut cch: Dword = 39;
-            let _ = string_to_lpwstr(&prod, szTargetProductCode, &raw mut cch);
-        }
-        if !pdwTargetProductContext.is_null() {
-            unsafe {
-                *pdwTargetProductContext = if dwContext == 0 { 4 } else { dwContext };
-            }
-        }
-        if !szTargetUserSid.is_null() || !pcchTargetUserSid.is_null() {
-            let sid_str = sid.as_deref().unwrap_or("S-1-5-18");
-            return string_to_lpwstr(sid_str, szTargetUserSid, pcchTargetUserSid);
-        }
+        let mut cch: Dword = 39;
+        let _ = string_to_lpwstr(patch_guid, szPatchCode, &raw mut cch);
+        let mut pcch: Dword = 39;
+        let _ = string_to_lpwstr(&prod, szTargetProductCode, &raw mut pcch);
+        write_opt_context(pdwTargetProductContext, dwContext);
+        let sid_str = sid.as_deref().unwrap_or("S-1-5-18");
+        let _ = string_to_lpwstr(sid_str, szTargetUserSid, pcchTargetUserSid);
         ERROR_SUCCESS
     });
     result.unwrap_or(ERROR_INSTALL_FAILURE)
@@ -927,9 +824,6 @@ pub extern "system" fn MsiEnumPatchesExA(
     pcchTargetUserSid: *mut Dword,
 ) -> Uint {
     let result = panic::catch_unwind(|| {
-        if szProductCode.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
         let Some(prod) = lpcstr_to_string(szProductCode) else {
             return ERROR_INVALID_PARAMETER;
         };
@@ -938,23 +832,13 @@ pub extern "system" fn MsiEnumPatchesExA(
         let Some((patch_guid, _)) = patches.get(dwIndex as usize) else {
             return ERROR_NO_MORE_ITEMS;
         };
-        if !szPatchCode.is_null() {
-            let mut cch: Dword = 39;
-            let _ = string_to_lpstr(patch_guid, szPatchCode, &raw mut cch);
-        }
-        if !szTargetProductCode.is_null() {
-            let mut cch: Dword = 39;
-            let _ = string_to_lpstr(&prod, szTargetProductCode, &raw mut cch);
-        }
-        if !pdwTargetProductContext.is_null() {
-            unsafe {
-                *pdwTargetProductContext = if dwContext == 0 { 4 } else { dwContext };
-            }
-        }
-        if !szTargetUserSid.is_null() || !pcchTargetUserSid.is_null() {
-            let sid_str = sid.as_deref().unwrap_or("S-1-5-18");
-            return string_to_lpstr(sid_str, szTargetUserSid, pcchTargetUserSid);
-        }
+        let mut cch: Dword = 39;
+        let _ = string_to_lpstr(patch_guid, szPatchCode, &raw mut cch);
+        let mut pcch: Dword = 39;
+        let _ = string_to_lpstr(&prod, szTargetProductCode, &raw mut pcch);
+        write_opt_context(pdwTargetProductContext, dwContext);
+        let sid_str = sid.as_deref().unwrap_or("S-1-5-18");
+        let _ = string_to_lpstr(sid_str, szTargetUserSid, pcchTargetUserSid);
         ERROR_SUCCESS
     });
     result.unwrap_or(ERROR_INSTALL_FAILURE)
@@ -962,7 +846,7 @@ pub extern "system" fn MsiEnumPatchesExA(
 
 /// Lists all product GUIDs registered under `HKCR\Installer\UpgradeCodes\<SQUID>` or `HKLM\Software\Microsoft\Windows\CurrentVersion\Installer\UpgradeCodes\<SQUID>`.
 fn list_related_products(upgrade_code: &str) -> Vec<String> {
-    let upg_id = encode_squid(upgrade_code).unwrap_or_else(|_| upgrade_code.to_string());
+    let upg_id = guid_to_squid_or_raw(upgrade_code);
     let hkcr_key = format!(r"Installer\UpgradeCodes\{upg_id}");
     let hklm_key =
         format!(r"Software\Microsoft\Windows\CurrentVersion\Installer\UpgradeCodes\{upg_id}");
@@ -996,10 +880,7 @@ pub extern "system" fn MsiEnumRelatedProductsW(
     lpProductBuf: Lpwstr,
 ) -> Uint {
     let result = panic::catch_unwind(|| {
-        if szUpgradeCode.is_null() || lpProductBuf.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
-        let Some(upg) = lpcwstr_to_string(szUpgradeCode) else {
+        let (Some(upg), false) = (lpcwstr_to_string(szUpgradeCode), lpProductBuf.is_null()) else {
             return ERROR_INVALID_PARAMETER;
         };
         let prods = list_related_products(&upg);
@@ -1025,10 +906,7 @@ pub extern "system" fn MsiEnumRelatedProductsA(
     lpProductBuf: Lpstr,
 ) -> Uint {
     let result = panic::catch_unwind(|| {
-        if szUpgradeCode.is_null() || lpProductBuf.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
-        let Some(upg) = lpcstr_to_string(szUpgradeCode) else {
+        let (Some(upg), false) = (lpcstr_to_string(szUpgradeCode), lpProductBuf.is_null()) else {
             return ERROR_INVALID_PARAMETER;
         };
         let prods = list_related_products(&upg);
@@ -1063,19 +941,11 @@ pub extern "system" fn MsiEnumProductsExW(
             return ERROR_NO_MORE_ITEMS;
         };
         let guid = subkey_to_guid(squid);
-        if !szInstalledProductCode.is_null() {
-            let mut cch: Dword = 39;
-            let _ = string_to_lpwstr(&guid, szInstalledProductCode, &raw mut cch);
-        }
-        if !pdwInstalledContext.is_null() {
-            unsafe {
-                *pdwInstalledContext = if dwContext == 0 { 4 } else { dwContext };
-            }
-        }
-        if !szSid.is_null() || !pcchSid.is_null() {
-            let sid = lpcwstr_to_string(szUserSid).unwrap_or_else(|| "S-1-5-18".to_string());
-            return string_to_lpwstr(&sid, szSid, pcchSid);
-        }
+        let mut cch: Dword = 39;
+        let _ = string_to_lpwstr(&guid, szInstalledProductCode, &raw mut cch);
+        write_opt_context(pdwInstalledContext, dwContext);
+        let sid = lpcwstr_to_string(szUserSid).unwrap_or_else(|| "S-1-5-18".to_string());
+        let _ = string_to_lpwstr(&sid, szSid, pcchSid);
         ERROR_SUCCESS
     });
     result.unwrap_or(ERROR_INSTALL_FAILURE)
@@ -1103,19 +973,11 @@ pub extern "system" fn MsiEnumProductsExA(
             return ERROR_NO_MORE_ITEMS;
         };
         let guid = subkey_to_guid(squid);
-        if !szInstalledProductCode.is_null() {
-            let mut cch: Dword = 39;
-            let _ = string_to_lpstr(&guid, szInstalledProductCode, &raw mut cch);
-        }
-        if !pdwInstalledContext.is_null() {
-            unsafe {
-                *pdwInstalledContext = if dwContext == 0 { 4 } else { dwContext };
-            }
-        }
-        if !szSid.is_null() || !pcchSid.is_null() {
-            let sid = lpcstr_to_string(szUserSid).unwrap_or_else(|| "S-1-5-18".to_string());
-            return string_to_lpstr(&sid, szSid, pcchSid);
-        }
+        let mut cch: Dword = 39;
+        let _ = string_to_lpstr(&guid, szInstalledProductCode, &raw mut cch);
+        write_opt_context(pdwInstalledContext, dwContext);
+        let sid = lpcstr_to_string(szUserSid).unwrap_or_else(|| "S-1-5-18".to_string());
+        let _ = string_to_lpstr(&sid, szSid, pcchSid);
         ERROR_SUCCESS
     });
     result.unwrap_or(ERROR_INSTALL_FAILURE)
@@ -1142,19 +1004,11 @@ pub extern "system" fn MsiEnumComponentsExW(
             return ERROR_NO_MORE_ITEMS;
         };
         let guid = subkey_to_guid(squid);
-        if !szInstalledComponentCode.is_null() {
-            let mut cch: Dword = 39;
-            let _ = string_to_lpwstr(&guid, szInstalledComponentCode, &raw mut cch);
-        }
-        if !pdwInstalledContext.is_null() {
-            unsafe {
-                *pdwInstalledContext = if dwContext == 0 { 4 } else { dwContext };
-            }
-        }
-        if !szSid.is_null() || !pcchSid.is_null() {
-            let sid = lpcwstr_to_string(szUserSid).unwrap_or_else(|| "S-1-5-18".to_string());
-            return string_to_lpwstr(&sid, szSid, pcchSid);
-        }
+        let mut cch: Dword = 39;
+        let _ = string_to_lpwstr(&guid, szInstalledComponentCode, &raw mut cch);
+        write_opt_context(pdwInstalledContext, dwContext);
+        let sid = lpcwstr_to_string(szUserSid).unwrap_or_else(|| "S-1-5-18".to_string());
+        let _ = string_to_lpwstr(&sid, szSid, pcchSid);
         ERROR_SUCCESS
     });
     result.unwrap_or(ERROR_INSTALL_FAILURE)
@@ -1181,19 +1035,11 @@ pub extern "system" fn MsiEnumComponentsExA(
             return ERROR_NO_MORE_ITEMS;
         };
         let guid = subkey_to_guid(squid);
-        if !szInstalledComponentCode.is_null() {
-            let mut cch: Dword = 39;
-            let _ = string_to_lpstr(&guid, szInstalledComponentCode, &raw mut cch);
-        }
-        if !pdwInstalledContext.is_null() {
-            unsafe {
-                *pdwInstalledContext = if dwContext == 0 { 4 } else { dwContext };
-            }
-        }
-        if !szSid.is_null() || !pcchSid.is_null() {
-            let sid = lpcstr_to_string(szUserSid).unwrap_or_else(|| "S-1-5-18".to_string());
-            return string_to_lpstr(&sid, szSid, pcchSid);
-        }
+        let mut cch: Dword = 39;
+        let _ = string_to_lpstr(&guid, szInstalledComponentCode, &raw mut cch);
+        write_opt_context(pdwInstalledContext, dwContext);
+        let sid = lpcstr_to_string(szUserSid).unwrap_or_else(|| "S-1-5-18".to_string());
+        let _ = string_to_lpstr(&sid, szSid, pcchSid);
         ERROR_SUCCESS
     });
     result.unwrap_or(ERROR_INSTALL_FAILURE)
@@ -1214,21 +1060,16 @@ pub extern "system" fn MsiQueryFeatureStateExW(
     pdwState: *mut Dword,
 ) -> Uint {
     let result = panic::catch_unwind(|| {
-        if szProductCode.is_null() || szFeature.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
-        let Some(prod) = lpcwstr_to_string(szProductCode) else {
-            return ERROR_INVALID_PARAMETER;
-        };
-        let Some(feat) = lpcwstr_to_string(szFeature) else {
+        let (Some(prod), Some(feat)) = (
+            lpcwstr_to_string(szProductCode),
+            lpcwstr_to_string(szFeature),
+        ) else {
             return ERROR_INVALID_PARAMETER;
         };
         let sid = lpcwstr_to_string(szUserSid);
         if let Some(st) = query_feature_state_in_registry(&prod, &feat, sid.as_deref()) {
-            if !pdwState.is_null() {
-                unsafe {
-                    *pdwState = st as Dword;
-                }
+            if let Some(out) = unsafe { pdwState.as_mut() } {
+                *out = st as Dword;
             }
             return ERROR_SUCCESS;
         }
@@ -1252,21 +1093,15 @@ pub extern "system" fn MsiQueryFeatureStateExA(
     pdwState: *mut Dword,
 ) -> Uint {
     let result = panic::catch_unwind(|| {
-        if szProductCode.is_null() || szFeature.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
-        let Some(prod) = lpcstr_to_string(szProductCode) else {
-            return ERROR_INVALID_PARAMETER;
-        };
-        let Some(feat) = lpcstr_to_string(szFeature) else {
+        let (Some(prod), Some(feat)) =
+            (lpcstr_to_string(szProductCode), lpcstr_to_string(szFeature))
+        else {
             return ERROR_INVALID_PARAMETER;
         };
         let sid = lpcstr_to_string(szUserSid);
         if let Some(st) = query_feature_state_in_registry(&prod, &feat, sid.as_deref()) {
-            if !pdwState.is_null() {
-                unsafe {
-                    *pdwState = st as Dword;
-                }
+            if let Some(out) = unsafe { pdwState.as_mut() } {
+                *out = st as Dword;
             }
             return ERROR_SUCCESS;
         }
@@ -1302,17 +1137,11 @@ fn query_session_item_state(
                 .unwrap_or("3")
                 .parse::<i32>()
                 .unwrap_or(3);
-            if !pi_installed.is_null() {
-                // SAFETY: caller provided a non-null output pointer.
-                unsafe {
-                    *pi_installed = installed;
-                }
+            if let Some(out) = unsafe { pi_installed.as_mut() } {
+                *out = installed;
             }
-            if !pi_action.is_null() {
-                // SAFETY: caller provided a non-null output pointer.
-                unsafe {
-                    *pi_action = action;
-                }
+            if let Some(out) = unsafe { pi_action.as_mut() } {
+                *out = action;
             }
             ERROR_SUCCESS
         } else {
@@ -1456,20 +1285,15 @@ pub extern "system" fn MsiGetComponentPathExW(
     pcchOutPathBuffer: *mut Dword,
 ) -> Uint {
     let result = panic::catch_unwind(|| {
-        if szProductCode.is_null() || szComponentCode.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
-        let Some(prod) = lpcwstr_to_string(szProductCode) else {
-            return ERROR_INVALID_PARAMETER;
-        };
-        let Some(comp) = lpcwstr_to_string(szComponentCode) else {
+        let (Some(prod), Some(comp)) = (
+            lpcwstr_to_string(szProductCode),
+            lpcwstr_to_string(szComponentCode),
+        ) else {
             return ERROR_INVALID_PARAMETER;
         };
         let sid = lpcwstr_to_string(szUserSid);
         if let Some(path) = lookup_component_path_in_registry(&prod, &comp, sid.as_deref()) {
-            if !lpOutPathBuffer.is_null() || !pcchOutPathBuffer.is_null() {
-                let _ = string_to_lpwstr(&path, lpOutPathBuffer, pcchOutPathBuffer);
-            }
+            let _ = string_to_lpwstr(&path, lpOutPathBuffer, pcchOutPathBuffer);
             return 3; // INSTALLSTATE_LOCAL
         }
         ERROR_NO_MORE_ITEMS
@@ -1492,20 +1316,15 @@ pub extern "system" fn MsiGetComponentPathExA(
     pcchOutPathBuffer: *mut Dword,
 ) -> Uint {
     let result = panic::catch_unwind(|| {
-        if szProductCode.is_null() || szComponentCode.is_null() {
-            return ERROR_INVALID_PARAMETER;
-        }
-        let Some(prod) = lpcstr_to_string(szProductCode) else {
-            return ERROR_INVALID_PARAMETER;
-        };
-        let Some(comp) = lpcstr_to_string(szComponentCode) else {
+        let (Some(prod), Some(comp)) = (
+            lpcstr_to_string(szProductCode),
+            lpcstr_to_string(szComponentCode),
+        ) else {
             return ERROR_INVALID_PARAMETER;
         };
         let sid = lpcstr_to_string(szUserSid);
         if let Some(path) = lookup_component_path_in_registry(&prod, &comp, sid.as_deref()) {
-            if !lpOutPathBuffer.is_null() || !pcchOutPathBuffer.is_null() {
-                let _ = string_to_lpstr(&path, lpOutPathBuffer, pcchOutPathBuffer);
-            }
+            let _ = string_to_lpstr(&path, lpOutPathBuffer, pcchOutPathBuffer);
             return 3; // INSTALLSTATE_LOCAL
         }
         ERROR_NO_MORE_ITEMS
@@ -1526,18 +1345,14 @@ pub extern "system" fn MsiGetComponentPathW(
     pcchBuf: *mut Dword,
 ) -> i32 {
     let result = panic::catch_unwind(|| {
-        if szProduct.is_null() || szComponent.is_null() {
-            return INSTALLSTATE_UNKNOWN;
-        }
-        if let (Some(prod), Some(comp)) =
+        let (Some(prod), Some(comp)) =
             (lpcwstr_to_string(szProduct), lpcwstr_to_string(szComponent))
-        {
-            if let Some(path) = lookup_component_path_in_registry(&prod, &comp, None) {
-                if !lpPathBuf.is_null() || !pcchBuf.is_null() {
-                    let _ = string_to_lpwstr(&path, lpPathBuf, pcchBuf);
-                }
-                return 3; // INSTALLSTATE_LOCAL
-            }
+        else {
+            return INSTALLSTATE_UNKNOWN;
+        };
+        if let Some(path) = lookup_component_path_in_registry(&prod, &comp, None) {
+            let _ = string_to_lpwstr(&path, lpPathBuf, pcchBuf);
+            return 3; // INSTALLSTATE_LOCAL
         }
         1 // INSTALLSTATE_LOCAL fallback
     });
@@ -1557,18 +1372,13 @@ pub extern "system" fn MsiGetComponentPathA(
     pcchBuf: *mut Dword,
 ) -> i32 {
     let result = panic::catch_unwind(|| {
-        if szProduct.is_null() || szComponent.is_null() {
+        let (Some(prod), Some(comp)) = (lpcstr_to_string(szProduct), lpcstr_to_string(szComponent))
+        else {
             return INSTALLSTATE_UNKNOWN;
-        }
-        if let (Some(prod), Some(comp)) =
-            (lpcstr_to_string(szProduct), lpcstr_to_string(szComponent))
-        {
-            if let Some(path) = lookup_component_path_in_registry(&prod, &comp, None) {
-                if !lpPathBuf.is_null() || !pcchBuf.is_null() {
-                    let _ = string_to_lpstr(&path, lpPathBuf, pcchBuf);
-                }
-                return 3; // INSTALLSTATE_LOCAL
-            }
+        };
+        if let Some(path) = lookup_component_path_in_registry(&prod, &comp, None) {
+            let _ = string_to_lpstr(&path, lpPathBuf, pcchBuf);
+            return 3; // INSTALLSTATE_LOCAL
         }
         1 // INSTALLSTATE_LOCAL fallback
     });
@@ -1791,24 +1601,15 @@ pub extern "system" fn MsiGetFileVersionW(
     pcchLangPath: *mut Dword,
 ) -> Uint {
     let result = panic::catch_unwind(|| {
-        if szFilePath.is_null() {
+        let Some(path) = lpcwstr_to_string(szFilePath) else {
             return ERROR_INVALID_PARAMETER;
-        }
-        if let Some(path) = lpcwstr_to_string(szFilePath) {
-            if let Ok(bytes) = std::fs::read(&path) {
-                if let Some((ver, lang)) = msi::wix::linker::inspect_pe_version(&bytes) {
-                    if !szVersionPath.is_null() || !pcchVersionPath.is_null() {
-                        let status = string_to_lpwstr(&ver, szVersionPath, pcchVersionPath);
-                        if status != ERROR_SUCCESS {
-                            return status;
-                        }
-                    }
-                    if !szLangPath.is_null() || !pcchLangPath.is_null() {
-                        return string_to_lpwstr(&lang, szLangPath, pcchLangPath);
-                    }
-                    return ERROR_SUCCESS;
-                }
-            }
+        };
+        if let Some((ver, lang)) = std::fs::read(&path)
+            .ok()
+            .and_then(|bytes| msi::wix::linker::inspect_pe_version(&bytes))
+        {
+            let _ = string_to_lpwstr(&ver, szVersionPath, pcchVersionPath);
+            return string_to_lpwstr(&lang, szLangPath, pcchLangPath);
         }
         ERROR_NO_MORE_ITEMS
     });
@@ -1829,24 +1630,15 @@ pub extern "system" fn MsiGetFileVersionA(
     pcchLangPath: *mut Dword,
 ) -> Uint {
     let result = panic::catch_unwind(|| {
-        if szFilePath.is_null() {
+        let Some(path) = lpcstr_to_string(szFilePath) else {
             return ERROR_INVALID_PARAMETER;
-        }
-        if let Some(path) = lpcstr_to_string(szFilePath) {
-            if let Ok(bytes) = std::fs::read(&path) {
-                if let Some((ver, lang)) = msi::wix::linker::inspect_pe_version(&bytes) {
-                    if !szVersionPath.is_null() || !pcchVersionPath.is_null() {
-                        let status = string_to_lpstr(&ver, szVersionPath, pcchVersionPath);
-                        if status != ERROR_SUCCESS {
-                            return status;
-                        }
-                    }
-                    if !szLangPath.is_null() || !pcchLangPath.is_null() {
-                        return string_to_lpstr(&lang, szLangPath, pcchLangPath);
-                    }
-                    return ERROR_SUCCESS;
-                }
-            }
+        };
+        if let Some((ver, lang)) = std::fs::read(&path)
+            .ok()
+            .and_then(|bytes| msi::wix::linker::inspect_pe_version(&bytes))
+        {
+            let _ = string_to_lpstr(&ver, szVersionPath, pcchVersionPath);
+            return string_to_lpstr(&lang, szLangPath, pcchLangPath);
         }
         ERROR_NO_MORE_ITEMS
     });
@@ -1889,7 +1681,7 @@ pub extern "system" fn MsiCollectUserInfoA(szProduct: Lpcstr) -> Uint {
 
 /// Shared helper retrieving `(RegOwner, RegCompany, ProductID)` from `UserData\S-1-5-18\Products\<SQUID>\InstallProperties`.
 fn lookup_user_info_in_registry(product: &str) -> Option<(String, String, String)> {
-    let prod_id = encode_squid(product).unwrap_or_else(|_| product.to_string());
+    let prod_id = guid_to_squid_or_raw(product);
     let key = format!(
         r"Software\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products\{prod_id}\InstallProperties"
     );
@@ -1897,19 +1689,20 @@ fn lookup_user_info_in_registry(product: &str) -> Option<(String, String, String
         if !reg.has_key(RegistryRoot::LocalMachine, &key) {
             return None;
         }
-        let owner = match reg.get_value(RegistryRoot::LocalMachine, &key, Some("RegOwner")) {
-            Some(RegistryValue::Sz(s)) => s,
-            _ => String::new(),
+        let get_sz = |name: &str| {
+            let mut out = String::new();
+            if let Some(RegistryValue::Sz(s)) =
+                reg.get_value(RegistryRoot::LocalMachine, &key, Some(name))
+            {
+                out = s;
+            }
+            out
         };
-        let company = match reg.get_value(RegistryRoot::LocalMachine, &key, Some("RegCompany")) {
-            Some(RegistryValue::Sz(s)) => s,
-            _ => String::new(),
-        };
-        let serial = match reg.get_value(RegistryRoot::LocalMachine, &key, Some("ProductID")) {
-            Some(RegistryValue::Sz(s)) => s,
-            _ => String::new(),
-        };
-        Some((owner, company, serial))
+        Some((
+            get_sz("RegOwner"),
+            get_sz("RegCompany"),
+            get_sz("ProductID"),
+        ))
     })
 }
 
@@ -1929,22 +1722,14 @@ pub extern "system" fn MsiGetUserInfoW(
     pcchSerialBuf: *mut Dword,
 ) -> i32 {
     let result = panic::catch_unwind(|| {
-        if szProduct.is_null() {
+        let Some(prod) = lpcwstr_to_string(szProduct) else {
             return INSTALLSTATE_UNKNOWN;
-        }
-        if let Some(prod) = lpcwstr_to_string(szProduct) {
-            if let Some((owner, org, serial)) = lookup_user_info_in_registry(&prod) {
-                if !lpUserNameBuf.is_null() || !pcchUserNameBuf.is_null() {
-                    let _ = string_to_lpwstr(&owner, lpUserNameBuf, pcchUserNameBuf);
-                }
-                if !lpOrgNameBuf.is_null() || !pcchOrgNameBuf.is_null() {
-                    let _ = string_to_lpwstr(&org, lpOrgNameBuf, pcchOrgNameBuf);
-                }
-                if !lpSerialBuf.is_null() || !pcchSerialBuf.is_null() {
-                    let _ = string_to_lpwstr(&serial, lpSerialBuf, pcchSerialBuf);
-                }
-                return 0; // USERINFOSTATE_PRESENT
-            }
+        };
+        if let Some((owner, org, serial)) = lookup_user_info_in_registry(&prod) {
+            let _ = string_to_lpwstr(&owner, lpUserNameBuf, pcchUserNameBuf);
+            let _ = string_to_lpwstr(&org, lpOrgNameBuf, pcchOrgNameBuf);
+            let _ = string_to_lpwstr(&serial, lpSerialBuf, pcchSerialBuf);
+            return 0; // USERINFOSTATE_PRESENT
         }
         INSTALLSTATE_UNKNOWN
     });
@@ -1967,22 +1752,14 @@ pub extern "system" fn MsiGetUserInfoA(
     pcchSerialBuf: *mut Dword,
 ) -> i32 {
     let result = panic::catch_unwind(|| {
-        if szProduct.is_null() {
+        let Some(prod) = lpcstr_to_string(szProduct) else {
             return INSTALLSTATE_UNKNOWN;
-        }
-        if let Some(prod) = lpcstr_to_string(szProduct) {
-            if let Some((owner, org, serial)) = lookup_user_info_in_registry(&prod) {
-                if !lpUserNameBuf.is_null() || !pcchUserNameBuf.is_null() {
-                    let _ = string_to_lpstr(&owner, lpUserNameBuf, pcchUserNameBuf);
-                }
-                if !lpOrgNameBuf.is_null() || !pcchOrgNameBuf.is_null() {
-                    let _ = string_to_lpstr(&org, lpOrgNameBuf, pcchOrgNameBuf);
-                }
-                if !lpSerialBuf.is_null() || !pcchSerialBuf.is_null() {
-                    let _ = string_to_lpstr(&serial, lpSerialBuf, pcchSerialBuf);
-                }
-                return 0; // USERINFOSTATE_PRESENT
-            }
+        };
+        if let Some((owner, org, serial)) = lookup_user_info_in_registry(&prod) {
+            let _ = string_to_lpstr(&owner, lpUserNameBuf, pcchUserNameBuf);
+            let _ = string_to_lpstr(&org, lpOrgNameBuf, pcchOrgNameBuf);
+            let _ = string_to_lpstr(&serial, lpSerialBuf, pcchSerialBuf);
+            return 0; // USERINFOSTATE_PRESENT
         }
         INSTALLSTATE_UNKNOWN
     });
@@ -4105,6 +3882,10 @@ mod additional_stubs_tests {
         );
         cch_w = 64;
         let mut tprod_w = [0u16; 64];
+        assert_eq!(resolve_user_sid(None), "S-1-5-18");
+        assert_eq!(resolve_user_sid(Some("")), "S-1-5-18");
+        assert_eq!(resolve_user_sid(Some("S-1-5-21")), "S-1-5-21");
+        assert_eq!(subkey_to_guid("raw_not_squid"), "raw_not_squid");
         assert_eq!(
             MsiEnumPatchesExW(
                 prod_w.as_ptr(),
@@ -4115,6 +3896,21 @@ mod additional_stubs_tests {
                 pbuf_w.as_mut_ptr(),
                 tprod_w.as_mut_ptr(),
                 &raw mut ctx_out,
+                sbuf_w.as_mut_ptr(),
+                &raw mut cch_w
+            ),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiEnumPatchesExW(
+                prod_w.as_ptr(),
+                std::ptr::null(),
+                4,
+                0,
+                0,
+                pbuf_w.as_mut_ptr(),
+                tprod_w.as_mut_ptr(),
+                std::ptr::null_mut(),
                 sbuf_w.as_mut_ptr(),
                 &raw mut cch_w
             ),

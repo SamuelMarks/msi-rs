@@ -86,7 +86,7 @@ impl LiveWorkerExecutor {
     ///
     /// # Returns
     ///
-    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
+    /// `Ok(())` on success, or an [`crate::error::MsiError`] if the operation fails.
     pub fn create_directory(&mut self, path: &Path, mode_octal: Option<u32>) -> Result<()> {
         if !path.exists() {
             fs::create_dir_all(path)?;
@@ -124,7 +124,7 @@ impl LiveWorkerExecutor {
     ///
     /// # Returns
     ///
-    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
+    /// `Ok(())` on success, or an [`crate::error::MsiError`] if the operation fails.
     pub fn write_file_atomic(
         &mut self,
         target_path: &Path,
@@ -200,7 +200,7 @@ impl LiveWorkerExecutor {
     ///
     /// # Returns
     ///
-    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
+    /// `Ok(())` on success, or an [`crate::error::MsiError`] if the operation fails.
     pub fn commit(&mut self) -> Result<()> {
         if self.quarantine_dir.exists() {
             fs::remove_dir_all(&self.quarantine_dir)?;
@@ -222,7 +222,7 @@ impl LiveWorkerExecutor {
     ///
     /// # Returns
     ///
-    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
+    /// `Ok(())` on success, or an [`crate::error::MsiError`] if the operation fails.
     pub fn rollback(&mut self) -> Result<()> {
         let mut errors = Vec::new();
 
@@ -303,7 +303,7 @@ impl LiveWorkerExecutor {
     ///
     /// # Returns
     ///
-    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
+    /// `Ok(())` on success, or an [`crate::error::MsiError`] if the operation fails.
     pub fn recover_interrupted_transaction(quarantine_dir: &Path) -> Result<()> {
         let rbs_path = quarantine_dir.join("rollback.rbs");
         if !rbs_path.exists() {

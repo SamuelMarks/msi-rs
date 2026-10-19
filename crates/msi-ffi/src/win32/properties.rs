@@ -331,10 +331,8 @@ fn lookup_product_info_ex(
     user_sid: Option<&str>,
     property: &str,
 ) -> Option<String> {
-    let sid = match user_sid {
-        Some(s) if !s.is_empty() => s,
-        _ => "S-1-5-18",
-    };
+    let sid = user_sid.unwrap_or("S-1-5-18");
+    let sid = if sid.is_empty() { "S-1-5-18" } else { sid };
     let prod_id = msi::platform::squid::encode_squid(product_code)
         .ok()
         .unwrap_or_default();
@@ -391,9 +389,7 @@ pub extern "system" fn MsiGetProductInfoExW(
         };
         let sid = lpcwstr_to_string(szUserSid);
         if let Some(val) = lookup_product_info_ex(&product_code, sid.as_deref(), &property_name) {
-            if !szValue.is_null() || !pcchValue.is_null() {
-                return string_to_lpwstr(&val, szValue, pcchValue);
-            }
+            return string_to_lpwstr(&val, szValue, pcchValue);
         }
         ERROR_SUCCESS
     });
@@ -426,9 +422,7 @@ pub extern "system" fn MsiGetProductInfoExA(
         };
         let sid = lpcstr_to_string(szUserSid);
         if let Some(val) = lookup_product_info_ex(&product_code, sid.as_deref(), &property_name) {
-            if !szValue.is_null() || !pcchValue.is_null() {
-                return string_to_lpstr(&val, szValue, pcchValue);
-            }
+            return string_to_lpstr(&val, szValue, pcchValue);
         }
         ERROR_SUCCESS
     });
@@ -455,11 +449,12 @@ pub extern "system" fn MsiGetProductPropertyW(
             return ERROR_INVALID_PARAMETER;
         };
         if hProduct != 0 && (!szValueBuf.is_null() || !pcchValueBuf.is_null()) {
-            let val = with_handle(hProduct, |obj| match obj {
-                crate::handles::MsiObject::Database(db) => {
+            let val = with_handle(hProduct, |obj| {
+                if let crate::handles::MsiObject::Database(db) = obj {
                     db.inner.get_property_value(&prop).unwrap_or("").to_string()
+                } else {
+                    String::new()
                 }
-                _ => String::new(),
             })
             .unwrap_or_default();
             return string_to_lpwstr(&val, szValueBuf, pcchValueBuf);
@@ -489,11 +484,12 @@ pub extern "system" fn MsiGetProductPropertyA(
             return ERROR_INVALID_PARAMETER;
         };
         if hProduct != 0 && (!szValueBuf.is_null() || !pcchValueBuf.is_null()) {
-            let val = with_handle(hProduct, |obj| match obj {
-                crate::handles::MsiObject::Database(db) => {
+            let val = with_handle(hProduct, |obj| {
+                if let crate::handles::MsiObject::Database(db) = obj {
                     db.inner.get_property_value(&prop).unwrap_or("").to_string()
+                } else {
+                    String::new()
                 }
-                _ => String::new(),
             })
             .unwrap_or_default();
             return string_to_lpstr(&val, szValueBuf, pcchValueBuf);
@@ -905,6 +901,102 @@ mod tests {
             ERROR_SUCCESS
         );
         assert_eq!(ansi_len, 6);
+        let h_rec_only = crate::handles::alloc_handle(crate::handles::MsiObject::Record(
+            crate::types::MsiRecordHandle {
+                inner: msi::database::tables::record::Record::new(),
+            },
+        ));
+        assert_eq!(
+            MsiGetProductPropertyW(
+                h_rec_only,
+                valid_w.as_ptr(),
+                pval_w.as_mut_ptr(),
+                &raw mut wide_len
+            ),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiGetProductPropertyA(
+                h_rec_only,
+                valid_a.as_ptr().cast::<i8>(),
+                pval_a.as_mut_ptr(),
+                &raw mut ansi_len
+            ),
+            ERROR_SUCCESS
+        );
+        let invalid_w = [0xD800_u16, 0];
+        let invalid_a = [-1_i8, 0];
+        assert_eq!(
+            MsiGetProductCodeW(invalid_w.as_ptr(), std::ptr::null_mut()),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetProductCodeA(invalid_a.as_ptr(), std::ptr::null_mut()),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetProductInfoExW(
+                invalid_w.as_ptr(),
+                std::ptr::null(),
+                0,
+                valid_w.as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetProductInfoExW(
+                valid_w.as_ptr(),
+                std::ptr::null(),
+                0,
+                invalid_w.as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetProductInfoExA(
+                invalid_a.as_ptr(),
+                std::ptr::null(),
+                0,
+                valid_a.as_ptr().cast(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetProductInfoExA(
+                valid_a.as_ptr().cast(),
+                std::ptr::null(),
+                0,
+                invalid_a.as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetProductPropertyW(
+                0,
+                invalid_w.as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetProductPropertyA(
+                0,
+                invalid_a.as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        let _ = crate::handles::close_handle(h_rec_only);
         let _ = crate::handles::close_handle(h_prop_db);
     }
 }

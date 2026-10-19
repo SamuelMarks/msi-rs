@@ -174,6 +174,55 @@ pub unsafe extern "system" fn IDispatch_GetIDsOfNames(
     result.unwrap_or(DISP_E_UNKNOWNNAME)
 }
 
+/// Unpacks a `DISPPARAMS` pointer into `msi::execution::automation::Variant` arguments.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+fn unpack_dispparams(p_disp_params: *mut c_void) -> Vec<msi::execution::automation::Variant> {
+    if p_disp_params.is_null() {
+        return Vec::new();
+    }
+    // SAFETY: Caller verified `p_disp_params` is non-null.
+    let params = unsafe { &*(p_disp_params.cast::<DISPPARAMS>()) };
+    let raw_slice = if !params.rgvarg.is_null() && params.cArgs > 0 {
+        // SAFETY: `rgvarg` and `cArgs` validated non-null and positive.
+        unsafe { slice::from_raw_parts(params.rgvarg, params.cArgs as usize) }
+    } else {
+        &[]
+    };
+    raw_slice
+        .iter()
+        .rev()
+        .map(|v| {
+            v.as_i4().map_or(
+                msi::execution::automation::Variant::Empty,
+                msi::execution::automation::Variant::I32,
+            )
+        })
+        .collect()
+}
+
+/// Dispatches an `IDispatch::Invoke` call against the underlying `Installer` automation engine.
+fn invoke_installer_member(
+    disp_id: DISPID,
+    flags: u16,
+    unpacked_args: &[msi::execution::automation::Variant],
+) -> crate::com::variant::VARIANT {
+    use msi::execution::automation::AutomationObject;
+    let installer = msi::execution::automation::Installer::new();
+    let is_ver = disp_id == 9 && (flags == 0 || (flags & DISPATCH_PROPERTYGET) != 0);
+    let is_open = disp_id == 2 && (flags & DISPATCH_METHOD) != 0;
+    let auto_res = if is_ver {
+        installer.get_property("Version")
+    } else if is_open {
+        installer.invoke("OpenPackage", unpacked_args)
+    } else {
+        Ok(msi::execution::automation::Variant::I32(disp_id))
+    };
+    match auto_res {
+        Ok(msi::execution::automation::Variant::I32(n)) => crate::com::variant::VARIANT::new_i4(n),
+        _ => crate::com::variant::VARIANT::new_empty(),
+    }
+}
+
 /// Provides access to properties and methods exposed by an object.
 #[inline(never)]
 #[allow(non_snake_case)]
@@ -199,40 +248,10 @@ pub unsafe extern "system" fn IDispatch_Invoke(
 
         match dispIdMember {
             0..=55 | -4 => {
-                let mut unpacked_args = Vec::new();
-                if !pDispParams.is_null() {
-                    let params = &*(pDispParams.cast::<DISPPARAMS>());
-                    if !params.rgvarg.is_null() && params.cArgs > 0 {
-                        let raw_slice = slice::from_raw_parts(params.rgvarg, params.cArgs as usize);
-                        for v in raw_slice.iter().rev() {
-                            if let Some(i) = v.as_i4() {
-                                unpacked_args.push(msi::execution::automation::Variant::I32(i));
-                            } else {
-                                unpacked_args.push(msi::execution::automation::Variant::Empty);
-                            }
-                        }
-                    }
-                }
-
+                let unpacked_args = unpack_dispparams(pDispParams);
                 if !pVarResult.is_null() {
-                    use msi::execution::automation::AutomationObject;
-                    let installer = msi::execution::automation::Installer::new();
-                    let out_var = pVarResult.cast::<crate::com::variant::VARIANT>();
-                    let auto_res = if dispIdMember == 9
-                        && (wFlags == 0 || (wFlags & DISPATCH_PROPERTYGET) != 0)
-                    {
-                        installer.get_property("Version")
-                    } else if dispIdMember == 2 && (wFlags & DISPATCH_METHOD) != 0 {
-                        installer.invoke("OpenPackage", &unpacked_args)
-                    } else {
-                        Ok(msi::execution::automation::Variant::I32(dispIdMember))
-                    };
-                    *out_var = match auto_res {
-                        Ok(msi::execution::automation::Variant::I32(n)) => {
-                            crate::com::variant::VARIANT::new_i4(n)
-                        }
-                        _ => crate::com::variant::VARIANT::new_empty(),
-                    };
+                    *pVarResult.cast::<crate::com::variant::VARIANT>() =
+                        invoke_installer_member(dispIdMember, wFlags, &unpacked_args);
                 }
 
                 S_OK
@@ -504,6 +523,27 @@ mod tests {
                 S_OK
             );
             assert_eq!(result_var.as_i4(), Some(1));
+
+            let mut empty_params = DISPPARAMS {
+                rgvarg: std::ptr::null_mut(),
+                rgdispidNamedArgs: std::ptr::null_mut(),
+                cArgs: 0,
+                cNamedArgs: 0,
+            };
+            assert_eq!(
+                IDispatch_Invoke(
+                    std::ptr::NonNull::dangling().as_ptr(),
+                    1,
+                    std::ptr::null(),
+                    0,
+                    DISPATCH_METHOD,
+                    (&raw mut empty_params).cast(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                ),
+                S_OK
+            );
 
             assert_eq!(
                 IDispatch_Invoke(

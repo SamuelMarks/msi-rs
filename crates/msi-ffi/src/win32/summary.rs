@@ -242,34 +242,23 @@ fn write_summary_prop_scalars(
         SummaryPropValue::FileTime(_) => VT_FILETIME,
         SummaryPropValue::LpStr(_) => VT_LPSTR,
     };
-    if !pui_data_type.is_null() {
-        // SAFETY: Pointer checked for null.
-        unsafe {
-            *pui_data_type = vt;
-        }
+    if let Some(dt_out) = unsafe { pui_data_type.as_mut() } {
+        *dt_out = vt;
     }
-    match prop {
-        SummaryPropValue::I2(v) | SummaryPropValue::I4(v) => {
-            if !pi_value.is_null() {
-                // SAFETY: Pointer checked for null.
-                unsafe {
-                    *pi_value = *v;
-                }
+    if let SummaryPropValue::I2(v) | SummaryPropValue::I4(v) = prop {
+        if let Some(val_out) = unsafe { pi_value.as_mut() } {
+            *val_out = *v;
+        }
+        return;
+    }
+    if let SummaryPropValue::FileTime(ft) = prop {
+        if !pft_value.is_null() {
+            let bytes = ft.to_le_bytes();
+            // SAFETY: `pftValue` points to an 8-byte `FILETIME` struct.
+            unsafe {
+                std::slice::from_raw_parts_mut(pft_value.cast::<u8>(), 8).copy_from_slice(&bytes);
             }
         }
-        SummaryPropValue::FileTime(ft) => {
-            if !pft_value.is_null() {
-                // SAFETY: `pftValue` points to an 8-byte `FILETIME` struct.
-                unsafe {
-                    std::ptr::copy_nonoverlapping(
-                        ft.to_le_bytes().as_ptr(),
-                        pft_value.cast::<u8>(),
-                        8,
-                    );
-                }
-            }
-        }
-        SummaryPropValue::Empty | SummaryPropValue::LpStr(_) => {}
     }
 }
 
@@ -682,11 +671,14 @@ pub extern "system" fn MsiSummaryInfoPersist(hSummaryInfo: MsiHandle) -> Uint {
             let Some(res) = with_handle_mut(db_handle, |obj| {
                 if let MsiObject::Database(db) = obj {
                     db.inner.summary_info = summary_info;
-                    if db.state == MSIDBSTATE_WRITE {
-                        if let Some(ref path) = db.inner.backing_path {
-                            if db.inner.commit_to_path(path).is_err() {
-                                return ERROR_FUNCTION_FAILED;
-                            }
+                    if let Some(ref path) = db
+                        .inner
+                        .backing_path
+                        .as_ref()
+                        .filter(|_| db.state == MSIDBSTATE_WRITE)
+                    {
+                        if db.inner.commit_to_path(path).is_err() {
+                            return ERROR_FUNCTION_FAILED;
                         }
                     }
                     ERROR_SUCCESS
@@ -735,11 +727,14 @@ pub extern "system" fn MsiDatabaseCommit(hDatabase: MsiHandle) -> Uint {
     let result = panic::catch_unwind(|| {
         with_handle_mut(hDatabase, |obj| {
             if let MsiObject::Database(db_handle) = obj {
-                if db_handle.state == MSIDBSTATE_WRITE {
-                    if let Some(ref path) = db_handle.inner.backing_path {
-                        if db_handle.inner.commit_to_path(path).is_err() {
-                            return ERROR_FUNCTION_FAILED;
-                        }
+                if let Some(ref path) = db_handle
+                    .inner
+                    .backing_path
+                    .as_ref()
+                    .filter(|_| db_handle.state == MSIDBSTATE_WRITE)
+                {
+                    if db_handle.inner.commit_to_path(path).is_err() {
+                        return ERROR_FUNCTION_FAILED;
                     }
                 }
                 ERROR_SUCCESS
@@ -1076,6 +1071,30 @@ mod tests {
         );
         assert_eq!(dt, VT_I2);
         assert_eq!(ival, 1252);
+        assert_eq!(
+            MsiSummaryInfoGetPropertyW(
+                h_si,
+                PID_CODEPAGE,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_SUCCESS
+        );
+        assert_eq!(
+            MsiSummaryInfoGetPropertyW(
+                h_si,
+                PID_LASTPRINTED,
+                &raw mut dt,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_SUCCESS
+        );
 
         assert_eq!(
             MsiSummaryInfoGetPropertyA(

@@ -260,12 +260,12 @@ fn resolve_dir_or_default(
     field: Option<&FieldValue>,
     fallback: &str,
 ) -> PathBuf {
-    if let Some(FieldValue::String(d)) = field {
-        if let Some(path) = resolved_dirs.get(d) {
-            return path.clone();
-        }
-    }
-    PathBuf::from(fallback)
+    field
+        .and_then(|f| match f {
+            FieldValue::String(d) => resolved_dirs.get(d).cloned(),
+            _ => None,
+        })
+        .unwrap_or_else(|| PathBuf::from(fallback))
 }
 
 /// Prepares `DuplicateFiles` operations.

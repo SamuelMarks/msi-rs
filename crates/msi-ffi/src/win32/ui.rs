@@ -255,51 +255,36 @@ pub extern "system" fn MsiProcessMessage(
         let msg_kind = (eMessageType >> 24) & 0xFF;
         let msg_bit = 1u32.checked_shl(msg_kind).unwrap_or(0);
 
-        if let Some((cb, filter, ctx)) = rec_cb {
-            if filter == 0 || (filter & msg_bit) != 0 {
-                let rc = unsafe { cb(ctx, eMessageType, hRecord) };
-                if rc != 0 {
-                    return rc;
-                }
-            }
+        if let Some((cb, filter, ctx)) = rec_cb.filter(|(_, f, _)| *f == 0 || (*f & msg_bit) != 0) {
+            return unsafe { cb(ctx, eMessageType, hRecord) };
         }
 
-        if let Some((cb, filter, ctx)) = w_cb {
-            if filter == 0 || (filter & msg_bit) != 0 {
-                let mut buf = [0u16; 512];
-                let mut len: Dword = 512;
-                if hRecord != 0 {
-                    let _ = crate::win32::format::MsiFormatRecordW(
-                        hInstall,
-                        hRecord,
-                        buf.as_mut_ptr(),
-                        &raw mut len,
-                    );
-                }
-                let rc = unsafe { cb(ctx, eMessageType, buf.as_ptr()) };
-                if rc != 0 {
-                    return rc;
-                }
+        if let Some((cb, filter, ctx)) = w_cb.filter(|(_, f, _)| *f == 0 || (*f & msg_bit) != 0) {
+            let mut buf = [0u16; 512];
+            let mut len: Dword = 512;
+            if hRecord != 0 {
+                let _ = crate::win32::format::MsiFormatRecordW(
+                    hInstall,
+                    hRecord,
+                    buf.as_mut_ptr(),
+                    &raw mut len,
+                );
             }
+            return unsafe { cb(ctx, eMessageType, buf.as_ptr()) };
         }
 
-        if let Some((cb, filter, ctx)) = a_cb {
-            if filter == 0 || (filter & msg_bit) != 0 {
-                let mut buf = [0i8; 512];
-                let mut len: Dword = 512;
-                if hRecord != 0 {
-                    let _ = crate::win32::format::MsiFormatRecordA(
-                        hInstall,
-                        hRecord,
-                        buf.as_mut_ptr(),
-                        &raw mut len,
-                    );
-                }
-                let rc = unsafe { cb(ctx, eMessageType, buf.as_ptr()) };
-                if rc != 0 {
-                    return rc;
-                }
+        if let Some((cb, filter, ctx)) = a_cb.filter(|(_, f, _)| *f == 0 || (*f & msg_bit) != 0) {
+            let mut buf = [0i8; 512];
+            let mut len: Dword = 512;
+            if hRecord != 0 {
+                let _ = crate::win32::format::MsiFormatRecordA(
+                    hInstall,
+                    hRecord,
+                    buf.as_mut_ptr(),
+                    &raw mut len,
+                );
             }
+            return unsafe { cb(ctx, eMessageType, buf.as_ptr()) };
         }
 
         1 // IDOK

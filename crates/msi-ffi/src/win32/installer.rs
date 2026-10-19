@@ -376,29 +376,29 @@ fn extract_file_signature_info(
     hash_len_out: *mut Dword,
 ) -> Uint {
     let path_ref = std::path::Path::new(path);
-    if path_ref.exists() {
-        let Ok(sig) =
-            msi::execution::signature::SignatureValidator::get_file_signature_information(path_ref)
-        else {
-            return ERROR_INSTALL_FAILURE;
-        };
-        let digest = msi::database::md5::compute_md5(&sig.cert_data);
-        if !ppc_cert_context.is_null() {
-            // SAFETY: Pointer checked for null.
-            unsafe {
-                *ppc_cert_context = std::ptr::null_mut();
+    if !path_ref.exists() {
+        return ERROR_SUCCESS;
+    }
+    let Ok(sig) =
+        msi::execution::signature::SignatureValidator::get_file_signature_information(path_ref)
+    else {
+        return ERROR_INSTALL_FAILURE;
+    };
+    let digest = msi::database::md5::compute_md5(&sig.cert_data);
+    if let Some(cert_out) = unsafe { ppc_cert_context.as_mut() } {
+        *cert_out = std::ptr::null_mut();
+    }
+    if !hash_len_out.is_null() {
+        // SAFETY: Pointer checked for null.
+        let cap = unsafe { *hash_len_out as usize };
+        // SAFETY: Pointer checked for null.
+        unsafe {
+            *hash_len_out = 16;
+            if !hash_buffer.is_null() && cap >= 16 {
+                std::slice::from_raw_parts_mut(hash_buffer, 16).copy_from_slice(&digest);
             }
         }
-        if !hash_len_out.is_null() {
-            // SAFETY: Pointer checked for null.
-            unsafe {
-                let cap = *hash_len_out as usize;
-                *hash_len_out = 16;
-                if !hash_buffer.is_null() && cap >= 16 {
-                    std::ptr::copy_nonoverlapping(digest.as_ptr(), hash_buffer, 16);
-                }
-            }
-        }
+        return ERROR_SUCCESS;
     }
     ERROR_SUCCESS
 }
@@ -786,15 +786,17 @@ fn resolve_session_folder_path(h_install: MsiHandle, folder: &str) -> String {
     if h_install == 0 {
         return String::new();
     }
-    crate::handles::with_handle(h_install, |obj| match obj {
-        MsiObject::Database(db) => db
-            .inner
-            .get_property_value(folder)
-            .unwrap_or("")
-            .to_string(),
-        _ => String::new(),
-    })
-    .unwrap_or_default()
+    let mut out = String::new();
+    crate::handles::with_handle(h_install, |obj| {
+        if let MsiObject::Database(db) = obj {
+            out = db
+                .inner
+                .get_property_value(folder)
+                .unwrap_or("")
+                .to_string();
+        }
+    });
+    out
 }
 
 /// Retrieves the full source path for a folder in the Directory table (Unicode).
@@ -934,10 +936,13 @@ fn set_target_path_and_recalculate(
             if dir_id == row_parent || row_parent != &parent_id {
                 continue;
             }
-            let default_dir = match row.get(2) {
-                Some(msi::database::FieldValue::String(s)) => s.as_str(),
-                _ => ".",
-            };
+            let default_dir = row
+                .get(2)
+                .and_then(|f| match f {
+                    msi::database::FieldValue::String(s) => Some(s.as_str()),
+                    _ => None,
+                })
+                .unwrap_or(".");
             let target_part = default_dir.split(':').next_back().unwrap_or(default_dir);
             let long_name = target_part.split('|').next_back().unwrap_or(target_part);
             let child_path = if long_name == "." || long_name.is_empty() {
@@ -1440,6 +1445,16 @@ mod tests {
         );
         assert!(cert_ctx.is_null());
         assert_eq!(hash_len, 16);
+        assert_eq!(
+            MsiGetFileSignatureInformationA(
+                sig_tmp_a.as_ptr(),
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_SUCCESS
+        );
         let _ = std::fs::remove_file(&sig_tmp);
 
         let unsig_tmp = std::env::temp_dir().join("unsigned_ffi_test.cab");
@@ -2407,7 +2422,7 @@ mod additional_stubs_tests {
                 msi::database::tables::record::Record::with_fields(vec![
                     msi::database::FieldValue::String("DOTDIR".to_string()),
                     msi::database::FieldValue::String("INSTALLDIR".to_string()),
-                    msi::database::FieldValue::String(".".to_string()),
+                    msi::database::FieldValue::Null,
                 ]),
                 msi::database::tables::record::Record::with_fields(vec![
                     msi::database::FieldValue::Null,

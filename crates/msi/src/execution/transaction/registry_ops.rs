@@ -512,30 +512,31 @@ fn prepare_typelib_action(
 ) {
     let is_reg = action == "RegisterTypeLibraries";
     for rec in database.get_records("TypeLib") {
-        if let Some(FieldValue::String(lib_id)) = rec.get(0) {
-            let key = format!(r"TypeLib\{lib_id}");
-            if is_reg {
-                install_script.push(ScriptOp::WriteRegistry {
-                    root: 0,
-                    key: key.clone(),
-                    name: None,
-                    value: Some(lib_id.clone()),
-                });
-            } else {
-                install_script.push(ScriptOp::DeleteRegistry {
-                    root: 0,
-                    key: key.clone(),
-                    name: None,
-                });
-            }
-            rollback_script.push(RollbackOp::RestoreRegistry {
+        let Some(FieldValue::String(lib_id)) = rec.get(0) else {
+            continue;
+        };
+        let key = format!(r"TypeLib\{lib_id}");
+        if is_reg {
+            install_script.push(ScriptOp::WriteRegistry {
                 root: 0,
-                key,
+                key: key.clone(),
                 name: None,
-                previous_value: None,
-                existed: !is_reg,
+                value: Some(lib_id.clone()),
+            });
+        } else {
+            install_script.push(ScriptOp::DeleteRegistry {
+                root: 0,
+                key: key.clone(),
+                name: None,
             });
         }
+        rollback_script.push(RollbackOp::RestoreRegistry {
+            root: 0,
+            key,
+            name: None,
+            previous_value: None,
+            existed: !is_reg,
+        });
     }
 }
 
@@ -695,28 +696,32 @@ fn prepare_component_or_feature_publish(
             for rec in database.get_records("Feature") {
                 if let Some(FieldValue::String(feat_id)) = rec.get(0) {
                     let parent = match rec.get(1) {
-                        Some(FieldValue::String(p)) => p.clone(),
-                        _ => String::new(),
+                        Some(FieldValue::String(p)) => p.as_str(),
+                        _ => "",
                     };
                     install_script.push(ScriptOp::WriteRegistry {
                         root: 0,
                         key: key.clone(),
                         name: Some(feat_id.clone()),
-                        value: Some(parent),
+                        value: Some(parent.to_string()),
                     });
                 }
             }
         }
         _ => {
             let key = format!(r"Installer\Features\{prod_code}");
-            for rec in database.get_records("Feature") {
-                if let Some(FieldValue::String(feat_id)) = rec.get(0) {
-                    install_script.push(ScriptOp::DeleteRegistry {
-                        root: 0,
-                        key: key.clone(),
-                        name: Some(feat_id.clone()),
-                    });
+            for feat_id in database.get_records("Feature").iter().filter_map(|rec| {
+                if let Some(FieldValue::String(s)) = rec.get(0) {
+                    Some(s.clone())
+                } else {
+                    None
                 }
+            }) {
+                install_script.push(ScriptOp::DeleteRegistry {
+                    root: 0,
+                    key: key.clone(),
+                    name: Some(feat_id),
+                });
             }
         }
     }

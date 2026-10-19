@@ -79,10 +79,12 @@ pub fn execute_select_sql(
 
 /// Synthesizes virtual rows for `_Tables` and `_Columns` when not explicitly overridden in `db.tables`.
 fn get_or_synthesize_table_rows(db: &LinkedDatabase, table_name: &str) -> Vec<Record> {
-    if let Some(rows) = db.tables.get(table_name) {
-        if !rows.is_empty() || (table_name != "_Tables" && table_name != "_Columns") {
-            return rows.clone();
-        }
+    if let Some(rows) = db
+        .tables
+        .get(table_name)
+        .filter(|rows| !rows.is_empty() || (table_name != "_Tables" && table_name != "_Columns"))
+    {
+        return rows.clone();
     }
     if table_name == "_Tables" {
         let mut names: Vec<&str> = db
@@ -107,35 +109,40 @@ fn get_or_synthesize_table_rows(db: &LinkedDatabase, table_name: &str) -> Vec<Re
         names.sort_unstable();
         let mut out = Vec::new();
         for t_name in names {
-            if let Some(schema) = db.catalog.get_table(t_name) {
-                for (idx, col) in schema.columns.iter().enumerate() {
-                    let mut type_bits: u16 = match col.data_type {
-                        DataType::String { max_len } => 0x0D00 | u16::from(max_len),
-                        DataType::Short => 0x0502,
-                        DataType::Long => 0x0504,
-                        DataType::Stream => 0x0900,
-                    };
-                    if col.nullable {
-                        type_bits |= 0x1000;
-                    }
-                    if col.primary_key {
-                        type_bits |= 0x2000;
-                    }
-                    if col.localizable {
-                        type_bits |= 0x0200;
-                    }
-                    #[allow(clippy::cast_possible_truncation)]
-                    #[allow(clippy::cast_possible_wrap)]
-                    let col_num = (idx + 1) as i16;
-                    #[allow(clippy::cast_possible_wrap)]
-                    let col_type = type_bits as i16;
-                    out.push(Record::with_fields(vec![
-                        FieldValue::String(t_name.to_string()),
-                        FieldValue::Short(col_num),
-                        FieldValue::String(col.name.clone()),
-                        FieldValue::Short(col_type),
-                    ]));
+            for (idx, col) in db
+                .catalog
+                .get_table(t_name)
+                .map(|s| s.columns.as_slice())
+                .unwrap_or_default()
+                .iter()
+                .enumerate()
+            {
+                let mut type_bits: u16 = match col.data_type {
+                    DataType::String { max_len } => 0x0D00 | u16::from(max_len),
+                    DataType::Short => 0x0502,
+                    DataType::Long => 0x0504,
+                    DataType::Stream => 0x0900,
+                };
+                if col.nullable {
+                    type_bits |= 0x1000;
                 }
+                if col.primary_key {
+                    type_bits |= 0x2000;
+                }
+                if col.localizable {
+                    type_bits |= 0x0200;
+                }
+                #[allow(clippy::cast_possible_truncation)]
+                #[allow(clippy::cast_possible_wrap)]
+                let col_num = (idx + 1) as i16;
+                #[allow(clippy::cast_possible_wrap)]
+                let col_type = type_bits as i16;
+                out.push(Record::with_fields(vec![
+                    FieldValue::String(t_name.to_string()),
+                    FieldValue::Short(col_num),
+                    FieldValue::String(col.name.clone()),
+                    FieldValue::Short(col_type),
+                ]));
             }
         }
         return out;
@@ -1502,31 +1509,23 @@ mod tests {
 
         // Virtual _Tables and _Columns queries
         let tables_res = execute_select_sql(&db, "SELECT `Name` FROM `_Tables`", &[])?;
-        if let QueryResult::Select { rows, .. } = tables_res {
-            assert!(!rows.is_empty());
-        }
+        assert!(matches!(tables_res, QueryResult::Select { ref rows, .. } if !rows.is_empty()));
         let cols_res = execute_select_sql(
             &db,
             "SELECT `Table`, `Number`, `Name`, `Type` FROM `_Columns` WHERE `Table` = 'Property'",
             &[],
         )?;
-        if let QueryResult::Select { rows, .. } = cols_res {
-            assert_eq!(rows.len(), 2);
-        }
+        assert!(matches!(cols_res, QueryResult::Select { ref rows, .. } if rows.len() == 2));
 
         // Virtual _TransformView query and >< operator
         let tv_res = execute_select_sql(&db, "SELECT * FROM `_TransformView`", &[])?;
-        if let QueryResult::Select { rows, .. } = tv_res {
-            assert!(rows.is_empty());
-        }
+        assert!(matches!(tv_res, QueryResult::Select { ref rows, .. } if rows.is_empty()));
         let bit_res = execute_select_sql(
             &db,
             "SELECT (Table, Number) FROM `_Columns` WHERE `Number` >< 1 AND `Table` >< 'Prop'",
             &[],
         )?;
-        if let QueryResult::Select { rows, .. } = bit_res {
-            assert_eq!(rows.len(), 1);
-        }
+        assert!(matches!(bit_res, QueryResult::Select { ref rows, .. } if rows.len() == 1));
         Ok(())
     }
 }

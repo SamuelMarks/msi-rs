@@ -45,37 +45,38 @@ pub struct ReinstallMode(pub u32);
 
 /// Shared helper executing a single action on an installation or database handle while persisting properties.
 fn execute_action_on_handle(h_install: MSIHANDLE, action_name: &str) -> u32 {
-    crate::handles::with_handle_mut(h_install, |obj| match obj {
-        crate::handles::MsiObject::Database(db_handle) => {
-            let ctx = db_handle.inner.to_evaluation_context();
-            let mut txn = msi::execution::transaction::Transaction::new(
-                db_handle.inner.clone(),
-                ctx,
-                msi::execution::costing::DiskCostEngine::new(),
-            );
-            let res = {
+    crate::handles::with_handle_mut(h_install, |obj| {
+        let res = match obj {
+            crate::handles::MsiObject::Database(db_handle) => {
+                let ctx = db_handle.inner.to_evaluation_context();
+                let mut txn = msi::execution::transaction::Transaction::new(
+                    db_handle.inner.clone(),
+                    ctx,
+                    msi::execution::costing::DiskCostEngine::new(),
+                );
+                let r = {
+                    let mut dispatcher =
+                        msi::execution::dispatcher::ActionDispatcher::new(&mut txn);
+                    dispatcher.dispatch_action(action_name)
+                };
+                db_handle.inner.sync_from_evaluation_context(txn.context());
+                r
+            }
+            crate::handles::MsiObject::Transaction(_) => {
+                let mut txn = msi::execution::transaction::Transaction::new(
+                    msi::wix::linker::LinkedDatabase::default(),
+                    msi::execution::properties::EvaluationContext::new(),
+                    msi::execution::costing::DiskCostEngine::new(),
+                );
                 let mut dispatcher = msi::execution::dispatcher::ActionDispatcher::new(&mut txn);
                 dispatcher.dispatch_action(action_name)
-            };
-            db_handle.inner.sync_from_evaluation_context(txn.context());
-            match res {
-                Ok(_) => crate::win32::ERROR_SUCCESS,
-                Err(e) => crate::error::map_msi_error_to_lstatus(&e),
             }
+            _ => return crate::win32::ERROR_INVALID_HANDLE,
+        };
+        match res {
+            Ok(_) => crate::win32::ERROR_SUCCESS,
+            Err(e) => crate::error::map_msi_error_to_lstatus(&e),
         }
-        crate::handles::MsiObject::Transaction(_) => {
-            let mut txn = msi::execution::transaction::Transaction::new(
-                msi::wix::linker::LinkedDatabase::default(),
-                msi::execution::properties::EvaluationContext::new(),
-                msi::execution::costing::DiskCostEngine::new(),
-            );
-            let mut dispatcher = msi::execution::dispatcher::ActionDispatcher::new(&mut txn);
-            match dispatcher.dispatch_action(action_name) {
-                Ok(_) => crate::win32::ERROR_SUCCESS,
-                Err(e) => crate::error::map_msi_error_to_lstatus(&e),
-            }
-        }
-        _ => crate::win32::ERROR_INVALID_HANDLE,
     })
     .unwrap_or(crate::win32::ERROR_INVALID_HANDLE)
 }

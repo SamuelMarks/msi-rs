@@ -638,6 +638,7 @@ impl Record {
 
 #[cfg(test)]
 mod tests {
+    /// Tests deserializing null stream and 3-byte string pool index fields.
     #[test]
     fn test_field_value_deserialize_null_stream_and_string_3_byte_index(
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
@@ -877,7 +878,7 @@ mod tests {
         assert_eq!(des_res, vec![r]);
     }
 
-    /// Tests [`FieldValue`] display formatting and helper methods.
+    /// Tests [`Record::push_field`].
     #[test]
     fn test_record_push_field() {
         let mut r = Record::new();
@@ -886,6 +887,7 @@ mod tests {
         assert_eq!(r.fields[0], FieldValue::Short(5));
     }
 
+    /// Tests [`FieldValue`] display formatting and helper methods.
     #[test]
     fn test_field_value_display_and_helpers() {
         assert_eq!(format!("{}", FieldValue::Short(10)), "10");
@@ -902,6 +904,7 @@ mod tests {
 
     /// Tests record error cases and boundary conditions.
     #[test]
+    #[allow(clippy::unnecessary_wraps)]
     fn test_record_errors() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut pool = StringPool::new(CODEPAGE_UTF8);
         let cols = vec![ColumnDef::new("Col1", DataType::Short)];
@@ -1031,6 +1034,7 @@ mod tests {
 
     /// Tests integer data integrity errors during serialization.
     #[test]
+    #[allow(clippy::unnecessary_wraps)]
     fn test_integer_data_integrity() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut pool = StringPool::new(CODEPAGE_UTF8);
 
@@ -1058,7 +1062,9 @@ mod tests {
         Ok(())
     }
 
+    /// Tests stream buffers, cursor operations, and additional serialization branches on [`Record`].
     #[test]
+    #[allow(clippy::unnecessary_wraps)]
     fn test_record_extra_coverage() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut pool = StringPool::new(CODEPAGE_UTF8);
         let cols = vec![ColumnDef::new("Col1", DataType::Short)];

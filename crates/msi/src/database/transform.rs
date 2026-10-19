@@ -1248,9 +1248,12 @@ mod tests {
                 table_name: "NewTable".to_string(),
                 is_added: true,
                 is_dropped: false,
-                operations: vec![RowOperation::Insert(Record::with_fields(vec![
-                    FieldValue::String("K1".to_string()),
-                ]))],
+                operations: vec![
+                    RowOperation::Insert(Record::with_fields(vec![FieldValue::String(
+                        "K1".to_string(),
+                    )])),
+                    RowOperation::Insert(Record::with_fields(vec![FieldValue::Null])),
+                ],
             },
         );
         transform.tables.insert(
@@ -1259,9 +1262,12 @@ mod tests {
                 table_name: "DropTable".to_string(),
                 is_added: false,
                 is_dropped: true,
-                operations: vec![RowOperation::Delete(Record::with_fields(vec![
-                    FieldValue::String("K2".to_string()),
-                ]))],
+                operations: vec![
+                    RowOperation::Delete(Record::with_fields(vec![FieldValue::String(
+                        "K2".to_string(),
+                    )])),
+                    RowOperation::Delete(Record::with_fields(vec![FieldValue::Null])),
+                ],
             },
         );
         transform.tables.insert(
@@ -1270,16 +1276,22 @@ mod tests {
                 table_name: "Property".to_string(),
                 is_added: false,
                 is_dropped: false,
-                operations: vec![RowOperation::Modify {
-                    key: Record::with_fields(vec![
-                        FieldValue::String("ProductName".to_string()),
-                        FieldValue::String("Old".to_string()),
-                    ]),
-                    updated: Record::with_fields(vec![
-                        FieldValue::String("ProductName".to_string()),
-                        FieldValue::String("New".to_string()),
-                    ]),
-                }],
+                operations: vec![
+                    RowOperation::Modify {
+                        key: Record::with_fields(vec![
+                            FieldValue::String("ProductName".to_string()),
+                            FieldValue::String("Old".to_string()),
+                        ]),
+                        updated: Record::with_fields(vec![
+                            FieldValue::String("ProductName".to_string()),
+                            FieldValue::String("New".to_string()),
+                        ]),
+                    },
+                    RowOperation::Modify {
+                        key: Record::with_fields(vec![FieldValue::Null, FieldValue::Null]),
+                        updated: Record::with_fields(vec![FieldValue::Null, FieldValue::Null]),
+                    },
+                ],
             },
         );
         assert!(transform.populate_transform_view(&mut db).is_ok());

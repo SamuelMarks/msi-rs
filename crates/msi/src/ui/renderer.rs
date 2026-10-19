@@ -371,10 +371,11 @@ impl EguiLayoutMapper {
                     }
                 }
                 ControlType::Edit | ControlType::MaskedEdit | ControlType::PathEdit => {
+                    let prop = def.property_name().unwrap_or("");
                     let is_path_edit = def.control_type() == ControlType::PathEdit
-                        || def.property_name().is_some_and(|p| {
-                            p.ends_with("DIR") || p.ends_with("FOLDER") || p.ends_with("PATH")
-                        });
+                        || prop.ends_with("DIR")
+                        || prop.ends_with("FOLDER")
+                        || prop.ends_with("PATH");
                     draws.push(DrawCommand::FillRect {
                         rect: ctrl_bounds,
                         color: Color32::WHITE,
@@ -1512,9 +1513,12 @@ mod tests {
         root_absent.install_state = InstallState::Absent;
         let root_overflow = SelectionTreeNode::new("Root3", "Root Overflow", 1024);
 
-        if let Some(st) = engine.get_control_state_mut("ExtDlg", "Tree") {
-            st.tree_nodes = vec![root_local, root_absent, root_overflow];
-        }
+        assert!(engine
+            .get_control_state_mut("ExtDlg", "Tree")
+            .is_some_and(|st| {
+                st.tree_nodes = vec![root_local, root_absent, root_overflow];
+                true
+            }));
         let mapper = EguiLayoutMapper::new(WizardTheme::mondo(), FontMetrics::default());
         let (_bounds, widgets, draws) = mapper.map_active_dialog(&engine, 800, 600);
         assert_eq!(widgets.len(), 7);
@@ -1524,16 +1528,19 @@ mod tests {
         }));
 
         // Also test SelectionTree when root_absent is first and fits within max_rows
-        if let Some(st) = engine.get_control_state_mut("ExtDlg", "Tree") {
-            let mut r_abs = SelectionTreeNode::new("R_Abs", "Absent First", 512);
-            r_abs.install_state = InstallState::Absent;
-            st.tree_nodes = vec![r_abs];
-        }
+        let mut r_abs = SelectionTreeNode::new("R_Abs", "Absent First", 512);
+        r_abs.install_state = InstallState::Absent;
+        assert!(engine
+            .get_control_state_mut("ExtDlg", "Tree")
+            .is_some_and(|st| {
+                st.tree_nodes = vec![r_abs];
+                true
+            }));
         let (_b2, _w2, draws2) = mapper.map_active_dialog(&engine, 800, 600);
-        assert!(draws2.iter().any(|d| match d {
-            DrawCommand::DrawText { text, .. } => text.contains("[ ] Absent First"),
-            _ => false,
-        }));
+        assert!(draws2.iter().any(|d| matches!(
+            d,
+            DrawCommand::DrawText { text, .. } if text.contains("[ ] Absent First")
+        )));
     }
 
     /// Tests trait implementations for renderer types.

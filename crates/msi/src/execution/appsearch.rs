@@ -277,12 +277,12 @@ impl<'a, H: HostSystem> AppSearch<'a, H> {
     pub fn resolve_signature(&self, sig_id: &str) -> Option<String> {
         // Step 1: Query CompLocator
         if let Some(comp_loc) = self.find_comp_locator(sig_id) {
-            if let Ok((path, state)) =
-                crate::execution::locator::locate_component(&comp_loc.component_id)
-            {
-                if state >= 1 && !path.is_empty() {
-                    return self.validate_with_signature(sig_id, &path);
-                }
+            let reg_key = format!(
+                r"Software\Microsoft\Windows\CurrentVersion\Installer\Components\{}",
+                comp_loc.component_id
+            );
+            if let Ok(Some(path)) = self.host.get_registry_value(2, &reg_key, None) {
+                return self.validate_with_signature(sig_id, &path);
             }
         }
 
@@ -553,19 +553,17 @@ impl HostSystem for DefaultHostSystem {
         }
         let content = std::fs::read_to_string(path).unwrap_or_default();
         let parsed = crate::platform::odbc::OdbcManager::parse_ini(&content)?;
-        if let Some(sec) = parsed.get(section) {
-            if let Some(val) = sec.get(key) {
-                if let Some(idx) = field.filter(|&f| f > 0) {
-                    let part = val
-                        .split(',')
-                        .nth((idx - 1) as usize)
-                        .map_or(val.as_str(), str::trim);
-                    return Ok(Some(part.to_string()));
-                }
-                return Ok(Some(val.clone()));
-            }
+        let Some(val) = parsed.get(section).and_then(|sec| sec.get(key)) else {
+            return Ok(None);
+        };
+        if let Some(idx) = field.filter(|&f| f > 0) {
+            let part = val
+                .split(',')
+                .nth((idx - 1) as usize)
+                .map_or(val.as_str(), str::trim);
+            return Ok(Some(part.to_string()));
         }
-        Ok(None)
+        Ok(Some(val.clone()))
     }
 
     fn find_file(&self, path: &str, name: &str, _depth: u32) -> Result<Option<String>> {
@@ -1095,8 +1093,24 @@ mod tests {
         let host = MockHost::default();
         let app_search = AppSearch::new(&db, host);
         let res = app_search.execute()?;
-        // CompLocator unimpl
         assert!(res.is_empty());
+
+        let mut host_found = MockHost::default();
+        host_found.registry.insert(
+            (
+                2,
+                r"Software\Microsoft\Windows\CurrentVersion\Installer\Components\{COMP-GUID}"
+                    .to_string(),
+                None,
+            ),
+            r"C:\App\comp.exe".to_string(),
+        );
+        let app_search_found = AppSearch::new(&db, host_found);
+        let res_found = app_search_found.execute()?;
+        assert_eq!(
+            res_found.get("MYCOMP"),
+            Some(&r"C:\App\comp.exe".to_string())
+        );
         Ok(())
     }
 
@@ -1776,6 +1790,36 @@ mod appsearch_tests_extra {
             None
         );
 
+        def_host.registry.set_value(
+            crate::platform::registry_store::RegistryRoot::LocalMachine,
+            r"Software\Microsoft\Windows\CurrentVersion\Installer\Components\{11111111-1111-1111-1111-111111111111}",
+            None,
+            crate::platform::registry_store::RegistryValue::Sz("/opt/comp/app.exe".to_string()),
+        );
+        let mut comp_db = LinkedDatabase::new()?;
+        comp_db.add_record(
+            "CompLocator",
+            Record::with_fields(vec![
+                FieldValue::String("CompSig".to_string()),
+                FieldValue::String("{11111111-1111-1111-1111-111111111111}".to_string()),
+                FieldValue::Short(1),
+            ]),
+        );
+        comp_db.add_record(
+            "CompLocator",
+            Record::with_fields(vec![
+                FieldValue::String("MissingCompSig".to_string()),
+                FieldValue::String("{22222222-2222-2222-2222-222222222222}".to_string()),
+                FieldValue::Short(1),
+            ]),
+        );
+        let comp_search = AppSearch::new(&comp_db, def_host.clone());
+        assert_eq!(
+            comp_search.resolve_signature("CompSig"),
+            Some("/opt/comp/app.exe".to_string())
+        );
+        assert_eq!(comp_search.resolve_signature("MissingCompSig"), None);
+
         let tmp_dir = tempfile::tempdir()?;
         let ini_path = tmp_dir.path().join("test.ini");
         std::fs::write(&ini_path, "[Sec]\nKey=a, b, c\n")?;
@@ -1789,9 +1833,23 @@ mod appsearch_tests_extra {
             Some("b".to_string())
         );
         assert_eq!(
+            def_host.get_ini_value(&ini_str, "MissingSec", "Key", None)?,
+            None
+        );
+        assert_eq!(
+            def_host.get_ini_value(&ini_str, "Sec", "MissingKey", None)?,
+            None
+        );
+        assert_eq!(
             def_host.get_ini_value("nonexistent.ini", "Sec", "Key", None)?,
             None
         );
+        let bad_ini_path = tmp_dir.path().join("bad.ini");
+        std::fs::write(&bad_ini_path, "[Sec\nInvalid\n")?;
+        let bad_ini_str = bad_ini_path.to_string_lossy().to_string();
+        assert!(def_host
+            .get_ini_value(&bad_ini_str, "Sec", "Key", None)
+            .is_err());
 
         let dir_str = tmp_dir.path().to_string_lossy().to_string();
         assert!(def_host.find_dir(&dir_str, 0)?.is_some());

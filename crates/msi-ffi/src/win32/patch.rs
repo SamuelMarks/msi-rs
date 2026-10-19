@@ -176,10 +176,8 @@ fn lookup_patch_info(
     user_sid: Option<&str>,
     attribute: &str,
 ) -> Option<String> {
-    let sid = match user_sid {
-        Some(s) if !s.is_empty() => s,
-        _ => "S-1-5-18",
-    };
+    let sid = user_sid.unwrap_or("S-1-5-18");
+    let sid = if sid.is_empty() { "S-1-5-18" } else { sid };
     let patch_id = msi::platform::squid::encode_squid(patch_code)
         .ok()
         .unwrap_or_default();
@@ -601,6 +599,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_get_patch_info_registry() {
         use msi::platform::registry_store::{RegistryRoot, RegistryValue};
         let patch_guid = "{55555555-5555-5555-5555-555555555555}";
@@ -698,5 +697,116 @@ mod tests {
             reg.delete_subtree(RegistryRoot::LocalMachine, &prod_patch_key);
             reg.delete_subtree(RegistryRoot::ClassesRoot, &hkcr_patch_key);
         });
+
+        let invalid_w = [0xD800_u16, 0];
+        let invalid_a = [-1_i8, 0];
+        assert_eq!(
+            MsiGetPatchInfoW(
+                invalid_w.as_ptr(),
+                attr_lp_w.as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetPatchInfoW(
+                patch_w.as_ptr(),
+                invalid_w.as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetPatchInfoA(
+                invalid_a.as_ptr(),
+                attr_dn_a.as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetPatchInfoA(
+                patch_a.as_ptr(),
+                invalid_a.as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetPatchInfoExW(
+                invalid_w.as_ptr(),
+                product_w.as_ptr(),
+                std::ptr::null(),
+                0,
+                attr_st_w.as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetPatchInfoExW(
+                patch_w.as_ptr(),
+                invalid_w.as_ptr(),
+                std::ptr::null(),
+                0,
+                attr_st_w.as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetPatchInfoExW(
+                patch_w.as_ptr(),
+                product_w.as_ptr(),
+                std::ptr::null(),
+                0,
+                invalid_w.as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetPatchInfoExA(
+                invalid_a.as_ptr(),
+                product_a.as_ptr(),
+                std::ptr::null(),
+                0,
+                attr_st_a.as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetPatchInfoExA(
+                patch_a.as_ptr(),
+                invalid_a.as_ptr(),
+                std::ptr::null(),
+                0,
+                attr_st_a.as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            MsiGetPatchInfoExA(
+                patch_a.as_ptr(),
+                product_a.as_ptr(),
+                std::ptr::null(),
+                0,
+                invalid_a.as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            ERROR_INVALID_PARAMETER
+        );
     }
 }

@@ -24,4 +24,7 @@ extension-module = ["pyo3/extension-module"]
 [dependencies]
 derive_more = { workspace = true }
 msi = { workspace = true }
-pyo3 = { version = "0.22", features = ["abi3-py39", "auto-initialize"] }
+pyo3 = { version = "0.22", features = ["abi3-py39"] }
+
+[dev-dependencies]
+pyo3 = { version = "0.22", features = ["auto-initialize"] }

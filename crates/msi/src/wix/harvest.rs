@@ -243,7 +243,7 @@ impl Harvester {
     ///
     /// # Returns
     ///
-    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
+    /// `Ok(())` on success, or an [`crate::error::MsiError`] if the operation fails.
     pub fn set_root_namespace_guid_str(&mut self, guid_str: &str) -> Result<()> {
         let clean = guid_str
             .trim_matches('{')
@@ -335,7 +335,7 @@ impl Harvester {
     ///
     /// # Returns
     ///
-    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
+    /// `Ok(())` on success, or an [`crate::error::MsiError`] if the operation fails.
     pub fn load_gitignore(&mut self, gitignore_path: &Path) -> Result<()> {
         let content = fs::read_to_string(gitignore_path)?;
         for line in content.lines() {
@@ -650,7 +650,7 @@ impl Harvester {
     ///
     /// # Returns
     ///
-    /// `Ok(())` on success, or an [`MsiError`] if the operation fails.
+    /// `Ok(())` on success, or an [`crate::error::MsiError`] if the operation fails.
     fn collect_manifest_recursive(
         &self,
         root_path: &Path,

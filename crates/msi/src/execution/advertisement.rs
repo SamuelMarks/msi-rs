@@ -124,31 +124,24 @@ pub fn advertise_product(
 
     let mut script_bytes = b"AAS\0".to_vec();
     let path = std::path::Path::new(package_path);
-    if path.exists() {
-        if let Ok(pkg) = crate::package::Package::open(path) {
-            let db = pkg.database();
-            for (opcode_byte, table_name) in [(1u8, "Class"), (2u8, "Extension"), (3u8, "Shortcut")]
-            {
-                for rec in db.get_records(table_name) {
-                    if let Some(crate::database::tables::record::FieldValue::String(val)) =
-                        rec.fields().first()
-                    {
-                        let bytes = val.as_bytes();
-                        if let Ok(len) = u8::try_from(bytes.len()) {
-                            script_bytes.push(opcode_byte);
-                            script_bytes.push(len);
-                            script_bytes.extend_from_slice(bytes);
-                        }
-                    }
+    if let Ok(pkg) = crate::package::Package::open(path) {
+        let db = pkg.database();
+        for (opcode_byte, table_name) in [(1u8, "Class"), (2u8, "Extension"), (3u8, "Shortcut")] {
+            for rec in db.get_records(table_name) {
+                if let Some(crate::database::tables::record::FieldValue::String(s)) =
+                    rec.fields().first()
+                {
+                    let len = u8::try_from(s.len()).unwrap_or(u8::MAX);
+                    script_bytes.push(opcode_byte);
+                    script_bytes.push(len);
+                    script_bytes.extend_from_slice(&s.as_bytes()[..usize::from(len)]);
                 }
             }
         }
     }
 
-    if let Some(script_out) = script_info {
-        if !script_out.is_empty() {
-            fs::write(script_out, &script_bytes)?;
-        }
+    if let Some(script_out) = script_info.filter(|s| !s.is_empty()) {
+        fs::write(script_out, &script_bytes)?;
     }
 
     Ok(())
@@ -211,18 +204,16 @@ fn execute_aas_opcode(
                     RegistryValue::Sz(shortcut_name.clone()),
                 );
             }
-            if let Some(folder) = icon_folder {
-                if !folder.is_empty() {
-                    let sc_path = std::path::Path::new(folder).join(format!("{shortcut_name}.lnk"));
-                    if remove_items {
-                        let _ = fs::remove_file(&sc_path);
-                    } else if std::path::Path::new(folder).exists() {
-                        let mut builder = crate::platform::shell::lnk::ShellLinkBuilder::new();
-                        builder
-                            .set_target(shortcut_name)
-                            .set_darwin_descriptor(shortcut_name);
-                        let _ = builder.save(&sc_path);
-                    }
+            if let Some(folder) = icon_folder.filter(|f| !f.is_empty()) {
+                let sc_path = std::path::Path::new(folder).join(format!("{shortcut_name}.lnk"));
+                if remove_items {
+                    let _ = fs::remove_file(&sc_path);
+                } else if std::path::Path::new(folder).exists() {
+                    let mut builder = crate::platform::shell::lnk::ShellLinkBuilder::new();
+                    builder
+                        .set_target(shortcut_name)
+                        .set_darwin_descriptor(shortcut_name);
+                    let _ = builder.save(&sc_path);
                 }
             }
         }

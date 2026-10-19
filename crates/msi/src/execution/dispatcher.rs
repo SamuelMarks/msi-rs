@@ -189,11 +189,10 @@ impl<'a> ActionDispatcher<'a> {
             .database()
             .get_records("CCPSearch")
             .iter()
-            .filter_map(|rec| match rec.get(0) {
-                Some(FieldValue::String(sig)) => Some(sig.as_str()),
-                _ => None,
-            })
-            .any(|sig| {
+            .any(|rec| {
+                let Some(FieldValue::String(sig)) = rec.get(0) else {
+                    return false;
+                };
                 search.resolve_signature(sig).is_some()
                     || self.transaction.context().get_property(sig).is_some()
             });
@@ -224,10 +223,8 @@ impl<'a> ActionDispatcher<'a> {
                 let host = crate::execution::appsearch::DefaultHostSystem::new();
                 let search =
                     crate::execution::appsearch::AppSearch::new(self.transaction.database(), host);
-                if let Ok(found) = search.execute() {
-                    for (prop, val) in found {
-                        self.transaction.context_mut().set_property(prop, val);
-                    }
+                for (prop, val) in search.execute().unwrap_or_default() {
+                    self.transaction.context_mut().set_property(prop, val);
                 }
                 Ok(Some(ActionStatus::Success))
             }
@@ -352,7 +349,8 @@ impl<'a> ActionDispatcher<'a> {
                     return_code: 1603,
                     message: formatted,
                 });
-            } else if base_type == 51 && !source.is_empty() {
+            }
+            if base_type == 51 && !source.is_empty() {
                 let formatted = self.transaction.context().format_string(target)?;
                 let src_prop = source.to_string();
                 self.transaction
@@ -373,7 +371,9 @@ mod tests {
     use crate::execution::properties::EvaluationContext;
     use crate::wix::linker::LinkedDatabase;
 
+    /// Tests handling of non-string action and condition fields in sequence rows.
     #[test]
+    #[allow(clippy::unnecessary_wraps)]
     fn test_dispatcher_bad_records() -> Result<()> {
         let mut db = LinkedDatabase::new()?;
         let rows = vec![
@@ -402,7 +402,9 @@ mod tests {
         Ok(())
     }
 
+    /// Tests standard action and Type 51 custom action dispatch.
     #[test]
+    #[allow(clippy::unnecessary_wraps)]
     fn test_dispatcher_standard_and_type51_actions() -> Result<()> {
         let mut db = LinkedDatabase::default();
         db.add_record(
@@ -475,6 +477,7 @@ mod tests {
         Ok(())
     }
 
+    /// Tests error reporting when querying a missing sequence table.
     #[test]
     fn test_execute_sequence_missing_table() {
         let mut transaction = Transaction::new(
@@ -490,7 +493,9 @@ mod tests {
             .is_some_and(|err| err.to_string().contains("Failed to query sequence table")));
     }
 
+    /// Tests successful execution of `InstallExecuteSequence` with condition filtering.
     #[test]
+    #[allow(clippy::unnecessary_wraps)]
     fn test_execute_sequence_success() -> Result<()> {
         let mut db = LinkedDatabase::default();
 
@@ -548,6 +553,7 @@ mod tests {
         Ok(())
     }
 
+    /// Tests Type 19 error custom action aborting sequence execution.
     #[test]
     fn test_execute_sequence_type19_error_action() {
         let mut db = LinkedDatabase::default();
@@ -584,7 +590,9 @@ mod tests {
             .is_some_and(|err| err.to_string().contains("Prerequisite missing")));
     }
 
+    /// Tests `LaunchConditions` returning `ActionStatus::Failure` when a condition evaluates to false.
     #[test]
+    #[allow(clippy::unnecessary_wraps)]
     fn test_execute_sequence_launch_condition_failure() -> Result<()> {
         let mut db = LinkedDatabase::default();
 
@@ -617,7 +625,9 @@ mod tests {
         Ok(())
     }
 
+    /// Tests top-level sequence actions (`INSTALL`, `ADMIN`, `ADVERTISE`, `ExecuteAction`) and immediate standard actions.
     #[test]
+    #[allow(clippy::unnecessary_wraps, clippy::too_many_lines)]
     fn test_dispatcher_top_level_and_immediate_actions() -> Result<()> {
         let mut db = LinkedDatabase::default();
         db.add_record(
@@ -660,6 +670,27 @@ mod tests {
                 FieldValue::Short(10),
             ]),
         );
+        let ini_tmp = tempfile::NamedTempFile::new()?;
+        std::fs::write(ini_tmp.path(), "[Sec]\nKey=FoundVal\n")?;
+        db.add_record(
+            "AppSearch",
+            Record::with_fields(vec![
+                FieldValue::String("FOUND_PROP".to_string()),
+                FieldValue::String("IniSig".to_string()),
+            ]),
+        );
+        db.add_record(
+            "IniLocator",
+            Record::with_fields(vec![
+                FieldValue::String("IniSig".to_string()),
+                FieldValue::String(ini_tmp.path().to_string_lossy().to_string()),
+                FieldValue::String("Sec".to_string()),
+                FieldValue::String("Key".to_string()),
+                FieldValue::Short(0),
+                FieldValue::Short(2),
+            ]),
+        );
+        db.add_record("CCPSearch", Record::with_fields(vec![FieldValue::Short(1)]));
         db.add_record(
             "CCPSearch",
             Record::with_fields(vec![FieldValue::String("CCP_PROP".to_string())]),
@@ -687,12 +718,21 @@ mod tests {
             ActionStatus::Success
         );
         assert_eq!(
+            dispatcher.dispatch_action("AppSearch")?,
+            ActionStatus::Success
+        );
+        assert_eq!(
             dispatcher.dispatch_action("CCPSearch")?,
             ActionStatus::Success
         );
         assert_eq!(
             dispatcher.dispatch_action("RMCCPSearch")?,
             ActionStatus::Success
+        );
+
+        assert_eq!(
+            transaction.context().get_property("FOUND_PROP"),
+            Some("FoundVal")
         );
 
         assert_eq!(
@@ -709,6 +749,75 @@ mod tests {
             Some("1")
         );
         assert!(transaction.context().get_property("SourceDir").is_some());
+
+        // Test top-level sequences when tables are absent
+        let mut empty_tx = Transaction::new(
+            LinkedDatabase::default(),
+            EvaluationContext::new(),
+            crate::execution::DiskCostEngine::new(),
+        );
+        let mut empty_disp = ActionDispatcher::new(&mut empty_tx);
+        assert_eq!(
+            empty_disp.dispatch_action("INSTALL")?,
+            ActionStatus::Success
+        );
+        assert_eq!(empty_disp.dispatch_action("ADMIN")?, ActionStatus::Success);
+        assert_eq!(
+            empty_disp.dispatch_action("ADVERTISE")?,
+            ActionStatus::Success
+        );
+        assert_eq!(
+            empty_disp.dispatch_action("ExecuteAction")?,
+            ActionStatus::Success
+        );
+        assert_eq!(
+            empty_disp.dispatch_action("ValidateProductID")?,
+            ActionStatus::Success
+        );
+        assert_eq!(
+            empty_disp.dispatch_action("ResolveSource")?,
+            ActionStatus::Success
+        );
+        // Second call when SourceDir is already set
+        assert_eq!(
+            empty_disp.dispatch_action("ResolveSource")?,
+            ActionStatus::Success
+        );
+
+        // Test UI sequence non-success early return in INSTALL and ADMIN
+        let mut fail_db = LinkedDatabase::default();
+        fail_db.add_record(
+            "LaunchCondition",
+            Record::with_fields(vec![
+                FieldValue::String("0".to_string()),
+                FieldValue::String("Fail".to_string()),
+            ]),
+        );
+        fail_db.add_record(
+            "InstallUISequence",
+            Record::with_fields(vec![
+                FieldValue::String("LaunchConditions".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(10),
+            ]),
+        );
+        fail_db.add_record(
+            "AdminUISequence",
+            Record::with_fields(vec![
+                FieldValue::String("LaunchConditions".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(10),
+            ]),
+        );
+        let mut fail_tx = Transaction::new(
+            fail_db,
+            EvaluationContext::new(),
+            crate::execution::DiskCostEngine::new(),
+        );
+        let mut fail_disp = ActionDispatcher::new(&mut fail_tx);
+        assert_eq!(fail_disp.dispatch_action("INSTALL")?, ActionStatus::Failure);
+        assert_eq!(fail_disp.dispatch_action("ADMIN")?, ActionStatus::Failure);
+
         Ok(())
     }
 }

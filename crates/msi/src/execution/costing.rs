@@ -42,7 +42,9 @@ pub fn query_host_volume_metrics(path: &str) -> (u64, u64) {
                     #[allow(clippy::unnecessary_cast)]
                     #[allow(trivial_numeric_casts)]
                     let frsize = stat.f_frsize as u64;
+                    #[allow(clippy::unnecessary_cast)]
                     #[allow(clippy::cast_lossless)]
+                    #[allow(trivial_numeric_casts)]
                     let bavail = stat.f_bavail as u64;
                     let available = bavail.saturating_mul(frsize);
                     return (available, frsize);

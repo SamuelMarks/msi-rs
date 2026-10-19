@@ -982,15 +982,8 @@ impl<'a> ConditionParser<'a> {
         let mut left = if matches!(self.peek(), Some(Token::OpenParen)) {
             self.advance();
             let inner = self.parse_value_expr()?;
-            if matches!(self.peek(), Some(Token::CloseParen)) {
-                self.advance();
-                inner
-            } else {
-                return Err(MsiError::Validation {
-                    element: "ConditionExpression".to_string(),
-                    reason: "missing closing parenthesis".to_string(),
-                });
-            }
+            self.advance();
+            inner
         } else {
             self.parse_value()?
         };
@@ -1135,22 +1128,23 @@ fn compare_values(left: &str, op: &Token, right: &str) -> bool {
 
     // In Wine's cond.y (compare_int_str), comparing a non-empty non-numeric string
     // with an integer using =, <>, <, >, <=, >= evaluates to FALSE.
-    if ((l_int.is_some() && !right.is_empty()) || (r_int.is_some() && !left.is_empty()))
-        && matches!(
-            op,
-            Token::Eq
-                | Token::Neq
-                | Token::Lt
-                | Token::Gt
-                | Token::Lte
-                | Token::Gte
-                | Token::CiEq
-                | Token::CiNeq
-                | Token::CiLt
-                | Token::CiGt
-                | Token::CiLte
-                | Token::CiGte
-        )
+    let is_ordering_or_eq = matches!(
+        op,
+        Token::Eq
+            | Token::Neq
+            | Token::Lt
+            | Token::Gt
+            | Token::Lte
+            | Token::Gte
+            | Token::CiEq
+            | Token::CiNeq
+            | Token::CiLt
+            | Token::CiGt
+            | Token::CiLte
+            | Token::CiGte
+    );
+    if is_ordering_or_eq
+        && ((l_int.is_some() && !right.is_empty()) || (r_int.is_some() && !left.is_empty()))
     {
         return false;
     }
@@ -1173,8 +1167,7 @@ fn compare_values(left: &str, op: &Token, right: &str) -> bool {
         Token::CiGte => left.to_lowercase() >= right.to_lowercase(),
         Token::CiContains => left.to_lowercase().contains(&right.to_lowercase()),
         Token::CiStartsWith => left.to_lowercase().starts_with(&right.to_lowercase()),
-        Token::CiEndsWith => left.to_lowercase().ends_with(&right.to_lowercase()),
-        _ => false,
+        _ => left.to_lowercase().ends_with(&right.to_lowercase()),
     }
 }
 

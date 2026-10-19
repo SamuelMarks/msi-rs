@@ -60,13 +60,10 @@ pub unsafe extern "system" fn MsiProvideComponentW(
         &component,
         msi::execution::locator::InstallMode(i32::from_ne_bytes(dw_install_mode.to_ne_bytes())),
     ) {
-        Ok(path) => {
-            if !lp_path_buf.is_null() || !pcch_path_buf.is_null() {
-                crate::win32::strings::string_to_lpwstr(&path, lp_path_buf, pcch_path_buf)
-            } else {
-                0
-            }
+        Ok(path) if !lp_path_buf.is_null() || !pcch_path_buf.is_null() => {
+            crate::win32::strings::string_to_lpwstr(&path, lp_path_buf, pcch_path_buf)
         }
+        Ok(_) => 0,
         Err(e) => crate::error::map_msi_error_to_lstatus(&e),
     }
 }
@@ -118,13 +115,10 @@ pub unsafe extern "system" fn MsiProvideComponentA(
         &component,
         msi::execution::locator::InstallMode(i32::from_ne_bytes(dw_install_mode.to_ne_bytes())),
     ) {
-        Ok(path) => {
-            if !lp_path_buf.is_null() || !pcch_path_buf.is_null() {
-                crate::win32::strings::string_to_lpstr(&path, lp_path_buf, pcch_path_buf)
-            } else {
-                0
-            }
+        Ok(path) if !lp_path_buf.is_null() || !pcch_path_buf.is_null() => {
+            crate::win32::strings::string_to_lpstr(&path, lp_path_buf, pcch_path_buf)
         }
+        Ok(_) => 0,
         Err(e) => crate::error::map_msi_error_to_lstatus(&e),
     }
 }
@@ -170,13 +164,10 @@ pub unsafe extern "system" fn MsiProvideAssemblyW(
         app_context.as_deref(),
         msi::execution::locator::InstallMode(i32::from_ne_bytes(dw_install_mode.to_ne_bytes())),
     ) {
-        Ok(path) => {
-            if !lp_path_buf.is_null() || !pcch_path_buf.is_null() {
-                crate::win32::strings::string_to_lpwstr(&path, lp_path_buf, pcch_path_buf)
-            } else {
-                0
-            }
+        Ok(path) if !lp_path_buf.is_null() || !pcch_path_buf.is_null() => {
+            crate::win32::strings::string_to_lpwstr(&path, lp_path_buf, pcch_path_buf)
         }
+        Ok(_) => 0,
         Err(e) => crate::error::map_msi_error_to_lstatus(&e),
     }
 }
@@ -222,13 +213,10 @@ pub unsafe extern "system" fn MsiProvideAssemblyA(
         app_context.as_deref(),
         msi::execution::locator::InstallMode(i32::from_ne_bytes(dw_install_mode.to_ne_bytes())),
     ) {
-        Ok(path) => {
-            if !lp_path_buf.is_null() || !pcch_path_buf.is_null() {
-                crate::win32::strings::string_to_lpstr(&path, lp_path_buf, pcch_path_buf)
-            } else {
-                0
-            }
+        Ok(path) if !lp_path_buf.is_null() || !pcch_path_buf.is_null() => {
+            crate::win32::strings::string_to_lpstr(&path, lp_path_buf, pcch_path_buf)
         }
+        Ok(_) => 0,
         Err(e) => crate::error::map_msi_error_to_lstatus(&e),
     }
 }
@@ -245,17 +233,16 @@ fn resolve_located_component_keypath(comp_squid: &str) -> Option<String> {
         ) {
             return None;
         }
-        let path = reg
-            .list_values(
-                msi::platform::registry_store::RegistryRoot::LocalMachine,
-                &key,
-            )
-            .into_iter()
-            .find_map(|(_, val)| match val {
-                msi::platform::registry_store::RegistryValue::Sz(s) => Some(s),
-                _ => None,
-            })
-            .unwrap_or_default();
+        let mut path = String::new();
+        for (_, val) in reg.list_values(
+            msi::platform::registry_store::RegistryRoot::LocalMachine,
+            &key,
+        ) {
+            if let msi::platform::registry_store::RegistryValue::Sz(s) = val {
+                path = s;
+                break;
+            }
+        }
         Some(path)
     })
 }
@@ -374,21 +361,10 @@ pub unsafe extern "system" fn MsiProvideComponentFromDescriptorW(
     };
     let path =
         msi::execution::locator::provide_component_from_descriptor(&desc).unwrap_or_default();
-    if !pcch_args_offset.is_null() {
-        unsafe {
-            *pcch_args_offset = 0;
-        }
+    if let Some(off) = unsafe { pcch_args_offset.as_mut() } {
+        *off = 0;
     }
-    if !lp_path_buf.is_null() {
-        crate::win32::strings::string_to_lpwstr(&path, lp_path_buf, pcch_path_buf)
-    } else if !pcch_path_buf.is_null() {
-        unsafe {
-            *pcch_path_buf = u32::try_from(path.encode_utf16().count()).unwrap_or(0);
-        }
-        0
-    } else {
-        0
-    }
+    crate::win32::strings::string_to_lpwstr(&path, lp_path_buf, pcch_path_buf)
 }
 
 /// Returns the full component path from a descriptor (ANSI).
@@ -409,37 +385,26 @@ pub unsafe extern "system" fn MsiProvideComponentFromDescriptorA(
     };
     let path =
         msi::execution::locator::provide_component_from_descriptor(&desc).unwrap_or_default();
-    if !pcch_args_offset.is_null() {
-        unsafe {
-            *pcch_args_offset = 0;
-        }
+    if let Some(off) = unsafe { pcch_args_offset.as_mut() } {
+        *off = 0;
     }
-    if !lp_path_buf.is_null() {
-        crate::win32::strings::string_to_lpstr(&path, lp_path_buf, pcch_path_buf)
-    } else if !pcch_path_buf.is_null() {
-        unsafe {
-            *pcch_path_buf = u32::try_from(path.len()).unwrap_or(0);
-        }
-        0
-    } else {
-        0
-    }
+    crate::win32::strings::string_to_lpstr(&path, lp_path_buf, pcch_path_buf)
 }
 
 /// Shared helper resolving a qualified component path from `HKCR\Installer\Components\<SQUID>`.
 fn lookup_qualified_component_path(category: &str, qualifier: &str) -> String {
-    let cat_id =
-        msi::platform::squid::encode_squid(category).unwrap_or_else(|_| category.to_string());
+    let enc = msi::platform::squid::encode_squid(category).unwrap_or_default();
+    let cat_id = if enc.is_empty() { category } else { &enc };
     let key = format!(r"Installer\Components\{cat_id}");
     crate::win32::registry_backend::with_registry(|reg| {
-        match reg.get_value(
+        if let Some(msi::platform::registry_store::RegistryValue::Sz(s)) = reg.get_value(
             msi::platform::registry_store::RegistryRoot::ClassesRoot,
             &key,
             Some(qualifier),
         ) {
-            Some(msi::platform::registry_store::RegistryValue::Sz(s)) => s,
-            _ => String::new(),
+            return s;
         }
+        String::new()
     })
 }
 
@@ -457,23 +422,14 @@ pub unsafe extern "system" fn MsiProvideQualifiedComponentW(
     lp_path_buf: *mut u16,
     pcch_path_buf: *mut u32,
 ) -> u32 {
-    let Some(cat) = crate::win32::strings::lpcwstr_to_string(sz_category) else {
-        return 87;
-    };
-    let Some(qual) = crate::win32::strings::lpcwstr_to_string(sz_qualifier) else {
+    let (Some(cat), Some(qual)) = (
+        crate::win32::strings::lpcwstr_to_string(sz_category),
+        crate::win32::strings::lpcwstr_to_string(sz_qualifier),
+    ) else {
         return 87;
     };
     let path = lookup_qualified_component_path(&cat, &qual);
-    if !lp_path_buf.is_null() {
-        crate::win32::strings::string_to_lpwstr(&path, lp_path_buf, pcch_path_buf)
-    } else if !pcch_path_buf.is_null() {
-        unsafe {
-            *pcch_path_buf = u32::try_from(path.encode_utf16().count()).unwrap_or(0);
-        }
-        0
-    } else {
-        0
-    }
+    crate::win32::strings::string_to_lpwstr(&path, lp_path_buf, pcch_path_buf)
 }
 
 /// Returns the full component path for a qualified component (ANSI).
@@ -490,23 +446,14 @@ pub unsafe extern "system" fn MsiProvideQualifiedComponentA(
     lp_path_buf: *mut c_char,
     pcch_path_buf: *mut u32,
 ) -> u32 {
-    let Some(cat) = crate::win32::strings::lpcstr_to_string(sz_category) else {
-        return 87;
-    };
-    let Some(qual) = crate::win32::strings::lpcstr_to_string(sz_qualifier) else {
+    let (Some(cat), Some(qual)) = (
+        crate::win32::strings::lpcstr_to_string(sz_category),
+        crate::win32::strings::lpcstr_to_string(sz_qualifier),
+    ) else {
         return 87;
     };
     let path = lookup_qualified_component_path(&cat, &qual);
-    if !lp_path_buf.is_null() {
-        crate::win32::strings::string_to_lpstr(&path, lp_path_buf, pcch_path_buf)
-    } else if !pcch_path_buf.is_null() {
-        unsafe {
-            *pcch_path_buf = u32::try_from(path.len()).unwrap_or(0);
-        }
-        0
-    } else {
-        0
-    }
+    crate::win32::strings::string_to_lpstr(&path, lp_path_buf, pcch_path_buf)
 }
 
 /// Returns the full component path for a qualified component with advanced options (Unicode).
@@ -572,34 +519,39 @@ fn extract_feature_info_from_handle(h_product: u32, feature: &str) -> (u32, Stri
         return (0, String::new(), String::new());
     }
     crate::handles::with_handle(h_product, |obj| {
-        if let crate::handles::MsiObject::Database(db) = obj {
-            for rec in db.inner.get_records("Feature") {
+        let crate::handles::MsiObject::Database(db) = obj else {
+            return (0, String::new(), String::new());
+        };
+        db.inner
+            .get_records("Feature")
+            .iter()
+            .find_map(|rec| {
                 let fields = rec.fields();
                 let is_match = matches!(
                     fields.first(),
                     Some(msi::database::tables::record::FieldValue::String(id)) if id == feature
                 );
-                if is_match {
-                    let title = match fields.get(2) {
-                        Some(msi::database::tables::record::FieldValue::String(s)) => s.clone(),
-                        _ => String::new(),
-                    };
-                    let desc = match fields.get(3) {
-                        Some(msi::database::tables::record::FieldValue::String(s)) => s.clone(),
-                        _ => String::new(),
-                    };
-                    let attrs = match fields.get(7) {
-                        Some(msi::database::tables::record::FieldValue::Short(n)) => {
-                            i32::from(*n) as u32
-                        }
-                        Some(msi::database::tables::record::FieldValue::Long(n)) => *n as u32,
-                        _ => 0,
-                    };
-                    return (attrs, title, desc);
+                if !is_match {
+                    return None;
                 }
-            }
-        }
-        (0, String::new(), String::new())
+                let title = match fields.get(2) {
+                    Some(msi::database::tables::record::FieldValue::String(s)) => s.clone(),
+                    _ => String::new(),
+                };
+                let desc = match fields.get(3) {
+                    Some(msi::database::tables::record::FieldValue::String(s)) => s.clone(),
+                    _ => String::new(),
+                };
+                let attrs = match fields.get(7) {
+                    Some(msi::database::tables::record::FieldValue::Short(n)) => {
+                        i32::from(*n) as u32
+                    }
+                    Some(msi::database::tables::record::FieldValue::Long(n)) => *n as u32,
+                    _ => 0,
+                };
+                Some((attrs, title, desc))
+            })
+            .unwrap_or_default()
     })
     .unwrap_or_default()
 }
@@ -629,19 +581,11 @@ pub unsafe extern "system" fn MsiGetFeatureInfoW(
             *lp_attributes = attrs;
         }
     }
-    if !lp_title_buf.is_null() {
+    if !lp_title_buf.is_null() || !pcch_title_buf.is_null() {
         let _ = crate::win32::strings::string_to_lpwstr(&title, lp_title_buf, pcch_title_buf);
-    } else if !pcch_title_buf.is_null() {
-        unsafe {
-            *pcch_title_buf = u32::try_from(title.encode_utf16().count()).unwrap_or(0);
-        }
     }
-    if !lp_help_buf.is_null() {
+    if !lp_help_buf.is_null() || !pcch_help_buf.is_null() {
         let _ = crate::win32::strings::string_to_lpwstr(&desc, lp_help_buf, pcch_help_buf);
-    } else if !pcch_help_buf.is_null() {
-        unsafe {
-            *pcch_help_buf = u32::try_from(desc.encode_utf16().count()).unwrap_or(0);
-        }
     }
     0
 }
@@ -671,19 +615,11 @@ pub unsafe extern "system" fn MsiGetFeatureInfoA(
             *lp_attributes = attrs;
         }
     }
-    if !lp_title_buf.is_null() {
+    if !lp_title_buf.is_null() || !pcch_title_buf.is_null() {
         let _ = crate::win32::strings::string_to_lpstr(&title, lp_title_buf, pcch_title_buf);
-    } else if !pcch_title_buf.is_null() {
-        unsafe {
-            *pcch_title_buf = u32::try_from(title.len()).unwrap_or(0);
-        }
     }
-    if !lp_help_buf.is_null() {
+    if !lp_help_buf.is_null() || !pcch_help_buf.is_null() {
         let _ = crate::win32::strings::string_to_lpstr(&desc, lp_help_buf, pcch_help_buf);
-    } else if !pcch_help_buf.is_null() {
-        unsafe {
-            *pcch_help_buf = u32::try_from(desc.len()).unwrap_or(0);
-        }
     }
     0
 }
@@ -750,18 +686,12 @@ pub unsafe extern "system" fn MsiGetShortcutTargetW(
         return 87;
     };
     if let Ok((prod, feat, comp)) = msi::execution::locator::get_shortcut_target(&target) {
-        if !sz_product_code.is_null() {
-            let mut cch = 39;
-            let _ = crate::win32::strings::string_to_lpwstr(&prod, sz_product_code, &raw mut cch);
-        }
-        if !sz_feature_id.is_null() {
-            let mut cch = 39;
-            let _ = crate::win32::strings::string_to_lpwstr(&feat, sz_feature_id, &raw mut cch);
-        }
-        if !sz_component_code.is_null() {
-            let mut cch = 39;
-            let _ = crate::win32::strings::string_to_lpwstr(&comp, sz_component_code, &raw mut cch);
-        }
+        let mut cch = 39;
+        let _ = crate::win32::strings::string_to_lpwstr(&prod, sz_product_code, &raw mut cch);
+        cch = 39;
+        let _ = crate::win32::strings::string_to_lpwstr(&feat, sz_feature_id, &raw mut cch);
+        cch = 39;
+        let _ = crate::win32::strings::string_to_lpwstr(&comp, sz_component_code, &raw mut cch);
     }
     0
 }
@@ -798,18 +728,12 @@ pub unsafe extern "system" fn MsiGetShortcutTargetA(
         return 87;
     };
     if let Ok((prod, feat, comp)) = msi::execution::locator::get_shortcut_target(&target) {
-        if !sz_product_code.is_null() {
-            let mut cch = 39;
-            let _ = crate::win32::strings::string_to_lpstr(&prod, sz_product_code, &raw mut cch);
-        }
-        if !sz_feature_id.is_null() {
-            let mut cch = 39;
-            let _ = crate::win32::strings::string_to_lpstr(&feat, sz_feature_id, &raw mut cch);
-        }
-        if !sz_component_code.is_null() {
-            let mut cch = 39;
-            let _ = crate::win32::strings::string_to_lpstr(&comp, sz_component_code, &raw mut cch);
-        }
+        let mut cch = 39;
+        let _ = crate::win32::strings::string_to_lpstr(&prod, sz_product_code, &raw mut cch);
+        cch = 39;
+        let _ = crate::win32::strings::string_to_lpstr(&feat, sz_feature_id, &raw mut cch);
+        cch = 39;
+        let _ = crate::win32::strings::string_to_lpstr(&comp, sz_component_code, &raw mut cch);
     }
     0
 }
@@ -1828,8 +1752,21 @@ mod tests {
         };
         assert_eq!(res_a, -2); // INSTALLSTATE_INVALIDARG
 
-        // Test MsiGetFeatureInfoA/W with a live database containing a Feature row
+        // Test MsiGetFeatureInfoA/W with a live database containing Feature rows
         let mut feat_db = msi::wix::linker::LinkedDatabase::default();
+        feat_db.add_record(
+            "Feature",
+            msi::database::tables::record::Record::with_fields(vec![
+                msi::database::tables::record::FieldValue::String("other".to_string()),
+                msi::database::tables::record::FieldValue::Null,
+                msi::database::tables::record::FieldValue::Null,
+                msi::database::tables::record::FieldValue::Null,
+                msi::database::tables::record::FieldValue::Short(1),
+                msi::database::tables::record::FieldValue::Short(1),
+                msi::database::tables::record::FieldValue::Null,
+                msi::database::tables::record::FieldValue::Long(32),
+            ]),
+        );
         feat_db.add_record(
             "Feature",
             msi::database::tables::record::Record::with_fields(vec![
@@ -1841,6 +1778,19 @@ mod tests {
                 msi::database::tables::record::FieldValue::Short(1),
                 msi::database::tables::record::FieldValue::Null,
                 msi::database::tables::record::FieldValue::Short(16),
+            ]),
+        );
+        feat_db.add_record(
+            "Feature",
+            msi::database::tables::record::Record::with_fields(vec![
+                msi::database::tables::record::FieldValue::String("null_attr".to_string()),
+                msi::database::tables::record::FieldValue::Null,
+                msi::database::tables::record::FieldValue::Null,
+                msi::database::tables::record::FieldValue::Null,
+                msi::database::tables::record::FieldValue::Short(1),
+                msi::database::tables::record::FieldValue::Short(1),
+                msi::database::tables::record::FieldValue::Null,
+                msi::database::tables::record::FieldValue::Null,
             ]),
         );
         let h_feat_db = crate::handles::alloc_handle(crate::handles::MsiObject::Database(
@@ -1872,6 +1822,144 @@ mod tests {
         assert_eq!(tcch_w, 12);
         assert_eq!(hcch_w, 11);
 
+        let other_w: Vec<u16> = "other".encode_utf16().chain(std::iter::once(0)).collect();
+        let null_attr_w: Vec<u16> = "null_attr"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        let missing_w: Vec<u16> = "missing".encode_utf16().chain(std::iter::once(0)).collect();
+        assert_eq!(
+            unsafe {
+                MsiGetFeatureInfoW(
+                    h_feat_db,
+                    other_w.as_ptr(),
+                    &raw mut attrs,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                )
+            },
+            0
+        );
+        assert_eq!(attrs, 32);
+        assert_eq!(
+            unsafe {
+                MsiGetFeatureInfoW(
+                    h_feat_db,
+                    null_attr_w.as_ptr(),
+                    &raw mut attrs,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                )
+            },
+            0
+        );
+        assert_eq!(attrs, 0);
+        assert_eq!(
+            unsafe {
+                MsiGetFeatureInfoW(
+                    h_feat_db,
+                    missing_w.as_ptr(),
+                    &raw mut attrs,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                )
+            },
+            0
+        );
+
+        let h_rec_f = crate::handles::alloc_handle(crate::handles::MsiObject::Record(
+            crate::types::MsiRecordHandle {
+                inner: msi::database::tables::record::Record::new(),
+            },
+        ));
+        assert_eq!(
+            unsafe {
+                MsiGetFeatureInfoW(
+                    h_rec_f,
+                    dummy_w.as_ptr(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                )
+            },
+            0
+        );
+        let _ = crate::handles::close_handle(h_rec_f);
+
+        // Test lookup_qualified_component_path and resolve_located_component_keypath with registry entries
+        crate::win32::registry_backend::with_registry(|reg| {
+            reg.set_value(
+                msi::platform::registry_store::RegistryRoot::ClassesRoot,
+                r"Installer\Components\dummy",
+                Some("dummy"),
+                msi::platform::registry_store::RegistryValue::Sz(r"C:\App\qual.dll".to_string()),
+            );
+            reg.set_value(
+                msi::platform::registry_store::RegistryRoot::LocalMachine,
+                r"Software\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Components\11111111111111111111111111111111",
+                Some("0000"),
+                msi::platform::registry_store::RegistryValue::Dword(1),
+            );
+        });
+        assert_eq!(
+            resolve_located_component_keypath("11111111111111111111111111111111"),
+            Some(String::new())
+        );
+        let mut q_cch: u32 = 64;
+        assert_eq!(
+            unsafe {
+                MsiProvideQualifiedComponentW(
+                    dummy_w.as_ptr(),
+                    dummy_w.as_ptr(),
+                    0,
+                    title_w.as_mut_ptr(),
+                    &raw mut q_cch,
+                )
+            },
+            0
+        );
+        let mut d_off: u32 = 0;
+        assert_eq!(
+            unsafe {
+                MsiProvideComponentFromDescriptorW(
+                    dummy_w.as_ptr(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    &raw mut d_off,
+                )
+            },
+            0
+        );
+        assert_eq!(
+            unsafe {
+                MsiProvideComponentFromDescriptorA(
+                    dummy_a.as_ptr(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    &raw mut d_off,
+                )
+            },
+            0
+        );
+        crate::win32::registry_backend::with_registry(|reg| {
+            reg.delete_subtree(
+                msi::platform::registry_store::RegistryRoot::ClassesRoot,
+                r"Installer\Components\dummy",
+            );
+            reg.delete_subtree(
+                msi::platform::registry_store::RegistryRoot::LocalMachine,
+                r"Software\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Components\11111111111111111111111111111111",
+            );
+        });
+
         let mut title_a = [0i8; 64];
         let mut tcch_a: u32 = 64;
         let mut help_a = [0i8; 64];
@@ -1893,5 +1981,91 @@ mod tests {
         assert_eq!(tcch_a, 12);
         assert_eq!(hcch_a, 11);
         let _ = crate::handles::close_handle(h_feat_db);
+
+        // Test MsiProvideComponentW/A and MsiProvideAssemblyW/A with both buffers null
+        unsafe {
+            assert_eq!(
+                MsiProvideComponentW(
+                    p_w,
+                    dummy_w.as_ptr(),
+                    dummy_w.as_ptr(),
+                    0,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                ),
+                0
+            );
+            assert_eq!(
+                MsiProvideComponentA(
+                    p_a,
+                    dummy_a.as_ptr(),
+                    dummy_a.as_ptr(),
+                    0,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                ),
+                0
+            );
+            assert_eq!(
+                MsiProvideAssemblyW(
+                    dummy_w.as_ptr(),
+                    dummy_w.as_ptr(),
+                    0,
+                    0,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                ),
+                0
+            );
+            assert_eq!(
+                MsiProvideAssemblyA(
+                    dummy_a.as_ptr(),
+                    dummy_a.as_ptr(),
+                    0,
+                    0,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                ),
+                0
+            );
+        }
+
+        // Test MsiGetShortcutTargetW/A with a valid .lnk shortcut containing Darwin descriptor
+        let tmp_dir = tempfile::tempdir().unwrap_or_else(|_| std::process::abort());
+        let lnk_path = tmp_dir.path().join("app.lnk");
+        let mut lnk_builder = msi::platform::shell::lnk::ShellLinkBuilder::new();
+        lnk_builder
+            .set_target(r"C:\App\app.exe")
+            .set_darwin_descriptor("{11111111-1111-1111-1111-111111111111}[MainFeat]>{22222222-2222-2222-2222-222222222222}");
+        let _ = lnk_builder.save(&lnk_path);
+        let lnk_str = lnk_path.to_string_lossy().to_string();
+        let lnk_w: Vec<u16> = lnk_str.encode_utf16().chain(std::iter::once(0)).collect();
+        let lnk_a = std::ffi::CString::new(lnk_str).unwrap_or_default();
+        let mut sc_prod_w = [0u16; 39];
+        let mut sc_feat_w = [0u16; 39];
+        let mut sc_comp_w = [0u16; 39];
+        let mut sc_prod_a = [0i8; 39];
+        let mut sc_feat_a = [0i8; 39];
+        let mut sc_comp_a = [0i8; 39];
+        unsafe {
+            assert_eq!(
+                MsiGetShortcutTargetW(
+                    lnk_w.as_ptr(),
+                    sc_prod_w.as_mut_ptr(),
+                    sc_feat_w.as_mut_ptr(),
+                    sc_comp_w.as_mut_ptr(),
+                ),
+                0
+            );
+            assert_eq!(
+                MsiGetShortcutTargetA(
+                    lnk_a.as_ptr(),
+                    sc_prod_a.as_mut_ptr(),
+                    sc_feat_a.as_mut_ptr(),
+                    sc_comp_a.as_mut_ptr(),
+                ),
+                0
+            );
+        }
     }
 }

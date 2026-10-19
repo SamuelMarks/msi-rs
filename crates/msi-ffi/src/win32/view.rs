@@ -169,11 +169,7 @@ pub extern "system" fn MsiViewExecute(
             let r_res = crate::handles::with_handle(hRecord, |obj| {
                 if let crate::handles::MsiObject::Record(r) = obj {
                     let slice = r.inner.fields();
-                    params = if slice.len() > 1 {
-                        slice[1..].to_vec()
-                    } else {
-                        slice.to_vec()
-                    };
+                    params = slice.get(1..).unwrap_or(slice).to_vec();
                     ERROR_SUCCESS
                 } else {
                     ERROR_INVALID_HANDLE
@@ -188,40 +184,34 @@ pub extern "system" fn MsiViewExecute(
         let mut exec_status = ERROR_SUCCESS;
 
         let db_res = crate::handles::with_handle_mut(db_handle, |obj| {
-            if let crate::handles::MsiObject::Database(db) = obj {
-                match msi::database::sql::executor::execute_sql(&mut db.inner, &query_copy, &params)
-                {
-                    Ok(msi::database::sql::executor::QueryResult::Select { rows, .. }) => {
-                        for row in rows {
-                            let mut fields = vec![msi::database::FieldValue::Null];
-                            fields.extend(row.fields().iter().cloned());
-                            fetched.push_back(msi::database::tables::record::Record::with_fields(
-                                fields,
-                            ));
-                        }
-                    }
-                    Ok(_) => {}
-                    Err(_) => {
-                        exec_status = 1627; // ERROR_FUNCTION_FAILED
-                    }
+            let crate::handles::MsiObject::Database(db) = obj else {
+                return ERROR_INVALID_HANDLE;
+            };
+            let Ok(q_res) =
+                msi::database::sql::executor::execute_sql(&mut db.inner, &query_copy, &params)
+            else {
+                exec_status = 1627; // ERROR_FUNCTION_FAILED
+                return ERROR_SUCCESS;
+            };
+            if let msi::database::sql::executor::QueryResult::Select { rows, .. } = q_res {
+                for row in rows {
+                    let mut fields = vec![msi::database::FieldValue::Null];
+                    fields.extend(row.fields().iter().cloned());
+                    fetched.push_back(msi::database::tables::record::Record::with_fields(fields));
                 }
-                ERROR_SUCCESS
-            } else {
-                ERROR_INVALID_HANDLE
             }
+            ERROR_SUCCESS
         });
 
         if db_res.unwrap_or(ERROR_INVALID_HANDLE) != ERROR_SUCCESS {
             return ERROR_INVALID_HANDLE;
         }
 
-        if exec_status == ERROR_SUCCESS {
-            crate::handles::with_handle_mut(hView, |obj| {
-                if let crate::handles::MsiObject::View(v) = obj {
-                    v.fetched_records = fetched;
-                }
-            });
-        }
+        crate::handles::with_handle_mut(hView, |obj| {
+            if let crate::handles::MsiObject::View(v) = obj {
+                v.fetched_records = fetched;
+            }
+        });
 
         exec_status
     });
@@ -405,15 +395,16 @@ pub extern "system" fn MsiViewModify(
         });
 
         if res_status == ERROR_SUCCESS {
+            let mut fields = if was_one_based {
+                vec![msi::database::FieldValue::Null]
+            } else {
+                Vec::new()
+            };
+            fields.extend(mutated_record.fields().iter().cloned());
+            let updated_rec = msi::database::tables::record::Record::with_fields(fields);
             crate::handles::with_handle_mut(hRecord, |obj| {
                 if let crate::handles::MsiObject::Record(r) = obj {
-                    if was_one_based {
-                        let mut fields = vec![msi::database::FieldValue::Null];
-                        fields.extend(mutated_record.fields().iter().cloned());
-                        r.inner = msi::database::tables::record::Record::with_fields(fields);
-                    } else {
-                        r.inner = mutated_record;
-                    }
+                    r.inner = updated_rec;
                 }
             });
         }
@@ -498,62 +489,55 @@ pub extern "system" fn MsiViewGetColumnInfo(
             return ERROR_INVALID_HANDLE;
         }
 
-        let table_name = {
-            use msi::database::sql::ast::Statement;
-            use msi::database::sql::lexer::Lexer;
-            use msi::database::sql::parser::Parser;
-
-            let mut lexer = Lexer::new(&query_copy);
-            let Ok(tokens) = lexer.tokenize() else {
-                return ERROR_INVALID_HANDLE;
-            };
-            let mut parser = Parser::new(tokens);
-            match parser.parse() {
-                Ok(Statement::Select { table, .. }) => table.0,
-                _ => return ERROR_INVALID_HANDLE,
-            }
+        let Some(table_name) = extract_select_table_name(&query_copy) else {
+            return ERROR_INVALID_HANDLE;
         };
 
-        let mut fields = vec![msi::database::FieldValue::Null];
+        let mut cols = Vec::new();
         let db_res = crate::handles::with_handle(db_handle, |obj| {
             if let crate::handles::MsiObject::Database(db) = obj {
-                if let Some(schema) = db.inner.catalog.get_table(&table_name) {
-                    for col in &schema.columns {
-                        if eColumnInfo == 0 {
-                            fields.push(msi::database::FieldValue::String(col.name.clone()));
-                        } else {
-                            let spec = match col.data_type {
-                                msi::database::column::DataType::Short => {
-                                    if col.nullable { "I2" } else { "i2" }.to_string()
-                                }
-                                msi::database::column::DataType::Long => {
-                                    if col.nullable { "I4" } else { "i4" }.to_string()
-                                }
-                                msi::database::column::DataType::Stream => {
-                                    if col.nullable { "V0" } else { "v0" }.to_string()
-                                }
-                                msi::database::column::DataType::String { max_len } => {
-                                    let ch = match (col.localizable, col.nullable) {
-                                        (true, true) => 'L',
-                                        (true, false) => 'l',
-                                        (false, true) => 'S',
-                                        (false, false) => 's',
-                                    };
-                                    format!("{ch}{max_len}")
-                                }
-                            };
-                            fields.push(msi::database::FieldValue::String(spec));
-                        }
-                    }
-                }
+                cols = db
+                    .inner
+                    .catalog
+                    .get_table(&table_name)
+                    .map(|s| s.columns.clone())
+                    .unwrap_or_default();
                 ERROR_SUCCESS
             } else {
                 ERROR_INVALID_HANDLE
             }
         });
-
         if db_res.unwrap_or(ERROR_INVALID_HANDLE) != ERROR_SUCCESS {
             return ERROR_INVALID_HANDLE;
+        }
+
+        let mut fields = vec![msi::database::FieldValue::Null];
+        for col in &cols {
+            if eColumnInfo == 0 {
+                fields.push(msi::database::FieldValue::String(col.name.clone()));
+            } else {
+                let spec = match col.data_type {
+                    msi::database::column::DataType::Short => {
+                        if col.nullable { "I2" } else { "i2" }.to_string()
+                    }
+                    msi::database::column::DataType::Long => {
+                        if col.nullable { "I4" } else { "i4" }.to_string()
+                    }
+                    msi::database::column::DataType::Stream => {
+                        if col.nullable { "V0" } else { "v0" }.to_string()
+                    }
+                    msi::database::column::DataType::String { max_len } => {
+                        let ch = match (col.localizable, col.nullable) {
+                            (true, true) => 'L',
+                            (true, false) => 'l',
+                            (false, true) => 'S',
+                            (false, false) => 's',
+                        };
+                        format!("{ch}{max_len}")
+                    }
+                };
+                fields.push(msi::database::FieldValue::String(spec));
+            }
         }
 
         let rec = msi::database::tables::record::Record::with_fields(fields);
@@ -787,9 +771,6 @@ mod tests {
             1627
         );
 
-        let _ = crate::handles::close_handle(zero_db_view_handle);
-        let _ = crate::handles::close_handle(rec_db_view_handle);
-
         let bad_lex_view = crate::types::MsiViewHandle {
             database_handle: db_handle,
             query: "SELECT `Unclosed".to_string(),
@@ -870,6 +851,59 @@ mod tests {
             ERROR_SUCCESS
         );
         let _ = crate::handles::close_handle(col_rec_h);
+
+        // Test column info on a table with Short, Long, Stream, and localizable/nullable Strings
+        crate::handles::with_handle_mut(db_handle, |obj| {
+            if let crate::handles::MsiObject::Database(db_obj) = obj {
+                use msi::database::catalogs::TableSchema;
+                use msi::database::column::{ColumnDef, DataType};
+                let _ = db_obj.inner.catalog.add_table(
+                    TableSchema::new("AllColTypes")
+                        .with_column(ColumnDef::new("C1", DataType::Short).primary_key())
+                        .with_column(ColumnDef::new("C2", DataType::Short).nullable())
+                        .with_column(ColumnDef::new("C3", DataType::Long))
+                        .with_column(ColumnDef::new("C4", DataType::Long).nullable())
+                        .with_column(ColumnDef::new("C5", DataType::Stream))
+                        .with_column(ColumnDef::new("C6", DataType::Stream).nullable())
+                        .with_column(
+                            ColumnDef::new("C7", DataType::String { max_len: 32 }).localizable(),
+                        )
+                        .with_column(
+                            ColumnDef::new("C8", DataType::String { max_len: 32 }).nullable(),
+                        )
+                        .with_column(
+                            ColumnDef::new("C9", DataType::String { max_len: 32 })
+                                .localizable()
+                                .nullable(),
+                        ),
+                );
+            }
+        });
+        let all_cols_view = crate::handles::alloc_handle(crate::handles::MsiObject::View(
+            crate::types::MsiViewHandle {
+                query: "SELECT * FROM AllColTypes".to_string(),
+                database_handle: db_handle,
+                fetched_records: std::collections::VecDeque::new(),
+                last_error_column: None,
+            },
+        ));
+        assert_eq!(
+            MsiViewGetColumnInfo(all_cols_view, 1, &raw mut col_rec_h),
+            ERROR_SUCCESS
+        );
+        let _ = crate::handles::close_handle(col_rec_h);
+        let _ = crate::handles::close_handle(all_cols_view);
+
+        let ins_view = crate::handles::alloc_handle(crate::handles::MsiObject::View(
+            crate::types::MsiViewHandle {
+                query: "INSERT INTO Property (Property, Value) VALUES ('VKey', 'VVal')".to_string(),
+                database_handle: db_handle,
+                fetched_records: std::collections::VecDeque::new(),
+                last_error_column: None,
+            },
+        ));
+        assert_eq!(MsiViewExecute(ins_view, 0), ERROR_SUCCESS);
+        let _ = crate::handles::close_handle(ins_view);
         assert_eq!(
             MsiViewGetColumnInfo(view_handle, 99, &raw mut col_rec_h),
             ERROR_INVALID_PARAMETER
@@ -891,6 +925,8 @@ mod tests {
         assert_eq!(MsiViewClose(view_handle), ERROR_SUCCESS);
         assert_eq!(MsiViewClose(rec_handle), ERROR_INVALID_HANDLE);
 
+        let _ = crate::handles::close_handle(zero_db_view_handle);
+        let _ = crate::handles::close_handle(rec_db_view_handle);
         let _ = crate::handles::close_handle(h_rec_1based);
         let _ = crate::handles::close_handle(rec_handle);
         let _ = crate::handles::close_handle(view_handle);

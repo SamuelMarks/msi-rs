@@ -285,27 +285,21 @@ fn prepare_search_or_upgrade_action(
         "AppSearch" => {
             let host = crate::execution::appsearch::DefaultHostSystem::new();
             let search = crate::execution::appsearch::AppSearch::new(database, host);
-            if let Ok(found) = search.execute() {
-                for (prop, val) in found {
-                    context.set_property(prop, val);
-                }
+            for (prop, val) in search.execute().unwrap_or_default() {
+                context.set_property(prop, val);
             }
             Ok(true)
         }
         "CCPSearch" | "RMCCPSearch" => {
             let host = crate::execution::appsearch::DefaultHostSystem::new();
             let search = crate::execution::appsearch::AppSearch::new(database, host);
-            let mut matched = false;
-            for rec in database.get_records("CCPSearch") {
-                if let Some(FieldValue::String(sig)) = rec.get(0) {
-                    if search.resolve_signature(sig).is_some()
-                        || context.get_property(sig).is_some()
-                    {
-                        matched = true;
-                        break;
-                    }
-                }
-            }
+            let matched = database.get_records("CCPSearch").iter().any(|rec| {
+                let sig = match rec.get(0) {
+                    Some(FieldValue::String(s)) => s.as_str(),
+                    _ => return false,
+                };
+                search.resolve_signature(sig).is_some() || context.get_property(sig).is_some()
+            });
             if matched {
                 context.set_property("CCP_SUCCESS", "1");
             }
@@ -317,26 +311,29 @@ fn prepare_search_or_upgrade_action(
         }
         "LaunchConditions" => {
             for rec in database.get_records("LaunchCondition") {
-                if let Some(FieldValue::String(lc_expr)) = rec.get(0) {
-                    let desc = match rec.get(1) {
-                        Some(FieldValue::String(d)) => d.clone(),
-                        _ => lc_expr.clone(),
-                    };
-                    if !context.evaluate_condition(lc_expr)? {
-                        return Err(MsiError::LaunchConditionFailed {
-                            condition: lc_expr.clone(),
-                            description: desc,
-                        });
-                    }
+                let Some(FieldValue::String(lc_expr)) = rec.get(0) else {
+                    continue;
+                };
+                let desc = match rec.get(1) {
+                    Some(FieldValue::String(d)) => d.as_str(),
+                    _ => lc_expr.as_str(),
+                };
+                if !context.evaluate_condition(lc_expr)? {
+                    return Err(MsiError::LaunchConditionFailed {
+                        condition: lc_expr.clone(),
+                        description: desc.to_string(),
+                    });
                 }
             }
             Ok(true)
         }
         "ValidateProductID" => {
-            if let Some(pid) = context.get_property("PIDKEY").map(ToString::to_string) {
-                if !pid.is_empty() {
-                    context.set_property("ProductID", pid);
-                }
+            if let Some(pid) = context
+                .get_property("PIDKEY")
+                .filter(|s| !s.is_empty())
+                .map(ToString::to_string)
+            {
+                context.set_property("ProductID", pid);
             }
             Ok(true)
         }
@@ -386,17 +383,22 @@ fn prepare_upgrade_action(
                     Some(&FieldValue::Short(a)) => i32::from(a),
                     _ => 0,
                 };
-                if (attrs & 2) == 0 {
-                    if let Some(FieldValue::String(prop)) = rec.get(6) {
-                        if let Some(prod) = context.get_property(prop).map(ToString::to_string) {
-                            install_script.push(ScriptOp::CustomAction {
-                                action: "@@RemoveExistingProduct".to_string(),
-                                action_type: 0,
-                                source: prop.clone(),
-                                target: prod,
-                            });
-                        }
-                    }
+                if let Some((prop, prod)) =
+                    rec.get(6)
+                        .filter(|_| (attrs & 2) == 0)
+                        .and_then(|f| match f {
+                            FieldValue::String(p) => context
+                                .get_property(p)
+                                .map(|prod| (p.clone(), prod.to_string())),
+                            _ => None,
+                        })
+                {
+                    install_script.push(ScriptOp::CustomAction {
+                        action: "@@RemoveExistingProduct".to_string(),
+                        action_type: 0,
+                        source: prop,
+                        target: prod,
+                    });
                 }
             }
         }
@@ -478,10 +480,8 @@ fn prepare_system_registration_or_control_action(
                         .get_property(file_id)
                         .unwrap_or(file_id.as_str())
                         .to_string();
-                    let p = Path::new(&path_str);
-                    if p.exists() {
-                        let _ = crate::execution::bind_image::BindImageEngine.bind_image(p, None);
-                    }
+                    let _ = crate::execution::bind_image::BindImageEngine
+                        .bind_image(Path::new(&path_str), None);
                     install_script.push(ScriptOp::CustomAction {
                         action: "@@BindImage".to_string(),
                         action_type: 0,

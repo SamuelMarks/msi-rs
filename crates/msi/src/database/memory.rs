@@ -466,16 +466,14 @@ impl LinkedDatabase {
     /// Optional property value string.
     #[must_use]
     pub fn get_property_value(&self, name: &str) -> Option<&str> {
-        for rec in self.get_records("Property") {
-            if let (Some(FieldValue::String(k)), Some(FieldValue::String(v))) =
-                (rec.get(0), rec.get(1))
-            {
-                if k == name {
-                    return Some(v.as_str());
+        self.get_records("Property")
+            .iter()
+            .find_map(|rec| match (rec.get(0), rec.get(1)) {
+                (Some(FieldValue::String(k)), Some(FieldValue::String(v))) if k == name => {
+                    Some(v.as_str())
                 }
-            }
-        }
-        None
+                _ => None,
+            })
     }
 
     /// Sets or removes a property value in the `Property` table.
