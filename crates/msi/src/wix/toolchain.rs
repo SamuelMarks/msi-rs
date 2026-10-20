@@ -27,9 +27,8 @@ fn set_or_insert_product_platform(
     arch_str: &str,
 ) -> Result<()> {
     let canonical = Architecture::parse(arch_str)?.as_wix_str().to_string();
-    if let Some(props) = db.tables.get_mut("Property") {
-        props.retain(|r| r.get(0) != Some(&FieldValue::String("ProductPlatform".to_string())));
-    }
+    let props = db.tables.entry("Property".to_string()).or_default();
+    props.retain(|r| r.get(0) != Some(&FieldValue::String("ProductPlatform".to_string())));
     let row = PropertyRow {
         property: PropertyName::from_static("ProductPlatform"),
         value: canonical,
@@ -3435,6 +3434,8 @@ mod extra_toolchain_tests {
             "app.wxs".to_string()
         ])
         .is_err());
+        let mut dummy_db = crate::wix::linker::LinkedDatabase::default();
+        assert!(set_or_insert_product_platform(&mut dummy_db, "sparc64").is_err());
 
         // Test .wixobj architecture persistence from Candle (-arch arm64) to Light (without -arch)
         let arm64_wxs = temp_dir.join("arm64_persist.wxs");

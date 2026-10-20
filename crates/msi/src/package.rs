@@ -3113,10 +3113,10 @@ mod tests {
     }
 
     #[test]
-    fn test_package_builder_cross_architecture_and_bitness() -> Result<()> {
+    fn test_package_builder_cross_architecture_and_bitness() {
         let v = ProductVersion::new(2, 0, 0);
 
-        let pkg_arm64 = Package::builder()
+        let b0 = Package::builder()
             .product_name("Arm64 Product")
             .manufacturer("Acme")
             .version(v)
@@ -3126,13 +3126,14 @@ mod tests {
             .languages(vec![1033])
             .add_language(1036)
             .add_component(ComponentRow {
-                component: ComponentName::new("AutoComp64")?,
+                component: ComponentName::from_static("AutoComp64"),
                 component_id: None,
-                directory: DirectoryId::new("TARGETDIR")?,
+                directory: DirectoryId::from_static("TARGETDIR"),
                 attributes: 0,
                 condition: None,
                 key_path: None,
-            })
+            });
+        let b1 = b0
             .add_component_with_bitness(
                 "CompDefault",
                 "*",
@@ -3141,7 +3142,9 @@ mod tests {
                 0,
                 Some("VersionNT64"),
                 Some("file1"),
-            )?
+            )
+            .unwrap_or_default();
+        let b2 = b1
             .add_component_with_bitness(
                 "CompAlways32",
                 "*",
@@ -3150,7 +3153,9 @@ mod tests {
                 0x0100,
                 None,
                 None,
-            )?
+            )
+            .unwrap_or_default();
+        let b3 = b2
             .add_component_with_bitness(
                 "CompAlways64",
                 "",
@@ -3159,7 +3164,9 @@ mod tests {
                 0,
                 None,
                 None,
-            )?
+            )
+            .unwrap_or_default();
+        let b4 = b3
             .add_component_with_bitness(
                 "CompExplicitGuid",
                 "{22222222-2222-2222-2222-222222222222}",
@@ -3168,8 +3175,9 @@ mod tests {
                 0,
                 None,
                 None,
-            )?
-            .build()?;
+            )
+            .unwrap_or_default();
+        let pkg_arm64 = b4.build().unwrap_or_default();
 
         assert_eq!(
             pkg_arm64.summary_info().template.as_deref(),
@@ -3184,14 +3192,50 @@ mod tests {
         assert_eq!(comps[1].get(3), Some(&FieldValue::Short(0x0100)));
         assert_eq!(comps[2].get(3), Some(&FieldValue::Short(0)));
         assert_eq!(comps[3].get(3), Some(&FieldValue::Short(0x0100)));
-        Ok(())
     }
 
     #[test]
-    fn test_package_from_database_cross_architecture_properties() -> Result<()> {
+    fn test_package_builder_add_component_with_bitness_errors() {
+        assert!(Package::builder()
+            .add_component_with_bitness(
+                "",
+                "*",
+                "TARGETDIR",
+                ComponentBitnessRule::Default,
+                0,
+                None,
+                None
+            )
+            .is_err());
+        assert!(Package::builder()
+            .add_component_with_bitness(
+                "ValidComp",
+                "*",
+                "",
+                ComponentBitnessRule::Default,
+                0,
+                None,
+                None
+            )
+            .is_err());
+        assert!(Package::builder()
+            .add_component_with_bitness(
+                "ValidComp",
+                "bad-guid",
+                "TARGETDIR",
+                ComponentBitnessRule::Default,
+                0,
+                None,
+                None
+            )
+            .is_err());
+    }
+
+    #[test]
+    fn test_package_from_database_cross_architecture_properties() {
         let v = ProductVersion::new(2, 0, 0);
         // Test 32-bit default component bitness and explicit InstallerVersion = 200
-        let pkg_x86 = Package::builder()
+        let b_x86 = Package::builder()
             .product_name("X86 Product")
             .manufacturer("Acme")
             .version(v)
@@ -3207,8 +3251,9 @@ mod tests {
                 0,
                 None,
                 None,
-            )?
-            .build()?;
+            )
+            .unwrap_or_default();
+        let pkg_x86 = b_x86.build().unwrap_or_default();
         assert_eq!(
             pkg_x86.summary_info().template.as_deref(),
             Some("Intel;1033")
@@ -3249,7 +3294,5 @@ mod tests {
             Some("Arm64;1033")
         );
         assert_eq!(pkg_mod.summary_info().page_count, Some(500));
-
-        Ok(())
     }
 }

@@ -5230,15 +5230,51 @@ mod tests {
             r.get(0) == Some(&FieldValue::String("ModulePlatform".to_string()))
                 && r.get(1) == Some(&FieldValue::String("arm64".to_string()))
         }));
+    }
 
-        // Error branch: StandardDirectory missing Id
+    #[test]
+    fn test_compiler_cross_architecture_error_branches() {
+        let parser = XmlParser::new();
+        let compiler_x86 = Compiler::new().with_architecture(Architecture::X86);
+
+        // Error branch: StandardDirectory missing Id, invalid Id, and child element error
         let bad_sd_xml = r#"<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"><Package Name="A" Version="1.0.0" Manufacturer="M"><StandardDirectory /></Package></Wix>"#;
         let root_bad_sd = parser.parse(bad_sd_xml).unwrap_or_default();
         assert!(compiler_x86.compile(&root_bad_sd).is_err());
 
-        // Error branch: Invalid platform on Package
+        let bad_sd_id_xml = r#"<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"><Package Name="A" Version="1.0.0" Manufacturer="M"><StandardDirectory Id="" /></Package></Wix>"#;
+        let root_bad_sd_id = parser.parse(bad_sd_id_xml).unwrap_or_default();
+        assert!(compiler_x86.compile(&root_bad_sd_id).is_err());
+
+        let bad_sd_child_xml = r#"<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"><Package Name="A" Version="1.0.0" Manufacturer="M"><StandardDirectory Id="ProgramFiles6432Folder"><Directory /></StandardDirectory></Package></Wix>"#;
+        let root_bad_sd_child = parser.parse(bad_sd_child_xml).unwrap_or_default();
+        assert!(compiler_x86.compile(&root_bad_sd_child).is_err());
+
+        // File with Assembly="no" (non-assembly branch)
+        let file_no_asm_xml = r#"<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"><Package Name="A" Version="1.0.0" Manufacturer="M"><Component Id="CNoAsm" Guid="*"><File Id="FNoAsm" Name="plain.dll" Assembly="no" /></Component></Package></Wix>"#;
+        let root_no_asm = parser.parse(file_no_asm_xml).unwrap_or_default();
+        assert!(compiler_x86.compile(&root_no_asm).is_ok());
+
+        // Error branches: Invalid Bitness on Component, RegistrySearch, and CustomAction
+        let bad_comp_bitness_xml = r#"<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"><Package Name="A" Version="1.0.0" Manufacturer="M"><Component Id="CBad" Bitness="invalid" /></Package></Wix>"#;
+        let root_bad_comp = parser.parse(bad_comp_bitness_xml).unwrap_or_default();
+        assert!(compiler_x86.compile(&root_bad_comp).is_err());
+
+        let bad_reg_bitness_xml = r#"<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"><Package Name="A" Version="1.0.0" Manufacturer="M"><RegistrySearch Id="RBad" Root="HKLM" Key="Software\Acme" Bitness="invalid" /></Package></Wix>"#;
+        let root_bad_reg = parser.parse(bad_reg_bitness_xml).unwrap_or_default();
+        assert!(compiler_x86.compile(&root_bad_reg).is_err());
+
+        let bad_ca_bitness_xml = r#"<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"><Package Name="A" Version="1.0.0" Manufacturer="M"><CustomAction Id="CABad" Script="vbscript" Bitness="invalid" /></Package></Wix>"#;
+        let root_bad_ca = parser.parse(bad_ca_bitness_xml).unwrap_or_default();
+        assert!(compiler_x86.compile(&root_bad_ca).is_err());
+
+        // Error branch: Invalid platform on v4 Package and v3 Product/Package
         let bad_plt_xml = r#"<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"><Package Name="A" Version="1.0.0" Manufacturer="M" InstallerPlatform="invalid_arch" /></Wix>"#;
         let root_bad_plt = parser.parse(bad_plt_xml).unwrap_or_default();
         assert!(compiler_x86.compile(&root_bad_plt).is_err());
+
+        let bad_v3_pkg_plt_xml = r#"<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"><Product Id="*" Name="A" Language="1033" Version="1.0.0" Manufacturer="M"><Package Platform="invalid_arch" /></Product></Wix>"#;
+        let root_bad_v3_plt = parser.parse(bad_v3_pkg_plt_xml).unwrap_or_default();
+        assert!(compiler_x86.compile(&root_bad_v3_plt).is_err());
     }
 }

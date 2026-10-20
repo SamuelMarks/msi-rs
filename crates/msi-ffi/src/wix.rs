@@ -91,11 +91,10 @@ pub unsafe extern "C" fn msi_compile_wix_source_with_arch(
 
             if let Some(target_arch) = parsed_arch {
                 let canonical = target_arch.as_wix_str().to_string();
-                if let Some(props) = db.tables.get_mut("Property") {
-                    props.retain(|r| {
-                        r.get(0) != Some(&FieldValue::String("ProductPlatform".to_string()))
-                    });
-                }
+                let props = db.tables.entry("Property".to_string()).or_default();
+                props.retain(|r| {
+                    r.get(0) != Some(&FieldValue::String("ProductPlatform".to_string()))
+                });
                 let row = PropertyRow {
                     property: PropertyName::from_static("ProductPlatform"),
                     value: canonical,
@@ -225,6 +224,14 @@ mod tests {
             assert_eq!(
                 msi_compile_wix_file(temp_wxs_c.as_ptr(), ptr::null()),
                 MSI_ERROR_NULL_POINTER
+            );
+            assert_eq!(
+                msi_compile_wix_source_with_arch(
+                    valid_wxs.as_ptr(),
+                    temp_wxs_c.as_ptr(),
+                    c"\xFF".as_ptr(),
+                ),
+                MSI_ERROR_INVALID_ARGUMENT
             );
         }
 

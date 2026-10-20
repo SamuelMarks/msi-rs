@@ -1231,5 +1231,8 @@ mod tests {
 
         let bad_arch_xml = r#"<Wix><Bundle Name="B" Version="1.0" Manufacturer="M"><Chain><MsiPackage Id="P" Architecture="bad_arch"/></Chain></Bundle></Wix>"#;
         assert!(compiler.compile_xml(bad_arch_xml).is_err());
+
+        let bad_bitness_xml = r#"<Wix><Bundle Name="B" Version="1.0" Manufacturer="M"><Chain><MsiPackage Id="P" Bitness="bad_bitness"/></Chain></Bundle></Wix>"#;
+        assert!(compiler.compile_xml(bad_bitness_xml).is_err());
     }
 }

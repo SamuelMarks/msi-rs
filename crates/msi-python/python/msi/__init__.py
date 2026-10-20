@@ -17,12 +17,21 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypedDict, Union
 
 # Attempt importing native extension module _msi. If running from repository
-# before installation, attempt loading from target/debug or target/release.
+# before installation, attempt loading from target/debug, target/release, or site-packages.
 try:
     from . import _msi
 except ImportError:  # pragma: no cover
     try:
-        import _msi
+        import _msi as _candidate_msi
+
+        if not (
+            hasattr(_candidate_msi, "ProductVersion")
+            and hasattr(getattr(_candidate_msi, "PackageBuilder", None), "set_architecture")
+        ):
+            raise ImportError(
+                "Top-level _msi module is CPython's legacy Windows msilib extension, not msi._msi"
+            )
+        _msi = _candidate_msi
     except ImportError:
         pkg_dir = Path(__file__).resolve().parent
         repo_root = pkg_dir.parent.parent.parent.parent
@@ -30,38 +39,57 @@ except ImportError:  # pragma: no cover
             pkg_dir,
             repo_root / "target" / "debug",
             repo_root / "target" / "release",
+            repo_root / "target" / "llvm-cov-target" / "debug",
             repo_root / "crates" / "target" / "debug",
             repo_root / "crates" / "target" / "release",
         ]
+        for sp in sys.path:
+            if sp:
+                sp_msi = Path(sp) / "msi"
+                if sp_msi != pkg_dir and sp_msi.is_dir():
+                    candidates.append(sp_msi)
         loaded = False
         for c in candidates:
+            if not c.is_dir():
+                continue
+            candidate_files: List[Path] = []
             for ext in (".so", ".dylib", ".pyd", ".dll"):
-                candidate_path = c / f"lib_msi{ext}"
-                alt_path = c / f"_msi{ext}"
-                for p in (candidate_path, alt_path):
-                    if p.exists():
-                        import importlib.util
-                        from importlib.machinery import ExtensionFileLoader
+                candidate_files.append(c / f"lib_msi{ext}")
+                candidate_files.append(c / f"_msi{ext}")
+            for glob_match in sorted(c.glob("_msi*")):
+                if (
+                    glob_match.suffix in (".so", ".dylib", ".pyd", ".dll")
+                    and glob_match not in candidate_files
+                ):
+                    candidate_files.append(glob_match)
+            for p in candidate_files:
+                if p.exists():
+                    import importlib.util
+                    from importlib.machinery import ExtensionFileLoader
 
-                        try:
-                            loader = ExtensionFileLoader("_msi", str(p))
-                            spec = importlib.util.spec_from_loader("_msi", loader)
-                            if spec:
-                                _msi = importlib.util.module_from_spec(spec)
-                                sys.modules["_msi"] = _msi
-                                loader.exec_module(_msi)
+                    try:
+                        loader = ExtensionFileLoader("_msi", str(p))
+                        spec = importlib.util.spec_from_loader("_msi", loader)
+                        if spec:
+                            _msi = importlib.util.module_from_spec(spec)
+                            sys.modules["_msi"] = _msi
+                            loader.exec_module(_msi)
+                            if hasattr(_msi, "ProductVersion") and hasattr(
+                                getattr(_msi, "PackageBuilder", None), "set_architecture"
+                            ):
                                 loaded = True
                                 break
-                        except Exception:
-                            spec = importlib.util.spec_from_file_location("_msi", p)
-                            if spec and spec.loader:
-                                _msi = importlib.util.module_from_spec(spec)
-                                sys.modules["_msi"] = _msi
-                                spec.loader.exec_module(_msi)
+                    except Exception:
+                        spec = importlib.util.spec_from_file_location("_msi", p)
+                        if spec and spec.loader:
+                            _msi = importlib.util.module_from_spec(spec)
+                            sys.modules["_msi"] = _msi
+                            spec.loader.exec_module(_msi)
+                            if hasattr(_msi, "ProductVersion") and hasattr(
+                                getattr(_msi, "PackageBuilder", None), "set_architecture"
+                            ):
                                 loaded = True
                                 break
-                if loaded:
-                    break
             if loaded:
                 break
         if not loaded:

@@ -299,3 +299,21 @@ def test_error_handling() -> None:
             version="1.0",
             manufacturer="Bad",
         )
+
+
+def test_windows_stdlib_msilib_collision_resilience() -> None:
+    """Verifies that `msi` rejects CPython's legacy Windows `_msi` (msilib) module lacking `ProductVersion`."""
+    import importlib
+    import types
+
+    real_ext = sys.modules["_msi"]
+    fake_stdlib_msi = types.ModuleType("_msi")
+    try:
+        sys.modules["_msi"] = fake_stdlib_msi
+        reloaded = importlib.reload(msi)
+        assert hasattr(reloaded, "ProductVersion")
+        assert reloaded.ProductVersion(1, 2, 3).major == 1
+    finally:
+        sys.modules["_msi"] = real_ext
+        importlib.reload(msi)
+
