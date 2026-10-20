@@ -985,7 +985,7 @@ mod tests {
             let expected_des = if field_val == FieldValue::Short(i16::MIN) {
                 FieldValue::Null
             } else {
-                field_val.clone()
+                field_val
             };
             assert_eq!(des_field, &expected_des);
         }
@@ -1023,7 +1023,7 @@ mod tests {
             let expected_des = if field_val == FieldValue::Long(i32::MIN) {
                 FieldValue::Null
             } else {
-                field_val.clone()
+                field_val
             };
             assert_eq!(des_field, &expected_des);
         }

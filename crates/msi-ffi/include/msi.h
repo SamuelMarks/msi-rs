@@ -223,11 +223,29 @@ int32_t msi_package_builder_set_version(MsiPackageBuilderHandle* builder, uint8_
  * @brief Sets the ProductCode GUID on the builder.
  */
 int32_t msi_package_builder_set_product_code(MsiPackageBuilderHandle* builder, const char* product_code);
+/**
+ * @brief Sets the upgrade code GUID on the builder.
+ */
+int32_t msi_package_builder_set_upgrade_code(
+    MsiPackageBuilderHandle* builder,
+    const char* upgrade_code
+);
 
 /**
- * @brief Sets the UpgradeCode GUID on the builder.
+ * @brief Sets the target processor architecture on the builder (e.g., "x86", "x64", "arm", "arm64", "ia64", "neutral").
  */
-int32_t msi_package_builder_set_upgrade_code(MsiPackageBuilderHandle* builder, const char* upgrade_code);
+int32_t msi_builder_set_architecture(
+    MsiPackageBuilderHandle* builder,
+    const char* arch
+);
+
+/**
+ * @brief Sets the minimum Windows Installer schema version (PID_PAGECOUNT) on the builder.
+ */
+int32_t msi_builder_set_installer_version(
+    MsiPackageBuilderHandle* builder,
+    int32_t installer_version
+);
 
 /**
  * @brief Adds a property to the package's Property table.
@@ -395,9 +413,27 @@ int32_t msi_package_extract_cabinet(
 int32_t msi_compile_wix_source(const char* wxs_content, const char* output_msi_path);
 
 /**
+ * @brief Compiles a WiX XML source string directly to an .msi file targeting an optional processor architecture.
+ */
+int32_t msi_compile_wix_source_with_arch(
+    const char* wxs_content,
+    const char* output_msi_path,
+    const char* arch
+);
+
+/**
  * @brief Compiles a WiX XML source file directly to an .msi file.
  */
 int32_t msi_compile_wix_file(const char* wxs_path, const char* output_msi_path);
+
+/**
+ * @brief Compiles a WiX XML source file directly to an .msi file targeting an optional processor architecture.
+ */
+int32_t msi_compile_wix_file_with_arch(
+    const char* wxs_path,
+    const char* output_msi_path,
+    const char* arch
+);
 
 /* ========================================================================= */
 /* Multi-Package Transaction & Chaining API                                  */

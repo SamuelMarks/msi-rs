@@ -767,6 +767,46 @@ pub enum MsiError {
         name: String,
     },
 
+    /// The specified target architecture is unsupported.
+    #[display("Unsupported target architecture '{raw}'")]
+    UnsupportedArchitecture {
+        /// Raw architecture identifier string.
+        raw: String,
+    },
+
+    /// An architecture mismatch occurred between package, component, module, or binary payload.
+    #[display("Architecture mismatch in {context}: expected '{expected}', found '{actual}'")]
+    ArchitectureMismatch {
+        /// Expected architecture or bitness description.
+        expected: String,
+        /// Actual architecture or bitness found.
+        actual: String,
+        /// Context where the mismatch was detected.
+        context: String,
+    },
+
+    /// A component or locator bitness attribute has an invalid value.
+    #[display("Invalid bitness value '{value}' on element '{element}'")]
+    InvalidBitness {
+        /// XML element or API context where bitness was specified.
+        element: String,
+        /// Invalid bitness attribute value.
+        value: String,
+    },
+
+    /// The `SummaryInformation` `PID_PAGECOUNT` installer version is below the minimum required for the target architecture.
+    #[display(
+        "Invalid installer version {version} for architecture '{architecture}' (minimum required: {minimum_required})"
+    )]
+    InvalidInstallerVersion {
+        /// Specified installer version (`PID_PAGECOUNT`).
+        version: i32,
+        /// Target package architecture.
+        architecture: String,
+        /// Minimum installer version required by the architecture.
+        minimum_required: i32,
+    },
+
     /// The `SummaryInformation` template string is invalid.
     #[display("Invalid SummaryInformation template string '{template}': {reason}")]
     InvalidSummaryTemplate {
@@ -1823,6 +1863,76 @@ mod tests {
             err_clsid,
             MsiError::InvalidStorageClsid {
                 clsid: "bad-guid".to_string()
+            }
+        );
+    }
+
+    /// Tests formatting and equality of cross-architecture and bitness error variants.
+    #[test]
+    fn test_error_display_cross_architecture_variants() {
+        let err_unsup_arch = MsiError::UnsupportedArchitecture {
+            raw: "sparc64".to_string(),
+        };
+        assert_eq!(
+            format!("{err_unsup_arch}"),
+            "Unsupported target architecture 'sparc64'"
+        );
+        assert_eq!(
+            err_unsup_arch,
+            MsiError::UnsupportedArchitecture {
+                raw: "sparc64".to_string()
+            }
+        );
+
+        let err_arch_mismatch = MsiError::ArchitectureMismatch {
+            expected: "x86".to_string(),
+            actual: "x64".to_string(),
+            context: "Component 'Comp1'".to_string(),
+        };
+        assert_eq!(
+            format!("{err_arch_mismatch}"),
+            "Architecture mismatch in Component 'Comp1': expected 'x86', found 'x64'"
+        );
+        assert_eq!(
+            err_arch_mismatch,
+            MsiError::ArchitectureMismatch {
+                expected: "x86".to_string(),
+                actual: "x64".to_string(),
+                context: "Component 'Comp1'".to_string(),
+            }
+        );
+
+        let err_bitness = MsiError::InvalidBitness {
+            element: "Component".to_string(),
+            value: "invalid_bitness".to_string(),
+        };
+        assert_eq!(
+            format!("{err_bitness}"),
+            "Invalid bitness value 'invalid_bitness' on element 'Component'"
+        );
+        assert_eq!(
+            err_bitness,
+            MsiError::InvalidBitness {
+                element: "Component".to_string(),
+                value: "invalid_bitness".to_string(),
+            }
+        );
+
+        let err_inst_ver = MsiError::InvalidInstallerVersion {
+            version: 100,
+            architecture: "x64".to_string(),
+            minimum_required: 200,
+        };
+        assert_eq!(
+            format!("{err_inst_ver}"),
+            "Invalid installer version 100 for architecture 'x64' (minimum required: 200)"
+        );
+        assert_eq!(
+            err_inst_ver,
+            MsiError::InvalidInstallerVersion {
+                version: 100,
+                architecture: "x64".to_string(),
+                minimum_required: 200,
             }
         );
     }

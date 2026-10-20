@@ -7,7 +7,12 @@ import tempfile
 from pathlib import Path
 
 import pytest
-import msi
+
+repo_root = Path(__file__).resolve().parent.parent.parent
+python_pkg_dir = repo_root / "crates" / "msi-python" / "python"
+sys.path.insert(0, str(python_pkg_dir))
+
+import msi  # noqa: E402
 
 
 def test_product_version_parsing_and_comparisons() -> None:
@@ -251,11 +256,32 @@ def test_compile_wix() -> None:
         var_wxs_file.write_text(wxs_content, encoding="utf-8")
         out_file_var_msi = tmp_path / "wix_file_var_output.msi"
         msi.compile_wix(
-            var_wxs_file, out_file_var_msi, variables={"AppName": "FileVarApp"}
+            var_wxs_file,
+            out_file_var_msi,
+            variables={"AppName": "FileVarApp"},
+            arch="arm64",
         )
         assert out_file_var_msi.exists()
         pkg_file_var = msi.Package.open(str(out_file_var_msi))
         assert pkg_file_var.get_property("ProductName") == "FileVarApp"
+        assert pkg_file_var.architecture == "arm64"
+        assert pkg_file_var.template == "Arm64;1033"
+
+        src_dir_64 = tmp_path / "src64"
+        src_dir_64.mkdir()
+        (src_dir_64 / "readme.txt").write_text("hello", encoding="utf-8")
+        out_dir_64_msi = tmp_path / "dir64.msi"
+        msi.build_msi(
+            source_dir=src_dir_64,
+            output_path=out_dir_64_msi,
+            product_name="Dir64App",
+            version="1.0.0",
+            manufacturer="Acme",
+            arch="x64",
+        )
+        pkg_dir_64 = msi.Package.open(str(out_dir_64_msi))
+        assert pkg_dir_64.architecture == "x64"
+        assert pkg_dir_64.template == "x64;1033"
 
 
 def test_error_handling() -> None:

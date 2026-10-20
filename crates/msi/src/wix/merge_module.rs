@@ -1,6 +1,7 @@
 //! Merge Module (`.msm`) ingestion, symbol modularization, and database merging.
 
 use crate::database::memory::LinkedDatabase;
+use crate::database::summary_info::Architecture;
 use crate::database::tables::record::FieldValue;
 use crate::error::Result;
 use crate::package::Package;
@@ -150,6 +151,34 @@ impl MergeModule {
         } else {
             &self.id
         }
+    }
+
+    /// Determines the target processor [`Architecture`] declared by this [`MergeModule`], if any.
+    ///
+    /// Inspects `ModulePlatform` / `Platform` in the `Property` table, or falls back to
+    /// checking whether any component in the `Component` table has `msidbComponentAttributes64bit` (`0x0100`) set.
+    ///
+    /// # Returns
+    ///
+    /// `Some(Architecture)` if an architecture or 64-bit component bitness is detected; `None` otherwise.
+    #[must_use]
+    pub fn architecture(&self) -> Option<Architecture> {
+        let prop_arch = self.database.get_records("Property").iter().find_map(|r| {
+            let k = r.get(0).map_or_else(String::new, ToString::to_string);
+            let v = r.get(1).map_or_else(String::new, ToString::to_string);
+            (k == "ModulePlatform" || k == "Platform" || k == "ProductPlatform")
+                .then(|| Architecture::parse(&v).ok())
+                .flatten()
+        });
+        if prop_arch.is_some() {
+            return prop_arch;
+        }
+        let has_64bit_comp = self
+            .database
+            .get_records("Component")
+            .iter()
+            .any(|r| matches!(r.get(3), Some(FieldValue::Short(a)) if (a & 0x0100) != 0));
+        has_64bit_comp.then_some(Architecture::X64)
     }
 }
 
@@ -670,6 +699,100 @@ mod tests {
         let msm_opened_from_file = MergeModule::open(&temp_open_msm)?;
         assert_eq!(msm_opened_from_file.guid(), "Module");
         let _ = std::fs::remove_file(&temp_open_msm);
+        Ok(())
+    }
+
+    #[test]
+    fn test_merge_module_cross_architecture() -> Result<()> {
+        let def_mod = MergeModule::default();
+        // Test MergeModule::architecture() and cross-architecture merge compatibility
+        assert_eq!(def_mod.architecture(), None);
+
+        let mut mod64_db = LinkedDatabase::default();
+        mod64_db.add_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("ModuleVersion".to_string()),
+                FieldValue::String("1.0.0".to_string()),
+            ]),
+        );
+        mod64_db.add_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("ModulePlatform".to_string()),
+                FieldValue::String("x64".to_string()),
+            ]),
+        );
+        mod64_db.add_record(
+            "Component",
+            Record::with_fields(vec![
+                FieldValue::String("ModComp64".to_string()),
+                FieldValue::Null,
+                FieldValue::String("TARGETDIR".to_string()),
+                FieldValue::Short(0),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        let mod64 = MergeModule::from_database(mod64_db);
+        assert_eq!(mod64.architecture(), Some(Architecture::X64));
+
+        // Fallback detection via 64-bit Component attribute when ModulePlatform is absent
+        let mut mod_comp64_db = LinkedDatabase::default();
+        mod_comp64_db.add_record(
+            "Component",
+            Record::with_fields(vec![
+                FieldValue::String("ModCompAttr64".to_string()),
+                FieldValue::Null,
+                FieldValue::String("TARGETDIR".to_string()),
+                FieldValue::Short(0x0100),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        let mod_comp64 = MergeModule::from_database(mod_comp64_db);
+        assert_eq!(mod_comp64.architecture(), Some(Architecture::X64));
+
+        // Merging a 64-bit module into a 32-bit target database fails with ArchitectureMismatch
+        let mut target_32_db = LinkedDatabase::default();
+        target_32_db.add_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("ProductPlatform".to_string()),
+                FieldValue::String("x86".to_string()),
+            ]),
+        );
+        assert!(target_32_db
+            .merge_module(&mod64, "MainFeature", "INSTALLFOLDER", &HashMap::new())
+            .is_err());
+
+        // Merging an x64 module into an arm64 target database fails with ArchitectureMismatch
+        let mut target_arm64_db = LinkedDatabase::default();
+        target_arm64_db.add_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("ProductPlatform".to_string()),
+                FieldValue::String("arm64".to_string()),
+            ]),
+        );
+        assert!(target_arm64_db
+            .merge_module(&mod64, "MainFeature", "INSTALLFOLDER", &HashMap::new())
+            .is_err());
+
+        // Merging an x64 module into an x64 target database succeeds and sets 0x0100 on Component
+        let mut target_x64_db = LinkedDatabase::default();
+        target_x64_db.add_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("ProductPlatform".to_string()),
+                FieldValue::String("x64".to_string()),
+            ]),
+        );
+        target_x64_db.merge_module(&mod64, "MainFeature", "INSTALLFOLDER", &HashMap::new())?;
+        let merged_comps = target_x64_db.get_records("Component");
+        assert_eq!(merged_comps.len(), 1);
+        assert_eq!(merged_comps[0].get(3), Some(&FieldValue::Short(0x0100)));
+
         Ok(())
     }
 }

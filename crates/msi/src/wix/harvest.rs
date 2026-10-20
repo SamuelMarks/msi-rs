@@ -6,6 +6,7 @@
 //! - COM class, `ProgID`, and `TypeLib` metadata into `<Class>`, `<ProgId>`, and `<TypeLib>` elements.
 //! - Build output artifacts from build systems.
 
+use crate::database::summary_info::Architecture;
 use crate::database::tables::types::ComponentGuid;
 use crate::error::Result;
 use std::collections::HashMap;
@@ -165,6 +166,10 @@ pub struct Harvester {
     include_msi: bool,
     /// Root namespace GUID for deterministic RFC 4122 v5 component GUIDs.
     root_namespace_guid: [u8; 16],
+    /// Optional target processor [`Architecture`] for harvested components.
+    architecture: Option<Architecture>,
+    /// Optional explicit `Win64="yes|no"` override for harvested components.
+    win64: Option<bool>,
 }
 
 impl Default for Harvester {
@@ -210,7 +215,50 @@ impl Harvester {
             secondary_exclusive: true,
             include_msi: false,
             root_namespace_guid: crate::database::tables::types::LIBSCRIPT_ROOT_NAMESPACE_GUID,
+            architecture: None,
+            win64: None,
         }
+    }
+
+    /// Sets the target processor [`Architecture`] for harvested components.
+    ///
+    /// When a 64-bit [`Architecture`] (`X64`, `Arm64`, `Ia64`) is configured and `win64` is not
+    /// explicitly overridden to `Some(false)`, harvested `<Component>` elements emit `Win64="yes"`.
+    ///
+    /// # Arguments
+    ///
+    /// * `arch` - Optional target [`Architecture`].
+    pub const fn set_architecture(&mut self, arch: Option<Architecture>) {
+        self.architecture = arch;
+    }
+
+    /// Returns the configured target processor [`Architecture`], if any.
+    ///
+    /// # Returns
+    ///
+    /// Optional target [`Architecture`].
+    #[must_use]
+    pub const fn architecture(&self) -> Option<Architecture> {
+        self.architecture
+    }
+
+    /// Sets an explicit `Win64` override for harvested `<Component>` elements.
+    ///
+    /// # Arguments
+    ///
+    /// * `win64` - `Some(true)` to emit `Win64="yes"`, `Some(false)` to omit it, or `None` to inherit from `architecture`.
+    pub const fn set_win64(&mut self, win64: Option<bool>) {
+        self.win64 = win64;
+    }
+
+    /// Returns the explicit `Win64` override for harvested `<Component>` elements, if any.
+    ///
+    /// # Returns
+    ///
+    /// Optional `bool` override.
+    #[must_use]
+    pub const fn win64(&self) -> Option<bool> {
+        self.win64
     }
 
     /// Sets whether `.msi` files are included during harvesting (default: false).
@@ -568,8 +616,17 @@ impl Harvester {
                 }
             }
 
+            let emit_win64 = self
+                .win64
+                .unwrap_or_else(|| self.architecture.is_some_and(Architecture::is_64bit));
+            let win64_attr = if emit_win64 {
+                format!(" Win64={QUOTE}yes{QUOTE}")
+            } else {
+                String::new()
+            };
+
             xml.push_str(&format!(
-                "      <Component Id={QUOTE}{comp_id}{QUOTE} Guid={QUOTE}{guid}{QUOTE}>\n"
+                "      <Component Id={QUOTE}{comp_id}{QUOTE} Guid={QUOTE}{guid}{QUOTE}{win64_attr}>\n"
             ));
             xml.push_str(&format!(
                 "        <File Id={QUOTE}{file_id}{QUOTE} Name={QUOTE}{file_name}{QUOTE} ShortName={QUOTE}{short_name}{QUOTE} Source={QUOTE}{}{QUOTE}{disk_attr} KeyPath={QUOTE}yes{QUOTE} />\n",
@@ -2002,13 +2059,24 @@ LineWithoutEquals
             }
         }
 
-        // 4. Test include_msi toggle
+        // 4. Test include_msi toggle and cross-architecture Win64 component harvesting
         let mut harvester_msi = harvester.clone();
         harvester_msi.set_include_msi(true);
+        harvester_msi.set_architecture(Some(Architecture::Arm64));
+        assert_eq!(harvester_msi.architecture(), Some(Architecture::Arm64));
+        assert_eq!(harvester_msi.win64(), None);
         let xml_with_msi = harvester_msi
             .harvest_directory(&temp_dir, "MsiComponents", "INSTALLFOLDER")
             .unwrap_or_default();
         assert!(xml_with_msi.contains("payload.msi"));
+        assert!(xml_with_msi.contains("Win64=\"yes\""));
+
+        harvester_msi.set_win64(Some(false));
+        assert_eq!(harvester_msi.win64(), Some(false));
+        let xml_win32 = harvester_msi
+            .harvest_directory(&temp_dir, "MsiComponents", "INSTALLFOLDER")
+            .unwrap_or_default();
+        assert!(!xml_win32.contains("Win64=\"yes\""));
 
         let _ = fs::remove_dir_all(&temp_dir);
     }

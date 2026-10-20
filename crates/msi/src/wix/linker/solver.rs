@@ -514,7 +514,7 @@ pub(super) fn resolve_standard_directories(db: &mut LinkedDatabase) {
         db.add_record("Directory", target_dir_rec);
     }
 
-    let needed_dirs: HashSet<String> = db
+    let mut needed_dirs: HashSet<String> = db
         .get_records("Component")
         .iter()
         .filter_map(|r| match r.get(2) {
@@ -522,6 +522,13 @@ pub(super) fn resolve_standard_directories(db: &mut LinkedDatabase) {
             _ => None,
         })
         .collect();
+    for r in db.get_records("Directory") {
+        if let Some(FieldValue::String(parent_d)) = r.get(1) {
+            if !parent_d.is_empty() {
+                needed_dirs.insert(parent_d.clone());
+            }
+        }
+    }
 
     for needed in needed_dirs {
         if !existing_dirs.contains(&needed) {

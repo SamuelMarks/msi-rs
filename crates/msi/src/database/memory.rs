@@ -1,6 +1,7 @@
 //! In-memory relational database representation (`LinkedDatabase`) and view mutation modes.
 
-use crate::database::catalogs::DatabaseCatalog;
+use crate::database::catalogs::{DatabaseCatalog, TableSchema};
+use crate::database::column::{ColumnDef, DataType};
 use crate::database::tables::record::{FieldValue, Record};
 use crate::error::{MsiError, Result};
 use crate::execution::script_engine::ScriptDatabase;
@@ -89,6 +90,30 @@ impl Default for LinkedDatabase {
     fn default() -> Self {
         let mut catalog = DatabaseCatalog::new();
         let _ = crate::database::tables::populate_standard_tables(&mut catalog);
+        let _ = catalog.add_table(
+            TableSchema::new("MsiAssembly")
+                .with_column(
+                    ColumnDef::new("Component_", DataType::String { max_len: 72 }).primary_key(),
+                )
+                .with_column(ColumnDef::new("Feature_", DataType::String { max_len: 38 }))
+                .with_column(
+                    ColumnDef::new("File_Manifest", DataType::String { max_len: 72 }).nullable(),
+                )
+                .with_column(
+                    ColumnDef::new("File_Application", DataType::String { max_len: 72 }).nullable(),
+                )
+                .with_column(ColumnDef::new("Attributes", DataType::Short).nullable()),
+        );
+        let _ = catalog.add_table(
+            TableSchema::new("MsiAssemblyName")
+                .with_column(
+                    ColumnDef::new("Component_", DataType::String { max_len: 72 }).primary_key(),
+                )
+                .with_column(
+                    ColumnDef::new("Name", DataType::String { max_len: 255 }).primary_key(),
+                )
+                .with_column(ColumnDef::new("Value", DataType::String { max_len: 255 })),
+        );
         Self {
             tables: HashMap::new(),
             catalog,
@@ -604,6 +629,34 @@ impl LinkedDatabase {
         target_directory: &str,
         substitutions: &HashMap<String, String>,
     ) -> Result<()> {
+        use crate::database::summary_info::Architecture;
+
+        let target_arch: Option<Architecture> =
+            self.get_records("Property")
+                .iter()
+                .find_map(|r| match (r.get(0), r.get(1)) {
+                    (Some(FieldValue::String(k)), Some(FieldValue::String(v)))
+                        if k == "ProductPlatform" || k == "Platform" =>
+                    {
+                        Architecture::parse(v).ok()
+                    }
+                    _ => None,
+                });
+        let module_arch = module.architecture();
+
+        if let (Some(t_arch), Some(m_arch)) = (target_arch, module_arch) {
+            let incompatible = (t_arch.is_32bit() && m_arch.is_64bit())
+                || (t_arch == Architecture::X64 && m_arch == Architecture::Arm64)
+                || (t_arch == Architecture::Arm64 && m_arch == Architecture::X64);
+            if incompatible {
+                return Err(MsiError::ArchitectureMismatch {
+                    expected: t_arch.as_wix_str().to_string(),
+                    actual: m_arch.as_wix_str().to_string(),
+                    context: format!("MergeModule '{}'", module.id),
+                });
+            }
+        }
+
         let mut mod_db = module.database.clone();
         let module_guid = module.guid();
 
@@ -778,6 +831,13 @@ impl LinkedDatabase {
                         if let Some(FieldValue::String(ref s)) = record.get(2) {
                             let m = modularize_identifier(s, module_guid, &ignore_set);
                             record.set(2, FieldValue::String(m));
+                        }
+                        if module_arch.is_some_and(Architecture::is_64bit) {
+                            let mut attrs = 0x0100i16;
+                            if let Some(FieldValue::Short(a)) = record.get(3) {
+                                attrs |= *a;
+                            }
+                            record.set(3, FieldValue::Short(attrs));
                         }
                         if let Some(FieldValue::String(ref s)) = record.get(5) {
                             let m = modularize_identifier(s, module_guid, &ignore_set);

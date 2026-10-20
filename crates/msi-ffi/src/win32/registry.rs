@@ -698,12 +698,11 @@ fn list_product_patches(product: &str, user_sid: Option<&str>) -> Vec<(String, S
             .map(|patch_squid| {
                 let patch_guid = subkey_to_guid(&patch_squid);
                 let sub = format!(r"{patches_key}\{patch_squid}");
-                let mut transforms = String::new();
-                if let Some(RegistryValue::Sz(s)) =
-                    reg.get_value(RegistryRoot::LocalMachine, &sub, Some("Transforms"))
-                {
-                    transforms = s;
-                }
+                let transforms =
+                    match reg.get_value(RegistryRoot::LocalMachine, &sub, Some("Transforms")) {
+                        Some(RegistryValue::Sz(s)) => s,
+                        _ => String::new(),
+                    };
                 (patch_guid, transforms)
             })
             .collect()
@@ -1689,14 +1688,10 @@ fn lookup_user_info_in_registry(product: &str) -> Option<(String, String, String
         if !reg.has_key(RegistryRoot::LocalMachine, &key) {
             return None;
         }
-        let get_sz = |name: &str| {
-            let mut out = String::new();
-            if let Some(RegistryValue::Sz(s)) =
-                reg.get_value(RegistryRoot::LocalMachine, &key, Some(name))
-            {
-                out = s;
-            }
-            out
+        let get_sz = |name: &str| match reg.get_value(RegistryRoot::LocalMachine, &key, Some(name))
+        {
+            Some(RegistryValue::Sz(s)) => s,
+            _ => String::new(),
         };
         Some((
             get_sz("RegOwner"),
@@ -3990,6 +3985,23 @@ mod additional_stubs_tests {
             3
         );
 
+        crate::win32::registry_backend::with_registry(|reg| {
+            reg.set_value(
+                RegistryRoot::LocalMachine,
+                &format!(r"{hklm_prod_key}\Patches\NO_TRANSFORMS_PATCH"),
+                Some("Other"),
+                RegistryValue::Sz("Val".to_string()),
+            );
+        });
+        cch_w = 64;
+        let _ = MsiEnumPatchesW(
+            prod_w.as_ptr(),
+            1,
+            pbuf_w.as_mut_ptr(),
+            sbuf_w.as_mut_ptr(),
+            &raw mut cch_w,
+        );
+
         // MsiGetUserInfo
         cch_w = 64;
         app_len_w = 64;
@@ -4006,6 +4018,13 @@ mod additional_stubs_tests {
             ),
             0
         );
+        crate::win32::registry_backend::with_registry(|reg| {
+            reg.delete_value(
+                RegistryRoot::LocalMachine,
+                &install_props_key,
+                Some("RegOwner"),
+            );
+        });
         cch_a = 64;
         app_len_a = 64;
         let mut serial_len_a: Dword = 64;

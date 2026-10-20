@@ -409,6 +409,10 @@ const fn is_data_format_error(err: &msi::MsiError) -> bool {
             | msi::MsiError::InvalidWixObject { .. }
             | msi::MsiError::TransactionStateMismatch { .. }
             | msi::MsiError::InvalidArchitecture { .. }
+            | msi::MsiError::UnsupportedArchitecture { .. }
+            | msi::MsiError::ArchitectureMismatch { .. }
+            | msi::MsiError::InvalidBitness { .. }
+            | msi::MsiError::InvalidInstallerVersion { .. }
             | msi::MsiError::InvalidSummaryTemplate { .. }
             | msi::MsiError::InvalidStorageClsid { .. }
             | msi::MsiError::WimInvalidMagic { .. }
@@ -899,6 +903,21 @@ mod tests {
             msi::MsiError::ServiceConfiguration(String::new()),
             msi::MsiError::InvalidArchitecture {
                 name: String::new(),
+            },
+            msi::MsiError::UnsupportedArchitecture { raw: String::new() },
+            msi::MsiError::ArchitectureMismatch {
+                expected: String::new(),
+                actual: String::new(),
+                context: String::new(),
+            },
+            msi::MsiError::InvalidBitness {
+                element: String::new(),
+                value: String::new(),
+            },
+            msi::MsiError::InvalidInstallerVersion {
+                version: 100,
+                architecture: String::new(),
+                minimum_required: 200,
             },
             msi::MsiError::InvalidSummaryTemplate {
                 template: String::new(),

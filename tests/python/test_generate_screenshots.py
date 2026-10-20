@@ -10,8 +10,7 @@ from unittest.mock import MagicMock, patch
 from PIL import Image, ImageDraw, ImageFont
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent.parent / "scripts"
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
+sys.path.insert(0, str(SCRIPTS_DIR))
 
 import generate_screenshots  # noqa: E402
 
@@ -480,19 +479,18 @@ def test_ensure_binaries_and_capture_artifacts(tmp_path: Path) -> None:
 
     def fake_run(cmd: list[str], **kwargs: object) -> MagicMock:
         """Helper test callback for fake_run."""
-        cwd = kwargs.get("cwd")
+        cwd = Path(str(kwargs.get("cwd")))
         env = kwargs.get("env")
-        if isinstance(cwd, Path):
-            if "--log" in cmd:
-                (cwd / "install.log").write_text(
-                    f"MSI (s) (i): Starting{nl}MSI (s) (i): Installation committed successfully{nl}",
-                    encoding="utf-8",
-                )
-            if "/lv" in cmd:
-                (cwd / "chainer.log").write_text(
-                    f"MSI (s) (i): Executing MsiEmbeddedChainer 'LibScriptChainer'{nl}",
-                    encoding="utf-8",
-                )
+        if "--log" in cmd:
+            (cwd / "install.log").write_text(
+                f"MSI (s) (i): Starting{nl}MSI (s) (i): Installation committed successfully{nl}",
+                encoding="utf-8",
+            )
+        if "/lv" in cmd:
+            (cwd / "chainer.log").write_text(
+                f"MSI (s) (i): Executing MsiEmbeddedChainer 'LibScriptChainer'{nl}",
+                encoding="utf-8",
+            )
         if isinstance(env, dict) and "MSI_GUI_DUMP_STATE" in env:
             Path(str(env["MSI_GUI_DUMP_STATE"])).write_text(
                 f"WINDOW_TITLE=App Setup{nl}ACTIVE_DIALOG=WelcomeDlg{nl}",

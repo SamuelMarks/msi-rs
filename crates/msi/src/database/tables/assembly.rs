@@ -1,4 +1,4 @@
-//! Assembly management and Side-by-Side (WinSxS) schemas.
+//! Assembly management and Side-by-Side (`WinSxS`) schemas.
 //!
 //! Provides table definitions and strongly-typed rows for `MsiAssembly` and `MsiAssemblyName`.
 
@@ -9,7 +9,7 @@ use crate::error::{MsiError, Result};
 
 /// Returns the schema for the `MsiAssembly` table.
 ///
-/// Specifies Windows Installer settings for side-by-side (WinSxS) and .NET Global Assembly Cache (GAC) assemblies.
+/// Specifies Windows Installer settings for side-by-side (`WinSxS`) and .NET Global Assembly Cache (GAC) assemblies.
 ///
 /// # Returns
 ///
@@ -20,7 +20,9 @@ pub fn msi_assembly_schema() -> TableSchema {
         .with_column(ColumnDef::new("Component_", DataType::String { max_len: 72 }).primary_key())
         .with_column(ColumnDef::new("Feature_", DataType::String { max_len: 38 }).primary_key())
         .with_column(ColumnDef::new("File_Manifest", DataType::String { max_len: 72 }).nullable())
-        .with_column(ColumnDef::new("File_Application", DataType::String { max_len: 72 }).nullable())
+        .with_column(
+            ColumnDef::new("File_Application", DataType::String { max_len: 72 }).nullable(),
+        )
         .with_column(ColumnDef::new("Attributes", DataType::Short).nullable())
 }
 
@@ -63,45 +65,55 @@ impl MsiAssemblyRow {
 
         let component = match record.get(0) {
             Some(FieldValue::String(s)) => s.clone(),
-            _ => return Err(MsiError::Validation {
-                element: "MsiAssembly.Component_".to_string(),
-                reason: "Must be a string".to_string(),
-            }),
+            _ => {
+                return Err(MsiError::Validation {
+                    element: "MsiAssembly.Component_".to_string(),
+                    reason: "Must be a string".to_string(),
+                })
+            }
         };
 
         let feature = match record.get(1) {
             Some(FieldValue::String(s)) => s.clone(),
-            _ => return Err(MsiError::Validation {
-                element: "MsiAssembly.Feature_".to_string(),
-                reason: "Must be a string".to_string(),
-            }),
+            _ => {
+                return Err(MsiError::Validation {
+                    element: "MsiAssembly.Feature_".to_string(),
+                    reason: "Must be a string".to_string(),
+                })
+            }
         };
 
         let file_manifest = match record.get(2) {
             Some(FieldValue::String(s)) => Some(s.clone()),
             Some(FieldValue::Null) | None => None,
-            _ => return Err(MsiError::Validation {
-                element: "MsiAssembly.File_Manifest".to_string(),
-                reason: "Must be a string or null".to_string(),
-            }),
+            _ => {
+                return Err(MsiError::Validation {
+                    element: "MsiAssembly.File_Manifest".to_string(),
+                    reason: "Must be a string or null".to_string(),
+                })
+            }
         };
 
         let file_application = match record.get(3) {
             Some(FieldValue::String(s)) => Some(s.clone()),
             Some(FieldValue::Null) | None => None,
-            _ => return Err(MsiError::Validation {
-                element: "MsiAssembly.File_Application".to_string(),
-                reason: "Must be a string or null".to_string(),
-            }),
+            _ => {
+                return Err(MsiError::Validation {
+                    element: "MsiAssembly.File_Application".to_string(),
+                    reason: "Must be a string or null".to_string(),
+                })
+            }
         };
 
         let attributes = match record.get(4) {
             Some(FieldValue::Short(i)) => Some(u16::try_from(*i).unwrap_or(0)),
             Some(FieldValue::Null) | None => None,
-            _ => return Err(MsiError::Validation {
-                element: "MsiAssembly.Attributes".to_string(),
-                reason: "Must be an integer or null".to_string(),
-            }),
+            _ => {
+                return Err(MsiError::Validation {
+                    element: "MsiAssembly.Attributes".to_string(),
+                    reason: "Must be an integer or null".to_string(),
+                })
+            }
         };
 
         Ok(Self {
@@ -164,26 +176,32 @@ impl MsiAssemblyNameRow {
 
         let component = match record.get(0) {
             Some(FieldValue::String(s)) => s.clone(),
-            _ => return Err(MsiError::Validation {
-                element: "MsiAssemblyName.Component_".to_string(),
-                reason: "Must be a string".to_string(),
-            }),
+            _ => {
+                return Err(MsiError::Validation {
+                    element: "MsiAssemblyName.Component_".to_string(),
+                    reason: "Must be a string".to_string(),
+                })
+            }
         };
 
         let name = match record.get(1) {
             Some(FieldValue::String(s)) => s.clone(),
-            _ => return Err(MsiError::Validation {
-                element: "MsiAssemblyName.Name".to_string(),
-                reason: "Must be a string".to_string(),
-            }),
+            _ => {
+                return Err(MsiError::Validation {
+                    element: "MsiAssemblyName.Name".to_string(),
+                    reason: "Must be a string".to_string(),
+                })
+            }
         };
 
         let value = match record.get(2) {
             Some(FieldValue::String(s)) => s.clone(),
-            _ => return Err(MsiError::Validation {
-                element: "MsiAssemblyName.Value".to_string(),
-                reason: "Must be a string".to_string(),
-            }),
+            _ => {
+                return Err(MsiError::Validation {
+                    element: "MsiAssemblyName.Value".to_string(),
+                    reason: "Must be a string".to_string(),
+                })
+            }
         };
 
         Ok(Self {
@@ -244,7 +262,7 @@ mod tests {
     #[test]
     fn test_msi_assembly_row_errors() {
         assert!(MsiAssemblyRow::from_record(&Record::new()).is_err());
-        
+
         let mut r1 = Record::new();
         r1.push(FieldValue::Short(1));
         r1.push(FieldValue::String("Feat1".to_string()));
@@ -252,7 +270,7 @@ mod tests {
         r1.push(FieldValue::Null);
         r1.push(FieldValue::Null);
         assert!(MsiAssemblyRow::from_record(&r1).is_err());
-        
+
         let mut r2 = Record::new();
         r2.push(FieldValue::String("Comp1".to_string()));
         r2.push(FieldValue::Short(1));
@@ -260,7 +278,7 @@ mod tests {
         r2.push(FieldValue::Null);
         r2.push(FieldValue::Null);
         assert!(MsiAssemblyRow::from_record(&r2).is_err());
-        
+
         let mut r3 = Record::new();
         r3.push(FieldValue::String("Comp1".to_string()));
         r3.push(FieldValue::String("Feat1".to_string()));
@@ -268,7 +286,7 @@ mod tests {
         r3.push(FieldValue::Null);
         r3.push(FieldValue::Null);
         assert!(MsiAssemblyRow::from_record(&r3).is_err());
-        
+
         let mut r4 = Record::new();
         r4.push(FieldValue::String("Comp1".to_string()));
         r4.push(FieldValue::String("Feat1".to_string()));
@@ -276,7 +294,7 @@ mod tests {
         r4.push(FieldValue::Short(1));
         r4.push(FieldValue::Null);
         assert!(MsiAssemblyRow::from_record(&r4).is_err());
-        
+
         let mut r5 = Record::new();
         r5.push(FieldValue::String("Comp1".to_string()));
         r5.push(FieldValue::String("Feat1".to_string()));
@@ -313,19 +331,19 @@ mod tests {
     #[test]
     fn test_msi_assembly_name_row_errors() {
         assert!(MsiAssemblyNameRow::from_record(&Record::new()).is_err());
-        
+
         let mut r1 = Record::new();
         r1.push(FieldValue::Short(1));
         r1.push(FieldValue::String("name".to_string()));
         r1.push(FieldValue::String("val".to_string()));
         assert!(MsiAssemblyNameRow::from_record(&r1).is_err());
-        
+
         let mut r2 = Record::new();
         r2.push(FieldValue::String("Comp".to_string()));
         r2.push(FieldValue::Short(1));
         r2.push(FieldValue::String("val".to_string()));
         assert!(MsiAssemblyNameRow::from_record(&r2).is_err());
-        
+
         let mut r3 = Record::new();
         r3.push(FieldValue::String("Comp".to_string()));
         r3.push(FieldValue::String("name".to_string()));

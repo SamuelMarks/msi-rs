@@ -161,6 +161,61 @@ impl PyPackageBuilder {
         self.inner = std::mem::take(&mut self.inner).upgrade_code(code);
     }
 
+    /// Sets the target processor architecture (`"x86"`, `"x64"`, `"arm"`, `"arm64"`, `"ia64"`, `"neutral"`).
+    ///
+    /// # Arguments
+    ///
+    /// * `arch` - Target processor architecture string.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` when the architecture is validated and updated.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::ValidationError`] if `arch` is unrecognized.
+    pub fn set_architecture(&mut self, arch: &str) -> PyResult<()> {
+        let parsed = msi::Architecture::parse(arch).map_err(|e| to_py_err(&e))?;
+        self.inner = std::mem::take(&mut self.inner).architecture(parsed);
+        Ok(())
+    }
+
+    /// Sets the target platform architecture (alias for [`PyPackageBuilder::set_architecture`]).
+    ///
+    /// # Arguments
+    ///
+    /// * `arch` - Target platform architecture string.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` when the platform architecture is validated and updated.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::ValidationError`] if `arch` is unrecognized.
+    pub fn set_platform(&mut self, arch: &str) -> PyResult<()> {
+        self.set_architecture(arch)
+    }
+
+    /// Sets the minimum Windows Installer schema version (`PID_PAGECOUNT`, e.g., `200`, `300`, `500`).
+    ///
+    /// # Arguments
+    ///
+    /// * `version` - Integer installer version (`>= 100`).
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` when the installer version is validated and updated.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::ValidationError`] if `version < 100`.
+    pub fn set_installer_version(&mut self, version: i32) -> PyResult<()> {
+        let ver = msi::InstallerVersion::new(version).map_err(|e| to_py_err(&e))?;
+        self.inner = std::mem::take(&mut self.inner).installer_version(ver.value());
+        Ok(())
+    }
+
     /// Adds a property entry to the `Property` table.
     ///
     /// # Arguments
@@ -1337,16 +1392,16 @@ with m.PackageBuilder("ContextApp", "ContextVendor", "1.2.3") as b:
     b.set_product_name("UpdatedContextApp")
     b.set_manufacturer("UpdatedContextVendor")
     b.set_version("2.3.4")
-    b.set_compression(0)
-    b.set_compression(2)
-    b.set_compression(3)
-    b.set_compression(1)
-    try:
-        b.set_compression(99)
-    except Exception:
-        pass
+    b.set_compression(0); b.set_compression(2); b.set_compression(3); b.set_compression(1)
+    try: b.set_compression(99)
+    except Exception: pass
     b.set_product_code("{12345678-1234-1234-1234-123456789012}")
     b.set_upgrade_code("{87654321-4321-4321-4321-210987654321}")
+    b.set_architecture("arm64"); b.set_platform("x64"); b.set_installer_version(500)
+    try: b.set_architecture("bad_arch")
+    except Exception: pass
+    try: b.set_installer_version(50)
+    except Exception: pass
     b.add_property("GREETING", "Hello")
     b.add_directory("TARGETDIR")
     b.add_directory("INSTALLDIR", "TARGETDIR", "PFiles|Program Files")

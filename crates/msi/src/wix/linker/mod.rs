@@ -16,7 +16,10 @@ mod solver;
 
 #[cfg(test)]
 use self::binder::inspect_font_title;
-pub use self::binder::inspect_pe_version;
+pub use self::binder::{
+    inspect_binary_architecture, inspect_pe_metadata, inspect_pe_version, ElfMachineType,
+    MachOCpuType, PeMachineType, PeMetadata,
+};
 #[cfg(test)]
 use self::solver::is_special_reference;
 
@@ -379,11 +382,19 @@ impl Linker {
         // 7. Layout and sequence media files
         Self::layout_media_and_files(&mut db);
 
+        let bound_pe_arch = db.tables.remove("_BoundFilePeArch");
+
         // 7.5. Generate standard validation table
         Self::generate_validation_table(&mut db);
 
+        if let Some(recs) = bound_pe_arch {
+            db.tables.insert("_BoundFilePeArch".to_string(), recs);
+        }
+
         // 8. Run comprehensive ICE validation
-        self.run_filtered_ice_validations(&db)?;
+        let ice_res = self.run_filtered_ice_validations(&db);
+        let _ = db.tables.remove("_BoundFilePeArch");
+        ice_res?;
 
         Ok(db)
     }
@@ -4813,6 +4824,178 @@ mod tests {
             ]),
         );
         Linker::sequence_standard_actions(&mut db_seq);
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_binary_inspector_pe_elf_macho_and_assembly_binding() {
+        use crate::database::summary_info::Architecture;
+
+        // 1. PeMachineType tests
+        for (raw, expected, arch, proc_str) in [
+            (0x014C, PeMachineType::I386, Some(Architecture::X86), "x86"),
+            (
+                0x8664,
+                PeMachineType::Amd64,
+                Some(Architecture::X64),
+                "amd64",
+            ),
+            (0x01C4, PeMachineType::ArmNt, Some(Architecture::Arm), "arm"),
+            (
+                0xAA64,
+                PeMachineType::Arm64,
+                Some(Architecture::Arm64),
+                "arm64",
+            ),
+            (
+                0xA641,
+                PeMachineType::Arm64Ec,
+                Some(Architecture::Arm64),
+                "arm64",
+            ),
+            (
+                0x0200,
+                PeMachineType::Ia64,
+                Some(Architecture::Ia64),
+                "ia64",
+            ),
+            (0x9999, PeMachineType::Unknown(0x9999), None, "neutral"),
+        ] {
+            let m = PeMachineType::from_raw(raw);
+            assert_eq!(m, expected);
+            assert_eq!(m.to_raw(), raw);
+            assert_eq!(m.architecture(), arch);
+            assert_eq!(m.processor_architecture_str(), proc_str);
+        }
+
+        // 2. ElfMachineType and inspect_binary_architecture for ELF
+        for (raw, expected_arch) in [
+            (3u16, Some(Architecture::X86)),
+            (62u16, Some(Architecture::X64)),
+            (40u16, Some(Architecture::Arm)),
+            (183u16, Some(Architecture::Arm64)),
+            (50u16, Some(Architecture::Ia64)),
+            (243u16, Some(Architecture::Neutral)),
+            (21u16, Some(Architecture::Neutral)),
+            (22u16, Some(Architecture::Neutral)),
+            (258u16, Some(Architecture::Neutral)),
+            (999u16, None),
+        ] {
+            let mut little_endian_elf = vec![0u8; 32];
+            little_endian_elf[0..4].copy_from_slice(b"\x7FELF");
+            little_endian_elf[5] = 1; // little endian
+            little_endian_elf[18..20].copy_from_slice(&raw.to_le_bytes());
+            assert_eq!(
+                inspect_binary_architecture(&little_endian_elf),
+                expected_arch
+            );
+
+            let mut big_endian_elf = vec![0u8; 32];
+            big_endian_elf[0..4].copy_from_slice(b"\x7FELF");
+            big_endian_elf[5] = 2; // big endian
+            big_endian_elf[18..20].copy_from_slice(&raw.to_be_bytes());
+            assert_eq!(inspect_binary_architecture(&big_endian_elf), expected_arch);
+        }
+
+        // 3. MachOCpuType and inspect_binary_architecture for Mach-O
+        for (cputype, expected_arch) in [
+            (7u32, Some(Architecture::X86)),
+            (0x0100_0007u32, Some(Architecture::X64)),
+            (12u32, Some(Architecture::Arm)),
+            (0x0100_000Cu32, Some(Architecture::Arm64)),
+            (999u32, None),
+        ] {
+            let mut little_endian_macho = vec![0u8; 16];
+            little_endian_macho[0..4].copy_from_slice(&0xFEED_FACFu32.to_le_bytes());
+            little_endian_macho[4..8].copy_from_slice(&cputype.to_le_bytes());
+            assert_eq!(
+                inspect_binary_architecture(&little_endian_macho),
+                expected_arch
+            );
+
+            let mut big_endian_macho = vec![0u8; 16];
+            big_endian_macho[0..4].copy_from_slice(&0xFEED_FACFu32.to_be_bytes());
+            big_endian_macho[4..8].copy_from_slice(&cputype.to_be_bytes());
+            assert_eq!(
+                inspect_binary_architecture(&big_endian_macho),
+                expected_arch
+            );
+        }
+        let mut fat_macho = vec![0u8; 16];
+        fat_macho[0..4].copy_from_slice(&0xCAFE_BABEu32.to_be_bytes());
+        assert_eq!(
+            inspect_binary_architecture(&fat_macho),
+            Some(Architecture::Neutral)
+        );
+        assert_eq!(
+            MachOCpuType::from_raw(0xCAFE_BABE).architecture(),
+            Some(Architecture::Neutral)
+        );
+        assert_eq!(inspect_binary_architecture(b"not a binary"), None);
+        assert_eq!(inspect_binary_architecture(b"short"), None);
+
+        // 4. Synthetic PE32 (.NET CLR AnyCPU) and PE32+ (Arm64) inspection & MsiAssembly binding
+        let mut pe_clr = vec![0u8; 512];
+        pe_clr[0..2].copy_from_slice(b"MZ");
+        pe_clr[0x3C..0x40].copy_from_slice(&0x40u32.to_le_bytes());
+        pe_clr[0x40..0x44].copy_from_slice(b"PE\0\0");
+        pe_clr[0x44..0x46].copy_from_slice(&0x014Cu16.to_le_bytes()); // I386
+        pe_clr[0x46..0x48].copy_from_slice(&0u16.to_le_bytes()); // 0 sections
+        pe_clr[0x54..0x56].copy_from_slice(&224u16.to_le_bytes()); // SizeOfOptionalHeader
+        let opt_off = 0x58;
+        pe_clr[opt_off..opt_off + 2].copy_from_slice(&0x010Bu16.to_le_bytes()); // PE32
+        let clr_dir_off = opt_off + 96 + 14 * 8;
+        pe_clr[clr_dir_off..clr_dir_off + 4].copy_from_slice(&0x2000u32.to_le_bytes());
+        pe_clr[clr_dir_off + 4..clr_dir_off + 8].copy_from_slice(&72u32.to_le_bytes());
+
+        assert_eq!(
+            inspect_pe_metadata(&pe_clr),
+            Some(PeMetadata {
+                machine: PeMachineType::I386,
+                architecture: Some(Architecture::X86),
+                is_pe32_plus: false,
+                is_clr_assembly: true,
+                version: None,
+                language: None,
+            })
+        );
+        assert_eq!(
+            inspect_binary_architecture(&pe_clr),
+            Some(Architecture::X86)
+        );
+
+        let temp_dir = std::env::temp_dir().join("msi_test_pe_asm_bind");
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let dll_path = temp_dir.join("managed.dll");
+        let _ = std::fs::write(&dll_path, &pe_clr);
+
+        let wxs = format!(
+            r#"<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="{{11111111-1111-1111-1111-111111111111}}" Name="AsmApp" Version="1.0.0" Manufacturer="Acme" UpgradeCode="{{22222222-2222-2222-2222-222222222222}}">
+        <Package Description="AsmApp" />
+        <Directory Id="TARGETDIR" Name="SourceDir">
+            <Component Id="AsmComp" Guid="{{33333333-3333-3333-3333-333333333333}}">
+                <File Id="ManagedDll" Name="managed.dll" Source="{}" Assembly=".net" />
+            </Component>
+        </Directory>
+        <Feature Id="Complete" Level="1">
+            <ComponentRef Id="AsmComp" />
+        </Feature>
+    </Product>
+</Wix>"#,
+            dll_path.display()
+        );
+        let mut ctx = crate::wix::PreprocessorContext::new();
+        let obj = crate::wix::compile_wix(&wxs, &mut ctx).unwrap_or_default();
+        let mut linker = Linker::new();
+        linker.add_object(obj);
+        let linked_db = linker.link().unwrap_or_default();
+        let asm_names = linked_db.get_records("MsiAssemblyName");
+        assert!(asm_names
+            .iter()
+            .any(|r| r.get(2) == Some(&FieldValue::String("msil".to_string()))));
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }

@@ -8,6 +8,7 @@
 //!   and configuring them with `Password="yes"` in UI controls and registering them in `MsiHiddenProperties`.
 //! - Synthesizing `WiX` XML manifests and binary `.msi` packages without external templating scripts.
 
+use crate::database::summary_info::Architecture;
 use crate::error::{MsiError, Result};
 use crate::wix::toolchain::WixBuildOptions;
 use std::fmt::Write;
@@ -767,8 +768,15 @@ pub fn synthesize_wix_xml_with_arch(
     xml.push('\n');
 
     // Directory Structure
+    let resolved_arch = Architecture::parse(arch).unwrap_or(Architecture::X64);
+    let prog_files_id = resolved_arch.default_program_files_folder_id();
+    let win64_attr = if resolved_arch.is_64bit() {
+        " Win64=\"yes\""
+    } else {
+        ""
+    };
     xml.push_str("    <Directory Id=\"TARGETDIR\" Name=\"SourceDir\">\n");
-    xml.push_str("      <Directory Id=\"ProgramFilesFolder\">\n");
+    let _ = writeln!(xml, "      <Directory Id=\"{prog_files_id}\">");
     let _ = writeln!(
         xml,
         "        <Directory Id=\"INSTALLFOLDER\" Name=\"{0}\">",
@@ -776,7 +784,10 @@ pub fn synthesize_wix_xml_with_arch(
     );
 
     if payload_fragment_path.is_none() {
-        xml.push_str("          <Component Id=\"DefaultComponent\" Guid=\"{11111111-2222-3333-4444-555555555555}\">\n");
+        let _ = writeln!(
+            xml,
+            "          <Component Id=\"DefaultComponent\" Guid=\"{{11111111-2222-3333-4444-555555555555}}\"{win64_attr}>"
+        );
         xml.push_str("            <CreateFolder />\n");
         xml.push_str("          </Component>\n");
     }
@@ -877,8 +888,8 @@ pub struct ManifestMsiSynthesizer {
     schema_content: Option<String>,
     /// Optional harvested payload fragment path.
     payload_wxs: Option<PathBuf>,
-    /// Target architecture (`x64`, `x86`, `arm64`).
-    arch: String,
+    /// Strongly-typed target [`Architecture`].
+    arch: Architecture,
 }
 
 impl ManifestMsiSynthesizer {
@@ -897,7 +908,7 @@ impl ManifestMsiSynthesizer {
             manifest_content: manifest_json.into(),
             schema_content: None,
             payload_wxs: None,
-            arch: "x64".to_string(),
+            arch: Architecture::X64,
         }
     }
 
@@ -931,7 +942,32 @@ impl ManifestMsiSynthesizer {
         self
     }
 
-    /// Sets the target architecture.
+    /// Sets the target processor [`Architecture`] using a strongly-typed [`Architecture`] value.
+    ///
+    /// # Arguments
+    ///
+    /// * `arch` - Target [`Architecture`].
+    ///
+    /// # Returns
+    ///
+    /// Updated [`ManifestMsiSynthesizer`].
+    #[must_use]
+    pub const fn with_architecture(mut self, arch: Architecture) -> Self {
+        self.arch = arch;
+        self
+    }
+
+    /// Returns the configured target processor [`Architecture`].
+    ///
+    /// # Returns
+    ///
+    /// Configured [`Architecture`].
+    #[must_use]
+    pub const fn architecture(&self) -> Architecture {
+        self.arch
+    }
+
+    /// Sets the target architecture from a string identifier (e.g. `x64`, `x86`, `arm64`).
     ///
     /// # Arguments
     ///
@@ -942,7 +978,10 @@ impl ManifestMsiSynthesizer {
     /// Updated [`ManifestMsiSynthesizer`].
     #[must_use]
     pub fn with_arch(mut self, arch: impl Into<String>) -> Self {
-        self.arch = arch.into();
+        let s = arch.into();
+        if let Ok(parsed) = Architecture::parse(&s) {
+            self.arch = parsed;
+        }
         self
     }
 
@@ -966,7 +1005,7 @@ impl ManifestMsiSynthesizer {
             &manifest,
             &properties,
             self.payload_wxs.as_deref(),
-            &self.arch,
+            self.arch.as_wix_str(),
         ))
     }
 
@@ -1026,7 +1065,7 @@ impl ManifestMsiSynthesizer {
         let build_opts = WixBuildOptions {
             sources,
             output: Some(out_path.to_path_buf()),
-            arch: Some(self.arch.clone()),
+            arch: Some(self.arch.as_wix_str().to_string()),
             suppress_ice: true,
             ..WixBuildOptions::new()
         };
@@ -1527,7 +1566,9 @@ mod tests {
 
         let synth = ManifestMsiSynthesizer::new(pkg_json)
             .with_schema(schema_json)
+            .with_architecture(Architecture::Arm64)
             .with_arch("x64");
+        assert_eq!(synth.architecture(), Architecture::X64);
 
         let xml_res = synth.generate_wix_xml();
         assert_eq!(

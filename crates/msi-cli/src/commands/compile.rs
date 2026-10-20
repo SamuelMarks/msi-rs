@@ -139,6 +139,7 @@ pub fn handle_pack(args: &PackArgs) -> Result<String, MsiError> {
     }
 
     if let Some(ref manifest_path) = args.manifest {
+        let parsed_arch = msi::Architecture::parse(&args.arch)?;
         let manifest_content = std::fs::read_to_string(manifest_path).map_err(|e| {
             MsiError::CommandLineError(format!(
                 "Failed to read packaging manifest '{manifest_path}': {e}"
@@ -146,7 +147,7 @@ pub fn handle_pack(args: &PackArgs) -> Result<String, MsiError> {
         })?;
 
         let mut synth =
-            msi::wix::ManifestMsiSynthesizer::new(manifest_content).with_arch(&args.arch);
+            msi::wix::ManifestMsiSynthesizer::new(manifest_content).with_architecture(parsed_arch);
 
         if let Some(ref schema_path) = args.schema {
             let schema_content = std::fs::read_to_string(schema_path).map_err(|e| {

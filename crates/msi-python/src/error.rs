@@ -106,7 +106,13 @@ define_py_exception!(
 #[must_use]
 pub fn to_py_err(err: &msi::MsiError) -> PyErr {
     match err {
-        msi::MsiError::Validation { .. } | msi::MsiError::InvalidArgument { .. } => {
+        msi::MsiError::Validation { .. }
+        | msi::MsiError::InvalidArgument { .. }
+        | msi::MsiError::InvalidArchitecture { .. }
+        | msi::MsiError::UnsupportedArchitecture { .. }
+        | msi::MsiError::ArchitectureMismatch { .. }
+        | msi::MsiError::InvalidBitness { .. }
+        | msi::MsiError::InvalidInstallerVersion { .. } => {
             ValidationError::new_err(err.to_string())
         }
         msi::MsiError::Io(_) => IoError::new_err(err.to_string()),

@@ -537,7 +537,7 @@ impl EguiLayoutMapper {
                     let clean_doc = if is_rtf {
                         crate::ui::font_rasterizer::strip_rtf_to_plaintext(&current_text)
                     } else {
-                        current_text.clone()
+                        current_text
                     };
                     let total_lines = clean_doc.lines().count();
                     draws.push(DrawCommand::FillRect {

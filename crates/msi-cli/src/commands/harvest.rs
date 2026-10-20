@@ -108,6 +108,29 @@ pub struct HarvestArgs {
 ///
 /// `Ok` containing the formatted or resolved string, or an error on failure.
 pub fn handle_harvest(args: &HarvestArgs) -> Result<String, MsiError> {
+    handle_harvest_with_arch(args, None, None)
+}
+
+/// Handles the `harvest` command with optional explicit target architecture and `Win64` component override.
+///
+/// # Arguments
+///
+/// * `args` - Harvest configuration arguments.
+/// * `arch` - Optional target architecture string (`"x86"`, `"x64"`, `"arm64"`).
+/// * `win64` - Optional explicit `Win64` override.
+///
+/// # Returns
+///
+/// `Ok` containing the harvested XML or output path message on success.
+///
+/// # Errors
+///
+/// Returns [`MsiError`] if the architecture, harvesting, or file write fails.
+pub fn handle_harvest_with_arch(
+    args: &HarvestArgs,
+    arch: Option<&str>,
+    win64: Option<bool>,
+) -> Result<String, MsiError> {
     let raw_target = if args.target.is_empty() {
         args.source_dir.as_deref().unwrap_or(".")
     } else {
@@ -129,6 +152,11 @@ pub fn handle_harvest(args: &HarvestArgs) -> Result<String, MsiError> {
     let effective_output = args.output.as_ref().or(args.wix_fragment.as_ref());
 
     let mut harvester = msi::wix::Harvester::new();
+    if let Some(arch_str) = arch {
+        let parsed_arch = msi::Architecture::parse(arch_str)?;
+        harvester.set_architecture(Some(parsed_arch));
+    }
+    harvester.set_win64(win64);
     harvester.set_default_disk_id(args.default_disk_id);
     if let Some(split) = args.split_size {
         harvester.set_split_size(split);

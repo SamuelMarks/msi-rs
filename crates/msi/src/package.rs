@@ -15,15 +15,17 @@ use crate::database::catalogs::{TableSchema, COLUMN_CATALOG_NAME, TABLE_CATALOG_
 use crate::database::column::{ColumnDef, DataType};
 use crate::database::physical::LogicalIndex;
 use crate::database::string_pool::{StringPool, CODEPAGE_ANSI_1252};
-use crate::database::summary_info::{Architecture, SummaryInfo};
+use crate::database::summary_info::{
+    Architecture, ComponentBitnessRule, SummaryInfo, TemplateSummary,
+};
 use crate::database::tables::core::{
     ComponentRow, DirectoryRow, FeatureRow, FileRow, MediaRow, PropertyRow,
 };
 use crate::database::tables::record::{FieldValue, Record};
-use crate::database::tables::types::PropertyName;
+use crate::database::tables::types::{ComponentGuid, ComponentName, DirectoryId, PropertyName};
 use crate::error::{MsiError, Result};
 use crate::wix::linker::LinkedDatabase;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fs;
 use std::path::Path;
@@ -332,11 +334,7 @@ impl Package {
 
         let product_code = if raw_product_code == "*" || raw_product_code == "?" {
             let seed = format!("{product_name}_{manufacturer}_{version}");
-            crate::database::tables::types::ComponentGuid::generate_deterministic(
-                "ProductCode",
-                &seed,
-            )
-            .to_string()
+            ComponentGuid::generate_deterministic("ProductCode", &seed).to_string()
         } else {
             raw_product_code
         };
@@ -349,48 +347,54 @@ impl Package {
         );
 
         let product_platform = find_prop("ProductPlatform")
+            .or_else(|| find_prop("ModulePlatform"))
             .or_else(|| find_prop("Platform"))
             .unwrap_or_else(|| "x86".to_string());
         let arch = Architecture::parse(&product_platform).unwrap_or(Architecture::X86);
         let product_language = find_prop("ProductLanguage")
+            .or_else(|| find_prop("ModuleLanguage"))
             .or_else(|| find_prop("Languages"))
             .or_else(|| find_prop("Language"))
             .unwrap_or_else(|| "1033".to_string());
+        let parsed_langs: Vec<u16> = product_language
+            .split(',')
+            .filter_map(|p| p.trim().parse::<u16>().ok())
+            .collect();
+        let langs = if parsed_langs.is_empty() {
+            vec![1033]
+        } else {
+            parsed_langs
+        };
         let template_str = find_prop("SummaryTemplate")
-            .unwrap_or_else(|| format!("{};{}", arch.template_name(), product_language));
+            .unwrap_or_else(|| TemplateSummary::new(arch, langs).to_string());
 
-        let comments = find_prop("ProductComments");
-        let keywords = find_prop("ProductKeywords");
+        let page_count = find_prop("InstallerVersion")
+            .and_then(|iv| iv.trim().parse::<i32>().ok())
+            .map_or_else(
+                || arch.min_installer_version().max(500),
+                |iv| iv.max(arch.min_installer_version()),
+            );
 
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_nanos();
-        let pid = std::process::id();
-        let package_code_seed = format!("{timestamp}-{pid}-{product_code}");
-        let package_code_guid =
-            crate::database::tables::types::ComponentGuid::generate_deterministic(
-                "packagecode",
-                &package_code_seed,
-            );
-        let package_code = package_code_guid.to_string().to_uppercase();
+        let package_code_seed = format!("{timestamp}-{}-{product_code}", std::process::id());
+        let package_code = ComponentGuid::generate_deterministic("packagecode", &package_code_seed)
+            .to_string()
+            .to_uppercase();
 
-        let mut word_count = if embedded_cabinets.is_empty() { 0 } else { 2 };
-        if word_count == 0 {
-            for rec in database.get_records("Media") {
-                if let Some(FieldValue::String(cab)) = rec.get(3) {
-                    if !cab.is_empty() {
-                        word_count |= 2;
-                        break;
-                    }
-                }
-            }
-        }
-
-        if let Some(privileges) = find_prop("InstallPrivileges") {
-            if privileges.eq_ignore_ascii_case("limited") {
-                word_count |= 8;
-            }
+        let has_media_cab = database
+            .get_records("Media")
+            .iter()
+            .any(|rec| matches!(rec.get(3), Some(FieldValue::String(cab)) if !cab.is_empty()));
+        let mut word_count = if !embedded_cabinets.is_empty() || has_media_cab {
+            2
+        } else {
+            0
+        };
+        if find_prop("InstallPrivileges").is_some_and(|p| p.eq_ignore_ascii_case("limited")) {
+            word_count |= 8;
         }
 
         let codepage = find_prop("ProductCodepage")
@@ -405,9 +409,9 @@ impl Package {
             author: Some(manufacturer),
             rev_number: Some(package_code),
             template: Some(template_str),
-            comments,
-            keywords,
-            page_count: Some(500),
+            comments: find_prop("ProductComments"),
+            keywords: find_prop("ProductKeywords"),
+            page_count: Some(page_count),
             word_count: Some(word_count),
             ..SummaryInfo::default()
         };
@@ -966,6 +970,12 @@ pub struct PackageBuilder {
     media: Vec<MediaRow>,
     /// Target CPU architecture.
     platform: Option<Architecture>,
+    /// Optional explicit minimum installer version (`PID_PAGECOUNT`).
+    installer_version: Option<i32>,
+    /// Language LCIDs for `PID_TEMPLATE`.
+    languages: Vec<u16>,
+    /// Component identifiers explicitly configured as 32-bit via [`ComponentBitnessRule::Always32`].
+    explicit_32bit_components: HashSet<String>,
     /// Summary information template string.
     template: Option<String>,
     /// Arbitrary records mapped by table name.
@@ -987,6 +997,66 @@ impl PackageBuilder {
     #[must_use]
     pub const fn platform(mut self, arch: Architecture) -> Self {
         self.platform = Some(arch);
+        self
+    }
+
+    /// Sets the target processor [`Architecture`] (alias for [`PackageBuilder::platform`]).
+    ///
+    /// # Arguments
+    ///
+    /// * `arch` - Target processor [`Architecture`].
+    ///
+    /// # Returns
+    ///
+    /// The updated builder instance.
+    #[must_use]
+    pub const fn architecture(mut self, arch: Architecture) -> Self {
+        self.platform = Some(arch);
+        self
+    }
+
+    /// Sets the minimum Windows Installer schema version (`PID_PAGECOUNT`, e.g., `200`, `300`, `500`).
+    ///
+    /// # Arguments
+    ///
+    /// * `version` - Integer installer version (`PID_PAGECOUNT`).
+    ///
+    /// # Returns
+    ///
+    /// The updated builder instance.
+    #[must_use]
+    pub const fn installer_version(mut self, version: i32) -> Self {
+        self.installer_version = Some(version);
+        self
+    }
+
+    /// Appends a numeric Windows locale identifier (LCID) to the package's `PID_TEMPLATE` language list.
+    ///
+    /// # Arguments
+    ///
+    /// * `lang_id` - Numeric LCID (e.g., `1033` for `en-US`).
+    ///
+    /// # Returns
+    ///
+    /// The updated builder instance.
+    #[must_use]
+    pub fn add_language(mut self, lang_id: u16) -> Self {
+        self.languages.push(lang_id);
+        self
+    }
+
+    /// Replaces the package's `PID_TEMPLATE` language list with the specified numeric LCIDs.
+    ///
+    /// # Arguments
+    ///
+    /// * `langs` - Vector of numeric LCIDs.
+    ///
+    /// # Returns
+    ///
+    /// The updated builder instance.
+    #[must_use]
+    pub fn languages(mut self, langs: Vec<u16>) -> Self {
+        self.languages = langs;
         self
     }
 
@@ -1113,6 +1183,10 @@ impl PackageBuilder {
 
     /// Adds a component definition to the package.
     ///
+    /// If the builder's target [`Architecture`] is 64-bit (`X64`, `Arm64`, `Ia64`),
+    /// `msidbComponentAttributes64bit` (`0x0100`) is automatically applied unless overridden via
+    /// [`PackageBuilder::add_component_with_bitness`].
+    ///
     /// # Arguments
     ///
     /// * `component` - The [`ComponentRow`] definition.
@@ -1121,9 +1195,84 @@ impl PackageBuilder {
     ///
     /// The updated builder instance.
     #[must_use]
-    pub fn add_component(mut self, component: ComponentRow) -> Self {
+    pub fn add_component(mut self, mut component: ComponentRow) -> Self {
+        if self.platform.is_some_and(Architecture::is_64bit) {
+            component.attributes |= 0x0100;
+        }
         self.components.push(component);
         self
+    }
+
+    /// Adds a validated component definition with an explicit [`ComponentBitnessRule`].
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - Component identifier.
+    /// * `guid` - Component GUID (or `"*"` for deterministic generation).
+    /// * `directory` - Target directory identifier.
+    /// * `bitness` - Bitness rule ([`ComponentBitnessRule::Default`], [`ComponentBitnessRule::Always32`], or [`ComponentBitnessRule::Always64`]).
+    /// * `attributes` - Base component attribute bitflags.
+    /// * `condition` - Optional component condition expression.
+    /// * `key_path` - Optional keypath file/registry identifier.
+    ///
+    /// # Returns
+    ///
+    /// Updated [`PackageBuilder`] on success.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError`] if the component identifier, directory identifier, or GUID is invalid.
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_component_with_bitness(
+        mut self,
+        id: &str,
+        guid: &str,
+        directory: &str,
+        bitness: ComponentBitnessRule,
+        attributes: i16,
+        condition: Option<&str>,
+        key_path: Option<&str>,
+    ) -> Result<Self> {
+        let comp_name = ComponentName::new(id)?;
+        let dir_id = DirectoryId::new(directory)?;
+        let effective_arch = self.platform.unwrap_or(Architecture::X86);
+        let is_64 = bitness.resolve_is_64bit(effective_arch);
+        let comp_guid = match guid {
+            "" => None,
+            "*" | "?" => {
+                let seed = if is_64 {
+                    format!("{}_{}", dir_id.as_str(), effective_arch.as_wix_str())
+                } else {
+                    dir_id.as_str().to_string()
+                };
+                Some(ComponentGuid::generate_deterministic(&seed, id))
+            }
+            g => Some(ComponentGuid::parse(g)?),
+        };
+        let mut final_attrs = attributes;
+        match bitness {
+            ComponentBitnessRule::Always64 => {
+                final_attrs |= 0x0100;
+            }
+            ComponentBitnessRule::Always32 => {
+                final_attrs &= !0x0100;
+                self.explicit_32bit_components.insert(id.to_string());
+            }
+            ComponentBitnessRule::Default => {
+                if is_64 {
+                    final_attrs |= 0x0100;
+                }
+            }
+        }
+        self.components.push(ComponentRow {
+            component: comp_name,
+            component_id: comp_guid,
+            directory: dir_id,
+            attributes: final_attrs,
+            condition: condition.map(ToString::to_string),
+            key_path: key_path.map(ToString::to_string),
+        });
+        Ok(self)
     }
 
     /// Adds a feature definition to the package.
@@ -1276,6 +1425,20 @@ impl PackageBuilder {
             properties.push((k, v));
         }
 
+        let product_platform = self
+            .platform
+            .map(|a| a.as_str().to_string())
+            .or_else(|| {
+                properties
+                    .iter()
+                    .find(|(k, _)| {
+                        k == "ProductPlatform" || k == "ModulePlatform" || k == "Platform"
+                    })
+                    .map(|(_, v)| v.clone())
+            })
+            .unwrap_or_else(|| "x86".to_string());
+        let arch = Architecture::parse(&product_platform).unwrap_or(Architecture::X86);
+
         for (k, v) in &properties {
             let prop = PropertyName::new(k.clone())?;
             let row = PropertyRow {
@@ -1288,7 +1451,14 @@ impl PackageBuilder {
         for dir in self.directories {
             database.add_record("Directory", dir.to_record());
         }
-        for comp in self.components {
+        for mut comp in self.components {
+            if arch.is_64bit()
+                && !self
+                    .explicit_32bit_components
+                    .contains(comp.component.as_str())
+            {
+                comp.attributes |= 0x0100;
+            }
             database.add_record("Component", comp.to_record());
         }
         for feat in self.features {
@@ -1306,21 +1476,29 @@ impl PackageBuilder {
             }
         }
 
-        let product_platform = self
-            .platform
-            .map(|a| a.as_str().to_string())
-            .or_else(|| {
-                properties
-                    .iter()
-                    .find(|(k, _)| k == "ProductPlatform" || k == "Platform")
-                    .map(|(_, v)| v.clone())
-            })
-            .unwrap_or_else(|| "x86".to_string());
-        let arch = Architecture::parse(&product_platform).unwrap_or(Architecture::X86);
-        let product_language = properties
-            .iter()
-            .find(|(k, _)| k == "ProductLanguage" || k == "Languages" || k == "Language")
-            .map_or_else(|| "1033".to_string(), |(_, v)| v.clone());
+        let resolved_langs = if self.languages.is_empty() {
+            let product_language = properties
+                .iter()
+                .find(|(k, _)| {
+                    k == "ProductLanguage"
+                        || k == "ModuleLanguage"
+                        || k == "Languages"
+                        || k == "Language"
+                })
+                .map_or_else(|| "1033".to_string(), |(_, v)| v.clone());
+            let langs: Vec<u16> = product_language
+                .split(',')
+                .filter_map(|p| p.trim().parse::<u16>().ok())
+                .collect();
+            if langs.is_empty() {
+                vec![1033]
+            } else {
+                langs
+            }
+        } else {
+            self.languages
+        };
+
         let template_str = self
             .template
             .or_else(|| {
@@ -1329,7 +1507,20 @@ impl PackageBuilder {
                     .find(|(k, _)| k == "SummaryTemplate")
                     .map(|(_, v)| v.clone())
             })
-            .unwrap_or_else(|| format!("{};{}", arch.template_name(), product_language));
+            .unwrap_or_else(|| TemplateSummary::new(arch, resolved_langs).to_string());
+
+        let mut explicit_iv = self.installer_version;
+        if explicit_iv.is_none() {
+            for (k, v) in &properties {
+                if k == "InstallerVersion" {
+                    explicit_iv = v.trim().parse::<i32>().ok();
+                }
+            }
+        }
+        let page_count = explicit_iv.map_or_else(
+            || arch.min_installer_version().max(500),
+            |iv| iv.max(arch.min_installer_version()),
+        );
 
         let summary_info = SummaryInfo {
             codepage: Some(CODEPAGE_ANSI_1252),
@@ -1338,7 +1529,7 @@ impl PackageBuilder {
             author: Some(manufacturer),
             rev_number: Some(product_code),
             template: Some(template_str),
-            page_count: Some(500),
+            page_count: Some(page_count),
             word_count: Some(2),
             app_name: Some("msi-rs".to_string()),
             ..Default::default()
@@ -1526,7 +1717,7 @@ mod tests {
                     .add_component(ComponentRow {
                         component: comp.clone(),
                         component_id: None,
-                        directory: dir.clone(),
+                        directory: dir,
                         attributes: 0,
                         condition: None,
                         key_path: None,
@@ -1568,7 +1759,7 @@ mod tests {
                         ]),
                     );
 
-                for b in [builder.clone().build(), Package::builder().build()] {
+                for b in [builder.build(), Package::builder().build()] {
                     if let Ok(mut pkg) = b {
                         assert_eq!(pkg.metadata().product_name(), "Example Product");
                         assert_eq!(pkg.metadata().manufacturer(), "Example Corp");
@@ -2918,6 +3109,147 @@ mod tests {
 
         // We know extract_sub_storage will fail, so we ignore the error
         let _ = Package::from_bytes(&buf2)?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_package_builder_cross_architecture_and_bitness() -> Result<()> {
+        let v = ProductVersion::new(2, 0, 0);
+
+        let pkg_arm64 = Package::builder()
+            .product_name("Arm64 Product")
+            .manufacturer("Acme")
+            .version(v)
+            .product_code("{11111111-1111-1111-1111-111111111111}")
+            .architecture(Architecture::Arm64)
+            .installer_version(200)
+            .languages(vec![1033])
+            .add_language(1036)
+            .add_component(ComponentRow {
+                component: ComponentName::new("AutoComp64")?,
+                component_id: None,
+                directory: DirectoryId::new("TARGETDIR")?,
+                attributes: 0,
+                condition: None,
+                key_path: None,
+            })
+            .add_component_with_bitness(
+                "CompDefault",
+                "*",
+                "TARGETDIR",
+                ComponentBitnessRule::Default,
+                0,
+                Some("VersionNT64"),
+                Some("file1"),
+            )?
+            .add_component_with_bitness(
+                "CompAlways32",
+                "*",
+                "TARGETDIR",
+                ComponentBitnessRule::Always32,
+                0x0100,
+                None,
+                None,
+            )?
+            .add_component_with_bitness(
+                "CompAlways64",
+                "",
+                "TARGETDIR",
+                ComponentBitnessRule::Always64,
+                0,
+                None,
+                None,
+            )?
+            .add_component_with_bitness(
+                "CompExplicitGuid",
+                "{22222222-2222-2222-2222-222222222222}",
+                "TARGETDIR",
+                ComponentBitnessRule::Default,
+                0,
+                None,
+                None,
+            )?
+            .build()?;
+
+        assert_eq!(
+            pkg_arm64.summary_info().template.as_deref(),
+            Some("Arm64;1033,1036")
+        );
+        // Arm64 minimum installer version is 500 even when 200 was passed
+        assert_eq!(pkg_arm64.summary_info().page_count, Some(500));
+
+        let comps = pkg_arm64.database().get_records("Component");
+        assert_eq!(comps.len(), 5);
+        assert_eq!(comps[0].get(3), Some(&FieldValue::Short(0x0100)));
+        assert_eq!(comps[1].get(3), Some(&FieldValue::Short(0x0100)));
+        assert_eq!(comps[2].get(3), Some(&FieldValue::Short(0)));
+        assert_eq!(comps[3].get(3), Some(&FieldValue::Short(0x0100)));
+        Ok(())
+    }
+
+    #[test]
+    fn test_package_from_database_cross_architecture_properties() -> Result<()> {
+        let v = ProductVersion::new(2, 0, 0);
+        // Test 32-bit default component bitness and explicit InstallerVersion = 200
+        let pkg_x86 = Package::builder()
+            .product_name("X86 Product")
+            .manufacturer("Acme")
+            .version(v)
+            .product_code("{11111111-1111-1111-1111-111111111111}")
+            .architecture(Architecture::X86)
+            .add_property("ProductLanguage", "invalid_lcid")
+            .add_property("InstallerVersion", "200")
+            .add_component_with_bitness(
+                "CompX86",
+                "*",
+                "TARGETDIR",
+                ComponentBitnessRule::Default,
+                0,
+                None,
+                None,
+            )?
+            .build()?;
+        assert_eq!(
+            pkg_x86.summary_info().template.as_deref(),
+            Some("Intel;1033")
+        );
+        assert_eq!(pkg_x86.summary_info().page_count, Some(200));
+        let comps_x86 = pkg_x86.database().get_records("Component");
+        assert_eq!(comps_x86[0].get(3), Some(&FieldValue::Short(0)));
+
+        // Also test Package::from_database with ModulePlatform, ModuleLanguage, and InstallerVersion
+        let mut db_mod = LinkedDatabase::default();
+        db_mod.add_record(
+            "Property",
+            PropertyRow {
+                property: PropertyName::from_static("ModulePlatform"),
+                value: "arm64".to_string(),
+            }
+            .to_record(),
+        );
+        db_mod.add_record(
+            "Property",
+            PropertyRow {
+                property: PropertyName::from_static("ModuleLanguage"),
+                value: "invalid_lang".to_string(),
+            }
+            .to_record(),
+        );
+        db_mod.add_record(
+            "Property",
+            PropertyRow {
+                property: PropertyName::from_static("InstallerVersion"),
+                value: "300".to_string(),
+            }
+            .to_record(),
+        );
+        let pkg_mod = Package::from_database(db_mod, HashMap::new());
+        assert_eq!(
+            pkg_mod.summary_info().template.as_deref(),
+            Some("Arm64;1033")
+        );
+        assert_eq!(pkg_mod.summary_info().page_count, Some(500));
+
         Ok(())
     }
 }

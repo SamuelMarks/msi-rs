@@ -72,6 +72,7 @@ pub fn convert_text_to_rtf(input: &str) -> String {
     out
 }
 
+use crate::database::summary_info::{Architecture, ComponentBitnessRule};
 use crate::wix::extensions::ExtensionRegistry;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -86,6 +87,8 @@ pub struct Compiler {
     prefixes: RefCell<HashMap<String, String>>,
     /// Optional source file parent directory for resolving relative paths during compilation.
     pub(super) source_dir: Option<PathBuf>,
+    /// Default target processor architecture for sections without an explicit `Platform` attribute.
+    target_arch: Architecture,
 }
 
 impl Compiler {
@@ -100,6 +103,7 @@ impl Compiler {
             extension_registry: ExtensionRegistry::with_builtin_extensions(),
             prefixes: RefCell::new(HashMap::new()),
             source_dir: None,
+            target_arch: Architecture::X86,
         }
     }
 
@@ -118,7 +122,42 @@ impl Compiler {
             extension_registry: registry,
             prefixes: RefCell::new(HashMap::new()),
             source_dir: None,
+            target_arch: Architecture::X86,
         }
+    }
+
+    /// Sets the target processor [`Architecture`] for compilation (`-arch`).
+    ///
+    /// # Arguments
+    ///
+    /// * `arch` - Target processor [`Architecture`].
+    ///
+    /// # Returns
+    ///
+    /// Updated [`Compiler`] instance.
+    #[must_use]
+    pub const fn with_architecture(mut self, arch: Architecture) -> Self {
+        self.target_arch = arch;
+        self
+    }
+
+    /// Updates the target processor [`Architecture`] on this [`Compiler`].
+    ///
+    /// # Arguments
+    ///
+    /// * `arch` - Target processor [`Architecture`].
+    pub const fn set_architecture(&mut self, arch: Architecture) {
+        self.target_arch = arch;
+    }
+
+    /// Returns the configured target processor [`Architecture`].
+    ///
+    /// # Returns
+    ///
+    /// Configured [`Architecture`].
+    #[must_use]
+    pub const fn architecture(&self) -> Architecture {
+        self.target_arch
     }
 
     /// Sets the source file's parent directory for resolving relative paths.
@@ -213,6 +252,24 @@ impl Compiler {
     ) -> Result<IntermediateSection> {
         let id = node.attribute("Id").map(ToString::to_string);
         let mut section = IntermediateSection::new(sec_type, id.clone());
+
+        let node_platform = node
+            .attribute("Platform")
+            .or_else(|| node.attribute("Platforms"))
+            .or_else(|| node.attribute("InstallerPlatform"));
+        let child_pkg_platform =
+            node.children
+                .iter()
+                .find(|c| c.tag == "Package")
+                .and_then(|pkg| {
+                    pkg.attribute("Platform")
+                        .or_else(|| pkg.attribute("Platforms"))
+                        .or_else(|| pkg.attribute("InstallerPlatform"))
+                });
+        let section_arch = match node_platform.or(child_pkg_platform) {
+            Some(plt) => Architecture::parse(plt)?,
+            None => self.target_arch,
+        };
 
         if let Some(ref sec_id) = id {
             section.add_symbol(Symbol::new(format!("{sec_type}"), sec_id));
@@ -329,10 +386,28 @@ impl Compiler {
                 };
                 prop_table.push_record(p.to_record());
             }
-            if let Some(plt) = node.attribute("Platform") {
+            if let Some(plt) = node_platform {
                 let p = PropertyRow {
                     property: PropertyName::from_static("ProductPlatform"),
                     value: plt.to_string(),
+                };
+                prop_table.push_record(p.to_record());
+            } else if child_pkg_platform.is_none() && self.target_arch != Architecture::X86 {
+                let p = PropertyRow {
+                    property: PropertyName::from_static("ProductPlatform"),
+                    value: self.target_arch.as_wix_str().to_string(),
+                };
+                prop_table.push_record(p.to_record());
+            }
+            let has_explicit_iv = node.attribute("InstallerVersion").is_some()
+                || node
+                    .children
+                    .iter()
+                    .any(|c| c.tag == "Package" && c.attribute("InstallerVersion").is_some());
+            if !has_explicit_iv && section_arch.min_installer_version() > 200 {
+                let p = PropertyRow {
+                    property: PropertyName::from_static("InstallerVersion"),
+                    value: section_arch.min_installer_version().to_string(),
                 };
                 prop_table.push_record(p.to_record());
             }
@@ -402,10 +477,23 @@ impl Compiler {
                 };
                 prop_table.push_record(p.to_record());
             }
+            if let Some(plt) = node_platform {
+                let p = PropertyRow {
+                    property: PropertyName::from_static("ModulePlatform"),
+                    value: plt.to_string(),
+                };
+                prop_table.push_record(p.to_record());
+            } else if self.target_arch != Architecture::X86 {
+                let p = PropertyRow {
+                    property: PropertyName::from_static("ModulePlatform"),
+                    value: self.target_arch.as_wix_str().to_string(),
+                };
+                prop_table.push_record(p.to_record());
+            }
         }
 
         // Recursively walk elements in section
-        self.compile_element_tree(node, None, &mut section, &mut tables_map)?;
+        self.compile_element_tree(node, None, &mut section, &mut tables_map, section_arch)?;
 
         // Attach ModuleComponents for all compiled components
         if sec_type == SectionType::Module {
@@ -454,6 +542,7 @@ impl Compiler {
     /// * `parent_id` - Optional identifier of the enclosing parent element or component.
     /// * `section` - Intermediate object section receiving symbols and table rows.
     /// * `tables` - Map of intermediate MSI tables being populated during compilation.
+    /// * `section_arch` - Target processor [`Architecture`] for the active section.
     ///
     /// # Returns
     ///
@@ -467,9 +556,31 @@ impl Compiler {
         parent_id: Option<&str>,
         section: &mut IntermediateSection,
         tables: &mut HashMap<String, IntermediateTable>,
+        section_arch: Architecture,
     ) -> Result<()> {
         for child in &node.children {
             match child.tag.as_str() {
+                "StandardDirectory" => {
+                    let raw_id = child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
+                        element: "StandardDirectory".to_string(),
+                        message: "missing required 'Id' attribute".to_string(),
+                    })?;
+                    let mapped_id = match raw_id {
+                        "ProgramFiles6432Folder" => section_arch.default_program_files_folder_id(),
+                        "CommonFiles6432Folder" => section_arch.default_common_files_folder_id(),
+                        other => other,
+                    };
+                    let dir_id = DirectoryId::new(mapped_id)?;
+                    let span = SourceSpan::new(child.line, child.column);
+                    section.add_reference(Reference::with_span("Directory", dir_id.as_str(), span));
+                    self.compile_element_tree(
+                        child,
+                        Some(dir_id.as_str()),
+                        section,
+                        tables,
+                        section_arch,
+                    )?;
+                }
                 "Directory" => {
                     let dir_id_str =
                         child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
@@ -500,7 +611,13 @@ impl Compiler {
                         .or_insert_with(|| IntermediateTable::new("Directory"))
                         .push_record(row.to_record());
 
-                    self.compile_element_tree(child, Some(dir_id_str), section, tables)?;
+                    self.compile_element_tree(
+                        child,
+                        Some(dir_id_str),
+                        section,
+                        tables,
+                        section_arch,
+                    )?;
                 }
                 "Component" => {
                     let comp_id_str =
@@ -514,23 +631,31 @@ impl Compiler {
                         DirectoryId::from_validated,
                     );
 
+                    let bitness_rule = ComponentBitnessRule::parse_from_attributes(
+                        "Component",
+                        child.attribute("Win64"),
+                        child.attribute("Bitness"),
+                    )?;
+                    let is_64bit_comp = bitness_rule.resolve_is_64bit(section_arch);
+
                     let guid_str = child.attribute("Guid");
                     let comp_guid = match guid_str {
                         Some(g) if !g.is_empty() && g != "*" && g != "?" => {
                             Some(ComponentGuid::parse(g)?)
                         }
-                        Some("*" | "?") => Some(ComponentGuid::generate_deterministic(
-                            dir_id.as_str(),
-                            comp_id_str,
-                        )),
+                        Some("*" | "?") => {
+                            let ns_seed = if is_64bit_comp {
+                                format!("{}_{}", dir_id.as_str(), section_arch.as_wix_str())
+                            } else {
+                                dir_id.as_str().to_string()
+                            };
+                            Some(ComponentGuid::generate_deterministic(&ns_seed, comp_id_str))
+                        }
                         _ => None,
                     };
 
                     let mut comp_attrs: i16 = 0;
-                    if child
-                        .attribute("Win64")
-                        .is_some_and(|s| s.eq_ignore_ascii_case("yes"))
-                    {
+                    if is_64bit_comp {
                         comp_attrs |= 0x0100;
                     }
                     if child
@@ -602,7 +727,13 @@ impl Compiler {
                         .or_insert_with(|| IntermediateTable::new("Component"))
                         .push_record(row.to_record());
 
-                    self.compile_element_tree(child, Some(comp_name.as_str()), section, tables)?;
+                    self.compile_element_tree(
+                        child,
+                        Some(comp_name.as_str()),
+                        section,
+                        tables,
+                        section_arch,
+                    )?;
                 }
                 "File" => {
                     let file_id_str =
@@ -705,6 +836,7 @@ impl Compiler {
                     let final_file_name =
                         format_msi_filename(short_name, file_name, &existing_file_names);
 
+                    let comp_id_for_asm = comp_name.as_str().to_string();
                     let row = FileRow {
                         file: file_key.clone(),
                         component: comp_name,
@@ -719,6 +851,49 @@ impl Compiler {
                         .entry("File".to_string())
                         .or_insert_with(|| IntermediateTable::new("File"))
                         .push_record(row.to_record());
+
+                    if let Some(asm_type) = child.attribute("Assembly") {
+                        let is_win32 = asm_type.eq_ignore_ascii_case("win32");
+                        if is_win32 || asm_type.eq_ignore_ascii_case(".net") {
+                            let asm_manifest =
+                                child.attribute("AssemblyManifest").unwrap_or(file_id_str);
+                            let asm_app = child
+                                .attribute("AssemblyApplication")
+                                .map_or(FieldValue::Null, |a| FieldValue::String(a.to_string()));
+                            let asm_attrs: i16 = i16::from(is_win32);
+                            tables
+                                .entry("MsiAssembly".to_string())
+                                .or_insert_with(|| IntermediateTable::new("MsiAssembly"))
+                                .push_record(Record::with_fields(vec![
+                                    FieldValue::String(comp_id_for_asm.clone()),
+                                    FieldValue::String("Complete".to_string()),
+                                    FieldValue::String(asm_manifest.to_string()),
+                                    asm_app,
+                                    FieldValue::Short(asm_attrs),
+                                ]));
+                            let default_proc_arch = if !is_win32 && !section_arch.is_64bit() {
+                                "msil".to_string()
+                            } else {
+                                crate::execution::assembly_types::ProcessorArchitecture::from(
+                                    section_arch,
+                                )
+                                .to_string()
+                            };
+                            let asm_name_tbl = tables
+                                .entry("MsiAssemblyName".to_string())
+                                .or_insert_with(|| IntermediateTable::new("MsiAssemblyName"));
+                            asm_name_tbl.push_record(Record::with_fields(vec![
+                                FieldValue::String(comp_id_for_asm.clone()),
+                                FieldValue::String("name".to_string()),
+                                FieldValue::String(file_name.to_string()),
+                            ]));
+                            asm_name_tbl.push_record(Record::with_fields(vec![
+                                FieldValue::String(comp_id_for_asm),
+                                FieldValue::String("processorArchitecture".to_string()),
+                                FieldValue::String(default_proc_arch),
+                            ]));
+                        }
+                    }
 
                     let file_disk_id: i16 = child
                         .attribute("DiskId")
@@ -887,7 +1062,13 @@ impl Compiler {
                         }
                     }
 
-                    self.compile_element_tree(child, Some(feat_id_str), section, tables)?;
+                    self.compile_element_tree(
+                        child,
+                        Some(feat_id_str),
+                        section,
+                        tables,
+                        section_arch,
+                    )?;
                 }
                 "DirectoryRef" => {
                     let dir_id_str =
@@ -898,7 +1079,13 @@ impl Compiler {
                     let dir_id = DirectoryId::new(dir_id_str)?;
                     let span = SourceSpan::new(child.line, child.column);
                     section.add_reference(Reference::with_span("Directory", dir_id.as_str(), span));
-                    self.compile_element_tree(child, Some(dir_id.as_str()), section, tables)?;
+                    self.compile_element_tree(
+                        child,
+                        Some(dir_id.as_str()),
+                        section,
+                        tables,
+                        section_arch,
+                    )?;
                 }
                 "ComponentGroup" => {
                     let group_id_str =
@@ -965,7 +1152,7 @@ impl Compiler {
                         }
                     }
 
-                    self.compile_element_tree(child, comp_dir, section, tables)?;
+                    self.compile_element_tree(child, comp_dir, section, tables, section_arch)?;
                 }
                 "ComponentGroupRef" => {
                     let group_ref_id =
@@ -988,7 +1175,7 @@ impl Compiler {
                         })?;
                     let span = SourceSpan::new(child.line, child.column);
                     section.add_symbol(Symbol::with_span("PackageGroup", group_id_str, span));
-                    self.compile_element_tree(child, parent_id, section, tables)?;
+                    self.compile_element_tree(child, parent_id, section, tables, section_arch)?;
                 }
                 "PackageGroupRef" => {
                     let group_ref_id =
@@ -1007,7 +1194,7 @@ impl Compiler {
                         })?;
                     let span = SourceSpan::new(child.line, child.column);
                     section.add_symbol(Symbol::with_span("FeatureGroup", group_id_str, span));
-                    self.compile_element_tree(child, parent_id, section, tables)?;
+                    self.compile_element_tree(child, parent_id, section, tables, section_arch)?;
                 }
                 "FeatureGroupRef" => {
                     let group_ref_id =
@@ -1066,7 +1253,13 @@ impl Compiler {
                         }
                     }
 
-                    self.compile_element_tree(child, Some(feat_ref_id), section, tables)?;
+                    self.compile_element_tree(
+                        child,
+                        Some(feat_ref_id),
+                        section,
+                        tables,
+                        section_arch,
+                    )?;
                 }
                 "Package" => {
                     let prop_table = tables
@@ -1125,7 +1318,12 @@ impl Compiler {
                         };
                         prop_table.push_record(p.to_record());
                     }
-                    if let Some(plt) = child.attribute("Platform") {
+                    if let Some(plt) = child
+                        .attribute("Platform")
+                        .or_else(|| child.attribute("Platforms"))
+                        .or_else(|| child.attribute("InstallerPlatform"))
+                    {
+                        let _ = Architecture::parse(plt)?;
                         let p = PropertyRow {
                             property: PropertyName::from_static("ProductPlatform"),
                             value: plt.to_string(),
@@ -1165,7 +1363,7 @@ impl Compiler {
                         prop_table.push_record(p.to_record());
                     }
 
-                    self.compile_element_tree(child, parent_id, section, tables)?;
+                    self.compile_element_tree(child, parent_id, section, tables, section_arch)?;
                 }
                 "SetDirectory" => {
                     let dir_id_str =
@@ -1414,7 +1612,13 @@ impl Compiler {
                             .push_record(row.to_record());
                     }
 
-                    self.compile_element_tree(child, Some(prop_id_str), section, tables)?;
+                    self.compile_element_tree(
+                        child,
+                        Some(prop_id_str),
+                        section,
+                        tables,
+                        section_arch,
+                    )?;
                 }
                 "RegistryKey" => {
                     let key = child.attribute("Key").unwrap_or("Software\\Product");
@@ -1431,7 +1635,7 @@ impl Compiler {
                             );
                         }
                     }
-                    self.compile_element_tree(child, parent_id, section, tables)?;
+                    self.compile_element_tree(child, parent_id, section, tables, section_arch)?;
                 }
                 "RegistryValue" => {
                     if node.tag != "RegistryKey" {
@@ -1454,7 +1658,13 @@ impl Compiler {
                 }
                 "sql:SqlDatabase" | "SqlDatabase" => {
                     elements::compile_sql_database(child, parent_id, section, tables)?;
-                    self.compile_element_tree(child, child.attribute("Id"), section, tables)?;
+                    self.compile_element_tree(
+                        child,
+                        child.attribute("Id"),
+                        section,
+                        tables,
+                        section_arch,
+                    )?;
                 }
                 "sql:SqlString" | "SqlString" => {
                     elements::compile_sql_string(child, parent_id, section, tables)?;
@@ -1463,11 +1673,17 @@ impl Compiler {
                     elements::compile_sql_script(child, parent_id, section, tables)?;
                 }
                 "CustomAction" => {
-                    ui_and_search::compile_custom_action(child, section, tables)?;
+                    ui_and_search::compile_custom_action(child, section, tables, section_arch)?;
                 }
                 "Dialog" => {
                     ui_and_search::compile_dialog(child, section, tables)?;
-                    self.compile_element_tree(child, child.attribute("Id"), section, tables)?;
+                    self.compile_element_tree(
+                        child,
+                        child.attribute("Id"),
+                        section,
+                        tables,
+                        section_arch,
+                    )?;
                 }
                 "Control" => {
                     ui_and_search::compile_control(self, child, parent_id, section, tables)?;
@@ -1566,7 +1782,13 @@ impl Compiler {
                     ui_and_search::compile_app_search(child, section, tables);
                 }
                 "RegistrySearch" => {
-                    ui_and_search::compile_registry_search(child, parent_id, section, tables);
+                    ui_and_search::compile_registry_search(
+                        child,
+                        parent_id,
+                        section,
+                        tables,
+                        section_arch,
+                    )?;
                 }
                 "DirectorySearch" => {
                     ui_and_search::compile_directory_search(child, parent_id, section, tables);
@@ -1642,10 +1864,16 @@ impl Compiler {
                             ui_and_search::compile_extension_element(
                                 child, parent_id, section, tables,
                             );
-                            self.compile_element_tree(child, parent_id, section, tables)?;
+                            self.compile_element_tree(
+                                child,
+                                parent_id,
+                                section,
+                                tables,
+                                section_arch,
+                            )?;
                         }
                     } else {
-                        self.compile_element_tree(child, parent_id, section, tables)?;
+                        self.compile_element_tree(child, parent_id, section, tables, section_arch)?;
                     }
                 }
             }
@@ -4879,5 +5107,138 @@ mod tests {
         assert!(s8.starts_with(r"{\rtf1\ansi\ansicpg1252"));
 
         let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    /// Tests cross-architecture compilation, `StandardDirectory` (`ProgramFiles6432Folder`, `CommonFiles6432Folder`),
+    /// `Bitness` (`default`, `always32`, `always64`), `Win64`, `ModulePlatform`, and 64-bit script custom actions.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_compiler_cross_architecture_and_bitness() {
+        let parser = XmlParser::new();
+        let mut compiler = Compiler::new();
+        assert_eq!(compiler.architecture(), Architecture::X86);
+        compiler.set_architecture(Architecture::Arm64);
+        assert_eq!(compiler.architecture(), Architecture::Arm64);
+
+        let xml_arm64 = r#"<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+    <Package Name="Arm64App" Version="1.0.0" Manufacturer="Acme" UpgradeCode="{11111111-1111-1111-1111-111111111111}">
+        <StandardDirectory Id="ProgramFiles6432Folder">
+            <Directory Id="INSTALLFOLDER" Name="Arm64App">
+                <Component Id="CompDefault64" Guid="*">
+                    <File Id="AppExe" Source="app.exe" />
+                </Component>
+                <Component Id="CompForce32" Guid="*" Bitness="always32">
+                    <File Id="Helper32Exe" Source="helper32.exe" Assembly=".net" AssemblyApplication="AppExe" />
+                </Component>
+            </Directory>
+        </StandardDirectory>
+        <StandardDirectory Id="CommonFiles6432Folder">
+            <Component Id="CompCommon64" Guid="*" Bitness="always64" />
+        </StandardDirectory>
+        <Property Id="FOUND_REG">
+            <RegistrySearch Id="RegSearchDefault" Root="HKLM" Key="Software\Acme" />
+            <RegistrySearch Id="RegSearch32" Root="HKLM" Key="Software\Acme" Bitness="always32" />
+        </Property>
+        <CustomAction Id="Script64" Script="vbscript">x = 1</CustomAction>
+        <CustomAction Id="Script32" Script="jscript" Bitness="always32">var y = 1;</CustomAction>
+    </Package>
+</Wix>"#;
+
+        let root_arm64 = parser.parse(xml_arm64).unwrap_or_default();
+        let obj_arm64 = compiler.compile(&root_arm64).unwrap_or_default();
+        let sec = &obj_arm64.sections[0];
+
+        let prop_tbl = get_table(sec, "Property");
+        assert!(prop_tbl.records.iter().any(|r| {
+            r.get(0) == Some(&FieldValue::String("ProductPlatform".to_string()))
+                && r.get(1) == Some(&FieldValue::String("arm64".to_string()))
+        }));
+        assert!(prop_tbl.records.iter().any(|r| {
+            r.get(0) == Some(&FieldValue::String("InstallerVersion".to_string()))
+                && r.get(1) == Some(&FieldValue::String("500".to_string()))
+        }));
+
+        assert!(sec
+            .references
+            .iter()
+            .any(|rf| rf.namespace == "Directory" && rf.id == "ProgramFiles64Folder"));
+        assert!(sec
+            .references
+            .iter()
+            .any(|rf| rf.namespace == "Directory" && rf.id == "CommonFiles64Folder"));
+
+        let comp_tbl = get_table(sec, "Component");
+        assert_eq!(comp_tbl.records.len(), 3);
+        // CompDefault64 should have 0x0100 set
+        assert_eq!(comp_tbl.records[0].get(3), Some(&FieldValue::Short(0x0100)));
+        // CompForce32 should NOT have 0x0100 set
+        assert_eq!(comp_tbl.records[1].get(3), Some(&FieldValue::Short(0)));
+        // CompCommon64 should have 0x0100 set
+        assert_eq!(comp_tbl.records[2].get(3), Some(&FieldValue::Short(0x0100)));
+
+        let reg_loc_tbl = get_table(sec, "RegLocator");
+        assert_eq!(reg_loc_tbl.records.len(), 2);
+        assert_eq!(
+            reg_loc_tbl.records[0].get(4),
+            Some(&FieldValue::Short(2 | 0x0010))
+        );
+        assert_eq!(reg_loc_tbl.records[1].get(4), Some(&FieldValue::Short(2)));
+
+        let ca_tbl = get_table(sec, "CustomAction");
+        assert_eq!(ca_tbl.records.len(), 2);
+        assert_eq!(
+            ca_tbl.records[0].get(1),
+            Some(&FieldValue::Short(6 | 0x0020))
+        );
+        assert_eq!(ca_tbl.records[1].get(1), Some(&FieldValue::Short(5)));
+
+        // Also test 32-bit mapping of ProgramFiles6432Folder and CommonFiles6432Folder
+        let compiler_x86 = Compiler::new().with_architecture(Architecture::X86);
+        let obj_x86 = compiler_x86.compile(&root_arm64).unwrap_or_default();
+        let sec_x86 = &obj_x86.sections[0];
+        assert!(sec_x86
+            .references
+            .iter()
+            .any(|rf| rf.namespace == "Directory" && rf.id == "ProgramFilesFolder"));
+        assert!(sec_x86
+            .references
+            .iter()
+            .any(|rf| rf.namespace == "Directory" && rf.id == "CommonFilesFolder"));
+
+        // Module with target_arch = X64 and explicit Platform="arm64"
+        let mod_xml = r#"<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Module Id="Mod64" Version="1.0.0" Language="1033" Guid="{11111111-2222-3333-4444-555555555555}">
+        <Component Id="ModComp" Guid="*" />
+    </Module>
+</Wix>"#;
+        let root_mod = parser.parse(mod_xml).unwrap_or_default();
+        let compiler_x64 = Compiler::new().with_architecture(Architecture::X64);
+        let obj_mod = compiler_x64.compile(&root_mod).unwrap_or_default();
+        let mod_props = get_table(&obj_mod.sections[0], "Property");
+        assert!(mod_props.records.iter().any(|r| {
+            r.get(0) == Some(&FieldValue::String("ModulePlatform".to_string()))
+                && r.get(1) == Some(&FieldValue::String("x64".to_string()))
+        }));
+
+        let mod_explicit_xml = r#"<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Module Id="ModArm" Version="1.0.0" Language="1033" Platform="arm64" Guid="{11111111-2222-3333-4444-555555555555}" />
+</Wix>"#;
+        let root_mod_exp = parser.parse(mod_explicit_xml).unwrap_or_default();
+        let obj_mod_exp = compiler_x86.compile(&root_mod_exp).unwrap_or_default();
+        let mod_exp_props = get_table(&obj_mod_exp.sections[0], "Property");
+        assert!(mod_exp_props.records.iter().any(|r| {
+            r.get(0) == Some(&FieldValue::String("ModulePlatform".to_string()))
+                && r.get(1) == Some(&FieldValue::String("arm64".to_string()))
+        }));
+
+        // Error branch: StandardDirectory missing Id
+        let bad_sd_xml = r#"<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"><Package Name="A" Version="1.0.0" Manufacturer="M"><StandardDirectory /></Package></Wix>"#;
+        let root_bad_sd = parser.parse(bad_sd_xml).unwrap_or_default();
+        assert!(compiler_x86.compile(&root_bad_sd).is_err());
+
+        // Error branch: Invalid platform on Package
+        let bad_plt_xml = r#"<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"><Package Name="A" Version="1.0.0" Manufacturer="M" InstallerPlatform="invalid_arch" /></Wix>"#;
+        let root_bad_plt = parser.parse(bad_plt_xml).unwrap_or_default();
+        assert!(compiler_x86.compile(&root_bad_plt).is_err());
     }
 }

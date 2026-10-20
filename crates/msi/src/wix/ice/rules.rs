@@ -1282,7 +1282,7 @@ impl Linker {
         None
     }
 
-    /// ICE80: Validates mixing 32-bit and 64-bit components in packages.
+    /// ICE80: Validates mixing 32-bit and 64-bit components, directories, schema versions, and PE payloads in packages.
     ///
     /// # Arguments
     ///
@@ -1292,24 +1292,118 @@ impl Linker {
     ///
     /// `Some(IceReport)` if found, or `None` if absent.
     pub(crate) fn validate_ice80(db: &LinkedDatabase) -> Option<IceReport> {
-        let mut has_32bit = false;
-        let mut has_64bit = false;
+        use crate::database::summary_info::{Architecture, TemplateSummary};
 
-        for r in db.get_records("Component") {
-            if let Some(FieldValue::Short(attr)) = r.get(3) {
-                if (attr & 0x0100) != 0 {
-                    has_64bit = true;
-                } else {
-                    has_32bit = true;
-                }
+        let mut declared_arch: Option<Architecture> = None;
+        let mut installer_version: Option<i32> = None;
+
+        for r in db.get_records("Property") {
+            let k = r.get(0).map_or_else(String::new, ToString::to_string);
+            let v = r.get(1).map_or_else(String::new, ToString::to_string);
+            if k == "SummaryTemplate" {
+                declared_arch = TemplateSummary::parse(&v).ok().map(|t| t.architecture);
+            } else if (k == "ProductPlatform" || k == "ModulePlatform" || k == "Platform")
+                && declared_arch.is_none()
+            {
+                declared_arch = Architecture::parse(&v).ok();
+            } else if k == "InstallerVersion" {
+                installer_version = v.trim().parse::<i32>().ok();
             }
         }
 
-        // In pure 32-bit package (without 64-bit template), 64-bit components are invalid
-        if has_64bit && has_32bit {
-            // Mixed packages are valid only if configured, but check consistency
+        if let (Some(arch), Some(iv)) = (declared_arch, installer_version) {
+            let min_req = arch.min_installer_version();
+            if iv < min_req {
+                return Some(IceReport {
+                    ice: "ICE80".to_string(),
+                    is_error: true,
+                    message: format!(
+                        "Package targeting '{}' requires InstallerVersion >= {min_req}, found {iv}",
+                        arch.as_wix_str()
+                    ),
+                });
+            }
         }
 
+        let is_32bit_pkg = declared_arch.is_some_and(Architecture::is_32bit);
+        let mut comp_bitness: HashMap<String, bool> = HashMap::new();
+        for r in db.get_records("Component") {
+            let comp_id = r.get(0).map_or_else(String::new, ToString::to_string);
+            let dir_id = r.get(2).map_or_else(String::new, ToString::to_string);
+            let is_64 = matches!(r.get(3), Some(FieldValue::Short(attr)) if (attr & 0x0100) != 0);
+            comp_bitness.insert(comp_id.clone(), is_64);
+
+            if is_32bit_pkg && is_64 {
+                return Some(IceReport {
+                    ice: "ICE80".to_string(),
+                    is_error: true,
+                    message: format!(
+                        "64-bit component '{comp_id}' cannot be present in a 32-bit package"
+                    ),
+                });
+            }
+            if is_32bit_pkg && dir_id.ends_with("64Folder") {
+                return Some(IceReport {
+                    ice: "ICE80".to_string(),
+                    is_error: true,
+                    message: format!(
+                        "Component '{comp_id}' in 32-bit package references 64-bit directory '{dir_id}'"
+                    ),
+                });
+            }
+        }
+
+        Self::validate_ice80_bound_pe_arch(db, declared_arch, &comp_bitness)
+    }
+
+    /// Validates `_BoundFilePeArch` records against owning component bitness and package architecture.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - In-memory linked MSI database to inspect.
+    /// * `declared_arch` - Optional declared package [`crate::database::summary_info::Architecture`].
+    /// * `comp_bitness` - Map of component identifiers to 64-bit component flag.
+    ///
+    /// # Returns
+    ///
+    /// `Some(IceReport)` if a native PE architecture mismatch is detected; `None` otherwise.
+    fn validate_ice80_bound_pe_arch(
+        db: &LinkedDatabase,
+        declared_arch: Option<crate::database::summary_info::Architecture>,
+        comp_bitness: &HashMap<String, bool>,
+    ) -> Option<IceReport> {
+        use crate::database::summary_info::Architecture;
+
+        for r in db.get_records("_BoundFilePeArch") {
+            let file_id = r.get(0).map_or_else(String::new, ToString::to_string);
+            let comp_id = r.get(1).map_or_else(String::new, ToString::to_string);
+            let pe_arch_str = r.get(2).map_or_else(String::new, ToString::to_string);
+            let is_native = r.get(3) == Some(&FieldValue::Short(0));
+            let pe_arch = Architecture::parse(&pe_arch_str).unwrap_or(Architecture::X86);
+            if is_native && pe_arch.is_64bit() && comp_bitness.get(&comp_id) == Some(&false) {
+                return Some(IceReport {
+                    ice: "ICE80".to_string(),
+                    is_error: true,
+                    message: format!(
+                        "64-bit native PE file '{file_id}' ('{pe_arch_str}') cannot be packaged inside 32-bit component '{comp_id}'"
+                    ),
+                });
+            }
+            let cross_64_mismatch = matches!(
+                (declared_arch, pe_arch),
+                (Some(Architecture::X64), Architecture::Arm64)
+                    | (Some(Architecture::Arm64), Architecture::X64)
+            );
+            if is_native && cross_64_mismatch {
+                return Some(IceReport {
+                    ice: "ICE80".to_string(),
+                    is_error: true,
+                    message: format!(
+                        "Native '{pe_arch_str}' PE file '{file_id}' in component '{comp_id}' is incompatible with package architecture"
+                    ),
+                });
+            }
+        }
         None
     }
 
@@ -4227,5 +4321,165 @@ mod tests {
         // Direct run_ice_validations calls filtered with empty lists -> fails on unsuppressed ICE04
         assert!(Linker::run_ice_validations(&db).is_err());
         Ok(())
+    }
+
+    #[test]
+    fn test_ice80_cross_architecture_validation() {
+        // 1. 64-bit component in 32-bit x86 package -> ICE80 error
+        let mut db_bad_comp = LinkedDatabase::default();
+        db_bad_comp.add_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("ProductPlatform".to_string()),
+                FieldValue::String("x86".to_string()),
+            ]),
+        );
+        db_bad_comp.add_record(
+            "Component",
+            Record::with_fields(vec![
+                FieldValue::String("Comp64In32".to_string()),
+                FieldValue::Null,
+                FieldValue::String("TARGETDIR".to_string()),
+                FieldValue::Short(0x0100),
+            ]),
+        );
+        assert!(Linker::validate_ice80(&db_bad_comp).is_some());
+
+        // 2. 64-bit directory in 32-bit x86 package -> ICE80 error
+        let mut db_bad_dir = LinkedDatabase::default();
+        db_bad_dir.add_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("SummaryTemplate".to_string()),
+                FieldValue::String("Intel;1033".to_string()),
+            ]),
+        );
+        db_bad_dir.add_record(
+            "Component",
+            Record::with_fields(vec![
+                FieldValue::String("Comp32In64Dir".to_string()),
+                FieldValue::Null,
+                FieldValue::String("ProgramFiles64Folder".to_string()),
+                FieldValue::Short(0),
+            ]),
+        );
+        assert!(Linker::validate_ice80(&db_bad_dir).is_some());
+
+        // 3. Arm64 package with InstallerVersion < 500 -> ICE80 error
+        let mut db_bad_iv = LinkedDatabase::default();
+        db_bad_iv.add_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("ProductPlatform".to_string()),
+                FieldValue::String("arm64".to_string()),
+            ]),
+        );
+        db_bad_iv.add_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("InstallerVersion".to_string()),
+                FieldValue::String("200".to_string()),
+            ]),
+        );
+        assert!(Linker::validate_ice80(&db_bad_iv).is_some());
+    }
+
+    #[test]
+    fn test_ice80_bound_pe_architecture_validation() {
+        // 4. Native 64-bit PE in 32-bit component -> ICE80 error
+        let mut db_bad_pe = LinkedDatabase::default();
+        db_bad_pe.add_record(
+            "Component",
+            Record::with_fields(vec![
+                FieldValue::String("Comp32".to_string()),
+                FieldValue::Null,
+                FieldValue::String("TARGETDIR".to_string()),
+                FieldValue::Short(0),
+            ]),
+        );
+        db_bad_pe.add_record(
+            "_BoundFilePeArch",
+            Record::with_fields(vec![
+                FieldValue::String("Native64Exe".to_string()),
+                FieldValue::String("Comp32".to_string()),
+                FieldValue::String("x64".to_string()),
+                FieldValue::Short(0),
+            ]),
+        );
+        assert!(Linker::validate_ice80(&db_bad_pe).is_some());
+
+        // 5. Native Arm64 PE in x64 package -> ICE80 error
+        let mut db_mismatch_pe = LinkedDatabase::default();
+        db_mismatch_pe.add_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("ProductPlatform".to_string()),
+                FieldValue::String("x64".to_string()),
+            ]),
+        );
+        db_mismatch_pe.add_record(
+            "Component",
+            Record::with_fields(vec![
+                FieldValue::String("Comp64".to_string()),
+                FieldValue::Null,
+                FieldValue::String("TARGETDIR".to_string()),
+                FieldValue::Short(0x0100),
+            ]),
+        );
+        db_mismatch_pe.add_record(
+            "_BoundFilePeArch",
+            Record::with_fields(vec![
+                FieldValue::String("Arm64Exe".to_string()),
+                FieldValue::String("Comp64".to_string()),
+                FieldValue::String("arm64".to_string()),
+                FieldValue::Short(0),
+            ]),
+        );
+        assert!(Linker::validate_ice80(&db_mismatch_pe).is_some());
+
+        // 6. Valid Arm64 package with InstallerVersion 500 and Arm64 PE
+        let mut db_valid_arm64 = LinkedDatabase::default();
+        db_valid_arm64.add_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("ProductPlatform".to_string()),
+                FieldValue::String("arm64".to_string()),
+            ]),
+        );
+        db_valid_arm64.add_record(
+            "Property",
+            Record::with_fields(vec![
+                FieldValue::String("InstallerVersion".to_string()),
+                FieldValue::String("500".to_string()),
+            ]),
+        );
+        db_valid_arm64.add_record(
+            "Component",
+            Record::with_fields(vec![
+                FieldValue::String("CompArm64".to_string()),
+                FieldValue::Null,
+                FieldValue::String("ProgramFiles64Folder".to_string()),
+                FieldValue::Short(0x0100),
+            ]),
+        );
+        db_valid_arm64.add_record(
+            "_BoundFilePeArch",
+            Record::with_fields(vec![
+                FieldValue::String("Arm64Exe".to_string()),
+                FieldValue::String("CompArm64".to_string()),
+                FieldValue::String("arm64".to_string()),
+                FieldValue::Short(0),
+            ]),
+        );
+        db_valid_arm64.add_record(
+            "_BoundFilePeArch",
+            Record::with_fields(vec![
+                FieldValue::String("ClrExe".to_string()),
+                FieldValue::String("CompArm64".to_string()),
+                FieldValue::String("x86".to_string()),
+                FieldValue::Short(1),
+            ]),
+        );
+        assert!(Linker::validate_ice80(&db_valid_arm64).is_none());
     }
 }

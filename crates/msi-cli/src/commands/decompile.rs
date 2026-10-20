@@ -44,7 +44,7 @@ pub fn handle_decompile(args: &DecompileArgs) -> Result<String, MsiError> {
         println!("Extracted {} assets into '{}'", extracted.len(), asset_dir);
     }
 
-    let xml = decompiler.decompile(pkg.database())?;
+    let xml = decompiler.decompile_package(&pkg)?;
 
     if let Some(ref out_file) = args.output {
         std::fs::write(out_file, xml.as_bytes()).map_err(|e| {

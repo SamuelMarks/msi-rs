@@ -383,6 +383,17 @@ mod tests {
         );
         assert!(Path::new("Sample App.msi").exists());
         let _ = std::fs::remove_file("Sample App.msi");
+
+        let arch_args = CreateArgs {
+            name: "SampleArm64App".to_string(),
+            manufacturer: "Sample Corp".to_string(),
+            version: "1.2.3".to_string(),
+            product_code: "{12345678-1234-1234-1234-1234567890AB}".to_string(),
+        };
+        assert!(handle_create_with_arch(&arch_args, Some("arm64"), Some(500)).is_ok());
+        assert!(Path::new("SampleArm64App.msi").exists());
+        let _ = std::fs::remove_file("SampleArm64App.msi");
+        assert!(handle_create_with_arch(&arch_args, Some("invalid_arch"), None).is_err());
     }
 
     /// Tests running the `worker` command.
@@ -1791,6 +1802,30 @@ mod tests {
             })),
         });
         assert!(harvest_stdout.is_ok());
+        let harvest_arch_args = HarvestArgs {
+            target: src_dir.to_string_lossy().to_string(),
+            extra_target: None,
+            source_dir: None,
+            wix_fragment: None,
+            group: "ArchHarvestGroup".to_string(),
+            dir_id: "INSTALLFOLDER".to_string(),
+            output: None,
+            mode: "dir".to_string(),
+            gitignore: None,
+            disk_rules: vec![],
+            default_disk_id: 1,
+            split_size: None,
+            secondary_groups: vec![],
+            exclude_extensions: vec![],
+            exclude_patterns: vec![],
+            manifest_file: None,
+            output_dir: None,
+            include_cache: None,
+            include_msi: false,
+        };
+        let harvest_arm64 = handle_harvest_with_arch(&harvest_arch_args, Some("arm64"), Some(true));
+        assert!(harvest_arm64.is_ok());
+        assert!(handle_harvest_with_arch(&harvest_arch_args, Some("bad_arch"), None).is_err());
 
         // 2b. Test drop-in harvest_payload.sh flag compatibility (--source-dir and --wix-fragment)
         let dropin_fragment = temp_dir.join("dropin_payload.wxs");

@@ -3,6 +3,7 @@
 use super::Linker;
 use crate::database::md5::compute_md5;
 use crate::database::memory::LinkedDatabase;
+use crate::database::summary_info::Architecture;
 use crate::database::tables::record::{FieldValue, Record};
 use crate::error::{MsiError, Result};
 use crate::execution::properties::EvaluationContext;
@@ -400,6 +401,26 @@ fn collect_disk_to_cab_names(db: &LinkedDatabase) -> HashMap<i16, String> {
     disk_to_cab
 }
 
+/// Sorts `File` table records in ascending order of their assigned `DiskId`.
+fn sort_file_records_by_disk(
+    file_records: &mut [Record],
+    file_sources: &HashMap<String, (String, i16)>,
+) {
+    file_records.sort_by(|a, b| {
+        let fid_a = match a.get(0) {
+            Some(FieldValue::String(s)) => s.as_str(),
+            _ => "",
+        };
+        let fid_b = match b.get(0) {
+            Some(FieldValue::String(s)) => s.as_str(),
+            _ => "",
+        };
+        let disk_a = file_sources.get(fid_a).map_or(1, |(_, d)| *d);
+        let disk_b = file_sources.get(fid_b).map_or(1, |(_, d)| *d);
+        disk_a.cmp(&disk_b)
+    });
+}
+
 /// Binds each `File` record to its disk payload, populates `FileHash` and `Font` tables, and adds payloads to `CabinetWriter`.
 fn bind_file_records_into_cabinets(
     linker: &Linker,
@@ -411,21 +432,11 @@ fn bind_file_records_into_cabinets(
 ) -> Result<()> {
     let mut file_hash_records: Vec<Record> = Vec::new();
     let mut font_records: Vec<Record> = Vec::new();
+    let mut bound_pe_arch_records: Vec<Record> = Vec::new();
+    let mut comp_proc_arch_updates: HashMap<String, String> = HashMap::new();
 
     if let Some(file_records) = db.tables.get_mut("File") {
-        file_records.sort_by(|a, b| {
-            let fid_a = match a.get(0) {
-                Some(FieldValue::String(s)) => s.as_str(),
-                _ => "",
-            };
-            let fid_b = match b.get(0) {
-                Some(FieldValue::String(s)) => s.as_str(),
-                _ => "",
-            };
-            let disk_a = file_sources.get(fid_a).map_or(1, |(_, d)| *d);
-            let disk_b = file_sources.get(fid_b).map_or(1, |(_, d)| *d);
-            disk_a.cmp(&disk_b)
-        });
+        sort_file_records_by_disk(file_records, file_sources);
 
         let mut max_seq_per_disk: HashMap<i16, i32> = HashMap::new();
 
@@ -460,6 +471,16 @@ fn bind_file_records_into_cabinets(
                 FieldValue::Long(i32::try_from(data.len()).unwrap_or(i32::MAX)),
             );
 
+            if let Some(pe_meta) = inspect_pe_metadata(&data) {
+                record_inspected_pe_metadata(
+                    &file_id,
+                    &comp_id,
+                    &pe_meta,
+                    &mut bound_pe_arch_records,
+                    &mut comp_proc_arch_updates,
+                );
+            }
+
             update_file_version_or_hash(r, &file_id, &data, &mut file_hash_records);
             if let Some(font_title) = inspect_font_title(&data) {
                 font_records.push(Record::with_fields(vec![
@@ -493,6 +514,15 @@ fn bind_file_records_into_cabinets(
         update_media_last_sequences(db, &max_seq_per_disk);
     }
 
+    if !bound_pe_arch_records.is_empty() {
+        db.tables
+            .entry("_BoundFilePeArch".to_string())
+            .or_default()
+            .extend(bound_pe_arch_records);
+    }
+    if !comp_proc_arch_updates.is_empty() && !db.get_records("MsiAssembly").is_empty() {
+        apply_msi_assembly_pe_metadata(db, &comp_proc_arch_updates);
+    }
     if !file_hash_records.is_empty() {
         db.tables
             .entry("FileHash".to_string())
@@ -506,6 +536,47 @@ fn bind_file_records_into_cabinets(
             .extend(font_records);
     }
     Ok(())
+}
+
+/// Records inspected [`PeMetadata`] into `_BoundFilePeArch` and component `processorArchitecture` updates.
+fn record_inspected_pe_metadata(
+    file_id: &str,
+    comp_id: &str,
+    pe_meta: &PeMetadata,
+    bound_pe_arch_records: &mut Vec<Record>,
+    comp_proc_arch_updates: &mut HashMap<String, String>,
+) {
+    if let Some(arch) = pe_meta.architecture {
+        bound_pe_arch_records.push(Record::with_fields(vec![
+            FieldValue::String(file_id.to_string()),
+            FieldValue::String(comp_id.to_string()),
+            FieldValue::String(arch.as_wix_str().to_string()),
+            FieldValue::Short(i16::from(pe_meta.is_clr_assembly)),
+        ]));
+    }
+    let proc_arch = if pe_meta.is_clr_assembly && pe_meta.machine == PeMachineType::I386 {
+        "msil".to_string()
+    } else {
+        pe_meta.machine.processor_architecture_str().to_string()
+    };
+    comp_proc_arch_updates.insert(comp_id.to_string(), proc_arch);
+}
+
+/// Applies inspected PE `processorArchitecture` metadata to `MsiAssemblyName` rows.
+fn apply_msi_assembly_pe_metadata(
+    db: &mut LinkedDatabase,
+    comp_proc_arch_updates: &HashMap<String, String>,
+) {
+    for row in db.tables.entry("MsiAssemblyName".to_string()).or_default() {
+        let comp_id = row.get(0).map_or_else(String::new, ToString::to_string);
+        let attr_name = row.get(1).map_or_else(String::new, ToString::to_string);
+        if let Some(proc_arch) = comp_proc_arch_updates
+            .get(&comp_id)
+            .filter(|_| attr_name == "processorArchitecture")
+        {
+            row.set(2, FieldValue::String(proc_arch.clone()));
+        }
+    }
 }
 
 /// Populates PE version/language on `r` or appends an MD5 `FileHash` record.
@@ -787,7 +858,248 @@ pub(super) fn layout_media_and_files(db: &mut LinkedDatabase) {
     }
 }
 
-/// Inspects executable file binary data to extract Windows PE `VS_FIXEDFILEINFO` version and language.
+/// Strongly-typed COFF/PE `IMAGE_FILE_HEADER.Machine` identifier (`[MS-PECOFF]`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PeMachineType {
+    /// Intel 386 (`IMAGE_FILE_MACHINE_I386 = 0x014C`).
+    I386,
+    /// x64 / AMD64 (`IMAGE_FILE_MACHINE_AMD64 = 0x8664`).
+    Amd64,
+    /// ARM Thumb-2 Little-Endian (`IMAGE_FILE_MACHINE_ARMNT = 0x01C4`, `0x01C0`, `0x01C2`).
+    ArmNt,
+    /// ARM64 Little-Endian (`IMAGE_FILE_MACHINE_ARM64 = 0xAA64`).
+    Arm64,
+    /// ARM64EC (`IMAGE_FILE_MACHINE_ARM64EC = 0xA641`).
+    Arm64Ec,
+    /// Intel Itanium (`IMAGE_FILE_MACHINE_IA64 = 0x0200`).
+    Ia64,
+    /// Unrecognized COFF machine constant.
+    Unknown(u16),
+}
+
+impl PeMachineType {
+    /// Parses a raw 16-bit COFF `Machine` constant into [`PeMachineType`].
+    ///
+    /// # Arguments
+    ///
+    /// * `raw` - Raw little-endian `u16` COFF machine value.
+    ///
+    /// # Returns
+    ///
+    /// Corresponding [`PeMachineType`].
+    #[must_use]
+    pub const fn from_raw(raw: u16) -> Self {
+        match raw {
+            0x014C => Self::I386,
+            0x8664 => Self::Amd64,
+            0x01C0 | 0x01C2 | 0x01C4 => Self::ArmNt,
+            0xAA64 => Self::Arm64,
+            0xA641 => Self::Arm64Ec,
+            0x0200 => Self::Ia64,
+            other => Self::Unknown(other),
+        }
+    }
+
+    /// Returns the raw 16-bit COFF `Machine` constant.
+    ///
+    /// # Returns
+    ///
+    /// Raw `u16` machine value.
+    #[must_use]
+    pub const fn to_raw(self) -> u16 {
+        match self {
+            Self::I386 => 0x014C,
+            Self::Amd64 => 0x8664,
+            Self::ArmNt => 0x01C4,
+            Self::Arm64 => 0xAA64,
+            Self::Arm64Ec => 0xA641,
+            Self::Ia64 => 0x0200,
+            Self::Unknown(v) => v,
+        }
+    }
+
+    /// Maps this PE machine type to a Windows Installer [`Architecture`].
+    ///
+    /// # Returns
+    ///
+    /// `Some(Architecture)` for known PE machine types; `None` for `Unknown`.
+    #[must_use]
+    pub const fn architecture(self) -> Option<Architecture> {
+        match self {
+            Self::I386 => Some(Architecture::X86),
+            Self::Amd64 => Some(Architecture::X64),
+            Self::ArmNt => Some(Architecture::Arm),
+            Self::Arm64 | Self::Arm64Ec => Some(Architecture::Arm64),
+            Self::Ia64 => Some(Architecture::Ia64),
+            Self::Unknown(_) => None,
+        }
+    }
+
+    /// Returns the `MsiAssemblyName` `processorArchitecture` string for this machine type.
+    ///
+    /// # Returns
+    ///
+    /// Canonical `processorArchitecture` attribute value (`"x86"`, `"amd64"`, `"arm"`, `"arm64"`, `"ia64"`, or `"neutral"`).
+    #[must_use]
+    pub const fn processor_architecture_str(self) -> &'static str {
+        match self {
+            Self::I386 => "x86",
+            Self::Amd64 => "amd64",
+            Self::ArmNt => "arm",
+            Self::Arm64 | Self::Arm64Ec => "arm64",
+            Self::Ia64 => "ia64",
+            Self::Unknown(_) => "neutral",
+        }
+    }
+}
+
+/// Strongly-typed ELF `e_machine` identifier for cross-platform POSIX payloads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ElfMachineType {
+    /// Intel 80386 (`EM_386 = 3`).
+    Em386,
+    /// AMD x86-64 (`EM_X86_64 = 62`).
+    EmX86_64,
+    /// ARM 32-bit (`EM_ARM = 40`).
+    EmArm,
+    /// ARM 64-bit (`EM_AARCH64 = 183`).
+    EmAarch64,
+    /// Intel IA-64 (`EM_IA_64 = 50`).
+    EmIa64,
+    /// RISC-V (`EM_RISCV = 243`).
+    EmRiscv,
+    /// `PowerPC` 64-bit (`EM_PPC64 = 21`).
+    EmPpc64,
+    /// IBM S/390 (`EM_S390 = 22`).
+    EmS390,
+    /// `LoongArch` (`EM_LOONGARCH = 258`).
+    EmLoongArch,
+    /// Unrecognized ELF machine value.
+    Unknown(u16),
+}
+
+impl ElfMachineType {
+    /// Parses a raw 16-bit ELF `e_machine` value into [`ElfMachineType`].
+    ///
+    /// # Arguments
+    ///
+    /// * `raw` - Raw `u16` ELF `e_machine` constant.
+    ///
+    /// # Returns
+    ///
+    /// Parsed [`ElfMachineType`].
+    #[must_use]
+    pub const fn from_raw(raw: u16) -> Self {
+        match raw {
+            3 => Self::Em386,
+            62 => Self::EmX86_64,
+            40 => Self::EmArm,
+            183 => Self::EmAarch64,
+            50 => Self::EmIa64,
+            243 => Self::EmRiscv,
+            21 => Self::EmPpc64,
+            22 => Self::EmS390,
+            258 => Self::EmLoongArch,
+            other => Self::Unknown(other),
+        }
+    }
+
+    /// Maps this ELF machine type to an [`Architecture`].
+    ///
+    /// # Returns
+    ///
+    /// `Some(Architecture)` for recognized ELF machine types; `None` for `Unknown`.
+    #[must_use]
+    pub const fn architecture(self) -> Option<Architecture> {
+        match self {
+            Self::Em386 => Some(Architecture::X86),
+            Self::EmX86_64 => Some(Architecture::X64),
+            Self::EmArm => Some(Architecture::Arm),
+            Self::EmAarch64 => Some(Architecture::Arm64),
+            Self::EmIa64 => Some(Architecture::Ia64),
+            Self::EmRiscv | Self::EmPpc64 | Self::EmS390 | Self::EmLoongArch => {
+                Some(Architecture::Neutral)
+            }
+            Self::Unknown(_) => None,
+        }
+    }
+}
+
+/// Strongly-typed Mach-O `cputype` identifier for macOS/Darwin binary payloads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MachOCpuType {
+    /// 32-bit x86 (`CPU_TYPE_X86 = 7`).
+    X86,
+    /// 64-bit x86-64 (`CPU_TYPE_X86_64 = 0x0100_0007`).
+    X86_64,
+    /// 32-bit ARM (`CPU_TYPE_ARM = 12`).
+    Arm,
+    /// 64-bit ARM64 (`CPU_TYPE_ARM64 = 0x0100_000C`).
+    Arm64,
+    /// Universal (`FAT_MAGIC = 0xCAFE_BABE`).
+    Universal,
+    /// Unrecognized Mach-O `cputype`.
+    Unknown(u32),
+}
+
+impl MachOCpuType {
+    /// Parses a raw 32-bit Mach-O `cputype` value into [`MachOCpuType`].
+    ///
+    /// # Arguments
+    ///
+    /// * `raw` - Raw `u32` Mach-O `cputype`.
+    ///
+    /// # Returns
+    ///
+    /// Parsed [`MachOCpuType`].
+    #[must_use]
+    pub const fn from_raw(raw: u32) -> Self {
+        match raw {
+            7 => Self::X86,
+            0x0100_0007 => Self::X86_64,
+            12 => Self::Arm,
+            0x0100_000C => Self::Arm64,
+            0xCAFE_BABE => Self::Universal,
+            other => Self::Unknown(other),
+        }
+    }
+
+    /// Maps this Mach-O CPU type to an [`Architecture`].
+    ///
+    /// # Returns
+    ///
+    /// `Some(Architecture)` for recognized CPU types; `None` for `Unknown`.
+    #[must_use]
+    pub const fn architecture(self) -> Option<Architecture> {
+        match self {
+            Self::X86 => Some(Architecture::X86),
+            Self::X86_64 => Some(Architecture::X64),
+            Self::Arm => Some(Architecture::Arm),
+            Self::Arm64 => Some(Architecture::Arm64),
+            Self::Universal => Some(Architecture::Neutral),
+            Self::Unknown(_) => None,
+        }
+    }
+}
+
+/// Extracted metadata from a Portable Executable (`PE32` or `PE32+`) binary header and resources.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PeMetadata {
+    /// COFF machine type (`IMAGE_FILE_HEADER.Machine`).
+    pub machine: PeMachineType,
+    /// Resolved Windows Installer [`Architecture`].
+    pub architecture: Option<Architecture>,
+    /// Whether the optional header uses `PE32+` (64-bit, magic `0x020B`).
+    pub is_pe32_plus: bool,
+    /// Whether the image contains a .NET CLR COM Descriptor directory (entry 14).
+    pub is_clr_assembly: bool,
+    /// Extracted `VS_FIXEDFILEINFO` file version string (if present).
+    pub version: Option<String>,
+    /// Extracted `VS_FIXEDFILEINFO` language LCID string (if present).
+    pub language: Option<String>,
+}
+
+/// Inspects a Windows PE (`PE32` or `PE32+`) binary payload in a host-independent, endian-safe manner.
 ///
 /// # Arguments
 ///
@@ -795,9 +1107,9 @@ pub(super) fn layout_media_and_files(db: &mut LinkedDatabase) {
 ///
 /// # Returns
 ///
-/// Optional tuple of `(version_string, language_id_string)`.
+/// `Some(PeMetadata)` if `data` is a valid PE image; `None` otherwise.
 #[must_use]
-pub fn inspect_pe_version(data: &[u8]) -> Option<(String, String)> {
+pub fn inspect_pe_metadata(data: &[u8]) -> Option<PeMetadata> {
     if data.len() < 64 || data.get(0..2) != Some(b"MZ") {
         return None;
     }
@@ -810,40 +1122,141 @@ pub fn inspect_pe_version(data: &[u8]) -> Option<(String, String)> {
         return None;
     }
 
+    let raw_machine = u16::from_le_bytes([data[lfanew + 4], data[lfanew + 5]]);
+    let machine = PeMachineType::from_raw(raw_machine);
+    let architecture = machine.architecture();
+
     let size_of_opt = usize::from(u16::from_le_bytes([data[lfanew + 20], data[lfanew + 21]]));
     let opt_offset = lfanew + 24;
     if data.len() < opt_offset + 2 {
         return None;
     }
     let magic = u16::from_le_bytes([data[opt_offset], data[opt_offset + 1]]);
-
-    let rsrc_dir_offset = if magic == 0x10B {
-        opt_offset + 96 + 16
-    } else if magic == 0x20B {
-        opt_offset + 112 + 16
-    } else {
+    if magic != 0x010B && magic != 0x020B {
         return None;
+    }
+    let is_pe32_plus = magic == 0x020B;
+    let data_dirs_offset = if is_pe32_plus {
+        opt_offset + 112
+    } else {
+        opt_offset + 96
     };
 
-    if data.len() < rsrc_dir_offset + 4 {
-        return None;
+    // Data Directory 14 is COM Descriptor (.NET CLR Header)
+    let clr_dir_offset = data_dirs_offset + 14 * 8;
+    let is_clr_assembly =
+        if size_of_opt >= (clr_dir_offset + 8 - opt_offset) && data.len() >= clr_dir_offset + 8 {
+            let clr_rva = u32::from_le_bytes([
+                data[clr_dir_offset],
+                data[clr_dir_offset + 1],
+                data[clr_dir_offset + 2],
+                data[clr_dir_offset + 3],
+            ]);
+            let clr_size = u32::from_le_bytes([
+                data[clr_dir_offset + 4],
+                data[clr_dir_offset + 5],
+                data[clr_dir_offset + 6],
+                data[clr_dir_offset + 7],
+            ]);
+            clr_rva != 0 && clr_size != 0
+        } else {
+            false
+        };
+
+    let rsrc_dir_offset = data_dirs_offset + 2 * 8;
+    let mut version = None;
+    let mut language = None;
+    if data.len() >= rsrc_dir_offset + 4 {
+        let rsrc_rva = u32::from_le_bytes([
+            data[rsrc_dir_offset],
+            data[rsrc_dir_offset + 1],
+            data[rsrc_dir_offset + 2],
+            data[rsrc_dir_offset + 3],
+        ]);
+        if rsrc_rva != 0 {
+            let num_sections =
+                usize::from(u16::from_le_bytes([data[lfanew + 6], data[lfanew + 7]]));
+            let section_headers_offset = opt_offset + size_of_opt;
+            if let Some(root_rsrc) =
+                find_rsrc_section_offset(data, section_headers_offset, num_sections, rsrc_rva)
+            {
+                if let Some((ver, lang)) = extract_vs_fixed_file_info(data, root_rsrc) {
+                    version = Some(ver);
+                    language = Some(lang);
+                }
+            }
+        }
     }
 
-    let rsrc_rva = u32::from_le_bytes([
-        data[rsrc_dir_offset],
-        data[rsrc_dir_offset + 1],
-        data[rsrc_dir_offset + 2],
-        data[rsrc_dir_offset + 3],
-    ]);
-    if rsrc_rva == 0 {
-        return None;
+    Some(PeMetadata {
+        machine,
+        architecture,
+        is_pe32_plus,
+        is_clr_assembly,
+        version,
+        language,
+    })
+}
+
+/// Inspects a PE, ELF, or Mach-O binary image to detect its target [`Architecture`].
+///
+/// # Arguments
+///
+/// * `data` - Raw binary payload bytes.
+///
+/// # Returns
+///
+/// `Some(Architecture)` if a supported PE, ELF, or Mach-O header is recognized; `None` otherwise.
+#[must_use]
+pub fn inspect_binary_architecture(data: &[u8]) -> Option<Architecture> {
+    if let Some(pe) = inspect_pe_metadata(data) {
+        return pe.architecture;
     }
+    // Check ELF header: \x7FELF
+    if data.len() >= 20 && data.get(0..4) == Some(b"\x7FELF") {
+        let ei_data = data[5];
+        let raw_machine = if ei_data == 2 {
+            u16::from_be_bytes([data[18], data[19]])
+        } else {
+            u16::from_le_bytes([data[18], data[19]])
+        };
+        return ElfMachineType::from_raw(raw_machine).architecture();
+    }
+    // Check Mach-O magic
+    if data.len() >= 8 {
+        let big_endian_magic = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
+        if big_endian_magic == 0xCAFE_BABE || big_endian_magic == 0xBEBA_FECA {
+            return MachOCpuType::Universal.architecture();
+        }
+        let little_endian_magic = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+        if little_endian_magic == 0xFEED_FACE || little_endian_magic == 0xFEED_FACF {
+            let cputype = u32::from_le_bytes([data[4], data[5], data[6], data[7]]);
+            return MachOCpuType::from_raw(cputype).architecture();
+        }
+        if big_endian_magic == 0xFEED_FACE || big_endian_magic == 0xFEED_FACF {
+            let cputype = u32::from_be_bytes([data[4], data[5], data[6], data[7]]);
+            return MachOCpuType::from_raw(cputype).architecture();
+        }
+    }
+    None
+}
 
-    let num_sections = usize::from(u16::from_le_bytes([data[lfanew + 6], data[lfanew + 7]]));
-    let section_headers_offset = opt_offset + size_of_opt;
-    let root_rsrc = find_rsrc_section_offset(data, section_headers_offset, num_sections, rsrc_rva)?;
-
-    extract_vs_fixed_file_info(data, root_rsrc)
+/// Inspects executable file binary data to extract Windows PE `VS_FIXEDFILEINFO` version and language.
+///
+/// # Arguments
+///
+/// * `data` - Raw PE executable or DLL byte slice.
+///
+/// # Returns
+///
+/// Optional tuple of `(version_string, language_id_string)`.
+#[must_use]
+pub fn inspect_pe_version(data: &[u8]) -> Option<(String, String)> {
+    let meta = inspect_pe_metadata(data)?;
+    match (meta.version, meta.language) {
+        (Some(ver), Some(lang)) => Some((ver, lang)),
+        _ => None,
+    }
 }
 
 /// Finds the file offset corresponding to `rsrc_rva` in the PE section headers.

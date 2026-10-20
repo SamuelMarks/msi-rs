@@ -194,6 +194,31 @@ impl PyPackage {
         names
     }
 
+    /// Returns the target processor architecture identifier (`"x86"`, `"x64"`, `"arm"`, `"arm64"`, `"ia64"`, `"neutral"`).
+    ///
+    /// # Returns
+    ///
+    /// Canonical lowercase architecture string.
+    #[getter]
+    #[must_use]
+    pub fn architecture(&self) -> String {
+        match self.inner.summary_info().template_summary() {
+            Some(t) => t.architecture.as_wix_str().to_string(),
+            None => "x86".to_string(),
+        }
+    }
+
+    /// Returns the raw `SummaryInformation` `PID_TEMPLATE` string (e.g., `"x64;1033"`), if set.
+    ///
+    /// # Returns
+    ///
+    /// Optional `PID_TEMPLATE` string.
+    #[getter]
+    #[must_use]
+    pub fn template(&self) -> Option<String> {
+        self.inner.summary_info().template.clone()
+    }
+
     /// Retrieves all rows of a specified table as a list of dictionaries.
     ///
     /// # Arguments
@@ -813,6 +838,9 @@ mod tests {
                 true
             }));
             assert!(!py_pkg.__exit__(None, None, None));
+            let mut pkg_no_tmpl = py_pkg.clone();
+            pkg_no_tmpl.inner.summary_info_mut().template = None;
+            assert_eq!(pkg_no_tmpl.architecture(), "x86");
             let exc = pyo3::exceptions::PyRuntimeError::new_err("sample error");
             let bound_exc = exc.to_object(py).into_bound(py);
             assert!(!py_pkg.__exit__(Some(&bound_exc), Some(&bound_exc), Some(&bound_exc)));
@@ -825,6 +853,8 @@ mod tests {
                 let _ = PyPackage::__pymethod_to_bytes__(py, bad_obj.as_ptr());
                 let _ = PyPackage::__pymethod_get_properties__(py, bad_obj.as_ptr());
                 let _ = PyPackage::__pymethod_get_table_names__(py, bad_obj.as_ptr());
+                let _ = PyPackage::__pymethod_get_architecture__(py, bad_obj.as_ptr());
+                let _ = PyPackage::__pymethod_get_template__(py, bad_obj.as_ptr());
                 let _ = PyPackage::__pymethod___enter____(py, bad_obj.as_ptr());
                 let _ = PyPackage::__pymethod___exit____(
                     py,
@@ -868,6 +898,8 @@ with m.Package.from_bytes(bytes(pkg_bytes)) as p:
     assert p.get_property("ProductCode") == "{12345678-1234-1234-1234-123456789012}"
     assert p.get_property("CustomGreeting") == "HelloFromTest"
     assert p.get_property("NonExistent") is None
+    assert p.architecture in ("x86", "x64", "arm", "arm64", "ia64", "neutral")
+    _ = p.template
     props = p.properties
     assert props["ProductName"] == "TestProduct"
     assert "Media" in p.table_names

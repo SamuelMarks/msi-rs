@@ -40,3 +40,7 @@ manifest-path = "crates/msi-python/Cargo.toml"
 module-name = "msi._msi"
 features = ["pyo3/extension-module"]
 include = ["crates/msi-python/python/msi/py.typed"]
+
+[tool.pytest.ini_options]
+pythonpath = ["crates/msi-python/python"]
+

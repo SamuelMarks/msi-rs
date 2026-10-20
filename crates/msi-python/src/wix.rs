@@ -1,13 +1,15 @@
 //! Python bindings for `WiX` source compilation (`compile_wix`).
 
 use crate::error::to_py_err;
-use msi::database::summary_info::SummaryInfo;
+use msi::database::tables::core::PropertyRow;
 use msi::database::tables::record::FieldValue;
-use msi::package::{Package, PackageMetadata, ProductVersion};
+use msi::database::tables::types::PropertyName;
+use msi::package::Package;
 use msi::wix::linker::Linker;
 use msi::wix::preprocessor::PreprocessorContext;
+use msi::Architecture;
 use pyo3::prelude::*;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::fs;
 
 /// Compiles a `WiX` XML source string directly to an `.msi` file.
@@ -18,24 +20,37 @@ use std::fs;
 /// * `source` - `WiX` source code string (`.wxs`).
 /// * `output_path` - Target `.msi` file path on disk.
 /// * `variables` - Optional dictionary of preprocessor variable bindings (`$(var.Name)` / `<?ifdef Name?>`).
+/// * `arch` - Optional target processor architecture (`"x86"`, `"x64"`, `"arm"`, `"arm64"`, `"ia64"`, `"neutral"`).
 ///
 /// # Errors
 ///
-/// Returns [`crate::error::WixError`] or [`crate::error::IoError`] on failure.
+/// Returns [`crate::error::WixError`], [`crate::error::ValidationError`], or [`crate::error::IoError`] on failure.
 ///
 /// # Returns
 ///
 /// `Ok(())` when the `.msi` package is linked and written to `output_path`.
 #[pyfunction]
-#[pyo3(signature = (source, output_path, variables = None))]
+#[pyo3(signature = (source, output_path, variables = None, arch = None))]
 pub fn compile_wix_source(
     py: Python<'_>,
     source: String,
     output_path: String,
     variables: Option<BTreeMap<String, String>>,
+    arch: Option<String>,
 ) -> PyResult<()> {
     py.allow_threads(move || {
         let mut ctx = PreprocessorContext::new();
+        let parsed_arch = match arch {
+            Some(ref a) if !a.trim().is_empty() => {
+                Some(Architecture::parse(a).map_err(|e| to_py_err(&e))?)
+            }
+            _ => None,
+        };
+        if let Some(target_arch) = parsed_arch {
+            ctx.set_build_arch(target_arch);
+            ctx.define_var("sys.BUILDARCH", target_arch.as_wix_str());
+            ctx.define_var("arch", target_arch.as_wix_str());
+        }
         if let Some(vars) = variables {
             for (k, v) in vars {
                 ctx.define_var(k, v);
@@ -45,32 +60,24 @@ pub fn compile_wix_source(
 
         let mut linker = Linker::new();
         linker.add_object(obj);
-        let db = linker.link().map_err(|e| to_py_err(&e))?;
+        let mut db = linker.link().map_err(|e| to_py_err(&e))?;
 
-        let find_prop = |name: &str| {
-            db.get_records("Property")
-                .iter()
-                .find_map(|r| match (r.get(0), r.get(1)) {
-                    (Some(FieldValue::String(k)), Some(FieldValue::String(v))) if k == name => {
-                        Some(v.clone())
-                    }
-                    _ => None,
-                })
-        };
+        if let Some(target_arch) = parsed_arch {
+            let canonical = target_arch.as_wix_str().to_string();
+            if let Some(props) = db.tables.get_mut("Property") {
+                props.retain(|r| {
+                    r.get(0) != Some(&FieldValue::String("ProductPlatform".to_string()))
+                });
+            }
+            let row = PropertyRow {
+                property: PropertyName::from_static("ProductPlatform"),
+                value: canonical,
+            };
+            db.add_record("Property", row.to_record());
+        }
 
-        let product_name =
-            find_prop("ProductName").unwrap_or_else(|| "WiX Application".to_string());
-        let manufacturer = find_prop("Manufacturer").unwrap_or_else(|| "WiX Author".to_string());
-        let product_code = find_prop("ProductCode")
-            .unwrap_or_else(|| "{00000000-0000-0000-0000-000000000000}".to_string());
-        let version = find_prop("ProductVersion")
-            .and_then(|v| ProductVersion::parse(&v).ok())
-            .unwrap_or_else(|| ProductVersion::new(1, 0, 0));
-
-        let metadata = PackageMetadata::new(product_name, manufacturer, version, product_code);
-        let summary_info = SummaryInfo::default();
-        let embedded_cabinets = HashMap::new();
-        let package = Package::new(metadata, db, summary_info, embedded_cabinets);
+        let cabs = linker.take_embedded_cabinets();
+        let package = Package::from_database(db, cabs);
 
         package.save(&output_path).map_err(|e| to_py_err(&e))?;
         Ok(())
@@ -85,28 +92,30 @@ pub fn compile_wix_source(
 /// * `wxs_path` - Path to the `.wxs` source file on disk.
 /// * `output_path` - Target `.msi` file path on disk.
 /// * `variables` - Optional dictionary of preprocessor variable bindings.
+/// * `arch` - Optional target processor architecture (`"x86"`, `"x64"`, `"arm"`, `"arm64"`, `"ia64"`, `"neutral"`).
 ///
 /// # Errors
 ///
-/// Returns [`crate::error::WixError`] or [`crate::error::IoError`] on failure.
+/// Returns [`crate::error::WixError`], [`crate::error::ValidationError`], or [`crate::error::IoError`] on failure.
 ///
 /// # Returns
 ///
 /// `Ok(())` when the `.wxs` file is compiled and written to `output_path`.
 #[pyfunction]
-#[pyo3(signature = (wxs_path, output_path, variables = None))]
+#[pyo3(signature = (wxs_path, output_path, variables = None, arch = None))]
 pub fn compile_wix_file(
     py: Python<'_>,
     wxs_path: &str,
     output_path: String,
     variables: Option<BTreeMap<String, String>>,
+    arch: Option<String>,
 ) -> PyResult<()> {
     let source = fs::read_to_string(wxs_path).map_err(|e| {
         to_py_err(&msi::MsiError::Io(msi::error::IoContext::from_string(
             e.to_string(),
         )))
     })?;
-    compile_wix_source(py, source, output_path, variables)
+    compile_wix_source(py, source, output_path, variables, arch)
 }
 
 #[cfg(test)]
@@ -184,6 +193,7 @@ mod tests {
                 VALID_WXS.to_string(),
                 out_msi1.to_string_lossy().into_owned(),
                 Some(vars),
+                Some("arm64".to_string()),
             );
             assert!(res1.is_ok());
             assert!(out_msi1.exists());
@@ -194,6 +204,7 @@ mod tests {
                 &wxs_file.to_string_lossy(),
                 out_msi2.to_string_lossy().into_owned(),
                 None,
+                Some("x64".to_string()),
             );
             assert!(res2.is_ok());
             assert!(out_msi2.exists());
@@ -203,6 +214,7 @@ mod tests {
                 py,
                 INVALID_VER_WXS.to_string(),
                 out_msi3.to_string_lossy().into_owned(),
+                None,
                 None,
             );
             assert!(res3.is_ok());
@@ -214,6 +226,7 @@ mod tests {
                 py,
                 DEFAULTS_WXS.to_string(),
                 out_msi4.to_string_lossy().into_owned(),
+                None,
                 None,
             );
             assert!(res4.is_ok());
@@ -251,6 +264,7 @@ mod tests {
                 "/nonexistent/path/never_exists.wxs",
                 out_msi.to_string_lossy().into_owned(),
                 None,
+                None,
             );
             assert!(res_missing.is_err());
 
@@ -259,6 +273,7 @@ mod tests {
                 py,
                 "<Wix>unclosed".to_string(),
                 out_msi.to_string_lossy().into_owned(),
+                None,
                 None,
             );
             assert!(res_syntax.is_err());
@@ -276,13 +291,24 @@ mod tests {
                 fragment_wxs.to_string(),
                 out_msi.to_string_lossy().into_owned(),
                 None,
+                None,
             );
             assert!(res_link.is_err());
 
             // 4. Save failure (invalid destination directory)
             let invalid_out = "/nonexistent_dir_never_created_99999/out.msi".to_string();
-            let res_save = compile_wix_source(py, VALID_WXS.to_string(), invalid_out, None);
+            let res_save = compile_wix_source(py, VALID_WXS.to_string(), invalid_out, None, None);
             assert!(res_save.is_err());
+
+            // 5. Invalid architecture
+            let res_bad_arch = compile_wix_source(
+                py,
+                VALID_WXS.to_string(),
+                out_msi.to_string_lossy().into_owned(),
+                None,
+                Some("bad_arch".to_string()),
+            );
+            assert!(res_bad_arch.is_err());
 
             let _ = fs::remove_dir_all(&temp_dir);
         });

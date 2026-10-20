@@ -24,9 +24,7 @@ pub fn increment_com_object_count() {
 
 /// Decrements the global active COM object counter.
 pub fn decrement_com_object_count() {
-    let _ = ACTIVE_COM_OBJECTS.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |v| {
-        Some(v.saturating_sub(1))
-    });
+    let _ = ACTIVE_COM_OBJECTS.fetch_sub(1, Ordering::SeqCst);
 }
 
 /// `IClassFactory` interface ID

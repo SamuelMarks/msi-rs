@@ -131,6 +131,7 @@ def build_msi(
     product_code: Optional[str] = None,
     upgrade_code: Optional[str] = None,
     install_dir_name: Optional[str] = None,
+    arch: Optional[str] = None,
     compression: CompressionType = CompressionType.MSZIP,
     progress_callback: Optional[Callable[[str, int, int], None]] = None,
 ) -> None:
@@ -151,6 +152,7 @@ def build_msi(
         product_code: Optional ProductCode GUID (default: generates a v4 GUID).
         upgrade_code: Optional UpgradeCode GUID (default: generates a deterministic v5 GUID).
         install_dir_name: Optional directory name under ProgramFiles (default: product_name).
+        arch: Optional target processor architecture ('x86', 'x64', 'arm', 'arm64', 'ia64', 'neutral').
         compression: Cabinet compression type (default: MSZIP).
         progress_callback: Optional callable receiving (phase_name, current, total).
 
@@ -186,17 +188,30 @@ def build_msi(
         product_code=product_code,
         upgrade_code=upgrade_code,
     )
-    if hasattr(builder, "set_compression"):
-        builder.set_compression(int(compression))
+    if arch is not None:
+        builder.set_architecture(arch)
+    builder.set_compression(int(compression))
 
     # Standard Directory Layout
+    is_64 = arch is not None and arch.strip().lower() in (
+        "x64",
+        "amd64",
+        "x86_64",
+        "em64t",
+        "win64",
+        "arm64",
+        "aarch64",
+        "arm64ec",
+        "ia64",
+        "intel64",
+        "itanium",
+    )
+    prog_files_id = "ProgramFiles64Folder" if is_64 else "ProgramFilesFolder"
     builder.add_directory("TARGETDIR", None, "SourceDir")
-    builder.add_directory("ProgramFilesFolder", "TARGETDIR", "PFiles|Program Files")
+    builder.add_directory(prog_files_id, "TARGETDIR", "PFiles|Program Files")
 
     app_folder_name = install_dir_name or product_name
-    builder.add_directory(
-        "INSTALLDIR", "ProgramFilesFolder", f"AppDir|{app_folder_name}"
-    )
+    builder.add_directory("INSTALLDIR", prog_files_id, f"AppDir|{app_folder_name}")
 
     # Root Feature
     builder.add_feature(
@@ -285,6 +300,7 @@ def compile_wix(
     output_path: Union[str, os.PathLike[str]],
     *,
     variables: Optional[Dict[str, str]] = None,
+    arch: Optional[str] = None,
 ) -> None:
     """
     Compiles WiX XML source (.wxs) into an installable .msi package.
@@ -293,6 +309,7 @@ def compile_wix(
         source: Path to a .wxs file on disk, or raw WiX XML string.
         output_path: Destination path for the .msi package.
         variables: Optional preprocessor variable bindings.
+        arch: Optional target processor architecture ('x86', 'x64', 'arm', 'arm64', 'ia64', 'neutral').
 
     Raises:
         WixError: If WiX preprocessor, XML parser, compiler, or linker fails.
@@ -306,15 +323,15 @@ def compile_wix(
             content = Path(source_str).read_text(encoding="utf-8")
             for k, v in variables.items():
                 content = content.replace(f"$(var.{k})", v)
-            _msi.compile_wix_source(content, out_str)
+            _msi.compile_wix_source(content, out_str, None, arch)
         else:
-            _msi.compile_wix_file(source_str, out_str)
+            _msi.compile_wix_file(source_str, out_str, None, arch)
     else:
         content = source_str
         if variables:
             for k, v in variables.items():
                 content = content.replace(f"$(var.{k})", v)
-        _msi.compile_wix_source(content, out_str)
+        _msi.compile_wix_source(content, out_str, None, arch)
 
 
 class MsiInspectionReport(TypedDict):

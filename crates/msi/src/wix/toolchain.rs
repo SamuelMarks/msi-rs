@@ -5,7 +5,9 @@
 //! - [`LightOptions`]: Replicates `WiX` v3 `light.exe` linker/binder command-line interface.
 //! - [`WixBuildOptions`]: Replicates `WiX` .NET Tools v4/v5 `wix build` command-line interface.
 
+use crate::database::summary_info::Architecture;
 use crate::database::tables::core::PropertyRow;
+use crate::database::tables::record::FieldValue;
 use crate::database::tables::types::PropertyName;
 use crate::error::{MsiError, Result};
 use crate::package::Package;
@@ -18,6 +20,23 @@ use crate::wix::wixobj::{SectionType, WixObject};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+
+/// Updates or inserts the `ProductPlatform` property in `db` for a specified architecture string.
+fn set_or_insert_product_platform(
+    db: &mut crate::wix::linker::LinkedDatabase,
+    arch_str: &str,
+) -> Result<()> {
+    let canonical = Architecture::parse(arch_str)?.as_wix_str().to_string();
+    if let Some(props) = db.tables.get_mut("Property") {
+        props.retain(|r| r.get(0) != Some(&FieldValue::String("ProductPlatform".to_string())));
+    }
+    let row = PropertyRow {
+        property: PropertyName::from_static("ProductPlatform"),
+        value: canonical,
+    };
+    db.add_record("Property", row.to_record());
+    Ok(())
+}
 
 /// Validates and standardizes a `WiX` extension name passed via `-ext`.
 ///
@@ -342,7 +361,12 @@ impl CandleOptions {
                             message: "missing argument value for '-arch'".to_string(),
                         });
                     }
-                    opts.arch = Some(args[idx].clone());
+                    let parsed_arch = Architecture::parse(&args[idx]).map_err(|_| {
+                        MsiError::UnsupportedArchitecture {
+                            raw: args[idx].clone(),
+                        }
+                    })?;
+                    opts.arch = Some(parsed_arch.as_wix_str().to_string());
                     idx += 1;
                 } else if flag.eq_ignore_ascii_case("d") || flag.eq_ignore_ascii_case("define") {
                     idx += 1;
@@ -411,7 +435,12 @@ impl CandleOptions {
                             message: "missing argument value for '-platform'".to_string(),
                         });
                     }
-                    opts.arch = Some(args[idx].clone());
+                    let parsed_arch = Architecture::parse(&args[idx]).map_err(|_| {
+                        MsiError::UnsupportedArchitecture {
+                            raw: args[idx].clone(),
+                        }
+                    })?;
+                    opts.arch = Some(parsed_arch.as_wix_str().to_string());
                     idx += 1;
                 } else if let Some(p_str) = flag.strip_prefix(['p', 'P']) {
                     if p_str.is_empty() {
@@ -519,8 +548,10 @@ impl CandleOptions {
             let mut ctx = PreprocessorContext::new();
 
             if let Some(ref arch_str) = self.arch {
-                ctx.define_var("sys.BUILDARCH", arch_str);
-                ctx.define_var("arch", arch_str);
+                let parsed_arch = Architecture::parse(arch_str)?;
+                ctx.set_build_arch(parsed_arch);
+                ctx.define_var("sys.BUILDARCH", parsed_arch.as_wix_str());
+                ctx.define_var("arch", parsed_arch.as_wix_str());
             }
 
             for (k, v) in &self.defines {
@@ -550,14 +581,19 @@ impl CandleOptions {
 
             let mut obj = crate::wix::compile_wix(&content, &mut ctx)?;
             if let Some(ref arch_str) = self.arch {
+                let canonical = Architecture::parse(arch_str)?.as_wix_str().to_string();
                 let p = PropertyRow {
                     property: PropertyName::from_static("ProductPlatform"),
-                    value: arch_str.clone(),
+                    value: canonical,
                 };
                 for sec in &mut obj.sections {
                     if sec.section_type == SectionType::Product {
                         for tbl in &mut sec.tables {
                             if tbl.name == "Property" {
+                                tbl.records.retain(|r| {
+                                    r.get(0)
+                                        != Some(&FieldValue::String("ProductPlatform".to_string()))
+                                });
                                 tbl.push_record(p.to_record());
                             }
                         }
@@ -854,7 +890,12 @@ impl LightOptions {
                             message: "missing architecture argument for '-arch'".to_string(),
                         });
                     }
-                    opts.arch = Some(args[idx].clone());
+                    let parsed_arch = Architecture::parse(&args[idx]).map_err(|_| {
+                        MsiError::UnsupportedArchitecture {
+                            raw: args[idx].clone(),
+                        }
+                    })?;
+                    opts.arch = Some(parsed_arch.as_wix_str().to_string());
                     idx += 1;
                 } else if lower == "pdb" {
                     opts.generate_pdb = true;
@@ -1202,11 +1243,7 @@ impl LightOptions {
         }
 
         if let Some(ref arch_str) = self.arch {
-            let row = PropertyRow {
-                property: PropertyName::from_static("ProductPlatform"),
-                value: arch_str.clone(),
-            };
-            db.add_record("Property", row.to_record());
+            set_or_insert_product_platform(&mut db, arch_str)?;
         }
 
         // 6. Build and save Package
@@ -1328,7 +1365,12 @@ impl WixBuildOptions {
                             message: "missing argument value for '-arch'".to_string(),
                         });
                     }
-                    opts.arch = Some(args[idx].clone());
+                    let parsed_arch = Architecture::parse(&args[idx]).map_err(|_| {
+                        MsiError::UnsupportedArchitecture {
+                            raw: args[idx].clone(),
+                        }
+                    })?;
+                    opts.arch = Some(parsed_arch.as_wix_str().to_string());
                     idx += 1;
                 } else if lower == "ext" {
                     idx += 1;
@@ -1556,8 +1598,10 @@ impl WixBuildOptions {
 
             let mut ctx = PreprocessorContext::new();
             if let Some(ref arch_str) = self.arch {
-                ctx.define_var("sys.BUILDARCH", arch_str);
-                ctx.define_var("arch", arch_str);
+                let parsed_arch = Architecture::parse(arch_str)?;
+                ctx.set_build_arch(parsed_arch);
+                ctx.define_var("sys.BUILDARCH", parsed_arch.as_wix_str());
+                ctx.define_var("arch", parsed_arch.as_wix_str());
             }
             for (k, v) in &self.defines {
                 ctx.define_var(k, v);
@@ -1606,11 +1650,7 @@ impl WixBuildOptions {
         }
 
         if let Some(ref arch_str) = self.arch {
-            let row = PropertyRow {
-                property: PropertyName::from_static("ProductPlatform"),
-                value: arch_str.clone(),
-            };
-            db.add_record("Property", row.to_record());
+            set_or_insert_product_platform(&mut db, arch_str)?;
         }
 
         let cabs = linker.take_embedded_cabinets();
@@ -3362,6 +3402,82 @@ mod extra_toolchain_tests {
             ..Default::default()
         };
         assert!(wb_write_err.execute().is_err());
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_toolchain_cross_architecture_and_wixobj_persistence() {
+        let temp_dir = std::env::temp_dir().join("msi_toolchain_cross_arch_test");
+        let _ = fs::create_dir_all(&temp_dir);
+
+        // Unsupported architecture validation tests
+        assert!(CandleOptions::parse(&[
+            "-arch".to_string(),
+            "sparc64".to_string(),
+            "app.wxs".to_string()
+        ])
+        .is_err());
+        assert!(CandleOptions::parse(&[
+            "-platform".to_string(),
+            "sparc64".to_string(),
+            "app.wxs".to_string()
+        ])
+        .is_err());
+        assert!(LightOptions::parse(&[
+            "-arch".to_string(),
+            "sparc64".to_string(),
+            "app.wixobj".to_string()
+        ])
+        .is_err());
+        assert!(WixBuildOptions::parse(&[
+            "-arch".to_string(),
+            "sparc64".to_string(),
+            "app.wxs".to_string()
+        ])
+        .is_err());
+
+        // Test .wixobj architecture persistence from Candle (-arch arm64) to Light (without -arch)
+        let arm64_wxs = temp_dir.join("arm64_persist.wxs");
+        let arm64_obj = temp_dir.join("arm64_persist.wixobj");
+        let arm64_msi = temp_dir.join("arm64_persist.msi");
+        let _ = fs::write(
+            &arm64_wxs,
+            r#"<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="{11111111-1111-1111-1111-111111111111}" Name="Arm64Persist" Language="1033" Version="1.0.0" Manufacturer="Acme" UpgradeCode="{22222222-2222-2222-2222-222222222222}">
+        <Package Description="Arm64" />
+        <Directory Id="TARGETDIR" Name="SourceDir">
+            <Component Id="CompA64" Guid="*" />
+        </Directory>
+        <Feature Id="Main" Level="1">
+            <ComponentRef Id="CompA64" />
+        </Feature>
+    </Product>
+</Wix>"#,
+        );
+        let c_arm64 = CandleOptions::parse(&[
+            "-arch".to_string(),
+            "arm64".to_string(),
+            "-out".to_string(),
+            arm64_obj.to_string_lossy().to_string(),
+            arm64_wxs.to_string_lossy().to_string(),
+        ])
+        .unwrap_or_default();
+        assert!(c_arm64.execute().is_ok());
+
+        let l_arm64 = LightOptions::parse(&[
+            "-sval".to_string(),
+            "-out".to_string(),
+            arm64_msi.to_string_lossy().to_string(),
+            arm64_obj.to_string_lossy().to_string(),
+        ])
+        .unwrap_or_default();
+        assert!(l_arm64.execute().is_ok());
+        let opened_arm64 = Package::open(&arm64_msi).unwrap_or_default();
+        assert_eq!(
+            opened_arm64.summary_info().template.as_deref(),
+            Some("Arm64;1033")
+        );
+        assert_eq!(opened_arm64.summary_info().page_count, Some(500));
 
         let _ = fs::remove_dir_all(&temp_dir);
     }

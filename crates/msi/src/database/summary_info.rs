@@ -75,52 +75,251 @@ pub const VT_LPSTR: u32 = 30;
 /// OLE Property Set Variant type for 64-bit Windows `FILETIME` (`VT_FILETIME`).
 pub const VT_FILETIME: u32 = 64;
 
+/// Processor bitness classification for Windows Installer packages, components, and locators.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum Bitness {
+    /// 32-bit processor architecture (`x86`, `arm`).
+    #[default]
+    Bit32,
+    /// 64-bit processor architecture (`x64`, `arm64`, `ia64`).
+    Bit64,
+    /// Architecture-independent / neutral bitness.
+    Neutral,
+}
+
+impl Bitness {
+    /// Determines whether this bitness is 64-bit.
+    ///
+    /// # Returns
+    ///
+    /// `true` if `self` is [`Bitness::Bit64`]; `false` otherwise.
+    #[must_use]
+    pub const fn is_64bit(self) -> bool {
+        matches!(self, Self::Bit64)
+    }
+
+    /// Determines whether this bitness is 32-bit.
+    ///
+    /// # Returns
+    ///
+    /// `true` if `self` is [`Bitness::Bit32`]; `false` otherwise.
+    #[must_use]
+    pub const fn is_32bit(self) -> bool {
+        matches!(self, Self::Bit32)
+    }
+}
+
+impl fmt::Display for Bitness {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            Self::Bit32 => "32-bit",
+            Self::Bit64 => "64-bit",
+            Self::Neutral => "neutral",
+        };
+        write!(f, "{s}")
+    }
+}
+
+/// Component or locator bitness rule (`Win64="yes|no"` or `Bitness="default|always32|always64"`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum ComponentBitnessRule {
+    /// Inherit bitness from the target package [`Architecture`] (`64-bit` for `x64`/`arm64`/`ia64`, `32-bit` for `x86`/`arm`/`neutral`).
+    #[default]
+    Default,
+    /// Force 32-bit component/locator bitness regardless of target package architecture (`Win64="no"` / `Bitness="always32"`).
+    Always32,
+    /// Force 64-bit component/locator bitness (`msidbComponentAttributes64bit = 0x0100` / `msidbLocatorType64bit = 0x0010`, `Win64="yes"` / `Bitness="always64"`).
+    Always64,
+}
+
+impl ComponentBitnessRule {
+    /// Parses a [`ComponentBitnessRule`] from optional `Win64` (`yes`/`no`) and `Bitness` (`default`/`always32`/`always64`) attributes.
+    ///
+    /// If `bitness_attr` is provided, it takes precedence over `win64_attr`.
+    ///
+    /// # Arguments
+    ///
+    /// * `element` - XML element or API context name for error reporting.
+    /// * `win64_attr` - Optional `Win64` attribute string (`"yes"`, `"no"`, `"true"`, `"false"`).
+    /// * `bitness_attr` - Optional `Bitness` attribute string (`"default"`, `"always32"`, `"always64"`).
+    ///
+    /// # Returns
+    ///
+    /// Parsed [`ComponentBitnessRule`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError::InvalidBitness`] if an unrecognized attribute value is provided.
+    pub fn parse_from_attributes(
+        element: &str,
+        win64_attr: Option<&str>,
+        bitness_attr: Option<&str>,
+    ) -> Result<Self> {
+        if let Some(bitness) = bitness_attr {
+            let lower = bitness.trim().to_ascii_lowercase();
+            return match lower.as_str() {
+                "default" => Ok(Self::Default),
+                "always32" | "32" | "32bit" | "x86" => Ok(Self::Always32),
+                "always64" | "64" | "64bit" | "x64" => Ok(Self::Always64),
+                _ => Err(MsiError::InvalidBitness {
+                    element: element.to_string(),
+                    value: bitness.to_string(),
+                }),
+            };
+        }
+        if let Some(win64) = win64_attr {
+            let lower = win64.trim().to_ascii_lowercase();
+            return match lower.as_str() {
+                "yes" | "true" | "1" => Ok(Self::Always64),
+                "no" | "false" | "0" => Ok(Self::Always32),
+                _ => Err(MsiError::InvalidBitness {
+                    element: element.to_string(),
+                    value: win64.to_string(),
+                }),
+            };
+        }
+        Ok(Self::Default)
+    }
+
+    /// Resolves whether the effective bitness is 64-bit given a target package [`Architecture`].
+    ///
+    /// # Arguments
+    ///
+    /// * `target_arch` - Target package [`Architecture`].
+    ///
+    /// # Returns
+    ///
+    /// `true` if 64-bit attribute bitflags should be set; `false` otherwise.
+    #[must_use]
+    pub const fn resolve_is_64bit(self, target_arch: Architecture) -> bool {
+        match self {
+            Self::Always64 => true,
+            Self::Always32 => false,
+            Self::Default => target_arch.is_64bit(),
+        }
+    }
+}
+
+impl fmt::Display for ComponentBitnessRule {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            Self::Default => "default",
+            Self::Always32 => "always32",
+            Self::Always64 => "always64",
+        };
+        write!(f, "{s}")
+    }
+}
+
+impl FromStr for ComponentBitnessRule {
+    type Err = MsiError;
+
+    fn from_str(s: &str) -> Result<Self> {
+        Self::parse_from_attributes("ComponentBitnessRule", None, Some(s))
+    }
+}
+
 /// Target platform architecture for Windows Installer packages.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Architecture {
-    /// 32-bit x86 architecture (Intel / x86).
+    /// 32-bit x86 architecture (`Intel` / `x86`).
     #[default]
     X86,
-    /// 32-bit ARM architecture (Arm).
+    /// 32-bit ARM architecture (`Arm`).
     Arm,
-    /// 64-bit x86-64 / AMD64 architecture (x64).
+    /// 64-bit x86-64 / AMD64 architecture (`x64`).
     X64,
-    /// 64-bit ARM architecture (Arm64).
+    /// 64-bit ARM architecture (`Arm64`).
     Arm64,
-    /// 64-bit Intel Itanium architecture (Intel64 / Ia64).
+    /// 64-bit Intel Itanium architecture (`Intel64` / `Ia64`).
     Ia64,
+    /// Architecture-independent / neutral package (empty platform in `PID_TEMPLATE`, e.g., `;1033`).
+    Neutral,
 }
 
 impl Architecture {
-    /// Returns the canonical WiX/MSI template name string for this architecture (e.g. `Intel`, `Arm`, `x64`, `Arm64`, `Intel64`).
+    /// Returns the processor [`Bitness`] classification for this architecture.
+    ///
+    /// # Returns
+    ///
+    /// [`Bitness::Bit32`] for `X86`/`Arm`, [`Bitness::Bit64`] for `X64`/`Arm64`/`Ia64`, or [`Bitness::Neutral`] for `Neutral`.
+    #[must_use]
+    pub const fn bitness(self) -> Bitness {
+        match self {
+            Self::X86 | Self::Arm => Bitness::Bit32,
+            Self::X64 | Self::Arm64 | Self::Ia64 => Bitness::Bit64,
+            Self::Neutral => Bitness::Neutral,
+        }
+    }
+
+    /// Returns the canonical MSI `PID_TEMPLATE` platform string for this architecture (`Intel`, `Arm`, `x64`, `Arm64`, `Intel64`, or `""` for `Neutral`).
+    ///
+    /// # Returns
+    ///
+    /// The template architecture name string.
+    #[must_use]
+    pub const fn as_template_str(self) -> &'static str {
+        match self {
+            Self::X86 => "Intel",
+            Self::Arm => "Arm",
+            Self::X64 => "x64",
+            Self::Arm64 => "Arm64",
+            Self::Ia64 => "Intel64",
+            Self::Neutral => "",
+        }
+    }
+
+    /// Returns the canonical WiX/MSI template name string for this architecture (`Intel`, `Arm`, `x64`, `Arm64`, `Intel64`, or `""` for `Neutral`).
     ///
     /// # Returns
     ///
     /// The template architecture name string.
     #[must_use]
     pub const fn template_name(&self) -> &'static str {
-        match *self {
-            Self::X86 => "Intel",
-            Self::Arm => "Arm",
+        self.as_template_str()
+    }
+
+    /// Returns the canonical `WiX` lowercase CLI identifier for this architecture (`x86`, `arm`, `x64`, `arm64`, `ia64`, `neutral`).
+    ///
+    /// # Returns
+    ///
+    /// The canonical `WiX` architecture identifier string.
+    #[must_use]
+    pub const fn as_wix_str(self) -> &'static str {
+        match self {
+            Self::X86 => "x86",
+            Self::Arm => "arm",
             Self::X64 => "x64",
-            Self::Arm64 => "Arm64",
-            Self::Ia64 => "Intel64",
+            Self::Arm64 => "arm64",
+            Self::Ia64 => "ia64",
+            Self::Neutral => "neutral",
         }
     }
 
-    /// Returns the lowercase CLI flag / identifier for this architecture (e.g. `x86`, `arm`, `x64`, `arm64`, `ia64`).
+    /// Returns the lowercase CLI flag / identifier for this architecture (`x86`, `arm`, `x64`, `arm64`, `ia64`, `neutral`).
     ///
     /// # Returns
     ///
     /// The lowercase architecture name.
     #[must_use]
     pub const fn as_str(&self) -> &'static str {
-        match *self {
+        self.as_wix_str()
+    }
+
+    /// Returns the short `WiX` preprocessor `$(sys.BUILDARCHSHORT)` identifier (`x86`, `arm`, `x64`, `a64`, `ia64`, `neu`).
+    ///
+    /// # Returns
+    ///
+    /// The short `WiX` architecture string.
+    #[must_use]
+    pub const fn as_wix_short_str(self) -> &'static str {
+        match self {
             Self::X86 => "x86",
             Self::Arm => "arm",
             Self::X64 => "x64",
-            Self::Arm64 => "arm64",
+            Self::Arm64 => "a64",
             Self::Ia64 => "ia64",
+            Self::Neutral => "neu",
         }
     }
 
@@ -128,17 +327,98 @@ impl Architecture {
     ///
     /// # Returns
     ///
-    /// `true` for `x64`, `arm64`, or `ia64`; `false` for `x86` or `arm`.
+    /// `true` for `x64`, `arm64`, or `ia64`; `false` for `x86`, `arm`, or `neutral`.
+    #[must_use]
+    pub const fn is_64bit(self) -> bool {
+        self.bitness().is_64bit()
+    }
+
+    /// Determines whether this architecture is 64-bit (reference receiver alias).
+    ///
+    /// # Returns
+    ///
+    /// `true` for `x64`, `arm64`, or `ia64`; `false` for `x86`, `arm`, or `neutral`.
     #[must_use]
     pub const fn is_64_bit(&self) -> bool {
-        matches!(self, Self::X64 | Self::Arm64 | Self::Ia64)
+        self.is_64bit()
+    }
+
+    /// Determines whether this architecture is 32-bit.
+    ///
+    /// # Returns
+    ///
+    /// `true` for `x86` or `arm`; `false` for `x64`, `arm64`, `ia64`, or `neutral`.
+    #[must_use]
+    pub const fn is_32bit(self) -> bool {
+        self.bitness().is_32bit()
+    }
+
+    /// Returns the minimum required Windows Installer schema version (`PID_PAGECOUNT`) for this architecture.
+    ///
+    /// Per the Windows Installer specification:
+    /// - `x86` and `Neutral` require at least `100` (MSI 1.0).
+    /// - `x64` and `Ia64` require at least `200` (MSI 2.0).
+    /// - `Arm` and `Arm64` require at least `500` (MSI 5.0).
+    ///
+    /// # Returns
+    ///
+    /// Minimum required `PID_PAGECOUNT` integer (`100`, `200`, or `500`).
+    #[must_use]
+    pub const fn min_installer_version(self) -> i32 {
+        match self {
+            Self::X86 | Self::Neutral => 100,
+            Self::X64 | Self::Ia64 => 200,
+            Self::Arm | Self::Arm64 => 500,
+        }
+    }
+
+    /// Returns the default standard `ProgramFiles` directory identifier for this architecture.
+    ///
+    /// # Returns
+    ///
+    /// `"ProgramFiles64Folder"` for 64-bit architectures; `"ProgramFilesFolder"` for 32-bit or neutral architectures.
+    #[must_use]
+    pub const fn default_program_files_folder_id(self) -> &'static str {
+        if self.is_64bit() {
+            "ProgramFiles64Folder"
+        } else {
+            "ProgramFilesFolder"
+        }
+    }
+
+    /// Returns the default standard `CommonFiles` directory identifier for this architecture.
+    ///
+    /// # Returns
+    ///
+    /// `"CommonFiles64Folder"` for 64-bit architectures; `"CommonFilesFolder"` for 32-bit or neutral architectures.
+    #[must_use]
+    pub const fn default_common_files_folder_id(self) -> &'static str {
+        if self.is_64bit() {
+            "CommonFiles64Folder"
+        } else {
+            "CommonFilesFolder"
+        }
+    }
+
+    /// Returns the default standard `System` directory identifier for this architecture.
+    ///
+    /// # Returns
+    ///
+    /// `"System64Folder"` for 64-bit architectures; `"SystemFolder"` for 32-bit or neutral architectures.
+    #[must_use]
+    pub const fn default_system_folder_id(self) -> &'static str {
+        if self.is_64bit() {
+            "System64Folder"
+        } else {
+            "SystemFolder"
+        }
     }
 
     /// Parses an architecture string into an [`Architecture`] enum.
     ///
     /// # Arguments
     ///
-    /// * `s` - Architecture string (e.g. `x64`, `x86`, `arm`, `amd64`, `intel`, `arm64`).
+    /// * `s` - Architecture string (e.g. `x64`, `x86`, `arm`, `amd64`, `intel`, `arm64`, `neutral`).
     ///
     /// # Returns
     ///
@@ -150,11 +430,12 @@ impl Architecture {
     pub fn parse(s: &str) -> Result<Self> {
         let lower = s.trim().to_ascii_lowercase();
         match lower.as_str() {
-            "x86" | "intel" | "i386" | "i686" | "ia32" => Ok(Self::X86),
-            "arm" | "armv7" | "armv7l" | "arm32" => Ok(Self::Arm),
-            "x64" | "x86_64" | "amd64" => Ok(Self::X64),
-            "arm64" | "aarch64" => Ok(Self::Arm64),
+            "x86" | "intel" | "i386" | "i586" | "i686" | "ia32" | "win32" => Ok(Self::X86),
+            "arm" | "armv7" | "armv7l" | "arm32" | "thumbv7neon" | "armnt" => Ok(Self::Arm),
+            "x64" | "x86_64" | "amd64" | "em64t" | "win64" => Ok(Self::X64),
+            "arm64" | "aarch64" | "arm64ec" => Ok(Self::Arm64),
             "ia64" | "intel64" | "itanium" => Ok(Self::Ia64),
+            "neutral" | "all" | "any" | "msil" => Ok(Self::Neutral),
             _ => Err(MsiError::InvalidArchitecture {
                 name: s.to_string(),
             }),
@@ -175,6 +456,210 @@ impl FromStr for Architecture {
         Self::parse(s)
     }
 }
+
+/// Strongly-typed numeric Windows Locale Identifier (LCID) for MSI `PID_TEMPLATE` and `Language` columns.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct LanguageId(u16);
+
+impl LanguageId {
+    /// Language-neutral LCID (`0`).
+    pub const NEUTRAL: Self = Self(0);
+    /// English (United States) LCID (`1033` / `0x0409`).
+    pub const EN_US: Self = Self(1033);
+
+    /// Creates a new [`LanguageId`] from a numeric 16-bit LCID.
+    ///
+    /// # Arguments
+    ///
+    /// * `lcid` - Numeric Windows locale identifier.
+    ///
+    /// # Returns
+    ///
+    /// A new [`LanguageId`].
+    #[must_use]
+    pub const fn new(lcid: u16) -> Self {
+        Self(lcid)
+    }
+
+    /// Returns the underlying numeric `u16` LCID value.
+    ///
+    /// # Returns
+    ///
+    /// Numeric 16-bit LCID.
+    #[must_use]
+    pub const fn value(self) -> u16 {
+        self.0
+    }
+}
+
+impl Default for LanguageId {
+    fn default() -> Self {
+        Self::EN_US
+    }
+}
+
+impl From<u16> for LanguageId {
+    fn from(value: u16) -> Self {
+        Self(value)
+    }
+}
+
+impl From<LanguageId> for u16 {
+    fn from(value: LanguageId) -> Self {
+        value.0
+    }
+}
+
+impl fmt::Display for LanguageId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl FromStr for LanguageId {
+    type Err = MsiError;
+
+    fn from_str(s: &str) -> Result<Self> {
+        let trimmed = s.trim();
+        let lcid = trimmed
+            .parse::<u16>()
+            .map_err(|_| MsiError::InvalidArgument {
+                argument: "language_id".to_string(),
+                reason: format!("invalid numeric LCID '{trimmed}'"),
+            })?;
+        Ok(Self(lcid))
+    }
+}
+
+/// Strongly-typed Windows Installer schema version (`PID_PAGECOUNT`, e.g., `200` for MSI 2.0, `500` for MSI 5.0).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct InstallerVersion(i32);
+
+impl InstallerVersion {
+    /// Windows Installer 1.0 (`100`).
+    pub const MSI_10: Self = Self(100);
+    /// Windows Installer 2.0 (`200`, minimum for `x64` and `ia64`).
+    pub const MSI_20: Self = Self(200);
+    /// Windows Installer 3.0 (`300`).
+    pub const MSI_30: Self = Self(300);
+    /// Windows Installer 4.0 (`400`).
+    pub const MSI_40: Self = Self(400);
+    /// Windows Installer 5.0 (`500`, minimum for `arm` and `arm64`).
+    pub const MSI_50: Self = Self(500);
+
+    /// Creates a validated [`InstallerVersion`].
+    ///
+    /// # Arguments
+    ///
+    /// * `version` - Integer installer version (must be `>= 100`).
+    ///
+    /// # Returns
+    ///
+    /// A validated [`InstallerVersion`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError::InvalidInstallerVersion`] if `version < 100`.
+    pub fn new(version: i32) -> Result<Self> {
+        if version < 100 {
+            return Err(MsiError::InvalidInstallerVersion {
+                version,
+                architecture: "x86".to_string(),
+                minimum_required: 100,
+            });
+        }
+        Ok(Self(version))
+    }
+
+    /// Creates an [`InstallerVersion`] without range checking.
+    ///
+    /// # Arguments
+    ///
+    /// * `version` - Raw integer installer version.
+    ///
+    /// # Returns
+    ///
+    /// A new [`InstallerVersion`].
+    #[must_use]
+    pub const fn new_unchecked(version: i32) -> Self {
+        Self(version)
+    }
+
+    /// Returns the raw `i32` `PID_PAGECOUNT` value.
+    ///
+    /// # Returns
+    ///
+    /// Integer schema version.
+    #[must_use]
+    pub const fn value(self) -> i32 {
+        self.0
+    }
+
+    /// Computes the effective installer version for a given target [`Architecture`], ensuring `PID_PAGECOUNT` meets the architecture's minimum requirement.
+    ///
+    /// # Arguments
+    ///
+    /// * `explicit` - Optional caller-specified [`InstallerVersion`].
+    /// * `arch` - Target package [`Architecture`].
+    ///
+    /// # Returns
+    ///
+    /// Effective [`InstallerVersion`] satisfying `arch.min_installer_version()`.
+    #[must_use]
+    pub const fn effective_for_architecture(explicit: Option<Self>, arch: Architecture) -> Self {
+        let min_req = arch.min_installer_version();
+        if let Some(v) = explicit {
+            if v.0 < min_req {
+                Self(min_req)
+            } else {
+                v
+            }
+        } else {
+            let default_ver = if min_req < 200 { 200 } else { min_req };
+            Self(default_ver)
+        }
+    }
+
+    /// Validates that this [`InstallerVersion`] satisfies the minimum version required by `arch`.
+    ///
+    /// # Arguments
+    ///
+    /// * `arch` - Target package [`Architecture`].
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if valid.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MsiError::InvalidInstallerVersion`] if `self.value() < arch.min_installer_version()`.
+    pub fn validate_for_architecture(self, arch: Architecture) -> Result<()> {
+        let min_req = arch.min_installer_version();
+        if self.0 < min_req {
+            return Err(MsiError::InvalidInstallerVersion {
+                version: self.0,
+                architecture: arch.as_wix_str().to_string(),
+                minimum_required: min_req,
+            });
+        }
+        Ok(())
+    }
+}
+
+impl Default for InstallerVersion {
+    fn default() -> Self {
+        Self::MSI_20
+    }
+}
+
+impl fmt::Display for InstallerVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+/// Alias for [`SummaryTemplate`] representing the strongly-typed `PID_TEMPLATE` summary property.
+pub type TemplateSummary = SummaryTemplate;
 
 /// Strongly-typed `SummaryInformation` Template property (`PID_TEMPLATE`) specifying CPU platform and language LCIDs ([MS-MSI]).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -204,9 +689,42 @@ impl SummaryTemplate {
         }
     }
 
+    /// Creates a new [`SummaryTemplate`] from strongly-typed [`LanguageId`] values.
+    ///
+    /// # Arguments
+    ///
+    /// * `architecture` - Target [`Architecture`].
+    /// * `language_ids` - Slice of [`LanguageId`] entries.
+    ///
+    /// # Returns
+    ///
+    /// A new [`SummaryTemplate`].
+    #[must_use]
+    pub fn with_language_ids(architecture: Architecture, language_ids: &[LanguageId]) -> Self {
+        Self {
+            architecture,
+            languages: language_ids.iter().map(|l| l.value()).collect(),
+        }
+    }
+
+    /// Returns the template's language list as strongly-typed [`LanguageId`] values.
+    ///
+    /// # Returns
+    ///
+    /// Vector of [`LanguageId`] entries.
+    #[must_use]
+    pub fn language_ids(&self) -> Vec<LanguageId> {
+        self.languages
+            .iter()
+            .copied()
+            .map(LanguageId::new)
+            .collect()
+    }
+
     /// Parses a raw Windows Installer template string into a [`SummaryTemplate`].
     ///
-    /// Standard MSI syntax is `[Platform];[Language1],[Language2],...` (e.g. `x64;1033` or `Intel;1033`).
+    /// Standard MSI syntax is `[Platform];[Language1],[Language2],...` (e.g. `x64;1033`, `Intel;1033`, or `;1033`).
+    /// If multiple platforms are comma-separated (e.g. `Intel,x64;1033`), the primary platform is parsed.
     ///
     /// # Arguments
     ///
@@ -228,15 +746,23 @@ impl SummaryTemplate {
             });
         }
 
-        let (platform_str, lang_str) = match trimmed.split_once(';') {
-            Some((p, l)) => (p.trim(), l.trim()),
-            None => ("", trimmed),
+        let (has_semicolon, platform_str, lang_str) = match trimmed.split_once(';') {
+            Some((p, l)) => (true, p.trim(), l.trim()),
+            None => (false, "", trimmed),
         };
 
         let architecture = if platform_str.is_empty() {
-            Architecture::X86
+            if has_semicolon {
+                Architecture::Neutral
+            } else {
+                Architecture::X86
+            }
         } else {
-            Architecture::parse(platform_str).map_err(|e| MsiError::InvalidSummaryTemplate {
+            let primary_platform = platform_str
+                .split(',')
+                .next()
+                .map_or(platform_str, str::trim);
+            Architecture::parse(primary_platform).map_err(|e| MsiError::InvalidSummaryTemplate {
                 template: s.to_string(),
                 reason: format!("{e}"),
             })?
@@ -270,7 +796,7 @@ impl SummaryTemplate {
         })
     }
 
-    /// Formats this template into the standard Windows Installer template string (e.g. `x64;1033`).
+    /// Formats this template into the standard Windows Installer template string (e.g. `x64;1033` or `;1033`).
     ///
     /// # Returns
     ///
@@ -874,52 +1400,219 @@ mod tests {
         }
     }
     #[allow(clippy::cognitive_complexity)]
-    /// Tests [`Architecture`] parsing, canonical template names, display, and bitness.
+    #[allow(clippy::too_many_lines)]
+    /// Tests [`Architecture`], [`Bitness`], [`LanguageId`], and [`InstallerVersion`] parsing, canonical template names, display, and bitness.
     #[test]
     fn test_architecture() {
+        assert_eq!(Bitness::default(), Bitness::Bit32);
+        assert!(Bitness::Bit32.is_32bit());
+        assert!(!Bitness::Bit32.is_64bit());
+        assert!(Bitness::Bit64.is_64bit());
+        assert!(!Bitness::Bit64.is_32bit());
+        assert!(!Bitness::Neutral.is_32bit());
+        assert!(!Bitness::Neutral.is_64bit());
+        assert_eq!(format!("{}", Bitness::Bit32), "32-bit");
+        assert_eq!(format!("{}", Bitness::Bit64), "64-bit");
+        assert_eq!(format!("{}", Bitness::Neutral), "neutral");
+
+        assert_eq!(
+            ComponentBitnessRule::default(),
+            ComponentBitnessRule::Default
+        );
+        assert_eq!(format!("{}", ComponentBitnessRule::Default), "default");
+        assert_eq!(format!("{}", ComponentBitnessRule::Always32), "always32");
+        assert_eq!(format!("{}", ComponentBitnessRule::Always64), "always64");
+        assert_eq!(
+            "default".parse::<ComponentBitnessRule>(),
+            Ok(ComponentBitnessRule::Default)
+        );
+        assert_eq!(
+            "always32".parse::<ComponentBitnessRule>(),
+            Ok(ComponentBitnessRule::Always32)
+        );
+        assert_eq!(
+            "always64".parse::<ComponentBitnessRule>(),
+            Ok(ComponentBitnessRule::Always64)
+        );
+        assert!("bad".parse::<ComponentBitnessRule>().is_err());
+        assert_eq!(
+            ComponentBitnessRule::parse_from_attributes("Component", None, None),
+            Ok(ComponentBitnessRule::Default)
+        );
+        assert_eq!(
+            ComponentBitnessRule::parse_from_attributes("Component", Some("yes"), None),
+            Ok(ComponentBitnessRule::Always64)
+        );
+        assert_eq!(
+            ComponentBitnessRule::parse_from_attributes("Component", Some("no"), None),
+            Ok(ComponentBitnessRule::Always32)
+        );
+        assert!(
+            ComponentBitnessRule::parse_from_attributes("Component", Some("invalid"), None)
+                .is_err()
+        );
+        assert!(ComponentBitnessRule::Default.resolve_is_64bit(Architecture::X64));
+        assert!(!ComponentBitnessRule::Default.resolve_is_64bit(Architecture::X86));
+        assert!(ComponentBitnessRule::Always64.resolve_is_64bit(Architecture::X86));
+        assert!(!ComponentBitnessRule::Always32.resolve_is_64bit(Architecture::X64));
+
         assert_eq!(Architecture::default(), Architecture::X86);
+        assert_eq!(Architecture::X86.bitness(), Bitness::Bit32);
+        assert_eq!(Architecture::Arm.bitness(), Bitness::Bit32);
+        assert_eq!(Architecture::X64.bitness(), Bitness::Bit64);
+        assert_eq!(Architecture::Arm64.bitness(), Bitness::Bit64);
+        assert_eq!(Architecture::Ia64.bitness(), Bitness::Bit64);
+        assert_eq!(Architecture::Neutral.bitness(), Bitness::Neutral);
+
         assert!(!Architecture::X86.is_64_bit());
+        assert!(!Architecture::X86.is_64bit());
+        assert!(Architecture::X86.is_32bit());
         assert!(!Architecture::Arm.is_64_bit());
+        assert!(Architecture::Arm.is_32bit());
         assert!(Architecture::X64.is_64_bit());
+        assert!(Architecture::X64.is_64bit());
+        assert!(!Architecture::X64.is_32bit());
         assert!(Architecture::Arm64.is_64_bit());
         assert!(Architecture::Ia64.is_64_bit());
+        assert!(!Architecture::Neutral.is_64_bit());
+        assert!(!Architecture::Neutral.is_32bit());
 
         assert_eq!(Architecture::X86.template_name(), "Intel");
         assert_eq!(Architecture::Arm.template_name(), "Arm");
         assert_eq!(Architecture::X64.template_name(), "x64");
         assert_eq!(Architecture::Arm64.template_name(), "Arm64");
         assert_eq!(Architecture::Ia64.template_name(), "Intel64");
+        assert_eq!(Architecture::Neutral.template_name(), "");
+        assert_eq!(Architecture::Neutral.as_template_str(), "");
 
         assert_eq!(Architecture::X86.as_str(), "x86");
         assert_eq!(Architecture::Arm.as_str(), "arm");
         assert_eq!(Architecture::X64.as_str(), "x64");
         assert_eq!(Architecture::Arm64.as_str(), "arm64");
         assert_eq!(Architecture::Ia64.as_str(), "ia64");
+        assert_eq!(Architecture::Neutral.as_str(), "neutral");
+        assert_eq!(Architecture::Neutral.as_wix_str(), "neutral");
+
+        assert_eq!(Architecture::X86.as_wix_short_str(), "x86");
+        assert_eq!(Architecture::Arm.as_wix_short_str(), "arm");
+        assert_eq!(Architecture::X64.as_wix_short_str(), "x64");
+        assert_eq!(Architecture::Arm64.as_wix_short_str(), "a64");
+        assert_eq!(Architecture::Ia64.as_wix_short_str(), "ia64");
+        assert_eq!(Architecture::Neutral.as_wix_short_str(), "neu");
+
+        assert_eq!(Architecture::X86.min_installer_version(), 100);
+        assert_eq!(Architecture::Neutral.min_installer_version(), 100);
+        assert_eq!(Architecture::X64.min_installer_version(), 200);
+        assert_eq!(Architecture::Ia64.min_installer_version(), 200);
+        assert_eq!(Architecture::Arm.min_installer_version(), 500);
+        assert_eq!(Architecture::Arm64.min_installer_version(), 500);
+
+        assert_eq!(
+            Architecture::X86.default_program_files_folder_id(),
+            "ProgramFilesFolder"
+        );
+        assert_eq!(
+            Architecture::X64.default_program_files_folder_id(),
+            "ProgramFiles64Folder"
+        );
+        assert_eq!(
+            Architecture::X86.default_common_files_folder_id(),
+            "CommonFilesFolder"
+        );
+        assert_eq!(
+            Architecture::Arm64.default_common_files_folder_id(),
+            "CommonFiles64Folder"
+        );
+        assert_eq!(Architecture::X86.default_system_folder_id(), "SystemFolder");
+        assert_eq!(
+            Architecture::X64.default_system_folder_id(),
+            "System64Folder"
+        );
+
         assert_eq!(format!("{}", Architecture::X64), "x64");
         assert_eq!(format!("{}", Architecture::Arm), "arm");
+        assert_eq!(format!("{}", Architecture::Neutral), "neutral");
 
         // Parse aliases
-        for alias in ["x86", "intel", "i386", "i686", "ia32", "  X86  "] {
+        for alias in [
+            "x86", "intel", "i386", "i586", "i686", "ia32", "win32", "  X86  ",
+        ] {
             assert_eq!(Architecture::parse(alias), Ok(Architecture::X86));
             assert_eq!(alias.trim().parse::<Architecture>(), Ok(Architecture::X86));
         }
-        for alias in ["arm", "armv7", "armv7l", "arm32", "ARM"] {
+        for alias in [
+            "arm",
+            "armv7",
+            "armv7l",
+            "arm32",
+            "thumbv7neon",
+            "armnt",
+            "ARM",
+        ] {
             assert_eq!(Architecture::parse(alias), Ok(Architecture::Arm));
             assert_eq!(alias.trim().parse::<Architecture>(), Ok(Architecture::Arm));
         }
-        for alias in ["x64", "x86_64", "amd64", "X64"] {
+        for alias in ["x64", "x86_64", "amd64", "em64t", "win64", "X64"] {
             assert_eq!(Architecture::parse(alias), Ok(Architecture::X64));
         }
-        for alias in ["arm64", "aarch64", "ARM64"] {
+        for alias in ["arm64", "aarch64", "arm64ec", "ARM64"] {
             assert_eq!(Architecture::parse(alias), Ok(Architecture::Arm64));
         }
         for alias in ["ia64", "intel64", "itanium", "IA64"] {
             assert_eq!(Architecture::parse(alias), Ok(Architecture::Ia64));
         }
+        for alias in ["neutral", "all", "any", "msil", "NEUTRAL"] {
+            assert_eq!(Architecture::parse(alias), Ok(Architecture::Neutral));
+        }
 
         // Invalid architecture
         assert!(Architecture::parse("unknown_arch").is_err());
         assert!(Architecture::parse("mips").is_err());
+
+        // LanguageId tests
+        assert_eq!(LanguageId::default(), LanguageId::EN_US);
+        assert_eq!(LanguageId::NEUTRAL.value(), 0);
+        assert_eq!(LanguageId::EN_US.value(), 1033);
+        let lang_from_u16 = LanguageId::from(1036u16);
+        assert_eq!(u16::from(lang_from_u16), 1036u16);
+        assert_eq!(format!("{lang_from_u16}"), "1036");
+        assert_eq!("1033".parse::<LanguageId>(), Ok(LanguageId::EN_US));
+        assert!("not_a_lang".parse::<LanguageId>().is_err());
+
+        // InstallerVersion tests
+        assert_eq!(InstallerVersion::default(), InstallerVersion::MSI_20);
+        assert_eq!(InstallerVersion::new_unchecked(150).value(), 150);
+        assert_eq!(format!("{}", InstallerVersion::MSI_50), "500");
+        assert_eq!(InstallerVersion::new(200), Ok(InstallerVersion::MSI_20));
+        assert!(InstallerVersion::new(50).is_err());
+        assert_eq!(
+            InstallerVersion::effective_for_architecture(None, Architecture::X86),
+            InstallerVersion::MSI_20
+        );
+        assert_eq!(
+            InstallerVersion::effective_for_architecture(None, Architecture::Arm64),
+            InstallerVersion::MSI_50
+        );
+        assert_eq!(
+            InstallerVersion::effective_for_architecture(
+                Some(InstallerVersion::MSI_10),
+                Architecture::X64
+            ),
+            InstallerVersion::MSI_20
+        );
+        assert_eq!(
+            InstallerVersion::effective_for_architecture(
+                Some(InstallerVersion::MSI_40),
+                Architecture::X64
+            ),
+            InstallerVersion::MSI_40
+        );
+        assert!(InstallerVersion::MSI_20
+            .validate_for_architecture(Architecture::X64)
+            .is_ok());
+        assert!(InstallerVersion::MSI_20
+            .validate_for_architecture(Architecture::Arm64)
+            .is_err());
     }
 
     /// Tests [`SummaryTemplate`] parsing, formatting, and [`SummaryInfo`] integration.
@@ -928,6 +1621,11 @@ mod tests {
         let t1 = SummaryTemplate::new(Architecture::X64, vec![1033]);
         assert_eq!(t1.to_template_string(), "x64;1033");
         assert_eq!(format!("{t1}"), "x64;1033");
+
+        let t_with_ids =
+            TemplateSummary::with_language_ids(Architecture::Arm64, &[LanguageId::EN_US]);
+        assert_eq!(t_with_ids.language_ids(), vec![LanguageId::EN_US]);
+        assert_eq!(t_with_ids.to_template_string(), "Arm64;1033");
 
         let t2 = SummaryTemplate::parse("x64;1033");
         assert_eq!(t2, Ok(SummaryTemplate::new(Architecture::X64, vec![1033])));
@@ -938,10 +1636,20 @@ mod tests {
             Ok(SummaryTemplate::new(Architecture::X86, vec![1033]))
         );
 
+        let t_multi_platform = SummaryTemplate::parse("Intel,x64;1033");
+        assert_eq!(
+            t_multi_platform,
+            Ok(SummaryTemplate::new(Architecture::X86, vec![1033]))
+        );
+
         let t_empty_arch = SummaryTemplate::parse(";1033");
         assert_eq!(
             t_empty_arch,
-            Ok(SummaryTemplate::new(Architecture::X86, vec![1033]))
+            Ok(SummaryTemplate::new(Architecture::Neutral, vec![1033]))
+        );
+        assert_eq!(
+            t_empty_arch.map(|t| t.to_template_string()),
+            Ok(";1033".to_string())
         );
 
         let t_multi = SummaryTemplate::parse("x64;1033,1036");

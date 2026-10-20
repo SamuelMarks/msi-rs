@@ -32,6 +32,10 @@ pub mod ui;
 pub mod wim;
 pub mod wix;
 
+pub use database::{
+    Architecture, Bitness, ComponentBitnessRule, InstallerVersion, LanguageId, SummaryTemplate,
+    TemplateSummary,
+};
 pub use error::{MsiError, Result};
 pub use execution::{
     ActionMode, AdvertiseScope, EvaluationContext, InstallState, LoggingOptions, MsiExecOptions,

@@ -31,9 +31,11 @@ pub use compiler::Compiler;
 pub use extensions::{ExtensionRegistry, WixExtension};
 pub use harvest::{HarvestPayloadOptions, HarvestPayloadResult, Harvester};
 pub use linker::{
-    modularize_identifier, CubValidator, IceDiagnostic, IceDiagnosticType, IceRegistry, IceReport,
-    IceRule, LinkedDatabase, Linker, MergeModule, StandardActionOrder, StandardDirectory,
-    StandardIceRule, STANDARD_DIRECTORIES, STANDARD_INSTALL_EXECUTE_ACTIONS,
+    inspect_binary_architecture, inspect_pe_metadata, inspect_pe_version, modularize_identifier,
+    CubValidator, ElfMachineType, IceDiagnostic, IceDiagnosticType, IceRegistry, IceReport,
+    IceRule, LinkedDatabase, Linker, MachOCpuType, MergeModule, PeMachineType, PeMetadata,
+    StandardActionOrder, StandardDirectory, StandardIceRule, STANDARD_DIRECTORIES,
+    STANDARD_INSTALL_EXECUTE_ACTIONS,
 };
 pub use localization::{LocalizationCatalog, WixLocString, WixLocalization};
 pub use manifest::{
@@ -60,6 +62,7 @@ pub use wixobj::{
 };
 pub use xml::{XmlNode, XmlParser};
 
+use crate::database::summary_info::Architecture;
 use crate::error::Result;
 
 /// Compiles raw `WiX` source code through the complete compiler pipeline (`candle` architecture).
@@ -82,13 +85,41 @@ use crate::error::Result;
 ///
 /// Returns [`crate::error::MsiError`] on preprocessing, XML parsing, or compiler validation failures.
 pub fn compile_wix(source: &str, ctx: &mut PreprocessorContext) -> Result<WixObject> {
+    let arch = ctx.build_arch();
+    compile_wix_with_arch(source, ctx, arch)
+}
+
+/// Compiles raw `WiX` source code targeting a specific processor [`Architecture`].
+///
+/// Synchronizes `ctx.set_build_arch(arch)` (`$(sys.BUILDARCH)`, `$(sys.BUILDARCHSHORT)`, `$(sys.PLATFORM)`)
+/// and configures the [`Compiler`] with `arch`.
+///
+/// # Arguments
+///
+/// * `source` - Raw `WiX` source string (`.wxs`).
+/// * `ctx` - Preprocessor context.
+/// * `arch` - Target processor [`Architecture`].
+///
+/// # Returns
+///
+/// Compiled [`WixObject`].
+///
+/// # Errors
+///
+/// Returns [`crate::error::MsiError`] on preprocessing, XML parsing, or compiler validation failures.
+pub fn compile_wix_with_arch(
+    source: &str,
+    ctx: &mut PreprocessorContext,
+    arch: Architecture,
+) -> Result<WixObject> {
+    ctx.set_build_arch(arch);
     let preprocessor = Preprocessor::new();
     let preprocessed_source = preprocessor.process(source, ctx)?;
 
     let xml_parser = XmlParser::new();
     let root = xml_parser.parse(&preprocessed_source)?;
 
-    let mut compiler = Compiler::new();
+    let mut compiler = Compiler::new().with_architecture(arch);
     if let Some(first_inc) = ctx.include_paths().first() {
         compiler = compiler.with_source_dir(first_inc);
     }

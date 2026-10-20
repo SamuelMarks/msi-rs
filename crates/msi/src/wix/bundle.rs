@@ -8,6 +8,7 @@
 //! - `<Payload>` and `<PayloadGroup>` embedded assets.
 //! - Centralized `<Log>` logging configuration.
 
+use crate::database::summary_info::{Architecture, ComponentBitnessRule};
 use crate::error::{MsiError, Result};
 use crate::wix::xml::XmlNode;
 use std::fmt::Write as _;
@@ -213,7 +214,8 @@ impl BurnBundle {
                     for pkg in &child.children {
                         let pkg_id = pkg.attribute("Id").unwrap_or("ChainPkg").to_string();
                         let src = pkg.attribute("SourceFile").map(ToString::to_string);
-                        let inst_cond = pkg.attribute("InstallCondition").map(ToString::to_string);
+                        let mut inst_cond =
+                            pkg.attribute("InstallCondition").map(ToString::to_string);
                         let detect_cond = pkg.attribute("DetectCondition").map(ToString::to_string);
                         let inst_cmd = pkg.attribute("InstallCommand").map(ToString::to_string);
                         let uninst_cmd = pkg.attribute("UninstallCommand").map(ToString::to_string);
@@ -227,6 +229,42 @@ impl BurnBundle {
                             "RollbackBoundary" => ChainPackageType::RollbackBoundary,
                             _ => continue,
                         };
+
+                        let pkg_arch = match pkg
+                            .attribute("Architecture")
+                            .or_else(|| pkg.attribute("Platform"))
+                        {
+                            Some(arch_str) => Some(Architecture::parse(arch_str)?),
+                            None => None,
+                        };
+                        let bitness_rule = ComponentBitnessRule::parse_from_attributes(
+                            &pkg.tag,
+                            pkg.attribute("Win64"),
+                            pkg.attribute("Bitness"),
+                        )?;
+
+                        if inst_cond.is_none() {
+                            inst_cond = match pkg_arch {
+                                Some(Architecture::X86) => Some("NOT VersionNT64".to_string()),
+                                Some(Architecture::X64 | Architecture::Ia64) => {
+                                    Some("VersionNT64".to_string())
+                                }
+                                Some(Architecture::Arm64) => {
+                                    Some("VersionNT64 AND NativeMachine = 43620".to_string())
+                                }
+                                Some(Architecture::Arm) => Some("NativeMachine = 452".to_string()),
+                                Some(Architecture::Neutral) => None,
+                                None => match bitness_rule {
+                                    ComponentBitnessRule::Always64 => {
+                                        Some("VersionNT64".to_string())
+                                    }
+                                    ComponentBitnessRule::Always32 => {
+                                        Some("NOT VersionNT64".to_string())
+                                    }
+                                    ComponentBitnessRule::Default => None,
+                                },
+                            };
+                        }
 
                         chain_packages.push(ChainPackage {
                             id: pkg_id,
@@ -292,6 +330,36 @@ impl BurnBundle {
             planned.push(pkg);
         }
         planned
+    }
+
+    /// Plans execution of the bundle chain for a specific target host [`Architecture`],
+    /// automatically evaluating built-in architecture conditions (`VersionNT64`, `NOT VersionNT64`,
+    /// `NativeMachine`, `ProcessorArchitecture`) before delegating custom conditions to `eval_condition`.
+    ///
+    /// # Arguments
+    ///
+    /// * `target_arch` - Simulated or actual target host [`Architecture`].
+    /// * `eval_condition` - Fallback closure evaluating custom condition strings to boolean.
+    ///
+    /// # Returns
+    ///
+    /// List of packages scheduled for execution on `target_arch`.
+    pub fn plan_chain_for_architecture(
+        &self,
+        target_arch: Architecture,
+        eval_condition: &dyn Fn(&str) -> bool,
+    ) -> Vec<&ChainPackage> {
+        self.plan_chain(&|cond| match cond.trim() {
+            "VersionNT64" => target_arch == Architecture::X64 || target_arch == Architecture::Ia64,
+            "NOT VersionNT64" => target_arch == Architecture::X86,
+            "VersionNT64 AND NativeMachine = 43620" | "ProcessorArchitecture = \"arm64\"" => {
+                target_arch == Architecture::Arm64
+            }
+            "NativeMachine = 452" | "ProcessorArchitecture = \"arm\"" => {
+                target_arch == Architecture::Arm
+            }
+            other => eval_condition(other),
+        })
     }
 }
 
@@ -1121,5 +1189,47 @@ mod tests {
             summary_err.rolled_back_packages,
             vec!["UpdateMsu", "PatchMsp", "MainExe"]
         );
+    }
+
+    #[test]
+    fn test_burn_bundle_multi_architecture_chain() {
+        let xml = r#"
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+    <Bundle Name="MultiArchSuite" Version="1.0.0.0" Manufacturer="Acme" UpgradeCode="{11111111-1111-1111-1111-111111111111}">
+        <Chain>
+            <MsiPackage Id="PkgX86" SourceFile="app-x86.msi" Architecture="x86" />
+            <MsiPackage Id="PkgX64" SourceFile="app-x64.msi" Win64="yes" />
+            <MsiPackage Id="PkgX64Arch" SourceFile="app-x64-2.msi" Architecture="x64" />
+            <MsiPackage Id="PkgArm64" SourceFile="app-arm64.msi" Architecture="arm64" />
+            <ExePackage Id="PkgArm" SourceFile="app-arm.exe" Architecture="arm" />
+            <ExePackage Id="PkgWin32" SourceFile="app-32.exe" Win64="no" />
+            <MsiPackage Id="PkgNeutral" SourceFile="app-neutral.msi" Architecture="neutral" />
+            <MsiPackage Id="PkgCustomCond" SourceFile="app-custom.msi" InstallCondition="CustomProp = 1" />
+        </Chain>
+    </Bundle>
+</Wix>
+"#;
+        let compiler = BurnCompiler::new();
+        let bundle = compiler.compile_xml(xml).unwrap_or_default();
+        assert_eq!(bundle.chain.len(), 8);
+
+        let planned_x86 = bundle.plan_chain_for_architecture(Architecture::X86, &|_| false);
+        let ids_x86: Vec<&str> = planned_x86.iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(ids_x86, vec!["PkgX86", "PkgWin32", "PkgNeutral"]);
+
+        let planned_x64 = bundle.plan_chain_for_architecture(Architecture::X64, &|_| false);
+        let ids_x64: Vec<&str> = planned_x64.iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(ids_x64, vec!["PkgX64", "PkgX64Arch", "PkgNeutral"]);
+
+        let planned_arm64 = bundle.plan_chain_for_architecture(Architecture::Arm64, &|_| false);
+        let ids_arm64: Vec<&str> = planned_arm64.iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(ids_arm64, vec!["PkgArm64", "PkgNeutral"]);
+
+        let planned_arm = bundle.plan_chain_for_architecture(Architecture::Arm, &|_| false);
+        let ids_arm: Vec<&str> = planned_arm.iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(ids_arm, vec!["PkgArm", "PkgNeutral"]);
+
+        let bad_arch_xml = r#"<Wix><Bundle Name="B" Version="1.0" Manufacturer="M"><Chain><MsiPackage Id="P" Architecture="bad_arch"/></Chain></Bundle></Wix>"#;
+        assert!(compiler.compile_xml(bad_arch_xml).is_err());
     }
 }

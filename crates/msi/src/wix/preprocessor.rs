@@ -3,6 +3,7 @@
 //! Implements macro expansions, variable scoping stack, conditional blocks,
 //! loop unrolling (`foreach`), and file inclusions per the `WiX` Preprocessor specification.
 
+use crate::database::summary_info::Architecture;
 use crate::error::{MsiError, Result};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -17,30 +18,33 @@ pub struct SystemVariables {
     /// Full source file path (`$(sys.SOURCEFILEPATH)`).
     pub source_file_path: PathBuf,
     /// Target build architecture (`$(sys.BUILDARCH)`).
-    pub build_arch: String,
+    pub build_arch: Architecture,
 }
 
-impl Default for SystemVariables {
-    fn default() -> Self {
+impl SystemVariables {
+    /// Creates [`SystemVariables`] configured for a specific target [`Architecture`].
+    ///
+    /// # Arguments
+    ///
+    /// * `arch` - Target build [`Architecture`].
+    ///
+    /// # Returns
+    ///
+    /// Initialized [`SystemVariables`] targeting `arch`.
+    #[must_use]
+    pub fn for_architecture(arch: Architecture) -> Self {
         Self {
             current_dir: PathBuf::from("."),
             source_file_dir: PathBuf::from("."),
             source_file_path: PathBuf::from("main.wxs"),
-            build_arch: {
-                #[cfg(target_arch = "aarch64")]
-                {
-                    "arm64".to_string()
-                }
-                #[cfg(target_arch = "x86")]
-                {
-                    "x86".to_string()
-                }
-                #[cfg(not(any(target_arch = "aarch64", target_arch = "x86")))]
-                {
-                    "x64".to_string()
-                }
-            },
+            build_arch: arch,
         }
+    }
+}
+
+impl Default for SystemVariables {
+    fn default() -> Self {
+        Self::for_architecture(Architecture::X86)
     }
 }
 
@@ -74,6 +78,45 @@ impl PreprocessorContext {
             included_files: HashSet::new(),
             sys_vars: SystemVariables::default(),
         }
+    }
+
+    /// Creates a new [`PreprocessorContext`] targeting the specified [`Architecture`].
+    ///
+    /// # Arguments
+    ///
+    /// * `arch` - Target build [`Architecture`].
+    ///
+    /// # Returns
+    ///
+    /// A new [`PreprocessorContext`] configured for `arch`.
+    #[must_use]
+    pub fn with_architecture(arch: Architecture) -> Self {
+        Self {
+            scopes: vec![HashMap::new()],
+            env_overrides: HashMap::new(),
+            include_paths: Vec::new(),
+            included_files: HashSet::new(),
+            sys_vars: SystemVariables::for_architecture(arch),
+        }
+    }
+
+    /// Sets the target build [`Architecture`] (`$(sys.BUILDARCH)`, `$(sys.BUILDARCHSHORT)`, `$(sys.PLATFORM)`).
+    ///
+    /// # Arguments
+    ///
+    /// * `arch` - Target build [`Architecture`].
+    pub const fn set_build_arch(&mut self, arch: Architecture) {
+        self.sys_vars.build_arch = arch;
+    }
+
+    /// Returns the configured target build [`Architecture`].
+    ///
+    /// # Returns
+    ///
+    /// Current target [`Architecture`].
+    #[must_use]
+    pub const fn build_arch(&self) -> Architecture {
+        self.sys_vars.build_arch
     }
 
     /// Sets the system variables for this context.
@@ -880,7 +923,12 @@ impl Preprocessor {
             Some(("sys", "SOURCEFILEPATH")) => {
                 Ok(ctx.sys_vars.source_file_path.to_string_lossy().to_string())
             }
-            Some(("sys", "BUILDARCH")) => Ok(ctx.sys_vars.build_arch.clone()),
+            Some(("sys", "BUILDARCH" | "PLATFORM")) => {
+                Ok(ctx.sys_vars.build_arch.as_wix_str().to_string())
+            }
+            Some(("sys", "BUILDARCHSHORT")) => {
+                Ok(ctx.sys_vars.build_arch.as_wix_short_str().to_string())
+            }
             Some(("sys", other)) => Err(MsiError::Preprocessor {
                 line: 1,
                 column: 1,
@@ -1240,19 +1288,41 @@ mod tests {
     #[test]
     fn test_preprocessor_default_and_set_system_variables() {
         let mut def_ctx = PreprocessorContext::default();
+        assert_eq!(def_ctx.build_arch(), Architecture::X86);
         def_ctx.define_var("K", "V");
         assert_eq!(def_ctx.get_var("K"), Some("V"));
 
-        let mut ctx = PreprocessorContext::new();
+        let mut ctx = PreprocessorContext::with_architecture(Architecture::Arm64);
+        assert_eq!(ctx.build_arch(), Architecture::Arm64);
+        let prep = Preprocessor;
+        assert_eq!(
+            prep.expand_macros(
+                "$(sys.BUILDARCH)|$(sys.BUILDARCHSHORT)|$(sys.PLATFORM)",
+                &ctx
+            )
+            .unwrap_or_default(),
+            "arm64|a64|arm64"
+        );
+
+        ctx.set_build_arch(Architecture::X64);
+        assert_eq!(ctx.build_arch(), Architecture::X64);
+        assert_eq!(
+            prep.expand_macros(
+                "$(sys.BUILDARCH)|$(sys.BUILDARCHSHORT)|$(sys.PLATFORM)",
+                &ctx
+            )
+            .unwrap_or_default(),
+            "x64|x64|x64"
+        );
+
         let sys_vars = SystemVariables {
             current_dir: PathBuf::from("/tmp"),
             source_file_dir: PathBuf::from("/tmp"),
             source_file_path: PathBuf::from("/tmp/main.wxs"),
-            build_arch: "x64".to_string(),
+            build_arch: Architecture::X64,
         };
         ctx.set_system_variables(sys_vars);
 
-        let prep = Preprocessor;
         let res = prep
             .process("<Wix><Product/></Wix>", &mut ctx)
             .unwrap_or_default();

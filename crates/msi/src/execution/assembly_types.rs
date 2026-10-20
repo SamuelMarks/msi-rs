@@ -1,5 +1,6 @@
 //! Strongly-typed processor architecture and assembly identity types for WinSxS and GAC deployment.
 
+use crate::database::summary_info::Architecture;
 use crate::error::{MsiError, Result};
 use std::fmt;
 
@@ -37,16 +38,44 @@ impl ProcessorArchitecture {
     /// The parsed `ProcessorArchitecture`.
     pub fn parse(arch: &str) -> Result<Self> {
         match arch.to_lowercase().as_str() {
-            "x86" => Ok(Self::X86),
-            "amd64" => Ok(Self::Amd64),
-            "arm" => Ok(Self::Arm),
-            "arm64" => Ok(Self::Arm64),
-            "ia64" => Ok(Self::Ia64),
+            "x86" | "intel" | "i386" | "i686" => Ok(Self::X86),
+            "amd64" | "x64" | "x86_64" => Ok(Self::Amd64),
+            "arm" | "armnt" => Ok(Self::Arm),
+            "arm64" | "aarch64" => Ok(Self::Arm64),
+            "ia64" | "intel64" => Ok(Self::Ia64),
             "msil" => Ok(Self::Msil),
             "neutral" | "" => Ok(Self::Neutral),
             _ => Err(MsiError::SxSError(format!(
                 "Invalid processor architecture: {arch}"
             ))),
+        }
+    }
+}
+
+impl From<Architecture> for ProcessorArchitecture {
+    fn from(arch: Architecture) -> Self {
+        match arch {
+            Architecture::X86 => Self::X86,
+            Architecture::X64 => Self::Amd64,
+            Architecture::Arm => Self::Arm,
+            Architecture::Arm64 => Self::Arm64,
+            Architecture::Ia64 => Self::Ia64,
+            Architecture::Neutral => Self::Neutral,
+        }
+    }
+}
+
+impl TryFrom<ProcessorArchitecture> for Architecture {
+    type Error = MsiError;
+
+    fn try_from(arch: ProcessorArchitecture) -> Result<Self> {
+        match arch {
+            ProcessorArchitecture::X86 => Ok(Self::X86),
+            ProcessorArchitecture::Amd64 => Ok(Self::X64),
+            ProcessorArchitecture::Arm => Ok(Self::Arm),
+            ProcessorArchitecture::Arm64 => Ok(Self::Arm64),
+            ProcessorArchitecture::Ia64 => Ok(Self::Ia64),
+            ProcessorArchitecture::Msil | ProcessorArchitecture::Neutral => Ok(Self::Neutral),
         }
     }
 }
@@ -69,6 +98,7 @@ impl fmt::Display for ProcessorArchitecture {
 #[cfg(test)]
 mod tests {
     use super::ProcessorArchitecture;
+    use crate::database::summary_info::Architecture;
 
     #[test]
     fn test_processor_architecture_parsing() {
@@ -106,6 +136,25 @@ mod tests {
         );
 
         assert!(ProcessorArchitecture::parse("invalid").is_err());
+    }
+
+    #[test]
+    fn test_processor_architecture_conversions() {
+        for (arch, proc_arch) in [
+            (Architecture::X86, ProcessorArchitecture::X86),
+            (Architecture::X64, ProcessorArchitecture::Amd64),
+            (Architecture::Arm, ProcessorArchitecture::Arm),
+            (Architecture::Arm64, ProcessorArchitecture::Arm64),
+            (Architecture::Ia64, ProcessorArchitecture::Ia64),
+            (Architecture::Neutral, ProcessorArchitecture::Neutral),
+        ] {
+            assert_eq!(ProcessorArchitecture::from(arch), proc_arch);
+            assert_eq!(Architecture::try_from(proc_arch), Ok(arch));
+        }
+        assert_eq!(
+            Architecture::try_from(ProcessorArchitecture::Msil),
+            Ok(Architecture::Neutral)
+        );
     }
 
     #[test]

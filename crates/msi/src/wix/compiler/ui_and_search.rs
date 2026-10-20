@@ -1,6 +1,7 @@
 //! UI dialogs, controls, custom actions, sequences, upgrades, and `AppSearch` compilation for the `WiX` Compiler.
 
 use super::{convert_text_to_rtf, parse_registry_root, Compiler};
+use crate::database::summary_info::{Architecture, ComponentBitnessRule};
 use crate::database::tables::record::{FieldValue, Record};
 use crate::database::tables::sequence::SequenceRow;
 use crate::database::tables::types::generate_deterministic_id;
@@ -14,6 +15,7 @@ pub(super) fn compile_custom_action(
     child: &XmlNode,
     section: &mut IntermediateSection,
     tables: &mut HashMap<String, IntermediateTable>,
+    section_arch: Architecture,
 ) -> Result<()> {
     let ca_id = child.attribute("Id").ok_or_else(|| MsiError::WixCompiler {
         element: "CustomAction".to_string(),
@@ -59,6 +61,18 @@ pub(super) fn compile_custom_action(
         (None, None, None, None, _, Some(err)) => ("", err, 19),
         _ => ("", "", 1),
     };
+
+    let bitness_rule = ComponentBitnessRule::parse_from_attributes(
+        "CustomAction",
+        child.attribute("Win64"),
+        child.attribute("Bitness"),
+    )?;
+    let base_script_type = ca_type & 0x0007;
+    if (base_script_type == 5 || base_script_type == 6)
+        && bitness_rule.resolve_is_64bit(section_arch)
+    {
+        ca_type |= 0x0020;
+    }
 
     match child.attribute("Execute") {
         Some("deferred") => ca_type |= 0x0400,
@@ -711,7 +725,8 @@ pub(super) fn compile_registry_search(
     parent_id: Option<&str>,
     section: &mut IntermediateSection,
     tables: &mut HashMap<String, IntermediateTable>,
-) {
+    section_arch: Architecture,
+) -> Result<()> {
     let root_str = child.attribute("Root").unwrap_or("HKLM");
     let root = parse_registry_root(root_str);
     let key = child.attribute("Key").unwrap_or("");
@@ -736,10 +751,12 @@ pub(super) fn compile_registry_search(
         _ => 2,
     };
 
-    if child
-        .attribute("Win64")
-        .is_some_and(|v| v.eq_ignore_ascii_case("yes"))
-    {
+    let bitness_rule = ComponentBitnessRule::parse_from_attributes(
+        "RegistrySearch",
+        child.attribute("Win64"),
+        child.attribute("Bitness"),
+    )?;
+    if bitness_rule.resolve_is_64bit(section_arch) {
         type_num |= 0x0010;
     }
 
@@ -803,6 +820,7 @@ pub(super) fn compile_registry_search(
             .or_insert_with(|| IntermediateTable::new("Signature"))
             .push_record(sig_rec);
     }
+    Ok(())
 }
 
 /// Compiles `<DirectorySearch>` element into `DrLocator` table.

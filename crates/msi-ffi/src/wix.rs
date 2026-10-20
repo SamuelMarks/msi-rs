@@ -2,13 +2,14 @@
 //!
 //! Compiles `WiX` XML source (`.wxs`) into installable Windows Installer (`.msi`) packages.
 
-use crate::error::{c_str_to_str, ffi_boundary, map_msi_error, MSI_SUCCESS};
-use msi::database::summary_info::SummaryInfo;
+use crate::error::{c_str_to_opt_str, c_str_to_str, ffi_boundary, map_msi_error, MSI_SUCCESS};
+use msi::database::tables::core::PropertyRow;
 use msi::database::tables::record::FieldValue;
-use msi::package::{Package, PackageMetadata, ProductVersion};
+use msi::database::tables::types::PropertyName;
+use msi::package::Package;
 use msi::wix::linker::Linker;
 use msi::wix::preprocessor::PreprocessorContext;
-use std::collections::HashMap;
+use msi::Architecture;
 use std::ffi::c_char;
 use std::fs;
 
@@ -33,46 +34,77 @@ pub unsafe extern "C" fn msi_compile_wix_source(
     wxs_content: *const c_char,
     output_msi_path: *const c_char,
 ) -> i32 {
+    unsafe { msi_compile_wix_source_with_arch(wxs_content, output_msi_path, std::ptr::null()) }
+}
+
+/// Compiles a `WiX` XML source string directly to an `.msi` file targeting an optional processor architecture.
+///
+/// # Arguments
+///
+/// * `wxs_content` - Raw `WiX` XML source string (`.wxs`).
+/// * `output_msi_path` - Target output `.msi` file path on disk.
+/// * `arch` - Optional target architecture C string (`"x86"`, `"x64"`, `"arm"`, `"arm64"`, `"ia64"`, `"neutral"`), or NULL.
+///
+/// # Returns
+///
+/// [`MSI_SUCCESS`] on success, or an error code.
+///
+/// # Safety
+///
+/// `wxs_content` and `output_msi_path` must be valid null-terminated C strings.
+/// `arch` must be NULL or a valid null-terminated C string.
+#[cfg_attr(not(test), no_mangle)]
+#[inline(never)]
+#[must_use]
+pub unsafe extern "C" fn msi_compile_wix_source_with_arch(
+    wxs_content: *const c_char,
+    output_msi_path: *const c_char,
+    arch: *const c_char,
+) -> i32 {
     unsafe {
         ffi_boundary(|| {
             let source = c_str_to_str(wxs_content, "wxs_content")?;
             let out_path = c_str_to_str(output_msi_path, "output_msi_path")?;
+            let arch_opt = c_str_to_opt_str(arch, "arch")?;
 
             let mut ctx = PreprocessorContext::new();
+            let parsed_arch = match arch_opt {
+                Some(a) if !a.trim().is_empty() => {
+                    Some(Architecture::parse(a).map_err(|e| (map_msi_error(&e), e.to_string()))?)
+                }
+                _ => None,
+            };
+            if let Some(target_arch) = parsed_arch {
+                ctx.set_build_arch(target_arch);
+                ctx.define_var("sys.BUILDARCH", target_arch.as_wix_str());
+                ctx.define_var("arch", target_arch.as_wix_str());
+            }
+
             let obj = msi::wix::compile_wix(source, &mut ctx)
                 .map_err(|e| (map_msi_error(&e), e.to_string()))?;
 
             let mut linker = Linker::new();
             linker.add_object(obj);
-            let db = linker
+            let mut db = linker
                 .link()
                 .map_err(|e| (map_msi_error(&e), e.to_string()))?;
 
-            let find_prop = |name: &str| {
-                db.get_records("Property")
-                    .iter()
-                    .find_map(|r| match (r.get(0), r.get(1)) {
-                        (Some(FieldValue::String(k)), Some(FieldValue::String(v))) if k == name => {
-                            Some(v.clone())
-                        }
-                        _ => None,
-                    })
-            };
+            if let Some(target_arch) = parsed_arch {
+                let canonical = target_arch.as_wix_str().to_string();
+                if let Some(props) = db.tables.get_mut("Property") {
+                    props.retain(|r| {
+                        r.get(0) != Some(&FieldValue::String("ProductPlatform".to_string()))
+                    });
+                }
+                let row = PropertyRow {
+                    property: PropertyName::from_static("ProductPlatform"),
+                    value: canonical,
+                };
+                db.add_record("Property", row.to_record());
+            }
 
-            let product_name =
-                find_prop("ProductName").unwrap_or_else(|| "WiX Application".to_string());
-            let manufacturer =
-                find_prop("Manufacturer").unwrap_or_else(|| "WiX Author".to_string());
-            let product_code = find_prop("ProductCode")
-                .unwrap_or_else(|| "{00000000-0000-0000-0000-000000000000}".to_string());
-            let version = find_prop("ProductVersion")
-                .and_then(|v| ProductVersion::parse(&v).ok())
-                .unwrap_or_else(|| ProductVersion::new(1, 0, 0));
-
-            let metadata = PackageMetadata::new(product_name, manufacturer, version, product_code);
-            let summary_info = SummaryInfo::default();
-            let embedded_cabinets = HashMap::new();
-            let package = Package::new(metadata, db, summary_info, embedded_cabinets);
+            let cabs = linker.take_embedded_cabinets();
+            let package = Package::from_database(db, cabs);
 
             package
                 .save(out_path)
@@ -104,6 +136,33 @@ pub unsafe extern "C" fn msi_compile_wix_file(
     wxs_path: *const c_char,
     output_msi_path: *const c_char,
 ) -> i32 {
+    unsafe { msi_compile_wix_file_with_arch(wxs_path, output_msi_path, std::ptr::null()) }
+}
+
+/// Compiles a `WiX` XML source file directly to an `.msi` file targeting an optional processor architecture.
+///
+/// # Arguments
+///
+/// * `wxs_path` - Path to the `.wxs` source file on disk.
+/// * `output_msi_path` - Target output `.msi` file path on disk.
+/// * `arch` - Optional target architecture C string (`"x86"`, `"x64"`, `"arm"`, `"arm64"`, `"ia64"`, `"neutral"`), or NULL.
+///
+/// # Returns
+///
+/// [`MSI_SUCCESS`] on success, or an error code.
+///
+/// # Safety
+///
+/// `wxs_path` and `output_msi_path` must be valid null-terminated C strings.
+/// `arch` must be NULL or a valid null-terminated C string.
+#[cfg_attr(not(test), no_mangle)]
+#[inline(never)]
+#[must_use]
+pub unsafe extern "C" fn msi_compile_wix_file_with_arch(
+    wxs_path: *const c_char,
+    output_msi_path: *const c_char,
+    arch: *const c_char,
+) -> i32 {
     unsafe {
         ffi_boundary(|| {
             let in_path = c_str_to_str(wxs_path, "wxs_path")?;
@@ -123,7 +182,7 @@ pub unsafe extern "C" fn msi_compile_wix_file(
                 )
             })?;
 
-            let res = msi_compile_wix_source(source_c.as_ptr(), output_msi_path);
+            let res = msi_compile_wix_source_with_arch(source_c.as_ptr(), output_msi_path, arch);
             if res == MSI_SUCCESS {
                 Ok(MSI_SUCCESS)
             } else {
@@ -210,6 +269,50 @@ mod tests {
             let res2 = msi_compile_wix_file(in_wxs_c.as_ptr(), out2_c.as_ptr());
             assert_eq!(res2, MSI_SUCCESS);
             assert!(out_msi2.exists());
+
+            // Test msi_compile_wix_source_with_arch and msi_compile_wix_file_with_arch
+            let out_msi_arm64 = temp_dir.join("wix_arm64.msi");
+            let out_arm64_c =
+                CString::new(out_msi_arm64.to_str().unwrap_or("")).unwrap_or_default();
+            let arm64_c = CString::new("arm64").unwrap_or_default();
+            assert_eq!(
+                msi_compile_wix_source_with_arch(
+                    wxs_c.as_ptr(),
+                    out_arm64_c.as_ptr(),
+                    arm64_c.as_ptr(),
+                ),
+                MSI_SUCCESS
+            );
+            let pkg_arm64 = Package::open(&out_msi_arm64).unwrap_or_default();
+            assert_eq!(
+                pkg_arm64.summary_info().template.as_deref(),
+                Some("Arm64;1033")
+            );
+            assert_eq!(pkg_arm64.summary_info().page_count, Some(500));
+
+            let out_msi_x64 = temp_dir.join("wix_x64.msi");
+            let out_x64_c = CString::new(out_msi_x64.to_str().unwrap_or("")).unwrap_or_default();
+            let x64_c = CString::new("x64").unwrap_or_default();
+            assert_eq!(
+                msi_compile_wix_file_with_arch(
+                    in_wxs_c.as_ptr(),
+                    out_x64_c.as_ptr(),
+                    x64_c.as_ptr(),
+                ),
+                MSI_SUCCESS
+            );
+            let pkg_x64 = Package::open(&out_msi_x64).unwrap_or_default();
+            assert_eq!(pkg_x64.summary_info().template.as_deref(), Some("x64;1033"));
+
+            let bad_arch_c = CString::new("invalid_arch").unwrap_or_default();
+            assert_eq!(
+                msi_compile_wix_source_with_arch(
+                    wxs_c.as_ptr(),
+                    out_arm64_c.as_ptr(),
+                    bad_arch_c.as_ptr(),
+                ),
+                MSI_ERROR_INVALID_ARGUMENT
+            );
         }
 
         let _ = fs::remove_dir_all(temp_dir);

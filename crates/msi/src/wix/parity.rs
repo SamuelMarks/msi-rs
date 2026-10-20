@@ -6,7 +6,8 @@
 //! - Validates roundtrip recompilation and linking against official `WiX` schema expectations.
 //! - Verifies identical database catalogs, tables, and sequence ordering.
 
-use crate::database::tables::record::FieldValue;
+use crate::database::summary_info::Architecture;
+use crate::database::tables::record::{FieldValue, Record};
 use crate::error::Result;
 use crate::wix::compiler::Compiler;
 use crate::wix::linker::{LinkedDatabase, Linker};
@@ -41,6 +42,44 @@ impl MsiDecompiler {
     pub const fn new(schema_version: WixSchemaVersion) -> Self {
         Self { schema_version }
     }
+
+    /// Decompiles a [`crate::package::Package`] into valid `WiX` XML source string, preserving `SummaryInfo`
+    /// architecture (`PID_TEMPLATE`) and minimum installer version (`PID_PAGECOUNT`).
+    ///
+    /// # Arguments
+    ///
+    /// * `package` - Package to decompile.
+    ///
+    /// # Returns
+    ///
+    /// `WiX` XML source string.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::MsiError`] if required product properties are missing.
+    pub fn decompile_package(&self, package: &crate::package::Package) -> Result<String> {
+        let mut db = package.database().clone();
+        if let Some(tmpl) = package.summary_info().template_summary() {
+            db.add_record(
+                "Property",
+                Record::with_fields(vec![
+                    FieldValue::String("ProductPlatform".to_string()),
+                    FieldValue::String(tmpl.architecture.as_wix_str().to_string()),
+                ]),
+            );
+        }
+        if let Some(pc) = package.summary_info().page_count {
+            db.add_record(
+                "Property",
+                Record::with_fields(vec![
+                    FieldValue::String("InstallerVersion".to_string()),
+                    FieldValue::String(pc.to_string()),
+                ]),
+            );
+        }
+        self.decompile(&db)
+    }
+
     #[allow(clippy::cognitive_complexity)]
     /// Decompiles an in-memory [`LinkedDatabase`] into valid `WiX` XML source string.
     ///
@@ -92,6 +131,21 @@ impl MsiDecompiler {
             .copied()
             .unwrap_or("{11111111-1111-1111-1111-111111111111}");
 
+        let resolved_arch = properties
+            .get("ProductPlatform")
+            .or_else(|| properties.get("ModulePlatform"))
+            .or_else(|| properties.get("Platform"))
+            .and_then(|s| Architecture::parse(s).ok());
+        let installer_version = properties.get("InstallerVersion").copied().unwrap_or("200");
+        let plt_attr_v3 =
+            resolved_arch.map_or_else(String::new, |a| format!(" Platform=\"{}\"", a.as_wix_str()));
+        let plt_attr_v4 = resolved_arch.map_or_else(String::new, |a| {
+            format!(
+                " InstallerPlatform=\"{}\" InstallerVersion=\"{installer_version}\"",
+                a.as_wix_str()
+            )
+        });
+
         let xmlns = self.schema_version.namespace_uri();
 
         let mut xml = String::new();
@@ -100,18 +154,21 @@ impl MsiDecompiler {
         match self.schema_version {
             WixSchemaVersion::V3 => {
                 xml.push_str(&format!(
-                    "<Wix xmlns=\"{xmlns}\">\n  <Product Id=\"{product_code}\" Name=\"{product_name}\" Language=\"1033\" Version=\"{version}\" Manufacturer=\"{manufacturer}\" UpgradeCode=\"{upgrade_code}\">\n    <Package InstallerVersion=\"200\" Compressed=\"yes\" />\n"
+                    "<Wix xmlns=\"{xmlns}\">\n  <Product Id=\"{product_code}\" Name=\"{product_name}\" Language=\"1033\" Version=\"{version}\" Manufacturer=\"{manufacturer}\" UpgradeCode=\"{upgrade_code}\">\n    <Package InstallerVersion=\"{installer_version}\" Compressed=\"yes\"{plt_attr_v3} />\n"
                 ));
             }
             WixSchemaVersion::V4 | WixSchemaVersion::V5 | WixSchemaVersion::PosixV1 => {
                 xml.push_str(&format!(
-                    "<Wix xmlns=\"{xmlns}\">\n  <Package ProductCode=\"{product_code}\" Name=\"{product_name}\" Language=\"1033\" Version=\"{version}\" Manufacturer=\"{manufacturer}\" UpgradeCode=\"{upgrade_code}\">\n"
+                    "<Wix xmlns=\"{xmlns}\">\n  <Package ProductCode=\"{product_code}\" Name=\"{product_name}\" Language=\"1033\" Version=\"{version}\" Manufacturer=\"{manufacturer}\" UpgradeCode=\"{upgrade_code}\"{plt_attr_v4}>\n"
                 ));
             }
         }
 
         // Decompile Directories, Components, and Files
-        xml.push_str("    <StandardDirectory Id=\"ProgramFilesFolder\">\n");
+        let std_dir_id = resolved_arch.map_or("ProgramFilesFolder", |a| {
+            a.default_program_files_folder_id()
+        });
+        xml.push_str(&format!("    <StandardDirectory Id=\"{std_dir_id}\">\n"));
         xml.push_str(&format!(
             "      <Directory Id=\"INSTALLFOLDER\" Name=\"{product_name}\">\n"
         ));
@@ -128,9 +185,11 @@ impl MsiDecompiler {
                 Some(FieldValue::String(s)) => s.as_str(),
                 _ => "*",
             };
+            let is_win64 = matches!(comp.get(3), Some(FieldValue::Short(a)) if (a & 0x0100) != 0);
+            let win64_attr = if is_win64 { " Win64=\"yes\"" } else { "" };
 
             xml.push_str(&format!(
-                "        <Component Id=\"{comp_id}\" Guid=\"{comp_guid}\">\n"
+                "        <Component Id=\"{comp_id}\" Guid=\"{comp_guid}\"{win64_attr}>\n"
             ));
 
             // Find files belonging to this component
@@ -308,6 +367,28 @@ impl MsiDecompiler {
             };
             xml.push_str(&format!(
                 "    <AppSearch Property=\"{prop}\" Id=\"{sig}\" />\n"
+            ));
+        }
+
+        // Decompile RegLocator
+        for reg_loc in database.get_records("RegLocator") {
+            let Some(FieldValue::String(sig)) = reg_loc.get(0) else {
+                continue;
+            };
+            let root = if reg_loc.get(1) == Some(&FieldValue::Short(1)) {
+                "HKCU"
+            } else {
+                "HKLM"
+            };
+            let key = match reg_loc.get(2) {
+                Some(FieldValue::String(s)) => s.as_str(),
+                _ => "",
+            };
+            let is_win64 =
+                matches!(reg_loc.get(4), Some(FieldValue::Short(t)) if (t & 0x0010) != 0);
+            let win64_attr = if is_win64 { " Win64=\"yes\"" } else { "" };
+            xml.push_str(&format!(
+                "    <RegistrySearch Id=\"{sig}\" Root=\"{root}\" Key=\"{key}\"{win64_attr} />\n"
             ));
         }
 
@@ -1034,5 +1115,53 @@ mod tests {
         let temp_dir = std::env::temp_dir().join(format!("parity_neg_{}", std::process::id()));
         assert!(decompiler.extract_assets(&bad_pkg, &temp_dir).is_err());
         let _ = std::fs::remove_dir_all(&temp_dir);
+
+        // Test decompile_package and 64-bit Component + RegLocator Win64="yes" roundtrip
+        let mut db64 = sample_database();
+        db64.add_record(
+            "Component",
+            Record::with_fields(vec![
+                FieldValue::String("Comp64".to_string()),
+                FieldValue::String("{22222222-2222-2222-2222-222222222222}".to_string()),
+                FieldValue::String("INSTALLFOLDER".to_string()),
+                FieldValue::Short(0x0100),
+                FieldValue::Null,
+                FieldValue::Null,
+            ]),
+        );
+        db64.add_record(
+            "RegLocator",
+            Record::with_fields(vec![
+                FieldValue::String("RegSig64".to_string()),
+                FieldValue::Short(2),
+                FieldValue::String("Software\\Acme".to_string()),
+                FieldValue::Null,
+                FieldValue::Short(2 | 0x0010),
+            ]),
+        );
+        db64.add_record(
+            "RegLocator",
+            Record::with_fields(vec![
+                FieldValue::String("RegSig32".to_string()),
+                FieldValue::Short(1),
+                FieldValue::Null,
+                FieldValue::Null,
+                FieldValue::Short(2),
+            ]),
+        );
+        db64.add_record("RegLocator", Record::with_fields(vec![FieldValue::Null]));
+        let mut pkg64 = crate::package::Package::from_database(db64, HashMap::new());
+        pkg64.summary_info_mut().template = Some("Arm64;1033".to_string());
+        pkg64.summary_info_mut().page_count = Some(500);
+        let xml_arm64 = decompiler.decompile_package(&pkg64).unwrap_or_default();
+        assert!(xml_arm64.contains("InstallerPlatform=\"arm64\""));
+        assert!(xml_arm64.contains("InstallerVersion=\"500\""));
+        assert!(xml_arm64.contains("StandardDirectory Id=\"ProgramFiles64Folder\""));
+        assert!(xml_arm64.contains(
+            "Component Id=\"Comp64\" Guid=\"{22222222-2222-2222-2222-222222222222}\" Win64=\"yes\""
+        ));
+        assert!(xml_arm64.contains(
+            "RegistrySearch Id=\"RegSig64\" Root=\"HKLM\" Key=\"Software\\Acme\" Win64=\"yes\""
+        ));
     }
 }

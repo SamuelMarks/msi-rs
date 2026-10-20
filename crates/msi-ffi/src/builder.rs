@@ -266,6 +266,85 @@ pub unsafe extern "C" fn msi_package_builder_set_upgrade_code(
     }
 }
 
+/// Sets the target processor architecture on the builder (e.g., `"x86"`, `"x64"`, `"arm"`, `"arm64"`, `"ia64"`, `"neutral"`).
+///
+/// # Arguments
+///
+/// * `builder` - Target builder handle.
+/// * `arch` - Null-terminated C string specifying the target architecture.
+///
+/// # Returns
+///
+/// [`MSI_SUCCESS`] on success, or an error code.
+///
+/// # Safety
+///
+/// `builder` must be a valid pointer obtained from `msi_package_builder_create`.
+/// `arch` must be a valid null-terminated C string.
+#[cfg_attr(not(test), no_mangle)]
+#[inline(never)]
+pub unsafe extern "C" fn msi_builder_set_architecture(
+    builder: *mut MsiPackageBuilderHandle,
+    arch: *const c_char,
+) -> i32 {
+    unsafe {
+        ffi_boundary(|| {
+            if builder.is_null() {
+                return Err((
+                    MSI_ERROR_NULL_POINTER,
+                    "builder handle must not be null".to_string(),
+                ));
+            }
+            let arch_str = c_str_to_str(arch, "arch")?;
+            let parsed_arch = msi::Architecture::parse(arch_str)
+                .map_err(|e| (map_msi_error(&e), e.to_string()))?;
+            (*builder).inner = std::mem::take(&mut (*builder).inner).architecture(parsed_arch);
+            Ok(MSI_SUCCESS)
+        })
+    }
+}
+
+/// Sets the minimum Windows Installer schema version (`PID_PAGECOUNT`, e.g., `200`, `300`, `500`) on the builder.
+///
+/// # Arguments
+///
+/// * `builder` - Target builder handle.
+/// * `installer_version` - Integer installer version (`>= 100`).
+///
+/// # Returns
+///
+/// [`MSI_SUCCESS`] on success, or an error code.
+///
+/// # Safety
+///
+/// `builder` must be a valid pointer obtained from `msi_package_builder_create`.
+#[cfg_attr(not(test), no_mangle)]
+#[inline(never)]
+pub unsafe extern "C" fn msi_builder_set_installer_version(
+    builder: *mut MsiPackageBuilderHandle,
+    installer_version: i32,
+) -> i32 {
+    unsafe {
+        ffi_boundary(|| {
+            if builder.is_null() {
+                return Err((
+                    MSI_ERROR_NULL_POINTER,
+                    "builder handle must not be null".to_string(),
+                ));
+            }
+            if installer_version < 100 {
+                return Err((
+                    MSI_ERROR_INVALID_ARGUMENT,
+                    format!("installer_version must be >= 100, got {installer_version}"),
+                ));
+            }
+            (*builder).inner =
+                std::mem::take(&mut (*builder).inner).installer_version(installer_version);
+            Ok(MSI_SUCCESS)
+        })
+    }
+}
+
 /// Adds a property to the package's `Property` table.
 ///
 /// # Arguments
@@ -2159,6 +2238,37 @@ mod tests {
                     inv,
                 ),
                 MSI_ERROR_INVALID_ARGUMENT
+            );
+
+            // Test msi_builder_set_architecture and msi_builder_set_installer_version
+            assert_eq!(
+                msi_builder_set_architecture(ptr::null_mut(), valid_name.as_ptr()),
+                MSI_ERROR_NULL_POINTER
+            );
+            assert_eq!(
+                msi_builder_set_architecture(out_builder, ptr::null()),
+                MSI_ERROR_NULL_POINTER
+            );
+            assert_eq!(
+                msi_builder_set_architecture(out_builder, valid_name.as_ptr()),
+                MSI_ERROR_INVALID_ARGUMENT
+            );
+            let arm64_c = CString::new("arm64").unwrap_or_default();
+            assert_eq!(
+                msi_builder_set_architecture(out_builder, arm64_c.as_ptr()),
+                MSI_SUCCESS
+            );
+            assert_eq!(
+                msi_builder_set_installer_version(ptr::null_mut(), 500),
+                MSI_ERROR_NULL_POINTER
+            );
+            assert_eq!(
+                msi_builder_set_installer_version(out_builder, 50),
+                MSI_ERROR_INVALID_ARGUMENT
+            );
+            assert_eq!(
+                msi_builder_set_installer_version(out_builder, 500),
+                MSI_SUCCESS
             );
 
             msi_package_builder_destroy(out_builder);

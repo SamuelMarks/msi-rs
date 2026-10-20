@@ -359,10 +359,10 @@ mod more_record_tests {
         assert_eq!(
             buf,
             [
-                i8::from_ne_bytes([b'A']),
-                i8::from_ne_bytes([b'B']),
-                i8::from_ne_bytes([b'C']),
-                i8::from_ne_bytes([b'D']),
+                i8::from_ne_bytes(*b"A"),
+                i8::from_ne_bytes(*b"B"),
+                i8::from_ne_bytes(*b"C"),
+                i8::from_ne_bytes(*b"D"),
             ]
         );
 
