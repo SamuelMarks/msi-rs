@@ -37,7 +37,7 @@ Traditionally, authoring, compiling, inspecting, and executing Windows Installer
   - **`wixl`**: Cross-compiler executable shim replicating GNOME `wixl` (msitools) compiling and linking `.wxs` source directly into `.msi` packages.
 - **Windows Installer Runtime Shim (1 Binary):**
   - **`msiexec`**: Dedicated command-line execution shim replicating Microsoft `msiexec.exe` parameter handling, return codes, and transaction dispatch across POSIX and Windows.
-- **Cross-Platform Compilation**: Build Windows Installer packages natively in Linux or macOS CI/CD workflows without spinning up Windows runners or Docker containers. This seamless cross-platform support allows `msi-rs` to act as a drop-in replacement for WiX/msitools in existing CMake `CPackWIX` workflows.
+- **Cross-Platform & Cross-Architecture Compilation**: Deterministically build Windows Installer packages targeting any processor architecture (`x86`/`Intel`, `x64`/`AMD64`, `arm`/`ARM32`, `arm64`/`AArch64`, `ia64`/`Intel64`, or `neutral`) natively on any Linux, macOS, BSD, or Windows host regardless of host CPU architecture. This seamless cross-platform support allows `msi-rs` to act as a drop-in replacement for WiX/msitools in existing CMake `CPackWIX` workflows.
 
 ### 2. Replacing the Windows Installer Runtime (`msiexec.exe`)
 `msi-rs` replaces `msiexec.exe` with `msi-cli`, a drop-in command-line tool and execution engine that runs natively across Unix and POSIX operating systems:
@@ -183,9 +183,16 @@ msi.build_msi(
     manufacturer="Acme Corporation",
 )
 
+# Compile WiX XML targeting a specific architecture (x86, x64, arm, arm64, ia64, neutral)
+msi.compile_wix(
+    source="./Product.wxs",
+    output_path="./MyApp-arm64.msi",
+    arch="arm64",
+)
+
 # Advanced: inspect an existing package
 pkg = msi.Package.open("./MyApp-1.0.0.msi")
-print(f"Product: {pkg.get_property('ProductName')} v{pkg.get_property('ProductVersion')}")
+print(f"Product: {pkg.get_property('ProductName')} v{pkg.get_property('ProductVersion')} ({pkg.architecture})")
 for table in pkg.table_names:
     print(f"  Table: {table}")
 ```
@@ -194,7 +201,7 @@ See the complete Python guide and API documentation in [`docs/python_guide.md`](
 
 ### C-ABI Foreign Function Interface & Win32 `msi.dll` Drop-In (`msi-ffi`)
 `msi-ffi` compiles to a shared (`.so` / `.dylib` / `.dll`) and static (`.a`) library exposing both a high-level C-ABI ([`crates/msi-ffi/include/msi.h`](crates/msi-ffi/include/msi.h)) and a binary-compatible Win32 `msi.dll` export surface:
-- **Cross-Language C-ABI**: Ready for C, C++, Go, C#, Swift, Zig, and Rust FFI with opaque handles for package construction (`MsiPackageBuilderHandle`), inspection (`MsiPackageHandle`), database/record manipulation (`MsiDatabaseHandle`, `MsiRecordHandle`, `MsiSummaryInfoHandle`), and multi-package atomic transactions (`MsiTransactionHandle`: `msi_begin_transaction`, `msi_join_transaction`, `msi_install_product`, `msi_end_transaction`).
+- **Cross-Language C-ABI**: Ready for C, C++, Go, C#, Swift, Zig, and Rust FFI with opaque handles for package construction (`MsiPackageBuilderHandle`: `msi_builder_set_architecture`, `msi_builder_set_installer_version`), WiX compilation (`msi_compile_wix_source_with_arch`, `msi_compile_wix_file_with_arch`), inspection (`MsiPackageHandle`), database/record manipulation (`MsiDatabaseHandle`, `MsiRecordHandle`, `MsiSummaryInfoHandle`), and multi-package atomic transactions (`MsiTransactionHandle`: `msi_begin_transaction`, `msi_join_transaction`, `msi_install_product`, `msi_end_transaction`).
 - **Win32 `msi.dll` Drop-In Replacement (`crates/msi-ffi/src/win32/`)**: Exports `stdcall` / `system` ABI symbols matching Microsoft `msi.dll` and Wine (`Makefile.in`, `msi.rc`, `msi.tlb`), covering database & SQL views (`MsiOpenDatabaseA/W`, `MsiDatabaseOpenViewA/W`, `MsiViewExecute`, `MsiViewFetch`, `MsiDatabaseCommit`), records & streams (`MsiCreateRecord`, `MsiRecordSetInteger`, `MsiRecordSetStringA/W`, `MsiRecordReadStream`), installer execution & state (`MsiInstallProductA/W`, `MsiConfigureProductExA/W`, `MsiReinstallProductA/W`, `MsiQueryProductStateA/W`, `MsiEnumRelatedProductsA/W`), patching & transforms (`MsiApplyPatchA/W`, `MsiDatabaseApplyTransformA/W`, `MsiDatabaseGenerateTransformA/W`), source lists, summary info, and UI levels (`MsiSetInternalUI`, `MsiSetExternalUIA/W`).
 - **COM / OLE Automation Server (`crates/msi-ffi/src/com/`)**: Full C-ABI vtable implementations of `IUnknown`, `IDispatch`, `IStorage` (`msi_create_storage_from_memory`), `IStream`, and the `WindowsInstaller.Installer` automation object model (`Installer`, `Session`, `Database`, `View`, `Record`, `SummaryInfo`, `StringList`, `RecordList`, `FeatureInfo`).
 - **Safety Boundary**: Strict panic isolation boundaries (`catch_unwind`) across all C-ABI, Win32, and COM entry points, converting internal unwinds into defined status codes (`MSI_ERROR_*`, `ERROR_INSTALL_FAILURE`, or `HRESULT`).
@@ -229,7 +236,9 @@ See the complete Python guide and API documentation in [`docs/python_guide.md`](
 ### 3. WiX Toolset Pipeline & Pure-Rust `.msi` Creation
 - **WiX Compiler, Linker, Bundle & Merge Module Pipeline:**
   - Multi-source `.wxs` input support (`msi pack -o App.msi Product.wxs Payload.wxs`).
-  - Cross-fragment symbol resolution (`<ComponentGroupRef Id="..." />`), `.wixlib` library archiving, `.msm` Merge Module compilation/ingestion (`wix::merge_module`), Burn bootstrapper bundle authoring (`wix::bundle`), and `.wxl` localization (`wix::localization`).
+  - **Host-Independent Cross-Architecture Pipeline**: Deterministically compiles, links, decompiles, and validates packages for `x86` (`Intel`), `x64`, `arm`, `arm64`, `ia64` (`Intel64`), and `neutral` targets on any host CPU/OS (`$(sys.BUILDARCH)`, `$(sys.BUILDARCHSHORT)`, `$(sys.PLATFORM)`, `Win64="yes|no"`, WiX v4/v5 `Bitness="default|always32|always64"`, `<StandardDirectory Id="ProgramFiles6432Folder">`, automatic `PID_PAGECOUNT` / `PID_TEMPLATE` generation, and `.wixobj` architecture persistence).
+  - **Pure-Rust Binary Payload Inspection**: Endian-safe `PE32`/`PE32+` (`PeMachineType`), `ELF` (`ElfMachineType`), and `Mach-O` (`MachOCpuType`) binary header and CLR assembly inspection (`inspect_pe_metadata`, `inspect_binary_architecture`), auto-populating `MsiAssembly` and `MsiAssemblyName` (`processorArchitecture`: `x86`, `amd64`, `arm`, `arm64`, `ia64`, `msil`) and enforcing cross-architecture `ICE80` and `.msm` Merge Module bitness rules.
+  - Cross-fragment symbol resolution (`<ComponentGroupRef Id="..." />`), `.wixlib` library archiving, `.msm` Merge Module compilation/ingestion (`wix::merge_module`), multi-architecture Burn bootstrapper bundle authoring (`wix::bundle`, `plan_chain_for_architecture`), and `.wxl` localization (`wix::localization`).
   - Preprocessor defines (`-d VAR=VAL` / `-dVAR=VAL`) and suppression flags (`-sval`, `-sice:<rule>`).
   - Authoring of platform daemons and services (`<ServiceInstall>` & `<ServiceControl>`) with automatic standard action injection (`StopServices`, `DeleteServices`, `InstallServices`, `StartServices`).
   - Authoring of desktop and Start Menu shortcuts, system environment variables, registry searches (`<RegistrySearch>`, `<FileSearch>`), and launch conditions (`<Condition Message="...">`).
@@ -391,10 +400,10 @@ msi-cli install ./ExampleApp.msi
 ### WiX Toolset & msitools Utilities
 
 ```bash
-# Compile WiX source into an intermediate object
-candle Product.wxs -o Product.wixobj
+# Compile WiX source into an intermediate object targeting arm64 (or x86, x64, arm, ia64, neutral)
+candle -arch arm64 Product.wxs -o Product.wixobj
 
-# Link object into an MSI database with validation
+# Link object into an MSI database with validation (preserves target architecture from .wixobj)
 light Product.wixobj -o Product.msi
 
 # Compile and link in one step with GNOME wixl shim (msitools)
@@ -438,7 +447,7 @@ This project adheres to non-negotiable software engineering constraints:
 - **100% Test Coverage:** Comprehensive unit, integration, property-based, and roundtrip tests.
 - **Zero `unwrap()` or `expect()`:** Strict lint enforcement prohibiting panics in production code.
 - **No `anyhow`:** Unified, strongly-typed error hierarchy (`MsiError`) per crate using `derive_more`.
-- **Strong Typing:** Domain newtypes (`ProductVersion`, `ComponentGuid`, `ComponentId`, `DirectoryId`, `FeatureId`, `FileId`, `FileName`, `DiskId`, `SectorId`, `MiniSectorId`, `StreamId`, `StringPoolId`) preventing raw string and integer errors.
+- **Strong Typing:** Domain newtypes and enums (`Architecture`, `Bitness`, `ComponentBitnessRule`, `InstallerVersion`, `LanguageId`, `TemplateSummary`, `PeMachineType`, `ElfMachineType`, `MachOCpuType`, `ProductVersion`, `ComponentGuid`, `ComponentId`, `DirectoryId`, `FeatureId`, `FileId`, `FileName`, `DiskId`, `SectorId`, `MiniSectorId`, `StreamId`, `StringPoolId`) preventing raw string and integer errors.
 
 ---
 

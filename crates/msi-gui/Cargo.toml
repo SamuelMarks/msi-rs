@@ -19,5 +19,4 @@ workspace = true
 
 [dependencies]
 clap = { workspace = true }
-derive_more = { workspace = true }
 msi = { workspace = true }

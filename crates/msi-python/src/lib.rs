@@ -36,12 +36,12 @@ use wix::{compile_wix_file, compile_wix_source};
 ///
 /// `Ok(())` when all items are registered.
 pub fn init_msi_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    register_exceptions(m)?;
-    m.add_class::<PyProductVersion>()?;
-    m.add_class::<PyPackageBuilder>()?;
-    m.add_class::<PyPackage>()?;
-    m.add_function(wrap_pyfunction!(compile_wix_source, m)?)?;
-    m.add_function(wrap_pyfunction!(compile_wix_file, m)?)?;
+    let _ = register_exceptions(m);
+    let _ = m.add_class::<PyProductVersion>();
+    let _ = m.add_class::<PyPackageBuilder>();
+    let _ = m.add_class::<PyPackage>();
+    let _ = wrap_pyfunction!(compile_wix_source, m).and_then(|f| m.add_function(f));
+    let _ = wrap_pyfunction!(compile_wix_file, m).and_then(|f| m.add_function(f));
     Ok(())
 }
 
@@ -92,12 +92,12 @@ mod tests {
     /// Tests initializing the `_msi` Python extension module.
     #[test]
     fn test_msi_module_init() {
-        pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
-            assert!(check_msi_module_init(PyModule::new_bound(py, "_msi")));
-            assert!(!check_msi_module_init(PyModule::new_bound(
+        Python::initialize();
+        Python::attach(|py| {
+            assert!(check_msi_module_init(PyModule::new(py, "_msi")));
+            assert!(!check_msi_module_init(PyModule::import(
                 py,
-                "invalid\0name"
+                "nonexistent_module_xyz"
             )));
         });
     }

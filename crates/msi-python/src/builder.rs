@@ -583,7 +583,7 @@ impl PyPackageBuilder {
     pub fn build(&self, py: Python<'_>) -> PyResult<PyPackage> {
         let builder = self.finalize_builder().map_err(|e| to_py_err(&e))?;
         let pkg = py
-            .allow_threads(move || builder.build())
+            .detach(move || builder.build())
             .map_err(|e| to_py_err(&e))?;
         Ok(PyPackage { inner: pkg })
     }
@@ -604,7 +604,7 @@ impl PyPackageBuilder {
     /// `Ok(())` when the package is built and written to `path`.
     pub fn build_to_file(&self, py: Python<'_>, path: String) -> PyResult<()> {
         let builder = self.finalize_builder().map_err(|e| to_py_err(&e))?;
-        py.allow_threads(move || {
+        py.detach(move || {
             let pkg = builder.build().map_err(|e| to_py_err(&e))?;
             pkg.save(&path).map_err(|e| to_py_err(&e))
         })?;
@@ -626,7 +626,7 @@ impl PyPackageBuilder {
     /// Serialized Compound File Binary byte vector.
     pub fn build_to_bytes(&self, py: Python<'_>) -> PyResult<Vec<u8>> {
         let builder = self.finalize_builder().map_err(|e| to_py_err(&e))?;
-        let bytes = py.allow_threads(move || {
+        let bytes = py.detach(move || {
             let pkg = builder.build().map_err(|e| to_py_err(&e))?;
             pkg.to_bytes().map_err(|e| to_py_err(&e))
         })?;
@@ -747,7 +747,7 @@ mod tests {
     /// `true` if `res` is `Ok` and all setter assertions pass, `false` otherwise.
     fn check_builder_new_and_setters(res: PyResult<PyPackageBuilder>) -> bool {
         res.is_ok_and(|mut b| {
-            Python::with_gil(|py| {
+            Python::attach(|py| {
                 // Test Debug, Clone, and Default derives
                 let debug_repr = format!("{b:?}");
                 assert!(debug_repr.contains("PyPackageBuilder"));
@@ -758,9 +758,9 @@ mod tests {
                 // Setters
                 b.set_product_name("UpdatedApp".to_string());
                 b.set_manufacturer("UpdatedVendor".to_string());
-                let ver_v2 = PyString::new_bound(py, "2.0.0");
+                let ver_v2 = PyString::new(py, "2.0.0");
                 assert!(b.set_version(ver_v2.as_any()).is_ok());
-                let bad_ver = PyString::new_bound(py, "bad_ver");
+                let bad_ver = PyString::new(py, "bad_ver");
                 assert!(b.set_version(bad_ver.as_any()).is_err());
 
                 b.set_product_code("{33333333-3333-3333-3333-333333333333}".to_string());
@@ -783,9 +783,9 @@ mod tests {
     /// Tests constructor, setters, media, properties, and derives.
     #[test]
     fn test_builder_new_and_setters() {
-        pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
-            let ver_str = PyString::new_bound(py, "1.0.0");
+        Python::initialize();
+        Python::attach(|py| {
+            let ver_str = PyString::new(py, "1.0.0");
             assert!(check_builder_new_and_setters(PyPackageBuilder::new(
                 "AppName".to_string(),
                 "Vendor".to_string(),
@@ -794,7 +794,7 @@ mod tests {
                 Some("{22222222-2222-2222-2222-222222222222}".to_string()),
             )));
 
-            let bad_ver = PyString::new_bound(py, "not_a_version");
+            let bad_ver = PyString::new(py, "not_a_version");
             assert!(!check_builder_new_and_setters(PyPackageBuilder::new(
                 "AppName".to_string(),
                 "Vendor".to_string(),
@@ -1023,9 +1023,9 @@ mod tests {
     /// Tests adding directories, components, features, and files including validation error branches.
     #[test]
     fn test_builder_add_directory_component_feature_file() {
-        pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
-            let ver_str = PyString::new_bound(py, "1.0.0");
+        Python::initialize();
+        Python::attach(|py| {
+            let ver_str = PyString::new(py, "1.0.0");
             assert!(check_builder_components(PyPackageBuilder::new(
                 "App".to_string(),
                 "Vendor".to_string(),
@@ -1167,9 +1167,9 @@ mod tests {
     /// Tests adding files from disk including file reading, MD5 hashing, and cabinet staging.
     #[test]
     fn test_builder_add_file_from_disk() {
-        pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
-            let ver_str = PyString::new_bound(py, "1.0.0");
+        Python::initialize();
+        Python::attach(|py| {
+            let ver_str = PyString::new(py, "1.0.0");
             assert!(check_add_file_from_disk(PyPackageBuilder::new(
                 "DiskApp".to_string(),
                 "Vendor".to_string(),
@@ -1194,7 +1194,7 @@ mod tests {
     /// `true` if `res` is `Ok` and all build assertions pass, `false` otherwise.
     fn check_builder_build(res: PyResult<PyPackageBuilder>) -> bool {
         res.is_ok_and(|mut b| {
-            Python::with_gil(|py| {
+            Python::attach(|py| {
                 assert!(b
                     .add_directory("TARGETDIR".to_string(), None, "SourceDir".to_string())
                     .is_ok());
@@ -1292,9 +1292,9 @@ mod tests {
     /// Tests building packages to memory, file, and bytes, with and without staged cabinet files.
     #[test]
     fn test_builder_build_variants_and_errors() {
-        pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
-            let ver_str = PyString::new_bound(py, "1.0.0");
+        Python::initialize();
+        Python::attach(|py| {
+            let ver_str = PyString::new(py, "1.0.0");
             assert!(check_builder_build(PyPackageBuilder::new(
                 "BuildApp".to_string(),
                 "Vendor".to_string(),
@@ -1322,55 +1322,40 @@ mod tests {
             let py = m.py();
             assert!(m.add_class::<PyPackageBuilder>().is_ok());
 
-            // Direct Rust invocation of __enter__ and __exit__
-            let ver_str = PyString::new_bound(py, "1.0.0");
-            assert!(PyPackageBuilder::new(
-                "App".to_string(),
-                "Vendor".to_string(),
-                ver_str.as_any(),
-                None,
-                None,
-            )
-            .is_ok_and(|b| {
-                assert!(Py::new(py, b.clone()).is_ok_and(|inst| {
-                    let borrowed = inst.borrow(py);
-                    let _ = PyPackageBuilder::__enter__(borrowed);
+            // Direct Rust invocation of __enter__, __exit__, and PyO3 pymethod error branches
+            let ver_str = PyString::new(py, "1.0.0");
+            let bad_obj = PyDict::new(py);
+            let empty_args = PyTuple::empty(py);
+            assert!(PyPackageBuilder::new("App".into(), "Vendor".into(), ver_str.as_any(), None, None)
+                .is_ok_and(|b| {
+                    assert!(Py::new(py, b.clone()).is_ok_and(|inst| {
+                        let _ = PyPackageBuilder::__enter__(inst.borrow(py));
+                        let _mut_borrow = inst.borrow_mut(py);
+                        // SAFETY: inst is a valid PyPackageBuilder pointer (currently mutably borrowed) and bad_obj is a valid PyDict pointer with GIL held.
+                        unsafe {
+                            let _ = PyPackageBuilder::__pymethod_build__(py, inst.as_ptr());
+                            let _ = PyPackageBuilder::__pymethod_build_to_bytes__(py, inst.as_ptr());
+                            let _ = PyPackageBuilder::__pymethod___enter____(py, inst.as_ptr());
+                            let _ = PyPackageBuilder::__pymethod___exit____(
+                                py,
+                                inst.as_ptr(),
+                                empty_args.as_ptr(),
+                                std::ptr::null_mut(),
+                            );
+                            let mut h_ref = pyo3::impl_::extract_argument::FunctionArgumentHolder::INIT;
+                            let _ = <&PyPackageBuilder as pyo3::impl_::extract_argument::PyFunctionArgument<'_, '_, '_, false>>::extract(bad_obj.as_any().as_borrowed(), &mut h_ref);
+                            let mut h_mut = pyo3::impl_::extract_argument::FunctionArgumentHolder::INIT;
+                            let _ = <&mut PyPackageBuilder as pyo3::impl_::extract_argument::PyFunctionArgument<'_, '_, '_, false>>::extract(bad_obj.as_any().as_borrowed(), &mut h_mut);
+                        }
+                        true
+                    }));
+                    assert!(!b.__exit__(None, None, None));
+                    let exc = pyo3::exceptions::PyRuntimeError::new_err("sample err");
+                    let bound_exc = exc.into_value(py).into_bound(py).into_any();
+                    assert!(!b.__exit__(Some(&bound_exc), Some(&bound_exc), Some(&bound_exc)));
                     true
                 }));
-                assert!(!b.__exit__(None, None, None));
-                let exc = pyo3::exceptions::PyRuntimeError::new_err("sample err");
-                let bound_exc = exc.to_object(py).into_bound(py);
-                assert!(!b.__exit__(Some(&bound_exc), Some(&bound_exc), Some(&bound_exc)));
-                true
-            }));
-
-            // Direct exercise of PyO3 pymethod wrappers with mismatched object type to test Err branch
-            let bad_obj = PyDict::new_bound(py);
-            let empty_args = PyTuple::empty_bound(py);
-            // SAFETY: bad_obj is a valid PyDict pointer with GIL held; type mismatch executes Err branches.
-            unsafe {
-                let _ = PyPackageBuilder::__pymethod_build__(py, bad_obj.as_ptr());
-                let _ = PyPackageBuilder::__pymethod_build_to_bytes__(py, bad_obj.as_ptr());
-                let _ = PyPackageBuilder::__pymethod___enter____(py, bad_obj.as_ptr());
-                let _ = PyPackageBuilder::__pymethod___exit____(
-                    py,
-                    bad_obj.as_ptr(),
-                    empty_args.as_ptr(),
-                    std::ptr::null_mut(),
-                );
-                let mut holder_ref = pyo3::impl_::extract_argument::FunctionArgumentHolder::INIT;
-                let _ = <
-                    &PyPackageBuilder as pyo3::impl_::extract_argument::PyFunctionArgument<'_, '_>
-                >::extract(bad_obj.as_any(), &mut holder_ref);
-                let mut holder_mut = pyo3::impl_::extract_argument::FunctionArgumentHolder::INIT;
-                let _ = <
-                    &mut PyPackageBuilder as pyo3::impl_::extract_argument::PyFunctionArgument<
-                        '_,
-                        '_,
-                    >
-                >::extract(bad_obj.as_any(), &mut holder_mut);
-            }
-            let _ = PyPackageBuilder::default().into_py(py);
+            let _ = PyPackageBuilder::default().into_pyobject(py);
 
             let temp_dir = std::env::temp_dir().join("msi_py_bld_ctx_test");
             let _ = fs::create_dir_all(&temp_dir);
@@ -1378,7 +1363,7 @@ mod tests {
             let _ = fs::write(&sample_src, b"sample content");
             let out_msi = temp_dir.join("out.msi");
 
-            let globals = PyDict::new_bound(py);
+            let globals = PyDict::new(py);
             assert!(globals.set_item("m", &m).is_ok());
             assert!(globals
                 .set_item("sample_src", sample_src.to_string_lossy().as_ref())
@@ -1387,42 +1372,42 @@ mod tests {
                 .set_item("out_msi", out_msi.to_string_lossy().as_ref())
                 .is_ok());
 
-            let script = r##"
-with m.PackageBuilder("ContextApp", "ContextVendor", "1.2.3") as b:
-    b.set_product_name("UpdatedContextApp")
-    b.set_manufacturer("UpdatedContextVendor")
-    b.set_version("2.3.4")
+            let script = c"
+with m.PackageBuilder(\"ContextApp\", \"ContextVendor\", \"1.2.3\") as b:
+    b.set_product_name(\"UpdatedContextApp\")
+    b.set_manufacturer(\"UpdatedContextVendor\")
+    b.set_version(\"2.3.4\")
     b.set_compression(0); b.set_compression(2); b.set_compression(3); b.set_compression(1)
     try: b.set_compression(99)
     except Exception: pass
-    b.set_product_code("{12345678-1234-1234-1234-123456789012}")
-    b.set_upgrade_code("{87654321-4321-4321-4321-210987654321}")
-    b.set_architecture("arm64"); b.set_platform("x64"); b.set_installer_version(500)
-    try: b.set_architecture("bad_arch")
+    b.set_product_code(\"{12345678-1234-1234-1234-123456789012}\")
+    b.set_upgrade_code(\"{87654321-4321-4321-4321-210987654321}\")
+    b.set_architecture(\"arm64\"); b.set_platform(\"x64\"); b.set_installer_version(500)
+    try: b.set_architecture(\"bad_arch\")
     except Exception: pass
     try: b.set_installer_version(50)
     except Exception: pass
-    b.add_property("GREETING", "Hello")
-    b.add_directory("TARGETDIR")
-    b.add_directory("INSTALLDIR", "TARGETDIR", "PFiles|Program Files")
-    b.add_component("MainComp", "INSTALLDIR", "{12345678-1234-1234-1234-123456789012}", 0, "1", "Key")
-    b.add_feature("MainFeat", None, "Title", "Desc", 1, 1, "INSTALLDIR", 0)
-    b.add_feature_component("MainFeat", "MainComp")
-    b.add_file("MainFile", "MainComp", "app.exe", 1024, "1.0", "1033", 0, 1)
-    b.add_file_from_disk(sample_src, "INSTALLDIR", "MainFeat")
-    b.add_media(1, 100, "Disk", "#cab1.cab", "Vol", "src")
-    b.add_embedded_cabinet("#manual.cab", bytes([1, 2, 3]))
+    b.add_property(\"GREETING\", \"Hello\")
+    b.add_directory(\"TARGETDIR\")
+    b.add_directory(\"INSTALLDIR\", \"TARGETDIR\", \"PFiles|Program Files\")
+    b.add_component(\"MainComp\", \"INSTALLDIR\", \"{12345678-1234-1234-1234-123456789012}\", 0, \"1\", \"Key\")
+    b.add_feature(\"MainFeat\", None, \"Title\", \"Desc\", 1, 1, \"INSTALLDIR\", 0)
+    b.add_feature_component(\"MainFeat\", \"MainComp\")
+    b.add_file(\"MainFile\", \"MainComp\", \"app.exe\", 1024, \"1.0\", \"1033\", 0, 1)
+    b.add_file_from_disk(sample_src, \"INSTALLDIR\", \"MainFeat\")
+    b.add_media(1, 100, \"Disk\", \"#cab1.cab\", \"Vol\", \"src\")
+    b.add_embedded_cabinet(\"#manual.cab\", bytes([1, 2, 3]))
 
     pkg = b.build()
-    assert pkg.get_property("ProductName") == "UpdatedContextApp"
-    assert pkg.get_property("Manufacturer") == "UpdatedContextVendor"
-    assert pkg.get_property("ProductVersion") == "2.3.4"
+    assert pkg.get_property(\"ProductName\") == \"UpdatedContextApp\"
+    assert pkg.get_property(\"Manufacturer\") == \"UpdatedContextVendor\"
+    assert pkg.get_property(\"ProductVersion\") == \"2.3.4\"
 
     raw_bytes = b.build_to_bytes()
     assert len(raw_bytes) > 0
     b.build_to_file(out_msi)
-"##;
-            let ok = py.run_bound(script, Some(&globals), None).is_ok();
+";
+            let ok = py.run(script, Some(&globals), None).is_ok();
             let _ = fs::remove_dir_all(&temp_dir);
             ok
         })
@@ -1431,15 +1416,12 @@ with m.PackageBuilder("ContextApp", "ContextVendor", "1.2.3") as b:
     /// Tests context manager behavior and Python runtime integration.
     #[test]
     fn test_builder_context_manager_and_python_runtime() {
-        pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
-            assert!(run_builder_script(PyModule::new_bound(
+        Python::initialize();
+        Python::attach(|py| {
+            assert!(run_builder_script(PyModule::new(py, "test_bld_ctx_mod")));
+            assert!(!run_builder_script(PyModule::import(
                 py,
-                "test_bld_ctx_mod"
-            )));
-            assert!(!run_builder_script(PyModule::new_bound(
-                py,
-                "invalid\0name"
+                "nonexistent_module_xyz"
             )));
         });
     }

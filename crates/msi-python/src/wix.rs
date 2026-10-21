@@ -38,7 +38,7 @@ pub fn compile_wix_source(
     variables: Option<BTreeMap<String, String>>,
     arch: Option<String>,
 ) -> PyResult<()> {
-    py.allow_threads(move || {
+    py.detach(move || {
         let mut ctx = PreprocessorContext::new();
         let parsed_arch = match arch {
             Some(ref a) if !a.trim().is_empty() => {
@@ -64,11 +64,10 @@ pub fn compile_wix_source(
 
         if let Some(target_arch) = parsed_arch {
             let canonical = target_arch.as_wix_str().to_string();
-            if let Some(props) = db.tables.get_mut("Property") {
-                props.retain(|r| {
-                    r.get(0) != Some(&FieldValue::String("ProductPlatform".to_string()))
-                });
-            }
+            db.tables
+                .entry("Property".to_string())
+                .or_default()
+                .retain(|r| r.get(0) != Some(&FieldValue::String("ProductPlatform".to_string())));
             let row = PropertyRow {
                 property: PropertyName::from_static("ProductPlatform"),
                 value: canonical,
@@ -174,8 +173,8 @@ mod tests {
     /// Tests successful end-to-end compilation of `WiX` XML strings and disk files.
     #[test]
     fn test_compile_wix_source_and_file_success() {
-        pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        Python::initialize();
+        Python::attach(|py| {
             let temp_dir = std::env::temp_dir().join("msi_py_wix_test_ok");
             let _ = fs::create_dir_all(&temp_dir);
             let out_msi1 = temp_dir.join("pkg1.msi");
@@ -234,11 +233,11 @@ mod tests {
 
             // 5. Invoke through PyO3 bound PyCFunction wrappers
             let out_msi5 = temp_dir.join("pkg5.msi");
-            assert!(pyo3::wrap_pyfunction_bound!(compile_wix_source, py)
+            assert!(pyo3::wrap_pyfunction!(compile_wix_source, py)
                 .and_then(|f| f.call1((VALID_WXS, out_msi5.to_string_lossy().as_ref())))
                 .is_ok());
             let out_msi6 = temp_dir.join("pkg6.msi");
-            assert!(pyo3::wrap_pyfunction_bound!(compile_wix_file, py)
+            assert!(pyo3::wrap_pyfunction!(compile_wix_file, py)
                 .and_then(|f| f.call1((
                     wxs_file.to_string_lossy().as_ref(),
                     out_msi6.to_string_lossy().as_ref()
@@ -252,8 +251,8 @@ mod tests {
     /// Tests error handling for missing files, invalid XML syntax, linker failures, and save errors.
     #[test]
     fn test_compile_wix_errors() {
-        pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        Python::initialize();
+        Python::attach(|py| {
             let temp_dir = std::env::temp_dir().join("msi_py_wix_test_err");
             let _ = fs::create_dir_all(&temp_dir);
             let out_msi = temp_dir.join("err.msi");

@@ -5,7 +5,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyTuple;
 
 /// Represents a three-part Windows Installer product version (`major.minor.build`).
-#[pyclass(name = "ProductVersion", module = "msi")]
+#[pyclass(name = "ProductVersion", module = "msi", from_py_object)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PyProductVersion {
     /// Major version component (0..=255).
@@ -153,7 +153,7 @@ pub fn extract_product_version(obj: &Bound<'_, PyAny>) -> PyResult<msi::package:
             .map_err(|e| crate::error::ValidationError::new_err(e.to_string()));
     }
 
-    if let Ok(tuple) = obj.downcast::<PyTuple>() {
+    if let Ok(tuple) = obj.cast::<PyTuple>() {
         let items: Vec<_> = tuple.iter().collect();
         if items.len() == 2 {
             let major = items[0].extract::<u8>()?;
@@ -177,6 +177,7 @@ mod tests {
     use super::*;
     use pyo3::types::{PyDict, PyString};
     use std::collections::hash_map::DefaultHasher;
+    use std::ffi::CStr;
     use std::hash::{Hash, Hasher};
 
     /// Tests constructor, getters, tuple conversion, string formatting, and derives in Rust.
@@ -296,7 +297,7 @@ mod tests {
     /// # Returns
     ///
     /// `true` if `res` is `Ok` and `script` executes without error, `false` otherwise.
-    fn run_version_script(res: PyResult<Bound<'_, PyModule>>, script: &str) -> bool {
+    fn run_version_script(res: PyResult<Bound<'_, PyModule>>, script: &CStr) -> bool {
         res.is_ok_and(|m| {
             let py = m.py();
             assert!(m.add_class::<PyProductVersion>().is_ok());
@@ -304,59 +305,76 @@ mod tests {
             assert!(check_cls(m.getattr("ProductVersion")));
             assert!(!check_cls(m.getattr("NonExistentClass")));
 
-            // Exercise error path on pymethods where extract_pyclass_ref fails on mismatched type
-            let bad_obj = PyDict::new_bound(py);
-            // SAFETY: bad_obj is a valid PyDict pointer with GIL held; type mismatch executes Err branch.
-            unsafe {
-                let _ = PyProductVersion::__pymethod_as_tuple__(py, bad_obj.as_ptr());
-                let _ = PyProductVersion::__pymethod___str____(py, bad_obj.as_ptr());
-                let _ = PyProductVersion::__pymethod___repr____(py, bad_obj.as_ptr());
-                let _ = PyProductVersion::__pymethod___richcmp____(
-                    py,
-                    bad_obj.as_ptr(),
-                    bad_obj.as_ptr(),
-                    0,
-                );
-                let mut holder_mut = pyo3::impl_::extract_argument::FunctionArgumentHolder::INIT;
-                let _ =
-                    <&mut PyProductVersion as pyo3::impl_::extract_argument::PyFunctionArgument<
-                        '_,
-                        '_,
-                    >>::extract(bad_obj.as_any(), &mut holder_mut);
-            }
+            // Exercise error path on pymethods where borrow/extract fails
+            let bad_obj = PyDict::new(py);
+            assert!(
+                Py::new(py, PyProductVersion::new(1, 2, 3)).is_ok_and(|inst| {
+                    {
+                        let _mut_borrow = inst.borrow_mut(py);
+                        // SAFETY: inst is a valid PyProductVersion pointer (currently mutably borrowed) and bad_obj is a valid PyDict pointer with GIL held.
+                        unsafe {
+                            let _ = PyProductVersion::__pymethod_as_tuple__(py, inst.as_ptr());
+                            let _ = PyProductVersion::__pymethod___str____(py, inst.as_ptr());
+                            let _ = PyProductVersion::__pymethod___repr____(py, inst.as_ptr());
+                            let _ = PyProductVersion::__pymethod___richcmp____(
+                                py,
+                                inst.as_ptr(),
+                                inst.as_ptr(),
+                                0,
+                            );
+                            let mut holder_mut =
+                                pyo3::impl_::extract_argument::FunctionArgumentHolder::INIT;
+                            let _ = <
+                            &mut PyProductVersion
+                            as pyo3::impl_::extract_argument::PyFunctionArgument<'_, '_, '_, false>
+                        >::extract(bad_obj.as_any().as_borrowed(), &mut holder_mut);
+                        }
+                    }
+                    // SAFETY: inst is a valid unborrowed PyProductVersion pointer; op 99 exercises invalid CompareOp branch.
+                    unsafe {
+                        let _ = PyProductVersion::__pymethod___richcmp____(
+                            py,
+                            inst.as_ptr(),
+                            inst.as_ptr(),
+                            99,
+                        );
+                    }
+                    true
+                })
+            );
 
-            let globals = PyDict::new_bound(py);
+            let globals = PyDict::new(py);
             assert!(globals.set_item("m", &m).is_ok());
-            py.run_bound(script, Some(&globals), None).is_ok()
+            py.run(script, Some(&globals), None).is_ok()
         })
     }
 
     /// Tests invoking `PyProductVersion` methods via the Python runtime to exercise `PyO3` trampolines.
     #[test]
     fn test_product_version_python_runtime() {
-        pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
-            let script = r#"
+        Python::initialize();
+        Python::attach(|py| {
+            let script = c"
 v = m.ProductVersion(1, 2, 3)
 assert v.major == 1
 assert v.minor == 2
 assert v.build == 3
-assert str(v) == "1.2.3"
-assert v.__str__() == "1.2.3"
-assert repr(v) == "ProductVersion(major=1, minor=2, build=3)"
-assert v.__repr__() == "ProductVersion(major=1, minor=2, build=3)"
+assert str(v) == \"1.2.3\"
+assert v.__str__() == \"1.2.3\"
+assert repr(v) == \"ProductVersion(major=1, minor=2, build=3)\"
+assert v.__repr__() == \"ProductVersion(major=1, minor=2, build=3)\"
 assert v.as_tuple() == (1, 2, 3)
 assert m.ProductVersion.as_tuple(v) == (1, 2, 3)
-assert getattr(v, "as_tuple")() == (1, 2, 3)
+assert getattr(v, \"as_tuple\")() == (1, 2, 3)
 
 v_default = m.ProductVersion(1, 2)
 assert v_default.build == 0
 
-parsed = m.ProductVersion.parse("4.5.6")
+parsed = m.ProductVersion.parse(\"4.5.6\")
 assert parsed.as_tuple() == (4, 5, 6)
 
 try:
-    m.ProductVersion.parse("not_valid")
+    m.ProductVersion.parse(\"not_valid\")
     assert False
 except Exception:
     pass
@@ -367,15 +385,15 @@ assert (v == v) is True
 assert (v != parsed) is True
 assert (parsed > v) is True
 assert (parsed >= v) is True
-assert (v == "not_a_version") is False
-assert (v != "not_a_version") is True
-"#;
+assert (v == \"not_a_version\") is False
+assert (v != \"not_a_version\") is True
+";
             assert!(run_version_script(
-                PyModule::new_bound(py, "test_ver_mod"),
+                PyModule::new(py, "test_ver_mod"),
                 script
             ));
             assert!(!run_version_script(
-                PyModule::new_bound(py, "invalid\0name"),
+                PyModule::import(py, "nonexistent_module_xyz"),
                 script
             ));
         });
@@ -392,7 +410,7 @@ assert (v != "not_a_version") is True
     /// `true` if `res` is `Ok` and `extract_product_version` yields `(3, 4, 5)`, `false` otherwise.
     fn check_extract_version(res: PyResult<Py<PyProductVersion>>) -> bool {
         res.is_ok_and(|py_v| {
-            Python::with_gil(|py| {
+            Python::attach(|py| {
                 extract_product_version(py_v.bind(py))
                     .is_ok_and(|v| (v.major(), v.minor(), v.build()) == (3, 4, 5))
             })
@@ -402,8 +420,8 @@ assert (v != "not_a_version") is True
     /// Tests extracting product versions from Python objects across all type branches and error cases.
     #[test]
     fn test_extract_product_version_all_branches() {
-        pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        Python::initialize();
+        Python::attach(|py| {
             // 1. PyProductVersion object
             assert!(check_extract_version(Py::new(
                 py,
@@ -414,7 +432,7 @@ assert (v != "not_a_version") is True
             )));
 
             // 2. String valid
-            let py_str = PyString::new_bound(py, "4.5.6");
+            let py_str = PyString::new(py, "4.5.6");
             assert!(extract_product_version(py_str.as_any()).is_ok_and(|v| (
                 v.major(),
                 v.minor(),
@@ -422,68 +440,75 @@ assert (v != "not_a_version") is True
             ) == (4, 5, 6)));
 
             // String invalid
-            let bad_py_str = PyString::new_bound(py, "not.a.valid.ver");
+            let bad_py_str = PyString::new(py, "not.a.valid.ver");
             assert!(extract_product_version(bad_py_str.as_any()).is_err());
 
             // 3. Tuple length 2 valid
-            let t2 = PyTuple::new_bound(py, &[1u8.into_py(py), 2u8.into_py(py)]);
-            assert!(extract_product_version(&t2.into_any()).is_ok_and(|v| (
-                v.major(),
-                v.minor(),
-                v.build()
-            ) == (1, 2, 0)));
+            let t0 = PyTuple::empty(py);
+            let t2 = (1u8, 2u8).into_pyobject(py);
+            assert!(
+                extract_product_version(t2.as_ref().unwrap_or(&t0).as_any()).is_ok_and(|v| (
+                    v.major(),
+                    v.minor(),
+                    v.build()
+                ) == (
+                    1, 2, 0
+                ))
+            );
 
             // Tuple length 2 invalid first item
-            let bad_t2_first = PyTuple::new_bound(py, &["a".into_py(py), 2u8.into_py(py)]);
-            assert!(extract_product_version(&bad_t2_first.into_any()).is_err());
+            let bad_t2_first = ("a", 2u8).into_pyobject(py);
+            assert!(
+                extract_product_version(bad_t2_first.as_ref().unwrap_or(&t0).as_any()).is_err()
+            );
 
             // Tuple length 2 invalid second item
-            let bad_t2_second = PyTuple::new_bound(py, &[1u8.into_py(py), "b".into_py(py)]);
-            assert!(extract_product_version(&bad_t2_second.into_any()).is_err());
+            let bad_t2_second = (1u8, "b").into_pyobject(py);
+            assert!(
+                extract_product_version(bad_t2_second.as_ref().unwrap_or(&t0).as_any()).is_err()
+            );
 
             // 4. Tuple length 3 valid
-            let t3 = PyTuple::new_bound(py, &[7u8.into_py(py), 8u8.into_py(py), 9u16.into_py(py)]);
-            assert!(extract_product_version(&t3.into_any()).is_ok_and(|v| (
-                v.major(),
-                v.minor(),
-                v.build()
-            ) == (7, 8, 9)));
+            let t3 = (7u8, 8u8, 9u16).into_pyobject(py);
+            assert!(
+                extract_product_version(t3.as_ref().unwrap_or(&t0).as_any()).is_ok_and(|v| (
+                    v.major(),
+                    v.minor(),
+                    v.build()
+                ) == (
+                    7, 8, 9
+                ))
+            );
 
             // Tuple length 3 invalid first item
-            let bad_t3_first =
-                PyTuple::new_bound(py, &["a".into_py(py), 8u8.into_py(py), 9u16.into_py(py)]);
-            assert!(extract_product_version(&bad_t3_first.into_any()).is_err());
+            let bad_t3_first = ("a", 8u8, 9u16).into_pyobject(py);
+            assert!(
+                extract_product_version(bad_t3_first.as_ref().unwrap_or(&t0).as_any()).is_err()
+            );
 
             // Tuple length 3 invalid second item
-            let bad_t3_second =
-                PyTuple::new_bound(py, &[7u8.into_py(py), "b".into_py(py), 9u16.into_py(py)]);
-            assert!(extract_product_version(&bad_t3_second.into_any()).is_err());
+            let bad_t3_second = (7u8, "b", 9u16).into_pyobject(py);
+            assert!(
+                extract_product_version(bad_t3_second.as_ref().unwrap_or(&t0).as_any()).is_err()
+            );
 
             // Tuple length 3 invalid third item
-            let bad_t3_third =
-                PyTuple::new_bound(py, &[7u8.into_py(py), 8u8.into_py(py), "c".into_py(py)]);
-            assert!(extract_product_version(&bad_t3_third.into_any()).is_err());
+            let bad_t3_third = (7u8, 8u8, "c").into_pyobject(py);
+            assert!(
+                extract_product_version(bad_t3_third.as_ref().unwrap_or(&t0).as_any()).is_err()
+            );
 
             // 5. Tuple with invalid lengths: length 0, 1, 4
-            let t0 = PyTuple::empty_bound(py);
-            assert!(extract_product_version(&t0.into_any()).is_err());
+            assert!(extract_product_version(t0.as_any()).is_err());
 
-            let t1 = PyTuple::new_bound(py, &[1u8.into_py(py)]);
-            assert!(extract_product_version(&t1.into_any()).is_err());
+            let t1 = (1u8,).into_pyobject(py);
+            assert!(extract_product_version(t1.as_ref().unwrap_or(&t0).as_any()).is_err());
 
-            let t4 = PyTuple::new_bound(
-                py,
-                &[
-                    1u8.into_py(py),
-                    2u8.into_py(py),
-                    3u16.into_py(py),
-                    4u16.into_py(py),
-                ],
-            );
-            assert!(extract_product_version(&t4.into_any()).is_err());
+            let t4 = (1u8, 2u8, 3u16, 4u16).into_pyobject(py);
+            assert!(extract_product_version(t4.as_ref().unwrap_or(&t0).as_any()).is_err());
 
             // 6. Unsupported type (e.g. dict)
-            let py_dict = PyDict::new_bound(py);
+            let py_dict = PyDict::new(py);
             assert!(extract_product_version(py_dict.as_any()).is_err());
         });
     }

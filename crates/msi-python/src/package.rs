@@ -38,7 +38,7 @@ impl PyPackage {
     pub fn open(py: Python<'_>, path: &str) -> PyResult<Self> {
         let p = path.to_string();
         let pkg = py
-            .allow_threads(move || Package::open(&p))
+            .detach(move || Package::open(&p))
             .map_err(|e| to_py_err(&e))?;
         Ok(Self { inner: pkg })
     }
@@ -61,7 +61,7 @@ impl PyPackage {
     pub fn from_bytes(py: Python<'_>, bytes: &[u8]) -> PyResult<Self> {
         let b = bytes.to_vec();
         let pkg = py
-            .allow_threads(move || Package::from_bytes(&b))
+            .detach(move || Package::from_bytes(&b))
             .map_err(|e| to_py_err(&e))?;
         Ok(Self { inner: pkg })
     }
@@ -83,8 +83,7 @@ impl PyPackage {
     pub fn save(&self, py: Python<'_>, path: &str) -> PyResult<()> {
         let pkg = self.inner.clone();
         let p = path.to_string();
-        py.allow_threads(move || pkg.save(&p))
-            .map_err(|e| to_py_err(&e))?;
+        py.detach(move || pkg.save(&p)).map_err(|e| to_py_err(&e))?;
         Ok(())
     }
 
@@ -104,7 +103,7 @@ impl PyPackage {
     pub fn to_bytes(&self, py: Python<'_>) -> PyResult<Vec<u8>> {
         let pkg = self.inner.clone();
         let bytes = py
-            .allow_threads(move || pkg.to_bytes())
+            .detach(move || pkg.to_bytes())
             .map_err(|e| to_py_err(&e))?;
         Ok(bytes)
     }
@@ -249,7 +248,7 @@ impl PyPackage {
         let mut rows = Vec::new();
         if let Some(recs) = records {
             for rec in recs {
-                let dict = PyDict::new_bound(py);
+                let dict = PyDict::new(py);
                 for (i, col_name) in col_names.iter().enumerate() {
                     let _ = match rec.get(i) {
                         Some(FieldValue::Null) | None => dict.set_item(col_name, py.None()),
@@ -298,7 +297,7 @@ impl PyPackage {
 
         let dest = destination_dir.to_string();
 
-        py.allow_threads(move || {
+        py.detach(move || {
             let reader = CabinetReader::new(&cab_data).map_err(|e| to_py_err(&e))?;
             fs::create_dir_all(&dest).map_err(|e| {
                 to_py_err(&msi::MsiError::Io(msi::error::IoContext::from_string(
@@ -593,7 +592,7 @@ mod tests {
     #[allow(dead_code)]
     fn check_package_get_table(res: Result<PyPackage, msi::MsiError>) -> bool {
         res.is_ok_and(|py_pkg| {
-            Python::with_gil(|py| {
+            Python::attach(|py| {
                 // Non-existent table -> DatabaseError
                 assert!(py_pkg.get_table(py, "NonExistentTable").is_err());
 
@@ -645,7 +644,7 @@ mod tests {
     /// Tests retrieving tables as dictionaries covering all `FieldValue` variants and error cases.
     #[test]
     fn test_package_get_table_field_variants_direct() {
-        pyo3::prepare_freethreaded_python();
+        Python::initialize();
         assert!(check_package_get_table(create_test_package()));
     }
 
@@ -660,7 +659,7 @@ mod tests {
     /// `true` if `res` is `Ok` and all cabinet extraction assertions pass, `false` otherwise.
     fn check_package_extract_cabinet(res: Result<PyPackage, msi::MsiError>) -> bool {
         res.is_ok_and(|py_pkg| {
-            Python::with_gil(|py| {
+            Python::attach(|py| {
                 let temp_dir = std::env::temp_dir().join("msi_test_py_cab_extract");
                 let _ = fs::remove_dir_all(&temp_dir);
 
@@ -738,7 +737,7 @@ mod tests {
     /// Tests cabinet extraction, success path, and all error paths.
     #[test]
     fn test_package_extract_cabinet() {
-        pyo3::prepare_freethreaded_python();
+        Python::initialize();
         assert!(check_package_extract_cabinet(create_test_package()));
         assert!(!check_package_extract_cabinet(Err(
             msi::MsiError::InvalidCabSignature {
@@ -758,10 +757,10 @@ mod tests {
     /// `true` if `res` is `Ok` and all I/O assertions pass, `false` otherwise.
     fn check_package_io_and_bytes(res: Result<PyPackage, msi::MsiError>) -> bool {
         res.is_ok_and(|py_pkg| {
-            Python::with_gil(|py| {
+            Python::attach(|py| {
                 // to_bytes & from_bytes
                 assert!(py_pkg.to_bytes(py).is_ok_and(|bytes| {
-                    assert_ne!(bytes, []);
+                    assert!(!bytes.is_empty());
                     PyPackage::from_bytes(py, &bytes).is_ok_and(|p| {
                         p.get_property("ProductName") == Some("TestProduct".to_string())
                     })
@@ -807,7 +806,7 @@ mod tests {
     /// Tests serialization, deserialization, disk save, and disk open including error paths.
     #[test]
     fn test_package_io_and_bytes() {
-        pyo3::prepare_freethreaded_python();
+        Python::initialize();
         assert!(check_package_io_and_bytes(create_test_package()));
         assert!(!check_package_io_and_bytes(Err(
             msi::MsiError::InvalidCabSignature {
@@ -831,10 +830,48 @@ mod tests {
             let py = m.py();
             assert!(m.add_class::<PyPackage>().is_ok());
 
-            // Direct Rust invocation of __enter__ and __exit__
+            // Direct Rust invocation of __enter__, __exit__, and PyO3 pymethod error branches
+            let bad_obj = PyDict::new(py);
+            let empty_args = PyTuple::empty(py);
             assert!(Py::new(py, py_pkg.clone()).is_ok_and(|inst| {
-                let borrowed = inst.borrow(py);
-                let _ = PyPackage::__enter__(borrowed);
+                let _ = PyPackage::__enter__(inst.borrow(py));
+                let _mut_borrow = inst.borrow_mut(py);
+                // SAFETY: inst is a valid non-null PyPackage pointer (currently mutably borrowed) and bad_obj is a valid PyDict pointer with GIL held.
+                unsafe {
+                    let inst_nn = std::ptr::NonNull::new_unchecked(inst.as_ptr());
+                    let _ = PyPackage::__pymethod_to_bytes__(py, inst.as_ptr());
+                    let _ = PyPackage::__pymethod_get_properties__(py, inst_nn);
+                    let _ = PyPackage::__pymethod_get_table_names__(py, inst_nn);
+                    let _ = PyPackage::__pymethod_get_architecture__(py, inst_nn);
+                    let _ = PyPackage::__pymethod_get_template__(py, inst_nn);
+                    let _ = PyPackage::__pymethod___enter____(py, inst.as_ptr());
+                    let _ = PyPackage::__pymethod___exit____(
+                        py,
+                        inst.as_ptr(),
+                        empty_args.as_ptr(),
+                        std::ptr::null_mut(),
+                    );
+                    let mut holder_ref =
+                        pyo3::impl_::extract_argument::FunctionArgumentHolder::INIT;
+                    let _ = <&PyPackage as pyo3::impl_::extract_argument::PyFunctionArgument<
+                        '_,
+                        '_,
+                        '_,
+                        false,
+                    >>::extract(
+                        bad_obj.as_any().as_borrowed(), &mut holder_ref
+                    );
+                    let mut holder_mut =
+                        pyo3::impl_::extract_argument::FunctionArgumentHolder::INIT;
+                    let _ = <&mut PyPackage as pyo3::impl_::extract_argument::PyFunctionArgument<
+                        '_,
+                        '_,
+                        '_,
+                        false,
+                    >>::extract(
+                        bad_obj.as_any().as_borrowed(), &mut holder_mut
+                    );
+                }
                 true
             }));
             assert!(!py_pkg.__exit__(None, None, None));
@@ -842,36 +879,8 @@ mod tests {
             pkg_no_tmpl.inner.summary_info_mut().template = None;
             assert_eq!(pkg_no_tmpl.architecture(), "x86");
             let exc = pyo3::exceptions::PyRuntimeError::new_err("sample error");
-            let bound_exc = exc.to_object(py).into_bound(py);
+            let bound_exc = exc.into_value(py).into_bound(py).into_any();
             assert!(!py_pkg.__exit__(Some(&bound_exc), Some(&bound_exc), Some(&bound_exc)));
-
-            // Direct exercise of PyO3 pymethod wrappers with mismatched object type to test Err branch
-            let bad_obj = PyDict::new_bound(py);
-            let empty_args = PyTuple::empty_bound(py);
-            // SAFETY: bad_obj is a valid PyDict pointer with GIL held; type mismatch executes Err branches.
-            unsafe {
-                let _ = PyPackage::__pymethod_to_bytes__(py, bad_obj.as_ptr());
-                let _ = PyPackage::__pymethod_get_properties__(py, bad_obj.as_ptr());
-                let _ = PyPackage::__pymethod_get_table_names__(py, bad_obj.as_ptr());
-                let _ = PyPackage::__pymethod_get_architecture__(py, bad_obj.as_ptr());
-                let _ = PyPackage::__pymethod_get_template__(py, bad_obj.as_ptr());
-                let _ = PyPackage::__pymethod___enter____(py, bad_obj.as_ptr());
-                let _ = PyPackage::__pymethod___exit____(
-                    py,
-                    bad_obj.as_ptr(),
-                    empty_args.as_ptr(),
-                    std::ptr::null_mut(),
-                );
-                let mut holder_ref = pyo3::impl_::extract_argument::FunctionArgumentHolder::INIT;
-                let _ = <
-                    &PyPackage as pyo3::impl_::extract_argument::PyFunctionArgument<'_, '_>
-                >::extract(bad_obj.as_any(), &mut holder_ref);
-                let mut holder_mut = pyo3::impl_::extract_argument::FunctionArgumentHolder::INIT;
-                let _ = <&mut PyPackage as pyo3::impl_::extract_argument::PyFunctionArgument<
-                    '_,
-                    '_,
-                >>::extract(bad_obj.as_any(), &mut holder_mut);
-            }
 
             // Python runtime module test with context manager
             let temp_dir = std::env::temp_dir().join("msi_py_pkg_ctx_test");
@@ -879,8 +888,8 @@ mod tests {
             let saved_msi = temp_dir.join("saved.msi");
             let ext_dir = temp_dir.join("extracted");
             let bytes_vec = py_pkg.to_bytes(py).unwrap_or_default();
-            let py_bytes = PyBytes::new_bound(py, &bytes_vec);
-            let globals = PyDict::new_bound(py);
+            let py_bytes = PyBytes::new(py, &bytes_vec);
+            let globals = PyDict::new(py);
             assert!(globals.set_item("m", &m).is_ok());
             assert!(globals.set_item("pkg_bytes", &py_bytes).is_ok());
             assert!(globals
@@ -890,35 +899,35 @@ mod tests {
                 .set_item("ext_dir", ext_dir.to_string_lossy().as_ref())
                 .is_ok());
 
-            let script = r##"
+            let script = c"
 with m.Package.from_bytes(bytes(pkg_bytes)) as p:
-    assert p.get_property("ProductName") == "TestProduct"
-    assert p.get_property("Manufacturer") == "TestManufacturer"
-    assert p.get_property("ProductVersion") == "1.2.3"
-    assert p.get_property("ProductCode") == "{12345678-1234-1234-1234-123456789012}"
-    assert p.get_property("CustomGreeting") == "HelloFromTest"
-    assert p.get_property("NonExistent") is None
-    assert p.architecture in ("x86", "x64", "arm", "arm64", "ia64", "neutral")
+    assert p.get_property(\"ProductName\") == \"TestProduct\"
+    assert p.get_property(\"Manufacturer\") == \"TestManufacturer\"
+    assert p.get_property(\"ProductVersion\") == \"1.2.3\"
+    assert p.get_property(\"ProductCode\") == \"{12345678-1234-1234-1234-123456789012}\"
+    assert p.get_property(\"CustomGreeting\") == \"HelloFromTest\"
+    assert p.get_property(\"NonExistent\") is None
+    assert p.architecture in (\"x86\", \"x64\", \"arm\", \"arm64\", \"ia64\", \"neutral\")
     _ = p.template
     props = p.properties
-    assert props["ProductName"] == "TestProduct"
-    assert "Media" in p.table_names
-    media_rows = p.get_table("Media")
+    assert props[\"ProductName\"] == \"TestProduct\"
+    assert \"Media\" in p.table_names
+    media_rows = p.get_table(\"Media\")
     assert len(media_rows) >= 1
-    assert media_rows[0]["DiskId"] == 1
-    file_rows = p.get_table("File")
+    assert media_rows[0][\"DiskId\"] == 1
+    file_rows = p.get_table(\"File\")
     assert len(file_rows) >= 1
-    bin_rows = p.get_table("Binary")
+    bin_rows = p.get_table(\"Binary\")
     assert len(bin_rows) >= 1
     assert len(p.to_bytes()) > 0
     p.save(saved_msi)
-    extracted = p.extract_cabinet("#cab1.cab", ext_dir)
-    assert "sample.txt" in extracted
+    extracted = p.extract_cabinet(\"#cab1.cab\", ext_dir)
+    assert \"sample.txt\" in extracted
 
 with m.Package.open(saved_msi) as p2:
-    assert p2.get_property("ProductName") == "TestProduct"
-"##;
-            let ok = py.run_bound(script, Some(&globals), None).is_ok();
+    assert p2.get_property(\"ProductName\") == \"TestProduct\"
+";
+            let ok = py.run(script, Some(&globals), None).is_ok();
             let _ = fs::remove_dir_all(&temp_dir);
             ok
         })
@@ -935,13 +944,13 @@ with m.Package.open(saved_msi) as p2:
     /// `true` if `res` is `Ok` and the context manager script passes, `false` otherwise.
     fn check_package_context_manager(res: Result<PyPackage, msi::MsiError>) -> bool {
         res.is_ok_and(|py_pkg| {
-            Python::with_gil(|py| {
+            Python::attach(|py| {
                 assert!(run_pkg_script(
-                    PyModule::new_bound(py, "test_pkg_ctx_mod"),
+                    PyModule::new(py, "test_pkg_ctx_mod"),
                     &py_pkg
                 ));
                 assert!(!run_pkg_script(
-                    PyModule::new_bound(py, "invalid\0name"),
+                    PyModule::import(py, "nonexistent_module_xyz"),
                     &py_pkg
                 ));
                 true
@@ -952,7 +961,7 @@ with m.Package.open(saved_msi) as p2:
     /// Tests context manager behavior and Python runtime integration.
     #[test]
     fn test_package_context_manager_and_python_runtime() {
-        pyo3::prepare_freethreaded_python();
+        Python::initialize();
         assert!(check_package_context_manager(create_test_package()));
         assert!(!check_package_context_manager(Err(
             msi::MsiError::InvalidCabSignature {

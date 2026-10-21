@@ -2,7 +2,7 @@
 
 use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
-use pyo3::sync::GILOnceCell;
+use pyo3::sync::PyOnceLock;
 use pyo3::types::PyType;
 
 /// Defines a custom Python exception type inheriting from `$base` without duplicate inherent/trait methods.
@@ -12,24 +12,21 @@ macro_rules! define_py_exception {
         #[derive(Debug, Clone, Copy)]
         pub struct $name;
 
-        // SAFETY: `$name` registers a valid Python exception type object via `PyErr::new_type_bound`.
+        // SAFETY: `$name` registers a valid Python exception type object via `PyErr::new_type`.
         unsafe impl pyo3::type_object::PyTypeInfo for $name {
-            const NAME: &'static str = stringify!($name);
-            const MODULE: Option<&'static str> = Some($module);
-
             #[inline]
             fn type_object_raw(py: Python<'_>) -> *mut pyo3::ffi::PyTypeObject {
-                static TYPE_OBJECT: GILOnceCell<Py<PyType>> = GILOnceCell::new();
+                static TYPE_OBJECT: PyOnceLock<Py<PyType>> = PyOnceLock::new();
                 TYPE_OBJECT
                     .get_or_init(py, || {
-                        PyErr::new_type_bound(
+                        PyErr::new_type(
                             py,
-                            concat!($module, ".", stringify!($name)),
-                            Some($doc),
-                            Some(&py.get_type_bound::<$base>()),
+                            pyo3::ffi::c_str!(concat!($module, ".", stringify!($name))),
+                            Some(pyo3::ffi::c_str!($doc)),
+                            Some(&py.get_type::<$base>()),
                             None,
                         )
-                        .unwrap_or(py.get_type_bound::<$base>().unbind())
+                        .unwrap_or(py.get_type::<$base>().unbind())
                     })
                     .as_ptr()
                     .cast()
@@ -159,15 +156,12 @@ pub fn to_py_err(err: &msi::MsiError) -> PyErr {
 ///
 /// `Ok(())` when all custom exception classes are added to `m`.
 pub fn register_exceptions(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    let _ = m.add("MsiError", m.py().get_type_bound::<MsiError>());
-    let _ = m.add(
-        "ValidationError",
-        m.py().get_type_bound::<ValidationError>(),
-    );
-    let _ = m.add("DatabaseError", m.py().get_type_bound::<DatabaseError>());
-    let _ = m.add("CabinetError", m.py().get_type_bound::<CabinetError>());
-    let _ = m.add("IoError", m.py().get_type_bound::<IoError>());
-    let _ = m.add("WixError", m.py().get_type_bound::<WixError>());
+    let _ = m.add("MsiError", m.py().get_type::<MsiError>());
+    let _ = m.add("ValidationError", m.py().get_type::<ValidationError>());
+    let _ = m.add("DatabaseError", m.py().get_type::<DatabaseError>());
+    let _ = m.add("CabinetError", m.py().get_type::<CabinetError>());
+    let _ = m.add("IoError", m.py().get_type::<IoError>());
+    let _ = m.add("WixError", m.py().get_type::<WixError>());
     Ok(())
 }
 
@@ -200,8 +194,8 @@ mod tests {
     /// Tests conversion from `msi::MsiError` variants to Python exceptions and exception registration.
     #[test]
     fn test_to_py_err() {
-        pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        Python::initialize();
+        Python::attach(|py| {
             // Validation and InvalidArgument
             let val_err = msi::MsiError::Validation {
                 element: "prop".to_string(),
@@ -253,12 +247,10 @@ mod tests {
             );
 
             // Register exceptions into a mock module
-            assert!(check_register_exceptions(PyModule::new_bound(
-                py, "test_mod"
-            )));
-            assert!(!check_register_exceptions(PyModule::new_bound(
+            assert!(check_register_exceptions(PyModule::new(py, "test_mod")));
+            assert!(!check_register_exceptions(PyModule::import(
                 py,
-                "invalid\0name"
+                "nonexistent_module_xyz"
             )));
         });
     }
